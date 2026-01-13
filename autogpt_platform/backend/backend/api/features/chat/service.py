@@ -19,7 +19,7 @@ from . import db as chat_db
 from .config import ChatConfig
 from .model import ChatMessage, ChatSession, Usage
 from .model import create_chat_session as model_create_chat_session
-from .model import get_chat_session, upsert_chat_session
+from .model import get_chat_session, update_session_title, upsert_chat_session
 from .response_model import (
     StreamBaseResponse,
     StreamEnd,
@@ -132,7 +132,7 @@ async def _build_system_prompt(user_id: str | None) -> tuple[str, Any]:
     if understanding:
         context = format_understanding_for_prompt(understanding)
     else:
-        context = "This is the first time you are meeting the user. Geet them and introduce them to the platform"
+        context = "This is the first time you are meeting the user. Greet them and introduce them to the platform"
 
     compiled = prompt.compile(users_information=context)
     return compiled, prompt
@@ -314,14 +314,20 @@ async def stream_chat_completion(
             # First user message - generate title in background
             import asyncio
 
+            # Capture only the values we need (not the session object) to avoid
+            # stale data issues when the main flow modifies the session
+            captured_session_id = session_id
+            captured_message = message
+
             async def _update_title():
                 try:
-                    title = await _generate_session_title(message)
+                    title = await _generate_session_title(captured_message)
                     if title:
-                        session.title = title
-                        await upsert_chat_session(session)
+                        # Use dedicated title update function that doesn't
+                        # touch messages, avoiding race conditions
+                        await update_session_title(captured_session_id, title)
                         logger.info(
-                            f"Generated title for session {session_id}: {title}"
+                            f"Generated title for session {captured_session_id}: {title}"
                         )
                 except Exception as e:
                     logger.warning(f"Failed to update session title: {e}")
@@ -336,7 +342,7 @@ async def stream_chat_completion(
     try:
         langfuse = _get_langfuse_client()
         env = _get_environment()
-        trace = langfuse.trace(
+        trace = langfuse.trace(  # type: ignore[attr-defined]
             name="chat_completion",
             session_id=session_id,
             user_id=user_id,

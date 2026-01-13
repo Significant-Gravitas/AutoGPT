@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import uuid
 from datetime import UTC, datetime
@@ -22,13 +23,25 @@ from pydantic import BaseModel
 
 from backend.data.redis_client import get_redis_async
 from backend.util import json
-from backend.util.exceptions import RedisError
+from backend.util.exceptions import DatabaseError, RedisError
 
 from . import db as chat_db
 from .config import ChatConfig
 
 logger = logging.getLogger(__name__)
 config = ChatConfig()
+
+# Session-level locks to prevent race conditions during concurrent upserts
+_session_locks: dict[str, asyncio.Lock] = {}
+_session_locks_mutex = asyncio.Lock()
+
+
+async def _get_session_lock(session_id: str) -> asyncio.Lock:
+    """Get or create a lock for a specific session to prevent concurrent upserts."""
+    async with _session_locks_mutex:
+        if session_id not in _session_locks:
+            _session_locks[session_id] = asyncio.Lock()
+        return _session_locks[session_id]
 
 
 class ChatMessage(BaseModel):
@@ -396,28 +409,59 @@ async def get_chat_session(
 async def upsert_chat_session(
     session: ChatSession,
 ) -> ChatSession:
-    """Update a chat session in both cache and database."""
-    # Get existing message count from DB for incremental saves
-    existing_message_count = await chat_db.get_chat_session_message_count(
-        session.session_id
-    )
+    """Update a chat session in both cache and database.
 
-    # Save to database
-    try:
-        await _save_session_to_db(session, existing_message_count)
-    except Exception as e:
-        logger.error(f"Failed to save session {session.session_id} to database: {e}")
-        # Continue to cache even if DB fails
+    Uses session-level locking to prevent race conditions when concurrent
+    operations (e.g., background title update and main stream handler)
+    attempt to upsert the same session simultaneously.
 
-    # Save to cache
-    try:
-        await _cache_session(session)
-    except Exception as e:
-        raise RedisError(
-            f"Failed to persist chat session {session.session_id} to Redis: {e}"
-        ) from e
+    Raises:
+        DatabaseError: If the database write fails. The cache is still updated
+            as a best-effort optimization, but the error is propagated to ensure
+            callers are aware of the persistence failure.
+        RedisError: If the cache write fails (after successful DB write).
+    """
+    # Acquire session-specific lock to prevent concurrent upserts
+    lock = await _get_session_lock(session.session_id)
 
-    return session
+    async with lock:
+        # Get existing message count from DB for incremental saves
+        existing_message_count = await chat_db.get_chat_session_message_count(
+            session.session_id
+        )
+
+        db_error: Exception | None = None
+
+        # Save to database (primary storage)
+        try:
+            await _save_session_to_db(session, existing_message_count)
+        except Exception as e:
+            logger.error(
+                f"Failed to save session {session.session_id} to database: {e}"
+            )
+            db_error = e
+
+        # Save to cache (best-effort, even if DB failed)
+        try:
+            await _cache_session(session)
+        except Exception as e:
+            # If DB succeeded but cache failed, raise cache error
+            if db_error is None:
+                raise RedisError(
+                    f"Failed to persist chat session {session.session_id} to Redis: {e}"
+                ) from e
+            # If both failed, log cache error but raise DB error (more critical)
+            logger.warning(
+                f"Cache write also failed for session {session.session_id}: {e}"
+            )
+
+        # Propagate DB error after attempting cache (prevents data loss)
+        if db_error is not None:
+            raise DatabaseError(
+                f"Failed to persist chat session {session.session_id} to database"
+            ) from db_error
+
+        return session
 
 
 async def create_chat_session(user_id: str | None) -> ChatSession:
@@ -459,9 +503,18 @@ async def get_user_sessions(
     return sessions
 
 
-async def delete_chat_session(session_id: str) -> bool:
-    """Delete a chat session from both cache and database."""
-    # Delete from cache
+async def delete_chat_session(session_id: str, user_id: str | None = None) -> bool:
+    """Delete a chat session from both cache and database.
+
+    Args:
+        session_id: The session ID to delete.
+        user_id: If provided, validates that the session belongs to this user
+            before deletion. This prevents unauthorized deletion.
+
+    Returns:
+        True if deleted successfully, False otherwise.
+    """
+    # Delete from cache (always attempt, regardless of ownership)
     try:
         redis_key = f"chat:session:{session_id}"
         async_redis = await get_redis_async()
@@ -469,5 +522,39 @@ async def delete_chat_session(session_id: str) -> bool:
     except Exception as e:
         logger.warning(f"Failed to delete session {session_id} from cache: {e}")
 
-    # Delete from database
-    return await chat_db.delete_chat_session(session_id)
+    # Delete from database (with optional user_id validation)
+    return await chat_db.delete_chat_session(session_id, user_id)
+
+
+async def update_session_title(session_id: str, title: str) -> bool:
+    """Update only the title of a chat session.
+
+    This is a lightweight operation that doesn't touch messages, avoiding
+    race conditions with concurrent message updates. Use this for background
+    title generation instead of upsert_chat_session.
+
+    Args:
+        session_id: The session ID to update.
+        title: The new title to set.
+
+    Returns:
+        True if updated successfully, False otherwise.
+    """
+    try:
+        result = await chat_db.update_chat_session(session_id=session_id, title=title)
+        if result is None:
+            logger.warning(f"Session {session_id} not found for title update")
+            return False
+
+        # Invalidate cache so next fetch gets updated title
+        try:
+            redis_key = f"chat:session:{session_id}"
+            async_redis = await get_redis_async()
+            await async_redis.delete(redis_key)
+        except Exception as e:
+            logger.warning(f"Failed to invalidate cache for session {session_id}: {e}")
+
+        return True
+    except Exception as e:
+        logger.error(f"Failed to update title for session {session_id}: {e}")
+        return False

@@ -80,9 +80,13 @@ def parse_time_expression(
     # Try ISO date format (YYYY-MM-DD)
     date_match = re.match(r"^(\d{4})-(\d{2})-(\d{2})$", expr)
     if date_match:
-        year, month, day = map(int, date_match.groups())
-        start = datetime(year, month, day, 0, 0, 0, tzinfo=timezone.utc)
-        return start, start + timedelta(days=1)
+        try:
+            year, month, day = map(int, date_match.groups())
+            start = datetime(year, month, day, 0, 0, 0, tzinfo=timezone.utc)
+            return start, start + timedelta(days=1)
+        except ValueError:
+            # Invalid date components (e.g., month=13, day=32)
+            pass
 
     # Try ISO datetime
     try:

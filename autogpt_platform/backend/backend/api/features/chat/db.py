@@ -12,6 +12,7 @@ from prisma.types import (
     ChatSessionUpdateInput,
 )
 
+from backend.data.db import transaction
 from backend.util.json import SafeJson
 
 logger = logging.getLogger(__name__)
@@ -135,47 +136,53 @@ async def add_chat_messages_batch(
     messages: list[dict[str, Any]],
     start_sequence: int,
 ) -> list[PrismaChatMessage]:
-    """Add multiple messages to a chat session in a batch."""
+    """Add multiple messages to a chat session in a batch.
+
+    Uses a transaction for atomicity - if any message creation fails,
+    the entire batch is rolled back.
+    """
     if not messages:
         return []
 
     created_messages = []
-    for i, msg in enumerate(messages):
-        # Build the input dict dynamically - only include optional JSON fields
-        # when they have values, as Prisma TypedDict validation fails when
-        # optional fields are explicitly set to None
-        data: dict[str, Any] = {
-            "Session": {"connect": {"id": session_id}},
-            "role": msg["role"],
-            "sequence": start_sequence + i,
-        }
 
-        # Add optional string fields
-        if msg.get("content") is not None:
-            data["content"] = msg["content"]
-        if msg.get("name") is not None:
-            data["name"] = msg["name"]
-        if msg.get("tool_call_id") is not None:
-            data["toolCallId"] = msg["tool_call_id"]
-        if msg.get("refusal") is not None:
-            data["refusal"] = msg["refusal"]
+    async with transaction() as tx:
+        for i, msg in enumerate(messages):
+            # Build the input dict dynamically - only include optional JSON fields
+            # when they have values, as Prisma TypedDict validation fails when
+            # optional fields are explicitly set to None
+            data: dict[str, Any] = {
+                "Session": {"connect": {"id": session_id}},
+                "role": msg["role"],
+                "sequence": start_sequence + i,
+            }
 
-        # Add optional JSON fields only when they have values
-        if msg.get("tool_calls") is not None:
-            data["toolCalls"] = SafeJson(msg["tool_calls"])
-        if msg.get("function_call") is not None:
-            data["functionCall"] = SafeJson(msg["function_call"])
+            # Add optional string fields
+            if msg.get("content") is not None:
+                data["content"] = msg["content"]
+            if msg.get("name") is not None:
+                data["name"] = msg["name"]
+            if msg.get("tool_call_id") is not None:
+                data["toolCallId"] = msg["tool_call_id"]
+            if msg.get("refusal") is not None:
+                data["refusal"] = msg["refusal"]
 
-        created = await PrismaChatMessage.prisma().create(
-            data=cast(ChatMessageCreateInput, data)
+            # Add optional JSON fields only when they have values
+            if msg.get("tool_calls") is not None:
+                data["toolCalls"] = SafeJson(msg["tool_calls"])
+            if msg.get("function_call") is not None:
+                data["functionCall"] = SafeJson(msg["function_call"])
+
+            created = await PrismaChatMessage.prisma(tx).create(
+                data=cast(ChatMessageCreateInput, data)
+            )
+            created_messages.append(created)
+
+        # Update session's updatedAt timestamp within the same transaction
+        await PrismaChatSession.prisma(tx).update(
+            where={"id": session_id},
+            data={"updatedAt": datetime.now(UTC)},
         )
-        created_messages.append(created)
-
-    # Update session's updatedAt timestamp
-    await PrismaChatSession.prisma().update(
-        where={"id": session_id},
-        data={"updatedAt": datetime.now(UTC)},
-    )
 
     return created_messages
 
@@ -199,10 +206,31 @@ async def get_user_session_count(user_id: str) -> int:
     return await PrismaChatSession.prisma().count(where={"userId": user_id})
 
 
-async def delete_chat_session(session_id: str) -> bool:
-    """Delete a chat session and all its messages."""
+async def delete_chat_session(session_id: str, user_id: str | None = None) -> bool:
+    """Delete a chat session and all its messages.
+
+    Args:
+        session_id: The session ID to delete.
+        user_id: If provided, validates that the session belongs to this user
+            before deletion. This prevents unauthorized deletion of other
+            users' sessions.
+
+    Returns:
+        True if deleted successfully, False otherwise.
+    """
     try:
-        await PrismaChatSession.prisma().delete(where={"id": session_id})
+        # Build where clause with optional user_id validation
+        where_clause: dict[str, Any] = {"id": session_id}
+        if user_id is not None:
+            where_clause["userId"] = user_id
+
+        result = await PrismaChatSession.prisma().delete_many(where=where_clause)
+        if result == 0:
+            logger.warning(
+                f"No session deleted for {session_id} "
+                f"(user_id validation: {user_id is not None})"
+            )
+            return False
         return True
     except Exception as e:
         logger.error(f"Failed to delete chat session {session_id}: {e}")
