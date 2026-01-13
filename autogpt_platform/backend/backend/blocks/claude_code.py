@@ -94,7 +94,10 @@ class ClaudeCodeBlock(Block):
         timeout: int = SchemaField(
             description=(
                 "Sandbox timeout in seconds. Claude Code tasks can take "
-                "a while, so set this appropriately for your task complexity."
+                "a while, so set this appropriately for your task complexity. "
+                "Note: This only applies when creating a new sandbox. "
+                "When reconnecting to an existing sandbox via sandbox_id, "
+                "the original timeout is retained."
             ),
             default=300,  # 5 minutes default
             advanced=True,
@@ -528,7 +531,7 @@ class ClaudeCodeBlock(Block):
                             # Calculate relative path by stripping working directory
                             relative_path = file_path
                             if file_path.startswith(working_directory):
-                                relative_path = file_path[len(working_directory):]
+                                relative_path = file_path[len(working_directory) :]
                                 # Remove leading slash if present
                                 if relative_path.startswith("/"):
                                     relative_path = relative_path[1:]
