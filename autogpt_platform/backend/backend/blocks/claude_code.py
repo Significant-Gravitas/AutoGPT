@@ -1,3 +1,4 @@
+import shlex
 from typing import Literal
 
 from e2b import AsyncSandbox as BaseAsyncSandbox
@@ -341,33 +342,44 @@ class ClaudeCodeBlock(Block):
             history_flag = ""
             if conversation_history and not session_id:
                 # Inject previous conversation as context via system prompt
-                # Escape the history for shell
-                escaped_history = conversation_history.replace("'", "'\"'\"'")
-                history_flag = (
-                    f" --append-system-prompt 'Previous conversation context: "
-                    f"{escaped_history}'"
+                # Use consistent escaping via _escape_prompt helper
+                escaped_history = self._escape_prompt(
+                    f"Previous conversation context: {conversation_history}"
                 )
+                history_flag = f" --append-system-prompt {escaped_history}"
 
             # Build Claude command based on whether we're resuming or starting new
+            # Use shlex.quote for working_directory and session IDs to prevent injection
+            safe_working_dir = shlex.quote(working_directory)
             if session_id:
                 # Resuming existing session (sandbox still alive)
+                safe_session_id = shlex.quote(session_id)
                 claude_command = (
-                    f"cd {working_directory} && "
+                    f"cd {safe_working_dir} && "
                     f"echo {self._escape_prompt(prompt)} | "
-                    f"claude --resume {session_id} {base_flags}"
+                    f"claude --resume {safe_session_id} {base_flags}"
                 )
             else:
                 # New session with specific ID
+                safe_current_session_id = shlex.quote(current_session_id)
                 claude_command = (
-                    f"cd {working_directory} && "
+                    f"cd {safe_working_dir} && "
                     f"echo {self._escape_prompt(prompt)} | "
-                    f"claude --session-id {current_session_id} {base_flags}{history_flag}"
+                    f"claude --session-id {safe_current_session_id} {base_flags}{history_flag}"
                 )
 
             result = await sandbox.commands.run(
                 claude_command,
                 timeout=0,  # No command timeout - let sandbox timeout handle it
             )
+
+            # Check for command failure
+            if result.exit_code != 0:
+                error_msg = result.stderr or result.stdout or "Unknown error"
+                raise Exception(
+                    f"Claude Code command failed with exit code {result.exit_code}:\n"
+                    f"{error_msg}"
+                )
 
             raw_output = result.stdout or ""
             sandbox_id = sandbox.sandbox_id
@@ -483,9 +495,14 @@ class ClaudeCodeBlock(Block):
 
         try:
             # List files recursively using find command
+            # Exclude node_modules and .git directories, but allow hidden files
+            # like .env and .gitignore (they're filtered by text_extensions later)
+            safe_working_dir = shlex.quote(working_directory)
             find_result = await sandbox.commands.run(
-                f"find {working_directory} -type f -not -path '*/node_modules/*' "
-                f"-not -path '*/.git/*' -not -path '*/.*' 2>/dev/null | head -100"
+                f"find {safe_working_dir} -type f "
+                f"-not -path '*/node_modules/*' "
+                f"-not -path '*/.git/*' "
+                f"2>/dev/null | head -100"
             )
 
             if find_result.stdout:
