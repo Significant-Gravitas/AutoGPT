@@ -89,6 +89,18 @@ export function extractOptions(
 
 // get display type and color for schema types [need for type display next to field name]
 export const getTypeDisplayInfo = (schema: any) => {
+  if (
+    schema?.type === "array" &&
+    "format" in schema &&
+    schema.format === "table"
+  ) {
+    return {
+      displayType: "table",
+      colorClass: "!text-indigo-500",
+      hexColor: "#6366f1",
+    };
+  }
+
   if (schema?.type === "string" && schema?.format) {
     const formatMap: Record<
       string,
