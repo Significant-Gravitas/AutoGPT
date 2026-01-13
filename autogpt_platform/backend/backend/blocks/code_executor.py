@@ -1,6 +1,7 @@
 from enum import Enum
 from typing import Any, Literal, Optional
 
+from e2b import AsyncSandbox as BaseAsyncSandbox
 from e2b_code_interpreter import AsyncSandbox
 from e2b_code_interpreter import Result as E2BExecutionResult
 from e2b_code_interpreter.charts import Chart as E2BExecutionResultChart
@@ -33,6 +34,20 @@ TEST_CREDENTIALS_INPUT = {
     "id": TEST_CREDENTIALS.id,
     "type": TEST_CREDENTIALS.type,
     "title": TEST_CREDENTIALS.type,
+}
+
+TEST_ANTHROPIC_CREDENTIALS = APIKeyCredentials(
+    id="2e568a2b-b2ea-475a-8564-9a676bf31c56",
+    provider="anthropic",
+    api_key=SecretStr("mock-anthropic-api-key"),
+    title="Mock Anthropic API key",
+    expires_at=None,
+)
+TEST_ANTHROPIC_CREDENTIALS_INPUT = {
+    "provider": TEST_ANTHROPIC_CREDENTIALS.provider,
+    "id": TEST_ANTHROPIC_CREDENTIALS.id,
+    "type": TEST_ANTHROPIC_CREDENTIALS.type,
+    "title": TEST_ANTHROPIC_CREDENTIALS.type,
 }
 
 
@@ -527,5 +542,232 @@ class ExecuteCodeStepBlock(Block, BaseE2BExecutorMixin):
                 yield "stdout_logs", stdout
             if stderr:
                 yield "stderr_logs", stderr
+        except Exception as e:
+            yield "error", str(e)
+
+
+class ClaudeCodeBlock(Block):
+    """
+    Execute tasks using Claude Code (Anthropic's AI coding assistant) in an E2B sandbox.
+
+    Claude Code can create files, install tools, run commands, and perform complex
+    coding tasks autonomously within a secure sandbox environment.
+    """
+
+    # Use base template - we'll install Claude Code ourselves for latest version
+    DEFAULT_TEMPLATE = "base"
+
+    class Input(BlockSchemaInput):
+        e2b_credentials: CredentialsMetaInput[
+            Literal[ProviderName.E2B], Literal["api_key"]
+        ] = CredentialsField(
+            description=(
+                "API key for the E2B platform to create the sandbox. "
+                "Get one at https://e2b.dev/docs"
+            ),
+        )
+
+        anthropic_credentials: CredentialsMetaInput[
+            Literal[ProviderName.ANTHROPIC], Literal["api_key"]
+        ] = CredentialsField(
+            description=(
+                "API key for Anthropic to power Claude Code. "
+                "Get one at https://console.anthropic.com/"
+            ),
+        )
+
+        prompt: str = SchemaField(
+            description=(
+                "The task or instruction for Claude Code to execute. "
+                "Claude Code can create files, install packages, run commands, "
+                "and perform complex coding tasks."
+            ),
+            placeholder="Create a hello world index.html file",
+            default="",
+            advanced=False,
+        )
+
+        timeout: int = SchemaField(
+            description=(
+                "Sandbox timeout in seconds. Claude Code tasks can take "
+                "a while, so set this appropriately for your task complexity."
+            ),
+            default=300,  # 5 minutes default
+            advanced=False,
+        )
+
+        setup_commands: list[str] = SchemaField(
+            description=(
+                "Optional shell commands to run before executing Claude Code. "
+                "Useful for installing dependencies or setting up the environment."
+            ),
+            default_factory=list,
+            advanced=False,
+        )
+
+        working_directory: str = SchemaField(
+            description="Working directory for Claude Code to operate in.",
+            default="/home/user",
+            advanced=True,
+        )
+
+        dispose_sandbox: bool = SchemaField(
+            description=(
+                "Whether to dispose of the sandbox immediately after execution. "
+                "If disabled, the sandbox will run until its timeout expires."
+            ),
+            default=True,
+            advanced=True,
+        )
+
+    class Output(BlockSchemaOutput):
+        response: str = SchemaField(description="The output from Claude Code execution")
+        stdout_logs: str = SchemaField(
+            description="Standard output logs from the sandbox"
+        )
+        stderr_logs: str = SchemaField(
+            description="Standard error logs from the sandbox"
+        )
+        sandbox_id: str = SchemaField(
+            description="ID of the sandbox instance (if not disposed)"
+        )
+
+    def __init__(self):
+        super().__init__(
+            id="4e34f4a5-9b89-4326-ba77-2dd6750b7194",
+            description=(
+                "Execute tasks using Claude Code in an E2B sandbox. "
+                "Claude Code can create files, install tools, run commands, "
+                "and perform complex coding tasks autonomously."
+            ),
+            categories={BlockCategory.DEVELOPER_TOOLS, BlockCategory.AI},
+            input_schema=ClaudeCodeBlock.Input,
+            output_schema=ClaudeCodeBlock.Output,
+            test_credentials={
+                "e2b_credentials": TEST_CREDENTIALS,
+                "anthropic_credentials": TEST_ANTHROPIC_CREDENTIALS,
+            },
+            test_input={
+                "e2b_credentials": TEST_CREDENTIALS_INPUT,
+                "anthropic_credentials": TEST_ANTHROPIC_CREDENTIALS_INPUT,
+                "prompt": "Create a hello world HTML file",
+                "timeout": 300,
+                "setup_commands": [],
+                "working_directory": "/home/user",
+                "dispose_sandbox": True,
+            },
+            test_output=[
+                ("response", "Created index.html with hello world content"),
+                ("stdout_logs", ""),
+                ("stderr_logs", ""),
+            ],
+            test_mock={
+                "execute_claude_code": lambda *args, **kwargs: (
+                    "Created index.html with hello world content",
+                    "",
+                    "",
+                    "sandbox_id",
+                ),
+            },
+        )
+
+    async def execute_claude_code(
+        self,
+        e2b_api_key: str,
+        anthropic_api_key: str,
+        prompt: str,
+        timeout: int,
+        setup_commands: list[str],
+        working_directory: str,
+        dispose_sandbox: bool,
+    ) -> tuple[str, str, str, str]:
+        """
+        Execute Claude Code in an E2B sandbox.
+
+        Returns:
+            Tuple of (response, stdout_logs, stderr_logs, sandbox_id)
+        """
+        sandbox = None
+        try:
+            # Create sandbox with base template
+            sandbox = await BaseAsyncSandbox.create(
+                template=self.DEFAULT_TEMPLATE,
+                api_key=e2b_api_key,
+                timeout=timeout,
+                envs={"ANTHROPIC_API_KEY": anthropic_api_key},
+            )
+
+            # Install Claude Code from npm (ensures we get the latest version)
+            install_result = await sandbox.commands.run(
+                "npm install -g @anthropic-ai/claude-code@latest",
+                timeout=120,  # 2 min timeout for install
+            )
+            if install_result.exit_code != 0:
+                raise Exception(
+                    f"Failed to install Claude Code: {install_result.stderr}"
+                )
+
+            # Run any user-provided setup commands
+            for cmd in setup_commands:
+                await sandbox.commands.run(cmd)
+
+            # Change to working directory and execute Claude Code
+            # Using -p flag for print mode (non-interactive)
+            # Using --dangerously-skip-permissions to skip permission prompts
+            claude_command = (
+                f"cd {working_directory} && "
+                f"echo {self._escape_prompt(prompt)} | "
+                f"claude -p --dangerously-skip-permissions"
+            )
+
+            result = await sandbox.commands.run(
+                claude_command,
+                timeout=0,  # No command timeout - let sandbox timeout handle it
+            )
+
+            stdout = result.stdout or ""
+            stderr = result.stderr or ""
+            sandbox_id = sandbox.sandbox_id
+
+            # The response is the stdout from Claude Code
+            return stdout, stdout, stderr, sandbox_id
+
+        finally:
+            if dispose_sandbox and sandbox:
+                await sandbox.kill()
+
+    def _escape_prompt(self, prompt: str) -> str:
+        """Escape the prompt for safe shell execution."""
+        # Use single quotes and escape any single quotes in the prompt
+        escaped = prompt.replace("'", "'\"'\"'")
+        return f"'{escaped}'"
+
+    async def run(
+        self,
+        input_data: Input,
+        *,
+        e2b_credentials: APIKeyCredentials,
+        anthropic_credentials: APIKeyCredentials,
+        **kwargs,
+    ) -> BlockOutput:
+        try:
+            response, stdout, stderr, sandbox_id = await self.execute_claude_code(
+                e2b_api_key=e2b_credentials.api_key.get_secret_value(),
+                anthropic_api_key=anthropic_credentials.api_key.get_secret_value(),
+                prompt=input_data.prompt,
+                timeout=input_data.timeout,
+                setup_commands=input_data.setup_commands,
+                working_directory=input_data.working_directory,
+                dispose_sandbox=input_data.dispose_sandbox,
+            )
+
+            yield "response", response
+            if stdout:
+                yield "stdout_logs", stdout
+            if stderr:
+                yield "stderr_logs", stderr
+            if not input_data.dispose_sandbox and sandbox_id:
+                yield "sandbox_id", sandbox_id
+
         except Exception as e:
             yield "error", str(e)
