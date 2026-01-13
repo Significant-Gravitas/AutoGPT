@@ -149,6 +149,8 @@ async def hybrid_search(
         params.append(category)
         param_index += 1
 
+    # Safe: where_parts only contains hardcoded strings with $N parameter placeholders
+    # No user input is concatenated directly into the SQL string
     where_clause = " AND ".join(where_parts)
 
     # Embedding is required for hybrid search - fail fast if unavailable

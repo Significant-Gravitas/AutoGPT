@@ -51,7 +51,14 @@ async def get_store_agents(
     page_size: int = 20,
 ) -> store_model.StoreAgentsResponse:
     """
-    Get PUBLIC store agents from the StoreAgent view
+    Get PUBLIC store agents from the StoreAgent view.
+
+    Search behavior:
+    - With search_query: Uses hybrid search (semantic + lexical)
+    - Fallback: If embeddings unavailable, gracefully degrades to lexical-only
+    - Rationale: User-facing endpoint prioritizes availability over accuracy
+
+    Note: Admin operations (approval) use fail-fast to prevent inconsistent state.
     """
     logger.debug(
         f"Getting store agents. featured={featured}, creators={creators}, sorted_by={sorted_by}, search={search_query}, category={category}, page={page}"
