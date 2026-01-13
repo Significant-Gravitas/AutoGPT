@@ -72,27 +72,34 @@ async def test_generate_embedding_success():
 
 
 @pytest.mark.asyncio(loop_scope="session")
-@patch("backend.util.clients.get_openai_client")
-async def test_generate_embedding_no_api_key(mock_get_client):
+async def test_generate_embedding_no_api_key():
     """Test embedding generation without API key."""
-    mock_get_client.return_value = None
+    # Patch at the point of use in embeddings.py
+    with patch(
+        "backend.api.features.store.embeddings.get_openai_client"
+    ) as mock_get_client:
+        mock_get_client.return_value = None
 
-    result = await embeddings.generate_embedding("test text")
+        result = await embeddings.generate_embedding("test text")
 
-    assert result is None
+        assert result is None
 
 
 @pytest.mark.asyncio(loop_scope="session")
-@patch("backend.util.clients.get_openai_client")
-async def test_generate_embedding_api_error(mock_get_client):
+async def test_generate_embedding_api_error():
     """Test embedding generation with API error."""
     mock_client = MagicMock()
-    mock_client.embeddings.create.side_effect = Exception("API Error")
-    mock_get_client.return_value = mock_client
+    mock_client.embeddings.create = AsyncMock(side_effect=Exception("API Error"))
 
-    result = await embeddings.generate_embedding("test text")
+    # Patch at the point of use in embeddings.py
+    with patch(
+        "backend.api.features.store.embeddings.get_openai_client"
+    ) as mock_get_client:
+        mock_get_client.return_value = mock_client
 
-    assert result is None
+        result = await embeddings.generate_embedding("test text")
+
+        assert result is None
 
 
 @pytest.mark.asyncio(loop_scope="session")
