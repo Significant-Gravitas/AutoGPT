@@ -14,6 +14,7 @@ import {
 } from "@phosphor-icons/react/dist/ssr";
 import { LockIcon, LockOpenIcon } from "lucide-react";
 import { memo, useEffect, useState } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { useTutorialStore } from "@/app/(platform)/build/stores/tutorialStore";
 import { startTutorial, setTutorialLoadingCallback } from "../../tutorial";
 
@@ -28,12 +29,26 @@ export const CustomControls = memo(
     const { zoomIn, zoomOut, fitView } = useReactFlow();
     const { isTutorialRunning, setIsTutorialRunning } = useTutorialStore();
     const [isTutorialLoading, setIsTutorialLoading] = useState(false);
+    const searchParams = useSearchParams();
+    const router = useRouter();
 
-    // Set up callback for tutorial loading state
     useEffect(() => {
       setTutorialLoadingCallback(setIsTutorialLoading);
       return () => setTutorialLoadingCallback(() => {});
     }, []);
+
+    const handleTutorialClick = () => {
+      if (isTutorialLoading) return;
+
+      const flowId = searchParams.get("flowID");
+      if (flowId) {
+        router.push("/build?view=new");
+        return;
+      }
+
+      startTutorial();
+      setIsTutorialRunning(true);
+    };
 
     const controls = [
       {
@@ -58,12 +73,7 @@ export const CustomControls = memo(
           <ChalkboardIcon className="size-4" />
         ),
         label: isTutorialLoading ? "Loading Tutorial..." : "Start Tutorial",
-        onClick: () => {
-          if (!isTutorialLoading) {
-            startTutorial();
-            setIsTutorialRunning(true);
-          }
-        },
+        onClick: handleTutorialClick,
         className: `h-10 w-10 border-none ${isTutorialRunning || isTutorialLoading ? "bg-zinc-100" : "bg-white"}`,
         disabled: isTutorialLoading,
       },

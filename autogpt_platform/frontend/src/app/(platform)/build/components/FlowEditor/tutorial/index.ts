@@ -9,8 +9,9 @@ import {
   prefetchTutorialBlocks,
   clearPrefetchedBlocks,
 } from "./helpers";
+import { useNodeStore } from "../../../stores/nodeStore";
+import { useEdgeStore } from "../../../stores/edgeStore";
 
-// Track loading state for tutorial
 let isTutorialLoading = false;
 let tutorialLoadingCallback: ((loading: boolean) => void) | null = null;
 
@@ -22,16 +23,15 @@ export const setTutorialLoadingCallback = (
 
 export const getTutorialLoadingState = () => isTutorialLoading;
 
-/**
- * Starts the interactive tutorial
- */
 export const startTutorial = async () => {
-  // Set loading state
   isTutorialLoading = true;
   tutorialLoadingCallback?.(true);
 
+  useNodeStore.getState().setNodes([]);
+  useEdgeStore.getState().setEdges([]);
+  useNodeStore.getState().setNodeCounter(0);
+
   try {
-    // Prefetch Agent Input and Agent Output blocks at the start
     await prefetchTutorialBlocks();
   } finally {
     isTutorialLoading = false;
@@ -51,27 +51,23 @@ export const startTutorial = async () => {
     },
   });
 
-  // Inject tutorial styles
   injectTutorialStyles();
 
-  // Add all steps to the tour
   const steps = createTutorialSteps(tour);
   steps.forEach((step) => tour.addStep(step));
 
-  // Event handlers
   tour.on("complete", () => {
     handleTutorialComplete();
     removeTutorialStyles();
-    clearPrefetchedBlocks(); // Clean up prefetched blocks
+    clearPrefetchedBlocks();
   });
 
   tour.on("cancel", () => {
     handleTutorialCancel(tour);
     removeTutorialStyles();
-    clearPrefetchedBlocks(); // Clean up prefetched blocks
+    clearPrefetchedBlocks();
   });
 
-  // Track tutorial steps with google analytics
   for (const step of tour.steps) {
     step.on("show", () => {
       console.debug("sendTutorialStep", step.id);

@@ -32,7 +32,9 @@ export {
   clearPrefetchedBlocks,
   addPrefetchedBlock,
   getNodeByBlockId,
-  addAgentIOBlocks,
+  addSecondCalculatorBlock,
+  getCalculatorNodes,
+  getSecondCalculatorNode,
   getFormContainerSelector,
   getFormContainerElement,
 } from "./blocks";

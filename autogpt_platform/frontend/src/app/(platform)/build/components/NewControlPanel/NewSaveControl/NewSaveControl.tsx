@@ -102,6 +102,7 @@ export const NewSaveControl = () => {
                       value={graphVersion || "-"}
                       disabled
                       data-testid="save-control-version-output"
+                      data-tutorial-id="save-control-version-output"
                       label="Version"
                       wrapperClassName="!mb-0"
                     />

@@ -15,12 +15,15 @@ export const TUTORIAL_SELECTORS = {
   NAME_FIELD_OUTPUT_NODE: '[data-id="field-3-root_name"]',
 
   // Output Handlers
-  INPUT_BLOCK_RESULT_OUTPUT_HANDLEER: '[data-id="output-handler-2-Result"]',
-  CALCULATOR_RESULT_OUTPUT_HANDLEER: '[data-id="output-handler-1-Result"]',
+  SECOND_CALCULATOR_RESULT_OUTPUT_HANDLER:
+    '[data-tutorial-id="output-handler-2-result"]',
+  FIRST_CALCULATOR_RESULT_OUTPUT_HANDLER:
+    '[data-tutorial-id="output-handler-1-result"]',
 
   // Input Handler
-  CALCULATOR_NUMBER_A_INPUT_HANDLER: '[data-id="label-1-root_a"]',
-  OUTPUT_VALUE_INPUT_HANDLEER: '[data-id="label-3-value"]',
+  SECOND_CALCULATOR_NUMBER_A_INPUT_HANDLER:
+    '[data-tutorial-id="input-handler-2-a"]',
+  OUTPUT_VALUE_INPUT_HANDLEER: '[data-tutorial-id="label-3-root_value"]',
 
   // Block Menu
   BLOCKS_TRIGGER: '[data-id="blocks-control-popover-trigger"]',
@@ -91,10 +94,10 @@ export const TUTORIAL_SELECTORS = {
   // Node elements
   NODE_CONTAINER: '[data-id^="custom-node-"]',
   NODE_HEADER: '[data-id^="node-header-"]',
-  NODE_INPUT_HANDLES: '[data-id="input-handles"]',
+  NODE_INPUT_HANDLES: '[data-tutorial-id="input-handles"]',
   NODE_OUTPUT_HANDLE: '[data-handlepos="right"]',
   NODE_INPUT_HANDLE: "[data-nodeid]",
-  NODE_LATEST_OUTPUT: '[data-id="latest-output"]',
+  FIRST_CALCULATOR_NODE_OUTPUT: '[data-tutorial-id="node-output"]',
   // These are the Id's of the nodes before saving
   CALCULATOR_NODE_FORM_CONTAINER: '[data-id^="form-creator-container-1-node"]', // <-- Add this line
   AGENT_INPUT_NODE_FORM_CONTAINER: '[data-id^="form-creator-container-2-node"]', // <-- Add this line

@@ -26,8 +26,14 @@ export default function TitleField(props: TitleFieldProps) {
   const smallText = isArrayItemFlag || additional;
 
   const showHandle = uiOptions.showHandles ?? showHandles;
+
+  // Generate tutorial ID for this field label
+  // Format: label-{nodeId}-{fieldPath} e.g. label-1-root_a
+  const fieldPath = id.replace(/^agpt_%_/, "");
+  const tutorialId = nodeId ? `label-${nodeId}-${fieldPath}` : undefined;
+
   return (
-    <div className="flex items-center">
+    <div className="flex items-center" data-tutorial-id={tutorialId}>
       {showHandle !== false && (
         <InputNodeHandle handleId={uiOptions.handleId} nodeId={nodeId} />
       )}

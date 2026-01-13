@@ -11,12 +11,12 @@ import { BlockInfo } from "@/app/api/__generated__/models/blockInfo";
 let prefetchedBlocks: Map<string, BlockInfo> = new Map();
 
 /**
- * Prefetches Agent Input and Agent Output blocks at tutorial start
+ * Prefetches Calculator block at tutorial start
  * Call this when the tutorial is initialized
  */
 export const prefetchTutorialBlocks = async (): Promise<void> => {
   try {
-    const blockIds = [BLOCK_IDS.AGENT_INPUT, BLOCK_IDS.AGENT_OUTPUT];
+    const blockIds = [BLOCK_IDS.CALCULATOR];
     const response = await getV2GetSpecificBlocks({ block_ids: blockIds });
 
     if (response.status === 200 && response.data) {
@@ -68,34 +68,41 @@ export const getNodeByBlockId = (blockId: string) => {
 };
 
 /**
- * Adds Agent Input and Agent Output blocks positioned relative to Calculator
- * Agent Input: Left side of Calculator
- * Agent Output: Right side of Calculator
+ * Adds a second Calculator block positioned to the right of the first Calculator
  */
-export const addAgentIOBlocks = (): void => {
-  // Find the Calculator node to position relative to it
-  const calculatorNode = getNodeByBlockId(BLOCK_IDS.CALCULATOR);
+export const addSecondCalculatorBlock = (): void => {
+  // Find the first Calculator node to position relative to it
+  const firstCalculatorNode = getNodeByBlockId(BLOCK_IDS.CALCULATOR);
 
-  if (calculatorNode) {
-    const calcX = calculatorNode.position.x;
-    const calcY = calculatorNode.position.y;
+  if (firstCalculatorNode) {
+    const calcX = firstCalculatorNode.position.x;
+    const calcY = firstCalculatorNode.position.y;
 
-    // Agent Input: 600px to the left of Calculator
-    addPrefetchedBlock(BLOCK_IDS.AGENT_INPUT, {
-      x: calcX - 600,
-      y: calcY,
-    });
-
-    // Agent Output: 600px to the right of Calculator
-    addPrefetchedBlock(BLOCK_IDS.AGENT_OUTPUT, {
-      x: calcX + 600,
+    // Second Calculator: 500px to the right of first Calculator
+    addPrefetchedBlock(BLOCK_IDS.CALCULATOR, {
+      x: calcX + 500,
       y: calcY,
     });
   } else {
-    // Fallback: Add without specific positioning if Calculator not found
-    addPrefetchedBlock(BLOCK_IDS.AGENT_INPUT);
-    addPrefetchedBlock(BLOCK_IDS.AGENT_OUTPUT);
+    // Fallback: Add without specific positioning if first Calculator not found
+    addPrefetchedBlock(BLOCK_IDS.CALCULATOR);
   }
+};
+
+/**
+ * Gets all Calculator nodes on the canvas
+ */
+export const getCalculatorNodes = () => {
+  const nodes = useNodeStore.getState().nodes;
+  return nodes.filter((n) => n.data?.block_id === BLOCK_IDS.CALCULATOR);
+};
+
+/**
+ * Gets the second Calculator node (if exists)
+ */
+export const getSecondCalculatorNode = () => {
+  const calculatorNodes = getCalculatorNodes();
+  return calculatorNodes.length >= 2 ? calculatorNodes[1] : null;
 };
 
 /**

@@ -44,7 +44,7 @@ export const clickSaveButton = () => {
  */
 export const isAgentSaved = (): boolean => {
   const versionInput = document.querySelector(
-    '[data-testid="save-control-version-output"]',
+    '[data-tutorial-id="save-control-version-output"]',
   ) as HTMLInputElement;
   return !!(versionInput && versionInput.value && versionInput.value !== "-");
 };
