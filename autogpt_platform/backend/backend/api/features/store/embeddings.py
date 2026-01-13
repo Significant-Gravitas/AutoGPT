@@ -67,7 +67,7 @@ async def generate_embedding(text: str) -> list[float] | None:
         settings = Settings()
         api_key = settings.secrets.openai_internal_api_key
         if not api_key:
-            logger.warning("openai_internal_api_key not set, cannot generate embedding")
+            logger.error("openai_internal_api_key not set, cannot generate embedding")
             return None
 
         client = OpenAI(api_key=api_key)

@@ -132,28 +132,23 @@ async def test_hybrid_search_with_custom_schema():
 @pytest.mark.asyncio(loop_scope="session")
 @pytest.mark.integration
 async def test_hybrid_search_without_embeddings():
-    """Test hybrid search fallback when embeddings are unavailable."""
-    with patch(
-        "backend.api.features.store.hybrid_search.query_raw_with_schema"
-    ) as mock_query:
-        mock_query.return_value = []
+    """Test hybrid search fails fast when embeddings are unavailable."""
+    # Patch where the function is used, not where it's defined
+    with patch("backend.api.features.store.hybrid_search.embed_query") as mock_embed:
+        # Simulate embedding failure
+        mock_embed.return_value = None
 
-        with patch("backend.api.features.store.embeddings.embed_query") as mock_embed:
-            # Simulate embedding failure
-            mock_embed.return_value = None
-
-            results, total = await hybrid_search(
+        # Should raise ValueError with helpful message
+        with pytest.raises(ValueError) as exc_info:
+            await hybrid_search(
                 query="test",
                 page=1,
                 page_size=20,
             )
 
-            # Should still work with lexical-only search
-            assert results == []
-            assert total == 0
-
-            # Verify the query was called (fallback mode)
-            assert mock_query.called
+        # Verify error message is helpful
+        assert "Failed to generate query embedding" in str(exc_info.value)
+        assert "openai_internal_api_key" in str(exc_info.value)
 
 
 @pytest.mark.asyncio(loop_scope="session")

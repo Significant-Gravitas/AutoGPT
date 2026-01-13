@@ -137,24 +137,27 @@ async def hybrid_search(
 
     where_clause = " AND ".join(where_parts)
 
-    # Determine if we can use hybrid search (have query embedding)
-    use_hybrid = query_embedding is not None
+    # Embedding is required for hybrid search - fail fast if unavailable
+    if query_embedding is None:
+        raise ValueError(
+            "Failed to generate query embedding. Hybrid search requires embeddings. "
+            "Check that openai_internal_api_key is configured and OpenAI API is accessible."
+        )
 
-    if use_hybrid:
-        # Add embedding parameter
-        embedding_str = embedding_to_vector_string(query_embedding)
-        params.append(embedding_str)
-        embedding_param = f"${param_index}"
-        param_index += 1
+    # Add embedding parameter
+    embedding_str = embedding_to_vector_string(query_embedding)
+    params.append(embedding_str)
+    embedding_param = f"${param_index}"
+    param_index += 1
 
-        # Optimized hybrid search query:
-        # 1. Direct join to UnifiedContentEmbedding via contentId=storeListingVersionId (no redundant JOINs)
-        # 2. UNION ALL approach (DISTINCT already in subqueries)
-        # 3. COUNT(*) OVER() to get total count in single query
-        # 4. Optimized category matching with EXISTS + unnest
-        # 5. Pre-calculated max lexical score to avoid window function overhead
-        # 6. Simplified recency calculation with linear decay
-        sql_query = f"""
+    # Optimized hybrid search query:
+    # 1. Direct join to UnifiedContentEmbedding via contentId=storeListingVersionId (no redundant JOINs)
+    # 2. UNION approach (deduplicates agents matching both branches)
+    # 3. COUNT(*) OVER() to get total count in single query
+    # 4. Optimized category matching with EXISTS + unnest
+    # 5. Pre-calculated max lexical score to avoid window function overhead
+    # 6. Simplified recency calculation with linear decay
+    sql_query = f"""
             WITH candidates AS (
                 -- Lexical matches (uses GIN index on search column)
                 SELECT sa."storeListingVersionId"
@@ -259,93 +262,10 @@ async def hybrid_search(
             SELECT * FROM filtered
             ORDER BY combined_score DESC
             LIMIT ${param_index} OFFSET ${param_index + 1}
-        """
+    """
 
-        # Add pagination params
-        params.extend([page_size, offset])
-
-    else:
-        # Fallback to lexical-only search (existing behavior)
-        logger.warning("Falling back to lexical-only search (no query embedding)")
-
-        sql_query = f"""
-            WITH lexical_scores AS (
-                SELECT
-                    slug,
-                    agent_name,
-                    agent_image,
-                    creator_username,
-                    creator_avatar,
-                    sub_heading,
-                    description,
-                    runs,
-                    rating,
-                    categories,
-                    featured,
-                    is_available,
-                    updated_at,
-                    0.0 as semantic_score,
-                    ts_rank_cd(search, plainto_tsquery('english', {query_param})) as lexical_raw,
-                    CASE
-                        WHEN LOWER(array_to_string(categories, ' ')) LIKE '%' || {query_lower_param} || '%'
-                        THEN 1.0
-                        ELSE 0.0
-                    END as category_score,
-                    -- Recency score: linear decay over 90 days (matches hybrid search)
-                    GREATEST(0, 1 - EXTRACT(EPOCH FROM (NOW() - updated_at)) / (90 * 24 * 3600)) as recency_score
-                FROM {{schema_prefix}}"StoreAgent" sa
-                WHERE {where_clause}
-                AND search @@ plainto_tsquery('english', {query_param})
-            ),
-            normalized AS (
-                SELECT
-                    *,
-                    CASE
-                        WHEN MAX(lexical_raw) OVER () > 0
-                        THEN lexical_raw / MAX(lexical_raw) OVER ()
-                        ELSE 0
-                    END as lexical_score
-                FROM lexical_scores
-            ),
-            scored AS (
-                SELECT
-                    slug,
-                    agent_name,
-                    agent_image,
-                    creator_username,
-                    creator_avatar,
-                    sub_heading,
-                    description,
-                    runs,
-                    rating,
-                    categories,
-                    featured,
-                    is_available,
-                    updated_at,
-                    semantic_score,
-                    lexical_score,
-                    category_score,
-                    recency_score,
-                    (
-                        {weights.lexical} * lexical_score +
-                        {weights.category} * category_score +
-                        {weights.recency} * recency_score
-                    ) as combined_score
-                FROM normalized
-            ),
-            filtered AS (
-                SELECT
-                    *,
-                    COUNT(*) OVER () as total_count
-                FROM scored
-                WHERE combined_score >= {min_score}
-            )
-            SELECT * FROM filtered
-            ORDER BY combined_score DESC
-            LIMIT ${param_index} OFFSET ${param_index + 1}
-        """
-
-        params.extend([page_size, offset])
+    # Add pagination params
+    params.extend([page_size, offset])
 
     try:
         # Execute search query - includes total_count via window function
@@ -359,8 +279,7 @@ async def hybrid_search(
             result.pop("total_count", None)
 
         logger.info(
-            f"Hybrid search for '{query}': {len(results)} results, {total} total "
-            f"(hybrid={use_hybrid})"
+            f"Hybrid search for '{query}': {len(results)} results, {total} total"
         )
 
         return results, total
