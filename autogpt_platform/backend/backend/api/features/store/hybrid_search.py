@@ -239,13 +239,16 @@ async def hybrid_search(
                 UNION
 
                 -- Semantic matches (uses HNSW index on embedding with KNN)
-                SELECT sa."storeListingVersionId"
-                FROM {{schema_prefix}}"StoreAgent" sa
-                INNER JOIN {{schema_prefix}}"UnifiedContentEmbedding" uce
-                    ON sa."storeListingVersionId" = uce."contentId" AND uce."contentType" = 'STORE_AGENT'::{{schema_prefix}}"ContentType"
-                WHERE {where_clause}
-                ORDER BY uce.embedding <=> {embedding_param}::vector
-                LIMIT 200
+                SELECT "storeListingVersionId"
+                FROM (
+                    SELECT sa."storeListingVersionId", uce.embedding
+                    FROM {{schema_prefix}}"StoreAgent" sa
+                    INNER JOIN {{schema_prefix}}"UnifiedContentEmbedding" uce
+                        ON sa."storeListingVersionId" = uce."contentId" AND uce."contentType" = 'STORE_AGENT'::{{schema_prefix}}"ContentType"
+                    WHERE {where_clause}
+                    ORDER BY uce.embedding <=> {embedding_param}::vector
+                    LIMIT 200
+                ) semantic_results
             ),
             search_scores AS (
                 SELECT
