@@ -200,9 +200,7 @@ class ClaudeCodeBlock(Block):
             ),
             default=None,
         )
-        error: str = SchemaField(
-            description="Error message if execution failed"
-        )
+        error: str = SchemaField(description="Error message if execution failed")
 
     def __init__(self):
         super().__init__(
