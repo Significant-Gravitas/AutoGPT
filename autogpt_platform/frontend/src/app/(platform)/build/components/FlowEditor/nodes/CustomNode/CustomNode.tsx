@@ -20,6 +20,8 @@ import { NodeDataRenderer } from "./components/NodeOutput/NodeOutput";
 import { NodeRightClickMenu } from "./components/NodeRightClickMenu";
 import { StickyNoteBlock } from "./components/StickyNoteBlock";
 import { WebhookDisclaimer } from "./components/WebhookDisclaimer";
+import { SubAgentUpdateFeature } from "./components/SubAgentUpdate/SubAgentUpdateFeature";
+import { useCustomNode } from "./useCustomNode";
 
 export type CustomNodeData = {
   hardcodedValues: {
@@ -45,6 +47,10 @@ export type CustomNode = XYNode<CustomNodeData, "custom">;
 
 export const CustomNode: React.FC<NodeProps<CustomNode>> = React.memo(
   ({ data, id: nodeId, selected }) => {
+    const { inputSchema, outputSchema } = useCustomNode({ data, nodeId });
+
+    const isAgent = data.uiType === BlockUIType.AGENT;
+
     if (data.uiType === BlockUIType.NOTE) {
       return (
         <StickyNoteBlock data={data} selected={selected} nodeId={nodeId} />
@@ -63,16 +69,6 @@ export const CustomNode: React.FC<NodeProps<CustomNode>> = React.memo(
 
     const isAyrshare = data.uiType === BlockUIType.AYRSHARE;
 
-    const inputSchema =
-      data.uiType === BlockUIType.AGENT
-        ? (data.hardcodedValues.input_schema ?? {})
-        : data.inputSchema;
-
-    const outputSchema =
-      data.uiType === BlockUIType.AGENT
-        ? (data.hardcodedValues.output_schema ?? {})
-        : data.outputSchema;
-
     const hasConfigErrors =
       data.errors &&
       Object.values(data.errors).some(
@@ -87,12 +83,11 @@ export const CustomNode: React.FC<NodeProps<CustomNode>> = React.memo(
 
     const hasErrors = hasConfigErrors || hasOutputError;
 
-    // Currently all blockTypes design are similar - that's why i am using the same component for all of them
-    // If in future - if we need some drastic change in some blockTypes design - we can create separate components for them
     const node = (
       <NodeContainer selected={selected} nodeId={nodeId} hasErrors={hasErrors}>
         <div className="rounded-xlarge bg-white">
           <NodeHeader data={data} nodeId={nodeId} />
+          {isAgent && <SubAgentUpdateFeature nodeID={nodeId} nodeData={data} />}
           {isWebhook && <WebhookDisclaimer nodeId={nodeId} />}
           {isAyrshare && <AyrshareConnectButton />}
           <FormCreator
