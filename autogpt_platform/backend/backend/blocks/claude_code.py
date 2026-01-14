@@ -378,6 +378,10 @@ class ClaudeCodeBlock(Block):
             timestamp_result = await sandbox.commands.run(
                 "date -u -d '1 second ago' +%Y-%m-%dT%H:%M:%S"
             )
+            if timestamp_result.exit_code != 0:
+                raise RuntimeError(
+                    f"Failed to capture timestamp: {timestamp_result.stderr}"
+                )
             start_timestamp = (
                 timestamp_result.stdout.strip() if timestamp_result.stdout else None
             )
