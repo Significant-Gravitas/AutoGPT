@@ -44,17 +44,27 @@ client = AsyncOpenAI(api_key=config.api_key, base_url=config.base_url)
 _langfuse_client: Langfuse | None = None
 
 
+class LangfuseNotConfiguredError(Exception):
+    """Raised when Langfuse is required but not configured."""
+
+    pass
+
+
+def _is_langfuse_configured() -> bool:
+    """Check if Langfuse credentials are configured."""
+    return bool(
+        settings.secrets.langfuse_public_key and settings.secrets.langfuse_secret_key
+    )
+
+
 def _get_langfuse_client() -> Langfuse:
     """Get or create the Langfuse client for prompt management and tracing."""
     global _langfuse_client
     if _langfuse_client is None:
-        if (
-            not settings.secrets.langfuse_public_key
-            or not settings.secrets.langfuse_secret_key
-        ):
-            raise ValueError(
-                "Langfuse credentials not configured. "
-                "Set LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY environment variables."
+        if not _is_langfuse_configured():
+            raise LangfuseNotConfiguredError(
+                "Langfuse is not configured. The chat feature requires Langfuse for prompt management. "
+                "Please set the LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY environment variables."
             )
         _langfuse_client = Langfuse(
             public_key=settings.secrets.langfuse_public_key,
@@ -255,6 +265,16 @@ async def stream_chat_completion(
     logger.info(
         f"Streaming chat completion for session {session_id} for message {message} and user id {user_id}. Message is user message: {is_user_message}"
     )
+
+    # Check if Langfuse is configured - required for chat functionality
+    if not _is_langfuse_configured():
+        logger.error("Chat request failed: Langfuse is not configured")
+        yield StreamError(
+            errorText="Chat service is not available. Langfuse must be configured "
+            "with LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY environment variables."
+        )
+        yield StreamFinish()
+        return
 
     # Langfuse observations will be created after session is loaded (need messages for input)
     # Initialize to None so finally block can safely check and end them
