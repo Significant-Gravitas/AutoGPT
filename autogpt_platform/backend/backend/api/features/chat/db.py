@@ -1,5 +1,6 @@
 """Database operations for chat sessions."""
 
+import asyncio
 import logging
 from datetime import UTC, datetime
 from typing import Any, cast
@@ -10,6 +11,7 @@ from prisma.types import (
     ChatMessageCreateInput,
     ChatSessionCreateInput,
     ChatSessionUpdateInput,
+    ChatSessionWhereInput,
 )
 
 from backend.data.db import transaction
@@ -25,7 +27,8 @@ async def get_chat_session(session_id: str) -> PrismaChatSession | None:
         include={"Messages": True},
     )
     if session and session.Messages:
-        # Sort messages by sequence in Python since Prisma doesn't support order_by in include
+        # Sort messages by sequence in Python - Prisma Python client doesn't support
+        # order_by in include clauses (unlike Prisma JS), so we sort after fetching
         session.Messages.sort(key=lambda m: m.sequence)
     return session
 
@@ -79,6 +82,7 @@ async def update_chat_session(
         include={"Messages": True},
     )
     if session and session.Messages:
+        # Sort in Python - Prisma Python doesn't support order_by in include clauses
         session.Messages.sort(key=lambda m: m.sequence)
     return session
 
@@ -95,9 +99,9 @@ async def add_chat_message(
     function_call: dict[str, Any] | None = None,
 ) -> PrismaChatMessage:
     """Add a message to a chat session."""
-    # Build the input dict dynamically - only include optional fields when they
-    # have values, as Prisma TypedDict validation fails when optional fields
-    # are explicitly set to None
+    # Build input dict dynamically rather than using ChatMessageCreateInput directly
+    # because Prisma's TypedDict validation rejects optional fields set to None.
+    # We only include fields that have values, then cast at the end.
     data: dict[str, Any] = {
         "Session": {"connect": {"id": session_id}},
         "role": role,
@@ -120,15 +124,15 @@ async def add_chat_message(
     if function_call is not None:
         data["functionCall"] = SafeJson(function_call)
 
-    # Update session's updatedAt timestamp
-    await PrismaChatSession.prisma().update(
-        where={"id": session_id},
-        data={"updatedAt": datetime.now(UTC)},
+    # Run message create and session timestamp update in parallel for lower latency
+    _, message = await asyncio.gather(
+        PrismaChatSession.prisma().update(
+            where={"id": session_id},
+            data={"updatedAt": datetime.now(UTC)},
+        ),
+        PrismaChatMessage.prisma().create(data=cast(ChatMessageCreateInput, data)),
     )
-
-    return await PrismaChatMessage.prisma().create(
-        data=cast(ChatMessageCreateInput, data)
-    )
+    return message
 
 
 async def add_chat_messages_batch(
@@ -148,9 +152,9 @@ async def add_chat_messages_batch(
 
     async with transaction() as tx:
         for i, msg in enumerate(messages):
-            # Build the input dict dynamically - only include optional JSON fields
-            # when they have values, as Prisma TypedDict validation fails when
-            # optional fields are explicitly set to None
+            # Build input dict dynamically rather than using ChatMessageCreateInput
+            # directly because Prisma's TypedDict validation rejects optional fields
+            # set to None. We only include fields that have values, then cast.
             data: dict[str, Any] = {
                 "Session": {"connect": {"id": session_id}},
                 "role": msg["role"],
@@ -178,7 +182,9 @@ async def add_chat_messages_batch(
             )
             created_messages.append(created)
 
-        # Update session's updatedAt timestamp within the same transaction
+        # Update session's updatedAt timestamp within the same transaction.
+        # Note: Token usage (total_prompt_tokens, total_completion_tokens) is updated
+        # separately via update_chat_session() after streaming completes.
         await PrismaChatSession.prisma(tx).update(
             where={"id": session_id},
             data={"updatedAt": datetime.now(UTC)},
@@ -219,8 +225,8 @@ async def delete_chat_session(session_id: str, user_id: str | None = None) -> bo
         True if deleted successfully, False otherwise.
     """
     try:
-        # Build where clause with optional user_id validation
-        where_clause: dict[str, Any] = {"id": session_id}
+        # Build typed where clause with optional user_id validation
+        where_clause: ChatSessionWhereInput = {"id": session_id}
         if user_id is not None:
             where_clause["userId"] = user_id
 

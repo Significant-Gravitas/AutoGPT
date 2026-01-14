@@ -32,9 +32,20 @@ from .config import ChatConfig
 logger = logging.getLogger(__name__)
 config = ChatConfig()
 
+# Redis cache key prefix for chat sessions
+CHAT_SESSION_CACHE_PREFIX = "chat:session:"
+
+
+def _get_session_cache_key(session_id: str) -> str:
+    """Get the Redis cache key for a chat session."""
+    return f"{CHAT_SESSION_CACHE_PREFIX}{session_id}"
+
+
 # Session-level locks to prevent race conditions during concurrent upserts.
 # Uses WeakValueDictionary to automatically garbage collect locks when no longer referenced,
 # preventing unbounded memory growth while maintaining lock semantics for active sessions.
+# Invalidation: Locks are auto-removed by GC when no coroutine holds a reference (after
+# async with lock: completes). Explicit cleanup also occurs in delete_chat_session().
 _session_locks: WeakValueDictionary[str, asyncio.Lock] = WeakValueDictionary()
 _session_locks_mutex = asyncio.Lock()
 
@@ -265,7 +276,7 @@ class ChatSession(BaseModel):
 
 async def _get_session_from_cache(session_id: str) -> ChatSession | None:
     """Get a chat session from Redis cache."""
-    redis_key = f"chat:session:{session_id}"
+    redis_key = _get_session_cache_key(session_id)
     async_redis = await get_redis_async()
     raw_session: bytes | None = await async_redis.get(redis_key)
 
@@ -287,7 +298,7 @@ async def _get_session_from_cache(session_id: str) -> ChatSession | None:
 
 async def _cache_session(session: ChatSession) -> None:
     """Cache a chat session in Redis."""
-    redis_key = f"chat:session:{session.session_id}"
+    redis_key = _get_session_cache_key(session.session_id)
     async_redis = await get_redis_async()
     await async_redis.setex(redis_key, config.session_ttl, session.model_dump_json())
 
@@ -547,7 +558,7 @@ async def delete_chat_session(session_id: str, user_id: str | None = None) -> bo
 
     # Only invalidate cache and clean up lock after DB confirms deletion
     try:
-        redis_key = f"chat:session:{session_id}"
+        redis_key = _get_session_cache_key(session_id)
         async_redis = await get_redis_async()
         await async_redis.delete(redis_key)
     except Exception as e:
@@ -582,7 +593,7 @@ async def update_session_title(session_id: str, title: str) -> bool:
 
         # Invalidate cache so next fetch gets updated title
         try:
-            redis_key = f"chat:session:{session_id}"
+            redis_key = _get_session_cache_key(session_id)
             async_redis = await get_redis_async()
             await async_redis.delete(redis_key)
         except Exception as e:

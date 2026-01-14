@@ -1,10 +1,17 @@
+import asyncio
 import logging
 from collections.abc import AsyncGenerator
 from typing import Any
 
 import orjson
 from langfuse import Langfuse
-from openai import AsyncOpenAI
+from openai import (
+    APIConnectionError,
+    APIError,
+    APIStatusError,
+    AsyncOpenAI,
+    RateLimitError,
+)
 from openai.types.chat import ChatCompletionChunk, ChatCompletionToolParam
 
 from backend.data.understanding import (
@@ -655,6 +662,31 @@ async def stream_chat_completion(
                 logger.warning(f"Failed to end Langfuse trace: {e}")
 
 
+# Retry configuration for OpenAI API calls
+MAX_RETRIES = 3
+BASE_DELAY_SECONDS = 1.0
+MAX_DELAY_SECONDS = 30.0
+
+
+def _is_retryable_error(error: Exception) -> bool:
+    """Determine if an error is retryable."""
+    if isinstance(error, RateLimitError):
+        return True
+    if isinstance(error, APIConnectionError):
+        return True
+    if isinstance(error, APIStatusError):
+        # APIStatusError has a response with status_code
+        # Retry on 5xx status codes (server errors)
+        if error.response.status_code >= 500:
+            return True
+    if isinstance(error, APIError):
+        # Retry on overloaded errors or 500 errors (may not have status code)
+        error_message = str(error).lower()
+        if "overloaded" in error_message or "internal server error" in error_message:
+            return True
+    return False
+
+
 async def _stream_chat_chunks(
     session: ChatSession,
     tools: list[ChatCompletionToolParam],
@@ -665,6 +697,7 @@ async def _stream_chat_chunks(
     Pure streaming function for OpenAI chat completions with tool calling.
 
     This function is database-agnostic and focuses only on streaming logic.
+    Implements exponential backoff retry for transient API errors.
 
     Args:
         session: Chat session with conversation history
@@ -692,136 +725,172 @@ async def _stream_chat_chunks(
 
     # Loop to handle tool calls and continue conversation
     while True:
-        try:
-            logger.info("Creating OpenAI chat completion stream...")
+        retry_count = 0
+        last_error: Exception | None = None
 
-            # Create the stream with proper types
-            stream = await client.chat.completions.create(
-                model=model,
-                messages=messages,
-                tools=tools,
-                tool_choice="auto",
-                stream=True,
-                stream_options={"include_usage": True},
-            )
+        while retry_count <= MAX_RETRIES:
+            try:
+                logger.info(
+                    f"Creating OpenAI chat completion stream..."
+                    f"{f' (retry {retry_count}/{MAX_RETRIES})' if retry_count > 0 else ''}"
+                )
 
-            # Variables to accumulate tool calls
-            tool_calls: list[dict[str, Any]] = []
-            active_tool_call_idx: int | None = None
-            finish_reason: str | None = None
-            # Track which tool call indices have had their start event emitted
-            emitted_start_for_idx: set[int] = set()
+                # Create the stream with proper types
+                stream = await client.chat.completions.create(
+                    model=model,
+                    messages=messages,
+                    tools=tools,
+                    tool_choice="auto",
+                    stream=True,
+                    stream_options={"include_usage": True},
+                )
 
-            # Track if we've started the text block
-            text_started = False
+                # Variables to accumulate tool calls
+                tool_calls: list[dict[str, Any]] = []
+                active_tool_call_idx: int | None = None
+                finish_reason: str | None = None
+                # Track which tool call indices have had their start event emitted
+                emitted_start_for_idx: set[int] = set()
 
-            # Process the stream
-            chunk: ChatCompletionChunk
-            async for chunk in stream:
-                if chunk.usage:
-                    yield StreamUsage(
-                        promptTokens=chunk.usage.prompt_tokens,
-                        completionTokens=chunk.usage.completion_tokens,
-                        totalTokens=chunk.usage.total_tokens,
-                    )
+                # Track if we've started the text block
+                text_started = False
 
-                if chunk.choices:
-                    choice = chunk.choices[0]
-                    delta = choice.delta
-
-                    # Capture finish reason
-                    if choice.finish_reason:
-                        finish_reason = choice.finish_reason
-                        logger.info(f"Finish reason: {finish_reason}")
-
-                    # Handle content streaming
-                    if delta.content:
-                        # Emit text-start on first text content
-                        if not text_started and text_block_id:
-                            yield StreamTextStart(id=text_block_id)
-                            text_started = True
-                        # Stream the text delta
-                        text_response = StreamTextDelta(
-                            id=text_block_id or "",
-                            delta=delta.content,
+                # Process the stream
+                chunk: ChatCompletionChunk
+                async for chunk in stream:
+                    if chunk.usage:
+                        yield StreamUsage(
+                            promptTokens=chunk.usage.prompt_tokens,
+                            completionTokens=chunk.usage.completion_tokens,
+                            totalTokens=chunk.usage.total_tokens,
                         )
-                        yield text_response
 
-                    # Handle tool calls
-                    if delta.tool_calls:
-                        for tc_chunk in delta.tool_calls:
-                            idx = tc_chunk.index
+                    if chunk.choices:
+                        choice = chunk.choices[0]
+                        delta = choice.delta
 
-                            # Update active tool call index if needed
-                            if (
-                                active_tool_call_idx is None
-                                or active_tool_call_idx != idx
-                            ):
-                                active_tool_call_idx = idx
+                        # Capture finish reason
+                        if choice.finish_reason:
+                            finish_reason = choice.finish_reason
+                            logger.info(f"Finish reason: {finish_reason}")
 
-                            # Ensure we have a tool call object at this index
-                            while len(tool_calls) <= idx:
-                                tool_calls.append(
-                                    {
-                                        "id": "",
-                                        "type": "function",
-                                        "function": {
-                                            "name": "",
-                                            "arguments": "",
+                        # Handle content streaming
+                        if delta.content:
+                            # Emit text-start on first text content
+                            if not text_started and text_block_id:
+                                yield StreamTextStart(id=text_block_id)
+                                text_started = True
+                            # Stream the text delta
+                            text_response = StreamTextDelta(
+                                id=text_block_id or "",
+                                delta=delta.content,
+                            )
+                            yield text_response
+
+                        # Handle tool calls
+                        if delta.tool_calls:
+                            for tc_chunk in delta.tool_calls:
+                                idx = tc_chunk.index
+
+                                # Update active tool call index if needed
+                                if (
+                                    active_tool_call_idx is None
+                                    or active_tool_call_idx != idx
+                                ):
+                                    active_tool_call_idx = idx
+
+                                # Ensure we have a tool call object at this index
+                                while len(tool_calls) <= idx:
+                                    tool_calls.append(
+                                        {
+                                            "id": "",
+                                            "type": "function",
+                                            "function": {
+                                                "name": "",
+                                                "arguments": "",
+                                            },
                                         },
-                                    },
-                                )
+                                    )
 
-                            # Accumulate the tool call data
-                            if tc_chunk.id:
-                                tool_calls[idx]["id"] = tc_chunk.id
-                            if tc_chunk.function:
-                                if tc_chunk.function.name:
-                                    tool_calls[idx]["function"][
-                                        "name"
-                                    ] = tc_chunk.function.name
-                                if tc_chunk.function.arguments:
-                                    tool_calls[idx]["function"][
-                                        "arguments"
-                                    ] += tc_chunk.function.arguments
+                                # Accumulate the tool call data
+                                if tc_chunk.id:
+                                    tool_calls[idx]["id"] = tc_chunk.id
+                                if tc_chunk.function:
+                                    if tc_chunk.function.name:
+                                        tool_calls[idx]["function"][
+                                            "name"
+                                        ] = tc_chunk.function.name
+                                    if tc_chunk.function.arguments:
+                                        tool_calls[idx]["function"][
+                                            "arguments"
+                                        ] += tc_chunk.function.arguments
 
-                            # Emit StreamToolInputStart only after we have the tool call ID
-                            if (
-                                idx not in emitted_start_for_idx
-                                and tool_calls[idx]["id"]
-                                and tool_calls[idx]["function"]["name"]
-                            ):
-                                yield StreamToolInputStart(
-                                    toolCallId=tool_calls[idx]["id"],
-                                    toolName=tool_calls[idx]["function"]["name"],
-                                )
-                                emitted_start_for_idx.add(idx)
-            logger.info(f"Stream complete. Finish reason: {finish_reason}")
+                                # Emit StreamToolInputStart only after we have the tool call ID
+                                if (
+                                    idx not in emitted_start_for_idx
+                                    and tool_calls[idx]["id"]
+                                    and tool_calls[idx]["function"]["name"]
+                                ):
+                                    yield StreamToolInputStart(
+                                        toolCallId=tool_calls[idx]["id"],
+                                        toolName=tool_calls[idx]["function"]["name"],
+                                    )
+                                    emitted_start_for_idx.add(idx)
+                logger.info(f"Stream complete. Finish reason: {finish_reason}")
 
-            # Yield all accumulated tool calls after the stream is complete
-            # This ensures all tool call arguments have been fully received
-            for idx, tool_call in enumerate(tool_calls):
-                try:
-                    async for tc in _yield_tool_call(tool_calls, idx, session):
-                        yield tc
-                except (orjson.JSONDecodeError, KeyError, TypeError) as e:
+                # Yield all accumulated tool calls after the stream is complete
+                # This ensures all tool call arguments have been fully received
+                for idx, tool_call in enumerate(tool_calls):
+                    try:
+                        async for tc in _yield_tool_call(tool_calls, idx, session):
+                            yield tc
+                    except (orjson.JSONDecodeError, KeyError, TypeError) as e:
+                        logger.error(
+                            f"Failed to parse tool call {idx}: {e}",
+                            exc_info=True,
+                            extra={"tool_call": tool_call},
+                        )
+                        yield StreamError(
+                            errorText=f"Invalid tool call arguments for tool {tool_call.get('function', {}).get('name', 'unknown')}: {e}",
+                        )
+                        # Re-raise to trigger retry logic in the parent function
+                        raise
+
+                yield StreamFinish()
+                return
+            except Exception as e:
+                last_error = e
+                if _is_retryable_error(e) and retry_count < MAX_RETRIES:
+                    retry_count += 1
+                    # Calculate delay with exponential backoff
+                    delay = min(
+                        BASE_DELAY_SECONDS * (2 ** (retry_count - 1)),
+                        MAX_DELAY_SECONDS,
+                    )
+                    logger.warning(
+                        f"Retryable error in stream: {e!s}. "
+                        f"Retrying in {delay:.1f}s (attempt {retry_count}/{MAX_RETRIES})"
+                    )
+                    await asyncio.sleep(delay)
+                    continue  # Retry the stream
+                else:
+                    # Non-retryable error or max retries exceeded
                     logger.error(
-                        f"Failed to parse tool call {idx}: {e}",
+                        f"Error in stream (not retrying): {e!s}",
                         exc_info=True,
-                        extra={"tool_call": tool_call},
                     )
-                    yield StreamError(
-                        errorText=f"Invalid tool call arguments for tool {tool_call.get('function', {}).get('name', 'unknown')}: {e}",
-                    )
-                    # Re-raise to trigger retry logic in the parent function
-                    raise
+                    error_response = StreamError(errorText=str(e))
+                    yield error_response
+                    yield StreamFinish()
+                    return
 
-            yield StreamFinish()
-            return
-        except Exception as e:
-            logger.error(f"Error in stream: {e!s}", exc_info=True)
-            error_response = StreamError(errorText=str(e))
-            yield error_response
+        # If we exit the retry loop without returning, it means we exhausted retries
+        if last_error:
+            logger.error(
+                f"Max retries ({MAX_RETRIES}) exceeded. Last error: {last_error!s}",
+                exc_info=True,
+            )
+            yield StreamError(errorText=f"Max retries exceeded: {last_error!s}")
             yield StreamFinish()
             return
 
