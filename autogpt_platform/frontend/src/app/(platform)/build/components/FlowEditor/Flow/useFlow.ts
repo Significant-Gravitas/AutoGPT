@@ -137,6 +137,7 @@ export const useFlow = () => {
   useEffect(() => {
     if (customNodes.length > 0) {
       useNodeStore.getState().setNodes([]);
+      useNodeStore.getState().clearResolutionState();
       addNodes(customNodes);
 
       // Sync hardcoded values with handle IDs.
@@ -220,6 +221,7 @@ export const useFlow = () => {
   useEffect(() => {
     return () => {
       useNodeStore.getState().setNodes([]);
+      useNodeStore.getState().clearResolutionState();
       useEdgeStore.getState().setEdges([]);
       useGraphStore.getState().reset();
       useEdgeStore.getState().resetEdgeBeads();
