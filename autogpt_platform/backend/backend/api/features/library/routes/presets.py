@@ -8,7 +8,7 @@ from backend.data.execution import GraphExecutionMeta
 from backend.data.graph import get_graph
 from backend.data.integrations import get_webhook
 from backend.data.model import CredentialsMetaInput
-from backend.data.onboarding import increment_runs
+from backend.data.onboarding import increment_onboarding_runs
 from backend.executor.utils import add_graph_execution, make_node_credentials_input_map
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.webhooks import get_webhook_manager
@@ -403,7 +403,7 @@ async def execute_preset(
     merged_node_input = preset.inputs | inputs
     merged_credential_inputs = preset.credentials | credential_inputs
 
-    await increment_runs(user_id)
+    await increment_onboarding_runs(user_id)
 
     return await add_graph_execution(
         user_id=user_id,

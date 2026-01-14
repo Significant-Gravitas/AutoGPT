@@ -27,7 +27,6 @@ from backend.data.auth.oauth import cleanup_expired_oauth_tokens
 from backend.data.block import BlockInput
 from backend.data.execution import GraphExecutionWithNodes
 from backend.data.model import CredentialsMetaInput
-from backend.data.onboarding import increment_runs
 from backend.executor import utils as execution_utils
 from backend.monitoring import (
     NotificationJobArgs,
@@ -156,7 +155,6 @@ async def _execute_graph(**kwargs):
             inputs=args.input_data,
             graph_credentials_inputs=args.input_credentials,
         )
-        await increment_runs(args.user_id)
         elapsed = asyncio.get_event_loop().time() - start_time
         logger.info(
             f"Graph execution started with ID {graph_exec.id} for graph {args.graph_id} "
