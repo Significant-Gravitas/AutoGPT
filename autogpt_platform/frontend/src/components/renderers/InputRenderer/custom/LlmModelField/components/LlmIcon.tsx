@@ -2,20 +2,29 @@
 
 import Image from "next/image";
 import { Text } from "@/components/atoms/Text/Text";
-import claudeImg from "@/components/atoms/LLMItem/assets/claude.svg";
-import gptImg from "@/components/atoms/LLMItem/assets/gpt.svg";
-import perplexityImg from "@/components/atoms/LLMItem/assets/perplexity.svg";
 
-const iconMap: Record<string, string> = {
-  anthropic: claudeImg.src,
-  claude: claudeImg.src,
-  openai: gptImg.src,
-  gpt: gptImg.src,
-  open_router: gptImg.src,
-  groq: gptImg.src,
-  ollama: gptImg.src,
-  llama_api: gptImg.src,
-  perplexity: perplexityImg.src,
+const creatorIconMap: Record<string, string> = {
+  "anthropic": "/integrations/anthropic-color.png",
+  "openai": "/integrations/openai.png",
+  "google": "/integrations/gemini.png",
+  "nvidia": "/integrations/nvidia.png",
+  "groq": "/integrations/groq.png",
+  "ollama": "/integrations/ollama.png",
+  "openrouter": "/integrations/open_router.png",
+  "v0": "/integrations/v0.png",
+  "xai": "/integrations/xai.webp",
+  "meta": "/integrations/llama_api.png",
+  "amazon": "/integrations/amazon.png",
+  "cohere": "/integrations/cohere.png",
+  "deepseek": "/integrations/deepseek.png",
+  "gryphe": "/integrations/gryphe.png",
+  "microsoft": "/integrations/microsoft.webp",
+  "moonshotai": "/integrations/moonshot.png",
+  "mistral": "/integrations/mistral.png",
+  "mistralai": "/integrations/mistral.png",
+  "nousresearch": "/integrations/nousresearch.avif",
+  "perplexity": "/integrations/perplexity.webp",
+  "qwen": "/integrations/qwen.png",
 };
 
 type Props = {
@@ -24,23 +33,31 @@ type Props = {
 };
 
 export function LlmIcon({ value, size = 20 }: Props) {
-  const normalized = value.toLowerCase();
-  const src = iconMap[normalized];
+  const normalized = value.trim().toLowerCase().replace(/\s+/g, "");
+  const src = creatorIconMap[normalized];
   if (src) {
     return (
-      <Image
-        src={src}
-        alt={value}
-        width={size}
-        height={size}
-        className="rounded-xsmall"
-      />
+      <div
+        className="flex h-5 w-5 items-center justify-center overflow-hidden rounded-xsmall"
+        style={{ width: size, height: size }}
+      >
+        <Image
+          src={src}
+          alt={value}
+          width={size}
+          height={size}
+          className="h-full w-full object-cover"
+        />
+      </div>
     );
   }
 
   const fallback = value?.trim().slice(0, 1).toUpperCase() || "?";
   return (
-    <div className="flex h-5 w-5 items-center justify-center rounded-xsmall bg-zinc-100">
+    <div
+      className="flex h-5 w-5 items-center justify-center rounded-xsmall bg-zinc-100"
+      style={{ width: size, height: size }}
+    >
       <Text variant="small" className="text-zinc-500">
         {fallback}
       </Text>
