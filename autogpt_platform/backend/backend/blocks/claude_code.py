@@ -374,7 +374,10 @@ class ClaudeCodeBlock(Block):
                 )
 
             # Capture timestamp before running Claude Code to filter files later
-            timestamp_result = await sandbox.commands.run("date -u +%Y-%m-%dT%H:%M:%S")
+            # Capture timestamp 1 second in the past to avoid race condition with file creation
+            timestamp_result = await sandbox.commands.run(
+                "date -u -d '1 second ago' +%Y-%m-%dT%H:%M:%S"
+            )
             start_timestamp = (
                 timestamp_result.stdout.strip() if timestamp_result.stdout else None
             )
