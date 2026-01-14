@@ -497,6 +497,10 @@ async def stream_chat_completion(
                     yield chunk
                 elif isinstance(chunk, StreamFinish):
                     if not has_done_tool_call:
+                        # Emit text-end before finish if we received text but haven't closed it
+                        if has_received_text and not text_streaming_ended:
+                            yield StreamTextEnd(id=text_block_id)
+                            text_streaming_ended = True
                         has_yielded_end = True
                         yield chunk
                 elif isinstance(chunk, StreamError):

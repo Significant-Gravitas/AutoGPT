@@ -538,7 +538,14 @@ async def delete_chat_session(session_id: str, user_id: str | None = None) -> bo
     Returns:
         True if deleted successfully, False otherwise.
     """
-    # Delete from cache (always attempt, regardless of ownership)
+    # Delete from database first (with optional user_id validation)
+    # This confirms ownership before invalidating cache
+    deleted = await chat_db.delete_chat_session(session_id, user_id)
+
+    if not deleted:
+        return False
+
+    # Only invalidate cache and clean up lock after DB confirms deletion
     try:
         redis_key = f"chat:session:{session_id}"
         async_redis = await get_redis_async()
@@ -550,8 +557,7 @@ async def delete_chat_session(session_id: str, user_id: str | None = None) -> bo
     async with _session_locks_mutex:
         _session_locks.pop(session_id, None)
 
-    # Delete from database (with optional user_id validation)
-    return await chat_db.delete_chat_session(session_id, user_id)
+    return True
 
 
 async def update_session_title(session_id: str, title: str) -> bool:
