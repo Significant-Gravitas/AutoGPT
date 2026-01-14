@@ -100,7 +100,7 @@ export function useAgentRunModal(
           if (!providerData) continue;
 
           const systemCreds = getSystemCredentials(
-            providerData.savedCredentials,
+            providerData.savedCredentials ?? [],
           );
           const matchingSystemCreds = systemCreds.filter((cred) => {
             if (!supportedTypes.includes(cred.type)) return false;
@@ -111,8 +111,8 @@ export function useAgentRunModal(
               requiredScopes.length > 0
             ) {
               const grantedScopes = new Set(cred.scopes || []);
-              const hasAllRequiredScopes = requiredScopes.every((scope) =>
-                grantedScopes.has(scope),
+              const hasAllRequiredScopes = requiredScopes.every(
+                (scope: string) => grantedScopes.has(scope),
               );
               if (!hasAllRequiredScopes) return false;
             }

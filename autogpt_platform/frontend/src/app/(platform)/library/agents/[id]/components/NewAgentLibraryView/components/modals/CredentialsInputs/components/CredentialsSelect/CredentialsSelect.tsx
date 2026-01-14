@@ -1,5 +1,4 @@
 import { CredentialsMetaInput } from "@/app/api/__generated__/models/credentialsMetaInput";
-import { useRef } from "react";
 import { getCredentialDisplayName } from "../../helpers";
 import { CredentialRow } from "../CredentialRow/CredentialRow";
 
@@ -33,20 +32,12 @@ export function CredentialsSelect({
   allowNone = true,
   variant = "default",
 }: Props) {
-  const selectRef = useRef<HTMLSelectElement>(null);
-
   function handleValueChange(e: React.ChangeEvent<HTMLSelectElement>) {
     const value = e.target.value;
     if (value === "__none__") {
       onClearCredential?.();
     } else {
       onSelectCredential(value);
-    }
-  }
-
-  function handleTriggerClick() {
-    if (!readOnly && selectRef.current) {
-      selectRef.current.click();
     }
   }
 
@@ -78,9 +69,8 @@ export function CredentialsSelect({
 
   return (
     <div className="mb-4 w-full">
-      <div className="relative" onClick={handleTriggerClick}>
+      <div className="relative">
         <select
-          ref={selectRef}
           value={selectedCredentials?.id ?? "__none__"}
           onChange={handleValueChange}
           disabled={readOnly}
