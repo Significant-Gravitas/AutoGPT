@@ -359,7 +359,9 @@ async def hybrid_search(
     params.extend([page_size, offset])
 
     # Execute search query - includes total_count via window function
-    results = await query_raw_with_schema(sql_query, *params)
+    results = await query_raw_with_schema(
+        sql_query, *params, set_public_search_path=True
+    )
 
     # Extract total count from first result (all rows have same count)
     total = results[0]["total_count"] if results else 0

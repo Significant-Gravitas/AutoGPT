@@ -127,6 +127,7 @@ async def _raw_with_schema(
     *args,
     execute: bool = False,
     client: Prisma | None = None,
+    set_public_search_path: bool = False,
 ) -> list[dict] | int:
     """Internal: Execute raw SQL with proper schema handling.
 
@@ -137,6 +138,8 @@ async def _raw_with_schema(
         *args: Query parameters
         execute: If False, executes SELECT query. If True, executes INSERT/UPDATE/DELETE.
         client: Optional Prisma client for transactions (only used when execute=True).
+        set_public_search_path: If True, sets search_path to include public schema.
+                                Needed for pgvector types and other public schema objects.
 
     Returns:
         - list[dict] if execute=False (query results)
@@ -150,6 +153,12 @@ async def _raw_with_schema(
 
     db_client = client if client else prisma_module.get_client()
 
+    # Set search_path to include public schema if requested
+    # Prisma doesn't support the 'options' connection parameter, so we set it per-session
+    # This is idempotent and safe to call multiple times
+    if set_public_search_path:
+        await db_client.execute_raw(f"SET search_path = {schema}, public")  # type: ignore
+
     if execute:
         result = await db_client.execute_raw(formatted_query, *args)  # type: ignore
     else:
@@ -158,12 +167,16 @@ async def _raw_with_schema(
     return result
 
 
-async def query_raw_with_schema(query_template: str, *args) -> list[dict]:
+async def query_raw_with_schema(
+    query_template: str, *args, set_public_search_path: bool = False
+) -> list[dict]:
     """Execute raw SQL SELECT query with proper schema handling.
 
     Args:
         query_template: SQL query with {schema_prefix} placeholder
         *args: Query parameters
+        set_public_search_path: If True, sets search_path to include public schema.
+                                Needed for pgvector types and other public schema objects.
 
     Returns:
         List of result rows as dictionaries
@@ -174,11 +187,14 @@ async def query_raw_with_schema(query_template: str, *args) -> list[dict]:
             user_id
         )
     """
-    return await _raw_with_schema(query_template, *args, execute=False)  # type: ignore
+    return await _raw_with_schema(query_template, *args, execute=False, set_public_search_path=set_public_search_path)  # type: ignore
 
 
 async def execute_raw_with_schema(
-    query_template: str, *args, client: Prisma | None = None
+    query_template: str,
+    *args,
+    client: Prisma | None = None,
+    set_public_search_path: bool = False,
 ) -> int:
     """Execute raw SQL command (INSERT/UPDATE/DELETE) with proper schema handling.
 
@@ -186,6 +202,8 @@ async def execute_raw_with_schema(
         query_template: SQL query with {schema_prefix} placeholder
         *args: Query parameters
         client: Optional Prisma client for transactions
+        set_public_search_path: If True, sets search_path to include public schema.
+                                Needed for pgvector types and other public schema objects.
 
     Returns:
         Number of affected rows
@@ -197,7 +215,7 @@ async def execute_raw_with_schema(
             client=tx  # Optional transaction client
         )
     """
-    return await _raw_with_schema(query_template, *args, execute=True, client=client)  # type: ignore
+    return await _raw_with_schema(query_template, *args, execute=True, client=client, set_public_search_path=set_public_search_path)  # type: ignore
 
 
 class BaseDbModel(BaseModel):

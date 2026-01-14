@@ -173,6 +173,7 @@ async def store_content_embedding(
             searchable_text,
             metadata_json,
             client=client,
+            set_public_search_path=True,
         )
 
         logger.info(f"Stored embedding for {content_type}:{content_id}")
@@ -231,6 +232,7 @@ async def get_content_embedding(
             content_type,
             content_id,
             user_id,
+            set_public_search_path=True,
         )
 
         if result and len(result) > 0:
