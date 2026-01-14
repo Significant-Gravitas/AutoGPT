@@ -185,13 +185,13 @@ async def test_store_embedding_database_error(mocker):
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_get_embedding_success(mocker):
+async def test_get_embedding_success():
     """Test successful embedding retrieval."""
-    mock_client = mocker.AsyncMock()
     mock_result = [
         {
             "contentType": "STORE_AGENT",
             "contentId": "test-version-id",
+            "userId": None,
             "embedding": "[0.1,0.2,0.3]",
             "searchableText": "Test text",
             "metadata": {},
@@ -199,9 +199,11 @@ async def test_get_embedding_success(mocker):
             "updatedAt": "2024-01-01T00:00:00Z",
         }
     ]
-    mock_client.query_raw.return_value = mock_result
 
-    with patch("prisma.get_client", return_value=mock_client):
+    with patch(
+        "backend.api.features.store.embeddings.query_raw_with_schema",
+        return_value=mock_result,
+    ):
         result = await embeddings.get_embedding("test-version-id")
 
         assert result is not None
@@ -210,12 +212,12 @@ async def test_get_embedding_success(mocker):
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_get_embedding_not_found(mocker):
+async def test_get_embedding_not_found():
     """Test embedding retrieval when not found."""
-    mock_client = mocker.AsyncMock()
-    mock_client.query_raw.return_value = []
-
-    with patch("prisma.get_client", return_value=mock_client):
+    with patch(
+        "backend.api.features.store.embeddings.query_raw_with_schema",
+        return_value=[],
+    ):
         result = await embeddings.get_embedding("test-version-id")
 
         assert result is None
@@ -293,18 +295,16 @@ async def test_ensure_embedding_generation_fails(mock_get, mock_generate):
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_get_embedding_stats(mocker):
+async def test_get_embedding_stats():
     """Test embedding statistics retrieval."""
-    mock_client = mocker.AsyncMock()
-
-    # Mock approved count query
+    # Mock approved count query and embedded count query
     mock_approved_result = [{"count": 100}]
-    # Mock embedded count query
     mock_embedded_result = [{"count": 75}]
 
-    mock_client.query_raw.side_effect = [mock_approved_result, mock_embedded_result]
-
-    with patch("prisma.get_client", return_value=mock_client):
+    with patch(
+        "backend.api.features.store.embeddings.query_raw_with_schema",
+        side_effect=[mock_approved_result, mock_embedded_result],
+    ):
         result = await embeddings.get_embedding_stats()
 
         assert result["total_approved"] == 100
@@ -315,10 +315,8 @@ async def test_get_embedding_stats(mocker):
 
 @pytest.mark.asyncio(loop_scope="session")
 @patch("backend.api.features.store.embeddings.ensure_embedding")
-async def test_backfill_missing_embeddings_success(mock_ensure, mocker):
+async def test_backfill_missing_embeddings_success(mock_ensure):
     """Test backfill with successful embedding generation."""
-    mock_client = mocker.AsyncMock()
-
     # Mock missing embeddings query
     mock_missing = [
         {
@@ -336,12 +334,14 @@ async def test_backfill_missing_embeddings_success(mock_ensure, mocker):
             "categories": ["Productivity"],
         },
     ]
-    mock_client.query_raw.return_value = mock_missing
 
     # Mock ensure_embedding to succeed for first, fail for second
     mock_ensure.side_effect = [True, False]
 
-    with patch("prisma.get_client", return_value=mock_client):
+    with patch(
+        "backend.api.features.store.embeddings.query_raw_with_schema",
+        return_value=mock_missing,
+    ):
         result = await embeddings.backfill_missing_embeddings(batch_size=5)
 
         assert result["processed"] == 2
@@ -351,12 +351,12 @@ async def test_backfill_missing_embeddings_success(mock_ensure, mocker):
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_backfill_missing_embeddings_no_missing(mocker):
+async def test_backfill_missing_embeddings_no_missing():
     """Test backfill when no embeddings are missing."""
-    mock_client = mocker.AsyncMock()
-    mock_client.query_raw.return_value = []
-
-    with patch("prisma.get_client", return_value=mock_client):
+    with patch(
+        "backend.api.features.store.embeddings.query_raw_with_schema",
+        return_value=[],
+    ):
         result = await embeddings.backfill_missing_embeddings(batch_size=5)
 
         assert result["processed"] == 0
