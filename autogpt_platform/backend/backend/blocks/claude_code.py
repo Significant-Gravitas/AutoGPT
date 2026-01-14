@@ -1,7 +1,7 @@
 import json
 import shlex
 import uuid
-from typing import Literal
+from typing import Literal, Optional
 
 from e2b import AsyncSandbox as BaseAsyncSandbox
 from pydantic import BaseModel, SecretStr
@@ -78,7 +78,7 @@ class ClaudeCodeBlock(Block):
         ] = CredentialsField(
             description=(
                 "API key for Anthropic to power Claude Code. "
-                "Get one at [anthropics website](https://console.anthropic.com)"
+                "Get one at [Anthropic's website](https://console.anthropic.com)"
             ),
         )
 
@@ -192,12 +192,13 @@ class ClaudeCodeBlock(Block):
                 "Pass this back along with sandbox_id to continue the conversation."
             )
         )
-        sandbox_id: str = SchemaField(
+        sandbox_id: Optional[str] = SchemaField(
             description=(
                 "ID of the sandbox instance. "
-                "Pass this back along with session_id to continue the conversation "
-                "(only available if dispose_sandbox was False)."
-            )
+                "Pass this back along with session_id to continue the conversation. "
+                "This is None if dispose_sandbox was True (sandbox was disposed)."
+            ),
+            default=None,
         )
 
     def __init__(self):
@@ -437,14 +438,18 @@ class ClaudeCodeBlock(Block):
         working_directory: str,
     ) -> list["ClaudeCodeBlock.FileOutput"]:
         """
-        Extract files from the sandbox working directory.
+        Extract all text files from the sandbox working directory.
+
+        Note: This extracts all matching text files in the working directory,
+        not just files created/modified during this execution. Files are filtered
+        by extension to identify text files. The sandbox has its own resource limits.
 
         Returns:
-            List of FileOutput objects with path, name, and content
+            List of FileOutput objects with path, relative_path, name, and content
         """
         files: list[ClaudeCodeBlock.FileOutput] = []
 
-        # Text file extensions we can safely read
+        # Text file extensions we can safely read as text
         text_extensions = {
             ".txt",
             ".md",
@@ -505,7 +510,7 @@ class ClaudeCodeBlock(Block):
                 f"find {safe_working_dir} -type f "
                 f"-not -path '*/node_modules/*' "
                 f"-not -path '*/.git/*' "
-                f"2>/dev/null | head -100"
+                f"2>/dev/null"
             )
 
             if find_result.stdout:
@@ -595,8 +600,8 @@ class ClaudeCodeBlock(Block):
             yield "conversation_history", conversation_history
             # Always yield session_id so user can continue conversation
             yield "session_id", session_id
-            if not input_data.dispose_sandbox and sandbox_id:
-                yield "sandbox_id", sandbox_id
+            # Always yield sandbox_id (None if disposed) to match Output schema
+            yield "sandbox_id", sandbox_id if not input_data.dispose_sandbox else None
 
         except Exception as e:
             yield "error", str(e)
