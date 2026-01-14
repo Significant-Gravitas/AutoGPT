@@ -242,7 +242,7 @@ async def hybrid_search(
                 SELECT sa."storeListingVersionId"
                 FROM {{schema_prefix}}"StoreAgent" sa
                 INNER JOIN {{schema_prefix}}"UnifiedContentEmbedding" uce
-                    ON sa."storeListingVersionId" = uce."contentId" AND uce."contentType" = 'STORE_AGENT'
+                    ON sa."storeListingVersionId" = uce."contentId" AND uce."contentType" = 'STORE_AGENT'::{{schema_prefix}}"ContentType"
                 WHERE {where_clause}
                 ORDER BY uce.embedding <=> {embedding_param}::vector
                 LIMIT 200
@@ -283,7 +283,7 @@ async def hybrid_search(
                 INNER JOIN {{schema_prefix}}"StoreAgent" sa
                     ON c."storeListingVersionId" = sa."storeListingVersionId"
                 LEFT JOIN {{schema_prefix}}"UnifiedContentEmbedding" uce
-                    ON sa."storeListingVersionId" = uce."contentId" AND uce."contentType" = 'STORE_AGENT'
+                    ON sa."storeListingVersionId" = uce."contentId" AND uce."contentType" = 'STORE_AGENT'::{{schema_prefix}}"ContentType"
             ),
             max_lexical AS (
                 SELECT MAX(lexical_raw) as max_val FROM search_scores
