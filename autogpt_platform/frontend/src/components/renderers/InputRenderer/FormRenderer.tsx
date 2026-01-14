@@ -31,7 +31,7 @@ export const FormRenderer = ({
   }, [preprocessedSchema, uiSchema]);
 
   return (
-    <div className={"mx-4 mb-6 mt-4"}>
+    <div className={"mb-6 mt-4"}>
       <Form
         formContext={formContext}
         idPrefix="agpt"
