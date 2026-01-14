@@ -247,6 +247,7 @@ class ClaudeCodeBlock(Block):
                     "Claude: Created index.html with hello world content",
                 ),
                 ("session_id", str),
+                ("sandbox_id", None),  # None because dispose_sandbox=True in test_input
             ],
             test_mock={
                 "execute_claude_code": lambda *args, **kwargs: (
