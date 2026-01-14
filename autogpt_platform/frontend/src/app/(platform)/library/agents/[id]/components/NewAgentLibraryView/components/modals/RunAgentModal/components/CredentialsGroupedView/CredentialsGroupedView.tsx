@@ -6,7 +6,7 @@ import {
   AccordionTrigger,
 } from "@/components/molecules/Accordion/Accordion";
 import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
-import { SlidersHorizontalIcon } from "lucide-react";
+import { SlidersHorizontal } from "@phosphor-icons/react";
 import { useContext, useEffect, useMemo, useRef } from "react";
 import { useRunAgentModalContext } from "../../context";
 import {
@@ -131,7 +131,7 @@ export function CredentialsGroupedView({
           <AccordionItem value="system-credentials" className="border-none">
             <AccordionTrigger className="py-2 text-sm text-muted-foreground hover:no-underline">
               <div className="flex items-center gap-1">
-                <SlidersHorizontalIcon className="size-4" /> System credentials
+                <SlidersHorizontal size={16} weight="bold" /> System credentials
                 {hasMissingSystemCredentials && (
                   <span className="text-destructive">(missing)</span>
                 )}

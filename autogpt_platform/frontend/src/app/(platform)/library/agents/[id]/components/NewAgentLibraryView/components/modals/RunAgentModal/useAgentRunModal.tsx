@@ -111,8 +111,8 @@ export function useAgentRunModal(
               requiredScopes.length > 0
             ) {
               const grantedScopes = new Set(cred.scopes || []);
-              const hasAllRequiredScopes = new Set(requiredScopes).isSubsetOf(
-                grantedScopes,
+              const hasAllRequiredScopes = requiredScopes.every((scope) =>
+                grantedScopes.has(scope),
               );
               if (!hasAllRequiredScopes) return false;
             }

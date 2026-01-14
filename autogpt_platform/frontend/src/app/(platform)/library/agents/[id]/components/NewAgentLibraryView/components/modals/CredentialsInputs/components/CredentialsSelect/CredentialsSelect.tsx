@@ -1,4 +1,4 @@
-import { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
+import { CredentialsMetaInput } from "@/app/api/__generated__/models/credentialsMetaInput";
 import { useRef } from "react";
 import { getCredentialDisplayName } from "../../helpers";
 import { CredentialRow } from "../CredentialRow/CredentialRow";
@@ -81,14 +81,18 @@ export function CredentialsSelect({
       <div className="relative" onClick={handleTriggerClick}>
         <select
           ref={selectRef}
-          value={selectedCredentials?.id || (allowNone ? "__none__" : "")}
+          value={selectedCredentials?.id ?? "__none__"}
           onChange={handleValueChange}
           disabled={readOnly}
           className="absolute inset-0 z-10 cursor-pointer opacity-0"
           aria-label={`Select ${displayName} credential`}
         >
-          {allowNone && (
+          {allowNone ? (
             <option value="__none__">None (skip this credential)</option>
+          ) : (
+            <option value="__none__" disabled hidden>
+              Select a credential
+            </option>
           )}
           {credentials.map((credential) => (
             <option key={credential.id} value={credential.id}>
