@@ -13,11 +13,26 @@ from backend.util.exceptions import NotFoundError
 
 from . import service as chat_service
 from .config import ChatConfig
+from .model import ChatSession, create_chat_session, get_chat_session, get_user_sessions
 
 config = ChatConfig()
 
 
 logger = logging.getLogger(__name__)
+
+
+async def _validate_and_get_session(
+    session_id: str,
+    user_id: str | None,
+) -> ChatSession:
+    """Validate session exists and assign user if needed."""
+    session = await get_chat_session(session_id, user_id)
+    if not session:
+        raise NotFoundError(f"Session {session_id} not found.")
+    if session.user_id is None and user_id is not None:
+        session = await chat_service.assign_user_to_session(session_id, user_id)
+    return session
+
 
 router = APIRouter(
     tags=["chat"],
@@ -94,7 +109,7 @@ async def list_sessions(
     Returns:
         ListSessionsResponse: List of session summaries and total count.
     """
-    sessions, total_count = await chat_service.get_user_sessions(user_id, limit, offset)
+    sessions, total_count = await get_user_sessions(user_id, limit, offset)
 
     return ListSessionsResponse(
         sessions=[
@@ -133,7 +148,7 @@ async def create_session(
         f"...{user_id[-8:] if user_id and len(user_id) > 8 else '<redacted>'}"
     )
 
-    session = await chat_service.create_chat_session(user_id)
+    session = await create_chat_session(user_id)
 
     return CreateSessionResponse(
         id=session.session_id,
@@ -162,7 +177,7 @@ async def get_session(
         SessionDetailResponse: Details for the requested session; raises NotFoundError if not found.
 
     """
-    session = await chat_service.get_session(session_id, user_id)
+    session = await get_chat_session(session_id, user_id)
     if not session:
         raise NotFoundError(f"Session {session_id} not found")
 
@@ -206,14 +221,7 @@ async def stream_chat_post(
         StreamingResponse: SSE-formatted response chunks.
 
     """
-    # Validate session exists before starting the stream
-    # This prevents errors after the response has already started
-    session = await chat_service.get_session(session_id, user_id)
-
-    if not session:
-        raise NotFoundError(f"Session {session_id} not found. ")
-    if session.user_id is None and user_id is not None:
-        session = await chat_service.assign_user_to_session(session_id, user_id)
+    session = await _validate_and_get_session(session_id, user_id)
 
     async def event_generator() -> AsyncGenerator[str, None]:
         async for chunk in chat_service.stream_chat_completion(
@@ -266,14 +274,7 @@ async def stream_chat_get(
         StreamingResponse: SSE-formatted response chunks.
 
     """
-    # Validate session exists before starting the stream
-    # This prevents errors after the response has already started
-    session = await chat_service.get_session(session_id, user_id)
-
-    if not session:
-        raise NotFoundError(f"Session {session_id} not found. ")
-    if session.user_id is None and user_id is not None:
-        session = await chat_service.assign_user_to_session(session_id, user_id)
+    session = await _validate_and_get_session(session_id, user_id)
 
     async def event_generator() -> AsyncGenerator[str, None]:
         async for chunk in chat_service.stream_chat_completion(
@@ -340,9 +341,9 @@ async def health_check() -> dict:
         dict: A status dictionary indicating health, service name, and API version.
 
     """
-    session = await chat_service.create_chat_session(None)
+    session = await create_chat_session(None)
     await chat_service.assign_user_to_session(session.session_id, "test_user")
-    await chat_service.get_session(session.session_id, "test_user")
+    await get_chat_session(session.session_id, "test_user")
 
     return {
         "status": "healthy",

@@ -2,6 +2,7 @@ import asyncio
 import logging
 import uuid
 from datetime import UTC, datetime
+from typing import Any
 from weakref import WeakValueDictionary
 
 from openai.types.chat import (
@@ -31,6 +32,16 @@ from .config import ChatConfig
 
 logger = logging.getLogger(__name__)
 config = ChatConfig()
+
+
+def _parse_json_field(value: str | dict | list | None, default: Any = None) -> Any:
+    """Parse a JSON field that may be stored as string or already parsed."""
+    if value is None:
+        return default
+    if isinstance(value, str):
+        return json.loads(value)
+    return value
+
 
 # Redis cache key prefix for chat sessions
 CHAT_SESSION_CACHE_PREFIX = "chat:session:"
@@ -115,22 +126,6 @@ class ChatSession(BaseModel):
         messages = []
         if prisma_messages:
             for msg in prisma_messages:
-                tool_calls = None
-                if msg.toolCalls:
-                    tool_calls = (
-                        json.loads(msg.toolCalls)
-                        if isinstance(msg.toolCalls, str)
-                        else msg.toolCalls
-                    )
-
-                function_call = None
-                if msg.functionCall:
-                    function_call = (
-                        json.loads(msg.functionCall)
-                        if isinstance(msg.functionCall, str)
-                        else msg.functionCall
-                    )
-
                 messages.append(
                     ChatMessage(
                         role=msg.role,
@@ -138,26 +133,18 @@ class ChatSession(BaseModel):
                         name=msg.name,
                         tool_call_id=msg.toolCallId,
                         refusal=msg.refusal,
-                        tool_calls=tool_calls,
-                        function_call=function_call,
+                        tool_calls=_parse_json_field(msg.toolCalls),
+                        function_call=_parse_json_field(msg.functionCall),
                     )
                 )
 
         # Parse JSON fields from Prisma
-        credentials = (
-            json.loads(prisma_session.credentials)
-            if isinstance(prisma_session.credentials, str)
-            else prisma_session.credentials or {}
+        credentials = _parse_json_field(prisma_session.credentials, default={})
+        successful_agent_runs = _parse_json_field(
+            prisma_session.successfulAgentRuns, default={}
         )
-        successful_agent_runs = (
-            json.loads(prisma_session.successfulAgentRuns)
-            if isinstance(prisma_session.successfulAgentRuns, str)
-            else prisma_session.successfulAgentRuns or {}
-        )
-        successful_agent_schedules = (
-            json.loads(prisma_session.successfulAgentSchedules)
-            if isinstance(prisma_session.successfulAgentSchedules, str)
-            else prisma_session.successfulAgentSchedules or {}
+        successful_agent_schedules = _parse_json_field(
+            prisma_session.successfulAgentSchedules, default={}
         )
 
         # Calculate usage from token counts
@@ -379,7 +366,7 @@ async def _save_session_to_db(
 
 async def get_chat_session(
     session_id: str,
-    user_id: str | None,
+    user_id: str | None = None,
 ) -> ChatSession | None:
     """Get a chat session by ID.
 
@@ -485,7 +472,7 @@ async def upsert_chat_session(
         return session
 
 
-async def create_chat_session(user_id: str | None) -> ChatSession:
+async def create_chat_session(user_id: str | None = None) -> ChatSession:
     """Create a new chat session and persist it.
 
     Raises:

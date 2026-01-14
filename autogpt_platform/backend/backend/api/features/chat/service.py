@@ -23,9 +23,15 @@ from backend.util.settings import Settings
 
 from . import db as chat_db
 from .config import ChatConfig
-from .model import ChatMessage, ChatSession, Usage
-from .model import create_chat_session as model_create_chat_session
-from .model import get_chat_session, update_session_title, upsert_chat_session
+from .model import (
+    ChatMessage,
+    ChatSession,
+    Usage,
+    create_chat_session,
+    get_chat_session,
+    update_session_title,
+    upsert_chat_session,
+)
 from .response_model import (
     StreamBaseResponse,
     StreamError,
@@ -193,41 +199,6 @@ async def _generate_session_title(message: str) -> str | None:
     except Exception as e:
         logger.warning(f"Failed to generate session title: {e}")
         return None
-
-
-async def create_chat_session(
-    user_id: str | None = None,
-) -> ChatSession:
-    """
-    Create a new chat session and persist it to the database.
-    """
-    return await model_create_chat_session(user_id)
-
-
-async def get_session(
-    session_id: str,
-    user_id: str | None = None,
-) -> ChatSession | None:
-    """
-    Get a chat session by ID.
-    """
-    return await get_chat_session(session_id, user_id)
-
-
-async def get_user_sessions(
-    user_id: str,
-    limit: int = 50,
-    offset: int = 0,
-) -> tuple[list[ChatSession], int]:
-    """Get chat sessions for a user with total count.
-
-    Returns:
-        A tuple of (sessions, total_count) where total_count is the overall
-        number of sessions for the user (not just the current page).
-    """
-    from .model import get_user_sessions as model_get_user_sessions
-
-    return await model_get_user_sessions(user_id, limit, offset)
 
 
 async def assign_user_to_session(

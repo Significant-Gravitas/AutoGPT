@@ -4,6 +4,7 @@ from os import getenv
 import pytest
 
 from . import service as chat_service
+from .model import create_chat_session, get_chat_session, upsert_chat_session
 from .response_model import (
     StreamError,
     StreamFinish,
@@ -23,7 +24,7 @@ async def test_stream_chat_completion():
     if not api_key:
         return pytest.skip("OPEN_ROUTER_API_KEY is not set, skipping test")
 
-    session = await chat_service.create_chat_session()
+    session = await create_chat_session()
 
     has_errors = False
     has_ended = False
@@ -53,8 +54,8 @@ async def test_stream_chat_completion_with_tool_calls():
     if not api_key:
         return pytest.skip("OPEN_ROUTER_API_KEY is not set, skipping test")
 
-    session = await chat_service.create_chat_session()
-    session = await chat_service.upsert_chat_session(session)
+    session = await create_chat_session()
+    session = await upsert_chat_session(session)
 
     has_errors = False
     has_ended = False
@@ -76,6 +77,6 @@ async def test_stream_chat_completion_with_tool_calls():
     assert has_ended, "Chat completion did not end"
     assert not has_errors, "Error occurred while streaming chat completion"
     assert had_tool_calls, "Tool calls did not occur"
-    session = await chat_service.get_session(session.session_id)
+    session = await get_chat_session(session.session_id)
     assert session, "Session not found"
     assert session.usage, "Usage is empty"

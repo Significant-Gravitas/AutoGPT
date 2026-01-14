@@ -14,20 +14,22 @@ from .run_agent import RunAgentTool
 if TYPE_CHECKING:
     from backend.api.features.chat.response_model import StreamToolOutputAvailable
 
-# Initialize tool instances
-add_understanding_tool = AddUnderstandingTool()
-find_agent_tool = FindAgentTool()
-find_library_agent_tool = FindLibraryAgentTool()
-run_agent_tool = RunAgentTool()
-agent_output_tool = AgentOutputTool()
+# Single source of truth for all tools
+TOOL_REGISTRY: dict[str, BaseTool] = {
+    "add_understanding": AddUnderstandingTool(),
+    "find_agent": FindAgentTool(),
+    "find_library_agent": FindLibraryAgentTool(),
+    "run_agent": RunAgentTool(),
+    "agent_output": AgentOutputTool(),
+}
 
-# Export tools as OpenAI format
+# Export individual tool instances for backwards compatibility
+find_agent_tool = TOOL_REGISTRY["find_agent"]
+run_agent_tool = TOOL_REGISTRY["run_agent"]
+
+# Generated from registry for OpenAI API
 tools: list[ChatCompletionToolParam] = [
-    add_understanding_tool.as_openai_tool(),
-    find_agent_tool.as_openai_tool(),
-    find_library_agent_tool.as_openai_tool(),
-    run_agent_tool.as_openai_tool(),
-    agent_output_tool.as_openai_tool(),
+    tool.as_openai_tool() for tool in TOOL_REGISTRY.values()
 ]
 
 
@@ -38,16 +40,8 @@ async def execute_tool(
     session: ChatSession,
     tool_call_id: str,
 ) -> "StreamToolOutputAvailable":
-
-    tool_map: dict[str, BaseTool] = {
-        "add_understanding": add_understanding_tool,
-        "find_agent": find_agent_tool,
-        "find_library_agent": find_library_agent_tool,
-        "run_agent": run_agent_tool,
-        "agent_output": agent_output_tool,
-    }
-    if tool_name not in tool_map:
+    """Execute a tool by name."""
+    tool = TOOL_REGISTRY.get(tool_name)
+    if not tool:
         raise ValueError(f"Tool {tool_name} not found")
-    return await tool_map[tool_name].execute(
-        user_id, session, tool_call_id, **parameters
-    )
+    return await tool.execute(user_id, session, tool_call_id, **parameters)
