@@ -104,7 +104,9 @@ async def test_generate_embedding_api_error():
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_generate_embedding_text_truncation():
-    """Test that long text is properly truncated."""
+    """Test that long text is properly truncated using tiktoken."""
+    from tiktoken import encoding_for_model
+
     mock_client = MagicMock()
     mock_response = MagicMock()
     mock_response.data = [MagicMock()]
@@ -119,14 +121,25 @@ async def test_generate_embedding_text_truncation():
     ) as mock_get_client:
         mock_get_client.return_value = mock_client
 
-        # Create text longer than 32k chars
-        long_text = "a" * 35000
+        # Create text that will exceed 8191 tokens
+        # Use varied characters to ensure token-heavy text: each word is ~1 token
+        words = [f"word{i}" for i in range(10000)]
+        long_text = " ".join(words)  # ~10000 tokens
 
         await embeddings.generate_embedding(long_text)
 
-        # Verify truncated text was sent to API
+        # Verify text was truncated to 8191 tokens
         call_args = mock_client.embeddings.create.call_args
-        assert len(call_args.kwargs["input"]) == 32000
+        truncated_text = call_args.kwargs["input"]
+
+        # Count actual tokens in truncated text
+        enc = encoding_for_model("text-embedding-3-small")
+        actual_tokens = len(enc.encode(truncated_text))
+
+        # Should be at or just under 8191 tokens
+        assert actual_tokens <= 8191
+        # Should be close to the limit (not over-truncated)
+        assert actual_tokens >= 8100
 
 
 @pytest.mark.asyncio(loop_scope="session")
