@@ -391,7 +391,7 @@ async def get_embedding_stats() -> dict[str, Any]:
             """
             SELECT COUNT(*) as count
             FROM {schema_prefix}"StoreListingVersion" slv
-            JOIN {schema_prefix}"UnifiedContentEmbedding" uce ON slv.id = uce."contentId" AND uce."contentType" = 'STORE_AGENT'
+            JOIN {schema_prefix}"UnifiedContentEmbedding" uce ON slv.id = uce."contentId" AND uce."contentType" = 'STORE_AGENT'::{schema_prefix}"ContentType"
             WHERE slv."submissionStatus" = 'APPROVED'
             AND slv."isDeleted" = false
             """
@@ -442,7 +442,7 @@ async def backfill_missing_embeddings(batch_size: int = 10) -> dict[str, Any]:
                 slv.categories
             FROM {schema_prefix}"StoreListingVersion" slv
             LEFT JOIN {schema_prefix}"UnifiedContentEmbedding" uce
-                ON slv.id = uce."contentId" AND uce."contentType" = 'STORE_AGENT'
+                ON slv.id = uce."contentId" AND uce."contentType" = 'STORE_AGENT'::{schema_prefix}"ContentType"
             WHERE slv."submissionStatus" = 'APPROVED'
             AND slv."isDeleted" = false
             AND uce."contentId" IS NULL
