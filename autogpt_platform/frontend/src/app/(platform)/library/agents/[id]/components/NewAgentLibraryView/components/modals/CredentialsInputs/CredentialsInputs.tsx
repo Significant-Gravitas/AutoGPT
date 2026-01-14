@@ -36,6 +36,7 @@ type Props = {
   readOnly?: boolean;
   isOptional?: boolean;
   showTitle?: boolean;
+  variant?: "default" | "node";
 };
 
 export function CredentialsInput({
@@ -48,6 +49,7 @@ export function CredentialsInput({
   readOnly = false,
   isOptional = false,
   showTitle = true,
+  variant = "default",
 }: Props) {
   const hookData = useCredentialsInput({
     schema,
@@ -123,6 +125,7 @@ export function CredentialsInput({
               onClearCredential={() => onSelectCredential(undefined)}
               readOnly={readOnly}
               allowNone={isOptional}
+              variant={variant}
             />
           ) : (
             <div className="mb-4 space-y-2">

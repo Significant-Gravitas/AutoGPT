@@ -30,6 +30,8 @@ type CredentialRowProps = {
   readOnly?: boolean;
   showCaret?: boolean;
   asSelectTrigger?: boolean;
+  /** When "node", applies compact styling for node context */
+  variant?: "default" | "node";
 };
 
 export function CredentialRow({
@@ -41,14 +43,22 @@ export function CredentialRow({
   readOnly = false,
   showCaret = false,
   asSelectTrigger = false,
+  variant = "default",
 }: CredentialRowProps) {
   const ProviderIcon = providerIcons[provider] || fallbackIcon;
+  const isNodeVariant = variant === "node";
 
   return (
     <div
       className={cn(
         "flex items-center gap-3 rounded-medium border border-zinc-200 bg-white p-3 transition-colors",
-        asSelectTrigger ? "border-0 bg-transparent" : readOnly ? "w-fit" : "",
+        asSelectTrigger && isNodeVariant
+          ? "min-w-0 flex-1 overflow-hidden border-0 bg-transparent"
+          : asSelectTrigger
+            ? "border-0 bg-transparent"
+            : readOnly
+              ? "w-fit"
+              : "",
       )}
       onClick={readOnly || showCaret || asSelectTrigger ? undefined : onSelect}
       style={
@@ -61,19 +71,31 @@ export function CredentialRow({
         <ProviderIcon className="h-3 w-3 text-white" />
       </div>
       <IconKey className="h-5 w-5 shrink-0 text-zinc-800" />
-      <div className="flex min-w-0 flex-1 flex-nowrap items-center gap-4">
+      <div
+        className={cn(
+          "flex min-w-0 flex-1 flex-nowrap items-center gap-4",
+          isNodeVariant && "overflow-hidden",
+        )}
+      >
         <Text
           variant="body"
-          className="line-clamp-1 flex-[0_0_50%] text-ellipsis tracking-tight"
+          className={cn(
+            "tracking-tight",
+            isNodeVariant
+              ? "truncate"
+              : "line-clamp-1 flex-[0_0_50%] text-ellipsis",
+          )}
         >
           {getCredentialDisplayName(credential, displayName)}
         </Text>
-        <Text
-          variant="large"
-          className="lex-[0_0_40%] relative top-1 hidden overflow-hidden whitespace-nowrap font-mono tracking-tight md:block"
-        >
-          {"*".repeat(MASKED_KEY_LENGTH)}
-        </Text>
+        {!(asSelectTrigger && isNodeVariant) && (
+          <Text
+            variant="large"
+            className="relative top-1 hidden overflow-hidden whitespace-nowrap font-mono tracking-tight md:block"
+          >
+            {"*".repeat(MASKED_KEY_LENGTH)}
+          </Text>
+        )}
       </div>
       {showCaret && !asSelectTrigger && (
         <CaretDown className="h-4 w-4 shrink-0 text-gray-400" />
