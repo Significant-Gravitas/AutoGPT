@@ -257,14 +257,14 @@ def execution_accuracy_alerts():
 
 def ensure_embeddings_coverage():
     """
-    Ensure approved store agents have embeddings for hybrid search.
+    Ensure all content types (store agents, blocks, docs) have embeddings for search.
 
-    Processes ALL missing embeddings in batches of 10 until 100% coverage.
-    Missing embeddings = agents invisible in hybrid search.
+    Processes ALL missing embeddings in batches of 10 per content type until 100% coverage.
+    Missing embeddings = content invisible in hybrid search.
 
     Schedule: Runs every 6 hours (balanced between coverage and API costs).
-    - Catches agents approved between scheduled runs
-    - Batch size 10: gradual processing to avoid rate limits
+    - Catches new content added between scheduled runs
+    - Batch size 10 per content type: gradual processing to avoid rate limits
     - Manual trigger available via execute_ensure_embeddings_coverage endpoint
     """
     db_client = get_database_manager_client()
@@ -277,13 +277,27 @@ def ensure_embeddings_coverage():
         )
         return {"processed": 0, "success": 0, "failed": 0, "error": stats["error"]}
 
-    if stats["without_embeddings"] == 0:
-        logger.info("All approved agents have embeddings, skipping backfill")
+    # Extract totals from new stats structure
+    totals = stats.get("totals", {})
+    without_embeddings = totals.get("without_embeddings", 0)
+    coverage_percent = totals.get("coverage_percent", 0)
+
+    if without_embeddings == 0:
+        logger.info("All content has embeddings, skipping backfill")
         return {"processed": 0, "success": 0, "failed": 0}
 
+    # Log per-content-type stats for visibility
+    by_type = stats.get("by_type", {})
+    for content_type, type_stats in by_type.items():
+        if type_stats.get("without_embeddings", 0) > 0:
+            logger.info(
+                f"{content_type}: {type_stats['without_embeddings']} items without embeddings "
+                f"({type_stats['coverage_percent']}% coverage)"
+            )
+
     logger.info(
-        f"Found {stats['without_embeddings']} agents without embeddings "
-        f"({stats['coverage_percent']}% coverage) - processing all"
+        f"Total: {without_embeddings} items without embeddings "
+        f"({coverage_percent}% coverage) - processing all"
     )
 
     total_processed = 0

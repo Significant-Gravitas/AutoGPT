@@ -14,6 +14,7 @@ import prisma
 from prisma.enums import ContentType
 from tiktoken import encoding_for_model
 
+from backend.api.features.store.content_handlers import CONTENT_HANDLERS
 from backend.data.db import execute_raw_with_schema, query_raw_with_schema
 from backend.util.clients import get_openai_client
 from backend.util.json import dumps
@@ -173,6 +174,7 @@ async def store_content_embedding(
             searchable_text,
             metadata_json,
             client=client,
+            set_public_search_path=True,
         )
 
         logger.info(f"Stored embedding for {content_type}:{content_id}")
@@ -231,6 +233,7 @@ async def get_content_embedding(
             content_type,
             content_id,
             user_id,
+            set_public_search_path=True,
         )
 
         if result and len(result) > 0:
@@ -367,55 +370,69 @@ async def delete_content_embedding(
 
 async def get_embedding_stats() -> dict[str, Any]:
     """
-    Get statistics about embedding coverage.
+    Get statistics about embedding coverage for all content types.
 
-    Returns counts of:
-    - Total approved listing versions
-    - Versions with embeddings
-    - Versions without embeddings
+    Returns stats per content type and overall totals.
     """
     try:
-        # Count approved versions
-        approved_result = await query_raw_with_schema(
-            """
-            SELECT COUNT(*) as count
-            FROM {schema_prefix}"StoreListingVersion"
-            WHERE "submissionStatus" = 'APPROVED'
-            AND "isDeleted" = false
-            """
-        )
-        total_approved = approved_result[0]["count"] if approved_result else 0
+        stats_by_type = {}
+        total_items = 0
+        total_with_embeddings = 0
+        total_without_embeddings = 0
 
-        # Count versions with embeddings
-        embedded_result = await query_raw_with_schema(
-            """
-            SELECT COUNT(*) as count
-            FROM {schema_prefix}"StoreListingVersion" slv
-            JOIN {schema_prefix}"UnifiedContentEmbedding" uce ON slv.id = uce."contentId" AND uce."contentType" = 'STORE_AGENT'::{schema_prefix}"ContentType"
-            WHERE slv."submissionStatus" = 'APPROVED'
-            AND slv."isDeleted" = false
-            """
-        )
-        with_embeddings = embedded_result[0]["count"] if embedded_result else 0
+        # Aggregate stats from all handlers
+        for content_type, handler in CONTENT_HANDLERS.items():
+            try:
+                stats = await handler.get_stats()
+                stats_by_type[content_type.value] = {
+                    "total": stats["total"],
+                    "with_embeddings": stats["with_embeddings"],
+                    "without_embeddings": stats["without_embeddings"],
+                    "coverage_percent": (
+                        round(stats["with_embeddings"] / stats["total"] * 100, 1)
+                        if stats["total"] > 0
+                        else 0
+                    ),
+                }
+
+                total_items += stats["total"]
+                total_with_embeddings += stats["with_embeddings"]
+                total_without_embeddings += stats["without_embeddings"]
+
+            except Exception as e:
+                logger.error(f"Failed to get stats for {content_type.value}: {e}")
+                stats_by_type[content_type.value] = {
+                    "total": 0,
+                    "with_embeddings": 0,
+                    "without_embeddings": 0,
+                    "coverage_percent": 0,
+                    "error": str(e),
+                }
 
         return {
-            "total_approved": total_approved,
-            "with_embeddings": with_embeddings,
-            "without_embeddings": total_approved - with_embeddings,
-            "coverage_percent": (
-                round(with_embeddings / total_approved * 100, 1)
-                if total_approved > 0
-                else 0
-            ),
+            "by_type": stats_by_type,
+            "totals": {
+                "total": total_items,
+                "with_embeddings": total_with_embeddings,
+                "without_embeddings": total_without_embeddings,
+                "coverage_percent": (
+                    round(total_with_embeddings / total_items * 100, 1)
+                    if total_items > 0
+                    else 0
+                ),
+            },
         }
 
     except Exception as e:
         logger.error(f"Failed to get embedding stats: {e}")
         return {
-            "total_approved": 0,
-            "with_embeddings": 0,
-            "without_embeddings": 0,
-            "coverage_percent": 0,
+            "by_type": {},
+            "totals": {
+                "total": 0,
+                "with_embeddings": 0,
+                "without_embeddings": 0,
+                "coverage_percent": 0,
+            },
             "error": str(e),
         }
 
@@ -424,73 +441,118 @@ async def backfill_missing_embeddings(batch_size: int = 10) -> dict[str, Any]:
     """
     Generate embeddings for approved listings that don't have them.
 
+    BACKWARD COMPATIBILITY: Maintained for existing usage.
+    This now delegates to backfill_all_content_types() to process all content types.
+
     Args:
-        batch_size: Number of embeddings to generate in one call
+        batch_size: Number of embeddings to generate per content type
 
     Returns:
-        Dict with success/failure counts
+        Dict with success/failure counts aggregated across all content types
     """
-    try:
-        # Find approved versions without embeddings
-        missing = await query_raw_with_schema(
-            """
-            SELECT
-                slv.id,
-                slv.name,
-                slv.description,
-                slv."subHeading",
-                slv.categories
-            FROM {schema_prefix}"StoreListingVersion" slv
-            LEFT JOIN {schema_prefix}"UnifiedContentEmbedding" uce
-                ON slv.id = uce."contentId" AND uce."contentType" = 'STORE_AGENT'::{schema_prefix}"ContentType"
-            WHERE slv."submissionStatus" = 'APPROVED'
-            AND slv."isDeleted" = false
-            AND uce."contentId" IS NULL
-            LIMIT $1
-            """,
-            batch_size,
-        )
+    # Delegate to the new generic backfill system
+    result = await backfill_all_content_types(batch_size)
 
-        if not missing:
-            return {
+    # Return in the old format for backward compatibility
+    return result["totals"]
+
+
+async def backfill_all_content_types(batch_size: int = 10) -> dict[str, Any]:
+    """
+    Generate embeddings for all content types using registered handlers.
+
+    Processes content types in order: BLOCK → STORE_AGENT → DOCUMENTATION.
+    This ensures foundational content (blocks) are searchable first.
+
+    Args:
+        batch_size: Number of embeddings to generate per content type
+
+    Returns:
+        Dict with stats per content type and overall totals
+    """
+    results_by_type = {}
+    total_processed = 0
+    total_success = 0
+    total_failed = 0
+
+    # Process content types in explicit order
+    processing_order = [
+        ContentType.BLOCK,
+        ContentType.STORE_AGENT,
+        ContentType.DOCUMENTATION,
+    ]
+
+    for content_type in processing_order:
+        handler = CONTENT_HANDLERS.get(content_type)
+        if not handler:
+            logger.warning(f"No handler registered for {content_type.value}")
+            continue
+        try:
+            logger.info(f"Processing {content_type.value} content type...")
+
+            # Get missing items from handler
+            missing_items = await handler.get_missing_items(batch_size)
+
+            if not missing_items:
+                results_by_type[content_type.value] = {
+                    "processed": 0,
+                    "success": 0,
+                    "failed": 0,
+                    "message": "No missing embeddings",
+                }
+                continue
+
+            # Process embeddings concurrently for better performance
+            embedding_tasks = [
+                ensure_content_embedding(
+                    content_type=item.content_type,
+                    content_id=item.content_id,
+                    searchable_text=item.searchable_text,
+                    metadata=item.metadata,
+                    user_id=item.user_id,
+                )
+                for item in missing_items
+            ]
+
+            results = await asyncio.gather(*embedding_tasks, return_exceptions=True)
+
+            success = sum(1 for result in results if result is True)
+            failed = len(results) - success
+
+            results_by_type[content_type.value] = {
+                "processed": len(missing_items),
+                "success": success,
+                "failed": failed,
+                "message": f"Backfilled {success} embeddings, {failed} failed",
+            }
+
+            total_processed += len(missing_items)
+            total_success += success
+            total_failed += failed
+
+            logger.info(
+                f"{content_type.value}: processed {len(missing_items)}, "
+                f"success {success}, failed {failed}"
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to process {content_type.value}: {e}")
+            results_by_type[content_type.value] = {
                 "processed": 0,
                 "success": 0,
                 "failed": 0,
-                "message": "No missing embeddings",
+                "error": str(e),
             }
 
-        # Process embeddings concurrently for better performance
-        embedding_tasks = [
-            ensure_embedding(
-                version_id=row["id"],
-                name=row["name"],
-                description=row["description"],
-                sub_heading=row["subHeading"],
-                categories=row["categories"] or [],
-            )
-            for row in missing
-        ]
-
-        results = await asyncio.gather(*embedding_tasks, return_exceptions=True)
-
-        success = sum(1 for result in results if result is True)
-        failed = len(results) - success
-
-        return {
-            "processed": len(missing),
-            "success": success,
-            "failed": failed,
-            "message": f"Backfilled {success} embeddings, {failed} failed",
-        }
-
-    except Exception as e:
-        logger.error(f"Failed to backfill embeddings: {e}")
-        return {
-            "processed": 0,
-            "success": 0,
-            "failed": 0,
-            "error": str(e),
-        }
+    return {
+        "by_type": results_by_type,
+        "totals": {
+            "processed": total_processed,
+            "success": total_success,
+            "failed": total_failed,
+            "message": f"Overall: {total_success} succeeded, {total_failed} failed",
+        },
+    }
 
 
 async def embed_query(query: str) -> list[float] | None:
