@@ -175,8 +175,8 @@ class ClaudeCodeBlock(Block):
         )
         files: list["ClaudeCodeBlock.FileOutput"] = SchemaField(
             description=(
-                "List of files created/modified by Claude Code. "
-                "Each file has 'path', 'name', and 'content' fields."
+                "List of text files created/modified by Claude Code during this execution. "
+                "Each file has 'path', 'relative_path', 'name', and 'content' fields."
             )
         )
         conversation_history: str = SchemaField(
@@ -372,6 +372,12 @@ class ClaudeCodeBlock(Block):
                     f"claude --session-id {safe_current_session_id} {base_flags}{history_flag}"
                 )
 
+            # Capture timestamp before running Claude Code to filter files later
+            timestamp_result = await sandbox.commands.run("date -u +%Y-%m-%dT%H:%M:%S")
+            start_timestamp = (
+                timestamp_result.stdout.strip() if timestamp_result.stdout else None
+            )
+
             result = await sandbox.commands.run(
                 claude_command,
                 timeout=0,  # No command timeout - let sandbox timeout handle it
@@ -417,8 +423,10 @@ class ClaudeCodeBlock(Block):
                 else:
                     new_conversation_history = turn_entry
 
-            # Extract files from the working directory
-            files = await self._extract_files(sandbox, working_directory)
+            # Extract files created/modified during this run
+            files = await self._extract_files(
+                sandbox, working_directory, start_timestamp
+            )
 
             return (
                 response,
@@ -436,13 +444,15 @@ class ClaudeCodeBlock(Block):
         self,
         sandbox: BaseAsyncSandbox,
         working_directory: str,
+        since_timestamp: str | None = None,
     ) -> list["ClaudeCodeBlock.FileOutput"]:
         """
-        Extract all text files from the sandbox working directory.
+        Extract text files created/modified during this Claude Code execution.
 
-        Note: This extracts all matching text files in the working directory,
-        not just files created/modified during this execution. Files are filtered
-        by extension to identify text files. The sandbox has its own resource limits.
+        Args:
+            sandbox: The E2B sandbox instance
+            working_directory: Directory to search for files
+            since_timestamp: ISO timestamp - only return files modified after this time
 
         Returns:
             List of FileOutput objects with path, relative_path, name, and content
@@ -505,9 +515,14 @@ class ClaudeCodeBlock(Block):
             # List files recursively using find command
             # Exclude node_modules and .git directories, but allow hidden files
             # like .env and .gitignore (they're filtered by text_extensions later)
+            # Filter by timestamp to only get files created/modified during this run
             safe_working_dir = shlex.quote(working_directory)
+            timestamp_filter = ""
+            if since_timestamp:
+                timestamp_filter = f"-newermt {shlex.quote(since_timestamp)} "
             find_result = await sandbox.commands.run(
                 f"find {safe_working_dir} -type f "
+                f"{timestamp_filter}"
                 f"-not -path '*/node_modules/*' "
                 f"-not -path '*/.git/*' "
                 f"2>/dev/null"
