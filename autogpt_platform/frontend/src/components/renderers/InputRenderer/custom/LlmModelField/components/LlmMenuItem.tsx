@@ -29,9 +29,7 @@ export function LlmMenuItem({
     <button
       type="button"
       onClick={onClick}
-      className={cn(
-        "w-full pl-2 pr-4 py-1 text-left hover:bg-zinc-100",
-      )}
+      className={cn("w-full py-1 pl-2 pr-4 text-left hover:bg-zinc-100")}
     >
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
@@ -41,9 +39,13 @@ export function LlmMenuItem({
           </Text>
         </div>
         <div className="flex items-center gap-2">
-          {isActive && <CheckIcon className="h-4 w-4 text-emerald-600" weight="bold" />}
+          {isActive && (
+            <CheckIcon className="h-4 w-4 text-emerald-600" weight="bold" />
+          )}
           {rightSlot}
-          {showChevron && <CaretRightIcon className="h-4 w-4 text-zinc-900" weight="bold" />}
+          {showChevron && (
+            <CaretRightIcon className="h-4 w-4 text-zinc-900" weight="bold" />
+          )}
         </div>
       </div>
       {subtitle && (

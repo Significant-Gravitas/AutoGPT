@@ -78,7 +78,10 @@ export default function FieldTemplate(props: FieldTemplateProps) {
     displayLabel ||
     (schema.type === "boolean" && !isAnyOfChild(uiSchema as any));
   const shouldShowTitleSection = !isAnyOfSchema(schema) && !additional;
-  const shouldShowChildren = isAnyOfSchema(schema) || !isHandleConnected;
+  const showChildrenWhenConnected =
+    uiOptions.showChildrenWhenConnected === true;
+  const shouldShowChildren =
+    isAnyOfSchema(schema) || !isHandleConnected || showChildrenWhenConnected;
 
   const isAdvancedField = (schema as any).advanced === true;
   if (!showAdvanced && isAdvancedField && !isHandleConnected) {
@@ -86,7 +89,11 @@ export default function FieldTemplate(props: FieldTemplateProps) {
   }
 
   const marginBottom =
-    isPartOfAnyOf({ uiOptions }) || isAnyOfSchema(schema) ? 0 : 16;
+    isPartOfAnyOf({ uiOptions }) || isAnyOfSchema(schema)
+      ? 0
+      : uiOptions.compact === true
+        ? 8
+        : 16;
 
   return (
     <WrapIfAdditionalTemplate

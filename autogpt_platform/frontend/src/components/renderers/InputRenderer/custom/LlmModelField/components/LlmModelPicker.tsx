@@ -65,18 +65,23 @@ export function LlmModelPicker({
     }
     setView("creator");
     setActiveCreator(
-      selectedModel ? getCreatorDisplayName(selectedModel) : creators[0] ?? null,
+      selectedModel
+        ? getCreatorDisplayName(selectedModel)
+        : (creators[0] ?? null),
     );
     setActiveTitle(selectedModel ? getModelDisplayName(selectedModel) : null);
   }, [open, selectedModel, creators]);
 
   const currentCreator = activeCreator ?? creators[0] ?? null;
   const currentModels = currentCreator
-    ? modelsByCreator.get(currentCreator) ?? []
+    ? (modelsByCreator.get(currentCreator) ?? [])
     : [];
   const currentCreatorIcon = currentModels[0]?.creator ?? currentCreator;
 
-  const modelsByTitle = useMemo(() => groupByTitle(currentModels), [currentModels]);
+  const modelsByTitle = useMemo(
+    () => groupByTitle(currentModels),
+    [currentModels],
+  );
 
   const modelEntries = useMemo(() => {
     return Array.from(modelsByTitle.entries())
@@ -122,7 +127,7 @@ export function LlmModelPicker({
           )}
         >
           <LlmIcon value={triggerCreator} />
-          <Text variant="body" className="flex-1 text-zinc-900 ml-1">
+          <Text variant="body" className="ml-1 flex-1 text-zinc-900">
             {triggerTitle}
           </Text>
           <CaretDownIcon className="h-3 w-3 text-zinc-900" weight="bold" />
@@ -131,7 +136,7 @@ export function LlmModelPicker({
       <PopoverContent
         align="start"
         sideOffset={4}
-        className="max-h-[60vh] min-w-[16rem] w-[--radix-popover-trigger-width] overflow-y-auto rounded-md border border-zinc-200 bg-white p-0 shadow-[0px_1px_4px_rgba(12,12,13,0.12)]"
+        className="max-h-[45vh] w-[--radix-popover-trigger-width] min-w-[16rem] overflow-y-auto rounded-md border border-zinc-200 bg-white p-0 shadow-[0px_1px_4px_rgba(12,12,13,0.12)]"
       >
         {view === "creator" && (
           <div className="flex flex-col">
@@ -150,7 +155,9 @@ export function LlmModelPicker({
               <LlmMenuItem
                 key={creator}
                 title={creator}
-                icon={<LlmIcon value={creatorIconValues.get(creator) ?? creator} />}
+                icon={
+                  <LlmIcon value={creatorIconValues.get(creator) ?? creator} />
+                }
                 showChevron={true}
                 isActive={
                   selectedModel

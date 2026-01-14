@@ -16,7 +16,7 @@ export function LlmPriceTier({ tier }: Props) {
       {Array.from({ length: clamped }).map((_, index) => (
         <CurrencyDollarSimpleIcon
           key={`price-${index}`}
-          className="h-3 w-3 -mr-0.5"
+          className="-mr-0.5 h-3 w-3"
           weight="bold"
         />
       ))}

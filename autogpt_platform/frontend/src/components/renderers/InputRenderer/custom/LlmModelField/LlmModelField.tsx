@@ -1,16 +1,29 @@
 "use client";
 
-import { FieldProps, RJSFSchema } from "@rjsf/utils";
+import { FieldProps, RJSFSchema, getTemplate, getUiOptions } from "@rjsf/utils";
 import { useMemo } from "react";
 import { LlmModelPicker } from "./components/LlmModelPicker";
 import { LlmModelMetadataMap } from "./types";
+import { cleanUpHandleId, getHandleId, updateUiOption } from "../../helpers";
+import { useEdgeStore } from "@/app/(platform)/build/stores/edgeStore";
 
 type LlmModelSchema = RJSFSchema & {
   llm_model_metadata?: LlmModelMetadataMap;
 };
 
 export const LlmModelField = (props: FieldProps) => {
-  const { schema, formData, onChange, disabled, readonly, fieldPathId } = props;
+  const {
+    schema,
+    formData,
+    onChange,
+    disabled,
+    readonly,
+    fieldPathId,
+    registry,
+    uiSchema,
+    required,
+    name,
+  } = props;
 
   const metadata = useMemo(() => {
     return (schema as LlmModelSchema)?.llm_model_metadata ?? {};
@@ -28,8 +41,8 @@ export const LlmModelField = (props: FieldProps) => {
         : "";
 
   const selectedModel = selectedName
-    ? metadata[selectedName] ??
-      models.find((model) => model.name === selectedName)
+    ? (metadata[selectedName] ??
+      models.find((model) => model.name === selectedName))
     : undefined;
 
   const recommendedName =
@@ -44,17 +57,62 @@ export const LlmModelField = (props: FieldProps) => {
     return null;
   }
 
+  const uiOptions = getUiOptions(uiSchema);
+  const TitleFieldTemplate = getTemplate(
+    "TitleFieldTemplate",
+    registry,
+    uiOptions,
+  );
+  const DescriptionFieldTemplate = getTemplate(
+    "DescriptionFieldTemplate",
+    registry,
+    uiOptions,
+  );
+
+  const fieldId = fieldPathId?.$id ?? props.id ?? "llm-model-field";
+  const handleId = getHandleId({
+    uiOptions,
+    id: fieldId,
+    schema: schema,
+  });
+  const updatedUiSchema = updateUiOption(uiSchema, {
+    handleId: handleId,
+  });
+  const title = schema.title || name || "LLM Model";
+
+  const { nodeId } = registry.formContext ?? {};
+  const { isInputConnected } = useEdgeStore();
+  const isHandleConnected = nodeId
+    ? isInputConnected(nodeId, cleanUpHandleId(handleId))
+    : false;
+
   return (
-    <LlmModelPicker
-      models={models}
-      selectedModel={selectedModel}
-      recommendedModel={recommendedModel}
-      onSelect={(value) => onChange(value, fieldPathId?.path)}
-      disabled={disabled || readonly}
-    />
+    <div className="-my-3 flex flex-col gap-1">
+      <div className="flex items-center gap-2">
+        <TitleFieldTemplate
+          id={fieldId}
+          title={title}
+          required={required}
+          schema={schema}
+          uiSchema={updatedUiSchema}
+          registry={registry}
+        />
+        <DescriptionFieldTemplate
+          id={fieldId}
+          description={schema.description || ""}
+          schema={schema}
+          registry={registry}
+        />
+      </div>
+      {!isHandleConnected && (
+        <LlmModelPicker
+          models={models}
+          selectedModel={selectedModel}
+          recommendedModel={recommendedModel}
+          onSelect={(value) => onChange(value, fieldPathId?.path)}
+          disabled={disabled || readonly}
+        />
+      )}
+    </div>
   );
 };
-
-export function isLlmModelFieldSchema(schema: unknown): boolean {
-  return typeof schema === "object" && schema !== null && "llm_model" in schema;
-}
