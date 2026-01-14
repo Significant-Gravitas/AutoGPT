@@ -211,9 +211,12 @@ async def get_user_sessions(
     user_id: str,
     limit: int = 50,
     offset: int = 0,
-) -> list[ChatSession]:
-    """
-    Get all chat sessions for a user.
+) -> tuple[list[ChatSession], int]:
+    """Get chat sessions for a user with total count.
+
+    Returns:
+        A tuple of (sessions, total_count) where total_count is the overall
+        number of sessions for the user (not just the current page).
     """
     from .model import get_user_sessions as model_get_user_sessions
 

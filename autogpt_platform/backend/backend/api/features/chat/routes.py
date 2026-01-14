@@ -94,7 +94,7 @@ async def list_sessions(
     Returns:
         ListSessionsResponse: List of session summaries and total count.
     """
-    sessions = await chat_service.get_user_sessions(user_id, limit, offset)
+    sessions, total_count = await chat_service.get_user_sessions(user_id, limit, offset)
 
     return ListSessionsResponse(
         sessions=[
@@ -102,11 +102,11 @@ async def list_sessions(
                 id=session.session_id,
                 created_at=session.started_at.isoformat(),
                 updated_at=session.updated_at.isoformat(),
-                title=None,  # TODO: Add title support
+                title=session.title,
             )
             for session in sessions
         ],
-        total=len(sessions),
+        total=total_count,
     )
 
 

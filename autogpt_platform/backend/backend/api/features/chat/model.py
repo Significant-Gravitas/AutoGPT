@@ -509,16 +509,22 @@ async def get_user_sessions(
     user_id: str,
     limit: int = 50,
     offset: int = 0,
-) -> list[ChatSession]:
-    """Get all chat sessions for a user from the database."""
+) -> tuple[list[ChatSession], int]:
+    """Get chat sessions for a user from the database with total count.
+
+    Returns:
+        A tuple of (sessions, total_count) where total_count is the overall
+        number of sessions for the user (not just the current page).
+    """
     prisma_sessions = await chat_db.get_user_chat_sessions(user_id, limit, offset)
+    total_count = await chat_db.get_user_session_count(user_id)
 
     sessions = []
     for prisma_session in prisma_sessions:
         # Convert without messages for listing (lighter weight)
         sessions.append(ChatSession.from_db(prisma_session, None))
 
-    return sessions
+    return sessions, total_count
 
 
 async def delete_chat_session(session_id: str, user_id: str | None = None) -> bool:
