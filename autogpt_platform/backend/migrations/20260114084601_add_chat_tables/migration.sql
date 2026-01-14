@@ -2,28 +2,14 @@
 DROP INDEX "StoreListingVersion_storeListingId_version_key";
 
 -- CreateTable
-CREATE TABLE "UserBusinessUnderstanding" (
+CREATE TABLE "CoPilotUnderstanding" (
     "id" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "userId" TEXT NOT NULL,
-    "usersName" TEXT,
-    "jobTitle" TEXT,
-    "businessName" TEXT,
-    "industry" TEXT,
-    "businessSize" TEXT,
-    "userRole" TEXT,
-    "keyWorkflows" JSONB,
-    "dailyActivities" JSONB,
-    "painPoints" JSONB,
-    "bottlenecks" JSONB,
-    "manualTasks" JSONB,
-    "automationGoals" JSONB,
-    "currentSoftware" JSONB,
-    "existingAutomation" JSONB,
-    "additionalNotes" TEXT,
+    "data" JSONB,
 
-    CONSTRAINT "UserBusinessUnderstanding_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "CoPilotUnderstanding_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -60,22 +46,19 @@ CREATE TABLE "ChatMessage" (
 );
 
 -- CreateIndex
-CREATE UNIQUE INDEX "UserBusinessUnderstanding_userId_key" ON "UserBusinessUnderstanding"("userId");
+CREATE UNIQUE INDEX "CoPilotUnderstanding_userId_key" ON "CoPilotUnderstanding"("userId");
 
 -- CreateIndex
-CREATE INDEX "UserBusinessUnderstanding_userId_idx" ON "UserBusinessUnderstanding"("userId");
+CREATE INDEX "CoPilotUnderstanding_userId_idx" ON "CoPilotUnderstanding"("userId");
 
 -- CreateIndex
 CREATE INDEX "ChatSession_userId_updatedAt_idx" ON "ChatSession"("userId", "updatedAt");
 
 -- CreateIndex
-CREATE INDEX "ChatMessage_sessionId_sequence_idx" ON "ChatMessage"("sessionId", "sequence");
-
--- CreateIndex
 CREATE UNIQUE INDEX "ChatMessage_sessionId_sequence_key" ON "ChatMessage"("sessionId", "sequence");
 
 -- AddForeignKey
-ALTER TABLE "UserBusinessUnderstanding" ADD CONSTRAINT "UserBusinessUnderstanding_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "CoPilotUnderstanding" ADD CONSTRAINT "CoPilotUnderstanding_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "ChatMessage" ADD CONSTRAINT "ChatMessage_sessionId_fkey" FOREIGN KEY ("sessionId") REFERENCES "ChatSession"("id") ON DELETE CASCADE ON UPDATE CASCADE;

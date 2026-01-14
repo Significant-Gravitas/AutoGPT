@@ -53,7 +53,7 @@ model User {
 
   Profile               Profile[]
   UserOnboarding        UserOnboarding?
-  BusinessUnderstanding UserBusinessUnderstanding?
+  CoPilotUnderstanding  CoPilotUnderstanding?
   BuilderSearchHistory  BuilderSearchHistory[]
   StoreListings         StoreListing[]
   StoreListingReviews   StoreListingReview[]
@@ -122,7 +122,7 @@ model UserOnboarding {
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
-model UserBusinessUnderstanding {
+model CoPilotUnderstanding {
   id        String   @id @default(uuid())
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
@@ -130,31 +130,7 @@ model UserBusinessUnderstanding {
   userId String @unique
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  // User info
-  usersName String?
-  jobTitle  String?
-
-  // Business basics (string columns)
-  businessName String?
-  industry     String?
-  businessSize String? // "1-10", "11-50", "51-200", "201-1000", "1000+"
-  userRole     String? // Role in organization context (e.g., "decision maker", "implementer")
-
-  // Processes & activities (JSON arrays)
-  keyWorkflows    Json?
-  dailyActivities Json?
-
-  // Pain points & goals (JSON arrays)
-  painPoints      Json?
-  bottlenecks     Json?
-  manualTasks     Json?
-  automationGoals Json?
-
-  // Current tools (JSON arrays)
-  currentSoftware    Json?
-  existingAutomation Json?
-
-  additionalNotes String?
+  data Json?
 
   @@index([userId])
 }
@@ -222,7 +198,6 @@ model ChatMessage {
   sequence Int
 
   @@unique([sessionId, sequence])
-  @@index([sessionId, sequence])
 }
 
 // This model describes the Agent Graph/Flow (Multi Agent System).

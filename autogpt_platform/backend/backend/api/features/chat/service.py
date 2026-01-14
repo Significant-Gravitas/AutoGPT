@@ -339,6 +339,11 @@ async def stream_chat_completion(
     # Build system prompt with business understanding
     system_prompt, langfuse_prompt = await _build_system_prompt(user_id)
 
+    # Build input messages including system prompt for complete Langfuse logging
+    trace_input_messages = [{"role": "system", "content": system_prompt}] + [
+        m.model_dump() for m in session.messages
+    ]
+
     # Create Langfuse trace for this LLM call (each call gets its own trace, grouped by session_id)
     # Using v3 SDK: start_observation creates a root span, update_trace sets trace-level attributes
     try:
@@ -346,7 +351,7 @@ async def stream_chat_completion(
         env = _get_environment()
         trace = langfuse.start_observation(
             name="chat_completion",
-            input={"messages": [m.model_dump() for m in session.messages]},
+            input={"messages": trace_input_messages},
             metadata={
                 "environment": env,
                 "model": config.model,
@@ -394,7 +399,7 @@ async def stream_chat_completion(
             as_type="generation",
             name="llm_call",
             model=config.model,
-            input={"messages": [m.model_dump() for m in session.messages]},
+            input={"messages": trace_input_messages},
             prompt=langfuse_prompt,
         )
         if trace

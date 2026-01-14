@@ -5,11 +5,7 @@ from datetime import datetime
 from typing import Any, Optional, cast
 
 import pydantic
-from prisma.models import UserBusinessUnderstanding
-from prisma.types import (
-    UserBusinessUnderstandingCreateInput,
-    UserBusinessUnderstandingUpdateInput,
-)
+from prisma.models import CoPilotUnderstanding
 
 from backend.data.redis_client import get_redis_async
 from backend.util.json import SafeJson
@@ -127,28 +123,32 @@ class BusinessUnderstanding(pydantic.BaseModel):
     additional_notes: Optional[str] = None
 
     @classmethod
-    def from_db(cls, db_record: UserBusinessUnderstanding) -> "BusinessUnderstanding":
+    def from_db(cls, db_record: CoPilotUnderstanding) -> "BusinessUnderstanding":
         """Convert database record to Pydantic model."""
+        data = db_record.data if isinstance(db_record.data, dict) else {}
+        business = (
+            data.get("business", {}) if isinstance(data.get("business"), dict) else {}
+        )
         return cls(
             id=db_record.id,
             user_id=db_record.userId,
             created_at=db_record.createdAt,
             updated_at=db_record.updatedAt,
-            user_name=db_record.usersName,
-            job_title=db_record.jobTitle,
-            business_name=db_record.businessName,
-            industry=db_record.industry,
-            business_size=db_record.businessSize,
-            user_role=db_record.userRole,
-            key_workflows=_json_to_list(db_record.keyWorkflows),
-            daily_activities=_json_to_list(db_record.dailyActivities),
-            pain_points=_json_to_list(db_record.painPoints),
-            bottlenecks=_json_to_list(db_record.bottlenecks),
-            manual_tasks=_json_to_list(db_record.manualTasks),
-            automation_goals=_json_to_list(db_record.automationGoals),
-            current_software=_json_to_list(db_record.currentSoftware),
-            existing_automation=_json_to_list(db_record.existingAutomation),
-            additional_notes=db_record.additionalNotes,
+            user_name=data.get("name"),
+            job_title=business.get("job_title"),
+            business_name=business.get("business_name"),
+            industry=business.get("industry"),
+            business_size=business.get("business_size"),
+            user_role=business.get("user_role"),
+            key_workflows=_json_to_list(business.get("key_workflows")),
+            daily_activities=_json_to_list(business.get("daily_activities")),
+            pain_points=_json_to_list(business.get("pain_points")),
+            bottlenecks=_json_to_list(business.get("bottlenecks")),
+            manual_tasks=_json_to_list(business.get("manual_tasks")),
+            automation_goals=_json_to_list(business.get("automation_goals")),
+            current_software=_json_to_list(business.get("current_software")),
+            existing_automation=_json_to_list(business.get("existing_automation")),
+            additional_notes=business.get("additional_notes"),
         )
 
 
@@ -216,9 +216,7 @@ async def get_business_understanding(
 
     # Cache miss - load from database
     logger.debug(f"Business understanding cache miss for user {user_id}")
-    record = await UserBusinessUnderstanding.prisma().find_unique(
-        where={"userId": user_id}
-    )
+    record = await CoPilotUnderstanding.prisma().find_unique(where={"userId": user_id})
     if record is None:
         return None
 
@@ -232,68 +230,78 @@ async def get_business_understanding(
 
 async def upsert_business_understanding(
     user_id: str,
-    data: BusinessUnderstandingInput,
+    input_data: BusinessUnderstandingInput,
 ) -> BusinessUnderstanding:
     """
     Create or update business understanding with incremental merge strategy.
 
     - String fields: new value overwrites if provided (not None)
     - List fields: new items are appended to existing (deduplicated)
+
+    Data is stored as: {name: ..., business: {version: 1, ...}}
     """
     # Get existing record for merge
-    existing = await UserBusinessUnderstanding.prisma().find_unique(
+    existing = await CoPilotUnderstanding.prisma().find_unique(
         where={"userId": user_id}
     )
 
-    # Build update data with merge strategy
-    update_data: UserBusinessUnderstandingUpdateInput = {}
-    create_data: dict[str, Any] = {"userId": user_id}
+    # Get existing data structure or start fresh
+    existing_data: dict[str, Any] = {}
+    if existing and isinstance(existing.data, dict):
+        existing_data = dict(existing.data)
 
-    # Field mappings: (pydantic_field, db_field)
-    string_fields = [
-        ("user_name", "usersName"),
-        ("job_title", "jobTitle"),
-        ("business_name", "businessName"),
-        ("industry", "industry"),
-        ("business_size", "businessSize"),
-        ("user_role", "userRole"),
-        ("additional_notes", "additionalNotes"),
+    existing_business: dict[str, Any] = {}
+    if isinstance(existing_data.get("business"), dict):
+        existing_business = dict(existing_data["business"])
+
+    # Business fields (stored inside business object)
+    business_string_fields = [
+        "job_title",
+        "business_name",
+        "industry",
+        "business_size",
+        "user_role",
+        "additional_notes",
     ]
-    list_fields = [
-        ("key_workflows", "keyWorkflows"),
-        ("daily_activities", "dailyActivities"),
-        ("pain_points", "painPoints"),
-        ("bottlenecks", "bottlenecks"),
-        ("manual_tasks", "manualTasks"),
-        ("automation_goals", "automationGoals"),
-        ("current_software", "currentSoftware"),
-        ("existing_automation", "existingAutomation"),
+    business_list_fields = [
+        "key_workflows",
+        "daily_activities",
+        "pain_points",
+        "bottlenecks",
+        "manual_tasks",
+        "automation_goals",
+        "current_software",
+        "existing_automation",
     ]
 
-    # String fields - overwrite if provided
-    for pydantic_field, db_field in string_fields:
-        value = getattr(data, pydantic_field)
-        if value is not None:
-            update_data[db_field] = value  # type: ignore[literal-required]
-            create_data[db_field] = value
+    # Handle top-level name field
+    if input_data.user_name is not None:
+        existing_data["name"] = input_data.user_name
 
-    # List fields - merge with existing
-    for pydantic_field, db_field in list_fields:
-        value = getattr(data, pydantic_field)
+    # Business string fields - overwrite if provided
+    for field in business_string_fields:
+        value = getattr(input_data, field)
         if value is not None:
-            existing_list = (
-                _json_to_list(getattr(existing, db_field)) if existing else None
-            )
+            existing_business[field] = value
+
+    # Business list fields - merge with existing
+    for field in business_list_fields:
+        value = getattr(input_data, field)
+        if value is not None:
+            existing_list = _json_to_list(existing_business.get(field))
             merged = _merge_lists(existing_list, value)
-            update_data[db_field] = SafeJson(merged)  # type: ignore[literal-required]
-            create_data[db_field] = SafeJson(merged)
+            existing_business[field] = merged
 
-    # Upsert
-    record = await UserBusinessUnderstanding.prisma().upsert(
+    # Set version and nest business data
+    existing_business["version"] = 1
+    existing_data["business"] = existing_business
+
+    # Upsert with the merged data
+    record = await CoPilotUnderstanding.prisma().upsert(
         where={"userId": user_id},
         data={
-            "create": UserBusinessUnderstandingCreateInput(**create_data),
-            "update": update_data,
+            "create": {"userId": user_id, "data": SafeJson(existing_data)},
+            "update": {"data": SafeJson(existing_data)},
         },
     )
 
@@ -311,7 +319,7 @@ async def clear_business_understanding(user_id: str) -> bool:
     await _delete_cache(user_id)
 
     try:
-        await UserBusinessUnderstanding.prisma().delete(where={"userId": user_id})
+        await CoPilotUnderstanding.prisma().delete(where={"userId": user_id})
         return True
     except Exception:
         # Record might not exist
