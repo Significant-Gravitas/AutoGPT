@@ -2,7 +2,7 @@ import React from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/__legacy__/ui/button";
 import { LogOut } from "lucide-react";
-import { ClockIcon } from "@phosphor-icons/react";
+import { ClockIcon, WarningIcon } from "@phosphor-icons/react";
 import { IconPlay, IconSquare } from "@/components/__legacy__/ui/icons";
 
 interface Props {
@@ -13,6 +13,7 @@ interface Props {
   isRunning: boolean;
   isDisabled: boolean;
   className?: string;
+  resolutionModeActive?: boolean;
 }
 
 export const BuildActionBar: React.FC<Props> = ({
@@ -23,9 +24,30 @@ export const BuildActionBar: React.FC<Props> = ({
   isRunning,
   isDisabled,
   className,
+  resolutionModeActive = false,
 }) => {
   const buttonClasses =
     "flex items-center gap-2 text-sm font-medium md:text-lg";
+
+  // Show resolution mode message instead of action buttons
+  if (resolutionModeActive) {
+    return (
+      <div
+        className={cn(
+          "flex w-fit select-none items-center justify-center p-4",
+          className,
+        )}
+      >
+        <div className="flex items-center gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 dark:border-amber-700 dark:bg-amber-900/30">
+          <WarningIcon className="size-5 text-amber-600 dark:text-amber-400" />
+          <span className="text-sm font-medium text-amber-800 dark:text-amber-200">
+            Remove incompatible connections to continue
+          </span>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       className={cn(

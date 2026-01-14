@@ -9,8 +9,9 @@ import { Text } from "@/components/atoms/Text/Text";
 import { getTypeDisplayInfo } from "@/app/(platform)/build/components/FlowEditor/nodes/helpers";
 import { isAnyOfSchema } from "../../utils/schema-utils";
 import { cn } from "@/lib/utils";
-import { isArrayItem } from "../../helpers";
+import { cleanUpHandleId, isArrayItem } from "../../helpers";
 import { InputNodeHandle } from "@/app/(platform)/build/components/FlowEditor/handlers/NodeHandle";
+import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
 
 export default function TitleField(props: TitleFieldProps) {
   const { id, title, required, schema, registry, uiSchema } = props;
@@ -26,6 +27,11 @@ export default function TitleField(props: TitleFieldProps) {
   const smallText = isArrayItemFlag || additional;
 
   const showHandle = uiOptions.showHandles ?? showHandles;
+
+  const isInputBroken = useNodeStore((state) =>
+    state.isInputBroken(nodeId, cleanUpHandleId(uiOptions.handleId)),
+  );
+
   return (
     <div className="flex items-center">
       {showHandle !== false && (
@@ -34,7 +40,11 @@ export default function TitleField(props: TitleFieldProps) {
       <Text
         variant={isArrayItemFlag ? "small" : "body"}
         id={id}
-        className={cn("line-clamp-1", smallText && "text-sm text-zinc-700")}
+        className={cn(
+          "line-clamp-1",
+          smallText && "text-sm text-zinc-700",
+          isInputBroken && "text-red-500 line-through",
+        )}
       >
         {title}
       </Text>
@@ -44,7 +54,7 @@ export default function TitleField(props: TitleFieldProps) {
       {!isAnyOf && (
         <Text
           variant="small"
-          className={cn("ml-2", colorClass)}
+          className={cn("ml-2", isInputBroken && "line-through", colorClass)}
           id={description_id}
         >
           ({displayType})

@@ -30,8 +30,6 @@ export const FormRenderer = ({
     return generateUiSchemaForCustomFields(preprocessedSchema, uiSchema);
   }, [preprocessedSchema, uiSchema]);
 
-  console.log("preprocessedSchema", preprocessedSchema);
-
   return (
     <div className={"mb-6 mt-4"}>
       <Form

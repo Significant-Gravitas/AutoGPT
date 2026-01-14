@@ -1,15 +1,16 @@
 import { FC, useCallback, useEffect, useState } from "react";
 
 import NodeHandle from "@/app/(platform)/build/components/legacy-builder/NodeHandle";
-import {
+import type {
   BlockIOTableSubSchema,
   TableCellValue,
   TableRow,
 } from "@/lib/autogpt-server-api/types";
+import type { ConnectedEdge } from "./CustomNode/CustomNode";
 import { cn } from "@/lib/utils";
 import { PlusIcon, XIcon } from "@phosphor-icons/react";
-import { Button } from "../../../../../components/atoms/Button/Button";
-import { Input } from "../../../../../components/atoms/Input/Input";
+import { Button } from "@/components/atoms/Button/Button";
+import { Input } from "@/components/atoms/Input/Input";
 
 interface NodeTableInputProps {
   /** Unique identifier for the node in the builder graph */
@@ -25,13 +26,7 @@ interface NodeTableInputProps {
   /** Validation errors mapped by field key */
   errors: { [key: string]: string | undefined };
   /** Graph connections between nodes in the builder */
-  connections: {
-    edge_id: string;
-    source: string;
-    sourceHandle: string;
-    target: string;
-    targetHandle: string;
-  }[];
+  connections: ConnectedEdge[];
   /** Callback when table data changes */
   handleInputChange: (key: string, value: TableRow[]) => void;
   /** Callback when input field is clicked (for builder selection) */
