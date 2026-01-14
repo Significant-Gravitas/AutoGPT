@@ -3,7 +3,7 @@ import {
   CustomNodeData,
 } from "@/app/(platform)/build/components/legacy-builder/CustomNode/CustomNode";
 import { NodeTableInput } from "@/app/(platform)/build/components/legacy-builder/NodeTableInput";
-import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/modals/CredentialsInputs/CredentialsInputs";
+import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/modals/CredentialsInputs/CredentialsInput";
 import { Button } from "@/components/__legacy__/ui/button";
 import { Calendar } from "@/components/__legacy__/ui/calendar";
 import { LocalValuedInput } from "@/components/__legacy__/ui/input";

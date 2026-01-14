@@ -5,6 +5,7 @@ import {
   BlockIOCredentialsSubSchema,
   CredentialsMetaInput,
 } from "@/lib/autogpt-server-api/types";
+import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
 import { CredentialRow } from "../CredentialRow/CredentialRow";
 import { CredentialsSelect } from "../CredentialsSelect/CredentialsSelect";
 
@@ -22,14 +23,14 @@ type Props = {
   displayName: string;
   credentials: Credential[];
   selectedCredential?: CredentialsMetaInput;
-  onSelectCredential: (credentialId: string) => void;
-  onClearCredential: () => void;
-  onAddCredential: () => void;
   actionButtonText: string;
   isOptional: boolean;
   showTitle: boolean;
   readOnly: boolean;
   variant: "default" | "node";
+  onSelectCredential: (credentialId: string) => void;
+  onClearCredential: () => void;
+  onAddCredential: () => void;
 };
 
 export function CredentialsFlatView({
@@ -38,14 +39,14 @@ export function CredentialsFlatView({
   displayName,
   credentials,
   selectedCredential,
-  onSelectCredential,
-  onClearCredential,
-  onAddCredential,
   actionButtonText,
   isOptional,
   showTitle,
   readOnly,
   variant,
+  onSelectCredential,
+  onClearCredential,
+  onAddCredential,
 }: Props) {
   const hasCredentials = credentials.length > 0;
 
@@ -53,18 +54,21 @@ export function CredentialsFlatView({
     <>
       {showTitle && (
         <div className="mb-2 flex items-center gap-2">
-          <Text variant="large-medium">
-            {displayName} credentials
-            {isOptional && (
-              <span className="ml-1 text-sm font-normal text-gray-500">
-                (optional)
-              </span>
-            )}
-            {!isOptional && !selectedCredential && (
-              <span className="ml-1 text-sm font-normal text-red-600">
-                (missing)
-              </span>
-            )}
+          <Text variant="large-medium" className="flex items-center gap-2">
+            <span className="inline-flex items-center gap-1">
+              {displayName} credentials
+              {isOptional && (
+                <span className="text-sm font-normal text-gray-500">
+                  (optional)
+                </span>
+              )}
+              {!isOptional && !selectedCredential && (
+                <span className="inline-flex items-center gap-1 text-red-600">
+                  <ExclamationTriangleIcon className="size-4" />
+                  <span className="text-sm font-normal">required</span>
+                </span>
+              )}
+            </span>
           </Text>
           {schema.description && (
             <InformationTooltip description={schema.description} />
