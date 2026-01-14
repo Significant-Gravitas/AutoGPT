@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { CaretDown } from "@phosphor-icons/react";
+import { CaretDownIcon } from "@phosphor-icons/react";
 import {
   Popover,
   PopoverContent,
@@ -116,22 +116,22 @@ export function LlmModelPicker({
           type="button"
           disabled={disabled}
           className={cn(
-            "flex w-full min-w-[15rem] items-center gap-2 rounded-lg border border-zinc-200 bg-white px-4 py-2.5 text-left",
+            "flex w-full min-w-[15rem] items-center rounded-lg border border-zinc-200 bg-white px-3 py-2 text-left",
             "hover:border-zinc-300 focus:outline-none focus:ring-2 focus:ring-zinc-200",
             disabled && "cursor-not-allowed opacity-60",
           )}
         >
           <LlmIcon value={triggerCreator} />
-          <Text variant="body" className="flex-1 text-zinc-900">
+          <Text variant="body" className="flex-1 text-zinc-900 ml-1">
             {triggerTitle}
           </Text>
-          <CaretDown className="h-4 w-4 text-zinc-800" />
+          <CaretDownIcon className="h-3 w-3 text-zinc-900" weight="bold" />
         </button>
       </PopoverTrigger>
       <PopoverContent
         align="start"
-        sideOffset={8}
-        className="max-h-[60vh] w-[--radix-popover-trigger-width] overflow-y-auto rounded-md border border-zinc-200 bg-white p-0 shadow-[0px_1px_4px_rgba(12,12,13,0.12)]"
+        sideOffset={4}
+        className="max-h-[60vh] min-w-[16rem] w-[--radix-popover-trigger-width] overflow-y-auto rounded-md border border-zinc-200 bg-white p-0 shadow-[0px_1px_4px_rgba(12,12,13,0.12)]"
       >
         {view === "creator" && (
           <div className="flex flex-col">

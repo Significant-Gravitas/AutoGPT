@@ -1,6 +1,6 @@
 "use client";
 
-import { CaretRight, Check } from "@phosphor-icons/react";
+import { CaretRightIcon, CheckIcon } from "@phosphor-icons/react";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 
@@ -30,7 +30,7 @@ export function LlmMenuItem({
       type="button"
       onClick={onClick}
       className={cn(
-        "w-full px-2.5 py-1.5 text-left hover:bg-zinc-100",
+        "w-full pl-2 pr-4 py-1 text-left hover:bg-zinc-100",
       )}
     >
       <div className="flex items-center justify-between gap-3">
@@ -41,15 +41,15 @@ export function LlmMenuItem({
           </Text>
         </div>
         <div className="flex items-center gap-2">
+          {isActive && <CheckIcon className="h-4 w-4 text-emerald-600" weight="bold" />}
           {rightSlot}
-          {isActive && <Check className="h-4 w-4 text-emerald-600" />}
-          {showChevron && <CaretRight className="h-4 w-4 text-zinc-800" />}
+          {showChevron && <CaretRightIcon className="h-4 w-4 text-zinc-900" weight="bold" />}
         </div>
       </div>
       {subtitle && (
         <Text
           variant="small"
-          className={cn("mt-1 text-zinc-500", hasIcon && "pl-0")}
+          className={cn("mb-1 text-zinc-500", hasIcon && "pl-0")}
         >
           {subtitle}
         </Text>
