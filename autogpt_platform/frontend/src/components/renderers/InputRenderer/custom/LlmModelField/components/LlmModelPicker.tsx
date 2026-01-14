@@ -9,7 +9,13 @@ import {
 } from "@/components/__legacy__/ui/popover";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
-import { groupByCreator, groupByTitle, toLlmDisplayName } from "../helpers";
+import {
+  getCreatorDisplayName,
+  getModelDisplayName,
+  getProviderDisplayName,
+  groupByCreator,
+  groupByTitle,
+} from "../helpers";
 import { LlmModelMetadata } from "../types";
 import { LlmIcon } from "./LlmIcon";
 import { LlmMenuHeader } from "./LlmMenuHeader";
@@ -39,26 +45,36 @@ export function LlmModelPicker({
   const [activeTitle, setActiveTitle] = useState<string | null>(null);
 
   const creators = useMemo(() => {
-    return Array.from(
-      new Set(models.map((model) => model.creator)),
-    ).sort((a, b) => toLlmDisplayName(a).localeCompare(toLlmDisplayName(b)));
+    const grouped = groupByCreator(models);
+    return Array.from(grouped.keys()).sort((a, b) => a.localeCompare(b));
   }, [models]);
 
   const modelsByCreator = useMemo(() => groupByCreator(models), [models]);
+
+  const creatorIconValues = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const [creator, entries] of modelsByCreator.entries()) {
+      map.set(creator, entries[0]?.creator ?? creator);
+    }
+    return map;
+  }, [modelsByCreator]);
 
   useEffect(() => {
     if (!open) {
       return;
     }
     setView("creator");
-    setActiveCreator(selectedModel?.creator ?? creators[0] ?? null);
-    setActiveTitle(selectedModel?.title ?? null);
-  }, [open, selectedModel?.creator, selectedModel?.title, creators]);
+    setActiveCreator(
+      selectedModel ? getCreatorDisplayName(selectedModel) : creators[0] ?? null,
+    );
+    setActiveTitle(selectedModel ? getModelDisplayName(selectedModel) : null);
+  }, [open, selectedModel, creators]);
 
   const currentCreator = activeCreator ?? creators[0] ?? null;
   const currentModels = currentCreator
     ? modelsByCreator.get(currentCreator) ?? []
     : [];
+  const currentCreatorIcon = currentModels[0]?.creator ?? currentCreator;
 
   const modelsByTitle = useMemo(() => groupByTitle(currentModels), [currentModels]);
 
@@ -88,7 +104,9 @@ export function LlmModelPicker({
   };
 
   const triggerModel = selectedModel ?? recommendedModel ?? models[0];
-  const triggerTitle = triggerModel ? triggerModel.title : "Select model";
+  const triggerTitle = triggerModel
+    ? getModelDisplayName(triggerModel)
+    : "Select model";
   const triggerCreator = triggerModel?.creator ?? "";
 
   return (
@@ -120,7 +138,7 @@ export function LlmModelPicker({
             {recommendedModel && (
               <>
                 <LlmMenuItem
-                  title={recommendedModel.title}
+                  title={getModelDisplayName(recommendedModel)}
                   subtitle="Recommended"
                   icon={<LlmIcon value={recommendedModel.creator} />}
                   onClick={() => handleSelectModel(recommendedModel.name)}
@@ -131,10 +149,14 @@ export function LlmModelPicker({
             {creators.map((creator) => (
               <LlmMenuItem
                 key={creator}
-                title={toLlmDisplayName(creator)}
-                icon={<LlmIcon value={creator} />}
+                title={creator}
+                icon={<LlmIcon value={creatorIconValues.get(creator) ?? creator} />}
                 showChevron={true}
-                isActive={selectedModel?.creator === creator}
+                isActive={
+                  selectedModel
+                    ? getCreatorDisplayName(selectedModel) === creator
+                    : false
+                }
                 onClick={() => {
                   setActiveCreator(creator);
                   setView("model");
@@ -146,7 +168,7 @@ export function LlmModelPicker({
         {view === "model" && currentCreator && (
           <div className="flex flex-col">
             <LlmMenuHeader
-              label={toLlmDisplayName(currentCreator)}
+              label={currentCreator}
               onBack={() => setView("creator")}
             />
             <div className="border-b border-zinc-200" />
@@ -154,10 +176,14 @@ export function LlmModelPicker({
               <LlmMenuItem
                 key={entry.title}
                 title={entry.title}
-                icon={<LlmIcon value={currentCreator} />}
+                icon={<LlmIcon value={currentCreatorIcon} />}
                 rightSlot={<LlmPriceTier tier={entry.entries[0]?.price_tier} />}
                 showChevron={entry.providerCount > 1}
-                isActive={selectedModel?.title === entry.title}
+                isActive={
+                  selectedModel
+                    ? getModelDisplayName(selectedModel) === entry.title
+                    : false
+                }
                 onClick={() => {
                   if (entry.providerCount > 1) {
                     setActiveTitle(entry.title);
@@ -180,7 +206,7 @@ export function LlmModelPicker({
             {providerEntries.map((entry) => (
               <LlmMenuItem
                 key={`${entry.title}-${entry.provider}`}
-                title={toLlmDisplayName(entry.provider)}
+                title={getProviderDisplayName(entry)}
                 icon={<LlmIcon value={entry.provider} />}
                 isActive={selectedModel?.provider === entry.provider}
                 onClick={() => handleSelectModel(entry.name)}

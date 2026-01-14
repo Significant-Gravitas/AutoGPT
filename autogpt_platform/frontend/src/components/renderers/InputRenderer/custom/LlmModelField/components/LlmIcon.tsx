@@ -2,7 +2,6 @@
 
 import Image from "next/image";
 import { Text } from "@/components/atoms/Text/Text";
-import { toLlmDisplayName } from "../helpers";
 import claudeImg from "@/components/atoms/LLMItem/assets/claude.svg";
 import gptImg from "@/components/atoms/LLMItem/assets/gpt.svg";
 import perplexityImg from "@/components/atoms/LLMItem/assets/perplexity.svg";
@@ -31,7 +30,7 @@ export function LlmIcon({ value, size = 20 }: Props) {
     return (
       <Image
         src={src}
-        alt={toLlmDisplayName(value)}
+        alt={value}
         width={size}
         height={size}
         className="rounded-xsmall"
@@ -39,7 +38,7 @@ export function LlmIcon({ value, size = 20 }: Props) {
     );
   }
 
-  const fallback = toLlmDisplayName(value).slice(0, 1) || "?";
+  const fallback = value?.trim().slice(0, 1).toUpperCase() || "?";
   return (
     <div className="flex h-5 w-5 items-center justify-center rounded-xsmall bg-zinc-100">
       <Text variant="small" className="text-zinc-500">

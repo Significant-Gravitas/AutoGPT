@@ -1,38 +1,12 @@
 import { LlmModelMetadata } from "./types";
 
-const displayNameOverrides: Record<string, string> = {
-  aiml_api: "AI/ML",
-  anthropic: "Anthropic",
-  openai: "OpenAI",
-  open_router: "Open Router",
-  llama_api: "Llama API",
-  groq: "Groq",
-  ollama: "Ollama",
-  v0: "V0",
-};
-
-export function toLlmDisplayName(value: string): string {
-  if (!value) {
-    return "";
-  }
-  const normalized = value.toLowerCase();
-  if (displayNameOverrides[normalized]) {
-    return displayNameOverrides[normalized];
-  }
-  return value
-    .split(/[_-]/)
-    .map((word) =>
-      word.length ? word[0].toUpperCase() + word.slice(1).toLowerCase() : "",
-    )
-    .join(" ");
-}
-
 export function groupByCreator(models: LlmModelMetadata[]) {
   const map = new Map<string, LlmModelMetadata[]>();
   for (const model of models) {
-    const existing = map.get(model.creator) ?? [];
+    const key = getCreatorDisplayName(model);
+    const existing = map.get(key) ?? [];
     existing.push(model);
-    map.set(model.creator, existing);
+    map.set(key, existing);
   }
   return map;
 }
@@ -40,9 +14,22 @@ export function groupByCreator(models: LlmModelMetadata[]) {
 export function groupByTitle(models: LlmModelMetadata[]) {
   const map = new Map<string, LlmModelMetadata[]>();
   for (const model of models) {
-    const existing = map.get(model.title) ?? [];
+    const displayName = getModelDisplayName(model);
+    const existing = map.get(displayName) ?? [];
     existing.push(model);
-    map.set(model.title, existing);
+    map.set(displayName, existing);
   }
   return map;
+}
+
+export function getCreatorDisplayName(model: LlmModelMetadata): string {
+  return model.creator_name || model.creator || "";
+}
+
+export function getModelDisplayName(model: LlmModelMetadata): string {
+  return model.title || model.name || "";
+}
+
+export function getProviderDisplayName(model: LlmModelMetadata): string {
+  return model.provider_name || model.provider || "";
 }
