@@ -86,7 +86,7 @@ class ChatSession(BaseModel):
         )
 
     @staticmethod
-    def from_prisma(
+    def from_db(
         prisma_session: PrismaChatSession,
         prisma_messages: list[PrismaChatMessage] | None = None,
     ) -> "ChatSession":
@@ -296,7 +296,7 @@ async def _get_session_from_db(session_id: str) -> ChatSession | None:
         f"roles={[m.role for m in messages] if messages else []}"
     )
 
-    return ChatSession.from_prisma(prisma_session, messages)
+    return ChatSession.from_db(prisma_session, messages)
 
 
 async def _save_session_to_db(
@@ -498,7 +498,7 @@ async def get_user_sessions(
     sessions = []
     for prisma_session in prisma_sessions:
         # Convert without messages for listing (lighter weight)
-        sessions.append(ChatSession.from_prisma(prisma_session, None))
+        sessions.append(ChatSession.from_db(prisma_session, None))
 
     return sessions
 
