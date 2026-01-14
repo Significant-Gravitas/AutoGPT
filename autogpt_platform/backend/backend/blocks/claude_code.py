@@ -1,4 +1,6 @@
+import json
 import shlex
+import uuid
 from typing import Literal
 
 from e2b import AsyncSandbox as BaseAsyncSandbox
@@ -67,7 +69,7 @@ class ClaudeCodeBlock(Block):
         ] = CredentialsField(
             description=(
                 "API key for the E2B platform to create the sandbox. "
-                "Get one at https://e2b.dev/docs"
+                "Get one on the [e2b website](https://e2b.dev/docs)"
             ),
         )
 
@@ -76,7 +78,7 @@ class ClaudeCodeBlock(Block):
         ] = CredentialsField(
             description=(
                 "API key for Anthropic to power Claude Code. "
-                "Get one at https://console.anthropic.com/"
+                "Get one at [anthropics website](https://console.anthropic.com)"
             ),
         )
 
@@ -283,8 +285,6 @@ class ClaudeCodeBlock(Block):
         Returns:
             Tuple of (response, files, conversation_history, session_id, sandbox_id)
         """
-        import json
-        import uuid
 
         # Validate that sandbox_id is provided when resuming a session
         if session_id and not existing_sandbox_id:
