@@ -33,6 +33,8 @@ export const LlmModelField = (props: FieldProps) => {
     return Object.values(metadata);
   }, [metadata]);
 
+  const { isInputConnected } = useEdgeStore();
+
   const selectedName =
     typeof formData === "string"
       ? formData
@@ -81,7 +83,7 @@ export const LlmModelField = (props: FieldProps) => {
   const title = schema.title || name || "LLM Model";
 
   const { nodeId } = registry.formContext ?? {};
-  const { isInputConnected } = useEdgeStore();
+
   const isHandleConnected = nodeId
     ? isInputConnected(nodeId, cleanUpHandleId(handleId))
     : false;
