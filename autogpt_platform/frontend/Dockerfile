@@ -1,5 +1,5 @@
 # Base stage for both dev and prod
-FROM node:21-alpine AS base
+FROM node:22.22.0-alpine AS base
 WORKDIR /app
 RUN corepack enable
 COPY autogpt_platform/frontend/package.json autogpt_platform/frontend/pnpm-lock.yaml ./
