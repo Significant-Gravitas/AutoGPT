@@ -44,8 +44,13 @@ if POOL_TIMEOUT:
 parsed_url = urlparse(DATABASE_URL)
 url_params = dict(parse_qsl(parsed_url.query))
 db_schema = url_params.get("schema", "platform")
+# Build search_path, avoiding duplicates if db_schema is already 'public'
+search_path_schemas = list(
+    dict.fromkeys([db_schema, "public"])
+)  # Preserves order, removes duplicates
+search_path = ",".join(search_path_schemas)
 # This allows using ::vector without schema qualification
-DATABASE_URL = add_param(DATABASE_URL, "options", f"-c search_path={db_schema},public")
+DATABASE_URL = add_param(DATABASE_URL, "options", f"-c search_path={search_path}")
 
 HTTP_TIMEOUT = int(POOL_TIMEOUT) if POOL_TIMEOUT else None
 
