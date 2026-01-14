@@ -2,6 +2,7 @@ import asyncio
 import logging
 import uuid
 from datetime import UTC, datetime
+from weakref import WeakValueDictionary
 
 from openai.types.chat import (
     ChatCompletionAssistantMessageParam,
@@ -31,17 +32,26 @@ from .config import ChatConfig
 logger = logging.getLogger(__name__)
 config = ChatConfig()
 
-# Session-level locks to prevent race conditions during concurrent upserts
-_session_locks: dict[str, asyncio.Lock] = {}
+# Session-level locks to prevent race conditions during concurrent upserts.
+# Uses WeakValueDictionary to automatically garbage collect locks when no longer referenced,
+# preventing unbounded memory growth while maintaining lock semantics for active sessions.
+_session_locks: WeakValueDictionary[str, asyncio.Lock] = WeakValueDictionary()
 _session_locks_mutex = asyncio.Lock()
 
 
 async def _get_session_lock(session_id: str) -> asyncio.Lock:
-    """Get or create a lock for a specific session to prevent concurrent upserts."""
+    """Get or create a lock for a specific session to prevent concurrent upserts.
+
+    Uses WeakValueDictionary for automatic cleanup: locks are garbage collected
+    when no coroutine holds a reference to them, preventing memory leaks from
+    unbounded growth of session locks.
+    """
     async with _session_locks_mutex:
-        if session_id not in _session_locks:
-            _session_locks[session_id] = asyncio.Lock()
-        return _session_locks[session_id]
+        lock = _session_locks.get(session_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            _session_locks[session_id] = lock
+        return lock
 
 
 class ChatMessage(BaseModel):
@@ -465,24 +475,32 @@ async def upsert_chat_session(
 
 
 async def create_chat_session(user_id: str | None) -> ChatSession:
-    """Create a new chat session and persist it."""
+    """Create a new chat session and persist it.
+
+    Raises:
+        DatabaseError: If the database write fails. We fail fast to ensure
+            callers never receive a non-persisted session that only exists
+            in cache (which would be lost when the cache expires).
+    """
     session = ChatSession.new(user_id)
 
-    # Create in database first
+    # Create in database first - fail fast if this fails
     try:
         await chat_db.create_chat_session(
             session_id=session.session_id,
             user_id=user_id,
         )
     except Exception as e:
-        logger.error(f"Failed to create session in database: {e}")
-        # Continue even if DB fails - cache will still work
+        logger.error(f"Failed to create session {session.session_id} in database: {e}")
+        raise DatabaseError(
+            f"Failed to create chat session {session.session_id} in database"
+        ) from e
 
-    # Cache the session
+    # Cache the session (best-effort optimization, DB is source of truth)
     try:
         await _cache_session(session)
     except Exception as e:
-        logger.warning(f"Failed to cache new session: {e}")
+        logger.warning(f"Failed to cache new session {session.session_id}: {e}")
 
     return session
 
@@ -521,6 +539,10 @@ async def delete_chat_session(session_id: str, user_id: str | None = None) -> bo
         await async_redis.delete(redis_key)
     except Exception as e:
         logger.warning(f"Failed to delete session {session_id} from cache: {e}")
+
+    # Clean up session lock (belt-and-suspenders with WeakValueDictionary)
+    async with _session_locks_mutex:
+        _session_locks.pop(session_id, None)
 
     # Delete from database (with optional user_id validation)
     return await chat_db.delete_chat_session(session_id, user_id)

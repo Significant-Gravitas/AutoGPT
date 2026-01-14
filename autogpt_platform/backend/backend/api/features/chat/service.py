@@ -256,8 +256,10 @@ async def stream_chat_completion(
         f"Streaming chat completion for session {session_id} for message {message} and user id {user_id}. Message is user message: {is_user_message}"
     )
 
-    # Langfuse trace will be created after session is loaded (need messages for input)
+    # Langfuse observations will be created after session is loaded (need messages for input)
+    # Initialize to None so finally block can safely check and end them
     trace = None
+    generation = None
 
     # Only fetch from Redis if session not provided (initial call)
     if session is None:
@@ -369,250 +371,261 @@ async def stream_chat_completion(
     except Exception as e:
         logger.warning(f"Failed to create Langfuse trace: {e}")
 
+    # Initialize variables that will be used in finally block (must be defined before try)
     assistant_response = ChatMessage(
         role="assistant",
         content="",
     )
-
-    has_yielded_end = False
-    has_yielded_error = False
-    has_done_tool_call = False
-    has_received_text = False
-    text_streaming_ended = False
-    tool_response_messages: list[ChatMessage] = []
     accumulated_tool_calls: list[dict[str, Any]] = []
-    should_retry = False
 
-    # Generate unique IDs for AI SDK protocol
-    import uuid as uuid_module
-
-    message_id = str(uuid_module.uuid4())
-    text_block_id = str(uuid_module.uuid4())
-
-    # Yield message start
-    yield StreamStart(messageId=message_id)
-
-    # Create Langfuse generation for each LLM call, linked to the prompt
-    # Using v3 SDK: start_observation with as_type="generation"
-    generation = (
-        trace.start_observation(
-            as_type="generation",
-            name="llm_call",
-            model=config.model,
-            input={"messages": trace_input_messages},
-            prompt=langfuse_prompt,
-        )
-        if trace
-        else None
-    )
-
+    # Wrap main logic in try/finally to ensure Langfuse observations are always ended
     try:
-        async for chunk in _stream_chat_chunks(
-            session=session,
-            tools=tools,
-            system_prompt=system_prompt,
-            text_block_id=text_block_id,
-        ):
+        has_yielded_end = False
+        has_yielded_error = False
+        has_done_tool_call = False
+        has_received_text = False
+        text_streaming_ended = False
+        tool_response_messages: list[ChatMessage] = []
+        should_retry = False
 
-            if isinstance(chunk, StreamTextStart):
-                # Emit text-start before first text delta
-                if not has_received_text:
-                    yield chunk
-            elif isinstance(chunk, StreamTextDelta):
-                delta = chunk.delta or ""
-                assert assistant_response.content is not None
-                assistant_response.content += delta
-                has_received_text = True
-                yield chunk
-            elif isinstance(chunk, StreamTextEnd):
-                # Emit text-end after text completes
-                if has_received_text and not text_streaming_ended:
-                    text_streaming_ended = True
-                    yield chunk
-            elif isinstance(chunk, StreamToolInputStart):
-                # Emit text-end before first tool call, but only if we've received text
-                if has_received_text and not text_streaming_ended:
-                    yield StreamTextEnd(id=text_block_id)
-                    text_streaming_ended = True
-                yield chunk
-            elif isinstance(chunk, StreamToolInputAvailable):
-                # Accumulate tool calls in OpenAI format
-                accumulated_tool_calls.append(
-                    {
-                        "id": chunk.toolCallId,
-                        "type": "function",
-                        "function": {
-                            "name": chunk.toolName,
-                            "arguments": orjson.dumps(chunk.input).decode("utf-8"),
-                        },
-                    }
-                )
-            elif isinstance(chunk, StreamToolOutputAvailable):
-                result_content = (
-                    chunk.output
-                    if isinstance(chunk.output, str)
-                    else orjson.dumps(chunk.output).decode("utf-8")
-                )
-                tool_response_messages.append(
-                    ChatMessage(
-                        role="tool",
-                        content=result_content,
-                        tool_call_id=chunk.toolCallId,
-                    )
-                )
-                has_done_tool_call = True
-                # Track if any tool execution failed
-                if not chunk.success:
-                    logger.warning(
-                        f"Tool {chunk.toolName} (ID: {chunk.toolCallId}) execution failed"
-                    )
-                yield chunk
-            elif isinstance(chunk, StreamFinish):
-                if not has_done_tool_call:
-                    has_yielded_end = True
-                    yield chunk
-            elif isinstance(chunk, StreamError):
-                has_yielded_error = True
-            elif isinstance(chunk, StreamUsage):
-                session.usage.append(
-                    Usage(
-                        prompt_tokens=chunk.promptTokens,
-                        completion_tokens=chunk.completionTokens,
-                        total_tokens=chunk.totalTokens,
-                    )
-                )
-            else:
-                logger.error(f"Unknown chunk type: {type(chunk)}", exc_info=True)
-    except Exception as e:
-        logger.error(f"Error during stream: {e!s}", exc_info=True)
+        # Generate unique IDs for AI SDK protocol
+        import uuid as uuid_module
 
-        # Check if this is a retryable error (JSON parsing, incomplete tool calls, etc.)
-        is_retryable = isinstance(e, (orjson.JSONDecodeError, KeyError, TypeError))
+        message_id = str(uuid_module.uuid4())
+        text_block_id = str(uuid_module.uuid4())
 
-        if is_retryable and retry_count < config.max_retries:
-            logger.info(
-                f"Retryable error encountered. Attempt {retry_count + 1}/{config.max_retries}"
+        # Yield message start
+        yield StreamStart(messageId=message_id)
+
+        # Create Langfuse generation for each LLM call, linked to the prompt
+        # Using v3 SDK: start_observation with as_type="generation"
+        generation = (
+            trace.start_observation(
+                as_type="generation",
+                name="llm_call",
+                model=config.model,
+                input={"messages": trace_input_messages},
+                prompt=langfuse_prompt,
             )
-            should_retry = True
-        else:
-            # Non-retryable error or max retries exceeded
-            # Save any partial progress before reporting error
-            messages_to_save: list[ChatMessage] = []
+            if trace
+            else None
+        )
 
-            # Add assistant message if it has content or tool calls
-            if accumulated_tool_calls:
-                assistant_response.tool_calls = accumulated_tool_calls
-            if assistant_response.content or assistant_response.tool_calls:
-                messages_to_save.append(assistant_response)
+        try:
+            async for chunk in _stream_chat_chunks(
+                session=session,
+                tools=tools,
+                system_prompt=system_prompt,
+                text_block_id=text_block_id,
+            ):
 
-            # Add tool response messages after assistant message
-            messages_to_save.extend(tool_response_messages)
-
-            session.messages.extend(messages_to_save)
-            await upsert_chat_session(session)
-
-            if not has_yielded_error:
-                error_message = str(e)
-                if not is_retryable:
-                    error_message = f"Non-retryable error: {error_message}"
-                elif retry_count >= config.max_retries:
-                    error_message = (
-                        f"Max retries ({config.max_retries}) exceeded: {error_message}"
+                if isinstance(chunk, StreamTextStart):
+                    # Emit text-start before first text delta
+                    if not has_received_text:
+                        yield chunk
+                elif isinstance(chunk, StreamTextDelta):
+                    delta = chunk.delta or ""
+                    assert assistant_response.content is not None
+                    assistant_response.content += delta
+                    has_received_text = True
+                    yield chunk
+                elif isinstance(chunk, StreamTextEnd):
+                    # Emit text-end after text completes
+                    if has_received_text and not text_streaming_ended:
+                        text_streaming_ended = True
+                        yield chunk
+                elif isinstance(chunk, StreamToolInputStart):
+                    # Emit text-end before first tool call, but only if we've received text
+                    if has_received_text and not text_streaming_ended:
+                        yield StreamTextEnd(id=text_block_id)
+                        text_streaming_ended = True
+                    yield chunk
+                elif isinstance(chunk, StreamToolInputAvailable):
+                    # Accumulate tool calls in OpenAI format
+                    accumulated_tool_calls.append(
+                        {
+                            "id": chunk.toolCallId,
+                            "type": "function",
+                            "function": {
+                                "name": chunk.toolName,
+                                "arguments": orjson.dumps(chunk.input).decode("utf-8"),
+                            },
+                        }
                     )
+                elif isinstance(chunk, StreamToolOutputAvailable):
+                    result_content = (
+                        chunk.output
+                        if isinstance(chunk.output, str)
+                        else orjson.dumps(chunk.output).decode("utf-8")
+                    )
+                    tool_response_messages.append(
+                        ChatMessage(
+                            role="tool",
+                            content=result_content,
+                            tool_call_id=chunk.toolCallId,
+                        )
+                    )
+                    has_done_tool_call = True
+                    # Track if any tool execution failed
+                    if not chunk.success:
+                        logger.warning(
+                            f"Tool {chunk.toolName} (ID: {chunk.toolCallId}) execution failed"
+                        )
+                    yield chunk
+                elif isinstance(chunk, StreamFinish):
+                    if not has_done_tool_call:
+                        has_yielded_end = True
+                        yield chunk
+                elif isinstance(chunk, StreamError):
+                    has_yielded_error = True
+                elif isinstance(chunk, StreamUsage):
+                    session.usage.append(
+                        Usage(
+                            prompt_tokens=chunk.promptTokens,
+                            completion_tokens=chunk.completionTokens,
+                            total_tokens=chunk.totalTokens,
+                        )
+                    )
+                else:
+                    logger.error(f"Unknown chunk type: {type(chunk)}", exc_info=True)
+        except Exception as e:
+            logger.error(f"Error during stream: {e!s}", exc_info=True)
 
-                error_response = StreamError(errorText=error_message)
-                yield error_response
-            if not has_yielded_end:
-                yield StreamFinish()
-            return
+            # Check if this is a retryable error (JSON parsing, incomplete tool calls, etc.)
+            is_retryable = isinstance(e, (orjson.JSONDecodeError, KeyError, TypeError))
 
-    # Handle retry outside of exception handler to avoid nesting
-    if should_retry and retry_count < config.max_retries:
+            if is_retryable and retry_count < config.max_retries:
+                logger.info(
+                    f"Retryable error encountered. Attempt {retry_count + 1}/{config.max_retries}"
+                )
+                should_retry = True
+            else:
+                # Non-retryable error or max retries exceeded
+                # Save any partial progress before reporting error
+                messages_to_save: list[ChatMessage] = []
+
+                # Add assistant message if it has content or tool calls
+                if accumulated_tool_calls:
+                    assistant_response.tool_calls = accumulated_tool_calls
+                if assistant_response.content or assistant_response.tool_calls:
+                    messages_to_save.append(assistant_response)
+
+                # Add tool response messages after assistant message
+                messages_to_save.extend(tool_response_messages)
+
+                session.messages.extend(messages_to_save)
+                await upsert_chat_session(session)
+
+                if not has_yielded_error:
+                    error_message = str(e)
+                    if not is_retryable:
+                        error_message = f"Non-retryable error: {error_message}"
+                    elif retry_count >= config.max_retries:
+                        error_message = f"Max retries ({config.max_retries}) exceeded: {error_message}"
+
+                    error_response = StreamError(errorText=error_message)
+                    yield error_response
+                if not has_yielded_end:
+                    yield StreamFinish()
+                return
+
+        # Handle retry outside of exception handler to avoid nesting
+        if should_retry and retry_count < config.max_retries:
+            logger.info(
+                f"Retrying stream_chat_completion for session {session_id}, attempt {retry_count + 1}"
+            )
+            async for chunk in stream_chat_completion(
+                session_id=session.session_id,
+                user_id=user_id,
+                retry_count=retry_count + 1,
+                session=session,
+                context=context,
+            ):
+                yield chunk
+            return  # Exit after retry to avoid double-saving in finally block
+
+        # Normal completion path - save session and handle tool call continuation
         logger.info(
-            f"Retrying stream_chat_completion for session {session_id}, attempt {retry_count + 1}"
-        )
-        async for chunk in stream_chat_completion(
-            session_id=session.session_id,
-            user_id=user_id,
-            retry_count=retry_count + 1,
-            session=session,
-        ):
-            yield chunk
-        return  # Exit after retry to avoid double-saving in finally block
-
-    # Normal completion path - save session and handle tool call continuation
-    logger.info(
-        f"Normal completion path: session={session.session_id}, "
-        f"current message_count={len(session.messages)}"
-    )
-
-    # Build the messages list in the correct order
-    messages_to_save: list[ChatMessage] = []
-
-    # Add assistant message with tool_calls if any
-    if accumulated_tool_calls:
-        assistant_response.tool_calls = accumulated_tool_calls
-        logger.info(
-            f"Added {len(accumulated_tool_calls)} tool calls to assistant message"
-        )
-    if assistant_response.content or assistant_response.tool_calls:
-        messages_to_save.append(assistant_response)
-        logger.info(
-            f"Saving assistant message with content_len={len(assistant_response.content or '')}, tool_calls={len(assistant_response.tool_calls or [])}"
+            f"Normal completion path: session={session.session_id}, "
+            f"current message_count={len(session.messages)}"
         )
 
-    # Add tool response messages after assistant message
-    messages_to_save.extend(tool_response_messages)
-    logger.info(
-        f"Saving {len(tool_response_messages)} tool response messages, "
-        f"total_to_save={len(messages_to_save)}"
-    )
+        # Build the messages list in the correct order
+        messages_to_save: list[ChatMessage] = []
 
-    session.messages.extend(messages_to_save)
-    logger.info(f"Extended session messages, new message_count={len(session.messages)}")
-    await upsert_chat_session(session)
-
-    # If we did a tool call, stream the chat completion again to get the next response
-    if has_done_tool_call:
-        logger.info(
-            "Tool call executed, streaming chat completion again to get assistant response"
-        )
-        async for chunk in stream_chat_completion(
-            session_id=session.session_id,
-            user_id=user_id,
-            session=session,  # Pass session object to avoid Redis refetch
-        ):
-            yield chunk
-
-    # End Langfuse generation with output and usage
-    if generation:
-        latest_usage = session.usage[-1] if session.usage else None
-        generation.update(
-            model=config.model,
-            output={
-                "content": assistant_response.content,
-                "tool_calls": accumulated_tool_calls or None,
-            },
-            usage_details=(
-                {
-                    "input": latest_usage.prompt_tokens,
-                    "output": latest_usage.completion_tokens,
-                    "total": latest_usage.total_tokens,
-                }
-                if latest_usage
-                else None
-            ),
-        )
-        generation.end()
-
-    # Update trace with output and end the span
-    # Using v3 SDK: update_trace() for trace-level output, then end()
-    if trace:
+        # Add assistant message with tool_calls if any
         if accumulated_tool_calls:
-            trace.update_trace(output={"tool_calls": accumulated_tool_calls})
-        else:
-            trace.update_trace(output={"response": assistant_response.content})
-        trace.end()
+            assistant_response.tool_calls = accumulated_tool_calls
+            logger.info(
+                f"Added {len(accumulated_tool_calls)} tool calls to assistant message"
+            )
+        if assistant_response.content or assistant_response.tool_calls:
+            messages_to_save.append(assistant_response)
+            logger.info(
+                f"Saving assistant message with content_len={len(assistant_response.content or '')}, tool_calls={len(assistant_response.tool_calls or [])}"
+            )
+
+        # Add tool response messages after assistant message
+        messages_to_save.extend(tool_response_messages)
+        logger.info(
+            f"Saving {len(tool_response_messages)} tool response messages, "
+            f"total_to_save={len(messages_to_save)}"
+        )
+
+        session.messages.extend(messages_to_save)
+        logger.info(
+            f"Extended session messages, new message_count={len(session.messages)}"
+        )
+        await upsert_chat_session(session)
+
+        # If we did a tool call, stream the chat completion again to get the next response
+        if has_done_tool_call:
+            logger.info(
+                "Tool call executed, streaming chat completion again to get assistant response"
+            )
+            async for chunk in stream_chat_completion(
+                session_id=session.session_id,
+                user_id=user_id,
+                session=session,  # Pass session object to avoid Redis refetch
+                context=context,
+            ):
+                yield chunk
+
+    finally:
+        # Always end Langfuse observations to prevent resource leaks
+        # Guard against None and catch errors to avoid masking original exceptions
+        if generation is not None:
+            try:
+                latest_usage = session.usage[-1] if session.usage else None
+                generation.update(
+                    model=config.model,
+                    output={
+                        "content": assistant_response.content,
+                        "tool_calls": accumulated_tool_calls or None,
+                    },
+                    usage_details=(
+                        {
+                            "input": latest_usage.prompt_tokens,
+                            "output": latest_usage.completion_tokens,
+                            "total": latest_usage.total_tokens,
+                        }
+                        if latest_usage
+                        else None
+                    ),
+                )
+                generation.end()
+            except Exception as e:
+                logger.warning(f"Failed to end Langfuse generation: {e}")
+
+        if trace is not None:
+            try:
+                if accumulated_tool_calls:
+                    trace.update_trace(output={"tool_calls": accumulated_tool_calls})
+                else:
+                    trace.update_trace(output={"response": assistant_response.content})
+                trace.end()
+            except Exception as e:
+                logger.warning(f"Failed to end Langfuse trace: {e}")
 
 
 async def _stream_chat_chunks(
