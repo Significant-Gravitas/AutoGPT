@@ -2438,17 +2438,24 @@ async def notify_waitlist_users_on_launch(
     logger.info(f"Notifying waitlist users for store listing {store_listing_id}")
 
     try:
-        # Find all waitlists linked to this store listing
+        # Find all active waitlists linked to this store listing
+        # Exclude DONE and CANCELED to prevent duplicate notifications on re-approval
         waitlists = await prisma.models.WaitlistEntry.prisma().find_many(
             where={
                 "storeListingId": store_listing_id,
                 "isDeleted": False,
+                "status": {
+                    "not_in": [
+                        prisma.enums.WaitlistExternalStatus.DONE,
+                        prisma.enums.WaitlistExternalStatus.CANCELED,
+                    ]
+                },
             },
             include={"joinedUsers": True},
         )
 
         if not waitlists:
-            logger.info(f"No waitlists found for store listing {store_listing_id}")
+            logger.info(f"No active waitlists found for store listing {store_listing_id}")
             return 0
 
         notification_count = 0
