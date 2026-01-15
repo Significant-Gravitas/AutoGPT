@@ -680,3 +680,34 @@ class ListIsEmptyBlock(Block):
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         yield "is_empty", len(input_data.list) == 0
+
+
+class ConcatenateListsBlock(Block):
+    class Input(BlockSchemaInput):
+        list1: List[Any] = SchemaField(description="The first list.")
+        list2: List[Any] = SchemaField(description="The second list.")
+
+    class Output(BlockSchemaOutput):
+        output: List[Any] = SchemaField(description="The concatenated list.")
+
+    def __init__(self):
+        super().__init__(
+            id="868b02f6-c9a8-4976-bf77-184a992a08cf",
+            description="Concatenates two lists into one.",
+            categories={BlockCategory.BASIC},
+            input_schema=ConcatenateListsBlock.Input,
+            output_schema=ConcatenateListsBlock.Output,
+            test_input=[
+                {"list1": [1, 2], "list2": [3, 4]},
+                {"list1": ["a"], "list2": ["b"]},
+                {"list1": [], "list2": [1]},
+            ],
+            test_output=[
+                ("output", [1, 2, 3, 4]),
+                ("output", ["a", "b"]),
+                ("output", [1]),
+            ],
+        )
+
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
+        yield "output", input_data.list1 + input_data.list2
