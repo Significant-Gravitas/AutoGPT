@@ -75,10 +75,10 @@ jobs:
             ## Your Task
 
             1. **Find Documentation Files**
-               Find block documentation files matching the pattern in `docs/content/platform/blocks/`
+               Find block documentation files matching the pattern in `docs/integrations/`
                Pattern: ${{ inputs.block_pattern }}
 
-               Use: `find docs/content/platform/blocks -name "*.md" -type f`
+               Use: `find docs/integrations -name "*.md" -type f`
 
             2. **For Each Documentation File** (up to ${{ inputs.max_blocks }} files):
 
@@ -150,7 +150,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # Check if there are changes
-          if git diff --quiet docs/content/platform/blocks/; then
+          if git diff --quiet docs/integrations/; then
             echo "No changes to commit"
             exit 0
           fi
@@ -162,7 +162,7 @@ jobs:
           # Create branch and commit
           BRANCH_NAME="docs/enhance-blocks-$(date +%Y%m%d-%H%M%S)"
           git checkout -b "$BRANCH_NAME"
-          git add docs/content/platform/blocks/
+          git add docs/integrations/
           git commit -m "docs: enhance block documentation with LLM-generated content
 
           Pattern: ${{ inputs.block_pattern }}

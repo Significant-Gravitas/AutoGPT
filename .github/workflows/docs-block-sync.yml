@@ -5,14 +5,14 @@ on:
     branches: [master, dev]
     paths:
       - "autogpt_platform/backend/backend/blocks/**"
-      - "docs/content/platform/blocks/**"
+      - "docs/integrations/**"
       - "autogpt_platform/backend/scripts/generate_block_docs.py"
       - ".github/workflows/docs-block-sync.yml"
   pull_request:
     branches: [master, dev]
     paths:
       - "autogpt_platform/backend/backend/blocks/**"
-      - "docs/content/platform/blocks/**"
+      - "docs/integrations/**"
       - "autogpt_platform/backend/scripts/generate_block_docs.py"
       - ".github/workflows/docs-block-sync.yml"
 
@@ -71,4 +71,4 @@ jobs:
           echo "Then commit the updated documentation files."
           echo ""
           echo "Changes detected:"
-          git diff docs/content/platform/blocks/ || true
+          git diff docs/integrations/ || true

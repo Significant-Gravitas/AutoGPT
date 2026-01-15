@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 
 # Default output directory relative to repo root
 DEFAULT_OUTPUT_DIR = (
-    Path(__file__).parent.parent.parent.parent / "docs" / "platform" / "blocks"
+    Path(__file__).parent.parent.parent.parent / "docs" / "integrations"
 )
 
 
@@ -452,10 +452,10 @@ def generate_overview_table(blocks: list[BlockDoc]) -> str:
     lines.append("    Want to create your own custom blocks? Check out our guides:")
     lines.append("    ")
     lines.append(
-        "    - [Build your own Blocks](../new_blocks.md) - Step-by-step tutorial with examples"
+        "    - [Build your own Blocks](https://docs.agpt.co/platform/new_blocks/) - Step-by-step tutorial with examples"
     )
     lines.append(
-        "    - [Block SDK Guide](../block-sdk-guide.md) - Advanced SDK patterns with OAuth, webhooks, and provider configuration"
+        "    - [Block SDK Guide](https://docs.agpt.co/platform/block-sdk-guide/) - Advanced SDK patterns with OAuth, webhooks, and provider configuration"
     )
     lines.append("")
     lines.append(
@@ -605,12 +605,12 @@ def write_block_docs(
 
     # Generate overview file
     overview_content = generate_overview_table(blocks)
-    overview_path = output_dir / "blocks.md"
-    generated_files["blocks.md"] = overview_content
+    overview_path = output_dir / "README.md"
+    generated_files["README.md"] = overview_content
     overview_path.write_text(overview_content)
 
     if verbose:
-        print("  Writing blocks.md (overview)")
+        print("  Writing README.md (overview)")
 
     return generated_files
 
@@ -667,15 +667,15 @@ def check_docs_in_sync(output_dir: Path, blocks: list[BlockDoc]) -> bool:
             all_match = False
 
     # Check overview
-    overview_path = output_dir / "blocks.md"
+    overview_path = output_dir / "README.md"
     if overview_path.exists():
         existing_overview = overview_path.read_text()
         expected_overview = generate_overview_table(blocks)
         if existing_overview.strip() != expected_overview.strip():
-            print("OUT OF SYNC: blocks.md (overview)")
+            print("OUT OF SYNC: README.md (overview)")
             all_match = False
     else:
-        print("MISSING: blocks.md (overview)")
+        print("MISSING: README.md (overview)")
         all_match = False
 
     return all_match
