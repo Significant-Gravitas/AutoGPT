@@ -1,14 +1,14 @@
-import React, { useMemo } from "react";
-import { FieldProps, getUiOptions } from "@rjsf/utils";
+import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
+import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/modals/CredentialsInputs/CredentialsInput";
+import { Switch } from "@/components/atoms/Switch/Switch";
 import {
   BlockIOCredentialsSubSchema,
   CredentialsMetaInput,
 } from "@/lib/autogpt-server-api";
-import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/modals/CredentialsInputs/CredentialsInputs";
-import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
+import { FieldProps, getUiOptions } from "@rjsf/utils";
+import { useMemo } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { CredentialFieldTitle } from "./components/CredentialFieldTitle";
-import { Switch } from "@/components/atoms/Switch/Switch";
 
 export const CredentialsField = (props: FieldProps) => {
   const { formData, onChange, schema, registry, fieldPathId, required } = props;
@@ -88,6 +88,8 @@ export const CredentialsField = (props: FieldProps) => {
         showTitle={false}
         readOnly={formContext?.readOnly}
         isOptional={!isRequired}
+        className="w-full"
+        variant="node"
       />
 
       {/* Optional credentials toggle - only show in builder canvas, not run dialogs */}

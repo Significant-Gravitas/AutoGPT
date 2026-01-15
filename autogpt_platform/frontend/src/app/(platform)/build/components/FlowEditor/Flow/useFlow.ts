@@ -3,6 +3,7 @@ import { useGetV2GetSpecificBlocks } from "@/app/api/__generated__/endpoints/def
 import {
   useGetV1GetExecutionDetails,
   useGetV1GetSpecificGraph,
+  useGetV1ListUserGraphs,
 } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { BlockInfo } from "@/app/api/__generated__/models/blockInfo";
 import { GraphModel } from "@/app/api/__generated__/models/graphModel";
@@ -17,6 +18,7 @@ import { useReactFlow } from "@xyflow/react";
 import { useControlPanelStore } from "../../../stores/controlPanelStore";
 import { useHistoryStore } from "../../../stores/historyStore";
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
+import { okData } from "@/app/api/helpers";
 
 export const useFlow = () => {
   const [isLocked, setIsLocked] = useState(false);
@@ -35,6 +37,9 @@ export const useFlow = () => {
   );
   const setGraphExecutionStatus = useGraphStore(
     useShallow((state) => state.setGraphExecutionStatus),
+  );
+  const setAvailableSubGraphs = useGraphStore(
+    useShallow((state) => state.setAvailableSubGraphs),
   );
   const updateEdgeBeads = useEdgeStore(
     useShallow((state) => state.updateEdgeBeads),
@@ -61,6 +66,11 @@ export const useFlow = () => {
       },
     },
   );
+
+  // Fetch all available graphs for sub-agent update detection
+  const { data: availableGraphs } = useGetV1ListUserGraphs({
+    query: { select: okData },
+  });
 
   const { data: graph, isLoading: isGraphLoading } = useGetV1GetSpecificGraph(
     flowID ?? "",
@@ -116,10 +126,18 @@ export const useFlow = () => {
     }
   }, [graph]);
 
+  // Update available sub-graphs in store for sub-agent update detection
+  useEffect(() => {
+    if (availableGraphs) {
+      setAvailableSubGraphs(availableGraphs);
+    }
+  }, [availableGraphs, setAvailableSubGraphs]);
+
   // adding nodes
   useEffect(() => {
     if (customNodes.length > 0) {
       useNodeStore.getState().setNodes([]);
+      useNodeStore.getState().clearResolutionState();
       addNodes(customNodes);
 
       // Sync hardcoded values with handle IDs.
@@ -203,6 +221,7 @@ export const useFlow = () => {
   useEffect(() => {
     return () => {
       useNodeStore.getState().setNodes([]);
+      useNodeStore.getState().clearResolutionState();
       useEdgeStore.getState().setEdges([]);
       useGraphStore.getState().reset();
       useEdgeStore.getState().resetEdgeBeads();

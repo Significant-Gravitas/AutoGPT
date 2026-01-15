@@ -1,6 +1,6 @@
 "use client";
 
-import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/modals/CredentialsInputs/CredentialsInputs";
+import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/modals/CredentialsInputs/CredentialsInput";
 import { Button } from "@/components/atoms/Button/Button";
 import { CircleNotchIcon, FolderOpenIcon } from "@phosphor-icons/react";
 import {

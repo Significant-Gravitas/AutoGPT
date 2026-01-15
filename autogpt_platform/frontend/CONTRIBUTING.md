@@ -708,10 +708,7 @@ export function CreateButton() {
 
 ## 🧪 Testing & Storybook
 
-- End-to-end: [Playwright](https://playwright.dev/docs/intro) (`pnpm test`, `pnpm test-ui`)
-- [Storybook](https://storybook.js.org/docs) for isolated UI development (`pnpm storybook` / `pnpm build-storybook`)
-- For Storybook tests in CI, see [`@storybook/test-runner`](https://storybook.js.org/docs/writing-tests/test-runner) (`test-storybook:ci`)
-- When changing components in `src/components`, update or add stories and visually verify in Storybook/Chromatic
+- See `TESTING.md` for Playwright setup, E2E data seeding, and Storybook usage.
 
 ---
 

@@ -1,7 +1,6 @@
 """Configuration management for chat system."""
 
 import os
-from pathlib import Path
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
@@ -12,7 +11,11 @@ class ChatConfig(BaseSettings):
 
     # OpenAI API Configuration
     model: str = Field(
-        default="qwen/qwen3-235b-a22b-2507", description="Default model to use"
+        default="anthropic/claude-opus-4.5", description="Default model to use"
+    )
+    title_model: str = Field(
+        default="openai/gpt-4o-mini",
+        description="Model to use for generating session titles (should be fast/cheap)",
     )
     api_key: str | None = Field(default=None, description="OpenAI API key")
     base_url: str | None = Field(
@@ -22,12 +25,6 @@ class ChatConfig(BaseSettings):
 
     # Session TTL Configuration - 12 hours
     session_ttl: int = Field(default=43200, description="Session TTL in seconds")
-
-    # System Prompt Configuration
-    system_prompt_path: str = Field(
-        default="prompts/chat_system.md",
-        description="Path to system prompt file relative to chat module",
-    )
 
     # Streaming Configuration
     max_context_messages: int = Field(
@@ -39,6 +36,13 @@ class ChatConfig(BaseSettings):
     max_agent_runs: int = Field(default=3, description="Maximum number of agent runs")
     max_agent_schedules: int = Field(
         default=3, description="Maximum number of agent schedules"
+    )
+
+    # Langfuse Prompt Management Configuration
+    # Note: Langfuse credentials are in Settings().secrets (settings.py)
+    langfuse_prompt_name: str = Field(
+        default="CoPilot Prompt",
+        description="Name of the prompt in Langfuse to fetch",
     )
 
     @field_validator("api_key", mode="before")
@@ -72,43 +76,11 @@ class ChatConfig(BaseSettings):
                 v = "https://openrouter.ai/api/v1"
         return v
 
-    def get_system_prompt(self, **template_vars) -> str:
-        """Load and render the system prompt from file.
-
-        Args:
-            **template_vars: Variables to substitute in the template
-
-        Returns:
-            Rendered system prompt string
-
-        """
-        # Get the path relative to this module
-        module_dir = Path(__file__).parent
-        prompt_path = module_dir / self.system_prompt_path
-
-        # Check for .j2 extension first (Jinja2 template)
-        j2_path = Path(str(prompt_path) + ".j2")
-        if j2_path.exists():
-            try:
-                from jinja2 import Template
-
-                template = Template(j2_path.read_text())
-                return template.render(**template_vars)
-            except ImportError:
-                # Jinja2 not installed, fall back to reading as plain text
-                return j2_path.read_text()
-
-        # Check for markdown file
-        if prompt_path.exists():
-            content = prompt_path.read_text()
-
-            # Simple variable substitution if Jinja2 is not available
-            for key, value in template_vars.items():
-                placeholder = f"{{{key}}}"
-                content = content.replace(placeholder, str(value))
-
-            return content
-        raise FileNotFoundError(f"System prompt file not found: {prompt_path}")
+    # Prompt paths for different contexts
+    PROMPT_PATHS: dict[str, str] = {
+        "default": "prompts/chat_system.md",
+        "onboarding": "prompts/onboarding_system.md",
+    }
 
     class Config:
         """Pydantic config."""

@@ -233,13 +233,14 @@ export default function useAgentGraph(
         title: `${block.name} ${node.id}`,
         inputSchema: block.inputSchema,
         outputSchema: block.outputSchema,
+        isOutputStatic: block.staticOutput,
         hardcodedValues: node.input_default,
         uiType: block.uiType,
         metadata: metadata,
         connections: graph.links
           .filter((l) => [l.source_id, l.sink_id].includes(node.id))
           .map((link) => ({
-            edge_id: formatEdgeID(link),
+            id: formatEdgeID(link),
             source: link.source_id,
             sourceHandle: link.source_name,
             target: link.sink_id,

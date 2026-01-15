@@ -31,7 +31,7 @@ export const FormRenderer = ({
   }, [preprocessedSchema, uiSchema]);
 
   return (
-    <div className={"mb-6 mt-4"}>
+    <div className={"mb-6 mt-4"} data-tutorial-id="input-handles">
       <Form
         formContext={formContext}
         idPrefix="agpt"

@@ -391,8 +391,12 @@ class SmartDecisionMakerBlock(Block):
         """
         block = sink_node.block
 
+        # Use custom name from node metadata if set, otherwise fall back to block.name
+        custom_name = sink_node.metadata.get("customized_name")
+        tool_name = custom_name if custom_name else block.name
+
         tool_function: dict[str, Any] = {
-            "name": SmartDecisionMakerBlock.cleanup(block.name),
+            "name": SmartDecisionMakerBlock.cleanup(tool_name),
             "description": block.description,
         }
         sink_block_input_schema = block.input_schema
@@ -489,14 +493,24 @@ class SmartDecisionMakerBlock(Block):
                 f"Sink graph metadata not found: {graph_id} {graph_version}"
             )
 
+        # Use custom name from node metadata if set, otherwise fall back to graph name
+        custom_name = sink_node.metadata.get("customized_name")
+        tool_name = custom_name if custom_name else sink_graph_meta.name
+
         tool_function: dict[str, Any] = {
-            "name": SmartDecisionMakerBlock.cleanup(sink_graph_meta.name),
+            "name": SmartDecisionMakerBlock.cleanup(tool_name),
             "description": sink_graph_meta.description,
         }
 
         properties = {}
+        field_mapping = {}
 
         for link in links:
+            field_name = link.sink_name
+
+            clean_field_name = SmartDecisionMakerBlock.cleanup(field_name)
+            field_mapping[clean_field_name] = field_name
+
             sink_block_input_schema = sink_node.input_default["input_schema"]
             sink_block_properties = sink_block_input_schema.get("properties", {}).get(
                 link.sink_name, {}
@@ -506,7 +520,7 @@ class SmartDecisionMakerBlock(Block):
                 if "description" in sink_block_properties
                 else f"The {link.sink_name} of the tool"
             )
-            properties[link.sink_name] = {
+            properties[clean_field_name] = {
                 "type": "string",
                 "description": description,
                 "default": json.dumps(sink_block_properties.get("default", None)),
@@ -519,7 +533,7 @@ class SmartDecisionMakerBlock(Block):
             "strict": True,
         }
 
-        # Store node info for later use in output processing
+        tool_function["_field_mapping"] = field_mapping
         tool_function["_sink_node_id"] = sink_node.id
 
         return {"type": "function", "function": tool_function}
@@ -1147,8 +1161,9 @@ class SmartDecisionMakerBlock(Block):
                 original_field_name = field_mapping.get(clean_arg_name, clean_arg_name)
                 arg_value = tool_args.get(clean_arg_name)
 
-                sanitized_arg_name = self.cleanup(original_field_name)
-                emit_key = f"tools_^_{sink_node_id}_~_{sanitized_arg_name}"
+                # Use original_field_name directly (not sanitized) to match link sink_name
+                # The field_mapping already translates from LLM's cleaned names to original names
+                emit_key = f"tools_^_{sink_node_id}_~_{original_field_name}"
 
                 logger.debug(
                     "[SmartDecisionMakerBlock|geid:%s|neid:%s] emit %s",

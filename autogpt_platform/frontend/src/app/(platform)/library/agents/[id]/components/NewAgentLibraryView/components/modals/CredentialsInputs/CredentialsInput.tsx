@@ -1,6 +1,4 @@
-import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
 import {
   BlockIOCredentialsSubSchema,
   CredentialsMetaInput,
@@ -8,13 +6,11 @@ import {
 import { cn } from "@/lib/utils";
 import { toDisplayName } from "@/providers/agent-credentials/helper";
 import { APIKeyCredentialsModal } from "./components/APIKeyCredentialsModal/APIKeyCredentialsModal";
-import { CredentialRow } from "./components/CredentialRow/CredentialRow";
-import { CredentialsSelect } from "./components/CredentialsSelect/CredentialsSelect";
-import { DeleteConfirmationModal } from "./components/DeleteConfirmationModal/DeleteConfirmationModal";
+import { CredentialsFlatView } from "./components/CredentialsFlatView/CredentialsFlatView";
 import { HostScopedCredentialsModal } from "./components/HotScopedCredentialsModal/HotScopedCredentialsModal";
 import { OAuthFlowWaitingModal } from "./components/OAuthWaitingModal/OAuthWaitingModal";
 import { PasswordCredentialsModal } from "./components/PasswordCredentialsModal/PasswordCredentialsModal";
-import { getCredentialDisplayName } from "./helpers";
+import { isSystemCredential } from "./helpers";
 import {
   CredentialsInputState,
   useCredentialsInput,
@@ -36,6 +32,7 @@ type Props = {
   readOnly?: boolean;
   isOptional?: boolean;
   showTitle?: boolean;
+  variant?: "default" | "node";
 };
 
 export function CredentialsInput({
@@ -48,6 +45,7 @@ export function CredentialsInput({
   readOnly = false,
   isOptional = false,
   showTitle = true,
+  variant = "default",
 }: Props) {
   const hookData = useCredentialsInput({
     schema,
@@ -70,114 +68,53 @@ export function CredentialsInput({
     supportsOAuth2,
     supportsUserPassword,
     supportsHostScoped,
-    credentialsToShow,
+    userCredentials,
+    systemCredentials,
     oAuthError,
     isAPICredentialsModalOpen,
     isUserPasswordCredentialsModalOpen,
     isHostScopedCredentialsModalOpen,
     isOAuth2FlowInProgress,
     oAuthPopupController,
-    credentialToDelete,
-    deleteCredentialsMutation,
     actionButtonText,
     setAPICredentialsModalOpen,
     setUserPasswordCredentialsModalOpen,
     setHostScopedCredentialsModalOpen,
-    setCredentialToDelete,
     handleActionButtonClick,
     handleCredentialSelect,
-    handleDeleteCredential,
-    handleDeleteConfirm,
   } = hookData;
 
   const displayName = toDisplayName(provider);
-  const hasCredentialsToShow = credentialsToShow.length > 0;
+  const selectedCredentialIsSystem =
+    selectedCredential && isSystemCredential(selectedCredential);
+
+  const allCredentials = [...userCredentials, ...systemCredentials];
+
+  if (readOnly && selectedCredentialIsSystem) {
+    return null;
+  }
 
   return (
     <div className={cn("mb-6", className)}>
-      {showTitle && (
-        <div className="mb-2 flex items-center gap-2">
-          <Text variant="large-medium">
-            {displayName} credentials
-            {isOptional && (
-              <span className="ml-1 text-sm font-normal text-gray-500">
-                (optional)
-              </span>
-            )}
-          </Text>
-          {schema.description && (
-            <InformationTooltip description={schema.description} />
-          )}
-        </div>
-      )}
-
-      {hasCredentialsToShow ? (
-        <>
-          {(credentialsToShow.length > 1 || isOptional) && !readOnly ? (
-            <CredentialsSelect
-              credentials={credentialsToShow}
-              provider={provider}
-              displayName={displayName}
-              selectedCredentials={selectedCredential}
-              onSelectCredential={handleCredentialSelect}
-              onClearCredential={() => onSelectCredential(undefined)}
-              readOnly={readOnly}
-              allowNone={isOptional}
-            />
-          ) : (
-            <div className="mb-4 space-y-2">
-              {credentialsToShow.map((credential) => {
-                return (
-                  <CredentialRow
-                    key={credential.id}
-                    credential={credential}
-                    provider={provider}
-                    displayName={displayName}
-                    onSelect={() => handleCredentialSelect(credential.id)}
-                    onDelete={() =>
-                      handleDeleteCredential({
-                        id: credential.id,
-                        title: getCredentialDisplayName(
-                          credential,
-                          displayName,
-                        ),
-                      })
-                    }
-                    readOnly={readOnly}
-                  />
-                );
-              })}
-            </div>
-          )}
-          {!readOnly && (
-            <Button
-              variant="secondary"
-              size="small"
-              onClick={handleActionButtonClick}
-              className="w-fit"
-              type="button"
-            >
-              {actionButtonText}
-            </Button>
-          )}
-        </>
-      ) : (
-        !readOnly && (
-          <Button
-            variant="secondary"
-            size="small"
-            onClick={handleActionButtonClick}
-            className="w-fit"
-            type="button"
-          >
-            {actionButtonText}
-          </Button>
-        )
-      )}
+      <CredentialsFlatView
+        schema={schema}
+        provider={provider}
+        displayName={displayName}
+        credentials={allCredentials}
+        selectedCredential={selectedCredential}
+        onSelectCredential={handleCredentialSelect}
+        onClearCredential={() => onSelectCredential(undefined)}
+        onAddCredential={handleActionButtonClick}
+        actionButtonText={actionButtonText}
+        isOptional={isOptional}
+        showTitle={showTitle}
+        readOnly={readOnly}
+        variant={variant}
+      />
 
       {!readOnly && (
         <>
-          {supportsApiKey ? (
+          {supportsApiKey && (
             <APIKeyCredentialsModal
               schema={schema}
               open={isAPICredentialsModalOpen}
@@ -188,15 +125,15 @@ export function CredentialsInput({
               }}
               siblingInputs={siblingInputs}
             />
-          ) : null}
-          {supportsOAuth2 ? (
+          )}
+          {supportsOAuth2 && (
             <OAuthFlowWaitingModal
               open={isOAuth2FlowInProgress}
               onClose={() => oAuthPopupController?.abort("canceled")}
               providerName={providerName}
             />
-          ) : null}
-          {supportsUserPassword ? (
+          )}
+          {supportsUserPassword && (
             <PasswordCredentialsModal
               schema={schema}
               open={isUserPasswordCredentialsModalOpen}
@@ -207,8 +144,8 @@ export function CredentialsInput({
               }}
               siblingInputs={siblingInputs}
             />
-          ) : null}
-          {supportsHostScoped ? (
+          )}
+          {supportsHostScoped && (
             <HostScopedCredentialsModal
               schema={schema}
               open={isHostScopedCredentialsModalOpen}
@@ -219,20 +156,13 @@ export function CredentialsInput({
               }}
               siblingInputs={siblingInputs}
             />
-          ) : null}
+          )}
 
-          {oAuthError ? (
+          {oAuthError && (
             <Text variant="body" className="mt-2 text-red-500">
               Error: {oAuthError}
             </Text>
-          ) : null}
-
-          <DeleteConfirmationModal
-            credentialToDelete={credentialToDelete}
-            isDeleting={deleteCredentialsMutation.isPending}
-            onClose={() => setCredentialToDelete(null)}
-            onConfirm={handleDeleteConfirm}
-          />
+          )}
         </>
       )}
     </div>
