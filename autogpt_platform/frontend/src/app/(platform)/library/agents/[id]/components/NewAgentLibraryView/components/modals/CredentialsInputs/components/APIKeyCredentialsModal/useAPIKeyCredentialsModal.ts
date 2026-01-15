@@ -1,11 +1,11 @@
-import { z } from "zod";
-import { useForm, type UseFormReturn } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
 import useCredentials from "@/hooks/useCredentials";
 import {
   BlockIOCredentialsSubSchema,
   CredentialsMetaInput,
 } from "@/lib/autogpt-server-api/types";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useForm, type UseFormReturn } from "react-hook-form";
+import { z } from "zod";
 
 export type APIKeyFormValues = {
   apiKey: string;
@@ -40,12 +40,24 @@ export function useAPIKeyCredentialsModal({
     expiresAt: z.string().optional(),
   });
 
+  function getDefaultExpirationDate(): string {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(0, 0, 0, 0);
+    const year = tomorrow.getFullYear();
+    const month = String(tomorrow.getMonth() + 1).padStart(2, "0");
+    const day = String(tomorrow.getDate()).padStart(2, "0");
+    const hours = String(tomorrow.getHours()).padStart(2, "0");
+    const minutes = String(tomorrow.getMinutes()).padStart(2, "0");
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+  }
+
   const form = useForm<APIKeyFormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       apiKey: "",
       title: "",
-      expiresAt: "",
+      expiresAt: getDefaultExpirationDate(),
     },
   });
 

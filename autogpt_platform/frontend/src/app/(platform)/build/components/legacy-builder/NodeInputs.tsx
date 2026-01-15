@@ -1,9 +1,9 @@
 import {
-  ConnectionData,
+  ConnectedEdge,
   CustomNodeData,
 } from "@/app/(platform)/build/components/legacy-builder/CustomNode/CustomNode";
 import { NodeTableInput } from "@/app/(platform)/build/components/legacy-builder/NodeTableInput";
-import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/modals/CredentialsInputs/CredentialsInputs";
+import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/modals/CredentialsInputs/CredentialsInput";
 import { Button } from "@/components/__legacy__/ui/button";
 import { Calendar } from "@/components/__legacy__/ui/calendar";
 import { LocalValuedInput } from "@/components/__legacy__/ui/input";
@@ -65,7 +65,7 @@ type NodeObjectInputTreeProps = {
   selfKey?: string;
   schema: BlockIORootSchema | BlockIOObjectSubSchema;
   object?: { [key: string]: any };
-  connections: ConnectionData;
+  connections: ConnectedEdge[];
   handleInputClick: (key: string) => void;
   handleInputChange: (key: string, value: any) => void;
   errors: { [key: string]: string | undefined };
@@ -585,7 +585,7 @@ const NodeOneOfDiscriminatorField: FC<{
   currentValue?: any;
   defaultValue?: any;
   errors: { [key: string]: string | undefined };
-  connections: ConnectionData;
+  connections: ConnectedEdge[];
   handleInputChange: (key: string, value: any) => void;
   handleInputClick: (key: string) => void;
   className?: string;

@@ -1,5 +1,6 @@
 import json
 from typing import Any
+from unittest.mock import AsyncMock, patch
 from uuid import UUID
 
 import fastapi.exceptions
@@ -16,6 +17,17 @@ from backend.data.model import SchemaField
 from backend.data.user import DEFAULT_USER_ID
 from backend.usecases.sample import create_test_user
 from backend.util.test import SpinTestServer
+
+
+@pytest.fixture(scope="session", autouse=True)
+def mock_embedding_functions():
+    """Mock embedding functions for all tests to avoid database/API dependencies."""
+    with patch(
+        "backend.api.features.store.db.ensure_embedding",
+        new_callable=AsyncMock,
+        return_value=True,
+    ):
+        yield
 
 
 @pytest.mark.asyncio(loop_scope="session")
