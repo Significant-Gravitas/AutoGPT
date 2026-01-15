@@ -275,7 +275,11 @@ def ensure_embeddings_coverage():
         logger.error(
             f"Failed to get embedding stats: {stats['error']} - skipping backfill"
         )
-        return {"processed": 0, "success": 0, "failed": 0, "error": stats["error"]}
+        return {
+            "backfill": {"processed": 0, "success": 0, "failed": 0},
+            "cleanup": {"deleted": 0},
+            "error": stats["error"],
+        }
 
     # Extract totals from new stats structure
     totals = stats.get("totals", {})
@@ -284,7 +288,10 @@ def ensure_embeddings_coverage():
 
     if without_embeddings == 0:
         logger.info("All content has embeddings, skipping backfill")
-        return {"processed": 0, "success": 0, "failed": 0}
+        return {
+            "backfill": {"processed": 0, "success": 0, "failed": 0},
+            "cleanup": {"deleted": 0},
+        }
 
     # Log per-content-type stats for visibility
     by_type = stats.get("by_type", {})

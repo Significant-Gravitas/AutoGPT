@@ -641,9 +641,6 @@ async def cleanup_orphaned_embeddings() -> dict[str, Any]:
     Returns:
         Dict with cleanup statistics per content type
     """
-    from backend.api.features.store.content_handlers import CONTENT_HANDLERS
-    from backend.data.db import query_raw_with_schema
-
     results_by_type = {}
     total_deleted = 0
 
@@ -814,23 +811,23 @@ async def semantic_search(
     # Generate query embedding
     query_embedding = await embed_query(query)
 
-    # Build the WHERE clause for content types
-    content_type_placeholders = ", ".join(
-        f'${i+2}::{{{{schema_prefix}}}}"ContentType"' for i in range(len(content_types))
-    )
-
     if query_embedding is not None:
         # Semantic search with embeddings
         embedding_str = embedding_to_vector_string(query_embedding)
 
-        # Add user_id filter if provided
-        user_filter = ""
+        # Build params in order: limit, then user_id (if provided), then content types
         params: list[Any] = [limit]
+        user_filter = ""
         if user_id is not None:
             user_filter = 'AND "userId" = ${}'.format(len(params) + 1)
             params.append(user_id)
 
-        # Add content type parameters
+        # Add content type parameters and build placeholders dynamically
+        content_type_start_idx = len(params) + 1
+        content_type_placeholders = ", ".join(
+            f'${content_type_start_idx + i}::{{{{schema_prefix}}}}"ContentType"'
+            for i in range(len(content_types))
+        )
         params.extend([ct.value for ct in content_types])
 
         sql = f"""
@@ -868,13 +865,18 @@ async def semantic_search(
     # Fallback to lexical search if embeddings unavailable
     logger.warning("Falling back to lexical search (embeddings unavailable)")
 
-    user_filter = ""
     params_lexical: list[Any] = [limit]
+    user_filter = ""
     if user_id is not None:
         user_filter = 'AND "userId" = ${}'.format(len(params_lexical) + 1)
         params_lexical.append(user_id)
 
-    # Add content type parameters
+    # Add content type parameters and build placeholders dynamically
+    content_type_start_idx = len(params_lexical) + 1
+    content_type_placeholders_lexical = ", ".join(
+        f'${content_type_start_idx + i}::{{{{schema_prefix}}}}"ContentType"'
+        for i in range(len(content_types))
+    )
     params_lexical.extend([ct.value for ct in content_types])
 
     sql_lexical = f"""
@@ -885,7 +887,7 @@ async def semantic_search(
             metadata,
             0.0 as similarity
         FROM {{{{schema_prefix}}}}"UnifiedContentEmbedding"
-        WHERE "contentType" IN ({content_type_placeholders})
+        WHERE "contentType" IN ({content_type_placeholders_lexical})
         {user_filter}
         AND "searchableText" ILIKE ${len(params_lexical) + 1}
         ORDER BY "updatedAt" DESC
