@@ -455,6 +455,16 @@ export async function navigateToAgentByName(
 
 export async function clickRunButton(page: Page): Promise<void> {
   const { getId } = getSelectors(page);
+  const newTaskButton = page.getByRole("button", { name: /New task/i });
+  if (await newTaskButton.isVisible()) {
+    await newTaskButton.click();
+    const startTaskButton = page
+      .getByRole("button", { name: /Start Task/i })
+      .first();
+    await startTaskButton.click();
+    return;
+  }
+
   const runButton = getId("agent-run-button");
   const runAgainButton = getId("run-again-button");
 
@@ -463,7 +473,7 @@ export async function clickRunButton(page: Page): Promise<void> {
   } else if (await runAgainButton.isVisible()) {
     await runAgainButton.click();
   } else {
-    throw new Error("Neither run button nor run again button is visible");
+    throw new Error("Could not find run/start task button");
   }
 }
 

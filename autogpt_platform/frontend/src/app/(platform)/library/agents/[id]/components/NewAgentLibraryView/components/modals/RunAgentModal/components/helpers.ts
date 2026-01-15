@@ -1,3 +1,4 @@
+import { getSystemCredentials } from "../../CredentialsInputs/helpers";
 import { CredentialsProvidersContextType } from "@/providers/agent-credentials/credentials-provider";
 
 export type CredentialField = [string, any];
@@ -75,14 +76,16 @@ export function findSavedCredentialByProviderAndType(
     const providerData = allProviders?.[providerName];
     if (!providerData) continue;
 
-    const matchingCredential = providerData.savedCredentials.find(
-      (credential) => {
-        if (credentialTypes.length > 0) {
-          return credentialTypes.includes(credential.type);
-        }
-        return true;
-      },
+    const systemCredentials = getSystemCredentials(
+      providerData.savedCredentials ?? [],
     );
+
+    const matchingCredential = systemCredentials.find((credential) => {
+      if (credentialTypes.length > 0) {
+        return credentialTypes.includes(credential.type);
+      }
+      return true;
+    });
 
     if (matchingCredential) {
       return matchingCredential as SavedCredential;
