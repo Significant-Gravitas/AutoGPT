@@ -8,8 +8,9 @@ BEGIN;
 DROP VIEW IF EXISTS "StoreAgent";
 
 -- Drop the trigger and function for old search column
-DROP TRIGGER IF EXISTS "update_store_listing_version_tsvector" ON "StoreListingVersion";
-DROP FUNCTION IF EXISTS update_store_listing_version_tsvector_column();
+-- The original trigger was created in 20251016093049_add_full_text_search
+DROP TRIGGER IF EXISTS "update_tsvector" ON "StoreListingVersion";
+DROP FUNCTION IF EXISTS update_tsvector_column();
 
 -- Drop the index
 DROP INDEX IF EXISTS "StoreListingVersion_search_idx";
