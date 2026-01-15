@@ -270,7 +270,7 @@ class WaitlistUpdateRequest(pydantic.BaseModel):
     imageUrls: list[str] | None = None
     videoUrl: str | None = None
     agentOutputDemoUrl: str | None = None
-    status: str | None = None  # WaitlistExternalStatus enum value
+    status: prisma.enums.WaitlistExternalStatus | None = None
     storeListingId: str | None = None  # Link to a store listing
 
 

@@ -2298,9 +2298,9 @@ async def update_waitlist_admin(
             k: v for k, v in field_mappings.items() if k in data.model_fields_set
         }
 
-        # Handle status separately due to enum conversion
+        # Add status if provided (already validated as enum by Pydantic)
         if "status" in data.model_fields_set and data.status is not None:
-            update_data["status"] = prisma.enums.WaitlistExternalStatus(data.status)
+            update_data["status"] = data.status
 
         if not update_data:
             # No updates, just return current data
