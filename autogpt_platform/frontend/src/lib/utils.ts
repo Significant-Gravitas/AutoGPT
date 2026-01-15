@@ -6,7 +6,10 @@ import { NodeDimension } from "@/app/(platform)/build/components/legacy-builder/
 import {
   BlockIOObjectSubSchema,
   BlockIORootSchema,
+  BlockIOSubSchema,
   Category,
+  GraphInputSubSchema,
+  GraphOutputSubSchema,
 } from "@/lib/autogpt-server-api/types";
 
 export function cn(...inputs: ClassValue[]) {
@@ -76,8 +79,8 @@ export function getTypeBgColor(type: string | null): string {
   );
 }
 
-export function getTypeColor(type: string | null): string {
-  if (type === null) return "#6b7280";
+export function getTypeColor(type: string | undefined): string {
+  if (!type) return "#6b7280";
   return (
     {
       string: "#22c55e",
@@ -88,9 +91,57 @@ export function getTypeColor(type: string | null): string {
       array: "#6366f1",
       null: "#6b7280",
       any: "#6b7280",
-      "": "#6b7280",
     }[type] || "#6b7280"
   );
+}
+
+/**
+ * Extracts the effective type from a JSON schema, handling anyOf/oneOf/allOf wrappers.
+ * Returns the first non-null type found in the schema structure.
+ */
+export function getEffectiveType(
+  schema:
+    | BlockIOSubSchema
+    | GraphInputSubSchema
+    | GraphOutputSubSchema
+    | null
+    | undefined,
+): string | undefined {
+  if (!schema) return undefined;
+
+  // Direct type property
+  if ("type" in schema && schema.type) {
+    return String(schema.type);
+  }
+
+  // Handle allOf - typically a single-item wrapper
+  if (
+    "allOf" in schema &&
+    Array.isArray(schema.allOf) &&
+    schema.allOf.length > 0
+  ) {
+    return getEffectiveType(schema.allOf[0]);
+  }
+
+  // Handle anyOf - e.g. [{ type: "string" }, { type: "null" }]
+  if ("anyOf" in schema && Array.isArray(schema.anyOf)) {
+    for (const item of schema.anyOf) {
+      if ("type" in item && item.type !== "null") {
+        return String(item.type);
+      }
+    }
+  }
+
+  // Handle oneOf
+  if ("oneOf" in schema && Array.isArray(schema.oneOf)) {
+    for (const item of schema.oneOf) {
+      if ("type" in item && item.type !== "null") {
+        return String(item.type);
+      }
+    }
+  }
+
+  return undefined;
 }
 
 export function beautifyString(name: string): string {

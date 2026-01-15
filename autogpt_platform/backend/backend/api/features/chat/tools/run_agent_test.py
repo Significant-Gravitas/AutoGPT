@@ -1,4 +1,5 @@
 import uuid
+from unittest.mock import AsyncMock, patch
 
 import orjson
 import pytest
@@ -15,6 +16,17 @@ from .run_agent import RunAgentTool
 setup_llm_test_data = setup_llm_test_data
 setup_test_data = setup_test_data
 setup_firecrawl_test_data = setup_firecrawl_test_data
+
+
+@pytest.fixture(scope="session", autouse=True)
+def mock_embedding_functions():
+    """Mock embedding functions for all tests to avoid database/API dependencies."""
+    with patch(
+        "backend.api.features.store.db.ensure_embedding",
+        new_callable=AsyncMock,
+        return_value=True,
+    ):
+        yield
 
 
 @pytest.mark.asyncio(scope="session")
