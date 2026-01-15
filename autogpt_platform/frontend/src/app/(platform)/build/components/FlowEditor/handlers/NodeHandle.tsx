@@ -26,6 +26,7 @@ const InputNodeHandle = ({
       position={Position.Left}
       id={cleanedHandleId}
       className={"-ml-6 mr-2"}
+      data-tutorial-id={`input-handler-${nodeId}-${cleanedHandleId}`}
     >
       <div className="pointer-events-none">
         <CircleIcon
@@ -62,6 +63,7 @@ const OutputNodeHandle = ({
       position={Position.Right}
       id={field_name}
       className={"-mr-2 ml-2"}
+      data-tutorial-id={`output-handler-${nodeId}-${field_name}`}
     >
       <div className="pointer-events-none">
         <CircleIcon

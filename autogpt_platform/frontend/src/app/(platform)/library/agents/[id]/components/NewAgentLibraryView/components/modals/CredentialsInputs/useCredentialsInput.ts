@@ -6,9 +6,11 @@ import {
   CredentialsMetaInput,
 } from "@/lib/autogpt-server-api/types";
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
+  filterSystemCredentials,
   getActionButtonText,
+  getSystemCredentials,
   OAUTH_TIMEOUT_MS,
   OAuthPopupResultMessage,
 } from "./helpers";
@@ -54,6 +56,7 @@ export function useCredentialsInput({
   const api = useBackendAPI();
   const queryClient = useQueryClient();
   const credentials = useCredentials(schema, siblingInputs);
+  const hasAttemptedAutoSelect = useRef(false);
 
   const deleteCredentialsMutation = useDeleteV1DeleteCredentials({
     mutation: {
@@ -82,38 +85,51 @@ export function useCredentialsInput({
   useEffect(() => {
     if (readOnly) return;
     if (!credentials || !("savedCredentials" in credentials)) return;
+    const availableCreds = credentials.savedCredentials;
     if (
       selectedCredential &&
-      !credentials.savedCredentials.some((c) => c.id === selectedCredential.id)
+      !availableCreds.some((c) => c.id === selectedCredential.id)
     ) {
       onSelectCredential(undefined);
+      // Reset auto-selection flag so it can run again after unsetting invalid credential
+      hasAttemptedAutoSelect.current = false;
     }
   }, [credentials, selectedCredential, onSelectCredential, readOnly]);
 
-  // The available credential, if there is only one
-  const singleCredential = useMemo(() => {
-    if (!credentials || !("savedCredentials" in credentials)) {
-      return null;
-    }
-
-    return credentials.savedCredentials.length === 1
-      ? credentials.savedCredentials[0]
-      : null;
-  }, [credentials]);
-
-  // Auto-select the one available credential (only if not optional)
+  // Auto-select the first available credential on initial mount
+  // Once a user has made a selection, we don't override it
   useEffect(() => {
     if (readOnly) return;
-    if (isOptional) return; // Don't auto-select when credential is optional
-    if (singleCredential && !selectedCredential) {
-      onSelectCredential(singleCredential);
+    if (!credentials || !("savedCredentials" in credentials)) return;
+
+    // If already selected, don't auto-select
+    if (selectedCredential?.id) return;
+
+    // Only attempt auto-selection once
+    if (hasAttemptedAutoSelect.current) return;
+    hasAttemptedAutoSelect.current = true;
+
+    // If optional, don't auto-select (user can choose "None")
+    if (isOptional) return;
+
+    const savedCreds = credentials.savedCredentials;
+
+    // Auto-select the first credential if any are available
+    if (savedCreds.length > 0) {
+      const cred = savedCreds[0];
+      onSelectCredential({
+        id: cred.id,
+        type: cred.type,
+        provider: credentials.provider,
+        title: (cred as any).title,
+      });
     }
   }, [
-    singleCredential,
-    selectedCredential,
-    onSelectCredential,
+    credentials,
+    selectedCredential?.id,
     readOnly,
     isOptional,
+    onSelectCredential,
   ]);
 
   if (
@@ -135,7 +151,12 @@ export function useCredentialsInput({
     supportsHostScoped,
     savedCredentials,
     oAuthCallback,
+    isSystemProvider,
   } = credentials;
+
+  // Split credentials into user and system
+  const userCredentials = filterSystemCredentials(savedCredentials);
+  const systemCredentials = getSystemCredentials(savedCredentials);
 
   async function handleOAuthLogin() {
     setOAuthError(null);
@@ -291,7 +312,10 @@ export function useCredentialsInput({
     supportsOAuth2,
     supportsUserPassword,
     supportsHostScoped,
-    credentialsToShow: savedCredentials,
+    isSystemProvider,
+    userCredentials,
+    systemCredentials,
+    allCredentials: savedCredentials,
     selectedCredential,
     oAuthError,
     isAPICredentialsModalOpen,
@@ -306,7 +330,7 @@ export function useCredentialsInput({
       supportsApiKey,
       supportsUserPassword,
       supportsHostScoped,
-      savedCredentials.length > 0,
+      userCredentials.length > 0,
     ),
     setAPICredentialsModalOpen,
     setUserPasswordCredentialsModalOpen,

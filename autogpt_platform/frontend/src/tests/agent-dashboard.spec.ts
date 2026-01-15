@@ -1,13 +1,14 @@
-import { LoginPage } from "./pages/login.page";
 import test, { expect } from "@playwright/test";
-import { TEST_CREDENTIALS } from "./credentials";
-import { getSelectors } from "./utils/selectors";
+import { getTestUserWithLibraryAgents } from "./credentials";
+import { LoginPage } from "./pages/login.page";
 import { hasUrl, isHidden } from "./utils/assertion";
+import { getSelectors } from "./utils/selectors";
 
 test.beforeEach(async ({ page }) => {
   const loginPage = new LoginPage(page);
   await page.goto("/login");
-  await loginPage.login(TEST_CREDENTIALS.email, TEST_CREDENTIALS.password);
+  const richUser = getTestUserWithLibraryAgents();
+  await loginPage.login(richUser.email, richUser.password);
   await hasUrl(page, "/marketplace");
 });
 
