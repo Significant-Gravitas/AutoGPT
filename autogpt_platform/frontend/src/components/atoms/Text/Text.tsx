@@ -6,6 +6,11 @@ type CustomProps = {
   as?: As;
   size?: Variant;
   className?: string;
+  /**
+   * Adds the sentry-unmask class for static text visibility in replays.
+   * Disable when rendering user-provided or dynamic content.
+   */
+  unmask?: boolean;
 };
 
 export type TextProps = React.PropsWithChildren<
@@ -18,11 +23,14 @@ export function Text({
   as: outerAs,
   size,
   className = "",
+  unmask = true,
   ...rest
 }: TextProps) {
   const variantClasses = variants[size || variant] || variants.body;
   const Element = outerAs || variantElementMap[variant];
-  const combinedClassName = `${variantClasses} ${className}`.trim();
+  const combinedClassName = `${variantClasses} ${
+    unmask ? "sentry-unmask" : ""
+  } ${className}`.trim();
 
   return React.createElement(
     Element,
