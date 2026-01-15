@@ -98,7 +98,7 @@ export const RunInputDialog = ({
                     Inputs
                   </Text>
                 </div>
-                <div className="px-2" data-id="run-input-inputs-form">
+                <div data-id="run-input-inputs-form">
                   <FormRenderer
                     jsonSchema={inputSchema as RJSFSchema}
                     handleChange={(v) => handleInputChange(v.formData)}
