@@ -1002,6 +1002,7 @@ model UnifiedContentEmbedding {
   // Search data
   embedding      Unsupported("vector(1536)") // pgvector embedding (extension in platform schema)
   searchableText String // Combined text for search and fallback
+  search         Unsupported("tsvector")? @default(dbgenerated("''::tsvector")) // Full-text search (auto-populated by trigger)
   metadata       Json                        @default("{}") // Content-specific metadata
 
   @@unique([contentType, contentId, userId], map: "UnifiedContentEmbedding_contentType_contentId_userId_key")
@@ -1009,6 +1010,7 @@ model UnifiedContentEmbedding {
   @@index([userId])
   @@index([contentType, userId])
   @@index([embedding], map: "UnifiedContentEmbedding_embedding_idx")
+  @@index([search], map: "UnifiedContentEmbedding_search_idx")
 }
 
 model StoreListingReview {
