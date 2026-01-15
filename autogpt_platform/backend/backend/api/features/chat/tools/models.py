@@ -6,6 +6,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from backend.data import block
 from backend.data.model import CredentialsMetaInput
 
 
@@ -14,6 +15,7 @@ class ResponseType(str, Enum):
 
     AGENTS_FOUND = "agents_found"
     AGENT_DETAILS = "agent_details"
+    BLOCK_OUTPUT = "block_output"
     SETUP_REQUIREMENTS = "setup_requirements"
     EXECUTION_STARTED = "execution_started"
     NEED_LOGIN = "need_login"
@@ -62,6 +64,13 @@ class AgentsFoundResponse(ToolResponseBase):
     count: int
     name: str = "agents_found"
 
+class BlockOutputResponse(ToolResponseBase):
+    """Response for find_block tool"""
+    type: ResponseType = ResponseType.BLOCK_OUTPUT
+    block_id: str
+    block_name: str
+    outputs: dict[str, list[Any]]
+    success: bool = True
 
 class NoResultsResponse(ToolResponseBase):
     """Response when no agents found."""

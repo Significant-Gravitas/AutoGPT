@@ -9,6 +9,7 @@ from .agent_output import AgentOutputTool
 from .base import BaseTool
 from .find_agent import FindAgentTool
 from .find_library_agent import FindLibraryAgentTool
+from .run_block import RunBlockTool
 from .run_agent import RunAgentTool
 
 if TYPE_CHECKING:
@@ -21,6 +22,7 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "find_library_agent": FindLibraryAgentTool(),
     "run_agent": RunAgentTool(),
     "agent_output": AgentOutputTool(),
+    "run_block": RunBlockTool(),
 }
 
 # Export individual tool instances for backwards compatibility
