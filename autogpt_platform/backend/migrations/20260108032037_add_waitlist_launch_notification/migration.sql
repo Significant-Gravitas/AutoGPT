@@ -41,7 +41,7 @@ CREATE UNIQUE INDEX "_joinedWaitlists_AB_unique" ON "_joinedWaitlists"("A", "B")
 CREATE INDEX "_joinedWaitlists_B_index" ON "_joinedWaitlists"("B");
 
 -- AddForeignKey
-ALTER TABLE "WaitlistEntry" ADD CONSTRAINT "WaitlistEntry_storeListingId_fkey" FOREIGN KEY ("storeListingId") REFERENCES "StoreListing"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "WaitlistEntry" ADD CONSTRAINT "WaitlistEntry_storeListingId_fkey" FOREIGN KEY ("storeListingId") REFERENCES "StoreListing"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "WaitlistEntry" ADD CONSTRAINT "WaitlistEntry_owningUserId_fkey" FOREIGN KEY ("owningUserId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
