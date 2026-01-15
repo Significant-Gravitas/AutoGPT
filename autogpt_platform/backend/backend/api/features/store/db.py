@@ -2521,23 +2521,30 @@ async def notify_waitlist_users_on_launch(
             # since they don't have user IDs for the notification system.
             # This could be done via a separate email service.
             # For now, we log these for potential manual follow-up or future implementation.
-            if waitlist.unaffiliatedEmailUsers:
+            has_pending_email_users = bool(waitlist.unaffiliatedEmailUsers)
+            if has_pending_email_users:
                 logger.info(
                     f"Waitlist {waitlist.id} has {len(waitlist.unaffiliatedEmailUsers)} "
                     f"unaffiliated email users that need email notifications"
                 )
 
             # Only mark waitlist as DONE if all registered user notifications succeeded
-            if not failed_user_ids:
+            # AND there are no unaffiliated email users still waiting for notifications
+            if not failed_user_ids and not has_pending_email_users:
                 await prisma.models.WaitlistEntry.prisma().update(
                     where={"id": waitlist.id},
                     data={"status": prisma.enums.WaitlistExternalStatus.DONE},
                 )
                 logger.info(f"Updated waitlist {waitlist.id} status to DONE")
-            else:
+            elif failed_user_ids:
                 logger.warning(
                     f"Waitlist {waitlist.id} not marked as DONE due to "
                     f"{len(failed_user_ids)} failed notifications"
+                )
+            elif has_pending_email_users:
+                logger.warning(
+                    f"Waitlist {waitlist.id} not marked as DONE due to "
+                    f"{len(waitlist.unaffiliatedEmailUsers)} pending email-only users"
                 )
 
         logger.info(
