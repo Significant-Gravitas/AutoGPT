@@ -78,7 +78,12 @@ export default function FieldTemplate(props: FieldTemplateProps) {
     displayLabel ||
     (schema.type === "boolean" && !isAnyOfChild(uiSchema as any));
   const shouldShowTitleSection = !isAnyOfSchema(schema) && !additional;
-  const shouldShowChildren = isAnyOfSchema(schema) || !isHandleConnected;
+
+  const shouldShowChildren =
+    schema.type === "object" ||
+    schema.type === "array" ||
+    isAnyOfSchema(schema) ||
+    !isHandleConnected;
 
   const isAdvancedField = (schema as any).advanced === true;
   if (!showAdvanced && isAdvancedField && !isHandleConnected) {

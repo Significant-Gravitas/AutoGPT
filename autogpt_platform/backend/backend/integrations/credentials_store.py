@@ -254,6 +254,21 @@ DEFAULT_CREDENTIALS = [
     openweathermap_credentials,
 ]
 
+SYSTEM_CREDENTIAL_IDS = {cred.id for cred in DEFAULT_CREDENTIALS}
+
+# Set of providers that have system credentials available
+SYSTEM_PROVIDERS = {cred.provider for cred in DEFAULT_CREDENTIALS}
+
+
+def is_system_credential(credential_id: str) -> bool:
+    """Check if a credential ID belongs to a system-managed credential."""
+    return credential_id in SYSTEM_CREDENTIAL_IDS
+
+
+def is_system_provider(provider: str) -> bool:
+    """Check if a provider has system-managed credentials available."""
+    return provider in SYSTEM_PROVIDERS
+
 
 class IntegrationCredentialsStore:
     def __init__(self):
