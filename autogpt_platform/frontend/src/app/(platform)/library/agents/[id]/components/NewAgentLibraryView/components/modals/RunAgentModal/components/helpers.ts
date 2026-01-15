@@ -66,18 +66,93 @@ export function splitCredentialFieldsBySystem(
   };
 }
 
+export function areSystemCredentialProvidersLoading(
+  systemCredentialFields: CredentialField[],
+  allProviders: CredentialsProvidersContextType | null,
+): boolean {
+  if (!systemCredentialFields.length) return false;
+  if (allProviders === null) return true;
+
+  for (const [_, schema] of systemCredentialFields) {
+    const providerNames = schema.credentials_provider || [];
+    const hasAllProviders = providerNames.every(
+      (providerName: string) => allProviders?.[providerName] !== undefined,
+    );
+    if (!hasAllProviders) return true;
+  }
+
+  return false;
+}
+
 export function hasMissingRequiredSystemCredentials(
   systemCredentialFields: CredentialField[],
   requiredCredentials: Set<string>,
   inputCredentials?: Record<string, unknown>,
+  allProviders?: CredentialsProvidersContextType | null,
 ) {
   if (systemCredentialFields.length === 0) return false;
+  if (allProviders === null) return false;
 
-  return systemCredentialFields.some(([key]) => {
-    const isRequired = requiredCredentials.has(key);
-    const selectedCred = inputCredentials?.[key];
-    return isRequired && !selectedCred;
+  return systemCredentialFields.some(([key, schema]) => {
+    if (!requiredCredentials.has(key)) return false;
+    if (inputCredentials?.[key]) return false;
+
+    const providerNames = schema.credentials_provider || [];
+    const credentialTypes = schema.credentials_types || [];
+    const requiredScopes = schema.credentials_scopes;
+
+    return !hasAvailableSystemCredential(
+      providerNames,
+      credentialTypes,
+      requiredScopes,
+      allProviders,
+    );
   });
+}
+
+function hasAvailableSystemCredential(
+  providerNames: string[],
+  credentialTypes: string[],
+  requiredScopes: string[] | undefined,
+  allProviders: CredentialsProvidersContextType | null | undefined,
+) {
+  if (!allProviders) return false;
+
+  for (const providerName of providerNames) {
+    const providerData = allProviders[providerName];
+    if (!providerData) continue;
+
+    const systemCredentials = getSystemCredentials(
+      providerData.savedCredentials ?? [],
+    );
+
+    for (const credential of systemCredentials) {
+      const typeMatches =
+        credentialTypes.length === 0 ||
+        credentialTypes.includes(credential.type);
+      const scopesMatch = hasRequiredScopes(credential, requiredScopes);
+
+      if (!typeMatches) continue;
+      if (!scopesMatch) continue;
+
+      return true;
+    }
+
+    const allCredentials = providerData.savedCredentials ?? [];
+    for (const credential of allCredentials) {
+      const typeMatches =
+        credentialTypes.length === 0 ||
+        credentialTypes.includes(credential.type);
+      const scopesMatch = hasRequiredScopes(credential, requiredScopes);
+
+      if (!typeMatches) continue;
+      if (!scopesMatch) continue;
+
+      return true;
+    }
+  }
+
+  return false;
 }
 
 export function findSavedCredentialByProviderAndType(
@@ -97,17 +172,38 @@ export function findSavedCredentialByProviderAndType(
     const matchingCredentials: SavedCredential[] = [];
 
     for (const credential of systemCredentials) {
-      if (
-        credentialTypes.length > 0 &&
-        !credentialTypes.includes(credential.type)
-      )
-        continue;
-      if (!hasRequiredScopes(credential, requiredScopes)) continue;
+      const typeMatches =
+        credentialTypes.length === 0 ||
+        credentialTypes.includes(credential.type);
+      const scopesMatch = hasRequiredScopes(credential, requiredScopes);
+
+      if (!typeMatches) continue;
+      if (!scopesMatch) continue;
 
       matchingCredentials.push(credential as SavedCredential);
     }
 
-    if (matchingCredentials.length === 1) return matchingCredentials[0];
+    if (matchingCredentials.length === 0) {
+      const allCredentials = providerData.savedCredentials ?? [];
+      for (const credential of allCredentials) {
+        const typeMatches =
+          credentialTypes.length === 0 ||
+          credentialTypes.includes(credential.type);
+        const scopesMatch = hasRequiredScopes(credential, requiredScopes);
+
+        if (!typeMatches) continue;
+        if (!scopesMatch) continue;
+
+        matchingCredentials.push(credential as SavedCredential);
+      }
+    }
+
+    if (matchingCredentials.length === 1) {
+      return matchingCredentials[0];
+    }
+    if (matchingCredentials.length > 1) {
+      return undefined;
+    }
   }
 
   return undefined;

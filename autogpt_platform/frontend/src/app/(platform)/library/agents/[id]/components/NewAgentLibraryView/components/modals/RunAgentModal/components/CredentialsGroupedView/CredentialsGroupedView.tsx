@@ -10,6 +10,7 @@ import { SlidersHorizontal } from "@phosphor-icons/react";
 import { useContext, useEffect, useMemo, useRef } from "react";
 import { useRunAgentModalContext } from "../../context";
 import {
+  areSystemCredentialProvidersLoading,
   CredentialField,
   findSavedCredentialByProviderAndType,
   hasMissingRequiredSystemCredentials,
@@ -43,21 +44,32 @@ export function CredentialsGroupedView({
   const hasUserCredentials = userCredentialFields.length > 0;
   const hasAttemptedAutoSelect = useRef(false);
 
-  const hasMissingSystemCredentials = useMemo(
+  const isLoadingProviders = useMemo(
     () =>
-      hasMissingRequiredSystemCredentials(
-        systemCredentialFields,
-        requiredCredentials,
-        inputCredentials,
-      ),
-    [systemCredentialFields, requiredCredentials, inputCredentials],
+      areSystemCredentialProvidersLoading(systemCredentialFields, allProviders),
+    [systemCredentialFields, allProviders],
   );
+
+  const hasMissingSystemCredentials = useMemo(() => {
+    if (isLoadingProviders) return false;
+    return hasMissingRequiredSystemCredentials(
+      systemCredentialFields,
+      requiredCredentials,
+      inputCredentials,
+      allProviders,
+    );
+  }, [
+    isLoadingProviders,
+    systemCredentialFields,
+    requiredCredentials,
+    inputCredentials,
+    allProviders,
+  ]);
 
   useEffect(() => {
     if (hasAttemptedAutoSelect.current) return;
     if (!hasSystemCredentials) return;
-
-    let appliedSelection = false;
+    if (isLoadingProviders) return;
 
     for (const [key, schema] of systemCredentialFields) {
       const alreadySelected = inputCredentials?.[key];
@@ -75,7 +87,6 @@ export function CredentialsGroupedView({
       );
 
       if (savedCredential) {
-        appliedSelection = true;
         setInputCredentialsValue(key, {
           id: savedCredential.id,
           provider: savedCredential.provider,
@@ -85,9 +96,7 @@ export function CredentialsGroupedView({
       }
     }
 
-    if (appliedSelection) {
-      hasAttemptedAutoSelect.current = true;
-    }
+    hasAttemptedAutoSelect.current = true;
   }, [
     allProviders,
     hasSystemCredentials,
@@ -95,6 +104,7 @@ export function CredentialsGroupedView({
     requiredCredentials,
     inputCredentials,
     setInputCredentialsValue,
+    isLoadingProviders,
   ]);
 
   return (
