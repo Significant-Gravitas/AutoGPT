@@ -209,7 +209,6 @@ jobs:
       PLAIN_OUTPUT: True
       RUN_ENV: local
       PORT: 8080
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       # We know these are here, don't report this as a security vulnerability
       # This is used as the default credential for the entire system's RabbitMQ instance
       # If you want to replace this, you can do so by making our entire system generate
