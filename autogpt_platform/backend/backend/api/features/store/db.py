@@ -2323,17 +2323,28 @@ async def update_waitlist_admin(
         raise DatabaseError("Failed to update waitlist") from e
 
 
-async def delete_waitlist_admin(waitlist_id: str) -> bool:
+async def delete_waitlist_admin(waitlist_id: str) -> None:
     """Soft delete a waitlist (admin only)."""
     logger.info(f"Soft deleting waitlist {waitlist_id}")
 
     try:
-        waitlist = await prisma.models.WaitlistEntry.prisma().update(
+        # Check if waitlist exists first
+        waitlist = await prisma.models.WaitlistEntry.prisma().find_unique(
+            where={"id": waitlist_id},
+        )
+
+        if not waitlist:
+            raise ValueError(f"Waitlist {waitlist_id} not found")
+
+        if waitlist.isDeleted:
+            raise ValueError(f"Waitlist {waitlist_id} has already been deleted")
+
+        await prisma.models.WaitlistEntry.prisma().update(
             where={"id": waitlist_id},
             data={"isDeleted": True},
         )
-
-        return waitlist is not None
+    except ValueError:
+        raise
     except Exception as e:
         logger.error(f"Error deleting waitlist {waitlist_id}: {e}")
         raise DatabaseError("Failed to delete waitlist") from e
@@ -2394,6 +2405,17 @@ async def link_waitlist_to_listing_admin(
     logger.info(f"Linking waitlist {waitlist_id} to listing {store_listing_id}")
 
     try:
+        # Verify the waitlist exists
+        waitlist = await prisma.models.WaitlistEntry.prisma().find_unique(
+            where={"id": waitlist_id}
+        )
+
+        if not waitlist:
+            raise ValueError(f"Waitlist {waitlist_id} not found")
+
+        if waitlist.isDeleted:
+            raise ValueError(f"Waitlist {waitlist_id} has been deleted")
+
         # Verify the store listing exists
         listing = await prisma.models.StoreListing.prisma().find_unique(
             where={"id": store_listing_id}
@@ -2402,16 +2424,13 @@ async def link_waitlist_to_listing_admin(
         if not listing:
             raise ValueError(f"Store listing {store_listing_id} not found")
 
-        waitlist = await prisma.models.WaitlistEntry.prisma().update(
+        updated_waitlist = await prisma.models.WaitlistEntry.prisma().update(
             where={"id": waitlist_id},
             data={"StoreListing": {"connect": {"id": store_listing_id}}},
             include={"joinedUsers": True},
         )
 
-        if not waitlist:
-            raise ValueError(f"Waitlist {waitlist_id} not found")
-
-        return _waitlist_to_admin_response(waitlist)
+        return _waitlist_to_admin_response(updated_waitlist)
     except ValueError:
         raise
     except Exception as e:

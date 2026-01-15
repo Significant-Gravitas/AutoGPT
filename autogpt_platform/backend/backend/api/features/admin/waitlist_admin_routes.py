@@ -156,9 +156,10 @@ async def delete_waitlist(
         Success message
     """
     try:
-        deleted = await store_db.delete_waitlist_admin(waitlist_id)
-        if deleted:
-            return {"message": "Waitlist deleted successfully"}
+        await store_db.delete_waitlist_admin(waitlist_id)
+        return {"message": "Waitlist deleted successfully"}
+    except ValueError:
+        logger.warning(f"Waitlist not found for deletion: {waitlist_id}")
         return fastapi.responses.JSONResponse(
             status_code=404,
             content={"detail": "Waitlist not found"},
