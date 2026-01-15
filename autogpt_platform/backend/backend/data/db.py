@@ -40,10 +40,10 @@ if POOL_TIMEOUT:
 
 # Add public schema to search_path for pgvector type access
 # The vector extension is in public schema, but search_path is determined by schema parameter
-# Extract the schema from DATABASE_URL or default to 'platform'
+# Extract the schema from DATABASE_URL or default to 'public' (matching get_database_schema())
 parsed_url = urlparse(DATABASE_URL)
 url_params = dict(parse_qsl(parsed_url.query))
-db_schema = url_params.get("schema", "platform")
+db_schema = url_params.get("schema", "public")
 # Build search_path, avoiding duplicates if db_schema is already 'public'
 search_path_schemas = list(
     dict.fromkeys([db_schema, "public"])
