@@ -63,6 +63,7 @@ function VideoPlayer({
     return (
       <iframe
         src={`https://www.youtube.com/embed/${youtubeId}${autoPlay ? "?autoplay=1" : ""}`}
+        title="YouTube video player"
         className={className}
         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
         sandbox="allow-same-origin allow-scripts allow-presentation"
