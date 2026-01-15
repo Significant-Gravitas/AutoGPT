@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 import pytest
 
+from backend.api.features.store import embeddings
 from backend.api.features.store.hybrid_search import HybridSearchWeights, hybrid_search
 
 
@@ -49,7 +50,7 @@ async def test_hybrid_search_with_schema_handling():
         with patch(
             "backend.api.features.store.hybrid_search.embed_query"
         ) as mock_embed:
-            mock_embed.return_value = [0.1] * 1536  # Mock embedding
+            mock_embed.return_value = [0.1] * embeddings.EMBEDDING_DIM  # Mock embedding
 
             results, total = await hybrid_search(
                 query=query,
@@ -85,7 +86,7 @@ async def test_hybrid_search_with_public_schema():
             with patch(
                 "backend.api.features.store.hybrid_search.embed_query"
             ) as mock_embed:
-                mock_embed.return_value = [0.1] * 1536
+                mock_embed.return_value = [0.1] * embeddings.EMBEDDING_DIM
 
                 results, total = await hybrid_search(
                     query="test",
@@ -116,7 +117,7 @@ async def test_hybrid_search_with_custom_schema():
             with patch(
                 "backend.api.features.store.hybrid_search.embed_query"
             ) as mock_embed:
-                mock_embed.return_value = [0.1] * 1536
+                mock_embed.return_value = [0.1] * embeddings.EMBEDDING_DIM
 
                 results, total = await hybrid_search(
                     query="test",
@@ -194,7 +195,7 @@ async def test_hybrid_search_with_filters():
         with patch(
             "backend.api.features.store.hybrid_search.embed_query"
         ) as mock_embed:
-            mock_embed.return_value = [0.1] * 1536
+            mock_embed.return_value = [0.1] * embeddings.EMBEDDING_DIM
 
             # Test with featured filter
             results, total = await hybrid_search(
@@ -234,7 +235,7 @@ async def test_hybrid_search_weights():
         with patch(
             "backend.api.features.store.hybrid_search.embed_query"
         ) as mock_embed:
-            mock_embed.return_value = [0.1] * 1536
+            mock_embed.return_value = [0.1] * embeddings.EMBEDDING_DIM
 
             results, total = await hybrid_search(
                 query="test",
@@ -278,7 +279,7 @@ async def test_hybrid_search_min_score_filtering():
         with patch(
             "backend.api.features.store.hybrid_search.embed_query"
         ) as mock_embed:
-            mock_embed.return_value = [0.1] * 1536
+            mock_embed.return_value = [0.1] * embeddings.EMBEDDING_DIM
 
             # Test with custom min_score
             results, total = await hybrid_search(
@@ -313,7 +314,7 @@ async def test_hybrid_search_pagination():
         with patch(
             "backend.api.features.store.hybrid_search.embed_query"
         ) as mock_embed:
-            mock_embed.return_value = [0.1] * 1536
+            mock_embed.return_value = [0.1] * embeddings.EMBEDDING_DIM
 
             # Test page 2 with page_size 10
             results, total = await hybrid_search(
@@ -347,7 +348,7 @@ async def test_hybrid_search_error_handling():
         with patch(
             "backend.api.features.store.hybrid_search.embed_query"
         ) as mock_embed:
-            mock_embed.return_value = [0.1] * 1536
+            mock_embed.return_value = [0.1] * embeddings.EMBEDDING_DIM
 
             # Should raise exception
             with pytest.raises(Exception) as exc_info:

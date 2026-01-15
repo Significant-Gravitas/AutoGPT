@@ -17,6 +17,7 @@ from backend.api.features.store.content_handlers import (
     StoreAgentHandler,
 )
 from backend.api.features.store.embeddings import (
+    EMBEDDING_DIM,
     backfill_all_content_types,
     ensure_content_embedding,
     get_embedding_stats,
@@ -141,7 +142,7 @@ async def test_get_embedding_stats_all_types():
 async def test_ensure_content_embedding_blocks(mock_generate):
     """Test creating embeddings for blocks (mocked OpenAI)."""
     # Mock OpenAI to return fake embedding
-    mock_generate.return_value = [0.1] * 1536
+    mock_generate.return_value = [0.1] * EMBEDDING_DIM
 
     # Get one block without embedding
     handler = BlockHandler()
@@ -171,7 +172,7 @@ async def test_ensure_content_embedding_blocks(mock_generate):
 async def test_backfill_all_content_types_dry_run(mock_generate):
     """Test backfill_all_content_types processes all handlers in order."""
     # Mock OpenAI to return fake embedding
-    mock_generate.return_value = [0.1] * 1536
+    mock_generate.return_value = [0.1] * EMBEDDING_DIM
 
     # Run backfill with batch_size=1 to process max 1 per type
     result = await backfill_all_content_types(batch_size=1)

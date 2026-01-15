@@ -11,6 +11,7 @@ from datetime import datetime
 from typing import Any, Literal
 
 from backend.api.features.store.embeddings import (
+    EMBEDDING_DIM,
     embed_query,
     embedding_to_vector_string,
 )
@@ -185,7 +186,7 @@ async def hybrid_search(
             "Check that openai_internal_api_key is configured and OpenAI API is accessible."
         )
         # Use zero embedding (semantic score will be 0)
-        query_embedding = [0.0] * 1536  # text-embedding-3-small dimension
+        query_embedding = [0.0] * EMBEDDING_DIM
 
         # Adjust weights: redistribute semantic weight to other components
         # Semantic becomes 0, lexical increases proportionally

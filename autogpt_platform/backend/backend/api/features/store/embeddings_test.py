@@ -63,7 +63,7 @@ async def test_generate_embedding_success():
         result = await embeddings.generate_embedding("test text")
 
         assert result is not None
-        assert len(result) == 1536
+        assert len(result) == embeddings.EMBEDDING_DIM
         assert result[0] == 0.1
 
         mock_client.embeddings.create.assert_called_once_with(
@@ -110,7 +110,7 @@ async def test_generate_embedding_text_truncation():
     mock_client = MagicMock()
     mock_response = MagicMock()
     mock_response.data = [MagicMock()]
-    mock_response.data[0].embedding = [0.1] * 1536
+    mock_response.data[0].embedding = [0.1] * embeddings.EMBEDDING_DIM
 
     # Use AsyncMock for async embeddings.create method
     mock_client.embeddings.create = AsyncMock(return_value=mock_response)
@@ -357,7 +357,7 @@ async def test_backfill_missing_embeddings_success(mock_store):
     ):
         with patch(
             "backend.api.features.store.embeddings.generate_embedding",
-            return_value=[0.1] * 1536,
+            return_value=[0.1] * embeddings.EMBEDDING_DIM,
         ):
             result = await embeddings.backfill_missing_embeddings(batch_size=5)
 

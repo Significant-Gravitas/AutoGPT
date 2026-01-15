@@ -24,6 +24,9 @@ logger = logging.getLogger(__name__)
 
 # OpenAI embedding model configuration
 EMBEDDING_MODEL = "text-embedding-3-small"
+# Embedding dimension for the model above
+# text-embedding-3-small: 1536, text-embedding-3-large: 3072
+EMBEDDING_DIM = 1536
 # OpenAI embedding token limit (8,191 with 1 token buffer for safety)
 EMBEDDING_MAX_TOKENS = 8191
 

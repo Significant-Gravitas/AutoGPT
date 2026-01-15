@@ -10,6 +10,7 @@ import pytest
 from prisma.enums import ContentType
 
 from backend.api.features.store import embeddings
+from backend.api.features.store.embeddings import EMBEDDING_DIM
 
 # Schema prefix tests removed - functionality moved to db.raw_with_schema() helper
 
@@ -28,7 +29,7 @@ async def test_store_content_embedding_with_schema():
             result = await embeddings.store_content_embedding(
                 content_type=ContentType.STORE_AGENT,
                 content_id="test-id",
-                embedding=[0.1] * 1536,
+                embedding=[0.1] * EMBEDDING_DIM,
                 searchable_text="test text",
                 metadata={"test": "data"},
                 user_id=None,
@@ -178,7 +179,7 @@ async def test_backfill_missing_embeddings_with_schema():
     ):
         with patch(
             "backend.api.features.store.embeddings.generate_embedding",
-            return_value=[0.1] * 1536,
+            return_value=[0.1] * EMBEDDING_DIM,
         ):
             with patch(
                 "backend.api.features.store.embeddings.store_content_embedding",
@@ -211,7 +212,7 @@ async def test_ensure_content_embedding_with_schema():
             with patch(
                 "backend.api.features.store.embeddings.generate_embedding"
             ) as mock_generate:
-                mock_generate.return_value = [0.1] * 1536
+                mock_generate.return_value = [0.1] * EMBEDDING_DIM
 
                 with patch(
                     "backend.api.features.store.embeddings.store_content_embedding"
@@ -245,7 +246,7 @@ async def test_backward_compatibility_store_embedding():
 
         result = await embeddings.store_embedding(
             version_id="test-version-id",
-            embedding=[0.1] * 1536,
+            embedding=[0.1] * EMBEDDING_DIM,
             tx=None,
         )
 
@@ -300,7 +301,7 @@ async def test_schema_handling_error_cases():
             result = await embeddings.store_content_embedding(
                 content_type=ContentType.STORE_AGENT,
                 content_id="test-id",
-                embedding=[0.1] * 1536,
+                embedding=[0.1] * EMBEDDING_DIM,
                 searchable_text="test",
                 metadata=None,
                 user_id=None,
