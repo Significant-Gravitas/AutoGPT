@@ -178,15 +178,39 @@ async def hybrid_search(
     # No user input is concatenated directly into the SQL string
     where_clause = " AND ".join(where_parts)
 
-    # Embedding is required for hybrid search - fail fast if unavailable
+    # Graceful degradation: fall back to lexical-only search if embedding unavailable
     if query_embedding is None or not query_embedding:
-        # Log detailed error server-side
-        logger.error(
-            "Failed to generate query embedding. "
+        logger.warning(
+            "Failed to generate query embedding - falling back to lexical-only search. "
             "Check that openai_internal_api_key is configured and OpenAI API is accessible."
         )
-        # Raise generic error to client
-        raise ValueError("Search service temporarily unavailable")
+        # Use zero embedding (semantic score will be 0)
+        query_embedding = [0.0] * 1536  # text-embedding-3-small dimension
+
+        # Adjust weights: redistribute semantic weight to other components
+        # Semantic becomes 0, lexical increases proportionally
+        total_non_semantic = (
+            weights.lexical + weights.category + weights.recency + weights.popularity
+        )
+        if total_non_semantic > 0:
+            # Redistribute semantic weight proportionally to other components
+            redistribution_factor = 1.0 / total_non_semantic
+            weights = HybridSearchWeights(
+                semantic=0.0,
+                lexical=weights.lexical * redistribution_factor,
+                category=weights.category * redistribution_factor,
+                recency=weights.recency * redistribution_factor,
+                popularity=weights.popularity * redistribution_factor,
+            )
+        else:
+            # Fallback: all weight to lexical if other components are also 0
+            weights = HybridSearchWeights(
+                semantic=0.0,
+                lexical=1.0,
+                category=0.0,
+                recency=0.0,
+                popularity=0.0,
+            )
 
     # Add embedding parameter
     embedding_str = embedding_to_vector_string(query_embedding)
