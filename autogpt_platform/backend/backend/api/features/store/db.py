@@ -2077,8 +2077,6 @@ async def add_user_to_waitlist(
     For logged-in users: connects via joinedUsers relation
     For anonymous users: adds email to unaffiliatedEmailUsers array
     """
-    logger.debug(f"Adding user {user_id or email} to waitlist {waitlist_id}")
-
     if not user_id and not email:
         raise ValueError("Either user_id or email must be provided")
 
@@ -2323,6 +2321,8 @@ async def update_waitlist_admin(
             include={"joinedUsers": True},
         )
 
+        # We already verified existence above, so this should never be None
+        assert waitlist is not None
         return _waitlist_to_admin_response(waitlist)
     except ValueError:
         raise
@@ -2438,6 +2438,8 @@ async def link_waitlist_to_listing_admin(
             include={"joinedUsers": True},
         )
 
+        # We already verified existence above, so this should never be None
+        assert updated_waitlist is not None
         return _waitlist_to_admin_response(updated_waitlist)
     except ValueError:
         raise
@@ -2482,7 +2484,9 @@ async def notify_waitlist_users_on_launch(
         )
 
         if not waitlists:
-            logger.info(f"No active waitlists found for store listing {store_listing_id}")
+            logger.info(
+                f"No active waitlists found for store listing {store_listing_id}"
+            )
             return 0
 
         notification_count = 0
