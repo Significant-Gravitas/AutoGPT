@@ -33,8 +33,6 @@ interface Props {
   onSelectRun?: (id: string) => void;
   onClearSelectedRun?: () => void;
   banner?: React.ReactNode;
-  onSelectSettings?: () => void;
-  selectedSettings?: boolean;
 }
 
 export function SelectedRunView({
@@ -43,8 +41,6 @@ export function SelectedRunView({
   onSelectRun,
   onClearSelectedRun,
   banner,
-  onSelectSettings,
-  selectedSettings,
 }: Props) {
   const { run, preset, isLoading, responseError, httpError } =
     useSelectedRunView(agent.graph_id, runId);
@@ -84,12 +80,7 @@ export function SelectedRunView({
   return (
     <div className="flex h-full w-full gap-4">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <SelectedViewLayout
-          agent={agent}
-          banner={banner}
-          onSelectSettings={onSelectSettings}
-          selectedSettings={selectedSettings}
-        >
+        <SelectedViewLayout agent={agent} banner={banner}>
           <div className="flex flex-col gap-4">
             <RunDetailHeader agent={agent} run={run} />
 

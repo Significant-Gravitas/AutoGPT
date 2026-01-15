@@ -21,8 +21,6 @@ interface Props {
   scheduleId: string;
   onClearSelectedRun?: () => void;
   banner?: React.ReactNode;
-  onSelectSettings?: () => void;
-  selectedSettings?: boolean;
 }
 
 export function SelectedScheduleView({
@@ -30,8 +28,6 @@ export function SelectedScheduleView({
   scheduleId,
   onClearSelectedRun,
   banner,
-  onSelectSettings,
-  selectedSettings,
 }: Props) {
   const { schedule, isLoading, error } = useSelectedScheduleView(
     agent.graph_id,
@@ -76,12 +72,7 @@ export function SelectedScheduleView({
   return (
     <div className="flex h-full w-full gap-4">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <SelectedViewLayout
-          agent={agent}
-          banner={banner}
-          onSelectSettings={onSelectSettings}
-          selectedSettings={selectedSettings}
-        >
+        <SelectedViewLayout agent={agent} banner={banner}>
           <div className="flex flex-col gap-4">
             <div className="flex w-full flex-col gap-0">
               <RunDetailHeader

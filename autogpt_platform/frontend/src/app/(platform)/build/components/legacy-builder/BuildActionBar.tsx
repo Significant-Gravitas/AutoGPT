@@ -83,6 +83,7 @@ export const BuildActionBar: React.FC<Props> = ({
             title="Run the agent"
             aria-label="Run the agent"
             data-testid="primary-action-run-agent"
+            data-tutorial-id="primary-action-run-agent"
           >
             <IconPlay /> Run
           </Button>

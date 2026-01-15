@@ -3,7 +3,7 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 
-interface MarketplaceBannersProps {
+interface Props {
   hasUpdate?: boolean;
   latestVersion?: number;
   hasUnpublishedChanges?: boolean;
@@ -21,7 +21,7 @@ export function MarketplaceBanners({
   isUpdating,
   onUpdate,
   onPublish,
-}: MarketplaceBannersProps) {
+}: Props) {
   const renderUpdateBanner = () => {
     if (hasUpdate && latestVersion) {
       return (
