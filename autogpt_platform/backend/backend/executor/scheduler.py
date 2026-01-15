@@ -330,10 +330,33 @@ def ensure_embeddings_coverage():
         f"Embedding backfill completed: {total_success}/{total_processed} succeeded, "
         f"{total_failed} failed"
     )
+
+    # Clean up orphaned embeddings for blocks and docs
+    logger.info("Running cleanup for orphaned embeddings (blocks/docs)...")
+    cleanup_result = db_client.cleanup_orphaned_embeddings()
+    cleanup_totals = cleanup_result.get("totals", {})
+    cleanup_deleted = cleanup_totals.get("deleted", 0)
+
+    if cleanup_deleted > 0:
+        logger.info(f"Cleanup completed: deleted {cleanup_deleted} orphaned embeddings")
+        by_type = cleanup_result.get("by_type", {})
+        for content_type, type_result in by_type.items():
+            if type_result.get("deleted", 0) > 0:
+                logger.info(
+                    f"{content_type}: deleted {type_result['deleted']} orphaned embeddings"
+                )
+    else:
+        logger.info("Cleanup completed: no orphaned embeddings found")
+
     return {
-        "processed": total_processed,
-        "success": total_success,
-        "failed": total_failed,
+        "backfill": {
+            "processed": total_processed,
+            "success": total_success,
+            "failed": total_failed,
+        },
+        "cleanup": {
+            "deleted": cleanup_deleted,
+        },
     }
 
 

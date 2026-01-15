@@ -629,3 +629,109 @@ async def ensure_content_embedding(
     except Exception as e:
         logger.error(f"Failed to ensure embedding for {content_type}:{content_id}: {e}")
         return False
+
+
+async def cleanup_orphaned_embeddings() -> dict[str, Any]:
+    """
+    Clean up embeddings for blocks and docs that no longer exist.
+
+    Compares current blocks/docs with embeddings in database and removes orphaned records.
+    Store agents are NOT cleaned up - they're properly filtered during search.
+
+    Returns:
+        Dict with cleanup statistics per content type
+    """
+    from backend.api.features.store.content_handlers import CONTENT_HANDLERS
+    from backend.data.db import query_raw_with_schema
+
+    results_by_type = {}
+    total_deleted = 0
+
+    # Only cleanup BLOCK and DOCUMENTATION - store agents are filtered during search
+    cleanup_types = [ContentType.BLOCK, ContentType.DOCUMENTATION]
+
+    for content_type in cleanup_types:
+        try:
+            handler = CONTENT_HANDLERS.get(content_type)
+            if not handler:
+                logger.warning(f"No handler registered for {content_type}")
+                results_by_type[content_type.value] = {
+                    "deleted": 0,
+                    "error": "No handler registered",
+                }
+                continue
+
+            # Get all current content IDs from handler
+            if content_type == ContentType.BLOCK:
+                from backend.data.block import get_blocks
+
+                current_ids = set(get_blocks().keys())
+            elif content_type == ContentType.DOCUMENTATION:
+                from pathlib import Path
+
+                backend_root = Path(__file__).parent.parent.parent.parent
+                docs_root = backend_root.parent.parent / "docs"
+                if docs_root.exists():
+                    all_docs = list(docs_root.rglob("*.md")) + list(
+                        docs_root.rglob("*.mdx")
+                    )
+                    current_ids = {str(doc.relative_to(docs_root)) for doc in all_docs}
+                else:
+                    current_ids = set()
+            else:
+                current_ids = set()
+
+            # Get all embedding IDs from database
+            db_embeddings = await query_raw_with_schema(
+                """
+                SELECT "contentId"
+                FROM {schema_prefix}"UnifiedContentEmbedding"
+                WHERE "contentType" = $1::{schema_prefix}"ContentType"
+                """,
+                content_type,
+            )
+
+            db_ids = {row["contentId"] for row in db_embeddings}
+
+            # Find orphaned embeddings (in DB but not in current content)
+            orphaned_ids = db_ids - current_ids
+
+            if not orphaned_ids:
+                logger.info(f"{content_type.value}: No orphaned embeddings found")
+                results_by_type[content_type.value] = {
+                    "deleted": 0,
+                    "message": "No orphaned embeddings",
+                }
+                continue
+
+            # Delete orphaned embeddings
+            deleted = 0
+            for content_id in orphaned_ids:
+                if await delete_content_embedding(content_type, content_id):
+                    deleted += 1
+
+            logger.info(
+                f"{content_type.value}: Deleted {deleted}/{len(orphaned_ids)} orphaned embeddings"
+            )
+            results_by_type[content_type.value] = {
+                "deleted": deleted,
+                "orphaned": len(orphaned_ids),
+                "message": f"Deleted {deleted} orphaned embeddings",
+            }
+
+            total_deleted += deleted
+
+        except Exception as e:
+            logger.error(f"Failed to cleanup {content_type.value}: {e}")
+            results_by_type[content_type.value] = {
+                "deleted": 0,
+                "error": str(e),
+            }
+
+    return {
+        "by_type": results_by_type,
+        "totals": {
+            "deleted": total_deleted,
+            "message": f"Deleted {total_deleted} orphaned embeddings",
+        },
+    }
