@@ -52,7 +52,11 @@ export const OutputHandler = ({
         const isBroken = brokenOutputs.has(fullKey);
 
         return shouldShow ? (
-          <div key={fullKey} className="flex flex-col items-end gap-2">
+          <div
+            key={fullKey}
+            className="flex flex-col items-end gap-2"
+            data-tutorial-id={`output-handler-${nodeId}-${fieldTitle}`}
+          >
             <div className="relative flex items-center gap-2">
               {fieldSchema?.description && (
                 <TooltipProvider>
