@@ -47,12 +47,6 @@ export function generateUiSchemaForCustomFields(
           uiSchema[key] = {
             ...(uiSchema[key] as object),
             "ui:field": customFieldId,
-            "ui:options": {
-              ...((uiSchema[key] as UiSchema)?.["ui:options"] || {}),
-              ...(customFieldId === "custom/llm_model_field"
-                ? { showChildrenWhenConnected: true, compact: true }
-                : {}),
-            },
           };
           // Skip further processing for custom fields
           continue;
