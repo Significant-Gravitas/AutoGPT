@@ -317,9 +317,10 @@ async def test_run_agent_invalid_slug_format(setup_test_data):
 async def test_run_agent_unauthenticated():
     """Test that run_agent returns need_login for unauthenticated users."""
     tool = RunAgentTool()
-    session = make_session(user_id=None)
+    # Session has a user_id (session owner), but we test tool execution without user_id
+    session = make_session(user_id="test-session-owner")
 
-    # Execute without user_id
+    # Execute without user_id to test unauthenticated behavior
     response = await tool.execute(
         user_id=None,
         session_id=str(uuid.uuid4()),

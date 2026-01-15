@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_stream_chat_completion():
+async def test_stream_chat_completion(setup_test_user, test_user_id):
     """
     Test the stream_chat_completion function.
     """
@@ -24,7 +24,7 @@ async def test_stream_chat_completion():
     if not api_key:
         return pytest.skip("OPEN_ROUTER_API_KEY is not set, skipping test")
 
-    session = await create_chat_session()
+    session = await create_chat_session(test_user_id)
 
     has_errors = False
     has_ended = False
@@ -46,7 +46,7 @@ async def test_stream_chat_completion():
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_stream_chat_completion_with_tool_calls():
+async def test_stream_chat_completion_with_tool_calls(setup_test_user, test_user_id):
     """
     Test the stream_chat_completion function.
     """
@@ -54,7 +54,7 @@ async def test_stream_chat_completion_with_tool_calls():
     if not api_key:
         return pytest.skip("OPEN_ROUTER_API_KEY is not set, skipping test")
 
-    session = await create_chat_session()
+    session = await create_chat_session(test_user_id)
     session = await upsert_chat_session(session)
 
     has_errors = False

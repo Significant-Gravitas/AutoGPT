@@ -18,7 +18,7 @@ from backend.data.user import get_or_create_user
 from backend.integrations.credentials_store import IntegrationCredentialsStore
 
 
-def make_session(user_id: str | None = None):
+def make_session(user_id: str):
     return ChatSession(
         session_id=str(uuid.uuid4()),
         user_id=user_id,

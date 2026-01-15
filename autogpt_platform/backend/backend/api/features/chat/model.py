@@ -94,7 +94,7 @@ class Usage(BaseModel):
 
 class ChatSession(BaseModel):
     session_id: str
-    user_id: str | None
+    user_id: str
     title: str | None = None
     messages: list[ChatMessage]
     usage: list[Usage]
@@ -105,7 +105,7 @@ class ChatSession(BaseModel):
     successful_agent_schedules: dict[str, int] = {}
 
     @staticmethod
-    def new(user_id: str | None) -> "ChatSession":
+    def new(user_id: str) -> "ChatSession":
         return ChatSession(
             session_id=str(uuid.uuid4()),
             user_id=user_id,
@@ -372,13 +372,18 @@ async def get_chat_session(
 
     Checks Redis cache first, falls back to database if not found.
     Caches database results back to Redis.
+
+    Args:
+        session_id: The session ID to fetch.
+        user_id: If provided, validates that the session belongs to this user.
+            If None, ownership is not validated (admin/system access).
     """
     # Try cache first
     try:
         session = await _get_session_from_cache(session_id)
         if session:
-            # Verify user ownership
-            if session.user_id is not None and session.user_id != user_id:
+            # Verify user ownership if user_id was provided for validation
+            if user_id is not None and session.user_id != user_id:
                 logger.warning(
                     f"Session {session_id} user id mismatch: {session.user_id} != {user_id}"
                 )
@@ -397,8 +402,8 @@ async def get_chat_session(
         logger.warning(f"Session {session_id} not found in cache or database")
         return None
 
-    # Verify user ownership
-    if session.user_id is not None and session.user_id != user_id:
+    # Verify user ownership if user_id was provided for validation
+    if user_id is not None and session.user_id != user_id:
         logger.warning(
             f"Session {session_id} user id mismatch: {session.user_id} != {user_id}"
         )
@@ -472,7 +477,7 @@ async def upsert_chat_session(
         return session
 
 
-async def create_chat_session(user_id: str | None = None) -> ChatSession:
+async def create_chat_session(user_id: str) -> ChatSession:
     """Create a new chat session and persist it.
 
     Raises:

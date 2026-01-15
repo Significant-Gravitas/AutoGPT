@@ -27,7 +27,6 @@ from .model import (
     ChatMessage,
     ChatSession,
     Usage,
-    create_chat_session,
     get_chat_session,
     update_session_title,
     upsert_chat_session,
@@ -906,18 +905,3 @@ async def _yield_tool_call(
 
     logger.info(f"Yielding Tool execution response: {tool_execution_response}")
     yield tool_execution_response
-
-
-if __name__ == "__main__":
-    import asyncio
-
-    async def main():
-        session = await create_chat_session()
-        async for chunk in stream_chat_completion(
-            session.session_id,
-            "Please find me an agent that can help me with my business. Call the tool twice once with the query 'money printing agent' and once with the query 'money generating agent'",
-            user_id=session.user_id,
-        ):
-            print(chunk)
-
-    asyncio.run(main())

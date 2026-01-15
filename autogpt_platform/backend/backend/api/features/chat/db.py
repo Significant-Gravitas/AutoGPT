@@ -35,7 +35,7 @@ async def get_chat_session(session_id: str) -> PrismaChatSession | None:
 
 async def create_chat_session(
     session_id: str,
-    user_id: str | None,
+    user_id: str,
 ) -> PrismaChatSession:
     """Create a new chat session in the database."""
     data = ChatSessionCreateInput(

@@ -43,9 +43,9 @@ async def test_chatsession_serialization_deserialization():
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_chatsession_redis_storage():
+async def test_chatsession_redis_storage(setup_test_user, test_user_id):
 
-    s = ChatSession.new(user_id=None)
+    s = ChatSession.new(user_id=test_user_id)
     s.messages = messages
 
     s = await upsert_chat_session(s)
@@ -59,24 +59,26 @@ async def test_chatsession_redis_storage():
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_chatsession_redis_storage_user_id_mismatch():
+async def test_chatsession_redis_storage_user_id_mismatch(
+    setup_test_user, test_user_id
+):
 
-    s = ChatSession.new(user_id="abc123")
+    s = ChatSession.new(user_id=test_user_id)
     s.messages = messages
     s = await upsert_chat_session(s)
 
-    s2 = await get_chat_session(s.session_id, None)
+    s2 = await get_chat_session(s.session_id, "different_user_id")
 
     assert s2 is None
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_chatsession_db_storage():
+async def test_chatsession_db_storage(setup_test_user, test_user_id):
     """Test that messages are correctly saved to and loaded from DB (not cache)."""
     from backend.data.redis_client import get_redis_async
 
     # Create session with messages including assistant message
-    s = ChatSession.new(user_id=None)
+    s = ChatSession.new(user_id=test_user_id)
     s.messages = messages  # Contains user, assistant, and tool messages
     assert s.session_id is not None, "Session id is not set"
     # Upsert to save to both cache and DB

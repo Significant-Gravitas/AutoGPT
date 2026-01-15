@@ -25,12 +25,10 @@ async def _validate_and_get_session(
     session_id: str,
     user_id: str | None,
 ) -> ChatSession:
-    """Validate session exists and assign user if needed."""
+    """Validate session exists and belongs to user."""
     session = await get_chat_session(session_id, user_id)
     if not session:
         raise NotFoundError(f"Session {session_id} not found.")
-    if session.user_id is None and user_id is not None:
-        session = await chat_service.assign_user_to_session(session_id, user_id)
     return session
 
 
@@ -129,15 +127,15 @@ async def list_sessions(
     "/sessions",
 )
 async def create_session(
-    user_id: Annotated[str | None, Depends(auth.get_user_id)],
+    user_id: Annotated[str, Depends(auth.get_user_id)],
 ) -> CreateSessionResponse:
     """
     Create a new chat session.
 
-    Initiates a new chat session for either an authenticated or anonymous user.
+    Initiates a new chat session for the authenticated user.
 
     Args:
-        user_id: The optional authenticated user ID parsed from the JWT. If missing, creates an anonymous session.
+        user_id: The authenticated user ID parsed from the JWT (required).
 
     Returns:
         CreateSessionResponse: Details of the created session.
@@ -145,7 +143,7 @@ async def create_session(
     """
     logger.info(
         f"Creating session with user_id: "
-        f"...{user_id[-8:] if user_id and len(user_id) > 8 else '<redacted>'}"
+        f"...{user_id[-8:] if len(user_id) > 8 else '<redacted>'}"
     )
 
     session = await create_chat_session(user_id)
@@ -153,7 +151,7 @@ async def create_session(
     return CreateSessionResponse(
         id=session.session_id,
         created_at=session.started_at.isoformat(),
-        user_id=session.user_id or None,
+        user_id=session.user_id,
     )
 
 
@@ -334,16 +332,28 @@ async def health_check() -> dict:
     """
     Health check endpoint for the chat service.
 
-    Performs a full cycle test of session creation, assignment, and retrieval. Should always return healthy
+    Performs a full cycle test of session creation and retrieval. Should always return healthy
     if the service and data layer are operational.
 
     Returns:
         dict: A status dictionary indicating health, service name, and API version.
 
     """
-    session = await create_chat_session(None)
-    await chat_service.assign_user_to_session(session.session_id, "test_user")
-    await get_chat_session(session.session_id, "test_user")
+    from backend.data.user import get_or_create_user
+
+    # Ensure health check user exists (required for FK constraint)
+    health_check_user_id = "health-check-user"
+    await get_or_create_user(
+        {
+            "sub": health_check_user_id,
+            "email": "health-check@system.local",
+            "user_metadata": {"name": "Health Check User"},
+        }
+    )
+
+    # Create and retrieve session to verify full data layer
+    session = await create_chat_session(health_check_user_id)
+    await get_chat_session(session.session_id, health_check_user_id)
 
     return {
         "status": "healthy",
