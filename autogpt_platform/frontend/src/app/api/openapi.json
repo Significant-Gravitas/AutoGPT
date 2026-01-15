@@ -2870,6 +2870,28 @@
         }
       }
     },
+    "/api/integrations/providers/system": {
+      "get": {
+        "tags": ["v1", "integrations"],
+        "summary": "List System Providers",
+        "description": "Get a list of providers that have platform credits (system credentials) available.\n\nThese providers can be used without the user providing their own API keys.",
+        "operationId": "getV1ListSystemProviders",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": { "type": "string" },
+                  "type": "array",
+                  "title": "Response Getv1Listsystemproviders"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/integrations/webhooks/{webhook_id}/ping": {
       "post": {
         "tags": ["v1", "integrations"],

@@ -1,6 +1,6 @@
 import test, { expect } from "@playwright/test";
 import path from "path";
-import { TEST_CREDENTIALS } from "./credentials";
+import { getTestUserWithLibraryAgents } from "./credentials";
 import { LibraryPage } from "./pages/library.page";
 import { LoginPage } from "./pages/login.page";
 import { hasUrl } from "./utils/assertion";
@@ -14,7 +14,8 @@ test.describe("Library", () => {
 
     await page.goto("/login");
     const loginPage = new LoginPage(page);
-    await loginPage.login(TEST_CREDENTIALS.email, TEST_CREDENTIALS.password);
+    const richUser = getTestUserWithLibraryAgents();
+    await loginPage.login(richUser.email, richUser.password);
     await hasUrl(page, "/marketplace");
   });
 
