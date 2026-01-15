@@ -44,7 +44,10 @@ export const FormCreator: React.FC<FormCreatorProps> = React.memo(
         : hardcodedValues;
 
     return (
-      <div className={className}>
+      <div
+        className={className}
+        data-id={`form-creator-container-${nodeId}-node`}
+      >
         <FormRenderer
           jsonSchema={jsonSchema}
           handleChange={handleChange}
