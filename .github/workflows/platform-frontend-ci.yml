@@ -237,7 +237,7 @@ jobs:
         run: pnpm test:no-build
         continue-on-error: false
 
-      - name: Upload Playwright artifacts
+      - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v6
         with:
