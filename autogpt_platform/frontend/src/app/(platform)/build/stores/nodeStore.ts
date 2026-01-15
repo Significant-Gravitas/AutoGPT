@@ -47,6 +47,7 @@ const dragStartPositions: Record<string, XYPosition> = {};
 type NodeStore = {
   nodes: CustomNode[];
   nodeCounter: number;
+  setNodeCounter: (nodeCounter: number) => void;
   nodeAdvancedStates: Record<string, boolean>;
   setNodes: (nodes: CustomNode[]) => void;
   onNodesChange: (changes: NodeChange<CustomNode>[]) => void;
@@ -116,6 +117,7 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
   nodes: [],
   setNodes: (nodes) => set({ nodes }),
   nodeCounter: 0,
+  setNodeCounter: (nodeCounter) => set({ nodeCounter }),
   nodeAdvancedStates: {},
   incrementNodeCounter: () =>
     set((state) => ({

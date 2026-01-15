@@ -79,6 +79,7 @@ export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
               <Button
                 variant="outline"
                 size="icon"
+                data-id="agent-outputs-button"
                 disabled={!flowID || !hasOutputs()}
               >
                 <BookOpenIcon className="size-4" />

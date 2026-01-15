@@ -6,7 +6,7 @@ from typing import Any
 from openai.types.chat import ChatCompletionToolParam
 
 from backend.api.features.chat.model import ChatSession
-from backend.api.features.chat.response_model import StreamToolExecutionResult
+from backend.api.features.chat.response_model import StreamToolOutputAvailable
 
 from .models import ErrorResponse, NeedLoginResponse, ToolResponseBase
 
@@ -53,7 +53,7 @@ class BaseTool:
         session: ChatSession,
         tool_call_id: str,
         **kwargs,
-    ) -> StreamToolExecutionResult:
+    ) -> StreamToolOutputAvailable:
         """Execute the tool with authentication check.
 
         Args:
@@ -69,10 +69,10 @@ class BaseTool:
             logger.error(
                 f"Attempted tool call for {self.name} but user not authenticated"
             )
-            return StreamToolExecutionResult(
-                tool_id=tool_call_id,
-                tool_name=self.name,
-                result=NeedLoginResponse(
+            return StreamToolOutputAvailable(
+                toolCallId=tool_call_id,
+                toolName=self.name,
+                output=NeedLoginResponse(
                     message=f"Please sign in to use {self.name}",
                     session_id=session.session_id,
                 ).model_dump_json(),
@@ -81,17 +81,17 @@ class BaseTool:
 
         try:
             result = await self._execute(user_id, session, **kwargs)
-            return StreamToolExecutionResult(
-                tool_id=tool_call_id,
-                tool_name=self.name,
-                result=result.model_dump_json(),
+            return StreamToolOutputAvailable(
+                toolCallId=tool_call_id,
+                toolName=self.name,
+                output=result.model_dump_json(),
             )
         except Exception as e:
             logger.error(f"Error in {self.name}: {e}", exc_info=True)
-            return StreamToolExecutionResult(
-                tool_id=tool_call_id,
-                tool_name=self.name,
-                result=ErrorResponse(
+            return StreamToolOutputAvailable(
+                toolCallId=tool_call_id,
+                toolName=self.name,
+                output=ErrorResponse(
                     message=f"An error occurred while executing {self.name}",
                     error=str(e),
                     session_id=session.session_id,
