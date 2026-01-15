@@ -24,6 +24,71 @@ interface MediaItem {
   label?: string;
 }
 
+// Extract YouTube video ID from various URL formats
+function getYouTubeVideoId(url: string): string | null {
+  const regExp =
+    /^.*((youtu.be\/)|(v\/)|(\/u\/\w\/)|(embed\/)|(watch\?))\??v?=?([^#&?]*).*/;
+  const match = url.match(regExp);
+  return match && match[7].length === 11 ? match[7] : null;
+}
+
+// Validate video URL for security
+function isValidVideoUrl(url: string): boolean {
+  if (url.startsWith("data:video")) {
+    return true;
+  }
+  const videoExtensions = /\.(mp4|webm|ogg)$/i;
+  const youtubeRegex = /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.?be)\/.+$/;
+  const validUrl = /^(https?:\/\/)/i;
+  const cleanedUrl = url.split("?")[0];
+  return (
+    (validUrl.test(url) && videoExtensions.test(cleanedUrl)) ||
+    youtubeRegex.test(url)
+  );
+}
+
+// Video player with YouTube embed support
+function VideoPlayer({
+  url,
+  autoPlay = false,
+  className = "",
+}: {
+  url: string;
+  autoPlay?: boolean;
+  className?: string;
+}) {
+  const youtubeId = getYouTubeVideoId(url);
+
+  if (youtubeId) {
+    return (
+      <iframe
+        src={`https://www.youtube.com/embed/${youtubeId}${autoPlay ? "?autoplay=1" : ""}`}
+        className={className}
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+        sandbox="allow-same-origin allow-scripts allow-presentation"
+        allowFullScreen
+      />
+    );
+  }
+
+  if (!isValidVideoUrl(url)) {
+    return (
+      <div className={`flex items-center justify-center bg-zinc-800 ${className}`}>
+        <span className="text-sm text-zinc-400">Invalid video URL</span>
+      </div>
+    );
+  }
+
+  return (
+    <video
+      src={url}
+      controls
+      autoPlay={autoPlay}
+      className={className}
+    />
+  );
+}
+
 function MediaCarousel({ waitlist }: { waitlist: StoreWaitlistEntry }) {
   const [activeVideo, setActiveVideo] = useState<string | null>(null);
 
@@ -59,11 +124,7 @@ function MediaCarousel({ waitlist }: { waitlist: StoreWaitlistEntry }) {
             className="object-cover"
           />
         ) : (
-          <video
-            src={item.url}
-            controls
-            className="h-full w-full object-cover"
-          />
+          <VideoPlayer url={item.url} className="h-full w-full object-cover" />
         )}
       </div>
     );
@@ -84,9 +145,8 @@ function MediaCarousel({ waitlist }: { waitlist: StoreWaitlistEntry }) {
                   className="object-cover"
                 />
               ) : activeVideo === item.url ? (
-                <video
-                  src={item.url}
-                  controls
+                <VideoPlayer
+                  url={item.url}
                   autoPlay
                   className="h-full w-full object-cover"
                 />
