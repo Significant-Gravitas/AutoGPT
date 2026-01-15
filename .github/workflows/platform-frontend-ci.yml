@@ -235,13 +235,25 @@ jobs:
 
       - name: Run Playwright tests
         run: pnpm test:no-build
+        continue-on-error: false
 
-      - name: Upload Playwright artifacts
-        if: failure()
+      - name: Upload Playwright report
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report
           path: playwright-report
+          if-no-files-found: ignore
+          retention-days: 3
+
+      - name: Upload Playwright test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-test-results
+          path: test-results
+          if-no-files-found: ignore
+          retention-days: 3
 
       - name: Print Final Docker Compose logs
         if: always()

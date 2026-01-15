@@ -455,6 +455,20 @@ export async function navigateToAgentByName(
 
 export async function clickRunButton(page: Page): Promise<void> {
   const { getId } = getSelectors(page);
+
+  const setupTaskButton = page.getByRole("button", {
+    name: /Setup your task/i,
+  });
+
+  if (await setupTaskButton.isVisible()) {
+    await setupTaskButton.click();
+    const startTaskButton = page
+      .getByRole("button", { name: /Start Task/i })
+      .first();
+    await startTaskButton.click();
+    return;
+  }
+
   const newTaskButton = page.getByRole("button", { name: /New task/i });
   if (await newTaskButton.isVisible()) {
     await newTaskButton.click();
