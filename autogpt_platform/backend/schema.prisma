@@ -48,9 +48,9 @@ model User {
   AnalyticsMetrics     AnalyticsMetrics[]
   CreditTransactions   CreditTransaction[]
   UserBalance          UserBalance?
-
-  AgentPresets  AgentPreset[]
-  LibraryAgents LibraryAgent[]
+  ChatSessions         ChatSession[]
+  AgentPresets         AgentPreset[]
+  LibraryAgents        LibraryAgent[]
 
   Profile               Profile[]
   UserOnboarding        UserOnboarding?
@@ -160,8 +160,8 @@ model ChatSession {
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
 
-  userId String?
-
+  userId      String
+  User        User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   // Session metadata
   title       String?
   credentials Json    @default("{}") // Map of provider -> credential metadata

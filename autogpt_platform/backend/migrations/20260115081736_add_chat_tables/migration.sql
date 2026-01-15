@@ -1,6 +1,3 @@
--- DropIndex
-DROP INDEX "StoreListingVersion_storeListingId_version_key";
-
 -- CreateTable
 CREATE TABLE "CoPilotUnderstanding" (
     "id" TEXT NOT NULL,
@@ -17,7 +14,7 @@ CREATE TABLE "ChatSession" (
     "id" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "userId" TEXT,
+    "userId" TEXT NOT NULL,
     "title" TEXT,
     "credentials" JSONB NOT NULL DEFAULT '{}',
     "successfulAgentRuns" JSONB NOT NULL DEFAULT '{}',
@@ -59,6 +56,9 @@ CREATE UNIQUE INDEX "ChatMessage_sessionId_sequence_key" ON "ChatMessage"("sessi
 
 -- AddForeignKey
 ALTER TABLE "CoPilotUnderstanding" ADD CONSTRAINT "CoPilotUnderstanding_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "ChatSession" ADD CONSTRAINT "ChatSession_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "ChatMessage" ADD CONSTRAINT "ChatMessage_sessionId_fkey" FOREIGN KEY ("sessionId") REFERENCES "ChatSession"("id") ON DELETE CASCADE ON UPDATE CASCADE;
