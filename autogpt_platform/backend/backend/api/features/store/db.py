@@ -2281,6 +2281,17 @@ async def update_waitlist_admin(
     logger.info(f"Updating waitlist {waitlist_id}")
 
     try:
+        # Check if waitlist exists first
+        existing = await prisma.models.WaitlistEntry.prisma().find_unique(
+            where={"id": waitlist_id}
+        )
+
+        if not existing:
+            raise ValueError(f"Waitlist {waitlist_id} not found")
+
+        if existing.isDeleted:
+            raise ValueError(f"Waitlist {waitlist_id} has been deleted")
+
         # Build update data from explicitly provided fields
         # Use model_fields_set to allow clearing fields by setting them to None
         field_mappings = {
@@ -2311,9 +2322,6 @@ async def update_waitlist_admin(
             data=prisma.types.WaitlistEntryUpdateInput(**update_data),
             include={"joinedUsers": True},
         )
-
-        if not waitlist:
-            raise ValueError(f"Waitlist {waitlist_id} not found")
 
         return _waitlist_to_admin_response(waitlist)
     except ValueError:
