@@ -22,8 +22,8 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
-class HybridSearchWeights:
-    """Weights for combining search signals."""
+class UnifiedSearchWeights:
+    """Weights for unified search (no popularity signal)."""
 
     semantic: float = 0.40  # Embedding cosine similarity
     lexical: float = 0.40  # tsvector ts_rank_cd score
@@ -34,15 +34,17 @@ class HybridSearchWeights:
         """Validate weights are non-negative and sum to approximately 1.0."""
         total = self.semantic + self.lexical + self.category + self.recency
 
-        if any(w < 0 for w in [self.semantic, self.lexical, self.category, self.recency]):
+        if any(
+            w < 0 for w in [self.semantic, self.lexical, self.category, self.recency]
+        ):
             raise ValueError("All weights must be non-negative")
 
         if not (0.99 <= total <= 1.01):
             raise ValueError(f"Weights must sum to ~1.0, got {total:.3f}")
 
 
-# Default weights for different content types
-DEFAULT_WEIGHTS = HybridSearchWeights()
+# Default weights for unified search
+DEFAULT_UNIFIED_WEIGHTS = UnifiedSearchWeights()
 
 # Minimum relevance score threshold
 DEFAULT_MIN_SCORE = 0.15
@@ -54,7 +56,7 @@ async def unified_hybrid_search(
     category: str | None = None,
     page: int = 1,
     page_size: int = 20,
-    weights: HybridSearchWeights | None = None,
+    weights: UnifiedSearchWeights | None = None,
     min_score: float | None = None,
     user_id: str | None = None,
 ) -> tuple[list[dict[str, Any]], int]:
@@ -89,10 +91,14 @@ async def unified_hybrid_search(
         page_size = 100
 
     if content_types is None:
-        content_types = [ContentType.STORE_AGENT, ContentType.BLOCK, ContentType.DOCUMENTATION]
+        content_types = [
+            ContentType.STORE_AGENT,
+            ContentType.BLOCK,
+            ContentType.DOCUMENTATION,
+        ]
 
     if weights is None:
-        weights = DEFAULT_WEIGHTS
+        weights = DEFAULT_UNIFIED_WEIGHTS
     if min_score is None:
         min_score = DEFAULT_MIN_SCORE
 
@@ -112,14 +118,16 @@ async def unified_hybrid_search(
         total_non_semantic = weights.lexical + weights.category + weights.recency
         if total_non_semantic > 0:
             factor = 1.0 / total_non_semantic
-            weights = HybridSearchWeights(
+            weights = UnifiedSearchWeights(
                 semantic=0.0,
                 lexical=weights.lexical * factor,
                 category=weights.category * factor,
                 recency=weights.recency * factor,
             )
         else:
-            weights = HybridSearchWeights(semantic=0.0, lexical=1.0, category=0.0, recency=0.0)
+            weights = UnifiedSearchWeights(
+                semantic=0.0, lexical=1.0, category=0.0, recency=0.0
+            )
 
     # Build parameters
     params: list[Any] = []
@@ -273,7 +281,9 @@ async def unified_hybrid_search(
         LIMIT {limit_param} OFFSET {offset_param}
     """
 
-    results = await query_raw_with_schema(sql_query, *params, set_public_search_path=True)
+    results = await query_raw_with_schema(
+        sql_query, *params, set_public_search_path=True
+    )
 
     total = results[0]["total_count"] if results else 0
 
@@ -302,8 +312,23 @@ class StoreAgentSearchWeights:
     popularity: float = 0.10
 
     def __post_init__(self):
-        total = self.semantic + self.lexical + self.category + self.recency + self.popularity
-        if any(w < 0 for w in [self.semantic, self.lexical, self.category, self.recency, self.popularity]):
+        total = (
+            self.semantic
+            + self.lexical
+            + self.category
+            + self.recency
+            + self.popularity
+        )
+        if any(
+            w < 0
+            for w in [
+                self.semantic,
+                self.lexical,
+                self.category,
+                self.recency,
+                self.popularity,
+            ]
+        ):
             raise ValueError("All weights must be non-negative")
         if not (0.99 <= total <= 1.01):
             raise ValueError(f"Weights must sum to ~1.0, got {total:.3f}")
@@ -317,7 +342,9 @@ async def hybrid_search(
     featured: bool = False,
     creators: list[str] | None = None,
     category: str | None = None,
-    sorted_by: Literal["relevance", "rating", "runs", "name", "updated_at"] | None = None,
+    sorted_by: (
+        Literal["relevance", "rating", "runs", "name", "updated_at"] | None
+    ) = None,
     page: int = 1,
     page_size: int = 20,
     weights: StoreAgentSearchWeights | None = None,
@@ -355,7 +382,9 @@ async def hybrid_search(
             "Failed to generate query embedding - falling back to lexical-only search."
         )
         query_embedding = [0.0] * EMBEDDING_DIM
-        total_non_semantic = weights.lexical + weights.category + weights.recency + weights.popularity
+        total_non_semantic = (
+            weights.lexical + weights.category + weights.recency + weights.popularity
+        )
         if total_non_semantic > 0:
             factor = 1.0 / total_non_semantic
             weights = StoreAgentSearchWeights(
@@ -563,7 +592,9 @@ async def hybrid_search(
         LIMIT {limit_param} OFFSET {offset_param}
     """
 
-    results = await query_raw_with_schema(sql_query, *params, set_public_search_path=True)
+    results = await query_raw_with_schema(
+        sql_query, *params, set_public_search_path=True
+    )
 
     total = results[0]["total_count"] if results else 0
 
@@ -584,5 +615,6 @@ async def hybrid_search_simple(
     return await hybrid_search(query=query, page=page, page_size=page_size)
 
 
-# Backward compatibility alias
+# Backward compatibility alias - HybridSearchWeights maps to StoreAgentSearchWeights
+# for existing code that expects the popularity parameter
 HybridSearchWeights = StoreAgentSearchWeights
