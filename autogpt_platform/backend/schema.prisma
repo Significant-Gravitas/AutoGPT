@@ -937,7 +937,7 @@ model StoreListingVersion {
   // Old versions can be made unavailable by the author if desired
   isAvailable Boolean @default(true)
 
-  search Unsupported("tsvector")? @default(dbgenerated("''::tsvector"))
+  // Note: search column removed - now using UnifiedContentEmbedding.search
 
   // Version workflow state
   submissionStatus SubmissionStatus @default(DRAFT)
