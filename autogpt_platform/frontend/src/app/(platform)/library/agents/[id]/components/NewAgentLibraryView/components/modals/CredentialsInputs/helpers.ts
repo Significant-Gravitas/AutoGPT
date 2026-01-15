@@ -99,4 +99,30 @@ export function getCredentialDisplayName(
 }
 
 export const OAUTH_TIMEOUT_MS = 5 * 60 * 1000;
-export const MASKED_KEY_LENGTH = 30;
+export const MASKED_KEY_LENGTH = 15;
+
+export function isSystemCredential(credential: {
+  title?: string | null;
+  is_system?: boolean;
+}): boolean {
+  if (credential.is_system === true) return true;
+  if (!credential.title) return false;
+  const titleLower = credential.title.toLowerCase();
+  return (
+    titleLower.includes("system") ||
+    titleLower.startsWith("use credits for") ||
+    titleLower.includes("use credits")
+  );
+}
+
+export function filterSystemCredentials<
+  T extends { title?: string; is_system?: boolean },
+>(credentials: T[]): T[] {
+  return credentials.filter((cred) => !isSystemCredential(cred));
+}
+
+export function getSystemCredentials<
+  T extends { title?: string; is_system?: boolean },
+>(credentials: T[]): T[] {
+  return credentials.filter((cred) => isSystemCredential(cred));
+}

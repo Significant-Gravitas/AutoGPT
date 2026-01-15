@@ -1,5 +1,6 @@
 """Pydantic models for tool responses."""
 
+from datetime import datetime
 from enum import Enum
 from typing import Any
 
@@ -11,14 +12,15 @@ from backend.data.model import CredentialsMetaInput
 class ResponseType(str, Enum):
     """Types of tool responses."""
 
-    AGENT_CAROUSEL = "agent_carousel"
+    AGENTS_FOUND = "agents_found"
     AGENT_DETAILS = "agent_details"
     SETUP_REQUIREMENTS = "setup_requirements"
     EXECUTION_STARTED = "execution_started"
     NEED_LOGIN = "need_login"
     ERROR = "error"
     NO_RESULTS = "no_results"
-    SUCCESS = "success"
+    AGENT_OUTPUT = "agent_output"
+    UNDERSTANDING_UPDATED = "understanding_updated"
 
 
 # Base response model
@@ -51,14 +53,14 @@ class AgentInfo(BaseModel):
     graph_id: str | None = None
 
 
-class AgentCarouselResponse(ToolResponseBase):
+class AgentsFoundResponse(ToolResponseBase):
     """Response for find_agent tool."""
 
-    type: ResponseType = ResponseType.AGENT_CAROUSEL
+    type: ResponseType = ResponseType.AGENTS_FOUND
     title: str = "Available Agents"
     agents: list[AgentInfo]
     count: int
-    name: str = "agent_carousel"
+    name: str = "agents_found"
 
 
 class NoResultsResponse(ToolResponseBase):
@@ -173,3 +175,37 @@ class ErrorResponse(ToolResponseBase):
     type: ResponseType = ResponseType.ERROR
     error: str | None = None
     details: dict[str, Any] | None = None
+
+
+# Agent output models
+class ExecutionOutputInfo(BaseModel):
+    """Summary of a single execution's outputs."""
+
+    execution_id: str
+    status: str
+    started_at: datetime | None = None
+    ended_at: datetime | None = None
+    outputs: dict[str, list[Any]]
+    inputs_summary: dict[str, Any] | None = None
+
+
+class AgentOutputResponse(ToolResponseBase):
+    """Response for agent_output tool."""
+
+    type: ResponseType = ResponseType.AGENT_OUTPUT
+    agent_name: str
+    agent_id: str
+    library_agent_id: str | None = None
+    library_agent_link: str | None = None
+    execution: ExecutionOutputInfo | None = None
+    available_executions: list[dict[str, Any]] | None = None
+    total_executions: int = 0
+
+
+# Business understanding models
+class UnderstandingUpdatedResponse(ToolResponseBase):
+    """Response for add_understanding tool."""
+
+    type: ResponseType = ResponseType.UNDERSTANDING_UPDATED
+    updated_fields: list[str] = Field(default_factory=list)
+    current_understanding: dict[str, Any] = Field(default_factory=dict)
