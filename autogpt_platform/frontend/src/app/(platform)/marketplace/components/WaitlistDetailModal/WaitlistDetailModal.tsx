@@ -74,20 +74,15 @@ function VideoPlayer({
 
   if (!isValidVideoUrl(url)) {
     return (
-      <div className={`flex items-center justify-center bg-zinc-800 ${className}`}>
+      <div
+        className={`flex items-center justify-center bg-zinc-800 ${className}`}
+      >
         <span className="text-sm text-zinc-400">Invalid video URL</span>
       </div>
     );
   }
 
-  return (
-    <video
-      src={url}
-      controls
-      autoPlay={autoPlay}
-      className={className}
-    />
-  );
+  return <video src={url} controls autoPlay={autoPlay} className={className} />;
 }
 
 function MediaCarousel({ waitlist }: { waitlist: StoreWaitlistEntry }) {
