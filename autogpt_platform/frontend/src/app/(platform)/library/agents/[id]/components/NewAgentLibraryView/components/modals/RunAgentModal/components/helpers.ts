@@ -1,5 +1,5 @@
-import { getSystemCredentials } from "../../CredentialsInputs/helpers";
 import { CredentialsProvidersContextType } from "@/providers/agent-credentials/credentials-provider";
+import { getSystemCredentials } from "../../CredentialsInputs/helpers";
 
 export type CredentialField = [string, any];
 
@@ -9,6 +9,19 @@ type SavedCredential = {
   type: string;
   title?: string | null;
 };
+
+function hasRequiredScopes(
+  credential: { scopes?: string[]; type: string },
+  requiredScopes?: string[],
+) {
+  if (credential.type !== "oauth2") return true;
+  if (!requiredScopes || requiredScopes.length === 0) return true;
+  const grantedScopes = new Set(credential.scopes || []);
+  for (const scope of requiredScopes) {
+    if (!grantedScopes.has(scope)) return false;
+  }
+  return true;
+}
 
 export function splitCredentialFieldsBySystem(
   credentialFields: CredentialField[],
@@ -70,6 +83,7 @@ export function hasMissingRequiredSystemCredentials(
 export function findSavedCredentialByProviderAndType(
   providerNames: string[],
   credentialTypes: string[],
+  requiredScopes: string[] | undefined,
   allProviders: CredentialsProvidersContextType | null,
 ): SavedCredential | undefined {
   for (const providerName of providerNames) {
@@ -80,16 +94,20 @@ export function findSavedCredentialByProviderAndType(
       providerData.savedCredentials ?? [],
     );
 
-    const matchingCredential = systemCredentials.find((credential) => {
-      if (credentialTypes.length > 0) {
-        return credentialTypes.includes(credential.type);
-      }
-      return true;
-    });
+    const matchingCredentials: SavedCredential[] = [];
 
-    if (matchingCredential) {
-      return matchingCredential as SavedCredential;
+    for (const credential of systemCredentials) {
+      if (
+        credentialTypes.length > 0 &&
+        !credentialTypes.includes(credential.type)
+      )
+        continue;
+      if (!hasRequiredScopes(credential, requiredScopes)) continue;
+
+      matchingCredentials.push(credential as SavedCredential);
     }
+
+    if (matchingCredentials.length === 1) return matchingCredentials[0];
   }
 
   return undefined;
