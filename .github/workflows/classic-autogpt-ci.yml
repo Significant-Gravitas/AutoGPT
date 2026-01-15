@@ -61,7 +61,7 @@ jobs:
       #   See: https://github.com/actions/runner/issues/598#issuecomment-2011890429
 
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
           submodules: true
@@ -72,7 +72,7 @@ jobs:
           git config --global user.email "github-bot@agpt.co"
 
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
 
@@ -83,7 +83,7 @@ jobs:
       - name: Set up Python dependency cache
         # On Windows, unpacking cached dependencies takes longer than just installing them
         if: runner.os != 'Windows'
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ${{ runner.os == 'macOS' && '~/Library/Caches/pypoetry' || '~/.cache/pypoetry' }}
           key: poetry-${{ runner.os }}-${{ hashFiles('classic/original_autogpt/poetry.lock') }}
@@ -139,7 +139,7 @@ jobs:
 
       - name: Upload logs to artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: test-logs
           path: classic/original_autogpt/logs/
