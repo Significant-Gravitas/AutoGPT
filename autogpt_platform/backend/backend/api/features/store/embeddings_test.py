@@ -297,72 +297,92 @@ async def test_ensure_embedding_generation_fails(mock_get, mock_generate):
 @pytest.mark.asyncio(loop_scope="session")
 async def test_get_embedding_stats():
     """Test embedding statistics retrieval."""
-    # Mock approved count query and embedded count query
-    mock_approved_result = [{"count": 100}]
-    mock_embedded_result = [{"count": 75}]
+    # Mock handler stats for each content type
+    mock_handler = MagicMock()
+    mock_handler.get_stats = AsyncMock(
+        return_value={
+            "total": 100,
+            "with_embeddings": 75,
+            "without_embeddings": 25,
+        }
+    )
 
+    # Patch the CONTENT_HANDLERS where it's used (in embeddings module)
     with patch(
-        "backend.api.features.store.embeddings.query_raw_with_schema",
-        side_effect=[mock_approved_result, mock_embedded_result],
+        "backend.api.features.store.embeddings.CONTENT_HANDLERS",
+        {ContentType.STORE_AGENT: mock_handler},
     ):
         result = await embeddings.get_embedding_stats()
 
-        assert result["total_approved"] == 100
-        assert result["with_embeddings"] == 75
-        assert result["without_embeddings"] == 25
-        assert result["coverage_percent"] == 75.0
+        assert "by_type" in result
+        assert "totals" in result
+        assert result["totals"]["total"] == 100
+        assert result["totals"]["with_embeddings"] == 75
+        assert result["totals"]["without_embeddings"] == 25
+        assert result["totals"]["coverage_percent"] == 75.0
 
 
 @pytest.mark.asyncio(loop_scope="session")
-@patch("backend.api.features.store.embeddings.ensure_embedding")
-async def test_backfill_missing_embeddings_success(mock_ensure):
+@patch("backend.api.features.store.embeddings.store_content_embedding")
+async def test_backfill_missing_embeddings_success(mock_store):
     """Test backfill with successful embedding generation."""
-    # Mock missing embeddings query
-    mock_missing = [
-        {
-            "id": "version-1",
-            "name": "Agent 1",
-            "description": "Description 1",
-            "subHeading": "Heading 1",
-            "categories": ["AI"],
-        },
-        {
-            "id": "version-2",
-            "name": "Agent 2",
-            "description": "Description 2",
-            "subHeading": "Heading 2",
-            "categories": ["Productivity"],
-        },
+    # Mock ContentItem from handlers
+    from backend.api.features.store.content_handlers import ContentItem
+
+    mock_items = [
+        ContentItem(
+            content_id="version-1",
+            content_type=ContentType.STORE_AGENT,
+            searchable_text="Agent 1 Description 1",
+            metadata={"name": "Agent 1"},
+        ),
+        ContentItem(
+            content_id="version-2",
+            content_type=ContentType.STORE_AGENT,
+            searchable_text="Agent 2 Description 2",
+            metadata={"name": "Agent 2"},
+        ),
     ]
 
-    # Mock ensure_embedding to succeed for first, fail for second
-    mock_ensure.side_effect = [True, False]
+    # Mock handler to return missing items
+    mock_handler = MagicMock()
+    mock_handler.get_missing_items = AsyncMock(return_value=mock_items)
+
+    # Mock store_content_embedding to succeed for first, fail for second
+    mock_store.side_effect = [True, False]
 
     with patch(
-        "backend.api.features.store.embeddings.query_raw_with_schema",
-        return_value=mock_missing,
+        "backend.api.features.store.embeddings.CONTENT_HANDLERS",
+        {ContentType.STORE_AGENT: mock_handler},
     ):
-        result = await embeddings.backfill_missing_embeddings(batch_size=5)
+        with patch(
+            "backend.api.features.store.embeddings.generate_embedding",
+            return_value=[0.1] * 1536,
+        ):
+            result = await embeddings.backfill_missing_embeddings(batch_size=5)
 
-        assert result["processed"] == 2
-        assert result["success"] == 1
-        assert result["failed"] == 1
-        assert mock_ensure.call_count == 2
+            assert result["processed"] == 2
+            assert result["success"] == 1
+            assert result["failed"] == 1
+            assert mock_store.call_count == 2
 
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_backfill_missing_embeddings_no_missing():
     """Test backfill when no embeddings are missing."""
+    # Mock handler to return no missing items
+    mock_handler = MagicMock()
+    mock_handler.get_missing_items = AsyncMock(return_value=[])
+
     with patch(
-        "backend.api.features.store.embeddings.query_raw_with_schema",
-        return_value=[],
+        "backend.api.features.store.embeddings.CONTENT_HANDLERS",
+        {ContentType.STORE_AGENT: mock_handler},
     ):
         result = await embeddings.backfill_missing_embeddings(batch_size=5)
 
         assert result["processed"] == 0
         assert result["success"] == 0
         assert result["failed"] == 0
-        assert result["message"] == "No missing embeddings"
 
 
 @pytest.mark.asyncio(loop_scope="session")

@@ -134,22 +134,52 @@ async def test_hybrid_search_with_custom_schema():
 @pytest.mark.asyncio(loop_scope="session")
 @pytest.mark.integration
 async def test_hybrid_search_without_embeddings():
-    """Test hybrid search fails fast when embeddings are unavailable."""
-    # Patch where the function is used, not where it's defined
-    with patch("backend.api.features.store.hybrid_search.embed_query") as mock_embed:
-        # Simulate embedding failure
-        mock_embed.return_value = None
+    """Test hybrid search gracefully degrades when embeddings are unavailable."""
+    # Mock database to return some results
+    mock_results = [
+        {
+            "slug": "test-agent",
+            "agent_name": "Test Agent",
+            "agent_image": "test.png",
+            "creator_username": "creator",
+            "creator_avatar": "avatar.png",
+            "sub_heading": "Test heading",
+            "description": "Test description",
+            "runs": 100,
+            "rating": 4.5,
+            "categories": ["AI"],
+            "featured": False,
+            "is_available": True,
+            "updated_at": "2025-01-01T00:00:00Z",
+            "semantic_score": 0.0,  # Zero because no embedding
+            "lexical_score": 0.5,
+            "category_score": 0.0,
+            "recency_score": 0.1,
+            "popularity_score": 0.2,
+            "combined_score": 0.3,
+            "total_count": 1,
+        }
+    ]
 
-        # Should raise ValueError with helpful message
-        with pytest.raises(ValueError) as exc_info:
-            await hybrid_search(
+    with patch("backend.api.features.store.hybrid_search.embed_query") as mock_embed:
+        with patch(
+            "backend.api.features.store.hybrid_search.query_raw_with_schema"
+        ) as mock_query:
+            # Simulate embedding failure
+            mock_embed.return_value = None
+            mock_query.return_value = mock_results
+
+            # Should NOT raise - graceful degradation
+            results, total = await hybrid_search(
                 query="test",
                 page=1,
                 page_size=20,
             )
 
-        # Verify error message is generic (doesn't leak implementation details)
-        assert "Search service temporarily unavailable" in str(exc_info.value)
+            # Verify it returns results even without embeddings
+            assert len(results) == 1
+            assert results[0]["slug"] == "test-agent"
+            assert total == 1
 
 
 @pytest.mark.asyncio(loop_scope="session")
