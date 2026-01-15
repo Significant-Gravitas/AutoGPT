@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 import threading
+import time
 import uuid
 from enum import Enum
 from typing import Optional
@@ -36,7 +37,7 @@ from backend.monitoring import (
     report_execution_accuracy_alerts,
     report_late_executions,
 )
-from backend.util.clients import get_scheduler_client
+from backend.util.clients import get_database_manager_client, get_scheduler_client
 from backend.util.cloud_storage import cleanup_expired_files_async
 from backend.util.exceptions import (
     GraphNotFoundError,
@@ -250,6 +251,74 @@ def cleanup_oauth_tokens():
 def execution_accuracy_alerts():
     """Check execution accuracy and send alerts if drops are detected."""
     return report_execution_accuracy_alerts()
+
+
+def ensure_embeddings_coverage():
+    """
+    Ensure approved store agents have embeddings for hybrid search.
+
+    Processes ALL missing embeddings in batches of 10 until 100% coverage.
+    Missing embeddings = agents invisible in hybrid search.
+
+    Schedule: Runs every 6 hours (balanced between coverage and API costs).
+    - Catches agents approved between scheduled runs
+    - Batch size 10: gradual processing to avoid rate limits
+    - Manual trigger available via execute_ensure_embeddings_coverage endpoint
+    """
+    db_client = get_database_manager_client()
+    stats = db_client.get_embedding_stats()
+
+    # Check for error from get_embedding_stats() first
+    if "error" in stats:
+        logger.error(
+            f"Failed to get embedding stats: {stats['error']} - skipping backfill"
+        )
+        return {"processed": 0, "success": 0, "failed": 0, "error": stats["error"]}
+
+    if stats["without_embeddings"] == 0:
+        logger.info("All approved agents have embeddings, skipping backfill")
+        return {"processed": 0, "success": 0, "failed": 0}
+
+    logger.info(
+        f"Found {stats['without_embeddings']} agents without embeddings "
+        f"({stats['coverage_percent']}% coverage) - processing all"
+    )
+
+    total_processed = 0
+    total_success = 0
+    total_failed = 0
+
+    # Process in batches until no more missing embeddings
+    while True:
+        result = db_client.backfill_missing_embeddings(batch_size=10)
+
+        total_processed += result["processed"]
+        total_success += result["success"]
+        total_failed += result["failed"]
+
+        if result["processed"] == 0:
+            # No more missing embeddings
+            break
+
+        if result["success"] == 0 and result["processed"] > 0:
+            # All attempts in this batch failed - stop to avoid infinite loop
+            logger.error(
+                f"All {result['processed']} embedding attempts failed - stopping backfill"
+            )
+            break
+
+        # Small delay between batches to avoid rate limits
+        time.sleep(1)
+
+    logger.info(
+        f"Embedding backfill completed: {total_success}/{total_processed} succeeded, "
+        f"{total_failed} failed"
+    )
+    return {
+        "processed": total_processed,
+        "success": total_success,
+        "failed": total_failed,
+    }
 
 
 # Monitoring functions are now imported from monitoring module
@@ -473,6 +542,19 @@ class Scheduler(AppService):
                 jobstore=Jobstores.EXECUTION.value,
             )
 
+            # Embedding Coverage - Every 6 hours
+            # Ensures all approved agents have embeddings for hybrid search
+            # Critical: missing embeddings = agents invisible in search
+            self.scheduler.add_job(
+                ensure_embeddings_coverage,
+                id="ensure_embeddings_coverage",
+                trigger="interval",
+                hours=6,
+                replace_existing=True,
+                max_instances=1,  # Prevent overlapping runs
+                jobstore=Jobstores.EXECUTION.value,
+            )
+
         self.scheduler.add_listener(job_listener, EVENT_JOB_EXECUTED | EVENT_JOB_ERROR)
         self.scheduler.add_listener(job_missed_listener, EVENT_JOB_MISSED)
         self.scheduler.add_listener(job_max_instances_listener, EVENT_JOB_MAX_INSTANCES)
@@ -629,6 +711,11 @@ class Scheduler(AppService):
     def execute_report_execution_accuracy_alerts(self):
         """Manually trigger execution accuracy alert checking."""
         return execution_accuracy_alerts()
+
+    @expose
+    def execute_ensure_embeddings_coverage(self):
+        """Manually trigger embedding backfill for approved store agents."""
+        return ensure_embeddings_coverage()
 
 
 class SchedulerClient(AppServiceClient):
