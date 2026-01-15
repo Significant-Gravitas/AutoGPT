@@ -22,6 +22,7 @@ export const BlockMenuSearchBar: React.FC<BlockMenuSearchBarProps> = ({
 
   return (
     <div
+      data-id="blocks-control-search-bar"
       className={cn(
         "flex min-h-[3.5625rem] items-center gap-2.5 px-4",
         className,

@@ -4,18 +4,19 @@ from os import getenv
 import pytest
 
 from . import service as chat_service
+from .model import create_chat_session, get_chat_session, upsert_chat_session
 from .response_model import (
-    StreamEnd,
     StreamError,
-    StreamTextChunk,
-    StreamToolExecutionResult,
+    StreamFinish,
+    StreamTextDelta,
+    StreamToolOutputAvailable,
 )
 
 logger = logging.getLogger(__name__)
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_stream_chat_completion():
+async def test_stream_chat_completion(setup_test_user, test_user_id):
     """
     Test the stream_chat_completion function.
     """
@@ -23,7 +24,7 @@ async def test_stream_chat_completion():
     if not api_key:
         return pytest.skip("OPEN_ROUTER_API_KEY is not set, skipping test")
 
-    session = await chat_service.create_chat_session()
+    session = await create_chat_session(test_user_id)
 
     has_errors = False
     has_ended = False
@@ -34,9 +35,9 @@ async def test_stream_chat_completion():
         logger.info(chunk)
         if isinstance(chunk, StreamError):
             has_errors = True
-        if isinstance(chunk, StreamTextChunk):
-            assistant_message += chunk.content
-        if isinstance(chunk, StreamEnd):
+        if isinstance(chunk, StreamTextDelta):
+            assistant_message += chunk.delta
+        if isinstance(chunk, StreamFinish):
             has_ended = True
 
     assert has_ended, "Chat completion did not end"
@@ -45,7 +46,7 @@ async def test_stream_chat_completion():
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_stream_chat_completion_with_tool_calls():
+async def test_stream_chat_completion_with_tool_calls(setup_test_user, test_user_id):
     """
     Test the stream_chat_completion function.
     """
@@ -53,8 +54,8 @@ async def test_stream_chat_completion_with_tool_calls():
     if not api_key:
         return pytest.skip("OPEN_ROUTER_API_KEY is not set, skipping test")
 
-    session = await chat_service.create_chat_session()
-    session = await chat_service.upsert_chat_session(session)
+    session = await create_chat_session(test_user_id)
+    session = await upsert_chat_session(session)
 
     has_errors = False
     has_ended = False
@@ -68,14 +69,14 @@ async def test_stream_chat_completion_with_tool_calls():
         if isinstance(chunk, StreamError):
             has_errors = True
 
-        if isinstance(chunk, StreamEnd):
+        if isinstance(chunk, StreamFinish):
             has_ended = True
-        if isinstance(chunk, StreamToolExecutionResult):
+        if isinstance(chunk, StreamToolOutputAvailable):
             had_tool_calls = True
 
     assert has_ended, "Chat completion did not end"
     assert not has_errors, "Error occurred while streaming chat completion"
     assert had_tool_calls, "Tool calls did not occur"
-    session = await chat_service.get_session(session.session_id)
+    session = await get_chat_session(session.session_id)
     assert session, "Session not found"
     assert session.usage, "Usage is empty"
