@@ -116,6 +116,8 @@ export default function UserIntegrationsPage() {
       "63a6e279-2dc2-448e-bf57-85776f7176dc", // ZeroBounce
       "9aa1bde0-4947-4a70-a20c-84daa3850d52", // Google Maps
       "d44045af-1c33-4833-9e19-752313214de2", // Llama API
+      "a5b3c7d9-2e4f-4a6b-8c1d-9e0f1a2b3c4d", // Webshare Proxy
+      "8b3d4e5f-6a7b-8c9d-0e1f-2a3b4c5d6e7f", // OpenWeatherMap
     ],
     [],
   );
