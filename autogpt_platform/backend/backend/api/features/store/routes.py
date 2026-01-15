@@ -130,10 +130,21 @@ async def add_self_to_waitlist(
             detail="Either user authentication or email address is required",
         )
 
-    waitlist_entry = await store_db.add_user_to_waitlist(
-        waitlist_id=waitlist_id, user_id=user_id, email=email
-    )
-    return waitlist_entry
+    try:
+        waitlist_entry = await store_db.add_user_to_waitlist(
+            waitlist_id=waitlist_id, user_id=user_id, email=email
+        )
+        return waitlist_entry
+    except ValueError as e:
+        error_msg = str(e)
+        if "not found" in error_msg:
+            raise fastapi.HTTPException(status_code=404, detail="Waitlist not found")
+        # Waitlist exists but is closed or unavailable
+        raise fastapi.HTTPException(status_code=400, detail=error_msg)
+    except Exception:
+        raise fastapi.HTTPException(
+            status_code=500, detail="An error occurred while joining the waitlist"
+        )
 
 
 ##############################################
