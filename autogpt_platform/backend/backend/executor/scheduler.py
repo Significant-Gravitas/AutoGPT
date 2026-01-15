@@ -286,57 +286,53 @@ def ensure_embeddings_coverage():
     without_embeddings = totals.get("without_embeddings", 0)
     coverage_percent = totals.get("coverage_percent", 0)
 
-    if without_embeddings == 0:
-        logger.info("All content has embeddings, skipping backfill")
-        return {
-            "backfill": {"processed": 0, "success": 0, "failed": 0},
-            "cleanup": {"deleted": 0},
-        }
-
-    # Log per-content-type stats for visibility
-    by_type = stats.get("by_type", {})
-    for content_type, type_stats in by_type.items():
-        if type_stats.get("without_embeddings", 0) > 0:
-            logger.info(
-                f"{content_type}: {type_stats['without_embeddings']} items without embeddings "
-                f"({type_stats['coverage_percent']}% coverage)"
-            )
-
-    logger.info(
-        f"Total: {without_embeddings} items without embeddings "
-        f"({coverage_percent}% coverage) - processing all"
-    )
-
     total_processed = 0
     total_success = 0
     total_failed = 0
 
-    # Process in batches until no more missing embeddings
-    while True:
-        result = db_client.backfill_missing_embeddings(batch_size=10)
+    if without_embeddings == 0:
+        logger.info("All content has embeddings, skipping backfill")
+    else:
+        # Log per-content-type stats for visibility
+        by_type = stats.get("by_type", {})
+        for content_type, type_stats in by_type.items():
+            if type_stats.get("without_embeddings", 0) > 0:
+                logger.info(
+                    f"{content_type}: {type_stats['without_embeddings']} items without embeddings "
+                    f"({type_stats['coverage_percent']}% coverage)"
+                )
 
-        total_processed += result["processed"]
-        total_success += result["success"]
-        total_failed += result["failed"]
+        logger.info(
+            f"Total: {without_embeddings} items without embeddings "
+            f"({coverage_percent}% coverage) - processing all"
+        )
 
-        if result["processed"] == 0:
-            # No more missing embeddings
-            break
+        # Process in batches until no more missing embeddings
+        while True:
+            result = db_client.backfill_missing_embeddings(batch_size=10)
 
-        if result["success"] == 0 and result["processed"] > 0:
-            # All attempts in this batch failed - stop to avoid infinite loop
-            logger.error(
-                f"All {result['processed']} embedding attempts failed - stopping backfill"
-            )
-            break
+            total_processed += result["processed"]
+            total_success += result["success"]
+            total_failed += result["failed"]
 
-        # Small delay between batches to avoid rate limits
-        time.sleep(1)
+            if result["processed"] == 0:
+                # No more missing embeddings
+                break
 
-    logger.info(
-        f"Embedding backfill completed: {total_success}/{total_processed} succeeded, "
-        f"{total_failed} failed"
-    )
+            if result["success"] == 0 and result["processed"] > 0:
+                # All attempts in this batch failed - stop to avoid infinite loop
+                logger.error(
+                    f"All {result['processed']} embedding attempts failed - stopping backfill"
+                )
+                break
+
+            # Small delay between batches to avoid rate limits
+            time.sleep(1)
+
+        logger.info(
+            f"Embedding backfill completed: {total_success}/{total_processed} succeeded, "
+            f"{total_failed} failed"
+        )
 
     # Clean up orphaned embeddings for blocks and docs
     logger.info("Running cleanup for orphaned embeddings (blocks/docs)...")
