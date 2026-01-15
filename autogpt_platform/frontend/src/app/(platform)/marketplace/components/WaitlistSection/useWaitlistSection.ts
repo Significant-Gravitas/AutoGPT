@@ -5,6 +5,7 @@ import { useSupabaseStore } from "@/lib/supabase/hooks/useSupabaseStore";
 import {
   useGetV2GetTheAgentWaitlist,
   useGetV2GetWaitlistIdsTheCurrentUserHasJoined,
+  getGetV2GetWaitlistIdsTheCurrentUserHasJoinedQueryKey,
 } from "@/app/api/__generated__/endpoints/store/store";
 import type { StoreWaitlistEntry } from "@/app/api/__generated__/models/storeWaitlistEntry";
 import { useQueryClient } from "@tanstack/react-query";
@@ -49,7 +50,7 @@ export function useWaitlistSection() {
   function markAsJoined(_waitlistId: string) {
     // Invalidate the memberships query to refetch
     queryClient.invalidateQueries({
-      queryKey: ["getV2GetWaitlistIdsTheCurrentUserHasJoined"],
+      queryKey: getGetV2GetWaitlistIdsTheCurrentUserHasJoinedQueryKey(),
     });
   }
 
