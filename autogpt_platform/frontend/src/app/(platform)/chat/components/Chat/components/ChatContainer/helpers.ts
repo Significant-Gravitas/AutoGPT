@@ -2,17 +2,17 @@ import type { ToolResult } from "@/types/chat";
 import type { ChatMessageData } from "../ChatMessage/useChatMessage";
 
 export function removePageContext(content: string): string {
-  // Remove "Page URL: ..." pattern (case insensitive, handles various formats)
-  let cleaned = content.replace(/Page URL:\s*[^\n\r]*/gi, "");
+  // Remove "Page URL: ..." pattern at start of line (case insensitive, handles various formats)
+  let cleaned = content.replace(/^\s*Page URL:\s*[^\n\r]*/gim, "");
 
-  // Find "User Message:" marker to preserve the actual user message
-  const userMessageMatch = cleaned.match(/User Message:\s*([\s\S]*)$/i);
+  // Find "User Message:" marker at start of line to preserve the actual user message
+  const userMessageMatch = cleaned.match(/^\s*User Message:\s*([\s\S]*)$/im);
   if (userMessageMatch) {
     // If we found "User Message:", extract everything after it
     cleaned = userMessageMatch[1];
   } else {
-    // If no "User Message:" marker, remove "Page Content:" and everything after it
-    cleaned = cleaned.replace(/Page Content:[\s\S]*$/gi, "");
+    // If no "User Message:" marker, remove "Page Content:" and everything after it at start of line
+    cleaned = cleaned.replace(/^\s*Page Content:[\s\S]*$/gim, "");
   }
 
   // Clean up extra whitespace and newlines
@@ -326,21 +326,32 @@ export function extractInputsNeeded(
     const agentId = parsedResult?.graph_id as string | undefined;
     const graphVersion = parsedResult?.graph_version as number | undefined;
 
-    const inputSchema: Record<string, any> = {};
+    const properties: Record<string, any> = {};
+    const requiredProps: string[] = [];
     inputs.forEach((input) => {
       const name = input.name as string;
       if (name) {
-        inputSchema[name] = {
+        properties[name] = {
           title: input.name as string,
           description: (input.description as string) || "",
           type: (input.type as string) || "string",
           default: input.default,
-          required: (input.required as boolean) || false,
           enum: input.options,
           format: input.format,
         };
+        if ((input.required as boolean) === true) {
+          requiredProps.push(name);
+        }
       }
     });
+
+    const inputSchema: Record<string, any> = {
+      type: "object",
+      properties,
+    };
+    if (requiredProps.length > 0) {
+      inputSchema.required = requiredProps;
+    }
 
     const credentialsSchema: Record<string, any> = {};
     if (credentials && credentials.length > 0) {

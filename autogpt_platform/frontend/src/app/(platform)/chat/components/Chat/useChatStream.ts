@@ -159,7 +159,6 @@ export function useChatStream() {
       clearTimeout(retryTimeoutRef.current);
       retryTimeoutRef.current = null;
     }
-    retryCountRef.current = 0;
     setIsStreaming(false);
   }, []);
 
@@ -176,6 +175,7 @@ export function useChatStream() {
       onChunk: (chunk: StreamChunk) => void,
       isUserMessage: boolean = true,
       context?: { url: string; content: string },
+      isRetry: boolean = false,
     ) => {
       stopStreaming();
 
@@ -186,7 +186,9 @@ export function useChatStream() {
         return Promise.reject(new Error("Request aborted"));
       }
 
-      retryCountRef.current = 0;
+      if (!isRetry) {
+        retryCountRef.current = 0;
+      }
       setIsStreaming(true);
       setError(null);
 
@@ -244,6 +246,7 @@ export function useChatStream() {
                 if (done) {
                   cleanup();
                   dispatchStreamEnd();
+                  retryCountRef.current = 0;
                   stopStreaming();
                   resolve();
                   return;
@@ -259,6 +262,7 @@ export function useChatStream() {
                     if (data === "[DONE]") {
                       cleanup();
                       dispatchStreamEnd();
+                      retryCountRef.current = 0;
                       stopStreaming();
                       resolve();
                       return;
@@ -273,10 +277,6 @@ export function useChatStream() {
                         continue;
                       }
 
-                      if (retryCountRef.current > 0) {
-                        retryCountRef.current = 0;
-                      }
-
                       // Call the chunk handler
                       onChunk(chunk);
 
@@ -284,6 +284,7 @@ export function useChatStream() {
                       if (chunk.type === "stream_end") {
                         didDispatchStreamEnd = true;
                         cleanup();
+                        retryCountRef.current = 0;
                         stopStreaming();
                         resolve();
                         return;
@@ -328,6 +329,7 @@ export function useChatStream() {
                     onChunk,
                     isUserMessage,
                     context,
+                    true,
                   ).catch((_err) => {
                     // Retry failed
                   });
@@ -340,6 +342,7 @@ export function useChatStream() {
                 });
                 cleanup();
                 dispatchStreamEnd();
+                retryCountRef.current = 0;
                 stopStreaming();
                 reject(streamError);
               }

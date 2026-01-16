@@ -1,3 +1,5 @@
+"use client";
+
 import { cn } from "@/lib/utils";
 import { ChatMessage } from "../ChatMessage/ChatMessage";
 import type { ChatMessageData } from "../ChatMessage/useChatMessage";

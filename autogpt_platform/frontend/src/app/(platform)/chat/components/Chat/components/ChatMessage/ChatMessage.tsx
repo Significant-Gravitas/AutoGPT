@@ -17,10 +17,13 @@ import {
 } from "@phosphor-icons/react";
 import { useCallback, useState } from "react";
 import { getToolActionPhrase } from "../../helpers";
+import { AgentCarouselMessage } from "../AgentCarouselMessage/AgentCarouselMessage";
 import { AuthPromptWidget } from "../AuthPromptWidget/AuthPromptWidget";
 import { ChatCredentialsSetup } from "../ChatCredentialsSetup/ChatCredentialsSetup";
+import { ExecutionStartedMessage } from "../ExecutionStartedMessage/ExecutionStartedMessage";
 import { MarkdownContent } from "../MarkdownContent/MarkdownContent";
 import { MessageBubble } from "../MessageBubble/MessageBubble";
+import { NoResultsMessage } from "../NoResultsMessage/NoResultsMessage";
 import { ToolCallMessage } from "../ToolCallMessage/ToolCallMessage";
 import { ToolResponseMessage } from "../ToolResponseMessage/ToolResponseMessage";
 import { useChatMessage, type ChatMessageData } from "./useChatMessage";
@@ -165,15 +168,47 @@ export function ChatMessage({
     );
   }
 
+  // Render no_results messages
+  if (message.type === "no_results") {
+    return (
+      <div className={cn("px-4 py-2", className)}>
+        <NoResultsMessage
+          message={message.message}
+          suggestions={message.suggestions}
+        />
+      </div>
+    );
+  }
+
+  // Render agent_carousel messages
+  if (message.type === "agent_carousel") {
+    return (
+      <div className={cn("px-4 py-2", className)}>
+        <AgentCarouselMessage
+          agents={message.agents}
+          totalCount={message.totalCount}
+        />
+      </div>
+    );
+  }
+
+  // Render execution_started messages
+  if (message.type === "execution_started") {
+    return (
+      <div className={cn("px-4 py-2", className)}>
+        <ExecutionStartedMessage
+          executionId={message.executionId}
+          agentName={message.agentName}
+          message={message.message}
+        />
+      </div>
+    );
+  }
+
   // Render tool response messages (but skip agent_output if it's being rendered inside assistant message)
-  if (
-    (isToolResponse && message.type === "tool_response") ||
-    message.type === "no_results" ||
-    message.type === "agent_carousel" ||
-    message.type === "execution_started"
-  ) {
+  if (isToolResponse && message.type === "tool_response") {
     // Check if this is an agent_output that should be rendered inside assistant message
-    if (message.type === "tool_response" && message.result) {
+    if (message.result) {
       let parsedResult: Record<string, unknown> | null = null;
       try {
         parsedResult =
@@ -193,7 +228,7 @@ export function ChatMessage({
       <div className={cn("px-4 py-2", className)}>
         <ToolResponseMessage
           toolName={getToolActionPhrase(message.toolName)}
-          result={message.type === "tool_response" ? message.result : undefined}
+          result={message.result}
         />
       </div>
     );

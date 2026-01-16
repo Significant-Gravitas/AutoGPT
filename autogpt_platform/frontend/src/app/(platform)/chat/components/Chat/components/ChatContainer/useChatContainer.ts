@@ -13,16 +13,12 @@ import {
   removePageContext,
 } from "./helpers";
 
-interface UseChatContainerArgs {
+interface Args {
   sessionId: string | null;
   initialMessages: SessionDetailResponse["messages"];
-  onRefreshSession: () => Promise<void>;
 }
 
-export function useChatContainer({
-  sessionId,
-  initialMessages,
-}: UseChatContainerArgs) {
+export function useChatContainer({ sessionId, initialMessages }: Args) {
   const [messages, setMessages] = useState<ChatMessageData[]>([]);
   const [streamingChunks, setStreamingChunks] = useState<string[]>([]);
   const [hasTextChunks, setHasTextChunks] = useState(false);

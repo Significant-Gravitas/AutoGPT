@@ -2,8 +2,8 @@
 
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { Input } from "@/components/atoms/Input/Input";
+import { CredentialsInput } from "@/components/contextual/CredentialsInput/CredentialsInput";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
-import { CredentialsInput } from "../../../../../../../../../../components/contextual/CredentialsInput/CredentialsInput";
 import {
   getAgentCredentialsFields,
   getAgentInputFields,
