@@ -1,4 +1,4 @@
-import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/modals/CredentialsInputs/CredentialsInput";
+import { CredentialsInput } from "@/components/contextual/CredentialsInput/CredentialsInput";
 import {
   Accordion,
   AccordionContent,

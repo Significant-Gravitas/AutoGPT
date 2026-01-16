@@ -1,8 +1,8 @@
 import { useGetV2GetLibraryAgentByGraphId } from "@/app/api/__generated__/endpoints/library/library";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { Text } from "@/components/atoms/Text/Text";
-import { isValidUUID } from "@/components/contextual/Chat/helpers";
 import { Alert, AlertDescription } from "@/components/molecules/Alert/Alert";
+import { isValidUUID } from "@/lib/utils";
 import Link from "next/link";
 import { parseAsString, useQueryStates } from "nuqs";
 

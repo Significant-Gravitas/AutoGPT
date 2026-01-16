@@ -1,5 +1,5 @@
-import type { StreamChunk } from "@/components/contextual/Chat/useChatStream";
 import { toast } from "sonner";
+import { StreamChunk } from "../../useChatStream";
 import type { HandlerDependencies } from "./useChatContainer.handlers";
 import {
   handleError,

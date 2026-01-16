@@ -1,5 +1,5 @@
-import type { StreamChunk } from "@/components/contextual/Chat/useChatStream";
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
+import { StreamChunk } from "../../useChatStream";
 import type { ChatMessageData } from "../ChatMessage/useChatMessage";
 import {
   extractCredentialsNeeded,

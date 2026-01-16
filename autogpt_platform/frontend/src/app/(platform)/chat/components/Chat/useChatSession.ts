@@ -8,11 +8,11 @@ import {
 } from "@/app/api/__generated__/endpoints/chat/chat";
 import type { SessionDetailResponse } from "@/app/api/__generated__/models/sessionDetailResponse";
 import { okData } from "@/app/api/helpers";
+import { isValidUUID } from "@/lib/utils";
 import { Key, storage } from "@/services/storage/local-storage";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { isValidUUID } from "./helpers";
 
 interface UseChatSessionArgs {
   urlSessionId?: string | null;

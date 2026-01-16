@@ -1,7 +1,7 @@
 import type { SessionDetailResponse } from "@/app/api/__generated__/models/sessionDetailResponse";
-import { useChatStream } from "@/components/contextual/Chat/useChatStream";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { useChatStream } from "../../useChatStream";
 import type { ChatMessageData } from "../ChatMessage/useChatMessage";
 import { createStreamEventDispatcher } from "./createStreamEventDispatcher";
 import {

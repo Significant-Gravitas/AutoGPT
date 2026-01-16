@@ -3,7 +3,7 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Card } from "@/components/atoms/Card/Card";
 import { Text } from "@/components/atoms/Text/Text";
-import { CredentialsInput } from "@/components/contextual/CredentialsInputs/CredentialsInputs";
+import { CredentialsInput } from "@/components/contextual/CredentialsInput/CredentialsInput";
 import { RunAgentInputs } from "@/components/contextual/RunAgentInputs/RunAgentInputs";
 import type {
   BlockIOCredentialsSubSchema,

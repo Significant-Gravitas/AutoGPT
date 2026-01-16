@@ -1,5 +1,5 @@
 import { Text } from "@/components/atoms/Text/Text";
-import { CredentialsInput } from "@/components/contextual/CredentialsInputs/CredentialsInputs";
+import { CredentialsInput } from "@/components/contextual/CredentialsInput/CredentialsInput";
 import type { BlockIOCredentialsSubSchema } from "@/lib/autogpt-server-api";
 import { cn } from "@/lib/utils";
 import { CheckIcon, RobotIcon, WarningIcon } from "@phosphor-icons/react";
