@@ -384,7 +384,8 @@ def cached(
             key = _make_hashable_key(args, kwargs)
             if shared_cache:
                 redis_key = _make_redis_key(key, target_func.__name__)
-                return _get_redis().delete(redis_key) > 0
+                deleted_count = cast(int, _get_redis().delete(redis_key))
+                return deleted_count > 0
             else:
                 if key in cache_storage:
                     del cache_storage[key]
