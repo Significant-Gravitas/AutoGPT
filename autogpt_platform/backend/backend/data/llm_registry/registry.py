@@ -202,7 +202,9 @@ def _refresh_cached_schema() -> None:
 
     # Build new structures
     new_options = _build_schema_options()
-    new_mapping = {slug: entry.metadata.provider for slug, entry in _dynamic_models.items()}
+    new_mapping = {
+        slug: entry.metadata.provider for slug, entry in _dynamic_models.items()
+    }
     for slug, metadata in _static_metadata.items():
         new_mapping.setdefault(slug, metadata.provider)
 

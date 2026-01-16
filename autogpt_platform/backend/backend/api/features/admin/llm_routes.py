@@ -19,41 +19,45 @@ router = fastapi.APIRouter(
 async def _refresh_runtime_state() -> None:
     """Refresh the LLM registry and clear all related caches to ensure real-time updates."""
     logger.info("Refreshing LLM registry runtime state...")
-
-    # Refresh registry from database
-    await llm_registry.refresh_llm_registry()
-    refresh_llm_costs()
-
-    # Clear block schema caches so they're regenerated with updated model options
-    from backend.data.block import BlockSchema
-
-    BlockSchema.clear_all_schema_caches()
-    logger.info("Cleared all block schema caches")
-
-    # Clear the /blocks endpoint cache so frontend gets updated schemas
     try:
-        from backend.api.features.v1 import _get_cached_blocks
+        # Refresh registry from database
+        await llm_registry.refresh_llm_registry()
+        refresh_llm_costs()
 
-        _get_cached_blocks.cache_clear()
-        logger.info("Cleared /blocks endpoint cache")
-    except Exception as e:
-        logger.warning("Failed to clear /blocks cache: %s", e)
+        # Clear block schema caches so they're regenerated with updated model options
+        from backend.data.block import BlockSchema
 
-    # Clear the v2 builder providers cache (if it exists)
-    try:
-        from backend.api.features.builder import db as builder_db
+        BlockSchema.clear_all_schema_caches()
+        logger.info("Cleared all block schema caches")
 
-        if hasattr(builder_db, "_get_all_providers"):
-            builder_db._get_all_providers.cache_clear()
-            logger.info("Cleared v2 builder providers cache")
-    except Exception as e:
-        logger.debug("Could not clear v2 builder cache: %s", e)
+        # Clear the /blocks endpoint cache so frontend gets updated schemas
+        try:
+            from backend.api.features.v1 import _get_cached_blocks
 
-    # Notify all executor services to refresh their registry cache
-    from backend.data.llm_registry import publish_registry_refresh_notification
+            _get_cached_blocks.cache_clear()
+            logger.info("Cleared /blocks endpoint cache")
+        except Exception as e:
+            logger.warning("Failed to clear /blocks cache: %s", e)
 
-    await publish_registry_refresh_notification()
-    logger.info("Published registry refresh notification")
+        # Clear the v2 builder providers cache (if it exists)
+        try:
+            from backend.api.features.builder import db as builder_db
+
+            if hasattr(builder_db, "_get_all_providers"):
+                builder_db._get_all_providers.cache_clear()
+                logger.info("Cleared v2 builder providers cache")
+        except Exception as e:
+            logger.debug("Could not clear v2 builder cache: %s", e)
+
+        # Notify all executor services to refresh their registry cache
+        from backend.data.llm_registry import publish_registry_refresh_notification
+
+        await publish_registry_refresh_notification()
+        logger.info("Published registry refresh notification")
+    except Exception as exc:
+        logger.exception(
+            "LLM runtime state refresh failed; caches may be stale: %s", exc
+        )
 
 
 @router.get(

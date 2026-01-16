@@ -32,6 +32,7 @@ import type { LlmMigrationsResponse } from "@/app/api/__generated__/models/llmMi
 import type { LlmCreatorsResponse } from "@/app/api/__generated__/models/llmCreatorsResponse";
 import type { UpsertLlmCreatorRequest } from "@/app/api/__generated__/models/upsertLlmCreatorRequest";
 import type { LlmModelUsageResponse } from "@/app/api/__generated__/models/llmModelUsageResponse";
+import { LlmCostUnit } from "@/app/api/__generated__/models/llmCostUnit";
 
 const ADMIN_LLM_PATH = "/admin/llms";
 
@@ -121,6 +122,7 @@ export async function createLlmModelAction(formData: FormData) {
     metadata: {},
     costs: [
       {
+        unit: (formData.get("cost_unit") as LlmCostUnit) || LlmCostUnit.RUN,
         credit_cost: Number(formData.get("credit_cost") || 0),
         credential_provider:
           provider.default_credential_provider || provider.name,
@@ -165,6 +167,7 @@ export async function updateLlmModelAction(formData: FormData) {
     costs: formData.get("credit_cost")
       ? [
           {
+            unit: (formData.get("cost_unit") as LlmCostUnit) || LlmCostUnit.RUN,
             credit_cost: Number(formData.get("credit_cost")),
             credential_provider: String(
               formData.get("credential_provider") || "",
