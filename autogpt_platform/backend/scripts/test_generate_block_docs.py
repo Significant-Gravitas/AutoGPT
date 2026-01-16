@@ -6,7 +6,6 @@ from scripts.generate_block_docs import (
     class_name_to_display_name,
     extract_manual_content,
     generate_anchor,
-    strip_markers,
     type_to_readable,
 )
 
@@ -120,30 +119,6 @@ Use case content.
     def test_no_markers(self):
         result = extract_manual_content("Some content without markers")
         assert result == {}
-
-
-class TestStripMarkers:
-    """Tests for strip_markers function."""
-
-    def test_strip_opening_marker(self):
-        content = "<!-- MANUAL: how_it_works -->\nContent here"
-        result = strip_markers(content)
-        assert result == "Content here"
-
-    def test_strip_closing_marker(self):
-        content = "Content here\n<!-- END MANUAL -->"
-        result = strip_markers(content)
-        assert result == "Content here"
-
-    def test_strip_both_markers(self):
-        content = "<!-- MANUAL: section -->\nContent here\n<!-- END MANUAL -->"
-        result = strip_markers(content)
-        assert result == "Content here"
-
-    def test_no_markers(self):
-        content = "Content without markers"
-        result = strip_markers(content)
-        assert result == "Content without markers"
 
 
 class TestGenerateAnchor:

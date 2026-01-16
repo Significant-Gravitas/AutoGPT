@@ -379,7 +379,7 @@ Choose video style (stock video, moving images, or AI-generated), voice, backgro
 | ratio | Aspect ratio of the video | str | No |
 | resolution | Resolution of the video | str | No |
 | frame_rate | Frame rate of the video | int | No |
-| generation_preset | Generation preset for visual style - only effects AI generated visuals | "Default" \| "Anime" \| "Realist" | No |
+| generation_preset | Generation preset for visual style - only affects AI-generated visuals | "Default" \| "Anime" \| "Realist" | No |
 | background_music | Background music track | "Observer" \| "Futuristic Beat" \| "Science Documentary" | No |
 | voice | AI voice to use for narration | "Lily" \| "Daniel" \| "Brian" | No |
 | video_style | Type of visual media to use for the video | "stockVideo" \| "movingImage" \| "aiVideo" | No |
