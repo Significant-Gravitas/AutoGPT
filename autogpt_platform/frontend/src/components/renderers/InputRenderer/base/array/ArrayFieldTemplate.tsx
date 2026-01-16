@@ -63,7 +63,7 @@ export default function ArrayFieldTemplate(props: ArrayFieldTemplateProps) {
       <div className="m-0 flex p-0">
         <div className="m-0 w-full space-y-4 p-0">
           {!fromAnyOf && (
-            <div className="flex items-center">
+            <div className="flex items-center gap-2">
               <ArrayFieldTitleTemplate
                 fieldPathId={fieldPathId}
                 title={uiOptions.title || title}

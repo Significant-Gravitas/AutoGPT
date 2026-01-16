@@ -5621,6 +5621,69 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/store/search": {
+      "get": {
+        "tags": ["v2", "store", "public"],
+        "summary": "Unified search across all content types",
+        "description": "Search across all content types (store agents, blocks, documentation) using hybrid search.\n\nCombines semantic (embedding-based) and lexical (text-based) search for best results.\n\nArgs:\n    query: The search query string\n    content_types: Optional list of content types to filter by (STORE_AGENT, BLOCK, DOCUMENTATION)\n    page: Page number for pagination (default 1)\n    page_size: Number of results per page (default 20)\n    user_id: Optional authenticated user ID (for user-scoped content in future)\n\nReturns:\n    UnifiedSearchResponse: Paginated list of search results with relevance scores",
+        "operationId": "getV2Unified search across all content types",
+        "security": [{ "HTTPBearer": [] }],
+        "parameters": [
+          {
+            "name": "query",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string", "title": "Query" }
+          },
+          {
+            "name": "content_types",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "array", "items": { "type": "string" } },
+                { "type": "null" }
+              ],
+              "description": "Content types to search: STORE_AGENT, BLOCK, DOCUMENTATION. If not specified, searches all.",
+              "title": "Content Types"
+            },
+            "description": "Content types to search: STORE_AGENT, BLOCK, DOCUMENTATION. If not specified, searches all."
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "default": 1, "title": "Page" }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "default": 20, "title": "Page Size" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnifiedSearchResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/store/submissions": {
       "get": {
         "tags": ["v2", "store", "private"],
@@ -10899,6 +10962,57 @@
         "required": ["name", "graph_id", "graph_version", "trigger_config"],
         "title": "TriggeredPresetSetupRequest"
       },
+      "UnifiedSearchResponse": {
+        "properties": {
+          "results": {
+            "items": { "$ref": "#/components/schemas/UnifiedSearchResult" },
+            "type": "array",
+            "title": "Results"
+          },
+          "pagination": { "$ref": "#/components/schemas/Pagination" }
+        },
+        "type": "object",
+        "required": ["results", "pagination"],
+        "title": "UnifiedSearchResponse",
+        "description": "Response model for unified search across all content types."
+      },
+      "UnifiedSearchResult": {
+        "properties": {
+          "content_type": { "type": "string", "title": "Content Type" },
+          "content_id": { "type": "string", "title": "Content Id" },
+          "searchable_text": { "type": "string", "title": "Searchable Text" },
+          "metadata": {
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "null" }
+            ],
+            "title": "Metadata"
+          },
+          "updated_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Updated At"
+          },
+          "combined_score": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Combined Score"
+          },
+          "semantic_score": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Semantic Score"
+          },
+          "lexical_score": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Lexical Score"
+          }
+        },
+        "type": "object",
+        "required": ["content_type", "content_id", "searchable_text"],
+        "title": "UnifiedSearchResult",
+        "description": "A single result from unified hybrid search across all content types."
+      },
       "UpdateAppLogoRequest": {
         "properties": {
           "logo_url": {
@@ -11863,6 +11977,7 @@
         "in": "header",
         "name": "X-Postmark-Webhook-Token"
       },
+      "HTTPBearer": { "type": "http", "scheme": "bearer" },
       "HTTPBearerJWT": {
         "type": "http",
         "scheme": "bearer",

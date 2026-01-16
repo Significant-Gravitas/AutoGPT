@@ -4,12 +4,13 @@ Integration tests for embeddings with schema handling.
 These tests verify that embeddings operations work correctly across different database schemas.
 """
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from prisma.enums import ContentType
 
 from backend.api.features.store import embeddings
+from backend.api.features.store.embeddings import EMBEDDING_DIM
 
 # Schema prefix tests removed - functionality moved to db.raw_with_schema() helper
 
@@ -28,7 +29,7 @@ async def test_store_content_embedding_with_schema():
             result = await embeddings.store_content_embedding(
                 content_type=ContentType.STORE_AGENT,
                 content_id="test-id",
-                embedding=[0.1] * 1536,
+                embedding=[0.1] * EMBEDDING_DIM,
                 searchable_text="test text",
                 metadata={"test": "data"},
                 user_id=None,
@@ -125,84 +126,69 @@ async def test_delete_content_embedding_with_schema():
 @pytest.mark.asyncio(loop_scope="session")
 @pytest.mark.integration
 async def test_get_embedding_stats_with_schema():
-    """Test embedding statistics with proper schema handling."""
-    with patch("backend.data.db.get_database_schema") as mock_schema:
-        mock_schema.return_value = "platform"
+    """Test embedding statistics with proper schema handling via content handlers."""
+    # Mock handler to return stats
+    mock_handler = MagicMock()
+    mock_handler.get_stats = AsyncMock(
+        return_value={
+            "total": 100,
+            "with_embeddings": 80,
+            "without_embeddings": 20,
+        }
+    )
 
-        with patch("prisma.get_client") as mock_get_client:
-            mock_client = AsyncMock()
-            # Mock both query results
-            mock_client.query_raw.side_effect = [
-                [{"count": 100}],  # total_approved
-                [{"count": 80}],  # with_embeddings
-            ]
-            mock_get_client.return_value = mock_client
+    with patch(
+        "backend.api.features.store.embeddings.CONTENT_HANDLERS",
+        {ContentType.STORE_AGENT: mock_handler},
+    ):
+        result = await embeddings.get_embedding_stats()
 
-            result = await embeddings.get_embedding_stats()
+        # Verify handler was called
+        mock_handler.get_stats.assert_called_once()
 
-            # Verify both queries were called
-            assert mock_client.query_raw.call_count == 2
-
-            # Get both SQL queries
-            first_call = mock_client.query_raw.call_args_list[0]
-            second_call = mock_client.query_raw.call_args_list[1]
-
-            first_sql = first_call[0][0]
-            second_sql = second_call[0][0]
-
-            # Verify schema prefix in both queries
-            assert '"platform"."StoreListingVersion"' in first_sql
-            assert '"platform"."StoreListingVersion"' in second_sql
-            assert '"platform"."UnifiedContentEmbedding"' in second_sql
-
-            # Verify results
-            assert result["total_approved"] == 100
-            assert result["with_embeddings"] == 80
-            assert result["without_embeddings"] == 20
-            assert result["coverage_percent"] == 80.0
+        # Verify new result structure
+        assert "by_type" in result
+        assert "totals" in result
+        assert result["totals"]["total"] == 100
+        assert result["totals"]["with_embeddings"] == 80
+        assert result["totals"]["without_embeddings"] == 20
+        assert result["totals"]["coverage_percent"] == 80.0
 
 
 @pytest.mark.asyncio(loop_scope="session")
 @pytest.mark.integration
 async def test_backfill_missing_embeddings_with_schema():
-    """Test backfilling embeddings with proper schema handling."""
-    with patch("backend.data.db.get_database_schema") as mock_schema:
-        mock_schema.return_value = "platform"
+    """Test backfilling embeddings via content handlers."""
+    from backend.api.features.store.content_handlers import ContentItem
 
-        with patch("prisma.get_client") as mock_get_client:
-            mock_client = AsyncMock()
-            # Mock missing embeddings query
-            mock_client.query_raw.return_value = [
-                {
-                    "id": "version-1",
-                    "name": "Test Agent",
-                    "description": "Test description",
-                    "subHeading": "Test heading",
-                    "categories": ["test"],
-                }
-            ]
-            mock_get_client.return_value = mock_client
+    # Create mock content item
+    mock_item = ContentItem(
+        content_id="version-1",
+        content_type=ContentType.STORE_AGENT,
+        searchable_text="Test Agent Test description",
+        metadata={"name": "Test Agent"},
+    )
 
+    # Mock handler
+    mock_handler = MagicMock()
+    mock_handler.get_missing_items = AsyncMock(return_value=[mock_item])
+
+    with patch(
+        "backend.api.features.store.embeddings.CONTENT_HANDLERS",
+        {ContentType.STORE_AGENT: mock_handler},
+    ):
+        with patch(
+            "backend.api.features.store.embeddings.generate_embedding",
+            return_value=[0.1] * EMBEDDING_DIM,
+        ):
             with patch(
-                "backend.api.features.store.embeddings.ensure_embedding"
-            ) as mock_ensure:
-                mock_ensure.return_value = True
-
+                "backend.api.features.store.embeddings.store_content_embedding",
+                return_value=True,
+            ):
                 result = await embeddings.backfill_missing_embeddings(batch_size=10)
 
-                # Verify the query was called
-                assert mock_client.query_raw.called
-
-                # Get the SQL query
-                call_args = mock_client.query_raw.call_args
-                sql_query = call_args[0][0]
-
-                # Verify schema prefix in query
-                assert '"platform"."StoreListingVersion"' in sql_query
-                assert '"platform"."UnifiedContentEmbedding"' in sql_query
-
-                # Verify ensure_embedding was called
-                assert mock_ensure.called
+                # Verify handler was called
+                mock_handler.get_missing_items.assert_called_once_with(10)
 
                 # Verify results
                 assert result["processed"] == 1
@@ -226,7 +212,7 @@ async def test_ensure_content_embedding_with_schema():
             with patch(
                 "backend.api.features.store.embeddings.generate_embedding"
             ) as mock_generate:
-                mock_generate.return_value = [0.1] * 1536
+                mock_generate.return_value = [0.1] * EMBEDDING_DIM
 
                 with patch(
                     "backend.api.features.store.embeddings.store_content_embedding"
@@ -260,7 +246,7 @@ async def test_backward_compatibility_store_embedding():
 
         result = await embeddings.store_embedding(
             version_id="test-version-id",
-            embedding=[0.1] * 1536,
+            embedding=[0.1] * EMBEDDING_DIM,
             tx=None,
         )
 
@@ -315,7 +301,7 @@ async def test_schema_handling_error_cases():
             result = await embeddings.store_content_embedding(
                 content_type=ContentType.STORE_AGENT,
                 content_id="test-id",
-                embedding=[0.1] * 1536,
+                embedding=[0.1] * EMBEDDING_DIM,
                 searchable_text="test",
                 metadata=None,
                 user_id=None,
