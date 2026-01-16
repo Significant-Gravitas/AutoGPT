@@ -5,7 +5,11 @@ from autogpt_libs.auth import get_user_id, requires_admin_user
 from fastapi import APIRouter, Security
 from pydantic import BaseModel
 
+from backend.util.metrics import DiscordChannel, discord_send_alert
+from backend.util.settings import AppEnvironment, Settings
+
 logger = logging.getLogger(__name__)
+settings = Settings()
 
 
 class TestDataScriptType(str, Enum):
@@ -58,7 +62,31 @@ async def generate_test_data(
               Generates more data but may take longer.
 
     **Warning**: This will add significant data to your database. Use with caution.
+    **Note**: This endpoint is disabled in production environments.
     """
+    # Block execution in production environment
+    if settings.config.app_env == AppEnvironment.PRODUCTION:
+        alert_message = (
+            f"🚨 **SECURITY ALERT**: Test data generation attempted in PRODUCTION!\n"
+            f"Admin User ID: `{admin_user_id}`\n"
+            f"Script Type: `{request.script_type}`\n"
+            f"Action: Request was blocked."
+        )
+        logger.warning(
+            f"Test data generation blocked in production. Admin: {admin_user_id}"
+        )
+
+        # Send Discord alert
+        try:
+            await discord_send_alert(alert_message, DiscordChannel.PLATFORM)
+        except Exception as e:
+            logger.error(f"Failed to send Discord alert: {e}")
+
+        return GenerateTestDataResponse(
+            success=False,
+            message="Test data generation is disabled in production environments.",
+        )
+
     logger.info(
         f"Admin user {admin_user_id} is generating test data with script type: {request.script_type}"
     )

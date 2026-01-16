@@ -19,63 +19,60 @@ import {
   SelectValue,
 } from "@/components/__legacy__/ui/select";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import BackendAPI from "@/lib/autogpt-server-api/client";
-
-type ScriptType = "full" | "e2e";
+// Generated types and hooks from OpenAPI spec
+// Run `npm run generate:api` to regenerate after backend changes
+import { usePostAdminGenerateTestData } from "@/app/api/__generated__/endpoints/admin/admin";
+import type { GenerateTestDataResponse } from "@/app/api/__generated__/models/generateTestDataResponse";
+import type { TestDataScriptType } from "@/app/api/__generated__/models/testDataScriptType";
 
 export function GenerateTestDataButton() {
   const { toast } = useToast();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [scriptType, setScriptType] = useState<ScriptType>("e2e");
-  const [result, setResult] = useState<{
-    success: boolean;
-    message: string;
-    details?: Record<string, unknown>;
-  } | null>(null);
+  const [scriptType, setScriptType] = useState<TestDataScriptType>("e2e");
+  const [result, setResult] = useState<GenerateTestDataResponse | null>(null);
 
-  const handleGenerate = async () => {
-    setIsSubmitting(true);
-    setResult(null);
-
-    try {
-      const api = new BackendAPI();
-      const response = await api.generateTestData(scriptType);
-
-      setResult({
-        success: response.success,
-        message: response.message,
-        details: response.details,
-      });
-
-      if (response.success) {
-        toast({
-          title: "Success",
-          description: response.message,
+  const generateMutation = usePostAdminGenerateTestData({
+    mutation: {
+      onSuccess: (response) => {
+        const data = response.data;
+        setResult(data);
+        if (data.success) {
+          toast({
+            title: "Success",
+            description: data.message,
+          });
+        } else {
+          toast({
+            title: "Error",
+            description: data.message,
+            variant: "destructive",
+          });
+        }
+      },
+      onError: (error) => {
+        console.error("Error generating test data:", error);
+        const errorMessage =
+          error instanceof Error ? error.message : "Unknown error occurred";
+        setResult({
+          success: false,
+          message: `Failed to generate test data: ${errorMessage}`,
         });
-      } else {
         toast({
           title: "Error",
-          description: response.message,
+          description: "Failed to generate test data. Please try again.",
           variant: "destructive",
         });
-      }
-    } catch (error) {
-      console.error("Error generating test data:", error);
-      const errorMessage =
-        error instanceof Error ? error.message : "Unknown error occurred";
-      setResult({
-        success: false,
-        message: `Failed to generate test data: ${errorMessage}`,
-      });
-      toast({
-        title: "Error",
-        description: "Failed to generate test data. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
+      },
+    },
+  });
+
+  const handleGenerate = () => {
+    setResult(null);
+    generateMutation.mutate({
+      data: {
+        script_type: scriptType,
+      },
+    });
   };
 
   return (
@@ -106,8 +103,10 @@ export function GenerateTestDataButton() {
               <Label htmlFor="scriptType">Script Type</Label>
               <Select
                 value={scriptType}
-                onValueChange={(value) => setScriptType(value as ScriptType)}
-                disabled={isSubmitting}
+                onValueChange={(value) =>
+                  setScriptType(value as TestDataScriptType)
+                }
+                disabled={generateMutation.isPending}
               >
                 <SelectTrigger id="scriptType">
                   <SelectValue placeholder="Select script type" />
@@ -135,7 +134,7 @@ export function GenerateTestDataButton() {
 
             <div className="rounded-md bg-yellow-50 p-3 text-sm text-yellow-800">
               <strong>Warning:</strong> This will add significant data to your
-              database. Use with caution in production environments.
+              database. This endpoint is disabled in production environments.
             </div>
 
             {result && (
@@ -165,16 +164,18 @@ export function GenerateTestDataButton() {
               type="button"
               variant="outline"
               onClick={() => setIsDialogOpen(false)}
-              disabled={isSubmitting}
+              disabled={generateMutation.isPending}
             >
               Cancel
             </Button>
             <Button
               type="button"
               onClick={handleGenerate}
-              disabled={isSubmitting}
+              disabled={generateMutation.isPending}
             >
-              {isSubmitting ? "Generating..." : "Generate Test Data"}
+              {generateMutation.isPending
+                ? "Generating..."
+                : "Generate Test Data"}
             </Button>
           </DialogFooter>
         </DialogContent>
