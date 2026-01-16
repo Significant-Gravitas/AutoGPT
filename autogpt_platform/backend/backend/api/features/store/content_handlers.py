@@ -288,8 +288,12 @@ class DocumentationHandler(ContentHandler):
         # Need to go up to project root then into docs/
         # In container: /app/autogpt_platform/backend/backend/api/features/store -> /app/docs
         # In development: /repo/autogpt_platform/backend/backend/api/features/store -> /repo/docs
-        this_file = Path(__file__)  # .../backend/backend/api/features/store/content_handlers.py
-        project_root = this_file.parent.parent.parent.parent.parent.parent.parent  # -> /app or /repo
+        this_file = Path(
+            __file__
+        )  # .../backend/backend/api/features/store/content_handlers.py
+        project_root = (
+            this_file.parent.parent.parent.parent.parent.parent.parent
+        )  # -> /app or /repo
         docs_root = project_root / "docs"
         return docs_root
 

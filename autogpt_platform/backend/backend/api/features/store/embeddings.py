@@ -685,7 +685,9 @@ async def cleanup_orphaned_embeddings() -> dict[str, Any]:
                 # embeddings.py is at: backend/backend/api/features/store/embeddings.py
                 # Need to go up to project root then into docs/
                 this_file = Path(__file__)
-                project_root = this_file.parent.parent.parent.parent.parent.parent.parent
+                project_root = (
+                    this_file.parent.parent.parent.parent.parent.parent.parent
+                )
                 docs_root = project_root / "docs"
                 if docs_root.exists():
                     all_docs = list(docs_root.rglob("*.md")) + list(
