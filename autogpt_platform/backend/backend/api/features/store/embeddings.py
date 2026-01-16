@@ -633,10 +633,12 @@ async def ensure_content_embedding(
 
 async def cleanup_orphaned_embeddings() -> dict[str, Any]:
     """
-    Clean up embeddings for blocks and docs that no longer exist.
+    Clean up embeddings for content that no longer exists or is no longer valid.
 
-    Compares current blocks/docs with embeddings in database and removes orphaned records.
-    Store agents are NOT cleaned up - they're properly filtered during search.
+    Compares current content with embeddings in database and removes orphaned records:
+    - STORE_AGENT: Removes embeddings for rejected/deleted store listings
+    - BLOCK: Removes embeddings for blocks no longer registered
+    - DOCUMENTATION: Removes embeddings for deleted doc files
 
     Returns:
         Dict with cleanup statistics per content type
@@ -671,6 +673,7 @@ async def cleanup_orphaned_embeddings() -> dict[str, Any]:
                     FROM {schema_prefix}"StoreListingVersion" slv
                     JOIN {schema_prefix}"StoreListing" sl ON slv."storeListingId" = sl.id
                     WHERE slv."submissionStatus" = 'APPROVED'
+                      AND slv."isDeleted" = false
                       AND sl."isDeleted" = false
                     """,
                 )
