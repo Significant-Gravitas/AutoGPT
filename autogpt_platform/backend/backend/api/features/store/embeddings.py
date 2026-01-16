@@ -645,7 +645,11 @@ async def cleanup_orphaned_embeddings() -> dict[str, Any]:
     total_deleted = 0
 
     # Cleanup orphaned embeddings for all content types
-    cleanup_types = [ContentType.STORE_AGENT, ContentType.BLOCK, ContentType.DOCUMENTATION]
+    cleanup_types = [
+        ContentType.STORE_AGENT,
+        ContentType.BLOCK,
+        ContentType.DOCUMENTATION,
+    ]
 
     for content_type in cleanup_types:
         try:
