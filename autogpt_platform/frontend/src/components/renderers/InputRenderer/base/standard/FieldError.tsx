@@ -15,6 +15,8 @@ export const FieldError = ({
   const fieldError =
     nodeErrors?.[fieldId] || nodeErrors?.[fieldId.replace(/_%_/g, ".")] || null;
 
+  console.log("nodeErrors", nodeErrors);
+
   return (
     <div>
       {fieldError && (
