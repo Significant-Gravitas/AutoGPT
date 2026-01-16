@@ -284,7 +284,9 @@ class DocumentationHandler(ContentHandler):
 
     def _get_docs_root(self) -> Path:
         """Get the documentation root directory."""
-        # Assuming docs are in /docs relative to project root
+        # Docs are at /docs relative to project root
+        # In container: /app/autogpt_platform/backend -> /app/docs
+        # In development: /path/to/repo/autogpt_platform/backend -> /path/to/repo/docs
         backend_root = Path(__file__).parent.parent.parent.parent
         docs_root = backend_root.parent.parent / "docs"
         return docs_root
