@@ -2,8 +2,6 @@
 -- This column has been replaced by UnifiedContentEmbedding.search
 -- which provides unified hybrid search across all content types
 
-BEGIN;
-
 -- First drop the dependent view
 DROP VIEW IF EXISTS "StoreAgent";
 
@@ -89,5 +87,3 @@ LEFT JOIN agent_graph_versions agv
     ON sl.id = agv."storeListingId"
 WHERE sl."isDeleted" = false
   AND sl."hasApprovedVersion" = true;
-
-COMMIT;
