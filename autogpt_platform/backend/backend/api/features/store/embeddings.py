@@ -705,11 +705,22 @@ async def cleanup_orphaned_embeddings() -> dict[str, Any]:
                 }
                 continue
 
-            # Delete orphaned embeddings
-            deleted = 0
-            for content_id in orphaned_ids:
-                if await delete_content_embedding(content_type, content_id):
-                    deleted += 1
+            # Delete orphaned embeddings in batch for better performance
+            orphaned_list = list(orphaned_ids)
+            try:
+                await execute_raw_with_schema(
+                    """
+                    DELETE FROM {schema_prefix}"UnifiedContentEmbedding"
+                    WHERE "contentType" = $1::{schema_prefix}"ContentType"
+                      AND "contentId" = ANY($2::text[])
+                    """,
+                    content_type,
+                    orphaned_list,
+                )
+                deleted = len(orphaned_list)
+            except Exception as e:
+                logger.error(f"Failed to batch delete orphaned embeddings: {e}")
+                deleted = 0
 
             logger.info(
                 f"{content_type.value}: Deleted {deleted}/{len(orphaned_ids)} orphaned embeddings"
