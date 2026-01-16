@@ -2,9 +2,9 @@
 
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { Text } from "@/components/atoms/Text/Text";
+import { CredentialsInput } from "@/components/contextual/CredentialsInput/CredentialsInput";
+import { isSystemCredential } from "@/components/contextual/CredentialsInput/helpers";
 import type { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
-import { CredentialsInput } from "../CredentialsInputs/CredentialsInput";
-import { isSystemCredential } from "../CredentialsInputs/helpers";
 import { RunAgentInputs } from "../RunAgentInputs/RunAgentInputs";
 import { getAgentCredentialsFields, getAgentInputFields } from "./helpers";
 

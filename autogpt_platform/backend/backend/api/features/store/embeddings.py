@@ -683,20 +683,20 @@ async def cleanup_orphaned_embeddings() -> dict[str, Any]:
 
                 current_ids = set(get_blocks().keys())
             elif content_type == ContentType.DOCUMENTATION:
-                from pathlib import Path
-
-                # embeddings.py is at: backend/backend/api/features/store/embeddings.py
-                # Need to go up to project root then into docs/
-                this_file = Path(__file__)
-                project_root = (
-                    this_file.parent.parent.parent.parent.parent.parent.parent
+                # Use DocumentationHandler to get section-based content IDs
+                from backend.api.features.store.content_handlers import (
+                    DocumentationHandler,
                 )
-                docs_root = project_root / "docs"
-                if docs_root.exists():
-                    all_docs = list(docs_root.rglob("*.md")) + list(
-                        docs_root.rglob("*.mdx")
-                    )
-                    current_ids = {str(doc.relative_to(docs_root)) for doc in all_docs}
+
+                doc_handler = CONTENT_HANDLERS.get(ContentType.DOCUMENTATION)
+                if isinstance(doc_handler, DocumentationHandler):
+                    docs_root = doc_handler._get_docs_root()
+                    if docs_root.exists():
+                        current_ids = doc_handler._get_all_section_content_ids(
+                            docs_root
+                        )
+                    else:
+                        current_ids = set()
                 else:
                     current_ids = set()
             else:
