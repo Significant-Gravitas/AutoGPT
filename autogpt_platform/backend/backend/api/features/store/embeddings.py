@@ -893,7 +893,9 @@ async def semantic_search(
         params.append(min_similarity)
 
         try:
-            results = await query_raw_with_schema(sql, *params)
+            results = await query_raw_with_schema(
+                sql, *params, set_public_search_path=True
+            )
             return [
                 {
                     "content_id": row["content_id"],
@@ -942,7 +944,9 @@ async def semantic_search(
     params_lexical.append(f"%{query}%")
 
     try:
-        results = await query_raw_with_schema(sql_lexical, *params_lexical)
+        results = await query_raw_with_schema(
+            sql_lexical, *params_lexical, set_public_search_path=True
+        )
         return [
             {
                 "content_id": row["content_id"],
