@@ -186,6 +186,7 @@ export type BlockIOStringSubSchema = BlockIOSubSchemaMeta & {
   default?: string;
   format?: string;
   maxLength?: number;
+  options?: { value: string; label: string; description?: string }[];
 };
 
 export type BlockIONumberSubSchema = BlockIOSubSchemaMeta & {
