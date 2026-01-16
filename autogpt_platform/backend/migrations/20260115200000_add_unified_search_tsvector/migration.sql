@@ -1,10 +1,12 @@
 -- Add tsvector search column to UnifiedContentEmbedding for unified full-text search
 -- This enables hybrid search (semantic + lexical) across all content types
 
--- Add search column
-ALTER TABLE "UnifiedContentEmbedding" ADD COLUMN "search" tsvector DEFAULT ''::tsvector;
+-- Add search column (IF NOT EXISTS for idempotency)
+ALTER TABLE "UnifiedContentEmbedding" ADD COLUMN IF NOT EXISTS "search" tsvector DEFAULT ''::tsvector;
 
 -- Create GIN index for fast full-text search
+-- Note: Drop first in case Prisma created a btree index (Prisma doesn't support GIN)
+DROP INDEX IF EXISTS "UnifiedContentEmbedding_search_idx";
 CREATE INDEX "UnifiedContentEmbedding_search_idx" ON "UnifiedContentEmbedding" USING GIN ("search");
 
 -- Drop existing trigger/function if exists
