@@ -8,8 +8,8 @@ import { ReactFlowProvider } from "@xyflow/react";
 import { useSearchParams } from "next/navigation";
 import { useEffect } from "react";
 import { BuilderViewTabs } from "./components/BuilderViewTabs/BuilderViewTabs";
-import { useBuilderView } from "./components/BuilderViewTabs/useBuilderViewTabs";
 import { Flow } from "./components/FlowEditor/Flow/Flow";
+import { useBuilderView } from "./useBuilderView";
 
 function BuilderContent() {
   const query = useSearchParams();

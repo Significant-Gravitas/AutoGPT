@@ -1,3 +1,10 @@
+"""
+Response models for Vercel AI SDK UI Stream Protocol.
+
+This module implements the AI SDK UI Stream Protocol (v1) for streaming chat responses.
+See: https://ai-sdk.dev/docs/ai-sdk-ui/stream-protocol
+"""
+
 from enum import Enum
 from typing import Any
 
@@ -5,97 +12,133 @@ from pydantic import BaseModel, Field
 
 
 class ResponseType(str, Enum):
-    """Types of streaming responses."""
+    """Types of streaming responses following AI SDK protocol."""
 
-    TEXT_CHUNK = "text_chunk"
-    TEXT_ENDED = "text_ended"
-    TOOL_CALL = "tool_call"
-    TOOL_CALL_START = "tool_call_start"
-    TOOL_RESPONSE = "tool_response"
+    # Message lifecycle
+    START = "start"
+    FINISH = "finish"
+
+    # Text streaming
+    TEXT_START = "text-start"
+    TEXT_DELTA = "text-delta"
+    TEXT_END = "text-end"
+
+    # Tool interaction
+    TOOL_INPUT_START = "tool-input-start"
+    TOOL_INPUT_AVAILABLE = "tool-input-available"
+    TOOL_OUTPUT_AVAILABLE = "tool-output-available"
+
+    # Other
     ERROR = "error"
     USAGE = "usage"
-    STREAM_END = "stream_end"
 
 
 class StreamBaseResponse(BaseModel):
     """Base response model for all streaming responses."""
 
     type: ResponseType
-    timestamp: str | None = None
 
     def to_sse(self) -> str:
         """Convert to SSE format."""
         return f"data: {self.model_dump_json()}\n\n"
 
 
-class StreamTextChunk(StreamBaseResponse):
-    """Streaming text content from the assistant."""
-
-    type: ResponseType = ResponseType.TEXT_CHUNK
-    content: str = Field(..., description="Text content chunk")
+# ========== Message Lifecycle ==========
 
 
-class StreamToolCallStart(StreamBaseResponse):
+class StreamStart(StreamBaseResponse):
+    """Start of a new message."""
+
+    type: ResponseType = ResponseType.START
+    messageId: str = Field(..., description="Unique message ID")
+
+
+class StreamFinish(StreamBaseResponse):
+    """End of message/stream."""
+
+    type: ResponseType = ResponseType.FINISH
+
+
+# ========== Text Streaming ==========
+
+
+class StreamTextStart(StreamBaseResponse):
+    """Start of a text block."""
+
+    type: ResponseType = ResponseType.TEXT_START
+    id: str = Field(..., description="Text block ID")
+
+
+class StreamTextDelta(StreamBaseResponse):
+    """Streaming text content delta."""
+
+    type: ResponseType = ResponseType.TEXT_DELTA
+    id: str = Field(..., description="Text block ID")
+    delta: str = Field(..., description="Text content delta")
+
+
+class StreamTextEnd(StreamBaseResponse):
+    """End of a text block."""
+
+    type: ResponseType = ResponseType.TEXT_END
+    id: str = Field(..., description="Text block ID")
+
+
+# ========== Tool Interaction ==========
+
+
+class StreamToolInputStart(StreamBaseResponse):
     """Tool call started notification."""
 
-    type: ResponseType = ResponseType.TOOL_CALL_START
-    tool_name: str = Field(..., description="Name of the tool that was executed")
-    tool_id: str = Field(..., description="Unique tool call ID")
+    type: ResponseType = ResponseType.TOOL_INPUT_START
+    toolCallId: str = Field(..., description="Unique tool call ID")
+    toolName: str = Field(..., description="Name of the tool being called")
 
 
-class StreamToolCall(StreamBaseResponse):
-    """Tool invocation notification."""
+class StreamToolInputAvailable(StreamBaseResponse):
+    """Tool input is ready for execution."""
 
-    type: ResponseType = ResponseType.TOOL_CALL
-    tool_id: str = Field(..., description="Unique tool call ID")
-    tool_name: str = Field(..., description="Name of the tool being called")
-    arguments: dict[str, Any] = Field(
-        default_factory=dict, description="Tool arguments"
+    type: ResponseType = ResponseType.TOOL_INPUT_AVAILABLE
+    toolCallId: str = Field(..., description="Unique tool call ID")
+    toolName: str = Field(..., description="Name of the tool being called")
+    input: dict[str, Any] = Field(
+        default_factory=dict, description="Tool input arguments"
     )
 
 
-class StreamToolExecutionResult(StreamBaseResponse):
+class StreamToolOutputAvailable(StreamBaseResponse):
     """Tool execution result."""
 
-    type: ResponseType = ResponseType.TOOL_RESPONSE
-    tool_id: str = Field(..., description="Tool call ID this responds to")
-    tool_name: str = Field(..., description="Name of the tool that was executed")
-    result: str | dict[str, Any] = Field(..., description="Tool execution result")
+    type: ResponseType = ResponseType.TOOL_OUTPUT_AVAILABLE
+    toolCallId: str = Field(..., description="Tool call ID this responds to")
+    output: str | dict[str, Any] = Field(..., description="Tool execution output")
+    # Additional fields for internal use (not part of AI SDK spec but useful)
+    toolName: str | None = Field(
+        default=None, description="Name of the tool that was executed"
+    )
     success: bool = Field(
         default=True, description="Whether the tool execution succeeded"
     )
+
+
+# ========== Other ==========
 
 
 class StreamUsage(StreamBaseResponse):
     """Token usage statistics."""
 
     type: ResponseType = ResponseType.USAGE
-    prompt_tokens: int
-    completion_tokens: int
-    total_tokens: int
+    promptTokens: int = Field(..., description="Number of prompt tokens")
+    completionTokens: int = Field(..., description="Number of completion tokens")
+    totalTokens: int = Field(..., description="Total number of tokens")
 
 
 class StreamError(StreamBaseResponse):
     """Error response."""
 
     type: ResponseType = ResponseType.ERROR
-    message: str = Field(..., description="Error message")
+    errorText: str = Field(..., description="Error message text")
     code: str | None = Field(default=None, description="Error code")
     details: dict[str, Any] | None = Field(
         default=None, description="Additional error details"
-    )
-
-
-class StreamTextEnded(StreamBaseResponse):
-    """Text streaming completed marker."""
-
-    type: ResponseType = ResponseType.TEXT_ENDED
-
-
-class StreamEnd(StreamBaseResponse):
-    """End of stream marker."""
-
-    type: ResponseType = ResponseType.STREAM_END
-    summary: dict[str, Any] | None = Field(
-        default=None, description="Stream summary statistics"
     )

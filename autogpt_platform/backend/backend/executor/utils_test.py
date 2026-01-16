@@ -367,10 +367,13 @@ async def test_add_graph_execution_is_repeatable(mocker: MockerFixture):
     )
 
     # Setup mock returns
+    # The function returns (graph, starting_nodes_input, compiled_nodes_input_masks, nodes_to_skip)
+    nodes_to_skip: set[str] = set()
     mock_validate.return_value = (
         mock_graph,
         starting_nodes_input,
         compiled_nodes_input_masks,
+        nodes_to_skip,
     )
     mock_prisma.is_connected.return_value = True
     mock_edb.create_graph_execution = mocker.AsyncMock(return_value=mock_graph_exec)
@@ -456,3 +459,212 @@ async def test_add_graph_execution_is_repeatable(mocker: MockerFixture):
     # Both executions should succeed (though they create different objects)
     assert result1 == mock_graph_exec
     assert result2 == mock_graph_exec_2
+
+
+# ============================================================================
+# Tests for Optional Credentials Feature
+# ============================================================================
+
+
+@pytest.mark.asyncio
+async def test_validate_node_input_credentials_returns_nodes_to_skip(
+    mocker: MockerFixture,
+):
+    """
+    Test that _validate_node_input_credentials returns nodes_to_skip set
+    for nodes with credentials_optional=True and missing credentials.
+    """
+    from backend.executor.utils import _validate_node_input_credentials
+
+    # Create a mock node with credentials_optional=True
+    mock_node = mocker.MagicMock()
+    mock_node.id = "node-with-optional-creds"
+    mock_node.credentials_optional = True
+    mock_node.input_default = {}  # No credentials configured
+
+    # Create a mock block with credentials field
+    mock_block = mocker.MagicMock()
+    mock_credentials_field_type = mocker.MagicMock()
+    mock_block.input_schema.get_credentials_fields.return_value = {
+        "credentials": mock_credentials_field_type
+    }
+    mock_node.block = mock_block
+
+    # Create mock graph
+    mock_graph = mocker.MagicMock()
+    mock_graph.nodes = [mock_node]
+
+    # Call the function
+    errors, nodes_to_skip = await _validate_node_input_credentials(
+        graph=mock_graph,
+        user_id="test-user-id",
+        nodes_input_masks=None,
+    )
+
+    # Node should be in nodes_to_skip, not in errors
+    assert mock_node.id in nodes_to_skip
+    assert mock_node.id not in errors
+
+
+@pytest.mark.asyncio
+async def test_validate_node_input_credentials_required_missing_creds_error(
+    mocker: MockerFixture,
+):
+    """
+    Test that _validate_node_input_credentials returns errors
+    for nodes with credentials_optional=False and missing credentials.
+    """
+    from backend.executor.utils import _validate_node_input_credentials
+
+    # Create a mock node with credentials_optional=False (required)
+    mock_node = mocker.MagicMock()
+    mock_node.id = "node-with-required-creds"
+    mock_node.credentials_optional = False
+    mock_node.input_default = {}  # No credentials configured
+
+    # Create a mock block with credentials field
+    mock_block = mocker.MagicMock()
+    mock_credentials_field_type = mocker.MagicMock()
+    mock_block.input_schema.get_credentials_fields.return_value = {
+        "credentials": mock_credentials_field_type
+    }
+    mock_node.block = mock_block
+
+    # Create mock graph
+    mock_graph = mocker.MagicMock()
+    mock_graph.nodes = [mock_node]
+
+    # Call the function
+    errors, nodes_to_skip = await _validate_node_input_credentials(
+        graph=mock_graph,
+        user_id="test-user-id",
+        nodes_input_masks=None,
+    )
+
+    # Node should be in errors, not in nodes_to_skip
+    assert mock_node.id in errors
+    assert "credentials" in errors[mock_node.id]
+    assert "required" in errors[mock_node.id]["credentials"].lower()
+    assert mock_node.id not in nodes_to_skip
+
+
+@pytest.mark.asyncio
+async def test_validate_graph_with_credentials_returns_nodes_to_skip(
+    mocker: MockerFixture,
+):
+    """
+    Test that validate_graph_with_credentials returns nodes_to_skip set
+    from _validate_node_input_credentials.
+    """
+    from backend.executor.utils import validate_graph_with_credentials
+
+    # Mock _validate_node_input_credentials to return specific values
+    mock_validate = mocker.patch(
+        "backend.executor.utils._validate_node_input_credentials"
+    )
+    expected_errors = {"node1": {"field": "error"}}
+    expected_nodes_to_skip = {"node2", "node3"}
+    mock_validate.return_value = (expected_errors, expected_nodes_to_skip)
+
+    # Mock GraphModel with validate_graph_get_errors method
+    mock_graph = mocker.MagicMock()
+    mock_graph.validate_graph_get_errors.return_value = {}
+
+    # Call the function
+    errors, nodes_to_skip = await validate_graph_with_credentials(
+        graph=mock_graph,
+        user_id="test-user-id",
+        nodes_input_masks=None,
+    )
+
+    # Verify nodes_to_skip is passed through
+    assert nodes_to_skip == expected_nodes_to_skip
+    assert "node1" in errors
+
+
+@pytest.mark.asyncio
+async def test_add_graph_execution_with_nodes_to_skip(mocker: MockerFixture):
+    """
+    Test that add_graph_execution properly passes nodes_to_skip
+    to the graph execution entry.
+    """
+    from backend.data.execution import GraphExecutionWithNodes
+    from backend.executor.utils import add_graph_execution
+
+    # Mock data
+    graph_id = "test-graph-id"
+    user_id = "test-user-id"
+    inputs = {"test_input": "test_value"}
+    graph_version = 1
+
+    # Mock the graph object
+    mock_graph = mocker.MagicMock()
+    mock_graph.version = graph_version
+
+    # Starting nodes and masks
+    starting_nodes_input = [("node1", {"input1": "value1"})]
+    compiled_nodes_input_masks = {}
+    nodes_to_skip = {"skipped-node-1", "skipped-node-2"}
+
+    # Mock the graph execution object
+    mock_graph_exec = mocker.MagicMock(spec=GraphExecutionWithNodes)
+    mock_graph_exec.id = "execution-id-123"
+    mock_graph_exec.node_executions = []
+
+    # Track what's passed to to_graph_execution_entry
+    captured_kwargs = {}
+
+    def capture_to_entry(**kwargs):
+        captured_kwargs.update(kwargs)
+        return mocker.MagicMock()
+
+    mock_graph_exec.to_graph_execution_entry.side_effect = capture_to_entry
+
+    # Setup mocks
+    mock_validate = mocker.patch(
+        "backend.executor.utils.validate_and_construct_node_execution_input"
+    )
+    mock_edb = mocker.patch("backend.executor.utils.execution_db")
+    mock_prisma = mocker.patch("backend.executor.utils.prisma")
+    mock_udb = mocker.patch("backend.executor.utils.user_db")
+    mock_gdb = mocker.patch("backend.executor.utils.graph_db")
+    mock_get_queue = mocker.patch("backend.executor.utils.get_async_execution_queue")
+    mock_get_event_bus = mocker.patch(
+        "backend.executor.utils.get_async_execution_event_bus"
+    )
+
+    # Setup returns - include nodes_to_skip in the tuple
+    mock_validate.return_value = (
+        mock_graph,
+        starting_nodes_input,
+        compiled_nodes_input_masks,
+        nodes_to_skip,  # This should be passed through
+    )
+    mock_prisma.is_connected.return_value = True
+    mock_edb.create_graph_execution = mocker.AsyncMock(return_value=mock_graph_exec)
+    mock_edb.update_graph_execution_stats = mocker.AsyncMock(
+        return_value=mock_graph_exec
+    )
+    mock_edb.update_node_execution_status_batch = mocker.AsyncMock()
+
+    mock_user = mocker.MagicMock()
+    mock_user.timezone = "UTC"
+    mock_settings = mocker.MagicMock()
+    mock_settings.human_in_the_loop_safe_mode = True
+
+    mock_udb.get_user_by_id = mocker.AsyncMock(return_value=mock_user)
+    mock_gdb.get_graph_settings = mocker.AsyncMock(return_value=mock_settings)
+    mock_get_queue.return_value = mocker.AsyncMock()
+    mock_get_event_bus.return_value = mocker.MagicMock(publish=mocker.AsyncMock())
+
+    # Call the function
+    await add_graph_execution(
+        graph_id=graph_id,
+        user_id=user_id,
+        inputs=inputs,
+        graph_version=graph_version,
+    )
+
+    # Verify nodes_to_skip was passed to to_graph_execution_entry
+    assert "nodes_to_skip" in captured_kwargs
+    assert captured_kwargs["nodes_to_skip"] == nodes_to_skip

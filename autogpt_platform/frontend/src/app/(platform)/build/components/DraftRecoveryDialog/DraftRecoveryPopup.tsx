@@ -12,16 +12,59 @@ import {
 import { useDraftRecoveryPopup } from "./useDraftRecoveryPopup";
 import { Text } from "@/components/atoms/Text/Text";
 import { AnimatePresence, motion } from "framer-motion";
+import { DraftDiff } from "@/lib/dexie/draft-utils";
 
 interface DraftRecoveryPopupProps {
   isInitialLoadComplete: boolean;
 }
 
+function formatDiffSummary(diff: DraftDiff | null): string {
+  if (!diff) return "";
+
+  const parts: string[] = [];
+
+  // Node changes
+  const nodeChanges: string[] = [];
+  if (diff.nodes.added > 0) nodeChanges.push(`+${diff.nodes.added}`);
+  if (diff.nodes.removed > 0) nodeChanges.push(`-${diff.nodes.removed}`);
+  if (diff.nodes.modified > 0) nodeChanges.push(`~${diff.nodes.modified}`);
+
+  if (nodeChanges.length > 0) {
+    parts.push(
+      `${nodeChanges.join("/")} block${diff.nodes.added + diff.nodes.removed + diff.nodes.modified !== 1 ? "s" : ""}`,
+    );
+  }
+
+  // Edge changes
+  const edgeChanges: string[] = [];
+  if (diff.edges.added > 0) edgeChanges.push(`+${diff.edges.added}`);
+  if (diff.edges.removed > 0) edgeChanges.push(`-${diff.edges.removed}`);
+  if (diff.edges.modified > 0) edgeChanges.push(`~${diff.edges.modified}`);
+
+  if (edgeChanges.length > 0) {
+    parts.push(
+      `${edgeChanges.join("/")} connection${diff.edges.added + diff.edges.removed + diff.edges.modified !== 1 ? "s" : ""}`,
+    );
+  }
+
+  return parts.join(", ");
+}
+
 export function DraftRecoveryPopup({
   isInitialLoadComplete,
 }: DraftRecoveryPopupProps) {
-  const { isOpen, popupRef, nodeCount, edgeCount, savedAt, onLoad, onDiscard } =
-    useDraftRecoveryPopup(isInitialLoadComplete);
+  const {
+    isOpen,
+    popupRef,
+    nodeCount,
+    edgeCount,
+    diff,
+    savedAt,
+    onLoad,
+    onDiscard,
+  } = useDraftRecoveryPopup(isInitialLoadComplete);
+
+  const diffSummary = formatDiffSummary(diff);
 
   return (
     <AnimatePresence>
@@ -72,10 +115,9 @@ export function DraftRecoveryPopup({
                 variant="small"
                 className="text-amber-700 dark:text-amber-400"
               >
-                {nodeCount} block{nodeCount !== 1 ? "s" : ""}, {edgeCount}{" "}
-                connection
-                {edgeCount !== 1 ? "s" : ""} •{" "}
-                {formatTimeAgo(new Date(savedAt).toISOString())}
+                {diffSummary ||
+                  `${nodeCount} block${nodeCount !== 1 ? "s" : ""}, ${edgeCount} connection${edgeCount !== 1 ? "s" : ""}`}{" "}
+                • {formatTimeAgo(new Date(savedAt).toISOString())}
               </Text>
             </div>
 

@@ -1,12 +1,17 @@
-import { Connection as RFConnection, EdgeChange } from "@xyflow/react";
+import {
+  Connection as RFConnection,
+  EdgeChange,
+  applyEdgeChanges,
+} from "@xyflow/react";
 import { useEdgeStore } from "@/app/(platform)/build/stores/edgeStore";
 import { useCallback } from "react";
 import { useNodeStore } from "../../../stores/nodeStore";
+import { CustomEdge } from "./CustomEdge";
 
 export const useCustomEdge = () => {
   const edges = useEdgeStore((s) => s.edges);
   const addEdge = useEdgeStore((s) => s.addEdge);
-  const removeEdge = useEdgeStore((s) => s.removeEdge);
+  const setEdges = useEdgeStore((s) => s.setEdges);
 
   const onConnect = useCallback(
     (conn: RFConnection) => {
@@ -45,14 +50,10 @@ export const useCustomEdge = () => {
   );
 
   const onEdgesChange = useCallback(
-    (changes: EdgeChange[]) => {
-      changes.forEach((change) => {
-        if (change.type === "remove") {
-          removeEdge(change.id);
-        }
-      });
+    (changes: EdgeChange<CustomEdge>[]) => {
+      setEdges(applyEdgeChanges(changes, edges));
     },
-    [removeEdge],
+    [edges, setEdges],
   );
 
   return { edges, onConnect, onEdgesChange };

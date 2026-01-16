@@ -4,6 +4,7 @@ import { CustomEdge } from "../components/FlowEditor/edges/CustomEdge";
 import { customEdgeToLink, linkToCustomEdge } from "../components/helper";
 import { MarkerType } from "@xyflow/react";
 import { NodeExecutionResult } from "@/app/api/__generated__/models/nodeExecutionResult";
+import { cleanUpHandleId } from "@/components/renderers/InputRenderer/helpers";
 
 type EdgeStore = {
   edges: CustomEdge[];
@@ -12,6 +13,8 @@ type EdgeStore = {
   addEdge: (edge: Omit<CustomEdge, "id"> & { id?: string }) => CustomEdge;
   removeEdge: (edgeId: string) => void;
   upsertMany: (edges: CustomEdge[]) => void;
+
+  removeEdgesByHandlePrefix: (nodeId: string, handlePrefix: string) => void;
 
   getNodeEdges: (nodeId: string) => CustomEdge[];
   isInputConnected: (nodeId: string, handle: string) => boolean;
@@ -79,11 +82,27 @@ export const useEdgeStore = create<EdgeStore>((set, get) => ({
       return { edges: Array.from(byKey.values()) };
     }),
 
+  removeEdgesByHandlePrefix: (nodeId, handlePrefix) =>
+    set((state) => ({
+      edges: state.edges.filter(
+        (e) =>
+          !(
+            e.target === nodeId &&
+            e.targetHandle &&
+            e.targetHandle.startsWith(handlePrefix)
+          ),
+      ),
+    })),
+
   getNodeEdges: (nodeId) =>
     get().edges.filter((e) => e.source === nodeId || e.target === nodeId),
 
-  isInputConnected: (nodeId, handle) =>
-    get().edges.some((e) => e.target === nodeId && e.targetHandle === handle),
+  isInputConnected: (nodeId, handle) => {
+    const cleanedHandle = cleanUpHandleId(handle);
+    return get().edges.some(
+      (e) => e.target === nodeId && e.targetHandle === cleanedHandle,
+    );
+  },
 
   isOutputConnected: (nodeId, handle) =>
     get().edges.some((e) => e.source === nodeId && e.sourceHandle === handle),
@@ -105,20 +124,21 @@ export const useEdgeStore = create<EdgeStore>((set, get) => ({
     targetNodeId: string,
     executionResult: NodeExecutionResult,
   ) => {
-    set((state) => ({
-      edges: state.edges.map((edge) => {
+    set((state) => {
+      let hasChanges = false;
+
+      const newEdges = state.edges.map((edge) => {
         if (edge.target !== targetNodeId) {
           return edge;
         }
 
-        const beadData =
-          edge.data?.beadData ??
-          new Map<string, NodeExecutionResult["status"]>();
+        const beadData = new Map(edge.data?.beadData ?? new Map());
 
-        if (
-          edge.targetHandle &&
-          edge.targetHandle in executionResult.input_data
-        ) {
+        const inputValue = edge.targetHandle
+          ? executionResult.input_data[edge.targetHandle]
+          : undefined;
+
+        if (inputValue !== undefined && inputValue !== null) {
           beadData.set(executionResult.node_exec_id, executionResult.status);
         }
 
@@ -136,6 +156,11 @@ export const useEdgeStore = create<EdgeStore>((set, get) => ({
           beadUp = beadDown + 1;
         }
 
+        if (edge.data?.beadUp === beadUp && edge.data?.beadDown === beadDown) {
+          return edge;
+        }
+
+        hasChanges = true;
         return {
           ...edge,
           data: {
@@ -145,8 +170,10 @@ export const useEdgeStore = create<EdgeStore>((set, get) => ({
             beadData,
           },
         };
-      }),
-    }));
+      });
+
+      return hasChanges ? { edges: newEdges } : state;
+    });
   },
 
   resetEdgeBeads: () => {

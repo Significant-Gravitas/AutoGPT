@@ -11,6 +11,7 @@ on:
       - ".github/workflows/platform-frontend-ci.yml"
       - "autogpt_platform/frontend/**"
   merge_group:
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'merge_group' && format('merge-queue-{0}', github.ref) || format('{0}-{1}', github.ref, github.event.pull_request.number || github.sha) }}
@@ -151,6 +152,14 @@ jobs:
         run: |
           cp ../.env.default ../.env
 
+      - name: Copy backend .env and set OpenAI API key
+        run: |
+          cp ../backend/.env.default ../backend/.env
+          echo "OPENAI_INTERNAL_API_KEY=${{ secrets.OPENAI_API_KEY }}" >> ../backend/.env
+        env:
+          # Used by E2E test data script to generate embeddings for approved store agents
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -226,13 +235,25 @@ jobs:
 
       - name: Run Playwright tests
         run: pnpm test:no-build
+        continue-on-error: false
 
-      - name: Upload Playwright artifacts
-        if: failure()
+      - name: Upload Playwright report
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report
           path: playwright-report
+          if-no-files-found: ignore
+          retention-days: 3
+
+      - name: Upload Playwright test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-test-results
+          path: test-results
+          if-no-files-found: ignore
+          retention-days: 3
 
       - name: Print Final Docker Compose logs
         if: always()
