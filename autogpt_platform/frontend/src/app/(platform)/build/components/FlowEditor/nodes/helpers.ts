@@ -89,17 +89,53 @@ export function extractOptions(
 
 // get display type and color for schema types [need for type display next to field name]
 export const getTypeDisplayInfo = (schema: any) => {
+  if (
+    schema?.type === "array" &&
+    "format" in schema &&
+    schema.format === "table"
+  ) {
+    return {
+      displayType: "table",
+      colorClass: "!text-indigo-500",
+      hexColor: "#6366f1",
+    };
+  }
+
   if (schema?.type === "string" && schema?.format) {
     const formatMap: Record<
       string,
-      { displayType: string; colorClass: string }
+      { displayType: string; colorClass: string; hexColor: string }
     > = {
-      file: { displayType: "file", colorClass: "!text-green-500" },
-      date: { displayType: "date", colorClass: "!text-blue-500" },
-      time: { displayType: "time", colorClass: "!text-blue-500" },
-      "date-time": { displayType: "datetime", colorClass: "!text-blue-500" },
-      "long-text": { displayType: "text", colorClass: "!text-green-500" },
-      "short-text": { displayType: "text", colorClass: "!text-green-500" },
+      file: {
+        displayType: "file",
+        colorClass: "!text-green-500",
+        hexColor: "#22c55e",
+      },
+      date: {
+        displayType: "date",
+        colorClass: "!text-blue-500",
+        hexColor: "#3b82f6",
+      },
+      time: {
+        displayType: "time",
+        colorClass: "!text-blue-500",
+        hexColor: "#3b82f6",
+      },
+      "date-time": {
+        displayType: "datetime",
+        colorClass: "!text-blue-500",
+        hexColor: "#3b82f6",
+      },
+      "long-text": {
+        displayType: "text",
+        colorClass: "!text-green-500",
+        hexColor: "#22c55e",
+      },
+      "short-text": {
+        displayType: "text",
+        colorClass: "!text-green-500",
+        hexColor: "#22c55e",
+      },
     };
 
     const formatInfo = formatMap[schema.format];
@@ -131,10 +167,23 @@ export const getTypeDisplayInfo = (schema: any) => {
     any: "!text-gray-500",
   };
 
+  const hexColorMap: Record<string, string> = {
+    string: "#22c55e",
+    number: "#3b82f6",
+    integer: "#3b82f6",
+    boolean: "#eab308",
+    object: "#a855f7",
+    array: "#6366f1",
+    null: "#6b7280",
+    any: "#6b7280",
+  };
+
   const colorClass = colorMap[schema?.type] || "!text-gray-500";
+  const hexColor = hexColorMap[schema?.type] || "#6b7280";
 
   return {
     displayType,
     colorClass,
+    hexColor,
   };
 };

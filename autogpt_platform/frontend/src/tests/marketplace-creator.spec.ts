@@ -1,8 +1,8 @@
 import { test } from "@playwright/test";
-import { MarketplacePage } from "./pages/marketplace.page";
+import { getTestUserWithLibraryAgents } from "./credentials";
 import { LoginPage } from "./pages/login.page";
-import { isVisible, hasUrl, matchesUrl } from "./utils/assertion";
-import { TEST_CREDENTIALS } from "./credentials";
+import { MarketplacePage } from "./pages/marketplace.page";
+import { hasUrl, isVisible, matchesUrl } from "./utils/assertion";
 import { getSelectors } from "./utils/selectors";
 
 test.describe("Marketplace Creator Page – Basic Functionality", () => {
@@ -25,7 +25,8 @@ test.describe("Marketplace Creator Page – Basic Functionality", () => {
     const marketplacePage = new MarketplacePage(page);
 
     await loginPage.goto();
-    await loginPage.login(TEST_CREDENTIALS.email, TEST_CREDENTIALS.password);
+    const richUser = getTestUserWithLibraryAgents();
+    await loginPage.login(richUser.email, richUser.password);
     await hasUrl(page, "/marketplace");
 
     await marketplacePage.goto(page);

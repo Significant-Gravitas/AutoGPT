@@ -7,12 +7,15 @@ from typing import Literal
 import autogpt_libs.auth
 import fastapi
 import fastapi.responses
+import prisma.enums
 
 import backend.data.graph
 import backend.util.json
+from backend.util.models import Pagination
 
 from . import cache as store_cache
 from . import db as store_db
+from . import hybrid_search as store_hybrid_search
 from . import image_gen as store_image_gen
 from . import media as store_media
 from . import model as store_model
@@ -144,6 +147,102 @@ async def get_agents(
         page_size=page_size,
     )
     return agents
+
+
+##############################################
+############### Search Endpoints #############
+##############################################
+
+
+@router.get(
+    "/search",
+    summary="Unified search across all content types",
+    tags=["store", "public"],
+    response_model=store_model.UnifiedSearchResponse,
+)
+async def unified_search(
+    query: str,
+    content_types: list[str] | None = fastapi.Query(
+        default=None,
+        description="Content types to search: STORE_AGENT, BLOCK, DOCUMENTATION. If not specified, searches all.",
+    ),
+    page: int = 1,
+    page_size: int = 20,
+    user_id: str | None = fastapi.Security(
+        autogpt_libs.auth.get_optional_user_id, use_cache=False
+    ),
+):
+    """
+    Search across all content types (store agents, blocks, documentation) using hybrid search.
+
+    Combines semantic (embedding-based) and lexical (text-based) search for best results.
+
+    Args:
+        query: The search query string
+        content_types: Optional list of content types to filter by (STORE_AGENT, BLOCK, DOCUMENTATION)
+        page: Page number for pagination (default 1)
+        page_size: Number of results per page (default 20)
+        user_id: Optional authenticated user ID (for user-scoped content in future)
+
+    Returns:
+        UnifiedSearchResponse: Paginated list of search results with relevance scores
+    """
+    if page < 1:
+        raise fastapi.HTTPException(
+            status_code=422, detail="Page must be greater than 0"
+        )
+
+    if page_size < 1:
+        raise fastapi.HTTPException(
+            status_code=422, detail="Page size must be greater than 0"
+        )
+
+    # Convert string content types to enum
+    content_type_enums: list[prisma.enums.ContentType] | None = None
+    if content_types:
+        try:
+            content_type_enums = [prisma.enums.ContentType(ct) for ct in content_types]
+        except ValueError as e:
+            raise fastapi.HTTPException(
+                status_code=422,
+                detail=f"Invalid content type. Valid values: STORE_AGENT, BLOCK, DOCUMENTATION. Error: {e}",
+            )
+
+    # Perform unified hybrid search
+    results, total = await store_hybrid_search.unified_hybrid_search(
+        query=query,
+        content_types=content_type_enums,
+        user_id=user_id,
+        page=page,
+        page_size=page_size,
+    )
+
+    # Convert results to response model
+    search_results = [
+        store_model.UnifiedSearchResult(
+            content_type=r["content_type"],
+            content_id=r["content_id"],
+            searchable_text=r.get("searchable_text", ""),
+            metadata=r.get("metadata"),
+            updated_at=r.get("updated_at"),
+            combined_score=r.get("combined_score"),
+            semantic_score=r.get("semantic_score"),
+            lexical_score=r.get("lexical_score"),
+        )
+        for r in results
+    ]
+
+    total_pages = (total + page_size - 1) // page_size if total > 0 else 0
+
+    return store_model.UnifiedSearchResponse(
+        results=search_results,
+        pagination=Pagination(
+            total_items=total,
+            total_pages=total_pages,
+            current_page=page,
+            page_size=page_size,
+        ),
+    )
 
 
 @router.get(

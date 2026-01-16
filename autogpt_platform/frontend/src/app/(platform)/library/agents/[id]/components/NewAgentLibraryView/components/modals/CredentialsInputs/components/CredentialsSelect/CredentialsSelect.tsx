@@ -1,13 +1,4 @@
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/__legacy__/ui/select";
-import { Text } from "@/components/atoms/Text/Text";
-import { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
-import { useEffect } from "react";
+import { CredentialsMetaInput } from "@/app/api/__generated__/models/credentialsMetaInput";
 import { getCredentialDisplayName } from "../../helpers";
 import { CredentialRow } from "../CredentialRow/CredentialRow";
 
@@ -23,7 +14,11 @@ interface Props {
   displayName: string;
   selectedCredentials?: CredentialsMetaInput;
   onSelectCredential: (credentialId: string) => void;
+  onClearCredential?: () => void;
   readOnly?: boolean;
+  allowNone?: boolean;
+  /** When "node", applies compact styling for node context */
+  variant?: "default" | "node";
 }
 
 export function CredentialsSelect({
@@ -32,55 +27,82 @@ export function CredentialsSelect({
   displayName,
   selectedCredentials,
   onSelectCredential,
+  onClearCredential,
   readOnly = false,
+  allowNone = true,
+  variant = "default",
 }: Props) {
-  // Auto-select first credential if none is selected
-  useEffect(() => {
-    if (!selectedCredentials && credentials.length > 0) {
-      onSelectCredential(credentials[0].id);
+  function handleValueChange(e: React.ChangeEvent<HTMLSelectElement>) {
+    const value = e.target.value;
+    if (value === "__none__") {
+      onClearCredential?.();
+    } else {
+      onSelectCredential(value);
     }
-  }, [selectedCredentials, credentials, onSelectCredential]);
+  }
+
+  const selectedCredential = selectedCredentials
+    ? credentials.find((c) => c.id === selectedCredentials.id)
+    : null;
+
+  const displayCredential = selectedCredential
+    ? {
+        id: selectedCredential.id,
+        title: selectedCredential.title,
+        username: selectedCredential.username,
+        type: selectedCredential.type,
+        provider: selectedCredential.provider,
+      }
+    : allowNone
+      ? {
+          id: "__none__",
+          title: "None (skip this credential)",
+          type: "none",
+          provider: provider,
+        }
+      : {
+          id: "__placeholder__",
+          title: "Select credential",
+          type: "placeholder",
+          provider: provider,
+        };
 
   return (
     <div className="mb-4 w-full">
-      <Select
-        value={selectedCredentials?.id || ""}
-        onValueChange={(value) => onSelectCredential(value)}
-      >
-        <SelectTrigger className="h-auto min-h-12 w-full rounded-medium border-zinc-200 p-0 pr-4 shadow-none">
-          {selectedCredentials ? (
-            <SelectValue key={selectedCredentials.id} asChild>
-              <CredentialRow
-                credential={{
-                  id: selectedCredentials.id,
-                  title: selectedCredentials.title || undefined,
-                  type: selectedCredentials.type,
-                  provider: selectedCredentials.provider,
-                }}
-                provider={provider}
-                displayName={displayName}
-                onSelect={() => {}}
-                onDelete={() => {}}
-                readOnly={readOnly}
-                asSelectTrigger={true}
-              />
-            </SelectValue>
+      <div className="relative">
+        <select
+          value={selectedCredentials?.id ?? "__none__"}
+          onChange={handleValueChange}
+          disabled={readOnly}
+          className="absolute inset-0 z-10 cursor-pointer opacity-0"
+          aria-label={`Select ${displayName} credential`}
+        >
+          {allowNone ? (
+            <option value="__none__">None (skip this credential)</option>
           ) : (
-            <SelectValue key="placeholder" placeholder="Select credential" />
+            <option value="__none__" disabled hidden>
+              Select a credential
+            </option>
           )}
-        </SelectTrigger>
-        <SelectContent>
           {credentials.map((credential) => (
-            <SelectItem key={credential.id} value={credential.id}>
-              <div className="flex items-center gap-2">
-                <Text variant="body" className="tracking-tight">
-                  {getCredentialDisplayName(credential, displayName)}
-                </Text>
-              </div>
-            </SelectItem>
+            <option key={credential.id} value={credential.id}>
+              {getCredentialDisplayName(credential, displayName)}
+            </option>
           ))}
-        </SelectContent>
-      </Select>
+        </select>
+        <div className="rounded-medium border border-zinc-200 bg-white">
+          <CredentialRow
+            credential={displayCredential}
+            provider={provider}
+            displayName={displayName}
+            onSelect={() => {}}
+            onDelete={() => {}}
+            readOnly={readOnly}
+            asSelectTrigger={true}
+            variant={variant}
+          />
+        </div>
+      </div>
     </div>
   );
 }

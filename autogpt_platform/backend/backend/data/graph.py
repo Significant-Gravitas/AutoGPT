@@ -95,6 +95,15 @@ class Node(BaseDbModel):
     output_links: list[Link] = []
 
     @property
+    def credentials_optional(self) -> bool:
+        """
+        Whether credentials are optional for this node.
+        When True and credentials are not configured, the node will be skipped
+        during execution rather than causing a validation error.
+        """
+        return self.metadata.get("credentials_optional", False)
+
+    @property
     def block(self) -> AnyBlockSchema | "_UnknownBlockBase":
         """Get the block for this node. Returns UnknownBlock if block is deleted/missing."""
         block = get_block(self.block_id)
@@ -235,7 +244,10 @@ class BaseGraph(BaseDbModel):
         return any(
             node.block_id
             for node in self.nodes
-            if node.block.block_type == BlockType.HUMAN_IN_THE_LOOP
+            if (
+                node.block.block_type == BlockType.HUMAN_IN_THE_LOOP
+                or node.block.requires_human_review
+            )
         )
 
     @property
@@ -326,7 +338,35 @@ class Graph(BaseGraph):
     @computed_field
     @property
     def credentials_input_schema(self) -> dict[str, Any]:
-        return self._credentials_input_schema.jsonschema()
+        schema = self._credentials_input_schema.jsonschema()
+
+        # Determine which credential fields are required based on credentials_optional metadata
+        graph_credentials_inputs = self.aggregate_credentials_inputs()
+        required_fields = []
+
+        # Build a map of node_id -> node for quick lookup
+        all_nodes = {node.id: node for node in self.nodes}
+        for sub_graph in self.sub_graphs:
+            for node in sub_graph.nodes:
+                all_nodes[node.id] = node
+
+        for field_key, (
+            _field_info,
+            node_field_pairs,
+        ) in graph_credentials_inputs.items():
+            # A field is required if ANY node using it has credentials_optional=False
+            is_required = False
+            for node_id, _field_name in node_field_pairs:
+                node = all_nodes.get(node_id)
+                if node and not node.credentials_optional:
+                    is_required = True
+                    break
+
+            if is_required:
+                required_fields.append(field_key)
+
+        schema["required"] = required_fields
+        return schema
 
     @property
     def _credentials_input_schema(self) -> type[BlockSchema]:
