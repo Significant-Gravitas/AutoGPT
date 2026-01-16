@@ -62,6 +62,7 @@ jobs:
 
       - name: Show diff if out of sync
         if: failure()
+        working-directory: autogpt_platform/backend
         run: |
           echo "::error::Block documentation is out of sync with code!"
           echo ""
@@ -70,5 +71,8 @@ jobs:
           echo ""
           echo "Then commit the updated documentation files."
           echo ""
+          echo "Regenerating docs to show diff..."
+          poetry run python scripts/generate_block_docs.py
+          echo ""
           echo "Changes detected:"
-          git diff docs/integrations/ || true
+          git diff ../../docs/integrations/ || true
