@@ -515,7 +515,7 @@ def generate_overview_table(blocks: list[BlockDoc]) -> str:
                 if block.description
                 else "No description"
             )
-            short_desc = short_desc.replace("|", "\\|")
+            short_desc = short_desc.replace("\n", " ").replace("|", "\\|")
 
             lines.append(f"| [{block.name}]({file_path}#{anchor}) | {short_desc} |")
 
