@@ -1009,11 +1009,10 @@ model UnifiedContentEmbedding {
   @@index([contentType])
   @@index([userId])
   @@index([contentType, userId])
-  // Note: These @@index declarations are required to prevent Prisma from dropping the indexes,
-  // but the actual index creation uses specialized types (HNSW/GIN) via SQL migration.
-  // Prisma would create btree indexes, so migrations must DROP IF EXISTS and recreate with correct type.
+  // Note: embedding (HNSW) index is declared here because Prisma doesn't recognize HNSW and leaves it alone.
+  // search (GIN) index is NOT declared here because Prisma recognizes GIN and tries to "fix" it to btree.
+  // The GIN index is created in: migrations/20260115200000_add_unified_search_tsvector/migration.sql
   @@index([embedding], map: "UnifiedContentEmbedding_embedding_idx")
-  @@index([search], map: "UnifiedContentEmbedding_search_idx")
 }
 
 model StoreListingReview {
