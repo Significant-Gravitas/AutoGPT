@@ -47,7 +47,6 @@ export const useRunInputDialog = ({
           });
         },
         onError: (error) => {
-          console.log("error", error);
           if (error instanceof ApiError && error.isGraphValidationError()) {
             const errorData = error.response?.detail;
             Object.entries(errorData.node_errors).forEach(
