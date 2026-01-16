@@ -450,6 +450,9 @@ export async function navigateToAgentByName(
   agentName: string,
 ): Promise<void> {
   const agentCard = getAgentCards(page).filter({ hasText: agentName }).first();
+  // Wait for the agent card to be visible before clicking
+  // This handles async loading of agents after page navigation
+  await agentCard.waitFor({ state: "visible", timeout: 15000 });
   await agentCard.click();
 }
 
