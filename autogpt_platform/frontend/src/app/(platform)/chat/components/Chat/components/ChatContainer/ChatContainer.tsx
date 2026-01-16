@@ -10,21 +10,18 @@ import { useChatContainer } from "./useChatContainer";
 export interface ChatContainerProps {
   sessionId: string | null;
   initialMessages: SessionDetailResponse["messages"];
-  onRefreshSession: () => Promise<void>;
   className?: string;
 }
 
 export function ChatContainer({
   sessionId,
   initialMessages,
-  onRefreshSession,
   className,
 }: ChatContainerProps) {
   const { messages, streamingChunks, isStreaming, sendMessage } =
     useChatContainer({
       sessionId,
       initialMessages,
-      onRefreshSession,
     });
   const { capturePageContext } = usePageContext();
 

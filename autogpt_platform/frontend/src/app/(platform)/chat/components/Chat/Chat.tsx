@@ -38,7 +38,6 @@ export function Chat({
     sessionId,
     createSession,
     clearSession,
-    refreshSession,
     loadSession,
   } = useChat();
 
@@ -118,7 +117,6 @@ export function Chat({
           <ChatContainer
             sessionId={sessionId}
             initialMessages={messages}
-            onRefreshSession={refreshSession}
             className="flex-1"
           />
         )}

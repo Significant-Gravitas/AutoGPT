@@ -15,6 +15,7 @@ import {
   CopyIcon,
   RobotIcon,
 } from "@phosphor-icons/react";
+import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
 import { getToolActionPhrase } from "../../helpers";
 import { AgentCarouselMessage } from "../AgentCarouselMessage/AgentCarouselMessage";
@@ -44,6 +45,7 @@ export function ChatMessage({
   agentOutput,
 }: ChatMessageProps) {
   const { user } = useSupabase();
+  const router = useRouter();
   const [copied, setCopied] = useState(false);
   const {
     isUser,
@@ -101,6 +103,12 @@ export function ChatMessage({
     if (message.type !== "message" || !onSendMessage) return;
     onSendMessage(message.content, message.role === "user");
   }, [message, onSendMessage]);
+
+  const handleViewExecution = useCallback(() => {
+    if (message.type === "execution_started" && message.libraryAgentLink) {
+      router.push(message.libraryAgentLink);
+    }
+  }, [message, router]);
 
   // Render credentials needed messages
   if (isCredentialsNeeded && message.type === "credentials_needed") {
@@ -168,7 +176,7 @@ export function ChatMessage({
     );
   }
 
-  // Render no_results messages
+  // Render no_results messages - use dedicated component, not ToolResponseMessage
   if (message.type === "no_results") {
     return (
       <div className={cn("px-4 py-2", className)}>
@@ -180,7 +188,7 @@ export function ChatMessage({
     );
   }
 
-  // Render agent_carousel messages
+  // Render agent_carousel messages - use dedicated component, not ToolResponseMessage
   if (message.type === "agent_carousel") {
     return (
       <div className={cn("px-4 py-2", className)}>
@@ -192,7 +200,7 @@ export function ChatMessage({
     );
   }
 
-  // Render execution_started messages
+  // Render execution_started messages - use dedicated component, not ToolResponseMessage
   if (message.type === "execution_started") {
     return (
       <div className={cn("px-4 py-2", className)}>
@@ -200,6 +208,9 @@ export function ChatMessage({
           executionId={message.executionId}
           agentName={message.agentName}
           message={message.message}
+          onViewExecution={
+            message.libraryAgentLink ? handleViewExecution : undefined
+          }
         />
       </div>
     );
