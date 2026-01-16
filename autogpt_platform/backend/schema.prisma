@@ -1009,8 +1009,9 @@ model UnifiedContentEmbedding {
   @@index([contentType])
   @@index([userId])
   @@index([contentType, userId])
-  @@index([embedding], map: "UnifiedContentEmbedding_embedding_idx")
-  @@index([search], map: "UnifiedContentEmbedding_search_idx")
+  // Note: embedding index (HNSW) and search index (GIN) are managed via SQL migration
+  // because Prisma doesn't support these specialized index types
+  // See migrations/20260115200000_add_unified_search_tsvector/migration.sql
 }
 
 model StoreListingReview {
