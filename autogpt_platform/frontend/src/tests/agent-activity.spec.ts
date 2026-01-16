@@ -39,9 +39,14 @@ test.beforeEach(async ({ page }) => {
   await page.waitForTimeout(1000);
 
   await page.goto("/library");
-  await LibraryPage.clickFirstAgent(page);
+  // Navigate to the specific agent we just created, not just the first one
+  await LibraryPage.navigateToAgentByName(page, "Test Agent");
   await LibraryPage.waitForAgentPageLoad(page);
-  await isVisible(getText("Test Agent"), 8000);
+  // Use a longer timeout and retry mechanism for agent name visibility
+  // since the agent data is fetched asynchronously
+  await expect(async () => {
+    await expect(getText("Test Agent")).toBeVisible();
+  }).toPass({ timeout: 15000 });
 });
 
 test("shows badge with count when agent is running", async ({ page }) => {
