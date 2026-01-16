@@ -7,6 +7,8 @@ from backend.api.features.chat.model import ChatSession
 from .add_understanding import AddUnderstandingTool
 from .agent_output import AgentOutputTool
 from .base import BaseTool
+from .create_agent import CreateAgentTool
+from .edit_agent import EditAgentTool
 from .find_agent import FindAgentTool
 from .find_block import FindBlockTool
 from .find_library_agent import FindLibraryAgentTool
@@ -21,6 +23,8 @@ if TYPE_CHECKING:
 # Single source of truth for all tools
 TOOL_REGISTRY: dict[str, BaseTool] = {
     "add_understanding": AddUnderstandingTool(),
+    "create_agent": CreateAgentTool(),
+    "edit_agent": EditAgentTool(),
     "find_agent": FindAgentTool(),
     "find_block": FindBlockTool(),
     "find_library_agent": FindLibraryAgentTool(),
