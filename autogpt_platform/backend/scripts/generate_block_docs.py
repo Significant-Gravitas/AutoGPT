@@ -378,8 +378,8 @@ def generate_block_markdown(
         for inp in visible_inputs:
             required = "Yes" if inp.required else "No"
             desc = inp.description or "-"
-            # Escape pipes in description
-            desc = desc.replace("|", "\\|")
+            # Normalize newlines and escape pipes for valid table syntax
+            desc = desc.replace("\n", " ").replace("|", "\\|")
             lines.append(f"| {inp.name} | {desc} | {inp.type_str} | {required} |")
         lines.append("")
 
@@ -391,7 +391,8 @@ def generate_block_markdown(
         lines.append("|--------|-------------|------|")
         for out in visible_outputs:
             desc = out.description or "-"
-            desc = desc.replace("|", "\\|")
+            # Normalize newlines and escape pipes for valid table syntax
+            desc = desc.replace("\n", " ").replace("|", "\\|")
             lines.append(f"| {out.name} | {desc} | {out.type_str} |")
         lines.append("")
 
