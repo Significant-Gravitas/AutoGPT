@@ -693,7 +693,9 @@ async def cleanup_orphaned_embeddings() -> dict[str, Any]:
                     current_ids = set()
             else:
                 # Skip unknown content types to avoid accidental deletion
-                logger.warning(f"Skipping cleanup for unknown content type: {content_type}")
+                logger.warning(
+                    f"Skipping cleanup for unknown content type: {content_type}"
+                )
                 results_by_type[content_type.value] = {
                     "deleted": 0,
                     "error": "Unknown content type - skipped for safety",

@@ -221,7 +221,9 @@ class BlockHandler(ContentHandler):
 
                 # Convert categories set of enums to list of strings for JSON serialization
                 categories = getattr(block_instance, "categories", set())
-                categories_list = [cat.value for cat in categories] if categories else []
+                categories_list = (
+                    [cat.value for cat in categories] if categories else []
+                )
 
                 items.append(
                     ContentItem(
