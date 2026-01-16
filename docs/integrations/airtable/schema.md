@@ -24,7 +24,7 @@ The field is created immediately and becomes available for use in all records. R
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
-| field | Created field object | Dict[str, True] |
+| field | Created field object | Dict[str, Any] |
 | field_id | ID of the created field | str |
 
 ## Possible use case
@@ -55,13 +55,13 @@ The table is created with the defined schema and is immediately ready for use. R
 |-------|-------------|------|----------|
 | base_id | The Airtable base ID | str | Yes |
 | table_name | The name of the table to create | str | Yes |
-| table_fields | Table fields with name, type, and options | List[Dict[str, True]] | No |
+| table_fields | Table fields with name, type, and options | List[Dict[str, Any]] | No |
 
 ### Outputs
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
-| table | Created table object | Dict[str, True] |
+| table | Created table object | Dict[str, Any] |
 | table_id | ID of the created table | str |
 
 ### Possible use case
@@ -96,8 +96,8 @@ The schema includes field configurations, validation rules, and relationship def
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
-| base_schema | Complete base schema with tables, fields, and views | Dict[str, True] |
-| tables | Array of table objects | List[Dict[str, True]] |
+| base_schema | Complete base schema with tables, fields, and views | Dict[str, Any] |
+| tables | Array of table objects | List[Dict[str, Any]] |
 
 ### Possible use case
 <!-- MANUAL: use_case -->
@@ -135,7 +135,7 @@ Changes take effect immediately across all records and views that use the field.
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
-| field | Updated field object | Dict[str, True] |
+| field | Updated field object | Dict[str, Any] |
 
 ### Possible use case
 <!-- MANUAL: use_case -->
@@ -167,13 +167,13 @@ This is useful for maintaining table metadata and organizing your base structure
 | table_id | The table ID to update | str | Yes |
 | table_name | The name of the table to update | str | No |
 | table_description | The description of the table to update | str | No |
-| date_dependency | The date dependency of the table to update | Dict[str, True] | No |
+| date_dependency | The date dependency of the table to update | Dict[str, Any] | No |
 
 ### Outputs
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
-| table | Updated table object | Dict[str, True] |
+| table | Updated table object | Dict[str, Any] |
 
 ### Possible use case
 <!-- MANUAL: use_case -->

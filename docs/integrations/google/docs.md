@@ -21,7 +21,7 @@ Set add_newline to true to insert a line break before the appended content. The 
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if operation failed | str |
-| result | Result of the append operation | Dict[str, True] |
+| result | Result of the append operation | Dict[str, Any] |
 | document | The document for chaining | GoogleDriveFile |
 
 ## Possible use case
@@ -58,7 +58,7 @@ The block finds the document's end index and inserts the text there, with an opt
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if append failed | str |
-| result | Result of the append operation | Dict[str, True] |
+| result | Result of the append operation | Dict[str, Any] |
 | document | The document for chaining | GoogleDriveFile |
 
 ### Possible use case
@@ -132,7 +132,7 @@ Use the Get Structure block first to find the correct index positions for conten
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if operation failed | str |
-| result | Result of delete operation | Dict[str, True] |
+| result | Result of delete operation | Dict[str, Any] |
 | document | The document for chaining | GoogleDriveFile |
 
 ### Possible use case
@@ -207,7 +207,7 @@ The replacement preserves the surrounding formatting but does not apply any new 
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if operation failed | str |
-| result | Result with replacement count | Dict[str, True] |
+| result | Result with replacement count | Dict[str, Any] |
 | document | The document for chaining | GoogleDriveFile |
 
 ### Possible use case
@@ -249,7 +249,7 @@ Use the Get Structure block to identify the correct index positions. Multiple fo
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if operation failed | str |
-| result | Result of format operation | Dict[str, True] |
+| result | Result of format operation | Dict[str, Any] |
 | document | The document for chaining | GoogleDriveFile |
 
 ### Possible use case
@@ -323,8 +323,8 @@ The index positions are essential for precise editing operations like formatting
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if operation failed | str |
-| segments | Flat list of content segments with indexes (when detailed=False) | List[Dict[str, True]] |
-| structure | Full hierarchical document structure (when detailed=True) | Dict[str, True] |
+| segments | Flat list of content segments with indexes (when detailed=False) | List[Dict[str, Any]] |
+| structure | Full hierarchical document structure (when detailed=True) | Dict[str, Any] |
 | document | The document for chaining | GoogleDriveFile |
 
 ### Possible use case
@@ -361,7 +361,7 @@ The Markdown parser handles headers, bold, italic, links, lists, and code format
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if operation failed | str |
-| result | Result of the insert operation | Dict[str, True] |
+| result | Result of the insert operation | Dict[str, Any] |
 | document | The document for chaining | GoogleDriveFile |
 
 ### Possible use case
@@ -397,7 +397,7 @@ Page breaks force subsequent content to start on a new page, useful for separati
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if operation failed | str |
-| result | Result of page break insertion | Dict[str, True] |
+| result | Result of page break insertion | Dict[str, Any] |
 | document | The document for chaining | GoogleDriveFile |
 
 ### Possible use case
@@ -434,7 +434,7 @@ Unlike the Markdown insert, text is inserted exactly as provided without any for
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if insert failed | str |
-| result | Result of the insert operation | Dict[str, True] |
+| result | Result of the insert operation | Dict[str, Any] |
 | document | The document for chaining | GoogleDriveFile |
 
 ### Possible use case
@@ -474,7 +474,7 @@ Cell content can optionally be formatted as Markdown, enabling rich formatting l
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if operation failed | str |
-| result | Result of table insertion | Dict[str, True] |
+| result | Result of table insertion | Dict[str, Any] |
 | document | The document for chaining | GoogleDriveFile |
 
 ### Possible use case
@@ -546,7 +546,7 @@ This is ideal for completely regenerating document content from AI-generated Mar
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if operation failed | str |
-| result | Result of the replace operation | Dict[str, True] |
+| result | Result of the replace operation | Dict[str, Any] |
 | document | The document for chaining | GoogleDriveFile |
 
 ### Possible use case
@@ -584,7 +584,7 @@ Use this for template systems where placeholders like {{SECTION}} are replaced w
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if operation failed | str |
-| result | Result with replacement count | Dict[str, True] |
+| result | Result with replacement count | Dict[str, Any] |
 | document | The document for chaining | GoogleDriveFile |
 
 ### Possible use case
@@ -622,7 +622,7 @@ Use Get Structure to find the correct index positions. This enables precise repl
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if operation failed | str |
-| result | Result of the replace operation | Dict[str, True] |
+| result | Result of the replace operation | Dict[str, Any] |
 | document | The document for chaining | GoogleDriveFile |
 
 ### Possible use case
@@ -659,7 +659,7 @@ When made public, anyone with the link can access the document according to the 
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if operation failed | str |
-| result | Result of the operation | Dict[str, True] |
+| result | Result of the operation | Dict[str, Any] |
 | share_link | Link to the document | str |
 | document | The document for chaining | GoogleDriveFile |
 
@@ -699,7 +699,7 @@ Leave the email blank to just generate a shareable link. The block returns the s
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if share failed | str |
-| result | Result of the share operation | Dict[str, True] |
+| result | Result of the share operation | Dict[str, Any] |
 | share_link | Link to the document | str |
 | document | The document for chaining | GoogleDriveFile |
 

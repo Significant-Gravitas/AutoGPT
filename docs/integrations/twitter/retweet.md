@@ -28,9 +28,9 @@ The block uses Tweepy with OAuth 2.0 authentication. Users are returned with pag
 | names | List of user names who retweeted | List[Any] |
 | usernames | List of user usernames who retweeted | List[Any] |
 | next_token | Token for next page of results | str |
-| data | Complete Tweet data | List[Dict[str, True]] |
-| included | Additional data that you have requested (Optional) via Expansions field | Dict[str, True] |
-| meta | Provides metadata such as pagination info (next_token) or result counts | Dict[str, True] |
+| data | Complete Tweet data | List[Dict[str, Any]] |
+| included | Additional data that you have requested (Optional) via Expansions field | Dict[str, Any] |
+| meta | Provides metadata such as pagination info (next_token) or result counts | Dict[str, Any] |
 
 ## Possible use case
 <!-- MANUAL: use_case -->

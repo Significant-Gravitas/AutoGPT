@@ -28,9 +28,9 @@ The block uses Tweepy with OAuth 2.0 authentication and supports expansions to i
 | titles | List of space titles | List[str] |
 | host_ids | List of host IDs | List[Any] |
 | next_token | Next token for pagination | str |
-| data | Complete space data | List[Dict[str, True]] |
-| includes | Additional data requested via expansions | Dict[str, True] |
-| meta | Metadata including pagination info | Dict[str, True] |
+| data | Complete space data | List[Dict[str, Any]] |
+| includes | Additional data requested via expansions | Dict[str, Any] |
+| meta | Metadata including pagination info | Dict[str, Any] |
 
 ## Possible use case
 <!-- MANUAL: use_case -->

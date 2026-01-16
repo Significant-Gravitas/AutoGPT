@@ -28,7 +28,7 @@ Returns comprehensive contact details including email addresses (if available), 
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if enrichment failed | str |
-| contact | Enriched contact information | Dict[str, True] |
+| contact | Enriched contact information | Dict[str, Any] |
 
 ## Possible use case
 <!-- MANUAL: use_case -->

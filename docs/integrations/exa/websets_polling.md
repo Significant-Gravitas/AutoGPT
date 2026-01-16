@@ -72,7 +72,7 @@ Use this when you need search results before proceeding with downstream operatio
 | items_analyzed | Number of items analyzed | int |
 | completion_percentage | Completion percentage (0-100) | int |
 | elapsed_time | Total time elapsed in seconds | float |
-| recall_info | Information about expected results and confidence | Dict[str, True] |
+| recall_info | Information about expected results and confidence | Dict[str, Any] |
 | timed_out | Whether the operation timed out | bool |
 
 ### Possible use case
@@ -116,8 +116,8 @@ Use this for general-purpose waiting on webset operations when you don't need to
 | final_status | The final status of the webset | str |
 | elapsed_time | Total time elapsed in seconds | float |
 | item_count | Number of items found | int |
-| search_progress | Detailed search progress information | Dict[str, True] |
-| enrichment_progress | Detailed enrichment progress information | Dict[str, True] |
+| search_progress | Detailed search progress information | Dict[str, Any] |
+| enrichment_progress | Detailed enrichment progress information | Dict[str, Any] |
 | timed_out | Whether the operation timed out | bool |
 
 ### Possible use case

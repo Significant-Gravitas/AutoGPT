@@ -23,9 +23,9 @@ The block uses Tweepy with OAuth 2.0 authentication and supports expansions to i
 | error | Error message if the operation failed | str |
 | list_ids | List IDs of the pinned lists | List[str] |
 | list_names | List names of the pinned lists | List[str] |
-| data | Response data containing pinned lists | List[Dict[str, True]] |
-| included | Additional data requested via expansions | Dict[str, True] |
-| meta | Metadata about the response | Dict[str, True] |
+| data | Response data containing pinned lists | List[Dict[str, Any]] |
+| included | Additional data requested via expansions | Dict[str, Any] |
+| meta | Metadata about the response | Dict[str, Any] |
 
 ## Possible use case
 <!-- MANUAL: use_case -->

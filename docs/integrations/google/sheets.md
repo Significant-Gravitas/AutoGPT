@@ -23,7 +23,7 @@ The block uses the Google Sheets API to perform the insertion, shifting existing
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if any | str |
-| result | Result of the operation | Dict[str, True] |
+| result | Result of the operation | Dict[str, Any] |
 | column_letter | Letter of the new column (e.g., 'D') | str |
 | column_index | 0-based index of the new column | int |
 | spreadsheet | The spreadsheet for chaining | GoogleDriveFile |
@@ -65,7 +65,7 @@ The dropdown arrow appears in cells when enabled, providing users with a list of
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if any | str |
-| result | Result of the operation | Dict[str, True] |
+| result | Result of the operation | Dict[str, Any] |
 | spreadsheet | The spreadsheet for chaining | GoogleDriveFile |
 
 ### Possible use case
@@ -103,7 +103,7 @@ Notes are useful for documentation, explanations, or audit trails that shouldn't
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if operation failed | str |
-| result | Result of the operation | Dict[str, True] |
+| result | Result of the operation | Dict[str, Any] |
 | spreadsheet | The spreadsheet for chaining | GoogleDriveFile |
 
 ### Possible use case
@@ -141,7 +141,7 @@ This is ideal for continuously adding records to a log or database-style sheet.
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if any | str |
-| result | Append API response | Dict[str, True] |
+| result | Append API response | Dict[str, Any] |
 | spreadsheet | The spreadsheet for chaining to other blocks | GoogleDriveFile |
 
 ### Possible use case
@@ -177,7 +177,7 @@ Operations execute in order and can include various actions like formatting, dat
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if any | str |
-| result | The result of the batch operations | Dict[str, True] |
+| result | The result of the batch operations | Dict[str, Any] |
 | spreadsheet | The spreadsheet as a GoogleDriveFile (for chaining to other blocks) | GoogleDriveFile |
 
 ### Possible use case
@@ -213,7 +213,7 @@ Use A1 notation (e.g., "A1:D10" or "Sheet1!B2:C5") to specify the range to clear
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if any | str |
-| result | The result of the clear operation | Dict[str, True] |
+| result | The result of the clear operation | Dict[str, Any] |
 | spreadsheet | The spreadsheet as a GoogleDriveFile (for chaining to other blocks) | GoogleDriveFile |
 
 ### Possible use case
@@ -250,7 +250,7 @@ The new sheet is added to the destination spreadsheet with a potentially modifie
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if any | str |
-| result | Result of the copy operation | Dict[str, True] |
+| result | Result of the copy operation | Dict[str, Any] |
 | new_sheet_id | ID of the new sheet in the destination | int |
 | new_sheet_name | Name of the new sheet | str |
 | spreadsheet | The source spreadsheet for chaining | GoogleDriveFile |
@@ -290,7 +290,7 @@ Named ranges can be used in formulas across the spreadsheet and make maintenance
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if any | str |
-| result | Result of the operation | Dict[str, True] |
+| result | Result of the operation | Dict[str, Any] |
 | named_range_id | ID of the created named range | str |
 | spreadsheet | The spreadsheet for chaining | GoogleDriveFile |
 
@@ -327,7 +327,7 @@ The spreadsheet output can be chained to other Sheets blocks for immediate data 
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if any | str |
-| result | The result containing spreadsheet ID and URL | Dict[str, True] |
+| result | The result containing spreadsheet ID and URL | Dict[str, Any] |
 | spreadsheet | The created spreadsheet as a GoogleDriveFile (for chaining to other blocks) | GoogleDriveFile |
 | spreadsheet_id | The ID of the created spreadsheet | str |
 | spreadsheet_url | The URL of the created spreadsheet | str |
@@ -366,7 +366,7 @@ All data in the column is permanently deleted and subsequent columns shift left 
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if any | str |
-| result | Result of the delete operation | Dict[str, True] |
+| result | Result of the delete operation | Dict[str, Any] |
 | spreadsheet | The spreadsheet for chaining | GoogleDriveFile |
 
 ### Possible use case
@@ -403,7 +403,7 @@ Works seamlessly with the Filter Rows block output to delete rows matching speci
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if any | str |
-| result | Result of the delete operation | Dict[str, True] |
+| result | Result of the delete operation | Dict[str, Any] |
 | deleted_count | Number of rows deleted | int |
 | spreadsheet | The spreadsheet for chaining | GoogleDriveFile |
 
@@ -526,8 +526,8 @@ Returns the locations (sheet, row, column) of all matches or just the first one,
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if any | str |
-| result | The result of the find operation including locations and count | Dict[str, True] |
-| locations | List of cell locations where the text was found | List[Dict[str, True]] |
+| result | The result of the find operation including locations and count | Dict[str, Any] |
+| locations | List of cell locations where the text was found | List[Dict[str, Any]] |
 | count | Number of occurrences found | int |
 | spreadsheet | The spreadsheet as a GoogleDriveFile (for chaining to other blocks) | GoogleDriveFile |
 
@@ -568,7 +568,7 @@ Returns the number of replacements made, enabling verification of the operation'
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if any | str |
-| result | The result of the find/replace operation including number of replacements | Dict[str, True] |
+| result | The result of the find/replace operation including number of replacements | Dict[str, Any] |
 | spreadsheet | The spreadsheet as a GoogleDriveFile (for chaining to other blocks) | GoogleDriveFile |
 
 ### Possible use case
@@ -599,8 +599,8 @@ Formatting enhances readability and can highlight important data or create visua
 |-------|-------------|------|----------|
 | spreadsheet | Select a Google Sheets spreadsheet | Spreadsheet | No |
 | range | A1 notation – sheet optional | str | Yes |
-| background_color | - | Dict[str, True] | No |
-| text_color | - | Dict[str, True] | No |
+| background_color | - | Dict[str, Any] | No |
+| text_color | - | Dict[str, Any] | No |
 | bold | - | bool | No |
 | italic | - | bool | No |
 | font_size | - | int | No |
@@ -609,7 +609,7 @@ Formatting enhances readability and can highlight important data or create visua
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if any | str |
-| result | API response or success flag | Dict[str, True] |
+| result | API response or success flag | Dict[str, Any] |
 | spreadsheet | The spreadsheet as a GoogleDriveFile (for chaining to other blocks) | GoogleDriveFile |
 
 ### Possible use case
@@ -687,7 +687,7 @@ Returns a list of notes with their cell locations, useful for extracting documen
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if operation failed | str |
-| notes | List of notes with cell and text | List[Dict[str, True]] |
+| notes | List of notes with cell and text | List[Dict[str, Any]] |
 | count | Number of notes found | int |
 | spreadsheet | The spreadsheet for chaining | GoogleDriveFile |
 
@@ -847,7 +847,7 @@ The CSV string is parsed and written to the sheet, enabling data import from ext
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if import failed | str |
-| result | Import result | Dict[str, True] |
+| result | Import result | Dict[str, Any] |
 | rows_imported | Number of rows imported | int |
 | spreadsheet | The spreadsheet for chaining | GoogleDriveFile |
 
@@ -887,7 +887,7 @@ Use value_input_option to control whether values are parsed (USER_ENTERED) or st
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if any | str |
-| result | Result of the insert operation | Dict[str, True] |
+| result | Result of the insert operation | Dict[str, Any] |
 | spreadsheet | The spreadsheet for chaining | GoogleDriveFile |
 
 ### Possible use case
@@ -922,7 +922,7 @@ Useful for discovering available named ranges or auditing spreadsheet configurat
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if any | str |
-| named_ranges | List of named ranges with name, id, and range info | List[Dict[str, True]] |
+| named_ranges | List of named ranges with name, id, and range info | List[Dict[str, Any]] |
 | count | Number of named ranges | int |
 | spreadsheet | The spreadsheet for chaining | GoogleDriveFile |
 
@@ -1005,7 +1005,7 @@ Use this to dynamically organize spreadsheet structure as part of workflows.
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if any | str |
-| result | Operation result | Dict[str, True] |
+| result | Operation result | Dict[str, Any] |
 | spreadsheet | The spreadsheet as a GoogleDriveFile (for chaining to other blocks) | GoogleDriveFile |
 
 ### Possible use case
@@ -1040,7 +1040,7 @@ Useful for understanding spreadsheet structure before performing operations.
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if any | str |
-| result | The metadata of the spreadsheet including sheets info | Dict[str, True] |
+| result | The metadata of the spreadsheet including sheets info | Dict[str, Any] |
 | spreadsheet | The spreadsheet as a GoogleDriveFile (for chaining to other blocks) | GoogleDriveFile |
 
 ### Possible use case
@@ -1079,7 +1079,7 @@ Use this to prevent accidental changes to important formulas, headers, or refere
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if any | str |
-| result | Result of the operation | Dict[str, True] |
+| result | Result of the operation | Dict[str, Any] |
 | protection_id | ID of the protection | int |
 | spreadsheet | The spreadsheet for chaining | GoogleDriveFile |
 
@@ -1149,7 +1149,7 @@ Case sensitivity is configurable for text comparisons.
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if any | str |
-| result | Result of the operation | Dict[str, True] |
+| result | Result of the operation | Dict[str, Any] |
 | removed_count | Number of duplicate rows removed | int |
 | remaining_rows | Number of rows remaining | int |
 | spreadsheet | The spreadsheet for chaining | GoogleDriveFile |
@@ -1188,7 +1188,7 @@ When made public, anyone with the link can access the spreadsheet. The share lin
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if operation failed | str |
-| result | Result of the operation | Dict[str, True] |
+| result | Result of the operation | Dict[str, Any] |
 | share_link | Link to the spreadsheet | str |
 | spreadsheet | The spreadsheet for chaining | GoogleDriveFile |
 
@@ -1228,7 +1228,7 @@ Leave the email blank to just generate a shareable link.
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if share failed | str |
-| result | Result of the share operation | Dict[str, True] |
+| result | Result of the share operation | Dict[str, Any] |
 | share_link | Link to the spreadsheet | str |
 | spreadsheet | The spreadsheet for chaining | GoogleDriveFile |
 
@@ -1270,7 +1270,7 @@ Sorting is performed in-place, modifying the sheet directly.
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if any | str |
-| result | Result of the sort operation | Dict[str, True] |
+| result | Result of the sort operation | Dict[str, Any] |
 | spreadsheet | The spreadsheet for chaining | GoogleDriveFile |
 
 ### Possible use case
@@ -1308,7 +1308,7 @@ Use value_input_option to control whether values are parsed (USER_ENTERED) or st
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if any | str |
-| result | The result of the update operation | Dict[str, True] |
+| result | The result of the update operation | Dict[str, Any] |
 | spreadsheet | The spreadsheet as a GoogleDriveFile (for chaining to other blocks) | GoogleDriveFile |
 
 ### Possible use case
@@ -1347,7 +1347,7 @@ The dictionary format is convenient when you only need to update specific column
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if any | str |
-| result | Result of the update operation | Dict[str, True] |
+| result | Result of the update operation | Dict[str, Any] |
 | spreadsheet | The spreadsheet for chaining | GoogleDriveFile |
 
 ### Possible use case
@@ -1382,7 +1382,7 @@ The block authenticates with Google Sheets using provided credentials, then upda
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if any | str |
-| result | The result of the write operation | Dict[str, True] |
+| result | The result of the write operation | Dict[str, Any] |
 | spreadsheet | The spreadsheet as a GoogleDriveFile (for chaining to other blocks) | GoogleDriveFile |
 
 ### Possible use case

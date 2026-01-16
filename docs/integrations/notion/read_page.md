@@ -19,7 +19,7 @@ The block returns the raw JSON representation of the page, including all propert
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
-| page | Raw Notion page JSON. | Dict[str, True] |
+| page | Raw Notion page JSON. | Dict[str, Any] |
 
 ## Possible use case
 <!-- MANUAL: use_case -->

@@ -15,14 +15,14 @@ Define the data structure you want using a JSON schema for precise extraction, o
 |-------|-------------|------|----------|
 | urls | The URLs to crawl - at least one is required. Wildcards are supported. (/*) | List[str] | Yes |
 | prompt | The prompt to use for the crawl | str | No |
-| output_schema | A Json Schema describing the output structure if more rigid structure is desired. | Dict[str, True] | No |
+| output_schema | A Json Schema describing the output structure if more rigid structure is desired. | Dict[str, Any] | No |
 | enable_web_search | When true, extraction can follow links outside the specified domain. | bool | No |
 
 ## Outputs
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the extraction failed | str |
-| data | The result of the crawl | Dict[str, True] |
+| data | The result of the crawl | Dict[str, Any] |
 
 ## Possible use case
 <!-- MANUAL: use_case -->

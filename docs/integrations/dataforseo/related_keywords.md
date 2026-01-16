@@ -68,8 +68,8 @@ Outputs include the keyword text, search volume, competition score, CPC, keyword
 | competition | Competition level (0-1) | float |
 | cpc | Cost per click in USD | float |
 | keyword_difficulty | Keyword difficulty score | int |
-| serp_info | SERP data for the keyword | Dict[str, True] |
-| clickstream_data | Clickstream data metrics | Dict[str, True] |
+| serp_info | SERP data for the keyword | Dict[str, Any] |
+| clickstream_data | Clickstream data metrics | Dict[str, Any] |
 
 ### Possible use case
 <!-- MANUAL: use_case -->

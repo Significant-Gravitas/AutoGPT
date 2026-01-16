@@ -244,7 +244,7 @@ Configure the embed's appearance with colors, images, and multiple fields for or
 | image_url | URL for the main embed image | str | No |
 | author_name | Author name to display | str | No |
 | footer_text | Footer text | str | No |
-| fields | List of field dictionaries with 'name', 'value', and optional 'inline' keys | List[Dict[str, True]] | No |
+| fields | List of field dictionaries with 'name', 'value', and optional 'inline' keys | List[Dict[str, Any]] | No |
 
 ### Outputs
 | Output | Description | Type |

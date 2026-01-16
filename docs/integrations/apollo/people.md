@@ -29,7 +29,7 @@ Enable enrich_info to get detailed contact information including verified email 
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the search failed | str |
-| people | List of people found | List[Dict[str, True]] |
+| people | List of people found | List[Dict[str, Any]] |
 
 ## Possible use case
 <!-- MANUAL: use_case -->

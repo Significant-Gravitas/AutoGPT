@@ -61,9 +61,9 @@ The block uses Tweepy with OAuth 2.0 authentication. Followers are returned in r
 | ids | List of follower user IDs | List[str] |
 | usernames | List of follower usernames | List[str] |
 | next_token | Next token for pagination | str |
-| data | Complete user data for followers | List[Dict[str, True]] |
-| includes | Additional data requested via expansions | Dict[str, True] |
-| meta | Metadata including pagination info | Dict[str, True] |
+| data | Complete user data for followers | List[Dict[str, Any]] |
+| includes | Additional data requested via expansions | Dict[str, Any] |
+| meta | Metadata including pagination info | Dict[str, Any] |
 
 ### Possible use case
 <!-- MANUAL: use_case -->
@@ -105,9 +105,9 @@ The block uses Tweepy with OAuth 2.0 authentication. Following lists are returne
 | ids | List of following user IDs | List[str] |
 | usernames | List of following usernames | List[str] |
 | next_token | Next token for pagination | str |
-| data | Complete user data for following | List[Dict[str, True]] |
-| includes | Additional data requested via expansions | Dict[str, True] |
-| meta | Metadata including pagination info | Dict[str, True] |
+| data | Complete user data for following | List[Dict[str, Any]] |
+| includes | Additional data requested via expansions | Dict[str, Any] |
+| meta | Metadata including pagination info | Dict[str, Any] |
 
 ### Possible use case
 <!-- MANUAL: use_case -->

@@ -56,7 +56,7 @@ Enable include_transcripts to receive the full meeting transcript with speaker i
 | error | Error message if the operation failed | str |
 | mp4_url | URL to download the meeting recording (time-limited) | str |
 | transcript | Meeting transcript data | List[Any] |
-| metadata | Meeting metadata and bot information | Dict[str, True] |
+| metadata | Meeting metadata and bot information | Dict[str, Any] |
 
 ### Possible use case
 <!-- MANUAL: use_case -->
@@ -91,15 +91,15 @@ Use webhooks to receive notifications when the meeting ends and recordings are r
 | reserved | Use a reserved bot slot (joins 4 min before meeting) | bool | No |
 | start_time | Unix timestamp (ms) when bot should join | int | No |
 | webhook_url | URL to receive webhook events for this bot | str | No |
-| timeouts | Automatic leave timeouts configuration | Dict[str, True] | No |
-| extra | Custom metadata to attach to the bot | Dict[str, True] | No |
+| timeouts | Automatic leave timeouts configuration | Dict[str, Any] | No |
+| extra | Custom metadata to attach to the bot | Dict[str, Any] | No |
 
 ### Outputs
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
 | bot_id | UUID of the deployed bot | str |
-| join_response | Full response from join operation | Dict[str, True] |
+| join_response | Full response from join operation | Dict[str, Any] |
 
 ### Possible use case
 <!-- MANUAL: use_case -->

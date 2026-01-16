@@ -64,9 +64,9 @@ The block uses Tweepy with OAuth 2.0 authentication and supports extensive expan
 | text | All Tweet texts | List[str] |
 | userId | IDs of the tweet authors | List[str] |
 | userName | Usernames of the tweet authors | List[str] |
-| data | Complete Tweet data | List[Dict[str, True]] |
-| included | Additional data that you have requested (Optional) via Expansions field | Dict[str, True] |
-| meta | Provides metadata such as pagination info (next_token) or result counts | Dict[str, True] |
+| data | Complete Tweet data | List[Dict[str, Any]] |
+| included | Additional data that you have requested (Optional) via Expansions field | Dict[str, Any] |
+| meta | Provides metadata such as pagination info (next_token) or result counts | Dict[str, Any] |
 | next_token | Next token for pagination | str |
 
 ### Possible use case

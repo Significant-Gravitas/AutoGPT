@@ -24,8 +24,8 @@ Results include all property values for each entry, the entry IDs for further op
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
-| entries | List of database entries with their properties. | List[Dict[str, True]] |
-| entry | Individual database entry (yields one per entry found). | Dict[str, True] |
+| entries | List of database entries with their properties. | List[Dict[str, Any]] |
+| entry | Individual database entry (yields one per entry found). | Dict[str, Any] |
 | entry_ids | List of entry IDs for batch operations. | List[str] |
 | entry_id | Individual entry ID (yields one per entry found). | str |
 | count | Number of entries retrieved. | int |

@@ -53,7 +53,7 @@ This pattern prevents duplicate websets when workflows retry or run multiple tim
 | external_id | External identifier for this webset - used to find existing or create new | str | Yes |
 | search_query | Search query (optional - only needed if creating new webset) | str | No |
 | search_count | Number of items to find in initial search | int | No |
-| metadata | Key-value pairs to associate with the webset | Dict[str, True] | No |
+| metadata | Key-value pairs to associate with the webset | Dict[str, Any] | No |
 
 ### Outputs
 | Output | Description | Type |
@@ -104,9 +104,9 @@ The block supports advanced features like scoped searches (searching within spec
 | enrichment_descriptions | List of enrichment task descriptions to perform on each webset item | List[str] | No |
 | enrichment_formats | List of formats for enrichment responses ('text', 'date', 'number', 'options', 'email', 'phone'). If not specified, we automatically select the best format. | List["text" \| "date" \| "number"] | No |
 | enrichment_options | List of option lists for enrichments with 'options' format. Each inner list contains the option labels. | List[List[str]] | No |
-| enrichment_metadata | List of metadata dictionaries for enrichments | List[Dict[str, True]] | No |
+| enrichment_metadata | List of metadata dictionaries for enrichments | List[Dict[str, Any]] | No |
 | external_id | External identifier for the webset. You can use this to reference the webset by your own internal identifiers. | str | No |
-| metadata | Key-value pairs to associate with this webset | Dict[str, True] | No |
+| metadata | Key-value pairs to associate with this webset | Dict[str, Any] | No |
 | wait_for_initial_results | Wait for the initial search to complete before returning. This ensures you get results immediately. | bool | No |
 | polling_timeout | Maximum time to wait for completion in seconds (only used if wait_for_initial_results is True) | int | No |
 
@@ -190,10 +190,10 @@ The block returns the webset's current state, metadata, and timestamps. Use this
 | webset_id | The unique identifier for the webset | str |
 | status | The status of the webset | str |
 | external_id | The external identifier for the webset | str |
-| searches | The searches performed on the webset | List[Dict[str, True]] |
-| enrichments | The enrichments applied to the webset | List[Dict[str, True]] |
-| monitors | The monitors for the webset | List[Dict[str, True]] |
-| metadata | Key-value pairs associated with the webset | Dict[str, True] |
+| searches | The searches performed on the webset | List[Dict[str, Any]] |
+| enrichments | The enrichments applied to the webset | List[Dict[str, Any]] |
+| monitors | The monitors for the webset | List[Dict[str, Any]] |
+| metadata | Key-value pairs associated with the webset | Dict[str, Any] |
 | created_at | The date and time the webset was created | str |
 | updated_at | The date and time the webset was last updated | str |
 
@@ -304,7 +304,7 @@ Setting metadata to null clears all existing metadata. This operation does not a
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | webset_id | The ID or external ID of the Webset to update | str | Yes |
-| metadata | Key-value pairs to associate with this webset (set to null to clear) | Dict[str, True] | No |
+| metadata | Key-value pairs to associate with this webset (set to null to clear) | Dict[str, Any] | No |
 
 ### Outputs
 | Output | Description | Type |
@@ -313,7 +313,7 @@ Setting metadata to null clears all existing metadata. This operation does not a
 | webset_id | The unique identifier for the webset | str |
 | status | The status of the webset | str |
 | external_id | The external identifier for the webset | str |
-| metadata | Updated metadata for the webset | Dict[str, True] |
+| metadata | Updated metadata for the webset | Dict[str, Any] |
 | updated_at | The date and time the webset was updated | str |
 
 ### Possible use case
@@ -437,7 +437,7 @@ You can control what to include in the summary such as sample items, search deta
 | status | Current status | str |
 | entity_type | Type of entities in the webset | str |
 | total_items | Total number of items | int |
-| sample_items | Sample items from the webset | List[Dict[str, True]] |
+| sample_items | Sample items from the webset | List[Dict[str, Any]] |
 | search_summary | Summary of searches performed | SearchSummaryModel |
 | enrichment_summary | Summary of enrichments applied | EnrichmentSummaryModel |
 | monitor_summary | Summary of monitors configured | MonitorSummaryModel |

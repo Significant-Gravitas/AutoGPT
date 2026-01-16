@@ -17,9 +17,9 @@ Input and output schemas define the expected data structure for communication be
 | graph_id | Graph ID | str | Yes |
 | graph_version | Graph Version | int | Yes |
 | agent_name | Name to display in the Builder UI | str | No |
-| inputs | Input data for the graph | Dict[str, True] | Yes |
-| input_schema | Input schema for the graph | Dict[str, True] | Yes |
-| output_schema | Output schema for the graph | Dict[str, True] | Yes |
+| inputs | Input data for the graph | Dict[str, Any] | Yes |
+| input_schema | Input schema for the graph | Dict[str, Any] | Yes |
+| output_schema | Output schema for the graph | Dict[str, Any] | Yes |
 
 ## Possible use case
 <!-- MANUAL: use_case -->
@@ -659,7 +659,7 @@ Configure publish_status to publish immediately, save as draft, or make unlisted
 ### Inputs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| author_id | The Medium AuthorID of the user. You can get this by calling the /me endpoint of the Medium API.  curl -H "Authorization: Bearer YOUR_ACCESS_TOKEN" https://api.medium.com/v1/me" the response will contain the authorId field. | str | No |
+| author_id | The Medium AuthorID of the user. You can get this by calling the /me endpoint of the Medium API.  curl -H "Authorization: Bearer YOUR_ACCESS_TOKEN" https://api.medium.com/v1/me  The response will contain the authorId field. | str | No |
 | title | The title of your Medium post | str | Yes |
 | content | The main content of your Medium post | str | Yes |
 | content_format | The format of the content: 'html' or 'markdown' | str | Yes |
@@ -838,7 +838,7 @@ Supports JSON, form-encoded, and multipart requests with file uploads. The respo
 | method | The HTTP method to use for the request | "GET" \| "POST" \| "PUT" | No |
 | headers | The headers to include in the request | Dict[str, str] | No |
 | json_format | If true, send the body as JSON (unless files are also present). | bool | No |
-| body | Form/JSON body payload. If files are supplied, this must be a mapping of form‑fields. | Dict[str, True] | No |
+| body | Form/JSON body payload. If files are supplied, this must be a mapping of form‑fields. | Dict[str, Any] | No |
 | files_name | The name of the file field in the form data. | str | No |
 | files | Mapping of *form field name* → Image url / path / base64 url. | List[str (file)] | No |
 
@@ -948,7 +948,7 @@ The response body is parsed and returned. Separate error outputs distinguish bet
 | method | The HTTP method to use for the request | "GET" \| "POST" \| "PUT" | No |
 | headers | The headers to include in the request | Dict[str, str] | No |
 | json_format | If true, send the body as JSON (unless files are also present). | bool | No |
-| body | Form/JSON body payload. If files are supplied, this must be a mapping of form‑fields. | Dict[str, True] | No |
+| body | Form/JSON body payload. If files are supplied, this must be a mapping of form‑fields. | Dict[str, Any] | No |
 | files_name | The name of the file field in the form data. | str | No |
 | files | Mapping of *form field name* → Image url / path / base64 url. | List[str (file)] | No |
 

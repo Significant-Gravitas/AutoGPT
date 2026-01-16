@@ -30,9 +30,9 @@ The block uses Tweepy with OAuth 2.0 authentication and supports extensive expan
 | tweet_ids | List of tweet IDs | List[str] |
 | texts | List of tweet texts | List[str] |
 | next_token | Token for next page of results | str |
-| data | Complete list tweets data | List[Dict[str, True]] |
-| included | Additional data requested via expansions | Dict[str, True] |
-| meta | Response metadata including pagination tokens | Dict[str, True] |
+| data | Complete list tweets data | List[Dict[str, Any]] |
+| included | Additional data requested via expansions | Dict[str, Any] |
+| meta | Response metadata including pagination tokens | Dict[str, Any] |
 
 ## Possible use case
 <!-- MANUAL: use_case -->

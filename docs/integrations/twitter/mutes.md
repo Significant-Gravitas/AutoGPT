@@ -26,9 +26,9 @@ The mute list is returned in batches (default 100, up to 1,000 per page), with p
 | ids | List of muted user IDs | List[str] |
 | usernames | List of muted usernames | List[str] |
 | next_token | Next token for pagination | str |
-| data | Complete user data for muted users | List[Dict[str, True]] |
-| includes | Additional data requested via expansions | Dict[str, True] |
-| meta | Metadata including pagination info | Dict[str, True] |
+| data | Complete user data for muted users | List[Dict[str, Any]] |
+| includes | Additional data requested via expansions | Dict[str, Any] |
+| meta | Metadata including pagination info | Dict[str, Any] |
 
 ## Possible use case
 <!-- MANUAL: use_case -->

@@ -140,8 +140,8 @@ The block returns the full item record with all available data, timestamps, and 
 | url | The URL of the original source | str |
 | title | The title of the item | str |
 | content | The main content of the item | str |
-| entity_data | Entity-specific structured data | Dict[str, True] |
-| enrichments | Enrichment data added to the item | Dict[str, True] |
+| entity_data | Entity-specific structured data | Dict[str, Any] |
+| enrichments | Enrichment data added to the item | Dict[str, Any] |
 | created_at | When the item was added to the webset | str |
 | updated_at | When the item was last updated | str |
 

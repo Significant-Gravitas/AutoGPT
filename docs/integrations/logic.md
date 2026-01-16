@@ -112,7 +112,7 @@ Configure sample_size to control how many items to select. Use random_seed for r
 ### Inputs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| data | The dataset to sample from. Can be a single dictionary, a list of dictionaries, or a list of lists. | Dict[str, True] \| List[Dict[str, True] \| List[Any]] | Yes |
+| data | The dataset to sample from. Can be a single dictionary, a list of dictionaries, or a list of lists. | Dict[str, Any] \| List[Dict[str, Any] \| List[Any]] | Yes |
 | sample_size | The number of samples to take from the dataset. | int | No |
 | sampling_method | The method to use for sampling. | "random" \| "systematic" \| "top" | No |
 | accumulate | Whether to accumulate data before sampling. | bool | No |
@@ -125,7 +125,7 @@ Configure sample_size to control how many items to select. Use random_seed for r
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
-| sampled_data | The sampled subset of the input data. | List[Dict[str, True] \| List[Any]] |
+| sampled_data | The sampled subset of the input data. | List[Dict[str, Any] \| List[Any]] |
 | sample_indices | The indices of the sampled data in the original dataset. | List[int] |
 
 ### Possible use case
@@ -236,7 +236,7 @@ Use namespaces to organize vectors into logical groups within the same index. Th
 | chunks | List of text chunks to ingest | List[Any] | Yes |
 | embeddings | List of embeddings corresponding to the chunks | List[Any] | Yes |
 | namespace | Namespace to use in Pinecone | str | No |
-| metadata | Additional metadata to store with each vector | Dict[str, True] | No |
+| metadata | Additional metadata to store with each vector | Dict[str, Any] | No |
 
 ### Outputs
 | Output | Description | Type |
@@ -310,7 +310,7 @@ When given a list or dictionary, the block processes each item individually. For
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | items | The list or dictionary of items to iterate over | List[Any] | No |
-| items_object | The list or dictionary of items to iterate over | Dict[str, True] | No |
+| items_object | The list or dictionary of items to iterate over | Dict[str, Any] | No |
 | items_str | The list or dictionary of items to iterate over | str | No |
 
 ### Outputs

@@ -78,7 +78,7 @@ Connects to Todoist API to retrieve sections list.
 | error | Error message if the operation failed | str |
 | names_list | List of section names | List[str] |
 | ids_list | List of section IDs | List[str] |
-| complete_data | Complete section data including all fields | List[Dict[str, True]] |
+| complete_data | Complete section data including all fields | List[Dict[str, Any]] |
 
 ### Possible use case
 <!-- MANUAL: use_case -->

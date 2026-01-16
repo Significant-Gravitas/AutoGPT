@@ -25,8 +25,8 @@ Optional expansions allow you to include additional data such as the user's pinn
 | id | User ID | str |
 | username_ | User username | str |
 | name_ | User name | str |
-| data | Complete user data | Dict[str, True] |
-| included | Additional data requested via expansions | Dict[str, True] |
+| data | Complete user data | Dict[str, Any] |
+| included | Additional data requested via expansions | Dict[str, Any] |
 
 ## Possible use case
 <!-- MANUAL: use_case -->
@@ -66,8 +66,8 @@ The block uses Tweepy with OAuth 2.0 authentication and supports expansions for 
 | ids | User IDs | List[str] |
 | usernames_ | User usernames | List[str] |
 | names_ | User names | List[str] |
-| data | Complete users data | List[Dict[str, True]] |
-| included | Additional data requested via expansions | Dict[str, True] |
+| data | Complete users data | List[Dict[str, Any]] |
+| included | Additional data requested via expansions | Dict[str, Any] |
 
 ### Possible use case
 <!-- MANUAL: use_case -->

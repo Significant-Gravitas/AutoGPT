@@ -24,7 +24,7 @@ Configure the cron expression for your desired frequency (daily, weekly, etc.) a
 | entity_type | Type of entity to search for (company, person, etc.) | str | No |
 | refresh_content | Refresh content from source URLs (for refresh behavior) | bool | No |
 | refresh_enrichments | Re-run enrichments on items (for refresh behavior) | bool | No |
-| metadata | Metadata to attach to the monitor | Dict[str, True] | No |
+| metadata | Metadata to attach to the monitor | Dict[str, Any] | No |
 
 ## Outputs
 | Output | Description | Type |
@@ -110,14 +110,14 @@ Use this to verify monitor settings, check when the next run is scheduled, or re
 | webset_id | The webset this monitor belongs to | str |
 | status | Current status of the monitor | str |
 | behavior_type | Type of monitor behavior | str |
-| behavior_config | Configuration for the monitor behavior | Dict[str, True] |
+| behavior_config | Configuration for the monitor behavior | Dict[str, Any] |
 | cron_expression | The schedule cron expression | str |
 | timezone | The timezone for scheduling | str |
 | next_run_at | When the monitor will next run | str |
-| last_run | Information about the last run | Dict[str, True] |
+| last_run | Information about the last run | Dict[str, Any] |
 | created_at | When the monitor was created | str |
 | updated_at | When the monitor was last updated | str |
-| metadata | Metadata attached to the monitor | Dict[str, True] |
+| metadata | Metadata attached to the monitor | Dict[str, Any] |
 
 ### Possible use case
 <!-- MANUAL: use_case -->
@@ -153,8 +153,8 @@ Use this to get an overview of all active monitors or find monitors associated w
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
-| monitors | List of monitors | List[Dict[str, True]] |
-| monitor | Individual monitor (yielded for each monitor) | Dict[str, True] |
+| monitors | List of monitors | List[Dict[str, Any]] |
+| monitor | Individual monitor (yielded for each monitor) | Dict[str, Any] |
 | has_more | Whether there are more monitors to paginate through | bool |
 | next_cursor | Cursor for the next page of results | str |
 
@@ -188,7 +188,7 @@ Changes take effect immediately. Disabling a monitor stops future scheduled runs
 | status | New status for the monitor | "enabled" \| "disabled" \| "paused" | No |
 | cron_expression | New cron expression for scheduling | str | No |
 | timezone | New timezone for the schedule | str | No |
-| metadata | New metadata for the monitor | Dict[str, True] | No |
+| metadata | New metadata for the monitor | Dict[str, Any] | No |
 
 ### Outputs
 | Output | Description | Type |

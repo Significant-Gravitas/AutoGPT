@@ -14,14 +14,14 @@ Contact data includes standard properties like email, first name, last name, pho
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | operation | Operation to perform (create, update, get) | str | No |
-| contact_data | Contact data for create/update operations | Dict[str, True] | No |
+| contact_data | Contact data for create/update operations | Dict[str, Any] | No |
 | email | Email address for get/update operations | str | No |
 
 ## Outputs
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
-| contact | Contact information | Dict[str, True] |
+| contact | Contact information | Dict[str, Any] |
 | status | Operation status | str |
 
 ## Possible use case

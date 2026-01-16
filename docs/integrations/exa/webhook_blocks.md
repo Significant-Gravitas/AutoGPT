@@ -23,9 +23,9 @@ The block can filter events by webset ID and event type. It parses incoming webh
 | event_type | Type of event that occurred | str |
 | event_id | Unique identifier for this event | str |
 | webset_id | ID of the affected webset | str |
-| data | Event-specific data | Dict[str, True] |
+| data | Event-specific data | Dict[str, Any] |
 | timestamp | When the event occurred | str |
-| metadata | Additional event metadata | Dict[str, True] |
+| metadata | Additional event metadata | Dict[str, Any] |
 
 ## Possible use case
 <!-- MANUAL: use_case -->

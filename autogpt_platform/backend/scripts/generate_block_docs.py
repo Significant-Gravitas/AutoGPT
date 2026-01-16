@@ -12,9 +12,6 @@ Usage:
     # Check mode for CI (exits 1 if stale)
     poetry run python scripts/generate_block_docs.py --check
 
-    # Migrate existing docs (add markers, preserve content)
-    poetry run python scripts/generate_block_docs.py --migrate
-
     # Verbose output
     poetry run python scripts/generate_block_docs.py -v
 """
@@ -154,7 +151,11 @@ def type_to_readable(type_schema: dict[str, Any] | Any) -> str:
 
     if schema_type == "object":
         if "additionalProperties" in type_schema:
-            value_type = type_to_readable(type_schema["additionalProperties"])
+            additional_props = type_schema["additionalProperties"]
+            # additionalProperties: true means any value type is allowed
+            if additional_props is True:
+                return "Dict[str, Any]"
+            value_type = type_to_readable(additional_props)
             return f"Dict[str, {value_type}]"
         # Check if it's a specific model
         title = type_schema.get("title", "Object")
@@ -300,42 +301,6 @@ def extract_manual_content(existing_content: str) -> dict[str, str]:
 
     for section_name, content in matches:
         manual_sections[section_name] = content.strip()
-
-    return manual_sections
-
-
-def strip_markers(content: str) -> str:
-    """Remove MANUAL markers from content."""
-    # Remove opening markers
-    content = re.sub(r"<!-- MANUAL: \w+ -->\s*", "", content)
-    # Remove closing markers
-    content = re.sub(r"\s*<!-- END MANUAL -->", "", content)
-    return content.strip()
-
-
-def extract_legacy_content(existing_content: str) -> dict[str, str]:
-    """Extract content from legacy docs without markers (for migration)."""
-    manual_sections = {}
-
-    # Try to extract "How it works" section
-    how_it_works_match = re.search(
-        r"### How it works\s*\n(.*?)(?=\n### |\n## |\Z)", existing_content, re.DOTALL
-    )
-    if how_it_works_match:
-        content = strip_markers(how_it_works_match.group(1).strip())
-        if content and not content.startswith("|"):  # Not a table
-            manual_sections["how_it_works"] = content
-
-    # Try to extract "Possible use case" section
-    use_case_match = re.search(
-        r"### Possible use case\s*\n(.*?)(?=\n### |\n## |\n---|\Z)",
-        existing_content,
-        re.DOTALL,
-    )
-    if use_case_match:
-        content = strip_markers(use_case_match.group(1).strip())
-        if content:
-            manual_sections["use_case"] = content
 
     return manual_sections
 
@@ -550,7 +515,6 @@ def load_all_blocks_for_docs() -> list[BlockDoc]:
 def write_block_docs(
     output_dir: Path,
     blocks: list[BlockDoc],
-    migrate: bool = False,
     verbose: bool = False,
 ) -> dict[str, str]:
     """
@@ -578,20 +542,16 @@ def write_block_docs(
         # Generate content for each block
         content_parts = []
         for i, block in enumerate(sorted(file_blocks, key=lambda b: b.name)):
-            # Try to extract manual content
-            if migrate:
-                manual_content = extract_legacy_content(existing_content)
+            # Extract manual content specific to this block
+            # Match block heading (h1 or h2) and capture until --- separator
+            block_pattern = (
+                rf"(?:^|\n)##? {re.escape(block.name)}\s*\n(.*?)(?=\n---|\Z)"
+            )
+            block_match = re.search(block_pattern, existing_content, re.DOTALL)
+            if block_match:
+                manual_content = extract_manual_content(block_match.group(1))
             else:
-                # Extract manual content specific to this block
-                # Match block heading (h1 or h2) and capture until --- separator
-                block_pattern = (
-                    rf"(?:^|\n)##? {re.escape(block.name)}\s*\n(.*?)(?=\n---|\Z)"
-                )
-                block_match = re.search(block_pattern, existing_content, re.DOTALL)
-                if block_match:
-                    manual_content = extract_manual_content(block_match.group(1))
-                else:
-                    manual_content = {}
+                manual_content = {}
 
             content_parts.append(
                 generate_block_markdown(
@@ -723,11 +683,6 @@ def main():
         help="Check if docs are in sync (for CI), exit 1 if not",
     )
     parser.add_argument(
-        "--migrate",
-        action="store_true",
-        help="Migrate existing docs (extract legacy manual content)",
-    )
-    parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",
@@ -769,7 +724,6 @@ def main():
         write_block_docs(
             args.output_dir,
             blocks,
-            migrate=args.migrate,
             verbose=args.verbose,
         )
         print("Done!")

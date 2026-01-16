@@ -25,8 +25,8 @@ Results can be filtered by headquarters location, excluded locations, industry k
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the search failed | str |
-| organizations | List of organizations found | List[Dict[str, True]] |
-| organization | Each found organization, one at a time | Dict[str, True] |
+| organizations | List of organizations found | List[Dict[str, Any]] |
+| organization | Each found organization, one at a time | Dict[str, Any] |
 
 ## Possible use case
 <!-- MANUAL: use_case -->

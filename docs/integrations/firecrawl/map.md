@@ -20,7 +20,7 @@ The block is useful for understanding site architecture before performing target
 |--------|-------------|------|
 | error | Error message if the map failed | str |
 | links | List of URLs found on the website | List[str] |
-| results | List of search results with url, title, and description | List[Dict[str, True]] |
+| results | List of search results with url, title, and description | List[Dict[str, Any]] |
 
 ## Possible use case
 <!-- MANUAL: use_case -->

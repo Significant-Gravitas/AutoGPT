@@ -15,7 +15,7 @@ You can choose from different model tiers (fast, standard, pro) depending on you
 |-------|-------------|------|----------|
 | instructions | Research instructions - clearly define what information to find, how to conduct research, and desired output format. | str | Yes |
 | model | Research model: 'fast' for quick results, 'standard' for balanced quality, 'pro' for thorough analysis | "exa-research-fast" \| "exa-research" \| "exa-research-pro" | No |
-| output_schema | JSON Schema to enforce structured output. When provided, results are validated and returned as parsed JSON. | Dict[str, True] | No |
+| output_schema | JSON Schema to enforce structured output. When provided, results are validated and returned as parsed JSON. | Dict[str, Any] | No |
 | wait_for_completion | Wait for research to complete before returning. Ensures you get results immediately. | bool | No |
 | polling_timeout | Maximum time to wait for completion in seconds (only if wait_for_completion is True) | int | No |
 
@@ -29,7 +29,7 @@ You can choose from different model tiers (fast, standard, pro) depending on you
 | instructions | The research instructions provided | str |
 | created_at | When the research was created (Unix timestamp in ms) | int |
 | output_content | Research output as text (only if wait_for_completion was True and completed) | str |
-| output_parsed | Structured JSON output (only if wait_for_completion and outputSchema were provided) | Dict[str, True] |
+| output_parsed | Structured JSON output (only if wait_for_completion and outputSchema were provided) | Dict[str, Any] |
 | cost_total | Total cost in USD (only if wait_for_completion was True and completed) | float |
 | elapsed_time | Time taken to complete in seconds (only if wait_for_completion was True) | float |
 
@@ -73,13 +73,13 @@ When the research is complete, the block returns the full output content along w
 | created_at | When research was created (Unix timestamp in ms) | int |
 | finished_at | When research finished (Unix timestamp in ms, if completed/canceled/failed) | int |
 | output_content | Research output as text (if completed) | str |
-| output_parsed | Structured JSON output matching outputSchema (if provided and completed) | Dict[str, True] |
+| output_parsed | Structured JSON output matching outputSchema (if provided and completed) | Dict[str, Any] |
 | cost_total | Total cost in USD (if completed) | float |
 | cost_searches | Number of searches performed (if completed) | int |
 | cost_pages | Number of pages crawled (if completed) | int |
 | cost_reasoning_tokens | AI tokens used for reasoning (if completed) | int |
 | error_message | Error message if research failed | str |
-| events | Detailed event log (if include_events was True) | List[Dict[str, True]] |
+| events | Detailed event log (if include_events was True) | List[Dict[str, Any]] |
 
 ### Possible use case
 <!-- MANUAL: use_case -->
@@ -156,7 +156,7 @@ The block is useful when you need to block workflow execution until research com
 | research_id | The research task identifier | str |
 | final_status | Final status when polling stopped | str |
 | output_content | Research output as text (if completed) | str |
-| output_parsed | Structured JSON output (if outputSchema was provided and completed) | Dict[str, True] |
+| output_parsed | Structured JSON output (if outputSchema was provided and completed) | Dict[str, Any] |
 | cost_total | Total cost in USD | float |
 | elapsed_time | Total time waited in seconds | float |
 | timed_out | Whether polling timed out before completion | bool |

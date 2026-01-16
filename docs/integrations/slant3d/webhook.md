@@ -19,7 +19,7 @@ The payload includes order details and, when applicable, shipping information li
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if payload processing failed | str |
-| payload | The complete webhook payload received from Slant3D | Dict[str, True] |
+| payload | The complete webhook payload received from Slant3D | Dict[str, Any] |
 | order_id | The ID of the affected order | str |
 | status | The new status of the order | str |
 | tracking_number | The tracking number for the shipment | str |

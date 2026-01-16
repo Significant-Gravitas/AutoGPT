@@ -80,7 +80,7 @@ Uses project ID to retrieve details via Todoist API.
 | project_id | ID of project | str |
 | project_name | Name of project | str |
 | project_url | URL of project | str |
-| complete_data | Complete project data including all fields | Dict[str, True] |
+| complete_data | Complete project data including all fields | Dict[str, Any] |
 
 ### Possible use case
 <!-- MANUAL: use_case -->
@@ -111,7 +111,7 @@ Uses project ID to get collaborator list via Todoist API.
 | collaborator_ids | List of collaborator IDs | List[str] |
 | collaborator_names | List of collaborator names | List[str] |
 | collaborator_emails | List of collaborator email addresses | List[str] |
-| complete_data | Complete collaborator data including all fields | List[Dict[str, True]] |
+| complete_data | Complete collaborator data including all fields | List[Dict[str, Any]] |
 
 ### Possible use case
 <!-- MANUAL: use_case -->
@@ -137,7 +137,7 @@ Connects to Todoist API using provided credentials and retrieves all projects.
 | names_list | List of project names | List[str] |
 | ids_list | List of project IDs | List[str] |
 | url_list | List of project URLs | List[str] |
-| complete_data | Complete project data including all fields | List[Dict[str, True]] |
+| complete_data | Complete project data including all fields | List[Dict[str, Any]] |
 
 ### Possible use case
 <!-- MANUAL: use_case -->

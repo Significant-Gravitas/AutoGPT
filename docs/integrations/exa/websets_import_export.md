@@ -19,7 +19,7 @@ You specify the entity type and which columns contain identifiers and URLs. The 
 | entity_description | Description for custom entity type | str | No |
 | identifier_column | Column index containing the identifier (0-based) | int | No |
 | url_column | Column index containing URLs (optional) | int | No |
-| metadata | Metadata to attach to the import | Dict[str, True] | No |
+| metadata | Metadata to attach to the import | Dict[str, Any] | No |
 
 ## Outputs
 | Output | Description | Type |
@@ -155,7 +155,7 @@ The block returns upload status information if the import is pending data upload
 | failed_message | Detailed failure message (if applicable) | str |
 | created_at | When the import was created | str |
 | updated_at | When the import was last updated | str |
-| metadata | Metadata attached to the import | Dict[str, True] |
+| metadata | Metadata attached to the import | Dict[str, Any] |
 
 ### Possible use case
 <!-- MANUAL: use_case -->
@@ -190,8 +190,8 @@ Use this to discover existing imports that can be referenced in webset searches 
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
-| imports | List of imports | List[Dict[str, True]] |
-| import_item | Individual import (yielded for each import) | Dict[str, True] |
+| imports | List of imports | List[Dict[str, Any]] |
+| import_item | Individual import (yielded for each import) | Dict[str, Any] |
 | has_more | Whether there are more imports to paginate through | bool |
 | next_cursor | Cursor for the next page of results | str |
 

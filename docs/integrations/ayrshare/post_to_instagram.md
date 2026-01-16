@@ -31,7 +31,7 @@ The block requires an Instagram account connected to a Facebook Page and authent
 | thumbnail_offset | Thumbnail frame offset in milliseconds (default: 0) | int | No |
 | alt_text | Alt text for each media item (up to 1,000 chars each, accessibility feature), each item in the list corresponds to a media item in the media_urls list | List[str] | No |
 | location_id | Facebook Page ID or name for location tagging (e.g., '7640348500' or '@guggenheimmuseum') | str | No |
-| user_tags | List of users to tag with coordinates for images | List[Dict[str, True]] | No |
+| user_tags | List of users to tag with coordinates for images | List[Dict[str, Any]] | No |
 | collaborators | Instagram usernames to invite as collaborators (max 3, public accounts only) | List[str] | No |
 | auto_resize | Auto-resize images to 1080x1080px for Instagram | bool | No |
 

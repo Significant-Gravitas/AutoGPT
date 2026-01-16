@@ -14,14 +14,14 @@ Company data is passed as a dictionary with standard HubSpot company properties 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | operation | Operation to perform (create, update, get) | str | No |
-| company_data | Company data for create/update operations | Dict[str, True] | No |
+| company_data | Company data for create/update operations | Dict[str, Any] | No |
 | domain | Company domain for get/update operations | str | No |
 
 ## Outputs
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
-| company | Company information | Dict[str, True] |
+| company | Company information | Dict[str, Any] |
 | status | Operation status | str |
 
 ## Possible use case

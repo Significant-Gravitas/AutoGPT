@@ -98,7 +98,7 @@ Each sequence includes the email subject, body, and delay settings for automated
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the sequences were not saved | str |
-| data | Data from the API | Dict[str, True] \| str |
+| data | Data from the API | Dict[str, Any] \| str |
 | message | Message from the API | str |
 
 ### Possible use case

@@ -57,7 +57,7 @@ Enrichments support various output formats including text, dates, numbers, and p
 | format | Expected format of the extracted data | "text" \| "date" \| "number" | No |
 | options | Available options when format is 'options' | List[str] | No |
 | apply_to_existing | Apply this enrichment to existing items in the webset | bool | No |
-| metadata | Metadata to attach to the enrichment | Dict[str, True] | No |
+| metadata | Metadata to attach to the enrichment | Dict[str, Any] | No |
 | wait_for_completion | Wait for the enrichment to complete on existing items | bool | No |
 | polling_timeout | Maximum time to wait for completion in seconds | int | No |
 
@@ -153,7 +153,7 @@ Use this to monitor enrichment progress, verify configuration, or troubleshoot i
 | instructions | Generated instructions for the enrichment | str |
 | created_at | When the enrichment was created | str |
 | updated_at | When the enrichment was last updated | str |
-| metadata | Metadata attached to the enrichment | Dict[str, True] |
+| metadata | Metadata attached to the enrichment | Dict[str, Any] |
 
 ### Possible use case
 <!-- MANUAL: use_case -->
@@ -186,7 +186,7 @@ Changes apply to future items; existing enrichment data is not reprocessed unles
 | description | New description for what data to extract | str | No |
 | format | New format for the extracted data | "text" \| "date" \| "number" | No |
 | options | New options when format is 'options' | List[str] | No |
-| metadata | New metadata to attach to the enrichment | Dict[str, True] | No |
+| metadata | New metadata to attach to the enrichment | Dict[str, Any] | No |
 
 ### Outputs
 | Output | Description | Type |

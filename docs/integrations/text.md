@@ -165,7 +165,7 @@ The block uses a template engine to replace placeholders in the format string wi
 ### Inputs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| values | Values (dict) to be used in format. These values can be used by putting them in double curly braces in the format template. e.g. {{value_name}}. | Dict[str, True] | Yes |
+| values | Values (dict) to be used in format. These values can be used by putting them in double curly braces in the format template. e.g. {{value_name}}. | Dict[str, Any] | Yes |
 | format | Template to format the text using `values`. Use Jinja2 syntax. | str | Yes |
 | escape_html | Whether to escape special characters in the inserted values to be HTML-safe. Enable for HTML output, disable for plain text. | bool | No |
 

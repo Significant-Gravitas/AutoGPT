@@ -23,8 +23,8 @@ Configure the number of results to return, output formats (markdown, HTML, raw H
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the search failed | str |
-| data | The result of the search | Dict[str, True] |
-| site | The site of the search | Dict[str, True] |
+| data | The result of the search | Dict[str, Any] |
+| site | The site of the search | Dict[str, Any] |
 
 ## Possible use case
 <!-- MANUAL: use_case -->

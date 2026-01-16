@@ -13,7 +13,7 @@ Takes comment content and task/project ID, creates comment via Todoist API.
 |-------|-------------|------|----------|
 | content | Comment content | str | Yes |
 | id_type | Specify either task_id or project_id to comment on | Id Type | No |
-| attachment | Optional file attachment | Dict[str, True] | No |
+| attachment | Optional file attachment | Dict[str, Any] | No |
 
 ## Outputs
 | Output | Description | Type |
@@ -84,7 +84,7 @@ Uses comment ID to retrieve details via Todoist API.
 | posted_at | Comment timestamp | str |
 | project_id | Associated project ID | str |
 | task_id | Associated task ID | str |
-| attachment | Optional file attachment | Dict[str, True] |
+| attachment | Optional file attachment | Dict[str, Any] |
 
 ### Possible use case
 <!-- MANUAL: use_case -->

@@ -25,7 +25,7 @@ For review comments, only path, body, and position fields are used. The side, st
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
-| comment_object | The comment object formatted for GitHub API | Dict[str, True] |
+| comment_object | The comment object formatted for GitHub API | Dict[str, Any] |
 
 ## Possible use case
 <!-- MANUAL: use_case -->

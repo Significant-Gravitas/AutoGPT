@@ -15,7 +15,7 @@ Enable typecast to automatically convert string values to appropriate field type
 |-------|-------------|------|----------|
 | base_id | The Airtable base ID | str | Yes |
 | table_id_or_name | Table ID or name | str | Yes |
-| records | Array of records to create (each with 'fields' object) | List[Dict[str, True]] | Yes |
+| records | Array of records to create (each with 'fields' object) | List[Dict[str, Any]] | Yes |
 | skip_normalization | Skip output normalization to get raw Airtable response (faster but may have missing fields) | bool | No |
 | typecast | Automatically convert string values to appropriate types | bool | No |
 | return_fields_by_field_id | Return fields by field ID | bool | No |
@@ -24,8 +24,8 @@ Enable typecast to automatically convert string values to appropriate field type
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
-| records | Array of created record objects | List[Dict[str, True]] |
-| details | Details of the created records | Dict[str, True] |
+| records | Array of created record objects | List[Dict[str, Any]] |
+| details | Details of the created records | Dict[str, Any] |
 
 ## Possible use case
 <!-- MANUAL: use_case -->
@@ -61,7 +61,7 @@ Provide an array of record IDs to delete. Using the table ID instead of the name
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
-| records | Array of deletion results | List[Dict[str, True]] |
+| records | Array of deletion results | List[Dict[str, Any]] |
 
 ### Possible use case
 <!-- MANUAL: use_case -->
@@ -100,9 +100,9 @@ Optionally include field metadata for type information and configuration details
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
 | id | The record ID | str |
-| fields | The record fields | Dict[str, True] |
+| fields | The record fields | Dict[str, Any] |
 | created_time | The record created time | str |
-| field_metadata | Field type and configuration metadata (only when include_field_metadata=true) | Dict[str, True] |
+| field_metadata | Field type and configuration metadata (only when include_field_metadata=true) | Dict[str, Any] |
 
 ### Possible use case
 <!-- MANUAL: use_case -->
@@ -134,7 +134,7 @@ Results can be limited, paginated with offsets, and restricted to specific field
 | table_id_or_name | Table ID or name | str | Yes |
 | filter_formula | Airtable formula to filter records | str | No |
 | view | View ID or name to use | str | No |
-| sort | Sort configuration (array of {field, direction}) | List[Dict[str, True]] | No |
+| sort | Sort configuration (array of {field, direction}) | List[Dict[str, Any]] | No |
 | max_records | Maximum number of records to return | int | No |
 | page_size | Number of records per page (max 100) | int | No |
 | offset | Pagination offset from previous request | str | No |
@@ -146,9 +146,9 @@ Results can be limited, paginated with offsets, and restricted to specific field
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
-| records | Array of record objects | List[Dict[str, True]] |
+| records | Array of record objects | List[Dict[str, Any]] |
 | offset | Offset for next page (null if no more records) | str |
-| field_metadata | Field type and configuration metadata (only when include_field_metadata=true) | Dict[str, True] |
+| field_metadata | Field type and configuration metadata (only when include_field_metadata=true) | Dict[str, Any] |
 
 ### Possible use case
 <!-- MANUAL: use_case -->
@@ -178,14 +178,14 @@ Enable typecast to automatically convert string values to appropriate types. You
 |-------|-------------|------|----------|
 | base_id | The Airtable base ID | str | Yes |
 | table_id_or_name | Table ID or name - It's better to use the table ID instead of the name | str | Yes |
-| records | Array of records to update (each with 'id' and 'fields') | List[Dict[str, True]] | Yes |
+| records | Array of records to update (each with 'id' and 'fields') | List[Dict[str, Any]] | Yes |
 | typecast | Automatically convert string values to appropriate types | bool | No |
 
 ### Outputs
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
-| records | Array of updated record objects | List[Dict[str, True]] |
+| records | Array of updated record objects | List[Dict[str, Any]] |
 
 ### Possible use case
 <!-- MANUAL: use_case -->

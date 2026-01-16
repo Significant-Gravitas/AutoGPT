@@ -29,9 +29,9 @@ The block uses Tweepy with OAuth 2.0 authentication and supports extensive expan
 | text | Tweet text | str |
 | userId | ID of the tweet author | str |
 | userName | Username of the tweet author | str |
-| data | Tweet data | Dict[str, True] |
-| included | Additional data that you have requested (Optional) via Expansions field | Dict[str, True] |
-| meta | Metadata about the tweet | Dict[str, True] |
+| data | Tweet data | Dict[str, Any] |
+| included | Additional data that you have requested (Optional) via Expansions field | Dict[str, Any] |
+| meta | Metadata about the tweet | Dict[str, Any] |
 
 ## Possible use case
 <!-- MANUAL: use_case -->
@@ -75,9 +75,9 @@ The block uses Tweepy with OAuth 2.0 authentication and supports extensive expan
 | texts | All Tweet texts | List[str] |
 | userIds | List of user ids that authored the tweets | List[str] |
 | userNames | List of user names that authored the tweets | List[str] |
-| data | Complete Tweet data | List[Dict[str, True]] |
-| included | Additional data that you have requested (Optional) via Expansions field | Dict[str, True] |
-| meta | Metadata about the tweets | Dict[str, True] |
+| data | Complete Tweet data | List[Dict[str, Any]] |
+| included | Additional data that you have requested (Optional) via Expansions field | Dict[str, Any] |
+| meta | Metadata about the tweets | Dict[str, Any] |
 
 ### Possible use case
 <!-- MANUAL: use_case -->

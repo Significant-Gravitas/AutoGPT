@@ -59,7 +59,7 @@ Takes task details and creates a new task via Todoist API.
 | error | Error message if the operation failed | str |
 | id | Task ID | str |
 | url | Task URL | str |
-| complete_data | Complete task data as dictionary | Dict[str, True] |
+| complete_data | Complete task data as dictionary | Dict[str, Any] |
 
 ### Possible use case
 <!-- MANUAL: use_case -->
@@ -119,7 +119,7 @@ Only active (uncompleted) tasks can be retrieved; closed tasks are not accessibl
 | error | Error message if the operation failed | str |
 | project_id | Project ID containing the task | str |
 | url | Task URL | str |
-| complete_data | Complete task data as dictionary | Dict[str, True] |
+| complete_data | Complete task data as dictionary | Dict[str, Any] |
 
 ### Possible use case
 <!-- MANUAL: use_case -->
@@ -154,7 +154,7 @@ Queries Todoist API with provided filters to get matching tasks.
 | error | Error message if the operation failed | str |
 | ids | Task IDs | List[str] |
 | urls | Task URLs | List[str] |
-| complete_data | Complete task data as dictionary | List[Dict[str, True]] |
+| complete_data | Complete task data as dictionary | List[Dict[str, Any]] |
 
 ### Possible use case
 <!-- MANUAL: use_case -->

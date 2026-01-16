@@ -24,8 +24,8 @@ The block uses Tweepy with OAuth 2.0 authentication and returns buyer user IDs, 
 | error | Error message if the operation failed | str |
 | buyer_ids | List of buyer IDs | List[str] |
 | usernames | List of buyer usernames | List[str] |
-| data | Complete space buyers data | List[Dict[str, True]] |
-| includes | Additional data requested via expansions | Dict[str, True] |
+| data | Complete space buyers data | List[Dict[str, Any]] |
+| includes | Additional data requested via expansions | Dict[str, Any] |
 
 ## Possible use case
 <!-- MANUAL: use_case -->
@@ -65,8 +65,8 @@ The block uses Tweepy with OAuth 2.0 authentication and supports expansions for 
 | id | Space ID | str |
 | title | Space title | str |
 | host_ids | Host ID | List[str] |
-| data | Complete space data | Dict[str, True] |
-| includes | Additional data requested via expansions | Dict[str, True] |
+| data | Complete space data | Dict[str, Any] |
+| includes | Additional data requested via expansions | Dict[str, Any] |
 
 ### Possible use case
 <!-- MANUAL: use_case -->
@@ -108,9 +108,9 @@ The block uses Tweepy with OAuth 2.0 authentication and supports extensive expan
 | error | Error message if the operation failed | str |
 | tweet_ids | List of tweet IDs | List[str] |
 | texts | List of tweet texts | List[str] |
-| data | Complete space tweets data | List[Dict[str, True]] |
-| includes | Additional data requested via expansions | Dict[str, True] |
-| meta | Response metadata | Dict[str, True] |
+| data | Complete space tweets data | List[Dict[str, Any]] |
+| includes | Additional data requested via expansions | Dict[str, Any] |
+| meta | Response metadata | Dict[str, Any] |
 
 ### Possible use case
 <!-- MANUAL: use_case -->
@@ -149,8 +149,8 @@ The block uses Tweepy with OAuth 2.0 authentication and supports expansions for 
 | error | Error message if the operation failed | str |
 | ids | List of space IDs | List[str] |
 | titles | List of space titles | List[str] |
-| data | Complete space data | List[Dict[str, True]] |
-| includes | Additional data requested via expansions | Dict[str, True] |
+| data | Complete space data | List[Dict[str, Any]] |
+| includes | Additional data requested via expansions | Dict[str, Any] |
 
 ### Possible use case
 <!-- MANUAL: use_case -->

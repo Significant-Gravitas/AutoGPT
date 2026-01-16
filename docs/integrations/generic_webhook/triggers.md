@@ -13,14 +13,14 @@ Constants can be configured to pass additional static values alongside the dynam
 ## Inputs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| constants | The constants to be set when the block is put on the graph | Dict[str, True] | No |
+| constants | The constants to be set when the block is put on the graph | Dict[str, Any] | No |
 
 ## Outputs
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
-| payload | The complete webhook payload that was received from the generic webhook. | Dict[str, True] |
-| constants | The constants to be set when the block is put on the graph | Dict[str, True] |
+| payload | The complete webhook payload that was received from the generic webhook. | Dict[str, Any] |
+| constants | The constants to be set when the block is put on the graph | Dict[str, Any] |
 
 ## Possible use case
 <!-- MANUAL: use_case -->

@@ -65,7 +65,7 @@ Searches support scoped and exclusion sources, criteria validation, and relation
 | scope_source_types | Types of scope sources ('import' or 'webset') | List[str] | No |
 | scope_relationships | Relationship definitions for hop searches | List[str] | No |
 | scope_relationship_limits | Limits on related entities to find | List[int] | No |
-| metadata | Metadata to attach to the search | Dict[str, True] | No |
+| metadata | Metadata to attach to the search | Dict[str, Any] | No |
 | wait_for_completion | Wait for the search to complete before returning | bool | No |
 | polling_timeout | Maximum time to wait for completion in seconds | int | No |
 
@@ -77,7 +77,7 @@ Searches support scoped and exclusion sources, criteria validation, and relation
 | webset_id | The webset this search belongs to | str |
 | status | Current status of the search | str |
 | query | The search query | str |
-| expected_results | Recall estimation of expected results | Dict[str, True] |
+| expected_results | Recall estimation of expected results | Dict[str, Any] |
 | items_found | Number of items found (if wait_for_completion was True) | int |
 | completion_time | Time taken to complete in seconds (if wait_for_completion was True) | float |
 
@@ -161,14 +161,14 @@ Use this to monitor search progress, verify search configuration, or investigate
 | status | Current status of the search | str |
 | query | The search query | str |
 | entity_type | Type of entity being searched | str |
-| criteria | Criteria used for verification | List[Dict[str, True]] |
-| progress | Search progress information | Dict[str, True] |
-| recall | Recall estimation information | Dict[str, True] |
+| criteria | Criteria used for verification | List[Dict[str, Any]] |
+| progress | Search progress information | Dict[str, Any] |
+| recall | Recall estimation information | Dict[str, Any] |
 | created_at | When the search was created | str |
 | updated_at | When the search was last updated | str |
 | canceled_at | When the search was canceled (if applicable) | str |
 | canceled_reason | Reason for cancellation (if applicable) | str |
-| metadata | Metadata attached to the search | Dict[str, True] |
+| metadata | Metadata attached to the search | Dict[str, Any] |
 
 ### Possible use case
 <!-- MANUAL: use_case -->

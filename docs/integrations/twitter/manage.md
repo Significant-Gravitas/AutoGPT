@@ -109,9 +109,9 @@ Results can be filtered by time range (start/end times), sorted by recency or re
 | tweet_ids | All Tweet IDs | List[str] |
 | tweet_texts | All Tweet texts | List[str] |
 | next_token | Next token for pagination | str |
-| data | Complete Tweet data | List[Dict[str, True]] |
-| included | Additional data that you have requested (Optional) via Expansions field | Dict[str, True] |
-| meta | Provides metadata such as pagination info (next_token) or result counts | Dict[str, True] |
+| data | Complete Tweet data | List[Dict[str, Any]] |
+| included | Additional data that you have requested (Optional) via Expansions field | Dict[str, Any] |
+| meta | Provides metadata such as pagination info (next_token) or result counts | Dict[str, Any] |
 
 ### Possible use case
 <!-- MANUAL: use_case -->

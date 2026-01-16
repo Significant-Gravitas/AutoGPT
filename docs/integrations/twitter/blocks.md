@@ -25,8 +25,8 @@ The response includes user IDs and usernames by default, with optional expansion
 | error | Error message if the operation failed | str |
 | user_ids | List of blocked user IDs | List[str] |
 | usernames_ | List of blocked usernames | List[str] |
-| included | Additional data requested via expansions | Dict[str, True] |
-| meta | Metadata including pagination info | Dict[str, True] |
+| included | Additional data requested via expansions | Dict[str, Any] |
+| meta | Metadata including pagination info | Dict[str, Any] |
 | next_token | Next token for pagination | str |
 
 ## Possible use case

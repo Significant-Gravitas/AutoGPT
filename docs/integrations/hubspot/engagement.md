@@ -14,7 +14,7 @@ Engagement tracking returns metrics like email opens, clicks, and other interact
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | operation | Operation to perform (send_email, track_engagement) | str | No |
-| email_data | Email data including recipient, subject, content | Dict[str, True] | No |
+| email_data | Email data including recipient, subject, content | Dict[str, Any] | No |
 | contact_id | Contact ID for engagement tracking | str | No |
 | timeframe_days | Number of days to look back for engagement | int | No |
 
@@ -22,7 +22,7 @@ Engagement tracking returns metrics like email opens, clicks, and other interact
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
-| result | Operation result | Dict[str, True] |
+| result | Operation result | Dict[str, Any] |
 | status | Operation status | str |
 
 ## Possible use case

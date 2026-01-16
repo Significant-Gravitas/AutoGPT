@@ -13,13 +13,13 @@ The block takes a dictionary input and outputs it as-is, making it useful as a s
 ## Inputs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| values | Key-value pairs to create the dictionary with | Dict[str, True] | Yes |
+| values | Key-value pairs to create the dictionary with | Dict[str, Any] | Yes |
 
 ## Outputs
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if dictionary creation failed | str |
-| dictionary | The created dictionary containing the specified key-value pairs | Dict[str, True] |
+| dictionary | The created dictionary containing the specified key-value pairs | Dict[str, Any] |
 
 ## Possible use case
 <!-- MANUAL: use_case -->

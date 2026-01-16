@@ -17,7 +17,7 @@ Content can be provided as markdown, which gets converted to Notion blocks. For 
 | parent_database_id | Parent database ID to create the page in. Either this OR parent_page_id is required. | str | No |
 | title | Title of the new page | str | Yes |
 | content | Content for the page. Can be plain text or markdown - will be converted to Notion blocks. | str | No |
-| properties | Additional properties for database pages (e.g., {'Status': 'In Progress', 'Priority': 'High'}) | Dict[str, True] | No |
+| properties | Additional properties for database pages (e.g., {'Status': 'In Progress', 'Priority': 'High'}) | Dict[str, Any] | No |
 | icon_emoji | Emoji to use as the page icon (e.g., '📄', '🚀') | str | No |
 
 ## Outputs

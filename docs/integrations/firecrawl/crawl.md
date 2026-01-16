@@ -24,15 +24,15 @@ Configure the crawl depth with the limit parameter, choose output formats (markd
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the crawl failed | str |
-| data | The result of the crawl | List[Dict[str, True]] |
+| data | The result of the crawl | List[Dict[str, Any]] |
 | markdown | The markdown of the crawl | str |
 | html | The html of the crawl | str |
 | raw_html | The raw html of the crawl | str |
 | links | The links of the crawl | List[str] |
 | screenshot | The screenshot of the crawl | str |
 | screenshot_full_page | The screenshot full page of the crawl | str |
-| json_data | The json data of the crawl | Dict[str, True] |
-| change_tracking | The change tracking of the crawl | Dict[str, True] |
+| json_data | The json data of the crawl | Dict[str, Any] |
+| change_tracking | The change tracking of the crawl | Dict[str, Any] |
 
 ## Possible use case
 <!-- MANUAL: use_case -->

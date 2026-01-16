@@ -20,15 +20,15 @@ The block parses the webhook payload and extracts discussion details including t
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the payload could not be processed | str |
-| payload | The complete webhook payload that was received from GitHub. Includes information about the affected resource (e.g. pull request), the event, and the user who triggered the event. | Dict[str, True] |
-| triggered_by_user | Object representing the GitHub user who triggered the event | Dict[str, True] |
+| payload | The complete webhook payload that was received from GitHub. Includes information about the affected resource (e.g. pull request), the event, and the user who triggered the event. | Dict[str, Any] |
+| triggered_by_user | Object representing the GitHub user who triggered the event | Dict[str, Any] |
 | event | The discussion event that triggered the webhook | str |
 | number | The discussion number | int |
-| discussion | The full discussion object | Dict[str, True] |
+| discussion | The full discussion object | Dict[str, Any] |
 | discussion_url | URL to the discussion | str |
 | title | The discussion title | str |
 | body | The discussion body | str |
-| category | The discussion category object | Dict[str, True] |
+| category | The discussion category object | Dict[str, Any] |
 | category_name | Name of the category | str |
 | state | Discussion state | str |
 
@@ -65,11 +65,11 @@ The block extracts issue details including the title, body, labels, assignees, s
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the payload could not be processed | str |
-| payload | The complete webhook payload that was received from GitHub. Includes information about the affected resource (e.g. pull request), the event, and the user who triggered the event. | Dict[str, True] |
-| triggered_by_user | Object representing the GitHub user who triggered the event | Dict[str, True] |
+| payload | The complete webhook payload that was received from GitHub. Includes information about the affected resource (e.g. pull request), the event, and the user who triggered the event. | Dict[str, Any] |
+| triggered_by_user | Object representing the GitHub user who triggered the event | Dict[str, Any] |
 | event | The issue event that triggered the webhook (e.g., 'opened') | str |
 | number | The issue number | int |
-| issue | The full issue object | Dict[str, True] |
+| issue | The full issue object | Dict[str, Any] |
 | issue_url | URL to the issue | str |
 | issue_title | The issue title | str |
 | issue_body | The issue body/description | str |
@@ -110,11 +110,11 @@ The block extracts PR details including the number, URL, and full pull request o
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the payload could not be processed | str |
-| payload | The complete webhook payload that was received from GitHub. Includes information about the affected resource (e.g. pull request), the event, and the user who triggered the event. | Dict[str, True] |
-| triggered_by_user | Object representing the GitHub user who triggered the event | Dict[str, True] |
+| payload | The complete webhook payload that was received from GitHub. Includes information about the affected resource (e.g. pull request), the event, and the user who triggered the event. | Dict[str, Any] |
+| triggered_by_user | Object representing the GitHub user who triggered the event | Dict[str, Any] |
 | event | The PR event that triggered the webhook (e.g. 'opened') | str |
 | number | The number of the affected pull request | int |
-| pull_request | Object representing the affected pull request | Dict[str, True] |
+| pull_request | Object representing the affected pull request | Dict[str, Any] |
 | pull_request_url | The URL of the affected pull request | str |
 
 ### Possible use case
@@ -150,10 +150,10 @@ The block extracts release details including tag name, release name, release not
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the payload could not be processed | str |
-| payload | The complete webhook payload that was received from GitHub. Includes information about the affected resource (e.g. pull request), the event, and the user who triggered the event. | Dict[str, True] |
-| triggered_by_user | Object representing the GitHub user who triggered the event | Dict[str, True] |
+| payload | The complete webhook payload that was received from GitHub. Includes information about the affected resource (e.g. pull request), the event, and the user who triggered the event. | Dict[str, Any] |
+| triggered_by_user | Object representing the GitHub user who triggered the event | Dict[str, Any] |
 | event | The release event that triggered the webhook (e.g., 'published') | str |
-| release | The full release object | Dict[str, True] |
+| release | The full release object | Dict[str, Any] |
 | release_url | URL to the release page | str |
 | tag_name | The release tag name (e.g., 'v1.0.0') | str |
 | release_name | Human-readable release name | str |
@@ -195,8 +195,8 @@ The block extracts star details including the timestamp, current star count, rep
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the payload could not be processed | str |
-| payload | The complete webhook payload that was received from GitHub. Includes information about the affected resource (e.g. pull request), the event, and the user who triggered the event. | Dict[str, True] |
-| triggered_by_user | Object representing the GitHub user who triggered the event | Dict[str, True] |
+| payload | The complete webhook payload that was received from GitHub. Includes information about the affected resource (e.g. pull request), the event, and the user who triggered the event. | Dict[str, Any] |
+| triggered_by_user | Object representing the GitHub user who triggered the event | Dict[str, Any] |
 | event | The star event that triggered the webhook ('created' or 'deleted') | str |
 | starred_at | ISO timestamp when the repo was starred (empty if deleted) | str |
 | stargazers_count | Current number of stars on the repository | int |

@@ -62,9 +62,9 @@ The block uses Tweepy with OAuth 2.0 authentication. Works for public lists and 
 | ids | List of member user IDs | List[str] |
 | usernames | List of member usernames | List[str] |
 | next_token | Next token for pagination | str |
-| data | Complete user data for list members | List[Dict[str, True]] |
-| included | Additional data requested via expansions | Dict[str, True] |
-| meta | Metadata including pagination info | Dict[str, True] |
+| data | Complete user data for list members | List[Dict[str, Any]] |
+| included | Additional data requested via expansions | Dict[str, Any] |
+| meta | Metadata including pagination info | Dict[str, Any] |
 
 ### Possible use case
 <!-- MANUAL: use_case -->
@@ -105,9 +105,9 @@ The block uses Tweepy with OAuth 2.0 authentication and supports expansions for 
 | error | Error message if the operation failed | str |
 | list_ids | List of list IDs | List[str] |
 | next_token | Next token for pagination | str |
-| data | List membership data | List[Dict[str, True]] |
-| included | Additional data requested via expansions | Dict[str, True] |
-| meta | Metadata about pagination | Dict[str, True] |
+| data | List membership data | List[Dict[str, Any]] |
+| included | Additional data requested via expansions | Dict[str, Any] |
+| meta | Metadata about pagination | Dict[str, Any] |
 
 ### Possible use case
 <!-- MANUAL: use_case -->

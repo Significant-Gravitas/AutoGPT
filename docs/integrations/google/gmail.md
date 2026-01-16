@@ -234,7 +234,7 @@ The block connects to the user's Gmail account and requests a list of all labels
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if any | str |
-| result | List of labels | List[Dict[str, True]] |
+| result | List of labels | List[Dict[str, Any]] |
 
 ### Possible use case
 <!-- MANUAL: use_case -->
@@ -334,7 +334,7 @@ Use replyAll to respond to all recipients, or specify custom recipients. The blo
 | error | Error message if the operation failed | str |
 | messageId | Sent message ID | str |
 | threadId | Thread ID | str |
-| message | Raw Gmail message object | Dict[str, True] |
+| message | Raw Gmail message object | Dict[str, Any] |
 | email | Parsed email object with decoded body and attachments | Email |
 
 ### Possible use case

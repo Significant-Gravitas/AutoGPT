@@ -26,9 +26,9 @@ The block uses Tweepy with OAuth 2.0 authentication and supports expansions to i
 | name | Name of the Twitter List | str |
 | owner_id | ID of the List owner | str |
 | owner_username | Username of the List owner | str |
-| data | Complete list data | Dict[str, True] |
-| included | Additional data requested via expansions | Dict[str, True] |
-| meta | Metadata about the response | Dict[str, True] |
+| data | Complete list data | Dict[str, Any] |
+| included | Additional data requested via expansions | Dict[str, Any] |
+| meta | Metadata about the response | Dict[str, Any] |
 
 ## Possible use case
 <!-- MANUAL: use_case -->
@@ -70,9 +70,9 @@ The block uses Tweepy with OAuth 2.0 authentication and supports expansions to i
 | list_ids | List ids of the owned lists | List[str] |
 | list_names | List names of the owned lists | List[str] |
 | next_token | Token for next page of results | str |
-| data | Complete owned lists data | List[Dict[str, True]] |
-| included | Additional data requested via expansions | Dict[str, True] |
-| meta | Metadata about the response | Dict[str, True] |
+| data | Complete owned lists data | List[Dict[str, Any]] |
+| included | Additional data requested via expansions | Dict[str, Any] |
+| meta | Metadata about the response | Dict[str, Any] |
 
 ### Possible use case
 <!-- MANUAL: use_case -->

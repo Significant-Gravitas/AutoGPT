@@ -14,7 +14,7 @@ The block accepts either plain text or structured message objects (like those fr
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | content | Content to add - either a string or list of message objects as output from an AI block | Content | No |
-| metadata | Optional metadata for the memory | Dict[str, True] | No |
+| metadata | Optional metadata for the memory | Dict[str, Any] | No |
 | limit_memory_to_run | Limit the memory to the run | bool | No |
 | limit_memory_to_agent | Limit the memory to the agent | bool | No |
 
@@ -52,16 +52,16 @@ The block outputs the updated dictionary with all new entries added. This is use
 ### Inputs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| dictionary | The dictionary to add the entry to. If not provided, a new dictionary will be created. | Dict[str, True] | No |
+| dictionary | The dictionary to add the entry to. If not provided, a new dictionary will be created. | Dict[str, Any] | No |
 | key | The key for the new entry. | str | No |
 | value | The value for the new entry. | Value | No |
-| entries | The entries to add to the dictionary. This is the batch version of the `key` and `value` fields. | Dict[str, True] | No |
+| entries | The entries to add to the dictionary. This is the batch version of the `key` and `value` fields. | Dict[str, Any] | No |
 
 ### Outputs
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
-| updated_dictionary | The dictionary with the new entry added. | Dict[str, True] |
+| updated_dictionary | The dictionary with the new entry added. | Dict[str, Any] |
 
 ### Possible use case
 <!-- MANUAL: use_case -->
@@ -464,7 +464,7 @@ The table input is ideal for structured data entry where users need to provide m
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | name | The name of the input. | str | Yes |
-| value | The table data as a list of dictionaries. | List[Dict[str, True]] | No |
+| value | The table data as a list of dictionaries. | List[Dict[str, Any]] | No |
 | title | The title of the input. | str | No |
 | description | The description of the input. | str | No |
 | advanced | Whether to show the input in the advanced section, if the field is not required. | bool | No |
@@ -474,7 +474,7 @@ The table input is ideal for structured data entry where users need to provide m
 ### Outputs
 | Output | Description | Type |
 |--------|-------------|------|
-| result | The table data as a list of dictionaries with headers as keys. | List[Dict[str, True]] |
+| result | The table data as a list of dictionaries with headers as keys. | List[Dict[str, Any]] |
 
 ### Possible use case
 <!-- MANUAL: use_case -->
@@ -612,7 +612,7 @@ This is useful for conditional logic where you need to verify if data was return
 ### Inputs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| dictionary | The dictionary to check. | Dict[str, True] | Yes |
+| dictionary | The dictionary to check. | Dict[str, Any] | Yes |
 
 ### Outputs
 | Output | Description | Type |
@@ -756,7 +756,7 @@ Memories are returned as a list that your workflow can iterate through. This is 
 |-------|-------------|------|----------|
 | trigger | An unused field that is used to trigger the block when you have no other inputs | bool | No |
 | categories | Filter by categories | List[str] | No |
-| metadata_filter | Optional metadata filters to apply | Dict[str, True] | No |
+| metadata_filter | Optional metadata filters to apply | Dict[str, Any] | No |
 | limit_memory_to_run | Limit the memory to the run | bool | No |
 | limit_memory_to_agent | Limit the memory to the agent | bool | No |
 
@@ -795,7 +795,7 @@ This is useful for quickly accessing the last piece of information stored withou
 | trigger | An unused field that is used to trigger the block when you have no other inputs | bool | No |
 | categories | Filter by categories | List[str] | No |
 | conversation_id | Optional conversation ID to retrieve the latest memory from (uses run_id) | str | No |
-| metadata_filter | Optional metadata filters to apply | Dict[str, True] | No |
+| metadata_filter | Optional metadata filters to apply | Dict[str, Any] | No |
 | limit_memory_to_run | Limit the memory to the run | bool | No |
 | limit_memory_to_agent | Limit the memory to the agent | bool | No |
 
@@ -803,7 +803,7 @@ This is useful for quickly accessing the last piece of information stored withou
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
-| memory | Latest memory if found | Dict[str, True] |
+| memory | Latest memory if found | Dict[str, Any] |
 | found | Whether a memory was found | bool |
 
 ### Possible use case
@@ -1033,7 +1033,7 @@ If the key doesn't exist in the dictionary, the operation may error or return th
 ### Inputs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| dictionary | The dictionary to modify. | Dict[str, True] | Yes |
+| dictionary | The dictionary to modify. | Dict[str, Any] | Yes |
 | key | Key to remove from the dictionary. | str \| int | Yes |
 | return_value | Whether to return the removed value. | bool | No |
 
@@ -1041,7 +1041,7 @@ If the key doesn't exist in the dictionary, the operation may error or return th
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
-| updated_dictionary | The dictionary after removal. | Dict[str, True] |
+| updated_dictionary | The dictionary after removal. | Dict[str, Any] |
 | removed_value | The removed value if requested. | Removed Value |
 
 ### Possible use case
@@ -1108,7 +1108,7 @@ This is useful for updating specific fields in a data object while preserving al
 ### Inputs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| dictionary | The dictionary to modify. | Dict[str, True] | Yes |
+| dictionary | The dictionary to modify. | Dict[str, Any] | Yes |
 | key | Key to replace the value for. | str \| int | Yes |
 | value | The new value for the given key. | Value | Yes |
 
@@ -1116,7 +1116,7 @@ This is useful for updating specific fields in a data object while preserving al
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
-| updated_dictionary | The dictionary after replacement. | Dict[str, True] |
+| updated_dictionary | The dictionary after replacement. | Dict[str, Any] |
 | old_value | The value that was replaced. | Old Value |
 
 ### Possible use case
@@ -1219,7 +1219,7 @@ The search is performed against the Mem0 memory store and returns memories ranke
 | query | Search query | str | Yes |
 | trigger | An unused field that is used to (re-)trigger the block when you have no other inputs | bool | No |
 | categories_filter | Categories to filter by | List[str] | No |
-| metadata_filter | Optional metadata filters to apply | Dict[str, True] | No |
+| metadata_filter | Optional metadata filters to apply | Dict[str, Any] | No |
 | limit_memory_to_run | Limit the memory to the run | bool | No |
 | limit_memory_to_agent | Limit the memory to the agent | bool | No |
 
@@ -1325,7 +1325,7 @@ This makes XML data accessible using standard dictionary operations, allowing yo
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error in parsing | str |
-| parsed_xml | output parsed xml to dict | Dict[str, True] |
+| parsed_xml | output parsed xml to dict | Dict[str, Any] |
 
 ### Possible use case
 <!-- MANUAL: use_case -->

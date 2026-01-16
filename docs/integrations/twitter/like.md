@@ -32,9 +32,9 @@ The block uses Tweepy with OAuth 2.0 authentication and supports extensive expan
 | userIds | List of user ids that authored the tweets | List[str] |
 | userNames | List of user names that authored the tweets | List[str] |
 | next_token | Next token for pagination | str |
-| data | Complete Tweet data | List[Dict[str, True]] |
-| included | Additional data that you have requested (Optional) via Expansions field | Dict[str, True] |
-| meta | Provides metadata such as pagination info (next_token) or result counts | Dict[str, True] |
+| data | Complete Tweet data | List[Dict[str, Any]] |
+| included | Additional data that you have requested (Optional) via Expansions field | Dict[str, Any] |
+| meta | Provides metadata such as pagination info (next_token) or result counts | Dict[str, Any] |
 
 ## Possible use case
 <!-- MANUAL: use_case -->
@@ -76,9 +76,9 @@ The block uses Tweepy with OAuth 2.0 authentication. Users are returned with pag
 | id | All User IDs who liked the tweet | List[str] |
 | username | All User usernames who liked the tweet | List[str] |
 | next_token | Next token for pagination | str |
-| data | Complete Tweet data | List[Dict[str, True]] |
-| included | Additional data that you have requested (Optional) via Expansions field | Dict[str, True] |
-| meta | Provides metadata such as pagination info (next_token) or result counts | Dict[str, True] |
+| data | Complete Tweet data | List[Dict[str, Any]] |
+| included | Additional data that you have requested (Optional) via Expansions field | Dict[str, Any] |
+| meta | Provides metadata such as pagination info (next_token) or result counts | Dict[str, Any] |
 
 ### Possible use case
 <!-- MANUAL: use_case -->
