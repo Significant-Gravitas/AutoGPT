@@ -190,6 +190,7 @@ export function EditModelModal({
 
           <Dialog.Footer>
             <Button
+              type="button"
               variant="ghost"
               size="small"
               onClick={() => setOpen(false)}

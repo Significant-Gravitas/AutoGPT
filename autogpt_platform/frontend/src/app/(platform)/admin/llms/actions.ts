@@ -211,11 +211,12 @@ export async function toggleLlmModelAction(formData: FormData): Promise<void> {
 
 export async function deleteLlmModelAction(formData: FormData): Promise<void> {
   const modelId = String(formData.get("model_id"));
-  const replacementModelSlug = String(formData.get("replacement_model_slug"));
+  const rawReplacement = formData.get("replacement_model_slug");
 
-  if (!replacementModelSlug) {
+  if (rawReplacement == null || String(rawReplacement).trim() === "") {
     throw new Error("Replacement model is required");
   }
+  const replacementModelSlug = String(rawReplacement).trim();
 
   const response = await deleteV2DeleteLlmModelAndMigrateWorkflows(modelId, {
     replacement_model_slug: replacementModelSlug,

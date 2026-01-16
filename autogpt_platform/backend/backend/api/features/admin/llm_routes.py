@@ -11,7 +11,6 @@ from backend.server.v2.llm import model as llm_model
 logger = logging.getLogger(__name__)
 
 router = fastapi.APIRouter(
-    prefix="/admin/llm",
     tags=["llm", "admin"],
     dependencies=[fastapi.Security(autogpt_libs.auth.requires_admin_user)],
 )

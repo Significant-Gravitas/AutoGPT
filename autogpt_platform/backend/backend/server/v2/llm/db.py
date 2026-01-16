@@ -355,7 +355,8 @@ async def toggle_model(
 
             if nodes_migrated > 0:
                 # Update by IDs to ensure we only update the exact nodes we queried
-                node_ids_pg_array = "{" + ",".join(migrated_node_ids) + "}"
+                # Use JSON array and jsonb_array_elements_text for safe parameterization
+                node_ids_json = json.dumps(migrated_node_ids)
                 await tx.execute_raw(
                     """
                     UPDATE "AgentNode"
@@ -364,10 +365,12 @@ async def toggle_model(
                         '{model}',
                         to_jsonb($1::text)
                     )
-                    WHERE id::text = ANY($2::text[])
+                    WHERE id::text IN (
+                        SELECT jsonb_array_elements_text($2::jsonb)
+                    )
                     """,
                     migrate_to_slug,
-                    node_ids_pg_array,
+                    node_ids_json,
                 )
 
             record = await tx.llmmodel.update(
@@ -636,8 +639,8 @@ async def revert_migration(
         # Update only the specific nodes that were migrated
         # We need to check that they still have the target model (haven't been changed since)
         # Use a single batch update for efficiency
-        # Format node IDs as PostgreSQL text array literal for comparison
-        node_ids_pg_array = "{" + ",".join(migrated_node_ids) + "}"
+        # Use JSON array and jsonb_array_elements_text for safe parameterization
+        node_ids_json = json.dumps(migrated_node_ids)
         result = await tx.execute_raw(
             """
             UPDATE "AgentNode"
@@ -646,11 +649,13 @@ async def revert_migration(
                 '{model}',
                 to_jsonb($1::text)
             )
-            WHERE id::text = ANY($2::text[])
+            WHERE id::text IN (
+                SELECT jsonb_array_elements_text($2::jsonb)
+            )
             AND "constantInput"::jsonb->>'model' = $3
             """,
             migration.sourceModelSlug,
-            node_ids_pg_array,
+            node_ids_json,
             migration.targetModelSlug,
         )
         nodes_reverted = result if result else 0

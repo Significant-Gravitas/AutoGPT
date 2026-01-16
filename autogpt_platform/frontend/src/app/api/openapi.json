@@ -4085,7 +4085,7 @@
         }
       }
     },
-    "/api/llm/admin/admin/llm/creators": {
+    "/api/llm/admin/creators": {
       "get": {
         "tags": ["v2", "admin", "llm", "llm", "admin"],
         "summary": "List model creators",
@@ -4145,7 +4145,7 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/llm/admin/admin/llm/creators/{creator_id}": {
+    "/api/llm/admin/creators/{creator_id}": {
       "delete": {
         "tags": ["v2", "admin", "llm", "llm", "admin"],
         "summary": "Delete model creator",
@@ -4269,7 +4269,7 @@
         }
       }
     },
-    "/api/llm/admin/admin/llm/migrations": {
+    "/api/llm/admin/migrations": {
       "get": {
         "tags": ["v2", "admin", "llm", "llm", "admin"],
         "summary": "List model migrations",
@@ -4315,7 +4315,7 @@
         }
       }
     },
-    "/api/llm/admin/admin/llm/migrations/{migration_id}": {
+    "/api/llm/admin/migrations/{migration_id}": {
       "get": {
         "tags": ["v2", "admin", "llm", "llm", "admin"],
         "summary": "Get migration details",
@@ -4353,7 +4353,7 @@
         }
       }
     },
-    "/api/llm/admin/admin/llm/migrations/{migration_id}/revert": {
+    "/api/llm/admin/migrations/{migration_id}/revert": {
       "post": {
         "tags": ["v2", "admin", "llm", "llm", "admin"],
         "summary": "Revert a model migration",
@@ -4406,7 +4406,7 @@
         }
       }
     },
-    "/api/llm/admin/admin/llm/models": {
+    "/api/llm/admin/models": {
       "get": {
         "tags": ["v2", "admin", "llm", "llm", "admin"],
         "summary": "List LLM models",
@@ -4481,7 +4481,7 @@
         }
       }
     },
-    "/api/llm/admin/admin/llm/models/{model_id}": {
+    "/api/llm/admin/models/{model_id}": {
       "delete": {
         "tags": ["v2", "admin", "llm", "llm", "admin"],
         "summary": "Delete LLM model and migrate workflows",
@@ -4575,7 +4575,7 @@
         }
       }
     },
-    "/api/llm/admin/admin/llm/models/{model_id}/toggle": {
+    "/api/llm/admin/models/{model_id}/toggle": {
       "patch": {
         "tags": ["v2", "admin", "llm", "llm", "admin"],
         "summary": "Toggle LLM model availability",
@@ -4623,7 +4623,7 @@
         }
       }
     },
-    "/api/llm/admin/admin/llm/models/{model_id}/usage": {
+    "/api/llm/admin/models/{model_id}/usage": {
       "get": {
         "tags": ["v2", "admin", "llm", "llm", "admin"],
         "summary": "Get model usage count",
@@ -4663,7 +4663,7 @@
         }
       }
     },
-    "/api/llm/admin/admin/llm/providers": {
+    "/api/llm/admin/providers": {
       "get": {
         "tags": ["v2", "admin", "llm", "llm", "admin"],
         "summary": "List LLM providers",
@@ -4743,7 +4743,7 @@
         }
       }
     },
-    "/api/llm/admin/admin/llm/providers/{provider_id}": {
+    "/api/llm/admin/providers/{provider_id}": {
       "patch": {
         "tags": ["v2", "admin", "llm", "llm", "admin"],
         "summary": "Update LLM provider",
@@ -4790,7 +4790,7 @@
         }
       }
     },
-    "/api/llm/admin/admin/llm/recommended-model": {
+    "/api/llm/admin/recommended-model": {
       "get": {
         "tags": ["v2", "admin", "llm", "llm", "admin"],
         "summary": "Get recommended model",
