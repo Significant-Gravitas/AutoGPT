@@ -3,8 +3,7 @@
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
-
-import { Chat } from "@/components/contextual/Chat/Chat";
+import { Chat } from "./components/Chat/Chat";
 
 export default function ChatPage() {
   const isChatEnabled = useGetFlag(Flag.CHAT);
