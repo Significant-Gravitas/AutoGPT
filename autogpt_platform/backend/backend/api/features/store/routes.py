@@ -7,8 +7,8 @@ from typing import Literal
 import autogpt_libs.auth
 import fastapi
 import fastapi.responses
-from autogpt_libs.auth.dependencies import get_optional_user_id
 import prisma.enums
+from autogpt_libs.auth.dependencies import get_optional_user_id
 
 import backend.data.graph
 import backend.util.json
