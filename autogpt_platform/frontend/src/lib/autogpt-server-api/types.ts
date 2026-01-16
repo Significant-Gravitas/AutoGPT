@@ -625,6 +625,7 @@ export type CredentialsMetaResponse = {
   scopes?: Array<string>;
   username?: string;
   host?: string;
+  is_system?: boolean;
 };
 
 /* Mirror of backend/server/integrations/router.py:CredentialsDeletionResponse */

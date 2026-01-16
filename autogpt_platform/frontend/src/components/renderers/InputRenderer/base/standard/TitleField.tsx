@@ -28,12 +28,14 @@ export default function TitleField(props: TitleFieldProps) {
 
   const showHandle = uiOptions.showHandles ?? showHandles;
 
+  const fieldPath = id.replace(/^agpt_%_/, "");
+  const tutorialId = nodeId ? `label-${nodeId}-${fieldPath}` : undefined;
   const isInputBroken = useNodeStore((state) =>
     state.isInputBroken(nodeId, cleanUpHandleId(uiOptions.handleId)),
   );
 
   return (
-    <div className="flex items-center">
+    <div className="flex items-center" data-tutorial-id={tutorialId}>
       {showHandle !== false && (
         <InputNodeHandle handleId={uiOptions.handleId} nodeId={nodeId} />
       )}
