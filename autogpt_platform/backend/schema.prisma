@@ -1010,8 +1010,8 @@ model UnifiedContentEmbedding {
   @@index([userId])
   @@index([contentType, userId])
   @@index([embedding], map: "UnifiedContentEmbedding_embedding_idx")
-  // NO @@index for search - GIN index created via SQL migration with custom name "idx_uce_search_gin"
-  // (Same pattern as idx_slv_categories_gin on StoreListingVersion)
+  // NO @@index for search column - same approach as original StoreListingVersion.search
+  // tsvector works without GIN index (sequential scan), performance comes from embedding HNSW index
 }
 
 model StoreListingReview {

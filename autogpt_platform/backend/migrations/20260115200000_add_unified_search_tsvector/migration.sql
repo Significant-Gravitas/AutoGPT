@@ -4,11 +4,10 @@
 -- Add search column (IF NOT EXISTS for idempotency)
 ALTER TABLE "UnifiedContentEmbedding" ADD COLUMN IF NOT EXISTS "search" tsvector DEFAULT ''::tsvector;
 
--- Create GIN index for fast full-text search
--- Uses custom name "idx_uce_search_gin" (same pattern as idx_slv_categories_gin)
--- NO @@index in schema.prisma - Prisma won't know about this index and won't try to manage it
-DROP INDEX IF EXISTS "idx_uce_search_gin";
-CREATE INDEX IF NOT EXISTS "idx_uce_search_gin" ON "UnifiedContentEmbedding" USING GIN ("search");
+-- NOTE: No GIN index created here - same approach as StoreListingVersion.search
+-- The tsvector column works without an index (sequential scan)
+-- Performance comes from the HNSW embedding index for semantic search
+-- If needed later, GIN index can be added outside of Prisma migrations
 
 -- Drop existing trigger/function if exists
 DROP TRIGGER IF EXISTS "update_unified_tsvector" ON "UnifiedContentEmbedding";
