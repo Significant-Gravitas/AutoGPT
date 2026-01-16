@@ -39,10 +39,9 @@ test.beforeEach(async ({ page }) => {
   await page.waitForTimeout(1000);
 
   await page.goto("/library");
-  await LibraryPage.clickFirstAgent(page);
+  // Navigate to the specific agent we just created, not just the first one
+  await LibraryPage.navigateToAgentByName(page, "Test Agent");
   await LibraryPage.waitForAgentPageLoad(page);
-  const { getRole } = getSelectors(page);
-  await isVisible(getRole("heading", "Test Agent"), 8000);
 });
 
 test("shows badge with count when agent is running", async ({ page }) => {
