@@ -28,6 +28,7 @@ from backend.data.auth.oauth import cleanup_expired_oauth_tokens
 from backend.data.block import BlockInput
 from backend.data.execution import GraphExecutionWithNodes
 from backend.data.model import CredentialsMetaInput
+from backend.data.onboarding import increment_onboarding_runs
 from backend.executor import utils as execution_utils
 from backend.monitoring import (
     NotificationJobArgs,
@@ -156,6 +157,7 @@ async def _execute_graph(**kwargs):
             inputs=args.input_data,
             graph_credentials_inputs=args.input_credentials,
         )
+        await increment_onboarding_runs(args.user_id)
         elapsed = asyncio.get_event_loop().time() - start_time
         logger.info(
             f"Graph execution started with ID {graph_exec.id} for graph {args.graph_id} "
@@ -255,14 +257,14 @@ def execution_accuracy_alerts():
 
 def ensure_embeddings_coverage():
     """
-    Ensure approved store agents have embeddings for hybrid search.
+    Ensure all content types (store agents, blocks, docs) have embeddings for search.
 
-    Processes ALL missing embeddings in batches of 10 until 100% coverage.
-    Missing embeddings = agents invisible in hybrid search.
+    Processes ALL missing embeddings in batches of 10 per content type until 100% coverage.
+    Missing embeddings = content invisible in hybrid search.
 
     Schedule: Runs every 6 hours (balanced between coverage and API costs).
-    - Catches agents approved between scheduled runs
-    - Batch size 10: gradual processing to avoid rate limits
+    - Catches new content added between scheduled runs
+    - Batch size 10 per content type: gradual processing to avoid rate limits
     - Manual trigger available via execute_ensure_embeddings_coverage endpoint
     """
     db_client = get_database_manager_client()
@@ -273,51 +275,91 @@ def ensure_embeddings_coverage():
         logger.error(
             f"Failed to get embedding stats: {stats['error']} - skipping backfill"
         )
-        return {"processed": 0, "success": 0, "failed": 0, "error": stats["error"]}
+        return {
+            "backfill": {"processed": 0, "success": 0, "failed": 0},
+            "cleanup": {"deleted": 0},
+            "error": stats["error"],
+        }
 
-    if stats["without_embeddings"] == 0:
-        logger.info("All approved agents have embeddings, skipping backfill")
-        return {"processed": 0, "success": 0, "failed": 0}
-
-    logger.info(
-        f"Found {stats['without_embeddings']} agents without embeddings "
-        f"({stats['coverage_percent']}% coverage) - processing all"
-    )
+    # Extract totals from new stats structure
+    totals = stats.get("totals", {})
+    without_embeddings = totals.get("without_embeddings", 0)
+    coverage_percent = totals.get("coverage_percent", 0)
 
     total_processed = 0
     total_success = 0
     total_failed = 0
 
-    # Process in batches until no more missing embeddings
-    while True:
-        result = db_client.backfill_missing_embeddings(batch_size=10)
+    if without_embeddings == 0:
+        logger.info("All content has embeddings, skipping backfill")
+    else:
+        # Log per-content-type stats for visibility
+        by_type = stats.get("by_type", {})
+        for content_type, type_stats in by_type.items():
+            if type_stats.get("without_embeddings", 0) > 0:
+                logger.info(
+                    f"{content_type}: {type_stats['without_embeddings']} items without embeddings "
+                    f"({type_stats['coverage_percent']}% coverage)"
+                )
 
-        total_processed += result["processed"]
-        total_success += result["success"]
-        total_failed += result["failed"]
+        logger.info(
+            f"Total: {without_embeddings} items without embeddings "
+            f"({coverage_percent}% coverage) - processing all"
+        )
 
-        if result["processed"] == 0:
-            # No more missing embeddings
-            break
+        # Process in batches until no more missing embeddings
+        while True:
+            result = db_client.backfill_missing_embeddings(batch_size=10)
 
-        if result["success"] == 0 and result["processed"] > 0:
-            # All attempts in this batch failed - stop to avoid infinite loop
-            logger.error(
-                f"All {result['processed']} embedding attempts failed - stopping backfill"
-            )
-            break
+            total_processed += result["processed"]
+            total_success += result["success"]
+            total_failed += result["failed"]
 
-        # Small delay between batches to avoid rate limits
-        time.sleep(1)
+            if result["processed"] == 0:
+                # No more missing embeddings
+                break
 
-    logger.info(
-        f"Embedding backfill completed: {total_success}/{total_processed} succeeded, "
-        f"{total_failed} failed"
-    )
+            if result["success"] == 0 and result["processed"] > 0:
+                # All attempts in this batch failed - stop to avoid infinite loop
+                logger.error(
+                    f"All {result['processed']} embedding attempts failed - stopping backfill"
+                )
+                break
+
+            # Small delay between batches to avoid rate limits
+            time.sleep(1)
+
+        logger.info(
+            f"Embedding backfill completed: {total_success}/{total_processed} succeeded, "
+            f"{total_failed} failed"
+        )
+
+    # Clean up orphaned embeddings for blocks and docs
+    logger.info("Running cleanup for orphaned embeddings (blocks/docs)...")
+    cleanup_result = db_client.cleanup_orphaned_embeddings()
+    cleanup_totals = cleanup_result.get("totals", {})
+    cleanup_deleted = cleanup_totals.get("deleted", 0)
+
+    if cleanup_deleted > 0:
+        logger.info(f"Cleanup completed: deleted {cleanup_deleted} orphaned embeddings")
+        by_type = cleanup_result.get("by_type", {})
+        for content_type, type_result in by_type.items():
+            if type_result.get("deleted", 0) > 0:
+                logger.info(
+                    f"{content_type}: deleted {type_result['deleted']} orphaned embeddings"
+                )
+    else:
+        logger.info("Cleanup completed: no orphaned embeddings found")
+
     return {
-        "processed": total_processed,
-        "success": total_success,
-        "failed": total_failed,
+        "backfill": {
+            "processed": total_processed,
+            "success": total_success,
+            "failed": total_failed,
+        },
+        "cleanup": {
+            "deleted": cleanup_deleted,
+        },
     }
 
 

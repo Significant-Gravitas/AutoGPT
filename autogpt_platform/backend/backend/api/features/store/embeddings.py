@@ -14,6 +14,7 @@ import prisma
 from prisma.enums import ContentType
 from tiktoken import encoding_for_model
 
+from backend.api.features.store.content_handlers import CONTENT_HANDLERS
 from backend.data.db import execute_raw_with_schema, query_raw_with_schema
 from backend.util.clients import get_openai_client
 from backend.util.json import dumps
@@ -23,6 +24,9 @@ logger = logging.getLogger(__name__)
 
 # OpenAI embedding model configuration
 EMBEDDING_MODEL = "text-embedding-3-small"
+# Embedding dimension for the model above
+# text-embedding-3-small: 1536, text-embedding-3-large: 3072
+EMBEDDING_DIM = 1536
 # OpenAI embedding token limit (8,191 with 1 token buffer for safety)
 EMBEDDING_MAX_TOKENS = 8191
 
@@ -369,55 +373,69 @@ async def delete_content_embedding(
 
 async def get_embedding_stats() -> dict[str, Any]:
     """
-    Get statistics about embedding coverage.
+    Get statistics about embedding coverage for all content types.
 
-    Returns counts of:
-    - Total approved listing versions
-    - Versions with embeddings
-    - Versions without embeddings
+    Returns stats per content type and overall totals.
     """
     try:
-        # Count approved versions
-        approved_result = await query_raw_with_schema(
-            """
-            SELECT COUNT(*) as count
-            FROM {schema_prefix}"StoreListingVersion"
-            WHERE "submissionStatus" = 'APPROVED'
-            AND "isDeleted" = false
-            """
-        )
-        total_approved = approved_result[0]["count"] if approved_result else 0
+        stats_by_type = {}
+        total_items = 0
+        total_with_embeddings = 0
+        total_without_embeddings = 0
 
-        # Count versions with embeddings
-        embedded_result = await query_raw_with_schema(
-            """
-            SELECT COUNT(*) as count
-            FROM {schema_prefix}"StoreListingVersion" slv
-            JOIN {schema_prefix}"UnifiedContentEmbedding" uce ON slv.id = uce."contentId" AND uce."contentType" = 'STORE_AGENT'::{schema_prefix}"ContentType"
-            WHERE slv."submissionStatus" = 'APPROVED'
-            AND slv."isDeleted" = false
-            """
-        )
-        with_embeddings = embedded_result[0]["count"] if embedded_result else 0
+        # Aggregate stats from all handlers
+        for content_type, handler in CONTENT_HANDLERS.items():
+            try:
+                stats = await handler.get_stats()
+                stats_by_type[content_type.value] = {
+                    "total": stats["total"],
+                    "with_embeddings": stats["with_embeddings"],
+                    "without_embeddings": stats["without_embeddings"],
+                    "coverage_percent": (
+                        round(stats["with_embeddings"] / stats["total"] * 100, 1)
+                        if stats["total"] > 0
+                        else 0
+                    ),
+                }
+
+                total_items += stats["total"]
+                total_with_embeddings += stats["with_embeddings"]
+                total_without_embeddings += stats["without_embeddings"]
+
+            except Exception as e:
+                logger.error(f"Failed to get stats for {content_type.value}: {e}")
+                stats_by_type[content_type.value] = {
+                    "total": 0,
+                    "with_embeddings": 0,
+                    "without_embeddings": 0,
+                    "coverage_percent": 0,
+                    "error": str(e),
+                }
 
         return {
-            "total_approved": total_approved,
-            "with_embeddings": with_embeddings,
-            "without_embeddings": total_approved - with_embeddings,
-            "coverage_percent": (
-                round(with_embeddings / total_approved * 100, 1)
-                if total_approved > 0
-                else 0
-            ),
+            "by_type": stats_by_type,
+            "totals": {
+                "total": total_items,
+                "with_embeddings": total_with_embeddings,
+                "without_embeddings": total_without_embeddings,
+                "coverage_percent": (
+                    round(total_with_embeddings / total_items * 100, 1)
+                    if total_items > 0
+                    else 0
+                ),
+            },
         }
 
     except Exception as e:
         logger.error(f"Failed to get embedding stats: {e}")
         return {
-            "total_approved": 0,
-            "with_embeddings": 0,
-            "without_embeddings": 0,
-            "coverage_percent": 0,
+            "by_type": {},
+            "totals": {
+                "total": 0,
+                "with_embeddings": 0,
+                "without_embeddings": 0,
+                "coverage_percent": 0,
+            },
             "error": str(e),
         }
 
@@ -426,73 +444,118 @@ async def backfill_missing_embeddings(batch_size: int = 10) -> dict[str, Any]:
     """
     Generate embeddings for approved listings that don't have them.
 
+    BACKWARD COMPATIBILITY: Maintained for existing usage.
+    This now delegates to backfill_all_content_types() to process all content types.
+
     Args:
-        batch_size: Number of embeddings to generate in one call
+        batch_size: Number of embeddings to generate per content type
 
     Returns:
-        Dict with success/failure counts
+        Dict with success/failure counts aggregated across all content types
     """
-    try:
-        # Find approved versions without embeddings
-        missing = await query_raw_with_schema(
-            """
-            SELECT
-                slv.id,
-                slv.name,
-                slv.description,
-                slv."subHeading",
-                slv.categories
-            FROM {schema_prefix}"StoreListingVersion" slv
-            LEFT JOIN {schema_prefix}"UnifiedContentEmbedding" uce
-                ON slv.id = uce."contentId" AND uce."contentType" = 'STORE_AGENT'::{schema_prefix}"ContentType"
-            WHERE slv."submissionStatus" = 'APPROVED'
-            AND slv."isDeleted" = false
-            AND uce."contentId" IS NULL
-            LIMIT $1
-            """,
-            batch_size,
-        )
+    # Delegate to the new generic backfill system
+    result = await backfill_all_content_types(batch_size)
 
-        if not missing:
-            return {
+    # Return in the old format for backward compatibility
+    return result["totals"]
+
+
+async def backfill_all_content_types(batch_size: int = 10) -> dict[str, Any]:
+    """
+    Generate embeddings for all content types using registered handlers.
+
+    Processes content types in order: BLOCK → STORE_AGENT → DOCUMENTATION.
+    This ensures foundational content (blocks) are searchable first.
+
+    Args:
+        batch_size: Number of embeddings to generate per content type
+
+    Returns:
+        Dict with stats per content type and overall totals
+    """
+    results_by_type = {}
+    total_processed = 0
+    total_success = 0
+    total_failed = 0
+
+    # Process content types in explicit order
+    processing_order = [
+        ContentType.BLOCK,
+        ContentType.STORE_AGENT,
+        ContentType.DOCUMENTATION,
+    ]
+
+    for content_type in processing_order:
+        handler = CONTENT_HANDLERS.get(content_type)
+        if not handler:
+            logger.warning(f"No handler registered for {content_type.value}")
+            continue
+        try:
+            logger.info(f"Processing {content_type.value} content type...")
+
+            # Get missing items from handler
+            missing_items = await handler.get_missing_items(batch_size)
+
+            if not missing_items:
+                results_by_type[content_type.value] = {
+                    "processed": 0,
+                    "success": 0,
+                    "failed": 0,
+                    "message": "No missing embeddings",
+                }
+                continue
+
+            # Process embeddings concurrently for better performance
+            embedding_tasks = [
+                ensure_content_embedding(
+                    content_type=item.content_type,
+                    content_id=item.content_id,
+                    searchable_text=item.searchable_text,
+                    metadata=item.metadata,
+                    user_id=item.user_id,
+                )
+                for item in missing_items
+            ]
+
+            results = await asyncio.gather(*embedding_tasks, return_exceptions=True)
+
+            success = sum(1 for result in results if result is True)
+            failed = len(results) - success
+
+            results_by_type[content_type.value] = {
+                "processed": len(missing_items),
+                "success": success,
+                "failed": failed,
+                "message": f"Backfilled {success} embeddings, {failed} failed",
+            }
+
+            total_processed += len(missing_items)
+            total_success += success
+            total_failed += failed
+
+            logger.info(
+                f"{content_type.value}: processed {len(missing_items)}, "
+                f"success {success}, failed {failed}"
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to process {content_type.value}: {e}")
+            results_by_type[content_type.value] = {
                 "processed": 0,
                 "success": 0,
                 "failed": 0,
-                "message": "No missing embeddings",
+                "error": str(e),
             }
 
-        # Process embeddings concurrently for better performance
-        embedding_tasks = [
-            ensure_embedding(
-                version_id=row["id"],
-                name=row["name"],
-                description=row["description"],
-                sub_heading=row["subHeading"],
-                categories=row["categories"] or [],
-            )
-            for row in missing
-        ]
-
-        results = await asyncio.gather(*embedding_tasks, return_exceptions=True)
-
-        success = sum(1 for result in results if result is True)
-        failed = len(results) - success
-
-        return {
-            "processed": len(missing),
-            "success": success,
-            "failed": failed,
-            "message": f"Backfilled {success} embeddings, {failed} failed",
-        }
-
-    except Exception as e:
-        logger.error(f"Failed to backfill embeddings: {e}")
-        return {
-            "processed": 0,
-            "success": 0,
-            "failed": 0,
-            "error": str(e),
-        }
+    return {
+        "by_type": results_by_type,
+        "totals": {
+            "processed": total_processed,
+            "success": total_success,
+            "failed": total_failed,
+            "message": f"Overall: {total_success} succeeded, {total_failed} failed",
+        },
+    }
 
 
 async def embed_query(query: str) -> list[float] | None:
@@ -566,3 +629,334 @@ async def ensure_content_embedding(
     except Exception as e:
         logger.error(f"Failed to ensure embedding for {content_type}:{content_id}: {e}")
         return False
+
+
+async def cleanup_orphaned_embeddings() -> dict[str, Any]:
+    """
+    Clean up embeddings for content that no longer exists or is no longer valid.
+
+    Compares current content with embeddings in database and removes orphaned records:
+    - STORE_AGENT: Removes embeddings for rejected/deleted store listings
+    - BLOCK: Removes embeddings for blocks no longer registered
+    - DOCUMENTATION: Removes embeddings for deleted doc files
+
+    Returns:
+        Dict with cleanup statistics per content type
+    """
+    results_by_type = {}
+    total_deleted = 0
+
+    # Cleanup orphaned embeddings for all content types
+    cleanup_types = [
+        ContentType.STORE_AGENT,
+        ContentType.BLOCK,
+        ContentType.DOCUMENTATION,
+    ]
+
+    for content_type in cleanup_types:
+        try:
+            handler = CONTENT_HANDLERS.get(content_type)
+            if not handler:
+                logger.warning(f"No handler registered for {content_type}")
+                results_by_type[content_type.value] = {
+                    "deleted": 0,
+                    "error": "No handler registered",
+                }
+                continue
+
+            # Get all current content IDs from handler
+            if content_type == ContentType.STORE_AGENT:
+                # Get IDs of approved store listing versions from non-deleted listings
+                valid_agents = await query_raw_with_schema(
+                    """
+                    SELECT slv.id
+                    FROM {schema_prefix}"StoreListingVersion" slv
+                    JOIN {schema_prefix}"StoreListing" sl ON slv."storeListingId" = sl.id
+                    WHERE slv."submissionStatus" = 'APPROVED'
+                      AND slv."isDeleted" = false
+                      AND sl."isDeleted" = false
+                    """,
+                )
+                current_ids = {row["id"] for row in valid_agents}
+            elif content_type == ContentType.BLOCK:
+                from backend.data.block import get_blocks
+
+                current_ids = set(get_blocks().keys())
+            elif content_type == ContentType.DOCUMENTATION:
+                from pathlib import Path
+
+                # embeddings.py is at: backend/backend/api/features/store/embeddings.py
+                # Need to go up to project root then into docs/
+                this_file = Path(__file__)
+                project_root = (
+                    this_file.parent.parent.parent.parent.parent.parent.parent
+                )
+                docs_root = project_root / "docs"
+                if docs_root.exists():
+                    all_docs = list(docs_root.rglob("*.md")) + list(
+                        docs_root.rglob("*.mdx")
+                    )
+                    current_ids = {str(doc.relative_to(docs_root)) for doc in all_docs}
+                else:
+                    current_ids = set()
+            else:
+                # Skip unknown content types to avoid accidental deletion
+                logger.warning(
+                    f"Skipping cleanup for unknown content type: {content_type}"
+                )
+                results_by_type[content_type.value] = {
+                    "deleted": 0,
+                    "error": "Unknown content type - skipped for safety",
+                }
+                continue
+
+            # Get all embedding IDs from database
+            db_embeddings = await query_raw_with_schema(
+                """
+                SELECT "contentId"
+                FROM {schema_prefix}"UnifiedContentEmbedding"
+                WHERE "contentType" = $1::{schema_prefix}"ContentType"
+                """,
+                content_type,
+            )
+
+            db_ids = {row["contentId"] for row in db_embeddings}
+
+            # Find orphaned embeddings (in DB but not in current content)
+            orphaned_ids = db_ids - current_ids
+
+            if not orphaned_ids:
+                logger.info(f"{content_type.value}: No orphaned embeddings found")
+                results_by_type[content_type.value] = {
+                    "deleted": 0,
+                    "message": "No orphaned embeddings",
+                }
+                continue
+
+            # Delete orphaned embeddings in batch for better performance
+            orphaned_list = list(orphaned_ids)
+            try:
+                await execute_raw_with_schema(
+                    """
+                    DELETE FROM {schema_prefix}"UnifiedContentEmbedding"
+                    WHERE "contentType" = $1::{schema_prefix}"ContentType"
+                      AND "contentId" = ANY($2::text[])
+                    """,
+                    content_type,
+                    orphaned_list,
+                )
+                deleted = len(orphaned_list)
+            except Exception as e:
+                logger.error(f"Failed to batch delete orphaned embeddings: {e}")
+                deleted = 0
+
+            logger.info(
+                f"{content_type.value}: Deleted {deleted}/{len(orphaned_ids)} orphaned embeddings"
+            )
+            results_by_type[content_type.value] = {
+                "deleted": deleted,
+                "orphaned": len(orphaned_ids),
+                "message": f"Deleted {deleted} orphaned embeddings",
+            }
+
+            total_deleted += deleted
+
+        except Exception as e:
+            logger.error(f"Failed to cleanup {content_type.value}: {e}")
+            results_by_type[content_type.value] = {
+                "deleted": 0,
+                "error": str(e),
+            }
+
+    return {
+        "by_type": results_by_type,
+        "totals": {
+            "deleted": total_deleted,
+            "message": f"Deleted {total_deleted} orphaned embeddings",
+        },
+    }
+
+
+async def semantic_search(
+    query: str,
+    content_types: list[ContentType] | None = None,
+    user_id: str | None = None,
+    limit: int = 20,
+    min_similarity: float = 0.5,
+) -> list[dict[str, Any]]:
+    """
+    Semantic search across content types using embeddings.
+
+    Performs vector similarity search on UnifiedContentEmbedding table.
+    Used directly for blocks/docs/library agents, or as the semantic component
+    within hybrid_search for store agents.
+
+    If embedding generation fails, falls back to lexical search on searchableText.
+
+    Args:
+        query: Search query string
+        content_types: List of ContentType to search. Defaults to [BLOCK, STORE_AGENT, DOCUMENTATION]
+        user_id: Optional user ID for searching private content (library agents)
+        limit: Maximum number of results to return (default: 20)
+        min_similarity: Minimum cosine similarity threshold (0-1, default: 0.5)
+
+    Returns:
+        List of search results with the following structure:
+        [
+            {
+                "content_id": str,
+                "content_type": str,  # "BLOCK", "STORE_AGENT", "DOCUMENTATION", or "LIBRARY_AGENT"
+                "searchable_text": str,
+                "metadata": dict,
+                "similarity": float,  # Cosine similarity score (0-1)
+            },
+            ...
+        ]
+
+    Examples:
+        # Search blocks only
+        results = await semantic_search("calculate", content_types=[ContentType.BLOCK])
+
+        # Search blocks and documentation
+        results = await semantic_search(
+            "how to use API",
+            content_types=[ContentType.BLOCK, ContentType.DOCUMENTATION]
+        )
+
+        # Search all public content (default)
+        results = await semantic_search("AI agent")
+
+        # Search user's library agents
+        results = await semantic_search(
+            "my custom agent",
+            content_types=[ContentType.LIBRARY_AGENT],
+            user_id="user123"
+        )
+    """
+    # Default to searching all public content types
+    if content_types is None:
+        content_types = [
+            ContentType.BLOCK,
+            ContentType.STORE_AGENT,
+            ContentType.DOCUMENTATION,
+        ]
+
+    # Validate inputs
+    if not content_types:
+        return []  # Empty content_types would cause invalid SQL (IN ())
+
+    query = query.strip()
+    if not query:
+        return []
+
+    if limit < 1:
+        limit = 1
+    if limit > 100:
+        limit = 100
+
+    # Generate query embedding
+    query_embedding = await embed_query(query)
+
+    if query_embedding is not None:
+        # Semantic search with embeddings
+        embedding_str = embedding_to_vector_string(query_embedding)
+
+        # Build params in order: limit, then user_id (if provided), then content types
+        params: list[Any] = [limit]
+        user_filter = ""
+        if user_id is not None:
+            user_filter = 'AND "userId" = ${}'.format(len(params) + 1)
+            params.append(user_id)
+
+        # Add content type parameters and build placeholders dynamically
+        content_type_start_idx = len(params) + 1
+        content_type_placeholders = ", ".join(
+            f'${content_type_start_idx + i}::{{{{schema_prefix}}}}"ContentType"'
+            for i in range(len(content_types))
+        )
+        params.extend([ct.value for ct in content_types])
+
+        sql = f"""
+            SELECT
+                "contentId" as content_id,
+                "contentType" as content_type,
+                "searchableText" as searchable_text,
+                metadata,
+                1 - (embedding <=> '{embedding_str}'::vector) as similarity
+            FROM {{{{schema_prefix}}}}"UnifiedContentEmbedding"
+            WHERE "contentType" IN ({content_type_placeholders})
+            {user_filter}
+            AND 1 - (embedding <=> '{embedding_str}'::vector) >= ${len(params) + 1}
+            ORDER BY similarity DESC
+            LIMIT $1
+        """
+        params.append(min_similarity)
+
+        try:
+            results = await query_raw_with_schema(
+                sql, *params, set_public_search_path=True
+            )
+            return [
+                {
+                    "content_id": row["content_id"],
+                    "content_type": row["content_type"],
+                    "searchable_text": row["searchable_text"],
+                    "metadata": row["metadata"],
+                    "similarity": float(row["similarity"]),
+                }
+                for row in results
+            ]
+        except Exception as e:
+            logger.error(f"Semantic search failed: {e}")
+            # Fall through to lexical search below
+
+    # Fallback to lexical search if embeddings unavailable
+    logger.warning("Falling back to lexical search (embeddings unavailable)")
+
+    params_lexical: list[Any] = [limit]
+    user_filter = ""
+    if user_id is not None:
+        user_filter = 'AND "userId" = ${}'.format(len(params_lexical) + 1)
+        params_lexical.append(user_id)
+
+    # Add content type parameters and build placeholders dynamically
+    content_type_start_idx = len(params_lexical) + 1
+    content_type_placeholders_lexical = ", ".join(
+        f'${content_type_start_idx + i}::{{{{schema_prefix}}}}"ContentType"'
+        for i in range(len(content_types))
+    )
+    params_lexical.extend([ct.value for ct in content_types])
+
+    sql_lexical = f"""
+        SELECT
+            "contentId" as content_id,
+            "contentType" as content_type,
+            "searchableText" as searchable_text,
+            metadata,
+            0.0 as similarity
+        FROM {{{{schema_prefix}}}}"UnifiedContentEmbedding"
+        WHERE "contentType" IN ({content_type_placeholders_lexical})
+        {user_filter}
+        AND "searchableText" ILIKE ${len(params_lexical) + 1}
+        ORDER BY "updatedAt" DESC
+        LIMIT $1
+    """
+    params_lexical.append(f"%{query}%")
+
+    try:
+        results = await query_raw_with_schema(
+            sql_lexical, *params_lexical, set_public_search_path=True
+        )
+        return [
+            {
+                "content_id": row["content_id"],
+                "content_type": row["content_type"],
+                "searchable_text": row["searchable_text"],
+                "metadata": row["metadata"],
+                "similarity": 0.0,  # Lexical search doesn't provide similarity
+            }
+            for row in results
+        ]
+    except Exception as e:
+        logger.error(f"Lexical search failed: {e}")
+        return []

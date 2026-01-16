@@ -1,6 +1,9 @@
 # Ignore everything by default, selectively add things to context
 *
 
+# Documentation (for embeddings/search)
+!docs/
+
 # Platform - Libs
 !autogpt_platform/autogpt_libs/autogpt_libs/
 !autogpt_platform/autogpt_libs/pyproject.toml

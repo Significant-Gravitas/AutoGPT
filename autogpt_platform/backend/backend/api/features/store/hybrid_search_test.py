@@ -7,8 +7,15 @@ These tests verify that hybrid search works correctly across different database 
 from unittest.mock import patch
 
 import pytest
+from prisma.enums import ContentType
 
-from backend.api.features.store.hybrid_search import HybridSearchWeights, hybrid_search
+from backend.api.features.store import embeddings
+from backend.api.features.store.hybrid_search import (
+    HybridSearchWeights,
+    UnifiedSearchWeights,
+    hybrid_search,
+    unified_hybrid_search,
+)
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -49,7 +56,7 @@ async def test_hybrid_search_with_schema_handling():
         with patch(
             "backend.api.features.store.hybrid_search.embed_query"
         ) as mock_embed:
-            mock_embed.return_value = [0.1] * 1536  # Mock embedding
+            mock_embed.return_value = [0.1] * embeddings.EMBEDDING_DIM  # Mock embedding
 
             results, total = await hybrid_search(
                 query=query,
@@ -85,7 +92,7 @@ async def test_hybrid_search_with_public_schema():
             with patch(
                 "backend.api.features.store.hybrid_search.embed_query"
             ) as mock_embed:
-                mock_embed.return_value = [0.1] * 1536
+                mock_embed.return_value = [0.1] * embeddings.EMBEDDING_DIM
 
                 results, total = await hybrid_search(
                     query="test",
@@ -116,7 +123,7 @@ async def test_hybrid_search_with_custom_schema():
             with patch(
                 "backend.api.features.store.hybrid_search.embed_query"
             ) as mock_embed:
-                mock_embed.return_value = [0.1] * 1536
+                mock_embed.return_value = [0.1] * embeddings.EMBEDDING_DIM
 
                 results, total = await hybrid_search(
                     query="test",
@@ -134,22 +141,52 @@ async def test_hybrid_search_with_custom_schema():
 @pytest.mark.asyncio(loop_scope="session")
 @pytest.mark.integration
 async def test_hybrid_search_without_embeddings():
-    """Test hybrid search fails fast when embeddings are unavailable."""
-    # Patch where the function is used, not where it's defined
-    with patch("backend.api.features.store.hybrid_search.embed_query") as mock_embed:
-        # Simulate embedding failure
-        mock_embed.return_value = None
+    """Test hybrid search gracefully degrades when embeddings are unavailable."""
+    # Mock database to return some results
+    mock_results = [
+        {
+            "slug": "test-agent",
+            "agent_name": "Test Agent",
+            "agent_image": "test.png",
+            "creator_username": "creator",
+            "creator_avatar": "avatar.png",
+            "sub_heading": "Test heading",
+            "description": "Test description",
+            "runs": 100,
+            "rating": 4.5,
+            "categories": ["AI"],
+            "featured": False,
+            "is_available": True,
+            "updated_at": "2025-01-01T00:00:00Z",
+            "semantic_score": 0.0,  # Zero because no embedding
+            "lexical_score": 0.5,
+            "category_score": 0.0,
+            "recency_score": 0.1,
+            "popularity_score": 0.2,
+            "combined_score": 0.3,
+            "total_count": 1,
+        }
+    ]
 
-        # Should raise ValueError with helpful message
-        with pytest.raises(ValueError) as exc_info:
-            await hybrid_search(
+    with patch("backend.api.features.store.hybrid_search.embed_query") as mock_embed:
+        with patch(
+            "backend.api.features.store.hybrid_search.query_raw_with_schema"
+        ) as mock_query:
+            # Simulate embedding failure
+            mock_embed.return_value = None
+            mock_query.return_value = mock_results
+
+            # Should NOT raise - graceful degradation
+            results, total = await hybrid_search(
                 query="test",
                 page=1,
                 page_size=20,
             )
 
-        # Verify error message is generic (doesn't leak implementation details)
-        assert "Search service temporarily unavailable" in str(exc_info.value)
+            # Verify it returns results even without embeddings
+            assert len(results) == 1
+            assert results[0]["slug"] == "test-agent"
+            assert total == 1
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -164,7 +201,7 @@ async def test_hybrid_search_with_filters():
         with patch(
             "backend.api.features.store.hybrid_search.embed_query"
         ) as mock_embed:
-            mock_embed.return_value = [0.1] * 1536
+            mock_embed.return_value = [0.1] * embeddings.EMBEDDING_DIM
 
             # Test with featured filter
             results, total = await hybrid_search(
@@ -204,7 +241,7 @@ async def test_hybrid_search_weights():
         with patch(
             "backend.api.features.store.hybrid_search.embed_query"
         ) as mock_embed:
-            mock_embed.return_value = [0.1] * 1536
+            mock_embed.return_value = [0.1] * embeddings.EMBEDDING_DIM
 
             results, total = await hybrid_search(
                 query="test",
@@ -248,7 +285,7 @@ async def test_hybrid_search_min_score_filtering():
         with patch(
             "backend.api.features.store.hybrid_search.embed_query"
         ) as mock_embed:
-            mock_embed.return_value = [0.1] * 1536
+            mock_embed.return_value = [0.1] * embeddings.EMBEDDING_DIM
 
             # Test with custom min_score
             results, total = await hybrid_search(
@@ -283,7 +320,7 @@ async def test_hybrid_search_pagination():
         with patch(
             "backend.api.features.store.hybrid_search.embed_query"
         ) as mock_embed:
-            mock_embed.return_value = [0.1] * 1536
+            mock_embed.return_value = [0.1] * embeddings.EMBEDDING_DIM
 
             # Test page 2 with page_size 10
             results, total = await hybrid_search(
@@ -317,7 +354,7 @@ async def test_hybrid_search_error_handling():
         with patch(
             "backend.api.features.store.hybrid_search.embed_query"
         ) as mock_embed:
-            mock_embed.return_value = [0.1] * 1536
+            mock_embed.return_value = [0.1] * embeddings.EMBEDDING_DIM
 
             # Should raise exception
             with pytest.raises(Exception) as exc_info:
@@ -328,6 +365,302 @@ async def test_hybrid_search_error_handling():
                 )
 
             assert "Database connection error" in str(exc_info.value)
+
+
+# =============================================================================
+# Unified Hybrid Search Tests
+# =============================================================================
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.integration
+async def test_unified_hybrid_search_basic():
+    """Test basic unified hybrid search across all content types."""
+    mock_results = [
+        {
+            "content_type": "STORE_AGENT",
+            "content_id": "agent-1",
+            "searchable_text": "Test Agent Description",
+            "metadata": {"name": "Test Agent"},
+            "updated_at": "2025-01-01T00:00:00Z",
+            "semantic_score": 0.7,
+            "lexical_score": 0.8,
+            "category_score": 0.5,
+            "recency_score": 0.3,
+            "combined_score": 0.6,
+            "total_count": 2,
+        },
+        {
+            "content_type": "BLOCK",
+            "content_id": "block-1",
+            "searchable_text": "Test Block Description",
+            "metadata": {"name": "Test Block"},
+            "updated_at": "2025-01-01T00:00:00Z",
+            "semantic_score": 0.6,
+            "lexical_score": 0.7,
+            "category_score": 0.4,
+            "recency_score": 0.2,
+            "combined_score": 0.5,
+            "total_count": 2,
+        },
+    ]
+
+    with patch(
+        "backend.api.features.store.hybrid_search.query_raw_with_schema"
+    ) as mock_query:
+        with patch(
+            "backend.api.features.store.hybrid_search.embed_query"
+        ) as mock_embed:
+            mock_query.return_value = mock_results
+            mock_embed.return_value = [0.1] * embeddings.EMBEDDING_DIM
+
+            results, total = await unified_hybrid_search(
+                query="test",
+                page=1,
+                page_size=20,
+            )
+
+            assert len(results) == 2
+            assert total == 2
+            assert results[0]["content_type"] == "STORE_AGENT"
+            assert results[1]["content_type"] == "BLOCK"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.integration
+async def test_unified_hybrid_search_filter_by_content_type():
+    """Test unified search filtering by specific content types."""
+    mock_results = [
+        {
+            "content_type": "BLOCK",
+            "content_id": "block-1",
+            "searchable_text": "Test Block",
+            "metadata": {},
+            "updated_at": "2025-01-01T00:00:00Z",
+            "semantic_score": 0.7,
+            "lexical_score": 0.8,
+            "category_score": 0.0,
+            "recency_score": 0.3,
+            "combined_score": 0.5,
+            "total_count": 1,
+        },
+    ]
+
+    with patch(
+        "backend.api.features.store.hybrid_search.query_raw_with_schema"
+    ) as mock_query:
+        with patch(
+            "backend.api.features.store.hybrid_search.embed_query"
+        ) as mock_embed:
+            mock_query.return_value = mock_results
+            mock_embed.return_value = [0.1] * embeddings.EMBEDDING_DIM
+
+            results, total = await unified_hybrid_search(
+                query="test",
+                content_types=[ContentType.BLOCK],
+                page=1,
+                page_size=20,
+            )
+
+            # Verify content_types parameter was passed correctly
+            call_args = mock_query.call_args
+            params = call_args[0][1:]
+            # The content types should be in the params as a list
+            assert ["BLOCK"] in params
+
+            assert len(results) == 1
+            assert total == 1
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.integration
+async def test_unified_hybrid_search_with_user_id():
+    """Test unified search with user_id for private content."""
+    mock_results = [
+        {
+            "content_type": "STORE_AGENT",
+            "content_id": "agent-1",
+            "searchable_text": "My Private Agent",
+            "metadata": {},
+            "updated_at": "2025-01-01T00:00:00Z",
+            "semantic_score": 0.7,
+            "lexical_score": 0.8,
+            "category_score": 0.0,
+            "recency_score": 0.3,
+            "combined_score": 0.6,
+            "total_count": 1,
+        },
+    ]
+
+    with patch(
+        "backend.api.features.store.hybrid_search.query_raw_with_schema"
+    ) as mock_query:
+        with patch(
+            "backend.api.features.store.hybrid_search.embed_query"
+        ) as mock_embed:
+            mock_query.return_value = mock_results
+            mock_embed.return_value = [0.1] * embeddings.EMBEDDING_DIM
+
+            results, total = await unified_hybrid_search(
+                query="test",
+                user_id="user-123",
+                page=1,
+                page_size=20,
+            )
+
+            # Verify SQL contains user_id filter
+            call_args = mock_query.call_args
+            sql_template = call_args[0][0]
+            params = call_args[0][1:]
+
+            assert 'uce."userId"' in sql_template
+            assert "user-123" in params
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.integration
+async def test_unified_hybrid_search_custom_weights():
+    """Test unified search with custom weights."""
+    custom_weights = UnifiedSearchWeights(
+        semantic=0.6,
+        lexical=0.2,
+        category=0.1,
+        recency=0.1,
+    )
+
+    with patch(
+        "backend.api.features.store.hybrid_search.query_raw_with_schema"
+    ) as mock_query:
+        with patch(
+            "backend.api.features.store.hybrid_search.embed_query"
+        ) as mock_embed:
+            mock_query.return_value = []
+            mock_embed.return_value = [0.1] * embeddings.EMBEDDING_DIM
+
+            results, total = await unified_hybrid_search(
+                query="test",
+                weights=custom_weights,
+                page=1,
+                page_size=20,
+            )
+
+            # Verify custom weights are in parameters
+            call_args = mock_query.call_args
+            params = call_args[0][1:]
+
+            assert 0.6 in params  # semantic weight
+            assert 0.2 in params  # lexical weight
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.integration
+async def test_unified_hybrid_search_graceful_degradation():
+    """Test unified search gracefully degrades when embeddings unavailable."""
+    mock_results = [
+        {
+            "content_type": "DOCUMENTATION",
+            "content_id": "doc-1",
+            "searchable_text": "API Documentation",
+            "metadata": {},
+            "updated_at": "2025-01-01T00:00:00Z",
+            "semantic_score": 0.0,  # Zero because no embedding
+            "lexical_score": 0.8,
+            "category_score": 0.0,
+            "recency_score": 0.2,
+            "combined_score": 0.5,
+            "total_count": 1,
+        },
+    ]
+
+    with patch(
+        "backend.api.features.store.hybrid_search.query_raw_with_schema"
+    ) as mock_query:
+        with patch(
+            "backend.api.features.store.hybrid_search.embed_query"
+        ) as mock_embed:
+            mock_query.return_value = mock_results
+            mock_embed.return_value = None  # Embedding failure
+
+            # Should NOT raise - graceful degradation
+            results, total = await unified_hybrid_search(
+                query="test",
+                page=1,
+                page_size=20,
+            )
+
+            assert len(results) == 1
+            assert total == 1
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.integration
+async def test_unified_hybrid_search_empty_query():
+    """Test unified search with empty query returns empty results."""
+    results, total = await unified_hybrid_search(
+        query="",
+        page=1,
+        page_size=20,
+    )
+
+    assert results == []
+    assert total == 0
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.integration
+async def test_unified_hybrid_search_pagination():
+    """Test unified search pagination."""
+    with patch(
+        "backend.api.features.store.hybrid_search.query_raw_with_schema"
+    ) as mock_query:
+        with patch(
+            "backend.api.features.store.hybrid_search.embed_query"
+        ) as mock_embed:
+            mock_query.return_value = []
+            mock_embed.return_value = [0.1] * embeddings.EMBEDDING_DIM
+
+            results, total = await unified_hybrid_search(
+                query="test",
+                page=3,
+                page_size=15,
+            )
+
+            # Verify pagination parameters (last two params are LIMIT and OFFSET)
+            call_args = mock_query.call_args
+            params = call_args[0]
+
+            limit = params[-2]
+            offset = params[-1]
+
+            assert limit == 15  # page_size
+            assert offset == 30  # (page - 1) * page_size = (3 - 1) * 15
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.integration
+async def test_unified_hybrid_search_schema_prefix():
+    """Test unified search uses schema_prefix placeholder."""
+    with patch(
+        "backend.api.features.store.hybrid_search.query_raw_with_schema"
+    ) as mock_query:
+        with patch(
+            "backend.api.features.store.hybrid_search.embed_query"
+        ) as mock_embed:
+            mock_query.return_value = []
+            mock_embed.return_value = [0.1] * embeddings.EMBEDDING_DIM
+
+            await unified_hybrid_search(
+                query="test",
+                page=1,
+                page_size=20,
+            )
+
+            call_args = mock_query.call_args
+            sql_template = call_args[0][0]
+
+            # Verify schema_prefix placeholder is used for table references
+            assert "{schema_prefix}" in sql_template
+            assert '"UnifiedContentEmbedding"' in sql_template
 
 
 if __name__ == "__main__":
