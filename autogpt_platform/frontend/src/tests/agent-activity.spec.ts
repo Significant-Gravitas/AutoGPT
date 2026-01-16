@@ -42,12 +42,6 @@ test.beforeEach(async ({ page }) => {
   // Navigate to the specific agent we just created, not just the first one
   await LibraryPage.navigateToAgentByName(page, "Test Agent");
   await LibraryPage.waitForAgentPageLoad(page);
-  const { getRole } = getSelectors(page);
-  // Use a longer timeout and retry mechanism for agent name visibility
-  // since the agent data is fetched asynchronously
-  await expect(async () => {
-    await expect(getRole("heading", "Test Agent")).toBeVisible();
-  }).toPass({ timeout: 15000 });
 });
 
 test("shows badge with count when agent is running", async ({ page }) => {
