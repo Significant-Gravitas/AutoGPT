@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { Node, Edge, useReactFlow } from "@xyflow/react";
 import { Key, storage } from "@/services/storage/local-storage";
+import { ConnectedEdge } from "./CustomNode/CustomNode";
 
 interface CopyableData {
   nodes: Node[];
@@ -111,13 +112,15 @@ export function useCopyPaste(getNextNodeId: () => string) {
                     (edge: Edge) =>
                       edge.source === node.id || edge.target === node.id,
                   )
-                  .map((edge: Edge) => ({
-                    edge_id: edge.id,
-                    source: edge.source,
-                    target: edge.target,
-                    sourceHandle: edge.sourceHandle,
-                    targetHandle: edge.targetHandle,
-                  }));
+                  .map(
+                    (edge: Edge): ConnectedEdge => ({
+                      id: edge.id,
+                      source: edge.source,
+                      target: edge.target,
+                      sourceHandle: edge.sourceHandle!,
+                      targetHandle: edge.targetHandle!,
+                    }),
+                  );
 
                 return {
                   ...node,

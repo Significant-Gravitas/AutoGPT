@@ -1,12 +1,22 @@
 import { FieldProps, RJSFSchema, RegistryFieldsType } from "@rjsf/utils";
 import { CredentialsField } from "./CredentialField/CredentialField";
 import { GoogleDrivePickerField } from "./GoogleDrivePickerField/GoogleDrivePickerField";
+import { JsonTextField } from "./JsonTextField/JsonTextField";
+import { MultiSelectField } from "./MultiSelectField/MultiSelectField";
+import {
+  isGoogleDrivePickerSchema,
+  isMultiSelectSchema,
+} from "../utils/schema-utils";
+import { TableField } from "./TableField/TableField";
 
 export interface CustomFieldDefinition {
   id: string;
   matcher: (schema: any) => boolean;
   component: (props: FieldProps<any, RJSFSchema, any>) => JSX.Element | null;
 }
+
+/** Field ID for JsonTextField - used to render nested complex types as text input */
+export const JSON_TEXT_FIELD_ID = "custom/json_text_field";
 
 export const CUSTOM_FIELDS: CustomFieldDefinition[] = [
   {
@@ -22,13 +32,30 @@ export const CUSTOM_FIELDS: CustomFieldDefinition[] = [
   },
   {
     id: "custom/google_drive_picker_field",
+    matcher: isGoogleDrivePickerSchema,
+    component: GoogleDrivePickerField,
+  },
+  {
+    id: "custom/json_text_field",
+    // Not matched by schema - assigned via uiSchema for nested complex types
+    matcher: () => false,
+    component: JsonTextField,
+  },
+  {
+    id: "custom/multi_select_field",
+    matcher: isMultiSelectSchema,
+    component: MultiSelectField,
+  },
+  {
+    id: "custom/table_field",
     matcher: (schema: any) => {
       return (
-        "google_drive_picker_config" in schema ||
-        ("format" in schema && schema.format === "google-drive-picker")
+        schema.type === "array" &&
+        "format" in schema &&
+        schema.format === "table"
       );
     },
-    component: GoogleDrivePickerField,
+    component: TableField,
   },
 ];
 

@@ -25,7 +25,7 @@ export const RightSidebar = () => {
     >
       <div className="mb-4">
         <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-200">
-          Flow Debug Panel
+          Graph Debug Panel
         </h2>
       </div>
 
@@ -65,7 +65,7 @@ export const RightSidebar = () => {
                 {l.source_id}[{l.source_name}] → {l.sink_id}[{l.sink_name}]
               </div>
               <div className="mt-1 text-slate-500 dark:text-slate-400">
-                edge_id: {l.id}
+                edge.id: {l.id}
               </div>
             </div>
           ))}

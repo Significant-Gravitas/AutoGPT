@@ -1,13 +1,15 @@
 "use client";
 
-import {
-  getPaginatedTotalCount,
-  getPaginationNextPageNumber,
-  unpaginate,
-} from "@/app/api/helpers";
 import { useGetV2ListFavoriteLibraryAgentsInfinite } from "@/app/api/__generated__/endpoints/library/library";
+import { getPaginationNextPageNumber, unpaginate } from "@/app/api/helpers";
+import { useMemo } from "react";
+import { filterAgents } from "../components/LibraryAgentList/helpers";
 
-export function useFavoriteAgents() {
+interface Props {
+  searchTerm: string;
+}
+
+export function useFavoriteAgents({ searchTerm }: Props) {
   const {
     data: agentsQueryData,
     fetchNextPage,
@@ -27,10 +29,16 @@ export function useFavoriteAgents() {
   const allAgents = agentsQueryData
     ? unpaginate(agentsQueryData, "agents")
     : [];
-  const agentCount = getPaginatedTotalCount(agentsQueryData);
+
+  const filteredAgents = useMemo(
+    () => filterAgents(allAgents, searchTerm),
+    [allAgents, searchTerm],
+  );
+
+  const agentCount = filteredAgents.length;
 
   return {
-    allAgents,
+    allAgents: filteredAgents,
     agentLoading,
     hasNextPage,
     agentCount,

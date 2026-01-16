@@ -138,6 +138,7 @@ def test_creator_details():
 
 def test_store_submission():
     submission = store_model.StoreSubmission(
+        listing_id="listing123",
         agent_id="agent123",
         agent_version=1,
         sub_heading="Test subheading",
@@ -159,6 +160,7 @@ def test_store_submissions_response():
     response = store_model.StoreSubmissionsResponse(
         submissions=[
             store_model.StoreSubmission(
+                listing_id="listing123",
                 agent_id="agent123",
                 agent_version=1,
                 sub_heading="Test subheading",

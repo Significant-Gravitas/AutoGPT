@@ -391,8 +391,12 @@ class SmartDecisionMakerBlock(Block):
         """
         block = sink_node.block
 
+        # Use custom name from node metadata if set, otherwise fall back to block.name
+        custom_name = sink_node.metadata.get("customized_name")
+        tool_name = custom_name if custom_name else block.name
+
         tool_function: dict[str, Any] = {
-            "name": SmartDecisionMakerBlock.cleanup(block.name),
+            "name": SmartDecisionMakerBlock.cleanup(tool_name),
             "description": block.description,
         }
         sink_block_input_schema = block.input_schema
@@ -489,8 +493,12 @@ class SmartDecisionMakerBlock(Block):
                 f"Sink graph metadata not found: {graph_id} {graph_version}"
             )
 
+        # Use custom name from node metadata if set, otherwise fall back to graph name
+        custom_name = sink_node.metadata.get("customized_name")
+        tool_name = custom_name if custom_name else sink_graph_meta.name
+
         tool_function: dict[str, Any] = {
-            "name": SmartDecisionMakerBlock.cleanup(sink_graph_meta.name),
+            "name": SmartDecisionMakerBlock.cleanup(tool_name),
             "description": sink_graph_meta.description,
         }
 
@@ -981,10 +989,28 @@ class SmartDecisionMakerBlock(Block):
         graph_version: int,
         execution_context: ExecutionContext,
         execution_processor: "ExecutionProcessor",
+        nodes_to_skip: set[str] | None = None,
         **kwargs,
     ) -> BlockOutput:
 
         tool_functions = await self._create_tool_node_signatures(node_id)
+        original_tool_count = len(tool_functions)
+
+        # Filter out tools for nodes that should be skipped (e.g., missing optional credentials)
+        if nodes_to_skip:
+            tool_functions = [
+                tf
+                for tf in tool_functions
+                if tf.get("function", {}).get("_sink_node_id") not in nodes_to_skip
+            ]
+
+            # Only raise error if we had tools but they were all filtered out
+            if original_tool_count > 0 and not tool_functions:
+                raise ValueError(
+                    "No available tools to execute - all downstream nodes are unavailable "
+                    "(possibly due to missing optional credentials)"
+                )
+
         yield "tool_functions", json.dumps(tool_functions)
 
         conversation_history = input_data.conversation_history or []

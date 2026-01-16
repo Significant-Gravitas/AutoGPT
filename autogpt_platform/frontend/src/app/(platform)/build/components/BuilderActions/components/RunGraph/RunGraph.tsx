@@ -31,6 +31,7 @@ export const RunGraph = ({ flowID }: { flowID: string | null }) => {
           <Button
             size="icon"
             variant={isGraphRunning ? "destructive" : "primary"}
+            data-id={isGraphRunning ? "stop-graph-button" : "run-graph-button"}
             onClick={isGraphRunning ? handleStopGraph : handleRunGraph}
             disabled={!flowID || isExecutingGraph || isTerminatingGraph}
             loading={isExecutingGraph || isTerminatingGraph || isSaving}

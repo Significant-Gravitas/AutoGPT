@@ -1,7 +1,3 @@
-import {
-  OutputActions,
-  OutputItem,
-} from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/selected-views/OutputRenderers";
 import { ScrollArea } from "@/components/__legacy__/ui/scroll-area";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
@@ -11,6 +7,10 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
+import {
+  OutputActions,
+  OutputItem,
+} from "@/components/contextual/OutputRenderers";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { beautifyString } from "@/lib/utils";
 import {
@@ -151,7 +151,7 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
         </div>
 
         <div className="flex justify-end pt-4">
-          {outputItems.length > 0 && (
+          {outputItems.length > 1 && (
             <OutputActions
               items={outputItems.map((item) => ({
                 value: item.value,

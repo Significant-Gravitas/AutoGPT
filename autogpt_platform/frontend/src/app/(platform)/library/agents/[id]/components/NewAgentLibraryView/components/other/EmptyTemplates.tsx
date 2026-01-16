@@ -1,3 +1,5 @@
+"use client";
+
 import { Text } from "@/components/atoms/Text/Text";
 
 export function EmptyTemplates() {
