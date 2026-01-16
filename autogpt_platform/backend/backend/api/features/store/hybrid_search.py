@@ -372,7 +372,9 @@ async def hybrid_search(
     if weights is None:
         weights = DEFAULT_STORE_AGENT_WEIGHTS
     if min_score is None:
-        min_score = DEFAULT_STORE_AGENT_MIN_SCORE  # Use original threshold for store agents
+        min_score = (
+            DEFAULT_STORE_AGENT_MIN_SCORE  # Use original threshold for store agents
+        )
 
     offset = (page - 1) * page_size
 
