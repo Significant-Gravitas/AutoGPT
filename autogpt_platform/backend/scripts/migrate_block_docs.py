@@ -98,7 +98,7 @@ def collect_existing_manual_content() -> dict[str, dict[str, str]]:
 
     # Find all existing md files via git
     result = subprocess.run(
-        ["git", "ls-files", "docs/content/platform/blocks/"],
+        ["git", "ls-files", "docs/integrations/"],
         capture_output=True,
         text=True,
         cwd=Path(__file__).parent.parent.parent.parent,
@@ -150,13 +150,7 @@ def run_migration():
     print(f"Found {len(blocks)} blocks")
 
     print("\nStep 3: Generating new documentation...")
-    output_dir = (
-        Path(__file__).parent.parent.parent.parent
-        / "docs"
-        / "content"
-        / "platform"
-        / "blocks"
-    )
+    output_dir = Path(__file__).parent.parent.parent.parent / "docs" / "integrations"
 
     file_mapping = get_block_file_mapping(blocks)
 
