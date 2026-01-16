@@ -1010,8 +1010,8 @@ model UnifiedContentEmbedding {
   @@index([userId])
   @@index([contentType, userId])
   @@index([embedding], map: "UnifiedContentEmbedding_embedding_idx")
-  // NO @@index for search column - same approach as original StoreListingVersion.search
-  // tsvector works without GIN index (sequential scan), performance comes from embedding HNSW index
+  // NO @@index for search - GIN index "UnifiedContentEmbedding_search_idx" created via SQL migration
+  // Prisma may generate DROP INDEX on migrate dev - that's okay, migration recreates it
 }
 
 model StoreListingReview {
