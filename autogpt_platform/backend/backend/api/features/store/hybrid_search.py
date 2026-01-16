@@ -46,8 +46,9 @@ class UnifiedSearchWeights:
 # Default weights for unified search
 DEFAULT_UNIFIED_WEIGHTS = UnifiedSearchWeights()
 
-# Minimum relevance score threshold
-DEFAULT_MIN_SCORE = 0.15
+# Minimum relevance score thresholds
+DEFAULT_MIN_SCORE = 0.15  # For unified search (more permissive)
+DEFAULT_STORE_AGENT_MIN_SCORE = 0.20  # For store agent search (original threshold)
 
 
 async def unified_hybrid_search(
@@ -371,7 +372,7 @@ async def hybrid_search(
     if weights is None:
         weights = DEFAULT_STORE_AGENT_WEIGHTS
     if min_score is None:
-        min_score = DEFAULT_MIN_SCORE
+        min_score = DEFAULT_STORE_AGENT_MIN_SCORE  # Use original threshold for store agents
 
     offset = (page - 1) * page_size
 
