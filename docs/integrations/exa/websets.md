@@ -11,11 +11,13 @@ The block is useful for stopping long-running operations that are no longer need
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | webset_id | The ID or external ID of the Webset to cancel | str | Yes |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -48,6 +50,7 @@ This pattern prevents duplicate websets when workflows retry or run multiple tim
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | external_id | External identifier for this webset - used to find existing or create new | str | Yes |
@@ -56,6 +59,7 @@ This pattern prevents duplicate websets when workflows retry or run multiple tim
 | metadata | Key-value pairs to associate with the webset | Dict[str, Any] | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -86,6 +90,7 @@ The block supports advanced features like scoped searches (searching within spec
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | search_query | Your search query. Use this to describe what you are looking for. Any URL provided will be crawled and used as context for the search. | str | Yes |
@@ -111,6 +116,7 @@ The block supports advanced features like scoped searches (searching within spec
 | polling_timeout | Maximum time to wait for completion in seconds (only used if wait_for_initial_results is True) | int | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -142,11 +148,13 @@ Use this to clean up websets that are no longer needed or to remove test data. T
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | webset_id | The ID or external ID of the Webset to delete | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -179,11 +187,13 @@ The block returns the webset's current state, metadata, and timestamps. Use this
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | webset_id | The ID or external ID of the Webset to retrieve | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -221,6 +231,7 @@ Use this to discover existing websets, find specific websets by browsing, or bui
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | trigger | Trigger for the webset, value is ignored! | Any | No |
@@ -228,6 +239,7 @@ Use this to discover existing websets, find specific websets by browsing, or bui
 | limit | Number of websets to return (1-100) | int | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -259,6 +271,7 @@ Use this to refine your query and understand what results to expect. The block a
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | query | Your search query to preview. Use this to see how Exa will interpret your search before creating a webset. | str | Yes |
@@ -266,6 +279,7 @@ Use this to refine your query and understand what results to expect. The block a
 | entity_description | Description for custom entity type (required when entity_type is 'custom') | str | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -301,12 +315,14 @@ Setting metadata to null clears all existing metadata. This operation does not a
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | webset_id | The ID or external ID of the Webset to update | str | Yes |
 | metadata | Key-value pairs to associate with this webset (set to null to clear) | Dict[str, Any] | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -340,12 +356,14 @@ Use this block for conditional workflow branching to decide whether to proceed w
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | webset_id | The ID or external ID of the Webset to check | str | Yes |
 | min_items | Minimum number of items required to be 'ready' | int | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -380,11 +398,13 @@ Use this for quick status checks and monitoring without the overhead of retrievi
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | webset_id | The ID or external ID of the Webset | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -421,6 +441,7 @@ You can control what to include in the summary such as sample items, search deta
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | webset_id | The ID or external ID of the Webset | str | Yes |
@@ -430,6 +451,7 @@ You can control what to include in the summary such as sample items, search deta
 | include_enrichment_details | Include details about enrichments | bool | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

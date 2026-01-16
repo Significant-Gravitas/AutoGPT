@@ -11,6 +11,7 @@ The block authenticates using OAuth 2.0 with list write permissions and sends a 
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | name | The name of the List to be created | str | No |
@@ -18,6 +19,7 @@ The block authenticates using OAuth 2.0 with list write permissions and sends a 
 | private | Whether the List should be private | bool | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -48,11 +50,13 @@ The block authenticates using OAuth 2.0 with list write permissions and sends a 
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | list_id | The ID of the List to be deleted | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -82,6 +86,7 @@ The block authenticates using OAuth 2.0 with list write permissions and sends a 
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | list_id | The ID of the List to be updated | str | Yes |
@@ -89,6 +94,7 @@ The block authenticates using OAuth 2.0 with list write permissions and sends a 
 | description | New description for the List | str | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

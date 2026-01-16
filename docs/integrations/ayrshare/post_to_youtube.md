@@ -11,6 +11,7 @@ The block supports YouTube Shorts (up to 3 minutes), geographic targeting to all
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | post | Video description (max 5,000 chars, empty string allowed). Cannot contain < or > characters. | str | Yes |
@@ -42,6 +43,7 @@ The block supports YouTube Shorts (up to 3 minutes), geographic targeting to all
 | subtitle_name | Name of caption track (max 150 chars, default: 'English') | str | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

@@ -11,6 +11,7 @@ Content can be provided as markdown, which gets converted to Notion blocks. For 
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | parent_page_id | Parent page ID to create the page under. Either this OR parent_database_id is required. | str | No |
@@ -21,6 +22,7 @@ Content can be provided as markdown, which gets converted to Notion blocks. For 
 | icon_emoji | Emoji to use as the page icon (e.g., '📄', '🚀') | str | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

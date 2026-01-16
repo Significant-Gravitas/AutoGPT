@@ -11,6 +11,7 @@ AutoGPT uses a modular approach with various "blocks" to handle different tasks.
 Below is a comprehensive list of all available blocks, categorized by their primary function. Click on any block name to view its detailed documentation.
 
 ## Basic Operations
+
 | Block Name | Description |
 |------------|-------------|
 | [Add Memory](basic.md#add-memory) | Add new memories to Mem0 with user segmentation |
@@ -65,6 +66,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [XML Parser](basic.md#xml-parser) | Parses XML using gravitasml to tokenize and coverts it to dict |
 
 ## Data Processing
+
 | Block Name | Description |
 |------------|-------------|
 | [Airtable Create Base](airtable/bases.md#airtable-create-base) | Create or find a base in Airtable |
@@ -157,6 +159,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Screenshot Web Page](data.md#screenshot-web-page) | Takes a screenshot of a specified website using ScreenshotOne API |
 
 ## Text Processing
+
 | Block Name | Description |
 |------------|-------------|
 | [Code Extraction](text.md#code-extraction) | Extracts code blocks from text and identifies their programming languages |
@@ -174,6 +177,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Word Character Count](text.md#word-character-count) | Counts the number of words and characters in a given text |
 
 ## AI and Language Models
+
 | Block Name | Description |
 |------------|-------------|
 | [AI Ad Maker Video Creator](llm.md#ai-ad-maker-video-creator) | Creates an AI‑generated 30‑second advert (text + images) |
@@ -209,6 +213,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Unreal Text To Speech](llm.md#unreal-text-to-speech) | Converts text to speech using the Unreal Speech API |
 
 ## Search and Information Retrieval
+
 | Block Name | Description |
 |------------|-------------|
 | [Ask Wolfram](wolfram/llm_api.md#ask-wolfram) | Ask Wolfram Alpha a question |
@@ -265,6 +270,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Validate Emails](zerobounce/validate_emails.md#validate-emails) | Validate emails |
 
 ## Social Media and Content
+
 | Block Name | Description |
 |------------|-------------|
 | [Create Discord Thread](discord/bot_blocks.md#create-discord-thread) | Creates a new thread in a Discord channel |
@@ -369,6 +375,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Twitter Update List](twitter/manage_lists.md#twitter-update-list) | This block updates a specified Twitter List owned by the authenticated user |
 
 ## Communication
+
 | Block Name | Description |
 |------------|-------------|
 | [Baas Bot Join Meeting](baas/bots.md#baas-bot-join-meeting) | Deploy a bot to join and record a meeting |
@@ -387,6 +394,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Hub Spot Engagement](hubspot/engagement.md#hub-spot-engagement) | Manages HubSpot engagements - sends emails and tracks engagement metrics |
 
 ## Developer Tools
+
 | Block Name | Description |
 |------------|-------------|
 | [Exa Code Context](exa/code_context.md#exa-code-context) | Search billions of GitHub repos, docs, and Stack Overflow for relevant code examples |
@@ -439,6 +447,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Slant3D Order Webhook](slant3d/webhook.md#slant3d-order-webhook) | This block triggers on Slant3D order status updates and outputs the event details, including tracking information when orders are shipped |
 
 ## Media Generation
+
 | Block Name | Description |
 |------------|-------------|
 | [Add Audio To Video](multimedia.md#add-audio-to-video) | Block to attach an audio file to a video file using moviepy |
@@ -446,6 +455,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Media Duration](multimedia.md#media-duration) | Block to get the duration of a media file |
 
 ## Productivity
+
 | Block Name | Description |
 |------------|-------------|
 | [Google Calendar Create Event](google/calendar.md#google-calendar-create-event) | This block creates a new event in Google Calendar with customizable parameters |
@@ -485,6 +495,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Todoist Update Task](todoist/tasks.md#todoist-update-task) | Updates an existing task in Todoist |
 
 ## Logic and Control Flow
+
 | Block Name | Description |
 |------------|-------------|
 | [Calculator](logic.md#calculator) | Performs a mathematical operation on two numbers |
@@ -499,6 +510,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Step Through Items](logic.md#step-through-items) | Iterates over a list or dictionary and outputs each item |
 
 ## Input/Output
+
 | Block Name | Description |
 |------------|-------------|
 | [Exa Webset Webhook](exa/webhook_blocks.md#exa-webset-webhook) | Receive webhook notifications for Exa webset events |
@@ -506,6 +518,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Read RSS Feed](misc.md#read-rss-feed) | Reads RSS feed entries from a given URL |
 
 ## Input/Output
+
 | Block Name | Description |
 |------------|-------------|
 | [Send Authenticated Web Request](misc.md#send-authenticated-web-request) | Make an authenticated HTTP request with host-scoped credentials (JSON / form / multipart) |
@@ -513,11 +526,13 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Send Web Request](misc.md#send-web-request) | Make an HTTP request (JSON / form / multipart) |
 
 ## Agent Integration
+
 | Block Name | Description |
 |------------|-------------|
 | [Agent Executor](misc.md#agent-executor) | Executes an existing agent inside your agent |
 
 ## CRM Services
+
 | Block Name | Description |
 |------------|-------------|
 | [Add Lead To Campaign](smartlead/campaign.md#add-lead-to-campaign) | Add a lead to a campaign in SmartLead |
@@ -527,11 +542,13 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Save Campaign Sequences](smartlead/campaign.md#save-campaign-sequences) | Save sequences within a campaign |
 
 ## AI Safety
+
 | Block Name | Description |
 |------------|-------------|
 | [Nvidia Deepfake Detect](nvidia/deepfake.md#nvidia-deepfake-detect) | Detects potential deepfakes in images using Nvidia's AI API |
 
 ## Issue Tracking
+
 | Block Name | Description |
 |------------|-------------|
 | [Linear Create Comment](linear/comment.md#linear-create-comment) | Creates a new comment on a Linear issue |
@@ -540,6 +557,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Linear Search Projects](linear/projects.md#linear-search-projects) | Searches for projects on Linear |
 
 ## Hardware
+
 | Block Name | Description |
 |------------|-------------|
 | [Compass AI Trigger](compass/triggers.md#compass-ai-trigger) | This block will output the contents of the compass transcription |

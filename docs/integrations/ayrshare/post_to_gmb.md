@@ -11,6 +11,7 @@ The block integrates with Google's Business Profile API through Ayrshare, enabli
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | post | The post text to be published | str | No |
@@ -39,6 +40,7 @@ The block integrates with Google's Business Profile API through Ayrshare, enabli
 | offer_terms_conditions | Terms and conditions for the offer | str | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

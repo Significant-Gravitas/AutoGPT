@@ -11,6 +11,7 @@ The block uses Tweepy with OAuth 2.0 authentication and supports expansions to i
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | expansions | Choose what extra information you want to get with your Twitter Lists: - Select 'List_Owner_ID' to get details about who owns the list  This will let you see more details about the list owner when you also select user fields below. | ListExpansionsFilter | No |
@@ -19,6 +20,7 @@ The block uses Tweepy with OAuth 2.0 authentication and supports expansions to i
 | list_id | The ID of the List to lookup | str | Yes |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -54,6 +56,7 @@ The block uses Tweepy with OAuth 2.0 authentication and supports expansions to i
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | expansions | Choose what extra information you want to get with your Twitter Lists: - Select 'List_Owner_ID' to get details about who owns the list  This will let you see more details about the list owner when you also select user fields below. | ListExpansionsFilter | No |
@@ -64,6 +67,7 @@ The block uses Tweepy with OAuth 2.0 authentication and supports expansions to i
 | pagination_token | Token for pagination | str | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

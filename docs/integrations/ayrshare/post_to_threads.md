@@ -11,6 +11,7 @@ The block authenticates through Meta's API via Ayrshare. Content can mention use
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | post | The post text (max 500 chars, empty string allowed). Only 1 hashtag allowed. Use @handle to mention users. | str | No |
@@ -26,6 +27,7 @@ The block authenticates through Meta's API via Ayrshare. Content can mention use
 | notes | Additional notes for the post | str | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

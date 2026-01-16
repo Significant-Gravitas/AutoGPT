@@ -11,11 +11,13 @@ The block authenticates using OAuth 2.0 with follow write permissions. If the ta
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | target_user_id | The user ID of the user that you would like to follow | str | Yes |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -45,6 +47,7 @@ The block uses Tweepy with OAuth 2.0 authentication. Followers are returned in r
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | expansions | Choose what extra information you want to get with user data. Currently only 'pinned_tweet_id' is available to see a user's pinned tweet. | UserExpansionsFilter | No |
@@ -55,6 +58,7 @@ The block uses Tweepy with OAuth 2.0 authentication. Followers are returned in r
 | pagination_token | Token for retrieving next/previous page of results | str | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -89,6 +93,7 @@ The block uses Tweepy with OAuth 2.0 authentication. Following lists are returne
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | expansions | Choose what extra information you want to get with user data. Currently only 'pinned_tweet_id' is available to see a user's pinned tweet. | UserExpansionsFilter | No |
@@ -99,6 +104,7 @@ The block uses Tweepy with OAuth 2.0 authentication. Following lists are returne
 | pagination_token | Token for retrieving next/previous page of results | str | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -133,11 +139,13 @@ The block authenticates using OAuth 2.0 with follow write permissions and sends 
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | target_user_id | The user ID of the user that you would like to unfollow | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

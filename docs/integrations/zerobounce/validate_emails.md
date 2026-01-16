@@ -11,12 +11,14 @@ The response includes detailed status information, SMTP provider, and recommenda
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | email | Email to validate | str | Yes |
 | ip_address | IP address to validate | str | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the search failed | str |

@@ -11,6 +11,7 @@ You specify the entity type and which columns contain identifiers and URLs. The 
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | title | Title for this import | str | Yes |
@@ -22,6 +23,7 @@ You specify the entity type and which columns contain identifiers and URLs. The 
 | metadata | Metadata to attach to the import | Dict[str, Any] | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -58,11 +60,13 @@ Use this to clean up imports that are no longer needed or contain outdated data.
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | import_id | The ID of the import to delete | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -93,6 +97,7 @@ Supported formats include JSON for structured data, CSV for spreadsheet compatib
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | webset_id | The ID or external ID of the Webset to export | str | Yes |
@@ -102,6 +107,7 @@ Supported formats include JSON for structured data, CSV for spreadsheet compatib
 | max_items | Maximum number of items to export | int | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -135,11 +141,13 @@ The block returns upload status information if the import is pending data upload
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | import_id | The ID of the import to retrieve | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -181,12 +189,14 @@ Use this to discover existing imports that can be referenced in webset searches 
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | limit | Number of imports to return | int | No |
 | cursor | Cursor for pagination | str | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

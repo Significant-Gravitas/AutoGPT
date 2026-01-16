@@ -11,11 +11,13 @@ The answer is returned as a string suitable for display or further processing in
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | question | The question to ask | str | Yes |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

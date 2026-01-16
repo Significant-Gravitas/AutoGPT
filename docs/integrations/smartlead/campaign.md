@@ -11,6 +11,7 @@ Configure upload settings to control duplicate handling and campaign status. The
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | campaign_id | The ID of the campaign to add the lead to | int | Yes |
@@ -18,6 +19,7 @@ Configure upload settings to control duplicate handling and campaign status. The
 | settings | Settings for lead upload | LeadUploadSettings | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the lead was not added to the campaign | str |
@@ -53,11 +55,13 @@ Use the campaign ID with other SmartLead blocks to add leads, configure sequence
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | name | The name of the campaign | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the search failed | str |
@@ -89,12 +93,14 @@ Each sequence includes the email subject, body, and delay settings for automated
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | campaign_id | The ID of the campaign to save sequences for | int | Yes |
 | sequences | The sequences to save | List[Sequence] | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the sequences were not saved | str |

@@ -11,6 +11,7 @@ The block authenticates through Ayrshare and submits content to your connected R
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | post | The post text to be published | str | No |
@@ -26,6 +27,7 @@ The block authenticates through Ayrshare and submits content to your connected R
 | notes | Additional notes for the post | str | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

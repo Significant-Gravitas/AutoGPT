@@ -9,6 +9,7 @@ It takes label details as input, connects to Todoist API, creates the label and 
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | name | Name of the label | str | Yes |
@@ -17,6 +18,7 @@ It takes label details as input, connects to Todoist API, creates the label and 
 | is_favorite | Whether the label is a favorite | bool | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -46,11 +48,13 @@ The operation is irreversible, so any tasks previously tagged with this label wi
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | label_id | ID of the label to delete | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -78,11 +82,13 @@ Uses the label ID to retrieve label details from Todoist API.
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | label_id | ID of the label to retrieve | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -112,6 +118,7 @@ The API returns a list of label names that are currently in use across shared pr
 <!-- END MANUAL -->
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -139,6 +146,7 @@ Connects to Todoist API using provided credentials and retrieves all labels.
 <!-- END MANUAL -->
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -166,11 +174,13 @@ The removal affects all instances of the label across collaborative projects, un
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | name | The name of the label to remove | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -200,12 +210,14 @@ The rename is atomic across the entire account, ensuring consistent label naming
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | name | The name of the existing label to rename | str | Yes |
 | new_name | The new name for the label | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -235,6 +247,7 @@ Only the fields you provide are updated; omitted fields retain their current val
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | label_id | ID of the label to update | str | Yes |
@@ -244,6 +257,7 @@ Only the fields you provide are updated; omitted fields retain their current val
 | is_favorite | Whether the label is a favorite (true/false) | bool | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

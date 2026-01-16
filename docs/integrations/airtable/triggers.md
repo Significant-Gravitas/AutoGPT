@@ -11,6 +11,7 @@ You specify which events to listen for using the event selector. The webhook pay
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | base_id | Airtable base ID | str | Yes |
@@ -18,6 +19,7 @@ You specify which events to listen for using the event selector. The webhook pay
 | events | Airtable webhook event filter | AirtableEventSelector | Yes |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

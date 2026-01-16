@@ -9,6 +9,7 @@ The Calculator block takes in two numbers and an operation choice. It then appli
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | operation | Choose the math operation you want to perform | "Add" \| "Subtract" \| "Multiply" | Yes |
@@ -17,6 +18,7 @@ The Calculator block takes in two numbers and an operation choice. It then appli
 | round_result | Do you want to round the result to a whole number? | bool | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -42,6 +44,7 @@ Optionally specify yes_value and no_value to output different data than the inpu
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | value1 | Enter the first value for comparison | Value1 | Yes |
@@ -51,6 +54,7 @@ Optionally specify yes_value and no_value to output different data than the inpu
 | no_value | (Optional) Value to output if the condition is false. If not provided, value1 will be used. | No Value | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -80,11 +84,13 @@ The Count Items block receives a collection as input. It then determines the typ
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | collection | Enter the collection you want to count. This can be a list, dictionary, string, or any other iterable. | Collection | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -110,6 +116,7 @@ Configure sample_size to control how many items to select. Use random_seed for r
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | data | The dataset to sample from. Can be a single dictionary, a list of dictionaries, or a list of lists. | Dict[str, Any] \| List[Dict[str, Any] \| List[Any]] | Yes |
@@ -122,6 +129,7 @@ Configure sample_size to control how many items to select. Use random_seed for r
 | cluster_key | Key to use for cluster sampling (required for cluster sampling). | str | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -152,6 +160,7 @@ Use yes_value and no_value to specify what data to output in each case. This pro
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | input | The input to match against | Input | Yes |
@@ -160,6 +169,7 @@ Use yes_value and no_value to specify what data to output in each case. This pro
 | no_value | The value to output if the input does not match | No Value | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -191,6 +201,7 @@ For serverless deployment, configure the cloud provider and region. The block re
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | index_name | Name of the Pinecone index | str | Yes |
@@ -200,6 +211,7 @@ For serverless deployment, configure the cloud provider and region. The block re
 | region | Region for serverless | str | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -230,6 +242,7 @@ Use namespaces to organize vectors into logical groups within the same index. Th
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | index | Initialized Pinecone index | str | Yes |
@@ -239,6 +252,7 @@ Use namespaces to organize vectors into logical groups within the same index. Th
 | metadata | Additional metadata to store with each vector | Dict[str, Any] | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -268,6 +282,7 @@ Results include similarity scores and optionally the vector values and metadata.
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | query_vector | Query vector | List[Any] | Yes |
@@ -279,6 +294,7 @@ Results include similarity scores and optionally the vector values and metadata.
 | idx_name | Index name for pinecone | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -307,6 +323,7 @@ When given a list or dictionary, the block processes each item individually. For
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | items | The list or dictionary of items to iterate over | List[Any] | No |
@@ -314,6 +331,7 @@ When given a list or dictionary, the block processes each item individually. For
 | items_str | The list or dictionary of items to iterate over | str | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

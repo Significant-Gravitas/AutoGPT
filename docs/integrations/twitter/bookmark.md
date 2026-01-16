@@ -11,11 +11,13 @@ The block authenticates using OAuth 2.0 with bookmark write permissions and send
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | tweet_id | ID of the tweet to bookmark | str | Yes |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -45,6 +47,7 @@ The block uses Tweepy with OAuth 2.0 authentication and supports extensive expan
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | expansions | Choose what extra information you want to get with your tweets. For example: - Select 'Media_Keys' to get media details - Select 'Author_User_ID' to get user information - Select 'Place_ID' to get location details | ExpansionFilter | No |
@@ -57,6 +60,7 @@ The block uses Tweepy with OAuth 2.0 authentication and supports extensive expan
 | pagination_token | Token for pagination | str | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -93,11 +97,13 @@ The block authenticates using OAuth 2.0 with bookmark write permissions and send
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | tweet_id | ID of the tweet to remove bookmark from | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the bookmark removal failed | str |

@@ -11,6 +11,7 @@ Results include all property values for each entry, the entry IDs for further op
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | database_id | Notion database ID. Must be accessible by the connected integration. | str | Yes |
@@ -21,6 +22,7 @@ Results include all property values for each entry, the entry IDs for further op
 | limit | Maximum number of entries to retrieve | int | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

@@ -11,6 +11,7 @@ The block uses Tweepy with OAuth 2.0 authentication and supports extensive expan
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | expansions | Choose what extra information you want to get with your tweets. For example: - Select 'Media_Keys' to get media details - Select 'Author_User_ID' to get user information - Select 'Place_ID' to get location details | ExpansionFilter | No |
@@ -22,6 +23,7 @@ The block uses Tweepy with OAuth 2.0 authentication and supports extensive expan
 | tweet_id | Unique identifier of the Tweet to request (ex: 1460323737035677698) | str | Yes |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -57,6 +59,7 @@ The block uses Tweepy with OAuth 2.0 authentication and supports extensive expan
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | expansions | Choose what extra information you want to get with your tweets. For example: - Select 'Media_Keys' to get media details - Select 'Author_User_ID' to get user information - Select 'Place_ID' to get location details | ExpansionFilter | No |
@@ -68,6 +71,7 @@ The block uses Tweepy with OAuth 2.0 authentication and supports extensive expan
 | tweet_ids | List of Tweet IDs to request (up to 100) | List[str] | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

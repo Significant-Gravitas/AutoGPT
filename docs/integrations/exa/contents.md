@@ -11,6 +11,7 @@ The block supports subpage crawling to gather related content and offers various
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | urls | Array of URLs to crawl (preferred over 'ids') | List[str] | No |
@@ -25,6 +26,7 @@ The block supports subpage crawling to gather related content and offers various
 | extras | Extra parameters for additional content | ExtrasSettings | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the request failed | str |

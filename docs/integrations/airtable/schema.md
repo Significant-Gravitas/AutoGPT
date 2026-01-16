@@ -11,6 +11,7 @@ The field is created immediately and becomes available for use in all records. R
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | base_id | The Airtable base ID | str | Yes |
@@ -21,6 +22,7 @@ The field is created immediately and becomes available for use in all records. R
 | options | The options of the field to create | Dict[str, str] | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -51,6 +53,7 @@ The table is created with the defined schema and is immediately ready for use. R
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | base_id | The Airtable base ID | str | Yes |
@@ -58,6 +61,7 @@ The table is created with the defined schema and is immediately ready for use. R
 | table_fields | Table fields with name, type, and options | List[Dict[str, Any]] | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -88,11 +92,13 @@ The schema includes field configurations, validation rules, and relationship def
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | base_id | The Airtable base ID | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -123,6 +129,7 @@ Changes take effect immediately across all records and views that use the field.
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | base_id | The Airtable base ID | str | Yes |
@@ -132,6 +139,7 @@ Changes take effect immediately across all records and views that use the field.
 | description | The description of the field to update | str | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -161,6 +169,7 @@ This is useful for maintaining table metadata and organizing your base structure
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | base_id | The Airtable base ID | str | Yes |
@@ -170,6 +179,7 @@ This is useful for maintaining table metadata and organizing your base structure
 | date_dependency | The date dependency of the table to update | Dict[str, Any] | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

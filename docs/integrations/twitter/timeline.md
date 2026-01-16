@@ -11,6 +11,7 @@ The block uses Tweepy with OAuth 2.0 authentication and supports extensive expan
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | start_time | Start time in YYYY-MM-DDTHH:mm:ssZ format. If set to a time less than 10 seconds ago, it will be automatically adjusted to 10 seconds ago (Twitter API requirement). | str (date-time) | No |
@@ -28,6 +29,7 @@ The block uses Tweepy with OAuth 2.0 authentication and supports extensive expan
 | pagination_token | Token for pagination | str | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -64,6 +66,7 @@ The block uses Tweepy with OAuth 2.0 authentication and supports time-based filt
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | start_time | Start time in YYYY-MM-DDTHH:mm:ssZ format. If set to a time less than 10 seconds ago, it will be automatically adjusted to 10 seconds ago (Twitter API requirement). | str (date-time) | No |
@@ -82,6 +85,7 @@ The block uses Tweepy with OAuth 2.0 authentication and supports time-based filt
 | pagination_token | Token for pagination | str | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -118,6 +122,7 @@ The block uses Tweepy with OAuth 2.0 authentication and supports time-based filt
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | start_time | Start time in YYYY-MM-DDTHH:mm:ssZ format. If set to a time less than 10 seconds ago, it will be automatically adjusted to 10 seconds ago (Twitter API requirement). | str (date-time) | No |
@@ -136,6 +141,7 @@ The block uses Tweepy with OAuth 2.0 authentication and supports time-based filt
 | pagination_token | Token for pagination | str | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

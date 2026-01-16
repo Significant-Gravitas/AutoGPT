@@ -11,6 +11,7 @@ Configure location and language targeting to get region-specific results. Option
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | keyword | Seed keyword to get suggestions for | str | Yes |
@@ -22,6 +23,7 @@ Configure location and language targeting to get region-specific results. Option
 | limit | Maximum number of results (up to 3000) | int | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -54,11 +56,13 @@ Each field including keyword text, search volume, competition level, CPC, diffic
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | suggestion | The keyword suggestion object to extract fields from | KeywordSuggestion | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

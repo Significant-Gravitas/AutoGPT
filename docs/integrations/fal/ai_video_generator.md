@@ -11,12 +11,14 @@ The generated video URL is returned along with progress logs for monitoring long
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | prompt | Description of the video to generate. | str | Yes |
 | model | The FAL model to use for video generation. | "fal-ai/mochi-v1" \| "fal-ai/luma-dream-machine" \| "fal-ai/veo3" | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if video generation failed. | str |

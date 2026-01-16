@@ -11,6 +11,7 @@ The block authenticates through Ayrshare and uploads video content with optional
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | post | The post text (optional for video-only content) | str | No |
@@ -28,6 +29,7 @@ The block authenticates through Ayrshare and uploads video content with optional
 | video_thumbnail | Thumbnail URL for video content (optional, auto-generated if not provided) | str | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

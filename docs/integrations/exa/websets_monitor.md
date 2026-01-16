@@ -11,6 +11,7 @@ Configure the cron expression for your desired frequency (daily, weekly, etc.) a
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | webset_id | The ID or external ID of the Webset to monitor | str | Yes |
@@ -27,6 +28,7 @@ Configure the cron expression for your desired frequency (daily, weekly, etc.) a
 | metadata | Metadata to attach to the monitor | Dict[str, Any] | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -63,11 +65,13 @@ Use this to clean up monitors that are no longer needed or to stop scheduled ope
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | monitor_id | The ID of the monitor to delete | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -98,11 +102,13 @@ Use this to verify monitor settings, check when the next run is scheduled, or re
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | monitor_id | The ID of the monitor to retrieve | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -143,6 +149,7 @@ Use this to get an overview of all active monitors or find monitors associated w
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | webset_id | Filter monitors by webset ID | str | No |
@@ -150,6 +157,7 @@ Use this to get an overview of all active monitors or find monitors associated w
 | cursor | Cursor for pagination | str | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -182,6 +190,7 @@ Changes take effect immediately. Disabling a monitor stops future scheduled runs
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | monitor_id | The ID of the monitor to update | str | Yes |
@@ -191,6 +200,7 @@ Changes take effect immediately. Disabling a monitor stops future scheduled runs
 | metadata | New metadata for the monitor | Dict[str, Any] | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

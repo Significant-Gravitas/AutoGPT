@@ -11,6 +11,7 @@ Use this to populate filament selection dropdowns or validate filament choices b
 <!-- END MANUAL -->
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

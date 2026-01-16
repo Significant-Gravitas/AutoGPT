@@ -11,11 +11,13 @@ The block supports 16 programming languages including Python, JavaScript, HTML, 
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | text | Text containing code blocks to extract (e.g., AI response) | str | Yes |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -59,12 +61,14 @@ The block concatenates all the input texts in the order they are provided, inser
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | input | text input to combine | List[str] | Yes |
 | delimiter | Delimiter to combine texts | str | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -90,6 +94,7 @@ The block supports a repeat parameter, allowing the timer to fire multiple times
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | input_message | Message to output after the timer finishes | Input Message | No |
@@ -100,6 +105,7 @@ The block supports a repeat parameter, allowing the timer to fire multiple times
 | repeat | Number of times to repeat the timer | int | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -127,6 +133,7 @@ The block uses regular expressions to find the specified pattern in the text. It
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | text | Text to parse | Text | Yes |
@@ -137,6 +144,7 @@ The block uses regular expressions to find the specified pattern in the text. It
 | find_all | Find all matches | bool | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -163,6 +171,7 @@ The block uses a template engine to replace placeholders in the format string wi
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | values | Values (dict) to be used in format. These values can be used by putting them in double curly braces in the format template. e.g. {{value_name}}. | Dict[str, Any] | Yes |
@@ -170,6 +179,7 @@ The block uses a template engine to replace placeholders in the format string wi
 | escape_html | Whether to escape special characters in the inserted values to be HTML-safe. Enable for HTML output, disable for plain text. | bool | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -195,6 +205,7 @@ The block supports two format types: strftime (customizable format strings like 
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | trigger | Trigger any data to output the current date | str | Yes |
@@ -202,6 +213,7 @@ The block supports two format types: strftime (customizable format strings like 
 | format_type | Format type for date output (strftime with custom format or ISO 8601) | Format Type | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -231,12 +243,14 @@ You can configure the timezone to use either a specific timezone (e.g., "America
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | trigger | Trigger any data to output the current date and time | str | Yes |
 | format_type | Format type for date and time output (strftime with custom format or ISO 8601/RFC 3339) | Format Type | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -266,12 +280,14 @@ The timezone can be configured to a specific timezone or to use the user's profi
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | trigger | Trigger any data to output the current time | str | Yes |
 | format_type | Format type for time output (strftime with custom format or ISO 8601) | Format Type | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -299,6 +315,7 @@ The block uses regular expressions to search for the specified pattern within th
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | text | Text to match | Text | Yes |
@@ -308,6 +325,7 @@ The block uses regular expressions to search for the specified pattern within th
 | dot_all | Dot matches all | bool | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -334,11 +352,13 @@ This is useful when working with data from APIs or files where escape sequences 
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | text | A string containing escaped characters to be decoded | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -368,6 +388,7 @@ Unlike regex-based replacements, this block performs literal string matching, ma
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | text | The text to replace. | str | Yes |
@@ -375,6 +396,7 @@ Unlike regex-based replacements, this block performs literal string matching, ma
 | new | The new text to replace with. | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -404,6 +426,7 @@ By default, the block also strips whitespace from each resulting substring (cont
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | text | The text to split. | str | Yes |
@@ -411,6 +434,7 @@ By default, the block also strips whitespace from each resulting substring (cont
 | strip | Whether to strip the text. | bool | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -440,11 +464,13 @@ This provides a quick way to measure text length for validation, summarization c
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | text | Input text to count words and characters | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the counting operation failed | str |

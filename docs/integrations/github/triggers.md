@@ -11,12 +11,14 @@ The block parses the webhook payload and extracts discussion details including t
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | repo | Repository to subscribe to.  **Note:** Make sure your GitHub credentials have permissions to create webhooks on this repo. | str | Yes |
 | events | The discussion events to subscribe to | Events | Yes |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the payload could not be processed | str |
@@ -56,12 +58,14 @@ The block extracts issue details including the title, body, labels, assignees, s
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | repo | Repository to subscribe to.  **Note:** Make sure your GitHub credentials have permissions to create webhooks on this repo. | str | Yes |
 | events | The issue events to subscribe to | Events | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the payload could not be processed | str |
@@ -101,12 +105,14 @@ The block extracts PR details including the number, URL, and full pull request o
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | repo | Repository to subscribe to.  **Note:** Make sure your GitHub credentials have permissions to create webhooks on this repo. | str | Yes |
 | events | The events to subscribe to | Events | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the payload could not be processed | str |
@@ -141,12 +147,14 @@ The block extracts release details including tag name, release name, release not
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | repo | Repository to subscribe to.  **Note:** Make sure your GitHub credentials have permissions to create webhooks on this repo. | str | Yes |
 | events | The release events to subscribe to | Events | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the payload could not be processed | str |
@@ -186,12 +194,14 @@ The block extracts star details including the timestamp, current star count, rep
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | repo | Repository to subscribe to.  **Note:** Make sure your GitHub credentials have permissions to create webhooks on this repo. | str | Yes |
 | events | The star events to subscribe to | Events | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the payload could not be processed | str |

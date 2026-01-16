@@ -11,6 +11,7 @@ Results can be filtered by headquarters location, excluded locations, industry k
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | organization_num_employees_range | The number range of employees working for the company. This enables you to find companies based on headcount. You can add multiple ranges to expand your search results.  Each range you add needs to be a string, with the upper and lower numbers of the range separated only by a comma. | List[int] | No |
@@ -22,6 +23,7 @@ Results can be filtered by headquarters location, excluded locations, industry k
 | max_results | The maximum number of results to return. If you don't specify this parameter, the default is 100. | int | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the search failed | str |

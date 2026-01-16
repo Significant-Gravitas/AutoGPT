@@ -11,12 +11,14 @@ The block authenticates using OAuth 2.0 with list write permissions. Only the li
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | list_id | The ID of the List to add the member to | str | Yes |
 | user_id | The ID of the user to add to the List | str | Yes |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -46,6 +48,7 @@ The block uses Tweepy with OAuth 2.0 authentication. Works for public lists and 
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | expansions | Choose what extra information you want to get with user data. Currently only 'pinned_tweet_id' is available to see a user's pinned tweet. | UserExpansionsFilter | No |
@@ -56,6 +59,7 @@ The block uses Tweepy with OAuth 2.0 authentication. Works for public lists and 
 | pagination_token | Token for pagination of results | str | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -90,6 +94,7 @@ The block uses Tweepy with OAuth 2.0 authentication and supports expansions for 
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | expansions | Choose what extra information you want to get with your Twitter Lists: - Select 'List_Owner_ID' to get details about who owns the list  This will let you see more details about the list owner when you also select user fields below. | ListExpansionsFilter | No |
@@ -100,6 +105,7 @@ The block uses Tweepy with OAuth 2.0 authentication and supports expansions for 
 | pagination_token | Token for pagination of results | str | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -133,12 +139,14 @@ The block authenticates using OAuth 2.0 with list write permissions. Only the li
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | list_id | The ID of the List to remove the member from | str | Yes |
 | user_id | The ID of the user to remove from the List | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

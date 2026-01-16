@@ -11,11 +11,13 @@ The payload includes order details and, when applicable, shipping information li
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | events | Order status events to subscribe to | Events | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if payload processing failed | str |

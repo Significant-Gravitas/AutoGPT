@@ -11,6 +11,7 @@ The block accepts either plain text or structured message objects (like those fr
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | content | Content to add - either a string or list of message objects as output from an AI block | Content | No |
@@ -19,6 +20,7 @@ The block accepts either plain text or structured message objects (like those fr
 | limit_memory_to_agent | Limit the memory to the agent | bool | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -50,6 +52,7 @@ The block outputs the updated dictionary with all new entries added. This is use
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | dictionary | The dictionary to add the entry to. If not provided, a new dictionary will be created. | Dict[str, Any] | No |
@@ -58,6 +61,7 @@ The block outputs the updated dictionary with all new entries added. This is use
 | entries | The entries to add to the dictionary. This is the batch version of the `key` and `value` fields. | Dict[str, Any] | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -87,6 +91,7 @@ Items can be of any type—strings, numbers, dictionaries, or other lists. This 
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | list | The list to add the entry to. If not provided, a new list will be created. | List[Any] | No |
@@ -95,6 +100,7 @@ Items can be of any type—strings, numbers, dictionaries, or other lists. This 
 | position | The position to insert the new entry. If not provided, the entry will be appended to the end of the list. | int | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -124,6 +130,7 @@ The block is part of the Agent Input family, allowing you to collect structured 
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | name | The name of the input. | str | Yes |
@@ -134,6 +141,7 @@ The block is part of the Agent Input family, allowing you to collect structured 
 | secret | Whether the input should be treated as a secret. | bool | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | result | Date result. | str (date) |
@@ -162,6 +170,7 @@ This is ideal when you want to constrain user input to a predefined set of choic
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | name | The name of the input. | str | Yes |
@@ -173,6 +182,7 @@ This is ideal when you want to constrain user input to a predefined set of choic
 | secret | Whether the input should be treated as a secret. | bool | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | result | Selected dropdown value. | str |
@@ -201,6 +211,7 @@ By default, the block outputs a file path string that other blocks can use to ac
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | name | The name of the input. | str | Yes |
@@ -212,6 +223,7 @@ By default, the block outputs a file path string that other blocks can use to ac
 | base_64 | Whether produce an output in base64 format (not recommended, you can pass the string path just fine accross blocks). | bool | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | result | File reference/path result. | str |
@@ -240,6 +252,7 @@ You can configure which file types to display (documents, spreadsheets, presenta
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | name | The name of the input. | str | Yes |
@@ -252,6 +265,7 @@ You can configure which file types to display (documents, spreadsheets, presenta
 | allow_folder_selection | Whether to allow selecting folders. | bool | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | result | The selected Google Drive file with ID, name, URL, and other metadata. | GoogleDriveFile |
@@ -278,6 +292,7 @@ It accepts a value from the user, along with metadata such as name, description,
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | name | The name of the input. | str | Yes |
@@ -288,6 +303,7 @@ It accepts a value from the user, along with metadata such as name, description,
 | secret | Whether the input should be treated as a secret. | bool | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | result | The value passed as input. | Result |
@@ -312,6 +328,7 @@ The block is ideal for collecting longer-form content like messages, description
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | name | The name of the input. | str | Yes |
@@ -322,6 +339,7 @@ The block is ideal for collecting longer-form content like messages, description
 | secret | Whether the input should be treated as a secret. | bool | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | result | Long text result. | str |
@@ -350,6 +368,7 @@ This is useful when you need numeric parameters like quantities, counts, limits,
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | name | The name of the input. | str | Yes |
@@ -360,6 +379,7 @@ This is useful when you need numeric parameters like quantities, counts, limits,
 | secret | Whether the input should be treated as a secret. | bool | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | result | Number result. | int |
@@ -386,6 +406,7 @@ It accepts an input value along with a name, description, and optional format st
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | value | The value to be recorded as output. | Value | No |
@@ -398,6 +419,7 @@ It accepts an input value along with a name, description, and optional format st
 | secret | Whether the output should be treated as a secret. | bool | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | output | The value recorded as output. | Output |
@@ -423,6 +445,7 @@ The input displays as a standard text field and passes the entered text to downs
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | name | The name of the input. | str | Yes |
@@ -433,6 +456,7 @@ The input displays as a standard text field and passes the entered text to downs
 | secret | Whether the input should be treated as a secret. | bool | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | result | Short text result. | str |
@@ -461,6 +485,7 @@ The table input is ideal for structured data entry where users need to provide m
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | name | The name of the input. | str | Yes |
@@ -472,6 +497,7 @@ The table input is ideal for structured data entry where users need to provide m
 | column_headers | Column headers for the table. | List[str] | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | result | The table data as a list of dictionaries with headers as keys. | List[Dict[str, Any]] |
@@ -500,6 +526,7 @@ The time picker provides a user-friendly interface for selecting times without r
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | name | The name of the input. | str | Yes |
@@ -510,6 +537,7 @@ The time picker provides a user-friendly interface for selecting times without r
 | secret | Whether the input should be treated as a secret. | bool | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | result | Time result. | str (time) |
@@ -538,6 +566,7 @@ The toggle is ideal for binary choices like enabling features, confirming action
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | name | The name of the input. | str | Yes |
@@ -548,6 +577,7 @@ The toggle is ideal for binary choices like enabling features, confirming action
 | secret | Whether the input should be treated as a secret. | bool | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | result | Boolean toggle result. | bool |
@@ -576,11 +606,13 @@ This enables extensibility by allowing custom blocks to be added without modifyi
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | code | Python code of the block to be installed | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the block installation fails | str |
@@ -610,11 +642,13 @@ This is useful for conditional logic where you need to verify if data was return
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | dictionary | The dictionary to check. | Dict[str, Any] | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -644,12 +678,14 @@ The block outputs a file path that other blocks can use to access the stored fil
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | file_in | The file to store in the temporary directory, it can be a URL, data URI, or local path. | str (file) | Yes |
 | base_64 | Whether produce an output in base64 format (not recommended, you can pass the string path just fine accross blocks). | bool | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -679,12 +715,14 @@ This enables safe data access with built-in handling for missing keys, preventin
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | input | Dictionary to lookup from | Input | Yes |
 | key | Key to lookup in the dictionary | str \| int | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -715,12 +753,14 @@ This enables conditional logic based on list membership and helps locate items f
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | list | The list to search in. | List[Any] | Yes |
 | value | The value to search for. | Value | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -752,6 +792,7 @@ Memories are returned as a list that your workflow can iterate through. This is 
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | trigger | An unused field that is used to trigger the block when you have no other inputs | bool | No |
@@ -761,6 +802,7 @@ Memories are returned as a list that your workflow can iterate through. This is 
 | limit_memory_to_agent | Limit the memory to the agent | bool | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -790,6 +832,7 @@ This is useful for quickly accessing the last piece of information stored withou
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | trigger | An unused field that is used to trigger the block when you have no other inputs | bool | No |
@@ -800,6 +843,7 @@ This is useful for quickly accessing the last piece of information stored withou
 | limit_memory_to_agent | Limit the memory to the agent | bool | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -830,12 +874,14 @@ If the index is out of range, the block outputs an error. This is useful for acc
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | list | The list to get the item from. | List[Any] | Yes |
 | index | The 0-based index of the item (supports negative indices). | int | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -863,12 +909,14 @@ The block sends a request to a weather API (like OpenWeatherMap) with the provid
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | location | Location to get weather information for | str | Yes |
 | use_celsius | Whether to use Celsius or Fahrenheit for temperature | bool | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the weather information cannot be retrieved | str |
@@ -896,6 +944,7 @@ This enables human oversight at critical points in automated workflows, ensuring
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | data | The data to be reviewed by a human user | Data | Yes |
@@ -903,6 +952,7 @@ This enables human oversight at critical points in automated workflows, ensuring
 | editable | Whether the human reviewer can edit the data | bool | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -934,11 +984,13 @@ This is useful for conditional logic where you need to verify if search results 
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | list | The list to check. | List[Any] | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -966,11 +1018,13 @@ It simply accepts a text input and passes it through as an output to be displaye
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | text | The text to display in the sticky note. | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -996,11 +1050,13 @@ The block accepts any data type and both prints it for debugging visibility and 
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | text | The data to print to the console. | Text | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -1031,6 +1087,7 @@ If the key doesn't exist in the dictionary, the operation may error or return th
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | dictionary | The dictionary to modify. | Dict[str, Any] | Yes |
@@ -1038,6 +1095,7 @@ If the key doesn't exist in the dictionary, the operation may error or return th
 | return_value | Whether to return the removed value. | bool | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -1068,6 +1126,7 @@ This provides flexibility for both "remove this specific item" and "remove the i
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | list | The list to modify. | List[Any] | Yes |
@@ -1076,6 +1135,7 @@ This provides flexibility for both "remove this specific item" and "remove the i
 | return_item | Whether to return the removed item. | bool | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -1106,6 +1166,7 @@ This is useful for updating specific fields in a data object while preserving al
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | dictionary | The dictionary to modify. | Dict[str, Any] | Yes |
@@ -1113,6 +1174,7 @@ This is useful for updating specific fields in a data object while preserving al
 | value | The new value for the given key. | Value | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -1143,6 +1205,7 @@ This is useful for updating specific elements in an ordered list without rebuild
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | list | The list to modify. | List[Any] | Yes |
@@ -1150,6 +1213,7 @@ This is useful for updating specific elements in an ordered list without rebuild
 | value | The new value for the given index. | Value | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -1180,11 +1244,13 @@ This is useful for changing the processing order of items or displaying lists in
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | input_list | The list to reverse | List[Any] | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -1214,6 +1280,7 @@ The search is performed against the Mem0 memory store and returns memories ranke
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | query | Search query | str | Yes |
@@ -1224,6 +1291,7 @@ The search is performed against the Mem0 memory store and returns memories ranke
 | limit_memory_to_agent | Limit the memory to the agent | bool | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -1251,12 +1319,14 @@ It accepts an input value and optionally a data value. If a data value is provid
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | input | Trigger the block to produce the output. The value is only used when `data` is None. | Input | Yes |
 | data | The constant data to be retained in the block. This value is passed as `output`. | Data | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -1282,12 +1352,14 @@ This is useful when data from different sources needs to be in a consistent type
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | value | The value to convert to a universal type. | Value | Yes |
 | type | The type to convert the value to. | "string" \| "number" \| "boolean" | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -1317,11 +1389,13 @@ This makes XML data accessible using standard dictionary operations, allowing yo
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | input_xml | input xml to be parsed | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error in parsing | str |

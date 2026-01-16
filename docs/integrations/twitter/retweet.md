@@ -11,6 +11,7 @@ The block uses Tweepy with OAuth 2.0 authentication. Users are returned with pag
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | expansions | Choose what extra information you want to get with user data. Currently only 'pinned_tweet_id' is available to see a user's pinned tweet. | UserExpansionsFilter | No |
@@ -21,6 +22,7 @@ The block uses Tweepy with OAuth 2.0 authentication. Users are returned with pag
 | pagination_token | Token for pagination | str | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -56,11 +58,13 @@ The block authenticates using OAuth 2.0 with tweet write permissions and sends a
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | tweet_id | ID of the tweet to remove retweet | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -90,11 +94,13 @@ The block authenticates using OAuth 2.0 with tweet write permissions and sends a
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | tweet_id | ID of the tweet to retweet | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

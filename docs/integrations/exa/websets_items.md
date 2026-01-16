@@ -11,6 +11,7 @@ Use this for batch processing when you need all webset data at once rather than 
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | webset_id | The ID or external ID of the Webset | str | Yes |
@@ -19,6 +20,7 @@ Use this for batch processing when you need all webset data at once rather than 
 | include_content | Include full content for each item | bool | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -51,12 +53,14 @@ Use this to clean up irrelevant results, remove duplicates, or curate webset con
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | webset_id | The ID or external ID of the Webset | str | Yes |
 | item_id | The ID of the item to delete | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -87,6 +91,7 @@ Save the returned next_cursor for subsequent calls to implement continuous incre
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | webset_id | The ID or external ID of the Webset | str | Yes |
@@ -94,6 +99,7 @@ Save the returned next_cursor for subsequent calls to implement continuous incre
 | max_items | Maximum number of new items to retrieve | int | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -127,12 +133,14 @@ The block returns the full item record with all available data, timestamps, and 
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | webset_id | The ID or external ID of the Webset | str | Yes |
 | item_id | The ID of the specific item to retrieve | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -169,6 +177,7 @@ Use pagination cursors to iterate through large websets efficiently. Each page r
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | webset_id | The ID or external ID of the Webset | str | Yes |
@@ -178,6 +187,7 @@ Use pagination cursors to iterate through large websets efficiently. Each page r
 | wait_timeout | Maximum time to wait for items in seconds | int | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -211,12 +221,14 @@ Use this to understand webset contents at a glance, check enrichment availabilit
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | webset_id | The ID or external ID of the Webset | str | Yes |
 | sample_size | Number of sample items to include | int | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

@@ -11,11 +11,13 @@ The block authenticates using OAuth 2.0 with tweet write permissions and sends a
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | tweet_id | ID of the tweet to delete | str | Yes |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the tweet deletion failed | str |
@@ -45,6 +47,7 @@ The block supports advanced features like restricting replies to mentioned users
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | tweet_text | Text of the tweet to post | str | No |
@@ -55,6 +58,7 @@ The block supports advanced features like restricting replies to mentioned users
 | reply_settings | Who can reply to the Tweet (mentionedUsers or following) | TweetReplySettingsFilter | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the tweet posting failed | str |
@@ -85,6 +89,7 @@ Results can be filtered by time range (start/end times), sorted by recency or re
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | start_time | Start time in YYYY-MM-DDTHH:mm:ssZ format. If set to a time less than 10 seconds ago, it will be automatically adjusted to 10 seconds ago (Twitter API requirement). | str (date-time) | No |
@@ -103,6 +108,7 @@ Results can be filtered by time range (start/end times), sorted by recency or re
 | pagination | Token for pagination | str | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

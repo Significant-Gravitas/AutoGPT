@@ -9,12 +9,14 @@ The block takes the GitHub credentials, the URL of the issue or pull request, an
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | issue_url | URL of the GitHub issue or pull request | str | Yes |
 | label | Label to add to the issue or pull request | str | Yes |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the label addition failed | str |
@@ -38,12 +40,14 @@ The block takes the GitHub credentials, the URL of the issue, and the username o
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | issue_url | URL of the GitHub issue | str | Yes |
 | assignee | Username to assign to the issue | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the issue assignment failed | str |
@@ -67,12 +71,14 @@ The block takes the GitHub credentials, the URL of the issue or pull request, an
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | issue_url | URL of the GitHub issue or pull request | str | Yes |
 | comment | Comment to post on the issue or pull request | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the comment posting failed | str |
@@ -99,11 +105,13 @@ Each comment includes the comment ID, body text, author username, and a direct U
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | issue_url | URL of the GitHub issue or pull request | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -132,11 +140,13 @@ The block takes the GitHub credentials and repository URL as inputs. It then sen
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | repo_url | URL of the GitHub repository | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -161,6 +171,7 @@ The block takes the GitHub credentials, repository URL, issue title, and issue b
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | repo_url | URL of the GitHub repository | str | Yes |
@@ -168,6 +179,7 @@ The block takes the GitHub credentials, repository URL, issue title, and issue b
 | body | Body of the issue | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the issue creation failed | str |
@@ -192,11 +204,13 @@ The block takes the GitHub credentials and the issue URL as inputs. It then send
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | issue_url | URL of the GitHub issue | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if reading the issue failed | str |
@@ -222,12 +236,14 @@ The block takes the GitHub credentials, the URL of the issue or pull request, an
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | issue_url | URL of the GitHub issue or pull request | str | Yes |
 | label | Label to remove from the issue or pull request | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the label removal failed | str |
@@ -251,12 +267,14 @@ The block takes the GitHub credentials, the URL of the issue, and the username o
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | issue_url | URL of the GitHub issue | str | Yes |
 | assignee | Username to unassign from the issue | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the issue unassignment failed | str |
@@ -282,6 +300,7 @@ The updated comment retains its original author and timestamp context while repl
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | comment_url | URL of the GitHub comment | str | No |
@@ -290,6 +309,7 @@ The updated comment retains its original author and timestamp context while repl
 | comment | Comment to update | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the comment update failed | str |

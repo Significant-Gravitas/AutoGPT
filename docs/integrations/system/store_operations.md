@@ -11,12 +11,14 @@ The store_listing_version_id can be used with other blocks to add the agent to y
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | creator | The username of the agent creator | str | Yes |
 | slug | The name of the agent | str | Yes |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -53,6 +55,7 @@ Results include basic agent information and are output both as a list and indivi
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | query | Search query to find agents | str | No |
@@ -61,6 +64,7 @@ Results include basic agent information and are output both as a list and indivi
 | limit | Maximum number of results to return | int | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

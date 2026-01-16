@@ -132,6 +132,8 @@ def type_to_readable(type_schema: dict[str, Any] | Any) -> str:
             if isinstance(opt, dict) and opt.get("type") == "null":
                 continue
             options.append(type_to_readable(opt))
+        if not options:
+            return "None"
         if len(options) == 1:
             return options[0]
         return " | ".join(options)
@@ -339,6 +341,7 @@ def generate_block_markdown(
     visible_inputs = [f for f in block.inputs if not f.hidden]
     if visible_inputs:
         lines.append(f"{section_heading} Inputs")
+        lines.append("")
         lines.append("| Input | Description | Type | Required |")
         lines.append("|-------|-------------|------|----------|")
         for inp in visible_inputs:
@@ -355,6 +358,7 @@ def generate_block_markdown(
     visible_outputs = [f for f in block.outputs if not f.hidden]
     if visible_outputs:
         lines.append(f"{section_heading} Outputs")
+        lines.append("")
         lines.append("| Output | Description | Type |")
         lines.append("|--------|-------------|------|")
         for out in visible_outputs:
@@ -471,6 +475,7 @@ def generate_overview_table(blocks: list[BlockDoc]) -> str:
         display_name = CATEGORY_DISPLAY_NAMES.get(category, category)
 
         lines.append(f"## {display_name}")
+        lines.append("")
         lines.append("| Block Name | Description |")
         lines.append("|------------|-------------|")
 

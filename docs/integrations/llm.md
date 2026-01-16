@@ -11,6 +11,7 @@ Optionally provide your own images via input_media_urls, or let the AI generate 
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | script | Short advertising copy. Line breaks create new scenes. | str | Yes |
@@ -22,6 +23,7 @@ Optionally provide your own images via input_media_urls, or let the AI generate 
 | use_only_provided_media | Restrict visuals to supplied images only. | bool | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -51,6 +53,7 @@ The result routes data to yes_output or no_output, enabling intelligent branchin
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | input_value | The input value to evaluate with the AI condition | Input Value | Yes |
@@ -60,6 +63,7 @@ The result routes data to yes_output or no_output, enabling intelligent branchin
 | model | The language model to use for evaluating the condition. | "o3-mini" \| "o3-2025-04-16" \| "o1" | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the AI evaluation is uncertain or fails | str |
@@ -89,6 +93,7 @@ The block sends the entire conversation history to the chosen LLM, including sys
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | prompt | The prompt to send to the language model. | str | No |
@@ -98,6 +103,7 @@ The block sends the entire conversation history to the chosen LLM, including sys
 | ollama_host | Ollama host for local  models | str | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -124,6 +130,7 @@ Configure aspect ratio to match your needs and choose between JPG or PNG output 
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | prompt | A text description of the image you want to generate | str | Yes |
@@ -133,6 +140,7 @@ Configure aspect ratio to match your needs and choose between JPG or PNG output 
 | output_format | Format of the output image | "jpg" \| "png" | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -162,6 +170,7 @@ Choose between Flux Kontext Pro or Max for different quality/speed tradeoffs. Se
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | prompt | Text instruction describing the desired edit | str | Yes |
@@ -171,6 +180,7 @@ Choose between Flux Kontext Pro or Max for different quality/speed tradeoffs. Se
 | model | Model variant to use | "Flux Kontext Pro" \| "Flux Kontext Max" | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -200,6 +210,7 @@ The unified interface allows switching between models without changing your work
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | prompt | Text prompt for image generation | str | Yes |
@@ -208,6 +219,7 @@ The unified interface allows switching between models without changing your work
 | style | Visual style for the generated image | "any" \| "realistic_image" \| "realistic_image/b_and_w" | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -235,6 +247,7 @@ The block formulates a prompt based on the given focus or source data, sends it 
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | focus | The focus of the list to generate. | str | No |
@@ -246,6 +259,7 @@ The block formulates a prompt based on the given focus or source data, sends it 
 | ollama_host | Ollama host for local  models | str | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -273,6 +287,7 @@ Configure duration, temperature (for variety), and output format. Higher tempera
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | prompt | A description of the music you want to generate | str | Yes |
@@ -286,6 +301,7 @@ Configure duration, temperature (for variety), and output format. Higher tempera
 | normalization_strategy | Strategy for normalizing audio | "loudness" \| "clip" \| "peak" | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -315,6 +331,7 @@ Choose from various voices and music tracks. The video showcases the screenshot 
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | script | Narration that will accompany the screenshot. | str | Yes |
@@ -325,6 +342,7 @@ Choose from various voices and music tracks. The video showcases the screenshot 
 | background_music | - | "Observer" \| "Futuristic Beat" \| "Science Documentary" | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -354,6 +372,7 @@ Choose video style (stock video, moving images, or AI-generated), voice, backgro
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | script | 1. Use short and punctuated sentences  2. Use linebreaks to create a new clip  3. Text outside of brackets is spoken by the AI, and [text between brackets] will be used to guide the visual generation. For example, [close-up of a cat] will show a close-up of a cat. | str | Yes |
@@ -366,6 +385,7 @@ Choose video style (stock video, moving images, or AI-generated), voice, backgro
 | video_style | Type of visual media to use for the video | "stockVideo" \| "movingImage" \| "aiVideo" | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -393,6 +413,7 @@ The block sends the input prompt to a chosen LLM, along with any system prompts 
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | prompt | The prompt to send to the language model. | str | Yes |
@@ -409,6 +430,7 @@ The block sends the input prompt to a chosen LLM, along with any system prompts 
 | ollama_host | Ollama host for local  models | str | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -433,6 +455,7 @@ The block sends the input prompt to a chosen LLM, processes the response, and re
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | prompt | The prompt to send to the language model. You can use any of the {keys} from Prompt Values to fill in the prompt with values from the prompt values dictionary by putting them in curly braces. | str | Yes |
@@ -444,6 +467,7 @@ The block sends the input prompt to a chosen LLM, processes the response, and re
 | max_tokens | The maximum number of tokens to generate in the chat completion. | int | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -468,6 +492,7 @@ The block splits the input text into smaller chunks, sends each chunk to an LLM 
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | text | The text to summarize. | str | Yes |
@@ -479,6 +504,7 @@ The block splits the input text into smaller chunks, sends each chunk to an LLM 
 | ollama_host | Ollama host for local  models | str | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -505,6 +531,7 @@ Configure reasoning_effort to control how much the model "thinks" before respond
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | prompt | Primary coding request passed to the Codex model. | str | Yes |
@@ -514,6 +541,7 @@ Configure reasoning_effort to control how much the model "thinks" before respond
 | max_output_tokens | Upper bound for generated tokens (hard limit 128,000). Leave blank to let OpenAI decide. | int | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -543,6 +571,7 @@ The block sends a request to the D-ID API with your specified parameters. It the
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | script_input | The text input for the script | str | Yes |
@@ -558,6 +587,7 @@ The block sends a request to the D-ID API with your specified parameters. It the
 | polling_interval | Interval between polling attempts in seconds | int | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -583,6 +613,7 @@ Advanced options include upscaling, custom color palettes, and negative prompts 
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | prompt | Text prompt for image generation | str | Yes |
@@ -597,6 +628,7 @@ Advanced options include upscaling, custom color palettes, and negative prompts 
 | custom_color_palette | Only available for model version V_2 or V_2_TURBO. Provide one or more color hex codes (e.g., ['#000030', '#1C0C47', '#9900FF', '#4285F4', '#FFFFFF']) to define a custom color palette. Only used if 'color_palette_name' is 'NONE'. | List[str] | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -626,6 +658,7 @@ Choose from different sonar model variants including deep-research for comprehen
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | prompt | The query to send to the Perplexity model. | str | Yes |
@@ -634,6 +667,7 @@ Choose from different sonar model variants including deep-research for comprehen
 | max_tokens | The maximum number of tokens to generate. | int | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -664,6 +698,7 @@ Configure agent_mode_max_iterations to control loop behavior: 0 for single decis
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | prompt | The prompt to send to the language model. | str | Yes |
@@ -680,6 +715,7 @@ Configure agent_mode_max_iterations to control loop behavior: 0 for single decis
 | conversation_compaction | Automatically compact the context window once it hits the limit | bool | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -711,12 +747,14 @@ The generated audio is returned as an MP3 URL that can be downloaded, played, or
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | text | The text to be converted to speech | str | Yes |
 | voice_id | The voice ID to use for text-to-speech conversion | str | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

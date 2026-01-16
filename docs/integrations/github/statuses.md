@@ -11,6 +11,7 @@ Provide a context label to differentiate this status from others, an optional ta
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | repo_url | URL of the GitHub repository | str | Yes |
@@ -21,6 +22,7 @@ Provide a context label to differentiate this status from others, an optional ta
 | check_name | Label to differentiate this status from others | str | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

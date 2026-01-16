@@ -11,6 +11,7 @@ Optionally search through CI logs using regex patterns to find specific errors o
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | repo | GitHub repository | str | Yes |
@@ -19,6 +20,7 @@ Optionally search through CI logs using regex patterns to find specific errors o
 | check_name_filter | Optional filter for specific check names (supports wildcards) | str | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

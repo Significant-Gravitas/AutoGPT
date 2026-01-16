@@ -11,6 +11,7 @@ The block waits for completion and returns the model output along with status in
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | model_name | The Replicate model name (format: 'owner/model-name') | str | Yes |
@@ -18,6 +19,7 @@ The block waits for completion and returns the model output along with status in
 | version | Specific version hash of the model (optional) | str | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

@@ -11,6 +11,7 @@ Configure the crawl depth with the limit parameter, choose output formats (markd
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | url | The URL to crawl | str | Yes |
@@ -21,6 +22,7 @@ Configure the crawl depth with the limit parameter, choose output formats (markd
 | formats | The format of the crawl | List["markdown" \| "html" \| "rawHtml"] | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the crawl failed | str |

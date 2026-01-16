@@ -11,6 +11,7 @@ The block uses Tweepy with OAuth 2.0 authentication and returns buyer user IDs, 
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | expansions | Choose what extra information you want to get with user data. Currently only 'pinned_tweet_id' is available to see a user's pinned tweet. | UserExpansionsFilter | No |
@@ -19,6 +20,7 @@ The block uses Tweepy with OAuth 2.0 authentication and returns buyer user IDs, 
 | space_id | Space ID to lookup buyers for | str | Yes |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -51,6 +53,7 @@ The block uses Tweepy with OAuth 2.0 authentication and supports expansions for 
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | expansions | Choose additional information you want to get with your Twitter Spaces: - Select 'Invited_Users' to see who was invited - Select 'Speakers' to see who can speak - Select 'Creator' to get details about who made the Space - Select 'Hosts' to see who's hosting - Select 'Topics' to see Space topics | SpaceExpansionsFilter | No |
@@ -59,6 +62,7 @@ The block uses Tweepy with OAuth 2.0 authentication and supports expansions for 
 | space_id | Space ID to lookup | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -92,6 +96,7 @@ The block uses Tweepy with OAuth 2.0 authentication and supports extensive expan
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | expansions | Choose what extra information you want to get with your tweets. For example: - Select 'Media_Keys' to get media details - Select 'Author_User_ID' to get user information - Select 'Place_ID' to get location details | ExpansionFilter | No |
@@ -103,6 +108,7 @@ The block uses Tweepy with OAuth 2.0 authentication and supports extensive expan
 | space_id | Space ID to lookup tweets for | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -136,6 +142,7 @@ The block uses Tweepy with OAuth 2.0 authentication and supports expansions for 
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | expansions | Choose additional information you want to get with your Twitter Spaces: - Select 'Invited_Users' to see who was invited - Select 'Speakers' to see who can speak - Select 'Creator' to get details about who made the Space - Select 'Hosts' to see who's hosting - Select 'Topics' to see Space topics | SpaceExpansionsFilter | No |
@@ -144,6 +151,7 @@ The block uses Tweepy with OAuth 2.0 authentication and supports expansions for 
 | identifier | Choose whether to lookup spaces by their IDs or by creator user IDs | Identifier | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

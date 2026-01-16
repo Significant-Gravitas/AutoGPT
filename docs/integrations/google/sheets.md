@@ -11,6 +11,7 @@ The block uses the Google Sheets API to perform the insertion, shifting existing
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | spreadsheet | Select a Google Sheets spreadsheet | Spreadsheet | No |
@@ -20,6 +21,7 @@ The block uses the Google Sheets API to perform the insertion, shifting existing
 | default_value | Default value to fill in all data rows (optional). Requires existing data rows. | str | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if any | str |
@@ -52,6 +54,7 @@ The dropdown arrow appears in cells when enabled, providing users with a list of
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | spreadsheet | Select a Google Sheets spreadsheet | Spreadsheet | No |
@@ -62,6 +65,7 @@ The dropdown arrow appears in cells when enabled, providing users with a list of
 | show_dropdown | Show dropdown arrow in cells | bool | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if any | str |
@@ -92,6 +96,7 @@ Notes are useful for documentation, explanations, or audit trails that shouldn't
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | spreadsheet | The spreadsheet to add note to | Spreadsheet | No |
@@ -100,6 +105,7 @@ Notes are useful for documentation, explanations, or audit trails that shouldn't
 | sheet_name | Name of the sheet. Defaults to first sheet. | str | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if operation failed | str |
@@ -130,6 +136,7 @@ This is ideal for continuously adding records to a log or database-style sheet.
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | spreadsheet | Select a Google Sheets spreadsheet | Spreadsheet | No |
@@ -138,6 +145,7 @@ This is ideal for continuously adding records to a log or database-style sheet.
 | value_input_option | How values are interpreted. USER_ENTERED: parsed like typed input (e.g., '=SUM(A1:A5)' becomes a formula, '1/2/2024' becomes a date). RAW: stored as-is without parsing. | "RAW" \| "USER_ENTERED" | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if any | str |
@@ -168,12 +176,14 @@ Operations execute in order and can include various actions like formatting, dat
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | spreadsheet | Select a Google Sheets spreadsheet | Spreadsheet | No |
 | operations | List of operations to perform | List[BatchOperation] | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if any | str |
@@ -204,12 +214,14 @@ Use A1 notation (e.g., "A1:D10" or "Sheet1!B2:C5") to specify the range to clear
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | spreadsheet | Select a Google Sheets spreadsheet | Spreadsheet | No |
 | range | The A1 notation of the range to clear | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if any | str |
@@ -240,6 +252,7 @@ The new sheet is added to the destination spreadsheet with a potentially modifie
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | source_spreadsheet | Select the source spreadsheet | Source Spreadsheet | No |
@@ -247,6 +260,7 @@ The new sheet is added to the destination spreadsheet with a potentially modifie
 | destination_spreadsheet_id | ID of the destination spreadsheet | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if any | str |
@@ -279,6 +293,7 @@ Named ranges can be used in formulas across the spreadsheet and make maintenance
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | spreadsheet | Select a Google Sheets spreadsheet | Spreadsheet | No |
@@ -287,6 +302,7 @@ Named ranges can be used in formulas across the spreadsheet and make maintenance
 | range | Cell range in A1 notation (e.g., 'A1:D10', 'B2:B100') | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if any | str |
@@ -318,12 +334,14 @@ The spreadsheet output can be chained to other Sheets blocks for immediate data 
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | title | The title of the new spreadsheet | str | Yes |
 | sheet_names | List of sheet names to create (optional, defaults to single 'Sheet1') | List[str] | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if any | str |
@@ -356,6 +374,7 @@ All data in the column is permanently deleted and subsequent columns shift left 
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | spreadsheet | Select a Google Sheets spreadsheet | Spreadsheet | No |
@@ -363,6 +382,7 @@ All data in the column is permanently deleted and subsequent columns shift left 
 | column | Column to delete (header name or column letter like 'A', 'B') | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if any | str |
@@ -393,6 +413,7 @@ Works seamlessly with the Filter Rows block output to delete rows matching speci
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | spreadsheet | Select a Google Sheets spreadsheet | Spreadsheet | No |
@@ -400,6 +421,7 @@ Works seamlessly with the Filter Rows block output to delete rows matching speci
 | row_indices | 1-based row indices to delete (e.g., [2, 5, 7]) | List[int] | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if any | str |
@@ -431,6 +453,7 @@ The CSV data can be used for integration with other systems, file downloads, or 
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | spreadsheet | The spreadsheet to export from | Spreadsheet | No |
@@ -438,6 +461,7 @@ The CSV data can be used for integration with other systems, file downloads, or 
 | include_headers | Include the first row (headers) in the CSV output | bool | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if export failed | str |
@@ -469,6 +493,7 @@ Returns matching rows along with their original 1-based row indices, making it e
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | spreadsheet | Select a Google Sheets spreadsheet | Spreadsheet | No |
@@ -480,6 +505,7 @@ Returns matching rows along with their original 1-based row indices, making it e
 | include_header | Include header row in output | bool | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if any | str |
@@ -512,6 +538,7 @@ Returns the locations (sheet, row, column) of all matches or just the first one,
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | spreadsheet | Select a Google Sheets spreadsheet | Spreadsheet | No |
@@ -523,6 +550,7 @@ Returns the locations (sheet, row, column) of all matches or just the first one,
 | range | The A1 notation range to search in (optional, searches entire sheet if not provided) | str | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if any | str |
@@ -555,6 +583,7 @@ Returns the number of replacements made, enabling verification of the operation'
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | spreadsheet | Select a Google Sheets spreadsheet | Spreadsheet | No |
@@ -565,6 +594,7 @@ Returns the number of replacements made, enabling verification of the operation'
 | match_entire_cell | Whether to match entire cell | bool | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if any | str |
@@ -595,6 +625,7 @@ Formatting enhances readability and can highlight important data or create visua
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | spreadsheet | Select a Google Sheets spreadsheet | Spreadsheet | No |
@@ -606,6 +637,7 @@ Formatting enhances readability and can highlight important data or create visua
 | font_size | - | int | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if any | str |
@@ -636,6 +668,7 @@ Returns values as a list for easy iteration or processing in subsequent blocks.
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | spreadsheet | Select a Google Sheets spreadsheet | Spreadsheet | No |
@@ -645,6 +678,7 @@ Returns values as a list for easy iteration or processing in subsequent blocks.
 | skip_empty | Skip empty cells | bool | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if any | str |
@@ -677,6 +711,7 @@ Returns a list of notes with their cell locations, useful for extracting documen
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | spreadsheet | The spreadsheet to get notes from | Spreadsheet | No |
@@ -684,6 +719,7 @@ Returns a list of notes with their cell locations, useful for extracting documen
 | sheet_name | Name of the sheet. Defaults to first sheet. | str | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if operation failed | str |
@@ -715,6 +751,7 @@ The dictionary format makes it easy to access specific fields by name rather tha
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | spreadsheet | Select a Google Sheets spreadsheet | Spreadsheet | No |
@@ -722,6 +759,7 @@ The dictionary format makes it easy to access specific fields by name rather tha
 | row_index | 1-based row index to retrieve | int | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if any | str |
@@ -753,6 +791,7 @@ This information is essential for determining loop boundaries or validating data
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | spreadsheet | Select a Google Sheets spreadsheet | Spreadsheet | No |
@@ -761,6 +800,7 @@ This information is essential for determining loop boundaries or validating data
 | count_empty | Count rows with only empty cells | bool | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if any | str |
@@ -794,6 +834,7 @@ Useful for discovering data categories, building dynamic dropdown lists, or anal
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | spreadsheet | Select a Google Sheets spreadsheet | Spreadsheet | No |
@@ -803,6 +844,7 @@ Useful for discovering data categories, building dynamic dropdown lists, or anal
 | sort_by_count | Sort results by count (most frequent first) | bool | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if any | str |
@@ -835,6 +877,7 @@ The CSV string is parsed and written to the sheet, enabling data import from ext
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | spreadsheet | The spreadsheet to import into | Spreadsheet | No |
@@ -844,6 +887,7 @@ The CSV string is parsed and written to the sheet, enabling data import from ext
 | clear_existing | Clear existing data before importing | bool | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if import failed | str |
@@ -875,6 +919,7 @@ Use value_input_option to control whether values are parsed (USER_ENTERED) or st
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | spreadsheet | Select a Google Sheets spreadsheet | Spreadsheet | No |
@@ -884,6 +929,7 @@ Use value_input_option to control whether values are parsed (USER_ENTERED) or st
 | value_input_option | How values are interpreted. USER_ENTERED: parsed like typed input (e.g., '=SUM(A1:A5)' becomes a formula, '1/2/2024' becomes a date). RAW: stored as-is without parsing. | "RAW" \| "USER_ENTERED" | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if any | str |
@@ -914,11 +960,13 @@ Useful for discovering available named ranges or auditing spreadsheet configurat
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | spreadsheet | Select a Google Sheets spreadsheet | Spreadsheet | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if any | str |
@@ -950,6 +998,7 @@ This is useful for database-style lookups where you need to find a record by ID,
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | spreadsheet | Select a Google Sheets spreadsheet | Spreadsheet | No |
@@ -960,6 +1009,7 @@ This is useful for database-style lookups where you need to find a record by ID,
 | match_case | Whether to match case | bool | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if any | str |
@@ -993,6 +1043,7 @@ Use this to dynamically organize spreadsheet structure as part of workflows.
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | spreadsheet | Select a Google Sheets spreadsheet | Spreadsheet | No |
@@ -1002,6 +1053,7 @@ Use this to dynamically organize spreadsheet structure as part of workflows.
 | destination_sheet_name | New sheet name for copy | str | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if any | str |
@@ -1032,11 +1084,13 @@ Useful for understanding spreadsheet structure before performing operations.
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | spreadsheet | Select a Google Sheets spreadsheet | Spreadsheet | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if any | str |
@@ -1067,6 +1121,7 @@ Use this to prevent accidental changes to important formulas, headers, or refere
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | spreadsheet | Select a Google Sheets spreadsheet | Spreadsheet | No |
@@ -1076,6 +1131,7 @@ Use this to prevent accidental changes to important formulas, headers, or refere
 | warning_only | Show warning but allow editing (vs blocking completely) | bool | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if any | str |
@@ -1105,12 +1161,14 @@ The block connects to Google Sheets using provided credentials, then fetches dat
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | spreadsheet | Select a Google Sheets spreadsheet | Spreadsheet | No |
 | range | The A1 notation of the range to read | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if any | str |
@@ -1137,6 +1195,7 @@ Case sensitivity is configurable for text comparisons.
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | spreadsheet | Select a Google Sheets spreadsheet | Spreadsheet | No |
@@ -1146,6 +1205,7 @@ Case sensitivity is configurable for text comparisons.
 | match_case | Whether to match case when comparing | bool | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if any | str |
@@ -1178,6 +1238,7 @@ When made public, anyone with the link can access the spreadsheet. The share lin
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | spreadsheet | The spreadsheet to modify access for | Spreadsheet | No |
@@ -1185,6 +1246,7 @@ When made public, anyone with the link can access the spreadsheet. The share lin
 | role | Permission role for public access | "reader" \| "commenter" | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if operation failed | str |
@@ -1216,6 +1278,7 @@ Leave the email blank to just generate a shareable link.
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | spreadsheet | The spreadsheet to share | Spreadsheet | No |
@@ -1225,6 +1288,7 @@ Leave the email blank to just generate a shareable link.
 | message | Optional message to include in notification email | str | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if share failed | str |
@@ -1256,6 +1320,7 @@ Sorting is performed in-place, modifying the sheet directly.
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | spreadsheet | Select a Google Sheets spreadsheet | Spreadsheet | No |
@@ -1267,6 +1332,7 @@ Sorting is performed in-place, modifying the sheet directly.
 | has_header | Whether the data has a header row (header won't be sorted) | bool | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if any | str |
@@ -1297,6 +1363,7 @@ Use value_input_option to control whether values are parsed (USER_ENTERED) or st
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | spreadsheet | Select a Google Sheets spreadsheet | Spreadsheet | No |
@@ -1305,6 +1372,7 @@ Use value_input_option to control whether values are parsed (USER_ENTERED) or st
 | value_input_option | How input data should be interpreted | "RAW" \| "USER_ENTERED" | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if any | str |
@@ -1335,6 +1403,7 @@ The dictionary format is convenient when you only need to update specific column
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | spreadsheet | Select a Google Sheets spreadsheet | Spreadsheet | No |
@@ -1344,6 +1413,7 @@ The dictionary format is convenient when you only need to update specific column
 | dict_values | Values as dict with column headers as keys (alternative to values) | Dict[str, str] | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if any | str |
@@ -1372,6 +1442,7 @@ The block authenticates with Google Sheets using provided credentials, then upda
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | spreadsheet | Select a Google Sheets spreadsheet | Spreadsheet | No |
@@ -1379,6 +1450,7 @@ The block authenticates with Google Sheets using provided credentials, then upda
 | values | The data to write to the spreadsheet | List[List[str]] | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if any | str |

@@ -11,11 +11,13 @@ The block is useful for understanding site architecture before performing target
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | url | The website url to map | str | Yes |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the map failed | str |

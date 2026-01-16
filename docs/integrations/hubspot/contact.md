@@ -11,6 +11,7 @@ Contact data includes standard properties like email, first name, last name, pho
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | operation | Operation to perform (create, update, get) | str | No |
@@ -18,6 +19,7 @@ Contact data includes standard properties like email, first name, last name, pho
 | email | Email address for get/update operations | str | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

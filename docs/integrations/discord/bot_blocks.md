@@ -11,6 +11,7 @@ Configure auto-archive duration and optionally send an initial message when the 
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | channel_name | Channel ID or channel name to create the thread in | str | Yes |
@@ -21,6 +22,7 @@ Configure auto-archive duration and optionally send an initial message when the 
 | message_content | Optional initial message to send in the thread | str | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -52,12 +54,14 @@ Useful for workflows that receive channel names but need IDs for other Discord o
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | channel_identifier | Channel name or channel ID to look up | str | Yes |
 | server_name | Server name (optional, helps narrow down search) | str | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -91,11 +95,13 @@ The user must be visible to your bot (share a server with your bot).
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | user_id | The Discord user ID to get information about | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -129,6 +135,7 @@ The block uses a Discord bot to log into a server and listen for new messages. W
 <!-- END MANUAL -->
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -159,6 +166,7 @@ The reply appears linked to the original message in Discord's UI, maintaining co
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | channel_id | The channel ID where the message to reply to is located | str | Yes |
@@ -167,6 +175,7 @@ The reply appears linked to the original message in Discord's UI, maintaining co
 | mention_author | Whether to mention the original message author | bool | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -197,12 +206,14 @@ Returns the message ID of the sent DM for tracking purposes.
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | user_id | The Discord user ID to send the DM to (e.g., '123456789012345678') | str | Yes |
 | message_content | The content of the direct message to send | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -233,6 +244,7 @@ Configure the embed's appearance with colors, images, and multiple fields for or
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | channel_identifier | Channel ID or channel name to send the embed to | str | Yes |
@@ -247,6 +259,7 @@ Configure the embed's appearance with colors, images, and multiple fields for or
 | fields | List of field dictionaries with 'name', 'value', and optional 'inline' keys | List[Dict[str, Any]] | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -277,6 +290,7 @@ Optionally include a message along with the file attachment.
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | channel_identifier | Channel ID or channel name to send the file to | str | Yes |
@@ -286,6 +300,7 @@ Optionally include a message along with the file attachment.
 | message_content | Optional message to send with the file | str | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -314,6 +329,7 @@ The block uses a Discord bot to log into a server, locate the specified channel,
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | message_content | The content of the message to send | str | Yes |
@@ -321,6 +337,7 @@ The block uses a Discord bot to log into a server, locate the specified channel,
 | server_name | Server name (only needed if using channel name) | str | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

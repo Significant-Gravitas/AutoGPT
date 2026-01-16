@@ -11,6 +11,7 @@ The block uses Tweepy with OAuth 2.0 authentication and supports expansions to i
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | expansions | Choose additional information you want to get with your Twitter Spaces: - Select 'Invited_Users' to see who was invited - Select 'Speakers' to see who can speak - Select 'Creator' to get details about who made the Space - Select 'Hosts' to see who's hosting - Select 'Topics' to see Space topics | SpaceExpansionsFilter | No |
@@ -21,6 +22,7 @@ The block uses Tweepy with OAuth 2.0 authentication and supports expansions to i
 | state | Type of Spaces to return (live, scheduled, or all) | "live" \| "scheduled" \| "all" | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

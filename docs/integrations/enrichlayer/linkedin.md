@@ -11,6 +11,7 @@ Configure caching options for performance and optionally include additional data
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | linkedin_url | LinkedIn profile URL to fetch data from | str | Yes |
@@ -24,6 +25,7 @@ Configure caching options for performance and optionally include additional data
 | include_extra | Include additional data | bool | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -53,11 +55,13 @@ The returned URL can be used for display, download, or further image processing.
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | linkedin_profile_url | LinkedIn profile URL | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -87,6 +91,7 @@ Enable similarity checks and profile enrichment for more detailed results.
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | first_name | Person's first name | str | Yes |
@@ -98,6 +103,7 @@ Enable similarity checks and profile enrichment for more detailed results.
 | enrich_profile | Enrich the profile with additional data | bool | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -127,6 +133,7 @@ Enable enrich_profile to automatically fetch full profile data for the matched r
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | role | Role title (e.g., CEO, CTO) | str | Yes |
@@ -134,6 +141,7 @@ Enable enrich_profile to automatically fetch full profile data for the matched r
 | enrich_profile | Enrich the profile with additional data | bool | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

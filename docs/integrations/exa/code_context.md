@@ -11,12 +11,14 @@ The block returns code snippets along with metadata including the source URL, se
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | query | Search query to find relevant code snippets. Describe what you're trying to do or what code you're looking for. | str | Yes |
 | tokens_num | Token limit for response. Use 'dynamic' for automatic sizing, 5000 for standard queries, or 10000 for comprehensive examples. | str \| int | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

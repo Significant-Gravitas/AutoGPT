@@ -11,6 +11,7 @@ Webhooks can notify you when asynchronous generation completes. Include custom m
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | template_id | The unique ID of your Bannerbear template | str | Yes |
@@ -22,6 +23,7 @@ Webhooks can notify you when asynchronous generation completes. Include custom m
 | metadata | Optional: Custom metadata to attach to the image | str | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

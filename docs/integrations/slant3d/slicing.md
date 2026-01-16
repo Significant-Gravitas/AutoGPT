@@ -11,11 +11,13 @@ Provide the URL to your STL file, and the block returns the calculated price for
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | file_url | URL of the 3D model file to slice (STL) | str | Yes |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

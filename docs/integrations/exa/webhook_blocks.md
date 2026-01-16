@@ -11,12 +11,14 @@ The block can filter events by webset ID and event type. It parses incoming webh
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | webset_id | The webset ID to monitor (optional, monitors all if empty) | str | No |
 | event_filter | Configure which events to receive | WebsetEventFilter | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

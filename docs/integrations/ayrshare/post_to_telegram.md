@@ -11,6 +11,7 @@ The block authenticates through Ayrshare and sends content to your connected Tel
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | post | The post text (empty string allowed). Use @handle to mention other Telegram users. | str | No |
@@ -26,6 +27,7 @@ The block authenticates through Ayrshare and sends content to your connected Tel
 | notes | Additional notes for the post | str | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

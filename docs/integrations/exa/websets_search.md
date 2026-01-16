@@ -11,12 +11,14 @@ Use this when a search is taking too long, returning unexpected results, or is n
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | webset_id | The ID or external ID of the Webset | str | Yes |
 | search_id | The ID of the search to cancel | str | Yes |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -49,6 +51,7 @@ Searches support scoped and exclusion sources, criteria validation, and relation
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | webset_id | The ID or external ID of the Webset | str | Yes |
@@ -70,6 +73,7 @@ Searches support scoped and exclusion sources, criteria validation, and relation
 | polling_timeout | Maximum time to wait for completion in seconds | int | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -105,6 +109,7 @@ Use this pattern to prevent duplicate searches when workflows retry or run multi
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | webset_id | The ID or external ID of the Webset | str | Yes |
@@ -114,6 +119,7 @@ Use this pattern to prevent duplicate searches when workflows retry or run multi
 | behavior | Search behavior (only used if creating) | "override" \| "append" \| "merge" | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -148,12 +154,14 @@ Use this to monitor search progress, verify search configuration, or investigate
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | webset_id | The ID or external ID of the Webset | str | Yes |
 | search_id | The ID of the search to retrieve | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

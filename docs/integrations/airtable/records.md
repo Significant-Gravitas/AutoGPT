@@ -11,6 +11,7 @@ Enable typecast to automatically convert string values to appropriate field type
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | base_id | The Airtable base ID | str | Yes |
@@ -21,6 +22,7 @@ Enable typecast to automatically convert string values to appropriate field type
 | return_fields_by_field_id | Return fields by field ID | bool | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -51,6 +53,7 @@ Provide an array of record IDs to delete. Using the table ID instead of the name
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | base_id | The Airtable base ID | str | Yes |
@@ -58,6 +61,7 @@ Provide an array of record IDs to delete. Using the table ID instead of the name
 | record_ids | Array of upto 10 record IDs to delete | List[str] | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -87,6 +91,7 @@ Optionally include field metadata for type information and configuration details
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | base_id | The Airtable base ID | str | Yes |
@@ -96,6 +101,7 @@ Optionally include field metadata for type information and configuration details
 | include_field_metadata | Include field type and configuration metadata (requires normalize_output=true) | bool | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -128,6 +134,7 @@ Results can be limited, paginated with offsets, and restricted to specific field
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | base_id | The Airtable base ID | str | Yes |
@@ -143,6 +150,7 @@ Results can be limited, paginated with offsets, and restricted to specific field
 | include_field_metadata | Include field type and configuration metadata (requires normalize_output=true) | bool | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -174,6 +182,7 @@ Enable typecast to automatically convert string values to appropriate types. You
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | base_id | The Airtable base ID | str | Yes |
@@ -182,6 +191,7 @@ Enable typecast to automatically convert string values to appropriate types. You
 | typecast | Automatically convert string values to appropriate types | bool | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

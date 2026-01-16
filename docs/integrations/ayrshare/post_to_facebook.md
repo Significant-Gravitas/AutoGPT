@@ -11,6 +11,7 @@ The block authenticates through Ayrshare and leverages the Meta Graph API to han
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | post | The post text to be published | str | No |
@@ -43,6 +44,7 @@ The block authenticates through Ayrshare and leverages the Meta Graph API to han
 | preview_link | URL for custom link preview | str | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

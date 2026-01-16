@@ -11,6 +11,7 @@ Configure the number of results to return, output formats (markdown, HTML, raw H
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | query | The query to search for | str | Yes |
@@ -20,6 +21,7 @@ Configure the number of results to return, output formats (markdown, HTML, raw H
 | formats | Returns the content of the search if specified | List["markdown" \| "html" \| "rawHtml"] | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the search failed | str |

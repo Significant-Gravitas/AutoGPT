@@ -11,11 +11,13 @@ Orders can only be cancelled before they enter production. Check order status be
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | order_id | Slant3D order ID to cancel | str | Yes |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -45,6 +47,7 @@ The block returns the Slant3D order ID which you can use for tracking and status
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | order_number | Your custom order number (or leave blank for a random one) | str | No |
@@ -52,6 +55,7 @@ The block returns the Slant3D order ID which you can use for tracking and status
 | items | List of items to print | List[OrderItem] | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -81,6 +85,7 @@ Use this for price quotes before customers commit to orders.
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | order_number | Your custom order number (or leave blank for a random one) | str | No |
@@ -88,6 +93,7 @@ Use this for price quotes before customers commit to orders.
 | items | List of items to print | List[OrderItem] | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -119,6 +125,7 @@ Use this to display shipping costs at checkout or calculate delivery options for
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | order_number | Your custom order number (or leave blank for a random one) | str | No |
@@ -126,6 +133,7 @@ Use this to display shipping costs at checkout or calculate delivery options for
 | items | List of items to print | List[OrderItem] | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -156,6 +164,7 @@ Use this for order management dashboards or to sync order data with your systems
 <!-- END MANUAL -->
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -185,11 +194,13 @@ Use this to provide customers with real-time order status updates.
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | order_id | Slant3D order ID to track | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

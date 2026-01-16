@@ -11,6 +11,7 @@ You can choose from different model tiers (fast, standard, pro) depending on you
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | instructions | Research instructions - clearly define what information to find, how to conduct research, and desired output format. | str | Yes |
@@ -20,6 +21,7 @@ You can choose from different model tiers (fast, standard, pro) depending on you
 | polling_timeout | Maximum time to wait for completion in seconds (only if wait_for_completion is True) | int | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -57,12 +59,14 @@ When the research is complete, the block returns the full output content along w
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | research_id | The ID of the research task to retrieve | str | Yes |
 | include_events | Include detailed event log of research operations | bool | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -105,12 +109,14 @@ The block returns basic information about each task including its ID, status, in
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | cursor | Cursor for pagination through results | str | No |
 | limit | Number of research tasks to return (1-50) | int | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -143,6 +149,7 @@ The block is useful when you need to block workflow execution until research com
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | research_id | The ID of the research task to wait for | str | Yes |
@@ -150,6 +157,7 @@ The block is useful when you need to block workflow execution until research com
 | check_interval | Seconds between status checks | int | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

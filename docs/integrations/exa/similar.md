@@ -11,6 +11,7 @@ The block supports filtering by domains, date ranges, and text patterns to refin
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | url | The url for which you would like to find similar links | str | Yes |
@@ -27,6 +28,7 @@ The block supports filtering by domains, date ranges, and text patterns to refin
 | moderation | Enable content moderation to filter unsafe content from search results | bool | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the request failed | str |

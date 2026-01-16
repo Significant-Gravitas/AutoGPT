@@ -11,6 +11,7 @@ Returns comprehensive contact details including email addresses (if available), 
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | person_id | Apollo person ID to enrich (most accurate method) | str | No |
@@ -25,6 +26,7 @@ Returns comprehensive contact details including email addresses (if available), 
 | title | Job title of the person to enrich | str | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if enrichment failed | str |

@@ -9,12 +9,14 @@ The block first checks if the specified label exists in the user's Gmail account
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | message_id | Message ID to add label to | str | Yes |
 | label_name | Label name to add | str | Yes |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if any | str |
@@ -40,6 +42,7 @@ Plain text emails preserve natural formatting without forced line breaks. HTML e
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | to | Recipient email addresses | List[str] | Yes |
@@ -51,6 +54,7 @@ Plain text emails preserve natural formatting without forced line breaks. HTML e
 | attachments | Files to attach | List[str (file)] | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if any | str |
@@ -80,6 +84,7 @@ The block preserves the thread context and adds proper email headers for threadi
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | threadId | Thread ID to reply in | str | Yes |
@@ -94,6 +99,7 @@ The block preserves the thread context and adds proper email headers for threadi
 | attachments | Files to attach | List[str (file)] | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -126,6 +132,7 @@ The block handles proper email threading and formatting, prepending "Fwd:" to th
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | messageId | ID of the message to forward | str | Yes |
@@ -139,6 +146,7 @@ The block handles proper email threading and formatting, prepending "Fwd:" to th
 | additionalAttachments | Additional files to attach | List[str (file)] | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -170,6 +178,7 @@ This is useful for verifying which account is connected and gathering basic mail
 <!-- END MANUAL -->
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -199,11 +208,13 @@ The thread includes all messages, their senders, timestamps, and content, making
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | threadId | Gmail thread ID | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -231,6 +242,7 @@ The block connects to the user's Gmail account and requests a list of all labels
 <!-- END MANUAL -->
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if any | str |
@@ -254,12 +266,14 @@ The block connects to the user's Gmail account using their credentials, performs
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | query | Search query for reading emails | str | No |
 | max_results | Maximum number of emails to retrieve | int | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if any | str |
@@ -284,12 +298,14 @@ The block first finds the ID of the specified label in the user's Gmail account.
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | message_id | Message ID to remove label from | str | Yes |
 | label_name | Label name to remove | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if any | str |
@@ -315,6 +331,7 @@ Use replyAll to respond to all recipients, or specify custom recipients. The blo
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | threadId | Thread ID to reply in | str | Yes |
@@ -329,6 +346,7 @@ Use replyAll to respond to all recipients, or specify custom recipients. The blo
 | attachments | Files to attach | List[str (file)] | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -359,6 +377,7 @@ The block authenticates with the user's Gmail account, creates an email message 
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | to | Recipient email addresses | List[str] | Yes |
@@ -370,6 +389,7 @@ The block authenticates with the user's Gmail account, creates an email message 
 | attachments | Files to attach | List[str (file)] | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if any | str |

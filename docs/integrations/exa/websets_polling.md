@@ -11,6 +11,7 @@ Use this to block workflow execution until enrichments finish, enabling sequenti
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | webset_id | The ID or external ID of the Webset | str | Yes |
@@ -20,6 +21,7 @@ Use this to block workflow execution until enrichments finish, enabling sequenti
 | sample_results | Include sample enrichment results in output | bool | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -55,6 +57,7 @@ Use this when you need search results before proceeding with downstream operatio
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | webset_id | The ID or external ID of the Webset | str | Yes |
@@ -63,6 +66,7 @@ Use this when you need search results before proceeding with downstream operatio
 | check_interval | Initial interval between status checks in seconds | int | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -99,6 +103,7 @@ Use this for general-purpose waiting on webset operations when you don't need to
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | webset_id | The ID or external ID of the Webset to monitor | str | Yes |
@@ -109,6 +114,7 @@ Use this for general-purpose waiting on webset operations when you don't need to
 | include_progress | Include detailed progress information in output | bool | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

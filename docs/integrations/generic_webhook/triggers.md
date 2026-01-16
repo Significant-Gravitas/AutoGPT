@@ -11,11 +11,13 @@ Constants can be configured to pass additional static values alongside the dynam
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | constants | The constants to be set when the block is put on the graph | Dict[str, Any] | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

@@ -11,12 +11,14 @@ Use this when an enrichment is taking too long, producing unexpected results, or
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | webset_id | The ID or external ID of the Webset | str | Yes |
 | enrichment_id | The ID of the enrichment to cancel | str | Yes |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -49,6 +51,7 @@ Enrichments support various output formats including text, dates, numbers, and p
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | webset_id | The ID or external ID of the Webset | str | Yes |
@@ -62,6 +65,7 @@ Enrichments support various output formats including text, dates, numbers, and p
 | polling_timeout | Maximum time to wait for completion in seconds | int | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -99,12 +103,14 @@ Use this to clean up enrichments that are no longer needed or to remove misconfi
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | webset_id | The ID or external ID of the Webset | str | Yes |
 | enrichment_id | The ID of the enrichment to delete | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -135,12 +141,14 @@ Use this to monitor enrichment progress, verify configuration, or troubleshoot i
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | webset_id | The ID or external ID of the Webset | str | Yes |
 | enrichment_id | The ID of the enrichment to retrieve | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -179,6 +187,7 @@ Changes apply to future items; existing enrichment data is not reprocessed unles
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | webset_id | The ID or external ID of the Webset | str | Yes |
@@ -189,6 +198,7 @@ Changes apply to future items; existing enrichment data is not reprocessed unles
 | metadata | New metadata to attach to the enrichment | Dict[str, Any] | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

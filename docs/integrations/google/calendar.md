@@ -11,6 +11,7 @@ When you specify guests, they receive email invitations (if notifications are en
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | event_title | Title of the event | str | Yes |
@@ -25,6 +26,7 @@ When you specify guests, they receive email invitations (if notifications are en
 | reminder_minutes | When to send reminders before the event | List[int] | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -55,6 +57,7 @@ Events are returned with details like title, time, location, and attendees. Use 
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | calendar_id | Calendar ID (use 'primary' for your main calendar) | str | No |
@@ -66,6 +69,7 @@ Events are returned with details like title, time, location, and attendees. Use 
 | include_declined_events | Include events you've declined | bool | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the request failed | str |

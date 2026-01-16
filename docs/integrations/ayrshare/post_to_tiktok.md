@@ -11,6 +11,7 @@ The block connects to TikTok's API through Ayrshare with controls for visibility
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | post | The post text (max 2,200 chars, empty string allowed). Use @handle to mention users. Line breaks will be ignored. | str | Yes |
@@ -37,6 +38,7 @@ The block connects to TikTok's API through Ayrshare with controls for visibility
 | draft | Create as draft post (video only) | bool | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

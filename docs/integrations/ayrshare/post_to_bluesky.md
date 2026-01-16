@@ -11,6 +11,7 @@ The block authenticates through your Ayrshare credentials and sends the post dat
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | post | The post text to be published (max 300 characters for Bluesky) | str | No |
@@ -27,6 +28,7 @@ The block authenticates through your Ayrshare credentials and sends the post dat
 | alt_text | Alt text for each media item (accessibility) | List[str] | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

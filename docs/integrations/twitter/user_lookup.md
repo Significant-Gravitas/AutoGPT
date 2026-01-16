@@ -11,6 +11,7 @@ Optional expansions allow you to include additional data such as the user's pinn
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | expansions | Choose what extra information you want to get with user data. Currently only 'pinned_tweet_id' is available to see a user's pinned tweet. | UserExpansionsFilter | No |
@@ -19,6 +20,7 @@ Optional expansions allow you to include additional data such as the user's pinn
 | identifier | Choose whether to identify the user by their unique Twitter ID or by their username | Identifier | Yes |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -52,6 +54,7 @@ The block uses Tweepy with OAuth 2.0 authentication and supports expansions for 
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | expansions | Choose what extra information you want to get with user data. Currently only 'pinned_tweet_id' is available to see a user's pinned tweet. | UserExpansionsFilter | No |
@@ -60,6 +63,7 @@ The block uses Tweepy with OAuth 2.0 authentication and supports expansions for 
 | identifier | Choose whether to identify users by their unique Twitter IDs or by their usernames | Identifier | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

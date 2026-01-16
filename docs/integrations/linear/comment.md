@@ -11,12 +11,14 @@ Comments appear in the issue's activity timeline and notify relevant team member
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | issue_id | ID of the issue to comment on | str | Yes |
 | comment | Comment text to add to the issue | str | Yes |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

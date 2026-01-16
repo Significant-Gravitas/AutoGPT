@@ -11,12 +11,14 @@ The block returns both the generated answer and the source citations that inform
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | query | The question or query to answer | str | Yes |
 | text | Include full text content in the search results used for the answer | bool | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the request failed | str |

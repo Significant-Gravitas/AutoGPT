@@ -11,6 +11,7 @@ You specify the commit SHA, check name, and current status. For completed checks
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | repo_url | URL of the GitHub repository | str | Yes |
@@ -24,6 +25,7 @@ You specify the commit SHA, check name, and current status. For completed checks
 | output_text | Detailed text of the check run output | str | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if check run creation failed | str |
@@ -53,6 +55,7 @@ You can update the status from queued to in_progress to completed, and set the f
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | repo_url | URL of the GitHub repository | str | Yes |
@@ -64,6 +67,7 @@ You can update the status from queued to in_progress to completed, and set the f
 | output_text | New detailed text of the check run output | str | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

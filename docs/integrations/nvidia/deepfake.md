@@ -11,12 +11,14 @@ Set return_image to true to receive a processed image with detection markings hi
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | image_base64 | Image to analyze for deepfakes | str (file) | Yes |
 | return_image | Whether to return the processed image with markings | bool | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

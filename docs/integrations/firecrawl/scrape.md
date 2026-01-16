@@ -11,6 +11,7 @@ Configure output formats, filter to main content only, and set wait times for dy
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | url | The URL to crawl | str | Yes |
@@ -21,6 +22,7 @@ Configure output formats, filter to main content only, and set wait times for dy
 | formats | The format of the crawl | List["markdown" \| "html" \| "rawHtml"] | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the scrape failed | str |

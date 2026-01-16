@@ -11,6 +11,7 @@ The block queries the Discord `/users/@me` endpoint and returns the user's profi
 <!-- END MANUAL -->
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

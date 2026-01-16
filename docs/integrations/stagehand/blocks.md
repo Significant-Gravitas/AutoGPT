@@ -11,6 +11,7 @@ Configure timeouts for DOM settlement and page loading. Variables can be passed 
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | browserbase_project_id | Browserbase project ID (required if using Browserbase) | str | Yes |
@@ -23,6 +24,7 @@ Configure timeouts for DOM settlement and page loading. Variables can be passed 
 | timeoutMs | Timeout in milliseconds for DOM ready. Extended timeout for slow-loading forms | int | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -54,6 +56,7 @@ Supports searching within iframes and configurable timeouts for dynamic content 
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | browserbase_project_id | Browserbase project ID (required if using Browserbase) | str | Yes |
@@ -64,6 +67,7 @@ Supports searching within iframes and configurable timeouts for dynamic content 
 | domSettleTimeoutMs | Timeout in milliseconds for DOM settlement.Wait longer for dynamic content | int | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -93,6 +97,7 @@ Use this to explore a page's interactive elements before building automated work
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | browserbase_project_id | Browserbase project ID (required if using Browserbase) | str | Yes |
@@ -103,6 +108,7 @@ Use this to explore a page's interactive elements before building automated work
 | domSettleTimeoutMs | Timeout in milliseconds for DOM settlement.Wait longer for dynamic content | int | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

@@ -11,6 +11,7 @@ Set add_newline to true to insert a line break before the appended content. The 
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | document | Select a Google Doc to append to | Document | No |
@@ -18,6 +19,7 @@ Set add_newline to true to insert a line break before the appended content. The 
 | add_newline | Add a newline before the appended content | bool | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if operation failed | str |
@@ -48,6 +50,7 @@ The block finds the document's end index and inserts the text there, with an opt
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | document | Select a Google Doc to append to | Document | No |
@@ -55,6 +58,7 @@ The block finds the document's end index and inserts the text there, with an opt
 | add_newline | Add a newline before the appended text | bool | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if append failed | str |
@@ -85,12 +89,14 @@ The newly created document is returned with its ID and URL, allowing immediate a
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | title | Title for the new document | str | Yes |
 | initial_content | Optional initial text content | str | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if creation failed | str |
@@ -122,6 +128,7 @@ Use the Get Structure block first to find the correct index positions for conten
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | document | Select a Google Doc | Document | No |
@@ -129,6 +136,7 @@ Use the Get Structure block first to find the correct index positions for conten
 | end_index | End index of content to delete | int | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if operation failed | str |
@@ -159,12 +167,14 @@ The export preserves document formatting as closely as possible in the target fo
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | document | Select a Google Doc to export | Document | No |
 | format | Export format | "application/pdf" \| "application/vnd.openxmlformats-officedocument.wordprocessingml.document" \| "application/vnd.oasis.opendocument.text" | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if export failed | str |
@@ -196,6 +206,7 @@ The replacement preserves the surrounding formatting but does not apply any new 
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | document | Select a Google Doc | Document | No |
@@ -204,6 +215,7 @@ The replacement preserves the surrounding formatting but does not apply any new 
 | match_case | Match case when finding text | bool | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if operation failed | str |
@@ -234,6 +246,7 @@ Use the Get Structure block to identify the correct index positions. Multiple fo
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | document | Select a Google Doc | Document | No |
@@ -246,6 +259,7 @@ Use the Get Structure block to identify the correct index positions. Multiple fo
 | foreground_color | Text color as hex (e.g., #FF0000 for red) | str | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if operation failed | str |
@@ -276,11 +290,13 @@ This metadata is useful for tracking document versions, building document invent
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | document | Select a Google Doc | Document | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if operation failed | str |
@@ -314,12 +330,14 @@ The index positions are essential for precise editing operations like formatting
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | document | Select a Google Doc to analyze | Document | No |
 | detailed | Return full hierarchical structure instead of flat segments | bool | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if operation failed | str |
@@ -351,6 +369,7 @@ The Markdown parser handles headers, bold, italic, links, lists, and code format
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | document | Select a Google Doc to insert into | Document | No |
@@ -358,6 +377,7 @@ The Markdown parser handles headers, bold, italic, links, lists, and code format
 | index | Position index to insert at (1 = start of document) | int | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if operation failed | str |
@@ -388,12 +408,14 @@ Page breaks force subsequent content to start on a new page, useful for separati
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | document | Select a Google Doc | Document | No |
 | index | Position to insert page break (0 = end of document) | int | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if operation failed | str |
@@ -424,6 +446,7 @@ Unlike the Markdown insert, text is inserted exactly as provided without any for
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | document | Select a Google Doc to insert into | Document | No |
@@ -431,6 +454,7 @@ Unlike the Markdown insert, text is inserted exactly as provided without any for
 | index | Position index to insert at (1 = start of document) | int | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if insert failed | str |
@@ -461,6 +485,7 @@ Cell content can optionally be formatted as Markdown, enabling rich formatting l
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | document | Select a Google Doc | Document | No |
@@ -471,6 +496,7 @@ Cell content can optionally be formatted as Markdown, enabling rich formatting l
 | format_as_markdown | Format cell content as Markdown (headers, bold, links, etc.) | bool | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if operation failed | str |
@@ -501,11 +527,13 @@ Use this for content analysis, text processing, or feeding document content to A
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | document | Select a Google Doc to read | Document | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if read failed | str |
@@ -537,12 +565,14 @@ This is ideal for completely regenerating document content from AI-generated Mar
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | document | Select a Google Doc to replace content in | Document | No |
 | markdown | Markdown content to replace the document with | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if operation failed | str |
@@ -573,6 +603,7 @@ Use this for template systems where placeholders like {{SECTION}} are replaced w
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | document | Select a Google Doc | Document | No |
@@ -581,6 +612,7 @@ Use this for template systems where placeholders like {{SECTION}} are replaced w
 | match_case | Match case when finding text | bool | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if operation failed | str |
@@ -611,6 +643,7 @@ Use Get Structure to find the correct index positions. This enables precise repl
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | document | Select a Google Doc | Document | No |
@@ -619,6 +652,7 @@ Use Get Structure to find the correct index positions. This enables precise repl
 | end_index | End index of the range to replace | int | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if operation failed | str |
@@ -649,6 +683,7 @@ When made public, anyone with the link can access the document according to the 
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | document | Select a Google Doc | Document | No |
@@ -656,6 +691,7 @@ When made public, anyone with the link can access the document according to the 
 | role | Permission role for public access | "reader" \| "commenter" | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if operation failed | str |
@@ -687,6 +723,7 @@ Leave the email blank to just generate a shareable link. The block returns the s
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | document | Select a Google Doc to share | Document | No |
@@ -696,6 +733,7 @@ Leave the email blank to just generate a shareable link. The block returns the s
 | message | Optional message to include in notification email | str | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if share failed | str |

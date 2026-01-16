@@ -9,11 +9,13 @@ Uses task ID to mark it complete via Todoist API.
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | task_id | Task ID to close | str | Yes |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -37,6 +39,7 @@ Takes task details and creates a new task via Todoist API.
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | content | Task content | str | Yes |
@@ -54,6 +57,7 @@ Takes task details and creates a new task via Todoist API.
 | duration | Task duration amount, You need to selecct the duration unit first | int | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -79,11 +83,13 @@ Uses task ID to delete via Todoist API.
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | task_id | Task ID to delete | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -109,11 +115,13 @@ Only active (uncompleted) tasks can be retrieved; closed tasks are not accessibl
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | task_id | Task ID to retrieve | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -139,6 +147,7 @@ Queries Todoist API with provided filters to get matching tasks.
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | project_id | Filter tasks by project ID | str | No |
@@ -149,6 +158,7 @@ Queries Todoist API with provided filters to get matching tasks.
 | ids | List of task IDs to retrieve | List[str] | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -174,11 +184,13 @@ Uses task ID to reactivate via Todoist API.
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | task_id | Task ID to reopen | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -202,6 +214,7 @@ Takes task ID and updated fields, applies changes via Todoist API.
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | task_id | Task ID to update | str | Yes |
@@ -220,6 +233,7 @@ Takes task ID and updated fields, applies changes via Todoist API.
 | duration | Task duration amount, You need to selecct the duration unit first | int | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

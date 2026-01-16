@@ -9,11 +9,13 @@ The block sends a request to Wikipedia's API with the provided topic. It then ex
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | topic | The topic to fetch the summary for | str | Yes |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the summary cannot be retrieved | str |
@@ -39,6 +41,7 @@ Each place result includes name, address, rating, reviews, and geographic coordi
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | query | Search query for local businesses | str | Yes |
@@ -46,6 +49,7 @@ Each place result includes name, address, rating, reviews, and geographic coordi
 | max_results | Maximum number of results to return (max 60) | int | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

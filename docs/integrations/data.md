@@ -11,11 +11,13 @@ The block takes a dictionary input and outputs it as-is, making it useful as a s
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | values | Key-value pairs to create the dictionary with | Dict[str, Any] | Yes |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if dictionary creation failed | str |
@@ -45,6 +47,7 @@ This batching capability is particularly useful when processing large datasets t
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | values | A list of values to be combined into a new list. | List[Any] | Yes |
@@ -52,6 +55,7 @@ This batching capability is particularly useful when processing large datasets t
 | max_tokens | Maximum tokens for the list. If provided, the list will be yielded in chunks that fit within this token limit. | int | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -81,6 +85,7 @@ Use skip_rows and skip_size to skip header content or initial bytes. When delimi
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | file_input | The file to read from (URL, data URI, or local path) | str (file) | Yes |
@@ -91,6 +96,7 @@ Use skip_rows and skip_size to skip header content or initial bytes. When delimi
 | skip_rows | Number of rows to skip from the beginning (requires delimiter) | int | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -120,6 +126,7 @@ The stored data remains available until explicitly overwritten, enabling state m
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | key | Key to store the information under | str | Yes |
@@ -127,6 +134,7 @@ The stored data remains available until explicitly overwritten, enabling state m
 | scope | Scope of persistence: within_agent (shared across all runs of this agent) or across_agents (shared across all agents for this user) | "within_agent" \| "across_agents" | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -156,6 +164,7 @@ Configure delimiter, quote character, and escape character for proper CSV parsin
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | contents | The contents of the CSV/spreadsheet data to read | str | No |
@@ -170,6 +179,7 @@ Configure delimiter, quote character, and escape character for proper CSV parsin
 | produce_singular_result | If True, yield individual 'row' outputs only (can be slow). If False, yield both 'rows' (all data) | bool | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -200,6 +210,7 @@ Use within_agent scope for agent-specific data or across_agents for data shared 
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | key | Key to retrieve the information for | str | Yes |
@@ -207,6 +218,7 @@ Use within_agent scope for agent-specific data or across_agents for data shared 
 | default_value | Default value to return if key is not found | Default Value | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -236,6 +248,7 @@ Optional features include blocking ads, cookie banners, and chat widgets for cle
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | url | URL of the website to screenshot | str | Yes |
@@ -249,6 +262,7 @@ Optional features include blocking ads, cookie banners, and chat widgets for cle
 | cache | Whether to enable caching | bool | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

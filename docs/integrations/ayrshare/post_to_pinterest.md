@@ -11,6 +11,7 @@ The block connects to Pinterest's API through Ayrshare, allowing you to specify 
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | post | Pin description (max 500 chars, links not clickable - use link field instead) | str | No |
@@ -33,6 +34,7 @@ The block connects to Pinterest's API through Ayrshare, allowing you to specify 
 | alt_text | Alt text for each image/video (max 500 chars each, accessibility feature) | List[str] | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

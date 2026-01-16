@@ -11,6 +11,7 @@ The mute list is returned in batches (default 100, up to 1,000 per page), with p
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | expansions | Choose what extra information you want to get with user data. Currently only 'pinned_tweet_id' is available to see a user's pinned tweet. | UserExpansionsFilter | No |
@@ -20,6 +21,7 @@ The mute list is returned in batches (default 100, up to 1,000 per page), with p
 | pagination_token | Token to request next/previous page of results | str | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -54,11 +56,13 @@ The mute action is performed using Tweepy's client interface with OAuth 2.0 auth
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | target_user_id | The user ID of the user that you would like to mute | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -88,11 +92,13 @@ The unmute action uses Tweepy's client interface with OAuth 2.0 authentication. 
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | target_user_id | The user ID of the user that you would like to unmute | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

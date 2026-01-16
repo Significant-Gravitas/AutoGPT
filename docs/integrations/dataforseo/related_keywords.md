@@ -11,6 +11,7 @@ The depth parameter controls the breadth of the search, with higher values retur
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | keyword | Seed keyword to find related keywords for | str | Yes |
@@ -23,6 +24,7 @@ The depth parameter controls the breadth of the search, with higher values retur
 | depth | Keyword search depth (0-4). Controls the number of returned keywords: 0=1 keyword, 1=~8 keywords, 2=~72 keywords, 3=~584 keywords, 4=~4680 keywords | int | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -55,11 +57,13 @@ Outputs include the keyword text, search volume, competition score, CPC, keyword
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | related_keyword | The related keyword object to extract fields from | RelatedKeyword | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

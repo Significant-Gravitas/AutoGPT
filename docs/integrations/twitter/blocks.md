@@ -11,6 +11,7 @@ The response includes user IDs and usernames by default, with optional expansion
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | expansions | Choose what extra information you want to get with user data. Currently only 'pinned_tweet_id' is available to see a user's pinned tweet. | UserExpansionsFilter | No |
@@ -20,6 +21,7 @@ The response includes user IDs and usernames by default, with optional expansion
 | pagination_token | Token for retrieving next/previous page of results | str | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

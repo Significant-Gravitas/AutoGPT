@@ -11,12 +11,14 @@ The reviewer must have access to the repository. Organization members can typica
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | pr_url | URL of the GitHub pull request | str | Yes |
 | reviewer | Username of the reviewer to assign | str | Yes |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the reviewer assignment failed | str |
@@ -46,11 +48,13 @@ This includes both pending review requests and users who have already submitted 
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | pr_url | URL of the GitHub pull request | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if listing reviewers failed | str |
@@ -81,11 +85,13 @@ The block returns open pull requests by default, allowing you to monitor pending
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | repo_url | URL of the GitHub repository | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if listing pull requests failed | str |
@@ -116,6 +122,7 @@ For cross-repository PRs, format the head branch as "username:branch". The branc
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | repo_url | URL of the GitHub repository | str | Yes |
@@ -125,6 +132,7 @@ For cross-repository PRs, format the head branch as "username:branch". The branc
 | base | The name of the branch you want the changes pulled into. | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the pull request creation failed | str |
@@ -155,12 +163,14 @@ When include_pr_changes is enabled, the block also retrieves the full diff of al
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | pr_url | URL of the GitHub pull request | str | Yes |
 | include_pr_changes | Whether to include the changes made in the pull request | bool | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if reading the pull request failed | str |
@@ -193,12 +203,14 @@ This is useful for reassigning reviews or removing reviewers who are unavailable
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | pr_url | URL of the GitHub pull request | str | Yes |
 | reviewer | Username of the reviewer to unassign | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the reviewer unassignment failed | str |

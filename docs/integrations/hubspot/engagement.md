@@ -11,6 +11,7 @@ Engagement tracking returns metrics like email opens, clicks, and other interact
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | operation | Operation to perform (send_email, track_engagement) | str | No |
@@ -19,6 +20,7 @@ Engagement tracking returns metrics like email opens, clicks, and other interact
 | timeframe_days | Number of days to look back for engagement | int | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

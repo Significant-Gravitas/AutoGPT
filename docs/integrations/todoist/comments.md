@@ -9,6 +9,7 @@ Takes comment content and task/project ID, creates comment via Todoist API.
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | content | Comment content | str | Yes |
@@ -16,6 +17,7 @@ Takes comment content and task/project ID, creates comment via Todoist API.
 | attachment | Optional file attachment | Dict[str, Any] | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -43,11 +45,13 @@ Uses comment ID to delete via Todoist API.
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | comment_id | Comment ID to delete | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -71,11 +75,13 @@ Uses comment ID to retrieve details via Todoist API.
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | comment_id | Comment ID to retrieve | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -104,11 +110,13 @@ Uses task/project ID to get comments list via Todoist API.
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | id_type | Specify either task_id or project_id to get comments for | Id Type | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -132,12 +140,14 @@ Takes comment ID and new content, updates via Todoist API.
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | comment_id | Comment ID to update | str | Yes |
 | content | New content for the comment | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

@@ -11,6 +11,7 @@ Input files can be URLs, data URIs, or local paths. The output can be returned a
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | video_in | Video input (URL, data URI, or local path). | str (file) | Yes |
@@ -19,6 +20,7 @@ Input files can be URLs, data URIs, or local paths. The output can be returned a
 | output_return_type | Return the final output as a relative path or base64 data URI. | "file_path" \| "data_uri" | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -48,6 +50,7 @@ The looped video is seamlessly concatenated and can be output as a file path or 
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | video_in | The input video (can be a URL, data URI, or local path). | str (file) | Yes |
@@ -56,6 +59,7 @@ The looped video is seamlessly concatenated and can be output as a file path or 
 | output_return_type | How to return the output video. Either a relative path or base64 data URI. | "file_path" \| "data_uri" | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -85,12 +89,14 @@ The input can be a URL, data URI, or local file path. The duration is returned a
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | media_in | Media input (URL, data URI, or local path). | str (file) | Yes |
 | is_video | Whether the media is a video (True) or audio (False). | bool | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

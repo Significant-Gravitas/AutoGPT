@@ -11,6 +11,7 @@ The block requires an Instagram account connected to a Facebook Page and authent
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | post | The post text (max 2,200 chars, up to 30 hashtags, 3 @mentions) | str | No |
@@ -36,6 +37,7 @@ The block requires an Instagram account connected to a Facebook Page and authent
 | auto_resize | Auto-resize images to 1080x1080px for Instagram | bool | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

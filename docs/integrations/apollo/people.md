@@ -11,6 +11,7 @@ Enable enrich_info to get detailed contact information including verified email 
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | person_titles | Job titles held by the people you want to find. For a person to be included in search results, they only need to match 1 of the job titles you add. Adding more job titles expands your search results.          Results also include job titles with the same terms, even if they are not exact matches. For example, searching for marketing manager might return people with the job title content marketing manager.          Use this parameter in combination with the person_seniorities[] parameter to find people based on specific job functions and seniority levels.          | List[str] | No |
@@ -26,6 +27,7 @@ Enable enrich_info to get detailed contact information including verified email 
 | enrich_info | Whether to enrich contacts with detailed information including real email addresses. This will double the search cost. | bool | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the search failed | str |

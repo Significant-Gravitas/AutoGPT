@@ -11,6 +11,7 @@ Returns the created issue's ID and title for tracking or further operations.
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | title | Title of the issue | str | Yes |
@@ -20,6 +21,7 @@ Returns the created issue's ID and title for tracking or further operations.
 | project_name | Name of the project to create the issue on | str | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -50,6 +52,7 @@ Optionally include comments in the response for comprehensive issue data.
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | project | Name of the project to get issues from | str | Yes |
@@ -58,6 +61,7 @@ Optionally include comments in the response for comprehensive issue data.
 | include_comments | Whether to include comments in the response | bool | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -87,11 +91,13 @@ Returns a list of issues matching the search term.
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | term | Term to search for issues | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

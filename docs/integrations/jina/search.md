@@ -9,12 +9,14 @@ The block sends a request to the given URL, downloads the HTML content, and uses
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | url | The URL to scrape the content from | str | Yes |
 | raw_content | Whether to do a raw scrape of the content or use Jina-ai Reader to scrape the content | bool | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the content cannot be retrieved | str |
@@ -38,11 +40,13 @@ The block sends the search query to a search engine API, processes the results, 
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | query | The search query to search the web for | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

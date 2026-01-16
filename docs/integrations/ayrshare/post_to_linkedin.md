@@ -11,6 +11,7 @@ LinkedIn-specific features include visibility controls, comment management, and 
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | post | The post text (max 3,000 chars, hashtags supported with #) | str | No |
@@ -38,6 +39,7 @@ LinkedIn-specific features include visibility controls, comment management, and 
 | targeting_staff_count_ranges | Company size ranges for targeting. Requires 300+ followers in target audience. | List[str] | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

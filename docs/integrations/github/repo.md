@@ -11,6 +11,7 @@ The commit message can be customized, and the block returns the URL of the creat
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | repo_url | URL of the GitHub repository | str | Yes |
@@ -20,6 +21,7 @@ The commit message can be customized, and the block returns the URL of the creat
 | commit_message | Message for the commit | str | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the file creation failed | str |
@@ -50,6 +52,7 @@ The block returns both the web URL for viewing the repository and the clone URL 
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | name | Name of the repository to create | str | Yes |
@@ -59,6 +62,7 @@ The block returns both the web URL for viewing the repository and the clone URL 
 | gitignore_template | Git ignore template to use (e.g., Python, Node, Java) | str | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the repository creation failed | str |
@@ -89,12 +93,14 @@ Protected branches cannot be deleted unless protection rules are first removed.
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | repo_url | URL of the GitHub repository | str | Yes |
 | branch | Name of the branch to delete | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the branch deletion failed | str |
@@ -124,11 +130,13 @@ This provides visibility into all development streams in a repository.
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | repo_url | URL of the GitHub repository | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -159,12 +167,14 @@ You can limit the number of discussions retrieved with the num_discussions param
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | repo_url | URL of the GitHub repository | str | Yes |
 | num_discussions | Number of discussions to fetch | int | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if listing discussions failed | str |
@@ -195,11 +205,13 @@ The block returns release information including names and URLs, outputting both 
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | repo_url | URL of the GitHub repository | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -230,11 +242,13 @@ Each stargazer entry includes their username and a link to their GitHub profile.
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | repo_url | URL of the GitHub repository | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if listing stargazers failed | str |
@@ -265,11 +279,13 @@ Each tag includes its name and a URL to browse the repository files at that tag.
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | repo_url | URL of the GitHub repository | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -300,6 +316,7 @@ The new branch immediately contains all the code from the source branch at the t
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | repo_url | URL of the GitHub repository | str | Yes |
@@ -307,6 +324,7 @@ The new branch immediately contains all the code from the source branch at the t
 | source_branch | Name of the source branch | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the branch creation failed | str |
@@ -336,6 +354,7 @@ The block returns both the decoded text content (for text files) and the raw bas
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | repo_url | URL of the GitHub repository | str | Yes |
@@ -343,6 +362,7 @@ The block returns both the decoded text content (for text files) and the raw bas
 | branch | Branch to read from | str | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -374,6 +394,7 @@ You can specify which branch to read from; it defaults to master if not specifie
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | repo_url | URL of the GitHub repository | str | Yes |
@@ -381,6 +402,7 @@ You can specify which branch to read from; it defaults to master if not specifie
 | branch | Branch name to read from (defaults to master) | str | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if reading the folder failed | str |
@@ -411,6 +433,7 @@ You can customize the commit message and specify which branch to update.
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | repo_url | URL of the GitHub repository | str | Yes |
@@ -420,6 +443,7 @@ You can customize the commit message and specify which branch to update.
 | commit_message | Message for the commit | str | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

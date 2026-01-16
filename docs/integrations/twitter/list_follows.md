@@ -11,11 +11,13 @@ The block authenticates using OAuth 2.0 with list write permissions and sends a 
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | list_id | The ID of the List to follow | str | Yes |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -45,11 +47,13 @@ The block authenticates using OAuth 2.0 with list write permissions and sends a 
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | list_id | The ID of the List to unfollow | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

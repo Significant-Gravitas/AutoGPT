@@ -11,6 +11,7 @@ Company data is passed as a dictionary with standard HubSpot company properties 
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | operation | Operation to perform (create, update, get) | str | No |
@@ -18,6 +19,7 @@ Company data is passed as a dictionary with standard HubSpot company properties 
 | domain | Company domain for get/update operations | str | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

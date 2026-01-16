@@ -11,6 +11,7 @@ The transcription is output as a string for downstream processing, analysis, or 
 <!-- END MANUAL -->
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

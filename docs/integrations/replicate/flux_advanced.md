@@ -9,6 +9,7 @@ The block takes a text prompt and several customization options as input. It the
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | prompt | Text prompt for image generation | str | Yes |
@@ -23,6 +24,7 @@ The block takes a text prompt and several customization options as input. It the
 | safety_tolerance | Safety tolerance, 1 is most strict and 5 is most permissive | int | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

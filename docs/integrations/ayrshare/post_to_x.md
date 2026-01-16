@@ -11,6 +11,7 @@ The block authenticates through Ayrshare and handles X-specific features like au
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | post | The post text (max 280 chars, up to 25,000 for Premium users). Use @handle to mention users. Use \n\n for thread breaks. | str | Yes |
@@ -39,6 +40,7 @@ The block authenticates through Ayrshare and handles X-specific features like au
 | subtitle_name | Name of caption track (max 150 chars, default: 'English') | str | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

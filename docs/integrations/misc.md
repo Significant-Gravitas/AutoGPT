@@ -11,6 +11,7 @@ Input and output schemas define the expected data structure for communication be
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | user_id | User ID | str | Yes |
@@ -43,6 +44,7 @@ _Add technical explanation here._
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | subreddit | Subreddit to post to, excluding the /r/ prefix | str | Yes |
@@ -53,6 +55,7 @@ _Add technical explanation here._
 | flair_text | Custom flair text (only used if the flair template allows editing) | str | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -78,11 +81,13 @@ _Add technical explanation here._
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | comment_id | The ID of the comment to delete (must be your own comment) | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if deletion failed | str |
@@ -107,11 +112,13 @@ _Add technical explanation here._
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | post_id | The ID of the post to delete (must be your own post) | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if deletion failed | str |
@@ -136,12 +143,14 @@ _Add technical explanation here._
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | post_id | The ID of the post to edit (must be your own post) | str | Yes |
 | new_content | The new body text for the post | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the edit failed | str |
@@ -169,6 +178,7 @@ The sandbox includes pip and npm pre-installed. Set timeout to limit execution t
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | setup_commands | Shell commands to set up the sandbox before running the code. You can use `curl` or `git` to install your desired Debian based package manager. `pip` and `npm` are pre-installed.  These commands are executed with `sh`, in the foreground. | List[str] | No |
@@ -179,6 +189,7 @@ The sandbox includes pip and npm pre-installed. Set timeout to limit execution t
 | template_id | You can use an E2B sandbox template by entering its ID here. Check out the E2B docs for more details: [E2B - Sandbox template](https://e2b.dev/docs/sandbox-template) | str | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -212,6 +223,7 @@ Use this for multi-step code execution where each step builds on previous result
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | sandbox_id | ID of the sandbox instance to execute the code in | str | Yes |
@@ -220,6 +232,7 @@ Use this for multi-step code execution where each step builds on previous result
 | dispose_sandbox | Whether to dispose of the sandbox after executing this code. | bool | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -251,11 +264,13 @@ _Add technical explanation here._
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | comment_id | The ID of the comment to fetch | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if comment couldn't be fetched | str |
@@ -279,6 +294,7 @@ _Add technical explanation here._
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | comment_id | The ID of the comment to get replies from | str | Yes |
@@ -286,6 +302,7 @@ _Add technical explanation here._
 | limit | Maximum number of replies to fetch (max 50) | int | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if replies couldn't be fetched | str |
@@ -312,6 +329,7 @@ _Add technical explanation here._
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | inbox_type | Type of inbox items to fetch | "all" \| "unread" \| "messages" | No |
@@ -319,6 +337,7 @@ _Add technical explanation here._
 | mark_read | Whether to mark fetched items as read | bool | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if fetch failed | str |
@@ -343,11 +362,13 @@ _Add technical explanation here._
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | post_id | The ID of the post to fetch (e.g., 'abc123' or full ID 't3_abc123') | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the post couldn't be fetched | str |
@@ -371,6 +392,7 @@ _Add technical explanation here._
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | post_id | The ID of the post to get comments from | str | Yes |
@@ -378,6 +400,7 @@ _Add technical explanation here._
 | sort | Sort order for comments | "best" \| "top" \| "new" | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if comments couldn't be fetched | str |
@@ -403,6 +426,7 @@ The block connects to Reddit using provided credentials, accesses the specified 
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | subreddit | Subreddit name, excluding the /r/ prefix | str | No |
@@ -411,6 +435,7 @@ The block connects to Reddit using provided credentials, accesses the specified 
 | post_limit | Number of posts to fetch | int | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -435,11 +460,13 @@ _Add technical explanation here._
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | username | The Reddit username to look up (without /u/ prefix) | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if user lookup failed | str |
@@ -464,11 +491,13 @@ _Add technical explanation here._
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | subreddit | Subreddit name (without /r/ prefix) | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if fetch failed | str |
@@ -494,11 +523,13 @@ _Add technical explanation here._
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | subreddit | Subreddit name (without /r/ prefix) | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the subreddit couldn't be fetched | str |
@@ -523,11 +554,13 @@ _Add technical explanation here._
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | subreddit | Subreddit name (without /r/ prefix) | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if fetch failed | str |
@@ -553,6 +586,7 @@ _Add technical explanation here._
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | username | Reddit username to fetch posts from (without /u/ prefix) | str | Yes |
@@ -560,6 +594,7 @@ _Add technical explanation here._
 | sort | Sort order for user posts | "new" \| "hot" \| "top" | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if posts couldn't be fetched | str |
@@ -586,6 +621,7 @@ The sandbox persists until its timeout expires or it's explicitly disposed. Use 
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | setup_commands | Shell commands to set up the sandbox before running the code. You can use `curl` or `git` to install your desired Debian based package manager. `pip` and `npm` are pre-installed.  These commands are executed with `sh`, in the foreground. | List[str] | No |
@@ -595,6 +631,7 @@ The sandbox persists until its timeout expires or it's explicitly disposed. Use 
 | template_id | You can use an E2B sandbox template by entering its ID here. Check out the E2B docs for more details: [E2B - Sandbox template](https://e2b.dev/docs/sandbox-template) | str | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -625,12 +662,14 @@ The block connects to Reddit using the provided credentials, locates the specifi
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | post_id | The ID of the post to comment on | str | Yes |
 | comment | The content of the comment to post | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -657,6 +696,7 @@ Configure publish_status to publish immediately, save as draft, or make unlisted
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | author_id | The Medium AuthorID of the user. You can get this by calling the /me endpoint of the Medium API.  curl -H "Authorization: Bearer YOUR_ACCESS_TOKEN" https://api.medium.com/v1/me  The response will contain the authorId field. | str | No |
@@ -670,6 +710,7 @@ Configure publish_status to publish immediately, save as draft, or make unlisted
 | notify_followers | Whether to notify followers that the user has published | bool | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the post creation failed | str |
@@ -701,6 +742,7 @@ Each entry is output individually, enabling processing of new content as it appe
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | rss_url | The URL of the RSS feed to read | str | Yes |
@@ -709,6 +751,7 @@ Each entry is output individually, enabling processing of new content as it appe
 | run_continuously | Whether to run the block continuously or just once. | bool | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -737,12 +780,14 @@ _Add technical explanation here._
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | post_limit | Maximum number of posts to fetch | int | No |
 | sort | Sort order for posts | "new" \| "hot" \| "top" | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if posts couldn't be fetched | str |
@@ -767,12 +812,14 @@ _Add technical explanation here._
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | comment_id | The ID of the comment to reply to | str | Yes |
 | reply_text | The text content of the reply | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if reply failed | str |
@@ -797,6 +844,7 @@ _Add technical explanation here._
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | query | Search query string | str | Yes |
@@ -806,6 +854,7 @@ _Add technical explanation here._
 | limit | Maximum number of results to return | int | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if search failed | str |
@@ -832,6 +881,7 @@ Supports JSON, form-encoded, and multipart requests with file uploads. The respo
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | url | The URL to send the request to | str | Yes |
@@ -843,6 +893,7 @@ Supports JSON, form-encoded, and multipart requests with file uploads. The respo
 | files | Mapping of *form field name* → Image url / path / base64 url. | List[str (file)] | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Errors for all other exceptions | str |
@@ -874,6 +925,7 @@ The block handles connection, authentication, and message delivery, returning a 
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | to_email | Recipient email address | str | Yes |
@@ -882,6 +934,7 @@ The block handles connection, authentication, and message delivery, returning a 
 | config | SMTP Config | SMTP Config | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the email sending failed | str |
@@ -909,6 +962,7 @@ _Add technical explanation here._
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | username | The Reddit username to send a message to (without /u/ prefix) | str | Yes |
@@ -916,6 +970,7 @@ _Add technical explanation here._
 | message | The body content of the message | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if sending failed | str |
@@ -942,6 +997,7 @@ The response body is parsed and returned. Separate error outputs distinguish bet
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | url | The URL to send the request to | str | Yes |
@@ -953,6 +1009,7 @@ The response body is parsed and returned. Separate error outputs distinguish bet
 | files | Mapping of *form field name* → Image url / path / base64 url. | List[str (file)] | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Errors for all other exceptions | str |
@@ -984,11 +1041,13 @@ The transcript text is returned as a single string, suitable for summarization, 
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | youtube_url | The URL of the YouTube video to transcribe | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Any error message if the transcription fails | str |

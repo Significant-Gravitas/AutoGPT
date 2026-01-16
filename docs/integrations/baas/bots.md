@@ -11,11 +11,13 @@ Provide the bot_id from a previous recording session to delete that specific mee
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | bot_id | UUID of the bot whose data to delete | str | Yes |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -45,12 +47,14 @@ Enable include_transcripts to receive the full meeting transcript with speaker i
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | bot_id | UUID of the bot whose data to fetch | str | Yes |
 | include_transcripts | Include transcript data in response | bool | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -82,6 +86,7 @@ Use webhooks to receive notifications when the meeting ends and recordings are r
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | meeting_url | The URL of the meeting the bot should join | str | Yes |
@@ -95,6 +100,7 @@ Use webhooks to receive notifications when the meeting ends and recordings are r
 | extra | Custom metadata to attach to the bot | Dict[str, Any] | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -125,11 +131,13 @@ The bot leaves gracefully and recording data becomes available for retrieval.
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | bot_id | UUID of the bot to remove from meeting | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

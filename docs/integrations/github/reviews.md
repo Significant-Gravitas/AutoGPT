@@ -11,6 +11,7 @@ For review comments, only path, body, and position fields are used. The side, st
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | path | The file path to comment on | str | Yes |
@@ -22,6 +23,7 @@ For review comments, only path, body, and position fields are used. The side, st
 | start_side | Side for the start of multi-line comments (NOTE: Only for standalone comments, not review comments) | str | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -51,6 +53,7 @@ You can create reviews as drafts (pending) for later submission, or post them im
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | repo | GitHub repository | str | Yes |
@@ -61,6 +64,7 @@ You can create reviews as drafts (pending) for later submission, or post them im
 | comments | Optional inline comments to add to specific files/lines. Note: Only path, body, and position are supported. Position is line number in diff from first @@ hunk. | List[ReviewComment] | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the review creation failed | str |
@@ -92,6 +96,7 @@ You can get all review comments on the PR, or filter to comments from a specific
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | repo | GitHub repository | str | Yes |
@@ -99,6 +104,7 @@ You can get all review comments on the PR, or filter to comments from a specific
 | review_id | ID of a specific review to get comments from (optional) | int | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -129,12 +135,14 @@ Use this to check approval status, see who has reviewed, or analyze the review h
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | repo | GitHub repository | str | Yes |
 | pr_number | Pull request number | int | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -165,6 +173,7 @@ Specify the comment ID of the thread to resolve. Set resolve to true to mark as 
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | repo | GitHub repository | str | Yes |
@@ -173,6 +182,7 @@ Specify the comment ID of the thread to resolve. Set resolve to true to mark as 
 | resolve | Whether to resolve (true) or unresolve (false) the discussion | bool | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -202,6 +212,7 @@ When submitting, choose the review event: COMMENT for general feedback, APPROVE 
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | repo | GitHub repository | str | Yes |
@@ -210,6 +221,7 @@ When submitting, choose the review event: COMMENT for general feedback, APPROVE 
 | event | The review action to perform when submitting | "COMMENT" \| "APPROVE" \| "REQUEST_CHANGES" | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the review submission failed | str |

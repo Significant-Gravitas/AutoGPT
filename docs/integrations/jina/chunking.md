@@ -11,6 +11,7 @@ Configure maximum chunk length and optionally return token information for each 
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | texts | List of texts to chunk | List[Any] | Yes |
@@ -18,6 +19,7 @@ Configure maximum chunk length and optionally return token information for each 
 | return_tokens | Whether to return token information | bool | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

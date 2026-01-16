@@ -11,6 +11,7 @@ The block supports powerful filtering by domain, date ranges, content categories
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | query | The search query | str | Yes |
@@ -30,6 +31,7 @@ The block supports powerful filtering by domain, date ranges, content categories
 | moderation | Enable content moderation to filter unsafe content from search results | bool | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the request failed | str |

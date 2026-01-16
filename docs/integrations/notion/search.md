@@ -11,6 +11,7 @@ Results include titles, types, URLs, and metadata for each match. Leave the quer
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | query | Search query text. Leave empty to get all accessible pages/databases. | str | No |
@@ -18,6 +19,7 @@ Results include titles, types, URLs, and metadata for each match. Leave the quer
 | limit | Maximum number of results to return | int | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

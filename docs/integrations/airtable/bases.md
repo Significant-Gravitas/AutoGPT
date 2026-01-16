@@ -11,6 +11,7 @@ Enable find_existing to search for a base with the same name before creating a n
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | workspace_id | The workspace ID where the base will be created | str | Yes |
@@ -19,6 +20,7 @@ Enable find_existing to search for a base with the same name before creating a n
 | tables | At least one table and field must be specified. Array of table objects to create in the base. Each table should have 'name' and 'fields' properties | List[Dict[str, Any]] | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -51,12 +53,14 @@ Results are paginated; use the offset output to retrieve additional pages if the
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | trigger | Trigger the block to run - value is ignored | str | No |
 | offset | Pagination offset from previous request | str | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

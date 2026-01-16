@@ -11,6 +11,7 @@ Define the data structure you want using a JSON schema for precise extraction, o
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | urls | The URLs to crawl - at least one is required. Wildcards are supported. (/*) | List[str] | Yes |
@@ -19,6 +20,7 @@ Define the data structure you want using a JSON schema for precise extraction, o
 | enable_web_search | When true, extraction can follow links outside the specified domain. | bool | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the extraction failed | str |

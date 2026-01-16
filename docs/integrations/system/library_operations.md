@@ -11,12 +11,14 @@ The block returns the library entry ID and agent graph ID, which can be used to 
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | store_listing_version_id | The ID of the store listing version to add to library | str | Yes |
 | agent_name | Optional custom name for the agent in your library | str | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -51,6 +53,7 @@ Results include each agent's metadata and are output both as a complete list and
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | search_query | Optional search query to filter agents | str | No |
@@ -58,6 +61,7 @@ Results include each agent's metadata and are output both as a complete list and
 | page | Page number for pagination | int | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |

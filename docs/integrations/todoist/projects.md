@@ -9,6 +9,7 @@ Takes project details and creates via Todoist API.
 <!-- END MANUAL -->
 
 ## Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | name | Name of the project | str | Yes |
@@ -18,6 +19,7 @@ Takes project details and creates via Todoist API.
 | view_style | Display style (list or board) | str | No |
 
 ## Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -41,11 +43,13 @@ Uses project ID to delete via Todoist API.
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | project_id | ID of project to delete | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -69,11 +73,13 @@ Uses project ID to retrieve details via Todoist API.
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | project_id | ID of the project to get details for | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -100,11 +106,13 @@ Uses project ID to get collaborator list via Todoist API.
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | project_id | ID of the project to get collaborators for | str | Yes |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -131,6 +139,7 @@ Connects to Todoist API using provided credentials and retrieves all projects.
 <!-- END MANUAL -->
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -157,6 +166,7 @@ Takes project ID and updated fields, applies via Todoist API.
 <!-- END MANUAL -->
 
 ### Inputs
+
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | project_id | ID of project to update | str | Yes |
@@ -166,6 +176,7 @@ Takes project ID and updated fields, applies via Todoist API.
 | view_style | Display style (list or board) | str | No |
 
 ### Outputs
+
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
