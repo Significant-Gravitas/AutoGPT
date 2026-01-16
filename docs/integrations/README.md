@@ -516,11 +516,6 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Exa Webset Webhook](exa/webhook_blocks.md#exa-webset-webhook) | Receive webhook notifications for Exa webset events |
 | [Generic Webhook Trigger](generic_webhook/triggers.md#generic-webhook-trigger) | This block will output the contents of the generic input for the webhook |
 | [Read RSS Feed](misc.md#read-rss-feed) | Reads RSS feed entries from a given URL |
-
-## Input/Output
-
-| Block Name | Description |
-|------------|-------------|
 | [Send Authenticated Web Request](misc.md#send-authenticated-web-request) | Make an authenticated HTTP request with host-scoped credentials (JSON / form / multipart) |
 | [Send Email](misc.md#send-email) | This block sends an email using the provided SMTP credentials |
 | [Send Web Request](misc.md#send-web-request) | Make an HTTP request (JSON / form / multipart) |

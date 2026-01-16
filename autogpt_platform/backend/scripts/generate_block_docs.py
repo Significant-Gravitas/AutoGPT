@@ -467,12 +467,39 @@ def generate_overview_table(blocks: list[BlockDoc]) -> str:
         "MARKETING",
     ]
 
+    # Track emitted display names to avoid duplicate headers
+    # (e.g., INPUT and OUTPUT both map to "Input/Output")
+    emitted_display_names: set[str] = set()
+
     for category in category_order:
         if category not in by_category:
             continue
 
-        cat_blocks = sorted(by_category[category], key=lambda b: b.name)
         display_name = CATEGORY_DISPLAY_NAMES.get(category, category)
+
+        # Collect all blocks for this display name (may span multiple categories)
+        if display_name in emitted_display_names:
+            # Already emitted header, just add rows to existing table
+            # Find the position before the last empty line and insert rows
+            cat_blocks = sorted(by_category[category], key=lambda b: b.name)
+            # Remove the trailing empty line, add rows, then re-add empty line
+            lines.pop()
+            for block in cat_blocks:
+                file_mapping = get_block_file_mapping([block])
+                file_path = list(file_mapping.keys())[0]
+                anchor = generate_anchor(block.name)
+                short_desc = (
+                    block.description.split(".")[0]
+                    if block.description
+                    else "No description"
+                )
+                short_desc = short_desc.replace("\n", " ").replace("|", "\\|")
+                lines.append(f"| [{block.name}]({file_path}#{anchor}) | {short_desc} |")
+            lines.append("")
+            continue
+
+        emitted_display_names.add(display_name)
+        cat_blocks = sorted(by_category[category], key=lambda b: b.name)
 
         lines.append(f"## {display_name}")
         lines.append("")
