@@ -3,6 +3,13 @@ import { withSentryConfig } from "@sentry/nextjs";
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   productionBrowserSourceMaps: true,
+  // Externalize OpenTelemetry packages to fix Turbopack HMR issues
+  serverExternalPackages: [
+    "@opentelemetry/instrumentation",
+    "@opentelemetry/sdk-node",
+    "import-in-the-middle",
+    "require-in-the-middle",
+  ],
   experimental: {
     serverActions: {
       bodySizeLimit: "256mb",

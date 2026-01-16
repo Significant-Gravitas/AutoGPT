@@ -8,8 +8,9 @@ import {
   ObjectFieldTemplateProps,
   titleId,
 } from "@rjsf/utils";
-import { getHandleId, updateUiOption } from "../../helpers";
+import { cleanUpHandleId, getHandleId, updateUiOption } from "../../helpers";
 import React from "react";
+import { useEdgeStore } from "@/app/(platform)/build/stores/edgeStore";
 
 export default function ObjectFieldTemplate(props: ObjectFieldTemplateProps) {
   const {
@@ -28,6 +29,8 @@ export default function ObjectFieldTemplate(props: ObjectFieldTemplateProps) {
     registry,
   } = props;
   const uiOptions = getUiOptions(uiSchema);
+
+  const { isInputConnected } = useEdgeStore();
 
   const TitleFieldTemplate = getTemplate(
     "TitleFieldTemplate",
@@ -58,6 +61,11 @@ export default function ObjectFieldTemplate(props: ObjectFieldTemplateProps) {
     handleId: handleId,
   });
 
+  const shouldShowChildren = !isInputConnected(
+    registry.formContext.nodeId,
+    cleanUpHandleId(handleId),
+  );
+
   return (
     <>
       <div className="flex items-center gap-2">
@@ -83,40 +91,42 @@ export default function ObjectFieldTemplate(props: ObjectFieldTemplateProps) {
         )}
       </div>
 
-      <div className="flex flex-col">
-        {!showOptionalDataControlInTitle ? optionalDataControl : undefined}
+      {shouldShowChildren && (
+        <div className="flex flex-col">
+          {!showOptionalDataControlInTitle ? optionalDataControl : undefined}
 
-        {/* I have cloned it - so i could pass updated uiSchema to the nested children */}
-        {properties.map((element: any, index: number) => {
-          const clonedContent = React.cloneElement(element.content, {
-            ...element.content.props,
-            uiSchema: updateUiOption(element.content.props.uiSchema, {
-              handleId: handleId,
-            }),
-          });
+          {/* I have cloned it - so i could pass updated uiSchema to the nested children */}
+          {properties.map((element: any, index: number) => {
+            const clonedContent = React.cloneElement(element.content, {
+              ...element.content.props,
+              uiSchema: updateUiOption(element.content.props.uiSchema, {
+                handleId: handleId,
+              }),
+            });
 
-          return (
-            <div
-              key={index}
-              className={`${element.hidden ? "hidden" : ""} flex`}
-            >
-              <div className="w-full">{clonedContent}</div>
+            return (
+              <div
+                key={index}
+                className={`${element.hidden ? "hidden" : ""} flex`}
+              >
+                <div className="w-full">{clonedContent}</div>
+              </div>
+            );
+          })}
+          {canExpand(schema, uiSchema, formData) ? (
+            <div className="mt-2 flex justify-end">
+              <AddButton
+                id={buttonId(fieldPathId, "add")}
+                onClick={onAddProperty}
+                disabled={disabled || readonly}
+                className="rjsf-object-property-expand"
+                uiSchema={updatedUiSchema}
+                registry={registry}
+              />
             </div>
-          );
-        })}
-        {canExpand(schema, uiSchema, formData) ? (
-          <div className="mt-2 flex justify-end">
-            <AddButton
-              id={buttonId(fieldPathId, "add")}
-              onClick={onAddProperty}
-              disabled={disabled || readonly}
-              className="rjsf-object-property-expand"
-              uiSchema={updatedUiSchema}
-              registry={registry}
-            />
-          </div>
-        ) : null}
-      </div>
+          ) : null}
+        </div>
+      )}
     </>
   );
 }
