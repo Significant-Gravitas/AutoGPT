@@ -34,7 +34,7 @@ export async function GET(
 
     // Pass is_user_message parameter if provided
     if (isUserMessage !== null) {
-      streamUrl.searchParams.set("is_user_message", isUserMessage);
+      streamUrl.searchParams.set("is_user_message", String(isUserMessage));
     }
 
     // Forward request to backend with auth header
