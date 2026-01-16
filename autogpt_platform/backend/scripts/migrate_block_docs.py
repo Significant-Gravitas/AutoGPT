@@ -172,7 +172,9 @@ def run_migration():
             else:
                 # Try with class name
                 manual_content = manual_content_cache.get(block.class_name, {})
-                if not manual_content:
+                if manual_content:
+                    preserved_count += 1
+                else:
                     missing_count += 1
 
             content_parts.append(
