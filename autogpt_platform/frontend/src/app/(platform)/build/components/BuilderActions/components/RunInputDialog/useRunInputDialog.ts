@@ -48,17 +48,29 @@ export const useRunInputDialog = ({
         },
         onError: (error) => {
           if (error instanceof ApiError && error.isGraphValidationError()) {
-            const errorData = error.response?.detail;
-            Object.entries(errorData.node_errors).forEach(
-              ([nodeId, nodeErrors]) => {
-                useNodeStore
-                  .getState()
-                  .updateNodeErrors(
-                    nodeId,
-                    nodeErrors as { [key: string]: string },
-                  );
-              },
-            );
+            const errorData = error.response?.detail || {
+              node_errors: {},
+              message: undefined,
+            };
+            const nodeErrors = errorData.node_errors || {};
+
+            if (Object.keys(nodeErrors).length > 0) {
+              Object.entries(nodeErrors).forEach(
+                ([nodeId, nodeErrorsForNode]) => {
+                  useNodeStore
+                    .getState()
+                    .updateNodeErrors(
+                      nodeId,
+                      nodeErrorsForNode as { [key: string]: string },
+                    );
+                },
+              );
+            } else {
+              useNodeStore.getState().nodes.forEach((node) => {
+                useNodeStore.getState().updateNodeErrors(node.id, {});
+              });
+            }
+
             toast({
               title: errorData?.message || "Graph validation failed",
               description:
@@ -67,7 +79,7 @@ export const useRunInputDialog = ({
             });
             setIsOpen(false);
 
-            const firstBackendId = Object.keys(errorData.node_errors)[0];
+            const firstBackendId = Object.keys(nodeErrors)[0];
 
             if (firstBackendId) {
               const firstErrorNode = useNodeStore
