@@ -5,8 +5,6 @@ import { customEdgeToLink, linkToCustomEdge } from "../components/helper";
 import { MarkerType } from "@xyflow/react";
 import { NodeExecutionResult } from "@/app/api/__generated__/models/nodeExecutionResult";
 import { cleanUpHandleId } from "@/components/renderers/InputRenderer/helpers";
-import { useHistoryStore } from "./historyStore";
-import { useNodeStore } from "./nodeStore";
 
 type EdgeStore = {
   edges: CustomEdge[];
@@ -55,36 +53,25 @@ export const useEdgeStore = create<EdgeStore>((set, get) => ({
       id,
     };
 
-    const exists = get().edges.some(
-      (e) =>
-        e.source === newEdge.source &&
-        e.target === newEdge.target &&
-        e.sourceHandle === newEdge.sourceHandle &&
-        e.targetHandle === newEdge.targetHandle,
-    );
-    if (exists) return newEdge;
-    const prevState = {
-      nodes: useNodeStore.getState().nodes,
-      edges: get().edges,
-    };
-
-    set((state) => ({ edges: [...state.edges, newEdge] }));
-    useHistoryStore.getState().pushState(prevState);
+    set((state) => {
+      const exists = state.edges.some(
+        (e) =>
+          e.source === newEdge.source &&
+          e.target === newEdge.target &&
+          e.sourceHandle === newEdge.sourceHandle &&
+          e.targetHandle === newEdge.targetHandle,
+      );
+      if (exists) return state;
+      return { edges: [...state.edges, newEdge] };
+    });
 
     return newEdge;
   },
 
-  removeEdge: (edgeId) => {
-    const prevState = {
-      nodes: useNodeStore.getState().nodes,
-      edges: get().edges,
-    };
-
+  removeEdge: (edgeId) =>
     set((state) => ({
       edges: state.edges.filter((e) => e.id !== edgeId),
-    }));
-    useHistoryStore.getState().pushState(prevState);
-  },
+    })),
 
   upsertMany: (edges) =>
     set((state) => {
