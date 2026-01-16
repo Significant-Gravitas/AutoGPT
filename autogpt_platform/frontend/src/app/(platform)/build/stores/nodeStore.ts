@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { NodeChange, XYPosition, applyNodeChanges } from "@xyflow/react";
 import { CustomNode } from "../components/FlowEditor/nodes/CustomNode/CustomNode";
+import { CustomEdge } from "../components/FlowEditor/edges/CustomEdge";
 import { BlockInfo } from "@/app/api/__generated__/models/blockInfo";
 import {
   convertBlockInfoIntoCustomNodeData,
@@ -43,6 +44,8 @@ const MINIMUM_MOVE_BEFORE_LOG = 50;
 
 // Track initial positions when drag starts (outside store to avoid re-renders)
 const dragStartPositions: Record<string, XYPosition> = {};
+
+let dragStartState: { nodes: CustomNode[]; edges: CustomEdge[] } | null = null;
 
 type NodeStore = {
   nodes: CustomNode[];
@@ -124,14 +127,20 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
       nodeCounter: state.nodeCounter + 1,
     })),
   onNodesChange: (changes) => {
-    const prevState = {
-      nodes: get().nodes,
-      edges: useEdgeStore.getState().edges,
-    };
-
-    // Track initial positions when drag starts
     changes.forEach((change) => {
       if (change.type === "position" && change.dragging === true) {
+        if (!dragStartState) {
+          const currentNodes = get().nodes;
+          const currentEdges = useEdgeStore.getState().edges;
+          dragStartState = {
+            nodes: currentNodes.map((n) => ({
+              ...n,
+              position: { ...n.position },
+              data: { ...n.data },
+            })),
+            edges: currentEdges.map((e) => ({ ...e })),
+          };
+        }
         if (!dragStartPositions[change.id]) {
           const node = get().nodes.find((n) => n.id === change.id);
           if (node) {
@@ -141,12 +150,17 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
       }
     });
 
-    // Check if we should track this change in history
-    let shouldTrack = changes.some(
-      (change) => change.type === "remove" || change.type === "add",
-    );
+    let shouldTrack = changes.some((change) => change.type === "remove");
+    let stateToTrack: { nodes: CustomNode[]; edges: CustomEdge[] } | null =
+      null;
 
-    // For position changes, only track if movement exceeds threshold
+    if (shouldTrack) {
+      stateToTrack = {
+        nodes: get().nodes,
+        edges: useEdgeStore.getState().edges,
+      };
+    }
+
     if (!shouldTrack) {
       changes.forEach((change) => {
         if (change.type === "position" && change.dragging === false) {
@@ -158,20 +172,23 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
             );
             if (distanceMoved > MINIMUM_MOVE_BEFORE_LOG) {
               shouldTrack = true;
+              stateToTrack = dragStartState;
             }
           }
-          // Clean up tracked position after drag ends
           delete dragStartPositions[change.id];
         }
       });
+      if (Object.keys(dragStartPositions).length === 0) {
+        dragStartState = null;
+      }
     }
 
     set((state) => ({
       nodes: applyNodeChanges(changes, state.nodes),
     }));
 
-    if (shouldTrack) {
-      useHistoryStore.getState().pushState(prevState);
+    if (shouldTrack && stateToTrack) {
+      useHistoryStore.getState().pushState(stateToTrack);
     }
   },
 
@@ -185,6 +202,11 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
     hardcodedValues?: Record<string, any>,
     position?: XYPosition,
   ) => {
+    const prevState = {
+      nodes: get().nodes,
+      edges: useEdgeStore.getState().edges,
+    };
+
     const customNodeData = convertBlockInfoIntoCustomNodeData(
       block,
       hardcodedValues,
@@ -218,21 +240,24 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
     set((state) => ({
       nodes: [...state.nodes, customNode],
     }));
+
+    useHistoryStore.getState().pushState(prevState);
+
     return customNode;
   },
   updateNodeData: (nodeId, data) => {
+    const prevState = {
+      nodes: get().nodes,
+      edges: useEdgeStore.getState().edges,
+    };
+
     set((state) => ({
       nodes: state.nodes.map((n) =>
         n.id === nodeId ? { ...n, data: { ...n.data, ...data } } : n,
       ),
     }));
 
-    const newState = {
-      nodes: get().nodes,
-      edges: useEdgeStore.getState().edges,
-    };
-
-    useHistoryStore.getState().pushState(newState);
+    useHistoryStore.getState().pushState(prevState);
   },
   toggleAdvanced: (nodeId: string) =>
     set((state) => ({
@@ -391,6 +416,11 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
   },
 
   setCredentialsOptional: (nodeId: string, optional: boolean) => {
+    const prevState = {
+      nodes: get().nodes,
+      edges: useEdgeStore.getState().edges,
+    };
+
     set((state) => ({
       nodes: state.nodes.map((n) =>
         n.id === nodeId
@@ -408,12 +438,7 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
       ),
     }));
 
-    const newState = {
-      nodes: get().nodes,
-      edges: useEdgeStore.getState().edges,
-    };
-
-    useHistoryStore.getState().pushState(newState);
+    useHistoryStore.getState().pushState(prevState);
   },
 
   // Sub-agent resolution mode state

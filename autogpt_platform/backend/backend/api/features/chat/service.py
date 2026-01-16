@@ -299,9 +299,6 @@ async def stream_chat_completion(
             f"new message_count={len(session.messages)}"
         )
 
-    if len(session.messages) > config.max_context_messages:
-        raise ValueError(f"Max messages exceeded: {config.max_context_messages}")
-
     logger.info(
         f"Upserting session: {session.session_id} with user id {session.user_id}, "
         f"message_count={len(session.messages)}"

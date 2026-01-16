@@ -55,14 +55,16 @@ export const Flow = () => {
   const edgeTypes = useMemo(() => ({ custom: CustomEdge }), []);
 
   const onNodeDragStop = useCallback(() => {
+    const currentNodes = useNodeStore.getState().nodes;
     setNodes(
-      resolveCollisions(nodes, {
+      resolveCollisions(currentNodes, {
         maxIterations: Infinity,
         overlapThreshold: 0.5,
         margin: 15,
       }),
     );
-  }, [setNodes, nodes]);
+  }, [setNodes]);
+
   const { edges, onConnect, onEdgesChange } = useCustomEdge();
 
   // for loading purpose

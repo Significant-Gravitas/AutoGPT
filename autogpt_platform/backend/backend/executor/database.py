@@ -9,6 +9,7 @@ from backend.api.features.library.db import (
 from backend.api.features.store.db import get_store_agent_details, get_store_agents
 from backend.api.features.store.embeddings import (
     backfill_missing_embeddings,
+    cleanup_orphaned_embeddings,
     get_embedding_stats,
 )
 from backend.data import db
@@ -221,6 +222,7 @@ class DatabaseManager(AppService):
     # Store Embeddings
     get_embedding_stats = _(get_embedding_stats)
     backfill_missing_embeddings = _(backfill_missing_embeddings)
+    cleanup_orphaned_embeddings = _(cleanup_orphaned_embeddings)
 
     # Summary data - async
     get_user_execution_summary_data = _(get_user_execution_summary_data)
@@ -276,6 +278,7 @@ class DatabaseManagerClient(AppServiceClient):
     # Store Embeddings
     get_embedding_stats = _(d.get_embedding_stats)
     backfill_missing_embeddings = _(d.backfill_missing_embeddings)
+    cleanup_orphaned_embeddings = _(d.cleanup_orphaned_embeddings)
 
 
 class DatabaseManagerAsyncClient(AppServiceClient):
