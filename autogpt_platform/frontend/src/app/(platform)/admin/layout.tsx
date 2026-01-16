@@ -1,5 +1,5 @@
 import { Sidebar } from "@/components/__legacy__/Sidebar";
-import { Users, DollarSign, UserSearch, FileText } from "lucide-react";
+import { Users, DollarSign, UserSearch, FileText, Database } from "lucide-react";
 
 import { IconSliders } from "@/components/__legacy__/ui/icons";
 
@@ -30,6 +30,11 @@ const sidebarLinkGroups = [
         text: "Admin User Management",
         href: "/admin/settings",
         icon: <IconSliders className="h-6 w-6" />,
+      },
+      {
+        text: "Test Data",
+        href: "/admin/test-data",
+        icon: <Database className="h-6 w-6" />,
       },
     ],
   },

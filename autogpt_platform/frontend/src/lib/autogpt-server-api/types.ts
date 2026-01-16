@@ -1134,6 +1134,31 @@ export type AddUserCreditsResponse = {
   new_balance: number;
   transaction_key: string;
 };
+
+// Test Data Generation Types
+export enum TestDataScriptType {
+  FULL = "full",
+  E2E = "e2e",
+}
+
+export type GenerateTestDataRequest = {
+  script_type: TestDataScriptType;
+};
+
+export type GenerateTestDataResponse = {
+  success: boolean;
+  message: string;
+  details?: {
+    users_created?: number;
+    graphs_created?: number;
+    library_agents_created?: number;
+    store_submissions_created?: number;
+    presets_created?: number;
+    api_keys_created?: number;
+    script?: string;
+    note?: string;
+  };
+};
 const _stringFormatToDataTypeMap: Partial<Record<string, DataType>> = {
   date: DataType.DATE,
   time: DataType.TIME,

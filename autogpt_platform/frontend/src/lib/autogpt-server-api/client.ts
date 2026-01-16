@@ -11,6 +11,7 @@ import type {
   AddUserCreditsResponse,
   AnalyticsDetails,
   AnalyticsMetrics,
+  GenerateTestDataResponse,
   APIKey,
   APIKeyCredentials,
   APIKeyPermission,
@@ -614,6 +615,14 @@ export default class BackendAPI {
     const url = `/store/admin/submissions/download/${storeListingVersionId}`;
 
     return this._get(url);
+  }
+
+  generateTestData(
+    scriptType: "full" | "e2e" = "e2e",
+  ): Promise<GenerateTestDataResponse> {
+    return this._request("POST", "/admin/admin/generate-test-data", {
+      script_type: scriptType,
+    });
   }
 
   ////////////////////////////////////////
