@@ -182,6 +182,8 @@ async def unified_hybrid_search(
     if min_score is None:
         min_score = DEFAULT_MIN_SCORE
 
+    offset = (page - 1) * page_size
+    
     # Generate query embedding
     query_embedding = await embed_query(query)
 
@@ -263,14 +265,16 @@ async def unified_hybrid_search(
     params.append(min_score)
     min_score_param = f"${param_idx}"
     param_idx += 1
-
-    # Fetch more candidates for BM25 reranking
-    # We fetch all candidates above min_score, then rerank and paginate
-    rerank_limit = max(200, page_size * 5)
-    params.append(rerank_limit)
+    
+    # Pagination
+    params.append(page_size)
+    
     limit_param = f"${param_idx}"
     param_idx += 1
 
+    params.append(offset)
+    offset_param = f"${param_idx}"
+    param_idx += 1
     # Unified search query on UnifiedContentEmbedding
     sql_query = f"""
         WITH candidates AS (
@@ -348,19 +352,20 @@ async def unified_hybrid_search(
             FROM normalized
         ),
         filtered AS (
-            SELECT *
+            SELECT *, COUNT(*) OVER () as total_count
             FROM scored
             WHERE combined_score >= {min_score_param}
         )
         SELECT * FROM filtered
         ORDER BY combined_score DESC
-        LIMIT {limit_param}
+        LIMIT {limit_param} OFFSET {offset_param}
     """
 
     results = await query_raw_with_schema(
         sql_query, *params, set_public_search_path=True
     )
-
+    
+    total = results[0]["total_count"] if results else 0
     # Apply BM25 reranking
     if results:
         results = bm25_rerank(
@@ -371,17 +376,6 @@ async def unified_hybrid_search(
             original_score_field="combined_score",
         )
 
-    # Get total count before pagination
-    total = len(results)
-
-    # Apply pagination after reranking
-    start_idx = (page - 1) * page_size
-    end_idx = start_idx + page_size
-    results = results[start_idx:end_idx]
-
-    logger.info(
-        f"Unified hybrid search (with BM25 rerank): {len(results)} results, {total} total"
-    )
 
     return results, total
 
@@ -550,7 +544,7 @@ async def hybrid_search(
     param_idx += 1
 
     # Fetch more candidates for BM25 reranking
-    rerank_limit = max(200, page_size * 5)
+    rerank_limit = max(50, page_size * 5)
     params.append(rerank_limit)
     limit_param = f"${param_idx}"
     param_idx += 1
