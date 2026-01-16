@@ -17,6 +17,7 @@ interface InputExpanderModalProps {
   defaultValue: string;
   description?: string;
   placeholder?: string;
+  inputType?: "text" | "json";
 }
 
 export const InputExpanderModal: FC<InputExpanderModalProps> = ({
@@ -27,6 +28,7 @@ export const InputExpanderModal: FC<InputExpanderModalProps> = ({
   defaultValue,
   description,
   placeholder,
+  inputType = "text",
 }) => {
   const [tempValue, setTempValue] = useState(defaultValue);
   const [isCopied, setIsCopied] = useState(false);
@@ -78,7 +80,10 @@ export const InputExpanderModal: FC<InputExpanderModalProps> = ({
             hideLabel
             id="input-expander-modal"
             value={tempValue}
-            className="!min-h-[300px] rounded-2xlarge"
+            className={cn(
+              "!min-h-[300px] rounded-2xlarge",
+              inputType === "json" && "font-mono text-sm",
+            )}
             onChange={(e) => setTempValue(e.target.value)}
             placeholder={placeholder || "Enter text..."}
             autoFocus

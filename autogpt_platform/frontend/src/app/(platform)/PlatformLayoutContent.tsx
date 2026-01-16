@@ -1,6 +1,5 @@
 "use client";
 
-import { ChatDrawer } from "@/components/contextual/Chat/ChatDrawer";
 import { usePathname } from "next/navigation";
 import { Children, ReactNode } from "react";
 
@@ -32,7 +31,7 @@ export function PlatformLayoutContent({
     );
   }
 
-  // For logged-in pages, use the drawer layout
+  // For logged-in pages, use the standard layout
   return (
     <main className="flex h-screen w-full flex-col overflow-hidden">
       {navbar}
@@ -40,7 +39,6 @@ export function PlatformLayoutContent({
       <section className="flex min-h-0 flex-1 overflow-auto">
         {pageContent}
       </section>
-      <ChatDrawer />
     </main>
   );
 }

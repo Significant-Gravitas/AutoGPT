@@ -1,6 +1,6 @@
-import { useState, useCallback, useRef, useEffect } from "react";
-import { toast } from "sonner";
 import type { ToolArguments, ToolResult } from "@/types/chat";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 
 const MAX_RETRIES = 3;
 const INITIAL_RETRY_DELAY = 1000;
@@ -39,6 +39,108 @@ export interface StreamChunk {
   scopes?: string[];
   title?: string;
   [key: string]: unknown;
+}
+
+type VercelStreamChunk =
+  | { type: "start"; messageId: string }
+  | { type: "finish" }
+  | { type: "text-start"; id: string }
+  | { type: "text-delta"; id: string; delta: string }
+  | { type: "text-end"; id: string }
+  | { type: "tool-input-start"; toolCallId: string; toolName: string }
+  | {
+      type: "tool-input-available";
+      toolCallId: string;
+      toolName: string;
+      input: ToolArguments;
+    }
+  | {
+      type: "tool-output-available";
+      toolCallId: string;
+      toolName?: string;
+      output: ToolResult;
+      success?: boolean;
+    }
+  | {
+      type: "usage";
+      promptTokens: number;
+      completionTokens: number;
+      totalTokens: number;
+    }
+  | {
+      type: "error";
+      errorText: string;
+      code?: string;
+      details?: Record<string, unknown>;
+    };
+
+const LEGACY_STREAM_TYPES = new Set<StreamChunk["type"]>([
+  "text_chunk",
+  "text_ended",
+  "tool_call",
+  "tool_call_start",
+  "tool_response",
+  "login_needed",
+  "need_login",
+  "credentials_needed",
+  "error",
+  "usage",
+  "stream_end",
+]);
+
+function isLegacyStreamChunk(
+  chunk: StreamChunk | VercelStreamChunk,
+): chunk is StreamChunk {
+  return LEGACY_STREAM_TYPES.has(chunk.type as StreamChunk["type"]);
+}
+
+function normalizeStreamChunk(
+  chunk: StreamChunk | VercelStreamChunk,
+): StreamChunk | null {
+  if (isLegacyStreamChunk(chunk)) {
+    return chunk;
+  }
+  switch (chunk.type) {
+    case "text-delta":
+      return { type: "text_chunk", content: chunk.delta };
+    case "text-end":
+      return { type: "text_ended" };
+    case "tool-input-available":
+      return {
+        type: "tool_call_start",
+        tool_id: chunk.toolCallId,
+        tool_name: chunk.toolName,
+        arguments: chunk.input,
+      };
+    case "tool-output-available":
+      return {
+        type: "tool_response",
+        tool_id: chunk.toolCallId,
+        tool_name: chunk.toolName,
+        result: chunk.output,
+        success: chunk.success ?? true,
+      };
+    case "usage":
+      return {
+        type: "usage",
+        promptTokens: chunk.promptTokens,
+        completionTokens: chunk.completionTokens,
+        totalTokens: chunk.totalTokens,
+      };
+    case "error":
+      return {
+        type: "error",
+        message: chunk.errorText,
+        code: chunk.code,
+        details: chunk.details,
+      };
+    case "finish":
+      return { type: "stream_end" };
+    case "start":
+    case "text-start":
+    case "tool-input-start":
+      return null;
+  }
 }
 
 export function useChatStream() {
@@ -120,19 +222,28 @@ export function useChatStream() {
         let buffer = "";
 
         return new Promise<void>((resolve, reject) => {
+          let didDispatchStreamEnd = false;
+
+          function dispatchStreamEnd() {
+            if (didDispatchStreamEnd) return;
+            didDispatchStreamEnd = true;
+            onChunk({ type: "stream_end" });
+          }
+
           const cleanup = () => {
             reader.cancel().catch(() => {
               // Ignore cancel errors
             });
           };
 
-          const readStream = async () => {
+          async function readStream() {
             try {
               while (true) {
                 const { done, value } = await reader.read();
 
                 if (done) {
                   cleanup();
+                  dispatchStreamEnd();
                   stopStreaming();
                   resolve();
                   return;
@@ -147,13 +258,20 @@ export function useChatStream() {
                     const data = line.slice(6);
                     if (data === "[DONE]") {
                       cleanup();
+                      dispatchStreamEnd();
                       stopStreaming();
                       resolve();
                       return;
                     }
 
                     try {
-                      const chunk = JSON.parse(data) as StreamChunk;
+                      const rawChunk = JSON.parse(data) as
+                        | StreamChunk
+                        | VercelStreamChunk;
+                      const chunk = normalizeStreamChunk(rawChunk);
+                      if (!chunk) {
+                        continue;
+                      }
 
                       if (retryCountRef.current > 0) {
                         retryCountRef.current = 0;
@@ -164,6 +282,7 @@ export function useChatStream() {
 
                       // Handle stream lifecycle
                       if (chunk.type === "stream_end") {
+                        didDispatchStreamEnd = true;
                         cleanup();
                         stopStreaming();
                         resolve();
@@ -220,11 +339,12 @@ export function useChatStream() {
                     "Unable to connect to chat service. Please try again.",
                 });
                 cleanup();
+                dispatchStreamEnd();
                 stopStreaming();
                 reject(streamError);
               }
             }
-          };
+          }
 
           readStream();
         });

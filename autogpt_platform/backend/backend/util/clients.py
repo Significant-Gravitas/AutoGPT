@@ -10,6 +10,7 @@ from backend.util.settings import Settings
 settings = Settings()
 
 if TYPE_CHECKING:
+    from openai import AsyncOpenAI
     from supabase import AClient, Client
 
     from backend.data.execution import (
@@ -137,6 +138,24 @@ async def get_async_supabase() -> "AClient":
     return await create_async_client(
         settings.secrets.supabase_url, settings.secrets.supabase_service_role_key
     )
+
+
+# ============ OpenAI Client ============ #
+
+
+@cached(ttl_seconds=3600)
+def get_openai_client() -> "AsyncOpenAI | None":
+    """
+    Get a process-cached async OpenAI client for embeddings.
+
+    Returns None if API key is not configured.
+    """
+    from openai import AsyncOpenAI
+
+    api_key = settings.secrets.openai_internal_api_key
+    if not api_key:
+        return None
+    return AsyncOpenAI(api_key=api_key)
 
 
 # ============ Notification Queue Helpers ============ #

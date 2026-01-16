@@ -1,7 +1,7 @@
-import { Breadcrumbs } from "@/components/molecules/Breadcrumbs/Breadcrumbs";
-import { AgentSettingsButton } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/other/AgentSettingsButton";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import { Breadcrumbs } from "@/components/molecules/Breadcrumbs/Breadcrumbs";
 import { AGENT_LIBRARY_SECTION_PADDING_X } from "../../helpers";
+import { AgentSettingsModal } from "../modals/AgentSettingsModal/AgentSettingsModal";
 import { SectionWrap } from "../other/SectionWrap";
 
 interface Props {
@@ -9,8 +9,6 @@ interface Props {
   children: React.ReactNode;
   banner?: React.ReactNode;
   additionalBreadcrumb?: { name: string; link?: string };
-  onSelectSettings?: () => void;
-  selectedSettings?: boolean;
 }
 
 export function SelectedViewLayout(props: Props) {
@@ -19,8 +17,8 @@ export function SelectedViewLayout(props: Props) {
       <div
         className={`${AGENT_LIBRARY_SECTION_PADDING_X} flex-shrink-0 border-b border-zinc-100 pb-0 lg:pb-4`}
       >
-        {props.banner && <div className="mb-4">{props.banner}</div>}
-        <div className="relative flex w-fit items-center gap-2">
+        {props.banner}
+        <div className="relative flex w-full items-center justify-between">
           <Breadcrumbs
             items={[
               { name: "My Library", link: "/library" },
@@ -33,15 +31,9 @@ export function SelectedViewLayout(props: Props) {
                 : []),
             ]}
           />
-          {props.agent && props.onSelectSettings && (
-            <div className="absolute -right-8">
-              <AgentSettingsButton
-                agent={props.agent}
-                onSelectSettings={props.onSelectSettings}
-                selected={props.selectedSettings}
-              />
-            </div>
-          )}
+          <div className="absolute right-0">
+            <AgentSettingsModal agent={props.agent} />
+          </div>
         </div>
       </div>
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-visible">

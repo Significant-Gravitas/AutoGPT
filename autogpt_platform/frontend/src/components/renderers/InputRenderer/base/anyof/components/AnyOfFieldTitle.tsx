@@ -13,6 +13,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { isOptionalType } from "../../../utils/schema-utils";
 import { getTypeDisplayInfo } from "@/app/(platform)/build/components/FlowEditor/nodes/helpers";
 import { cn } from "@/lib/utils";
+import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
 
 interface customFieldProps extends FieldProps {
   selector: JSX.Element;
@@ -51,6 +52,13 @@ export const AnyOfFieldTitle = (props: customFieldProps) => {
     shouldShowTypeSelector(schema) && !isArrayItem && !isHandleConnected;
   const shoudlShowType = isHandleConnected || (isOptional && type);
 
+  const isInputBroken = useNodeStore((state) =>
+    state.isInputBroken(nodeId, cleanUpHandleId(uiOptions.handleId)),
+  );
+  const inputMismatch = useNodeStore((state) =>
+    state.getInputTypeMismatch(nodeId, cleanUpHandleId(uiOptions.handleId)),
+  );
+
   return (
     <div className="flex items-center gap-2">
       <TitleFieldTemplate
@@ -62,8 +70,16 @@ export const AnyOfFieldTitle = (props: customFieldProps) => {
         uiSchema={uiSchema}
       />
       {shoudlShowType && (
-        <Text variant="small" className={cn("text-zinc-700", colorClass)}>
-          {isOptional ? `(${displayType})` : "(any)"}
+        <Text
+          variant="small"
+          className={cn(
+            "text-zinc-700",
+            isInputBroken && "line-through",
+            colorClass,
+            inputMismatch && "rounded-md bg-red-100 px-1 !text-red-500",
+          )}
+        >
+          {isOptional ? `(${inputMismatch || displayType})` : "(any)"}
         </Text>
       )}
       {shouldShowSelector && selector}

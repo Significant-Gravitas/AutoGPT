@@ -1,7 +1,6 @@
 "use client";
 
 import { IconLaptop } from "@/components/__legacy__/ui/icons";
-import { useChatDrawer } from "@/components/contextual/Chat/useChatDrawer";
 import { cn } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import {
@@ -25,22 +24,9 @@ export function NavbarLink({ name, href }: Props) {
   const pathname = usePathname();
   const isActive = pathname.includes(href);
   const chat_enabled = useGetFlag(Flag.CHAT);
-  const { open: openChatDrawer } = useChatDrawer();
-  const isChat = href === "/chat";
-
-  function handleClick(e: React.MouseEvent) {
-    if (isChat && chat_enabled) {
-      e.preventDefault();
-      openChatDrawer();
-    }
-  }
 
   return (
-    <Link
-      href={href}
-      onClick={handleClick}
-      data-testid={`navbar-link-${name.toLowerCase()}`}
-    >
+    <Link href={href} data-testid={`navbar-link-${name.toLowerCase()}`}>
       <div
         className={cn(
           "flex items-center justify-start gap-1 p-1 md:p-2",

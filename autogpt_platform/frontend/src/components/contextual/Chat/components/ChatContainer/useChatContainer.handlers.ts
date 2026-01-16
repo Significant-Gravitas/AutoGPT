@@ -44,7 +44,6 @@ export function handleTextEnded(
   deps.setStreamingChunks([]);
   deps.streamingChunksRef.current = [];
   deps.setHasTextChunks(false);
-  deps.setIsStreamingInitiated(false);
 }
 
 export function handleToolCallStart(

@@ -151,7 +151,7 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
         </div>
 
         <div className="flex justify-end pt-4">
-          {outputItems.length > 0 && (
+          {outputItems.length > 1 && (
             <OutputActions
               items={outputItems.map((item) => ({
                 value: item.value,

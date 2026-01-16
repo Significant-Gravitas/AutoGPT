@@ -40,15 +40,17 @@ export function useMarketplaceUpdate({ agent }: UseMarketplaceUpdateProps) {
     },
   );
 
-  // Get user's submissions to check for pending submissions
-  const { data: submissionsData } = useGetV2ListMySubmissions(
-    { page: 1, page_size: 50 }, // Get enough to cover recent submissions
-    {
-      query: {
-        enabled: !!user?.id, // Only fetch if user is authenticated
+  // Get user's submissions - only fetch if user is the creator
+  const { data: submissionsData, isLoading: isSubmissionsLoading } =
+    useGetV2ListMySubmissions(
+      { page: 1, page_size: 50 },
+      {
+        query: {
+          // Only fetch if user is the creator
+          enabled: !!(user?.id && agent?.owner_user_id === user.id),
+        },
       },
-    },
-  );
+    );
 
   const updateToLatestMutation = usePatchV2UpdateLibraryAgent({
     mutation: {
@@ -78,16 +80,45 @@ export function useMarketplaceUpdate({ agent }: UseMarketplaceUpdateProps) {
   // Check if marketplace has a newer version than user's current version
   const marketplaceUpdateInfo = React.useMemo(() => {
     const storeAgent = okData(storeAgentData) as any;
-    if (!agent || !storeAgent) {
+
+    if (!agent || isSubmissionsLoading) {
       return {
         hasUpdate: false,
         latestVersion: undefined,
         isUserCreator: false,
+        hasPublishUpdate: false,
       };
     }
 
-    // Get the latest version from the marketplace
-    // agentGraphVersions array contains graph version numbers as strings, get the highest one
+    const isUserCreator = agent?.owner_user_id === user?.id;
+
+    const submissionsResponse = okData(submissionsData) as any;
+    const agentSubmissions =
+      submissionsResponse?.submissions?.filter(
+        (submission: StoreSubmission) => submission.agent_id === agent.graph_id,
+      ) || [];
+
+    const highestSubmittedVersion =
+      agentSubmissions.length > 0
+        ? Math.max(
+            ...agentSubmissions.map(
+              (submission: StoreSubmission) => submission.agent_version,
+            ),
+          )
+        : 0;
+
+    const hasUnpublishedChanges =
+      isUserCreator && agent.graph_version > highestSubmittedVersion;
+
+    if (!storeAgent) {
+      return {
+        hasUpdate: false,
+        latestVersion: undefined,
+        isUserCreator,
+        hasPublishUpdate: agentSubmissions.length > 0 && hasUnpublishedChanges,
+      };
+    }
+
     const latestMarketplaceVersion =
       storeAgent.agentGraphVersions?.length > 0
         ? Math.max(
@@ -97,32 +128,11 @@ export function useMarketplaceUpdate({ agent }: UseMarketplaceUpdateProps) {
           )
         : undefined;
 
-    // Determine if the user is the creator of this agent
-    // Compare current user ID with the marketplace listing creator ID
-    const isUserCreator =
-      user?.id && agent.marketplace_listing?.creator.id === user.id;
-
-    // Check if there's a pending submission for this specific agent version
-    const submissionsResponse = okData(submissionsData) as any;
-    const hasPendingSubmissionForCurrentVersion =
-      isUserCreator &&
-      submissionsResponse?.submissions?.some(
-        (submission: StoreSubmission) =>
-          submission.agent_id === agent.graph_id &&
-          submission.agent_version === agent.graph_version &&
-          submission.status === "PENDING",
-      );
-
-    // If user is creator and their version is newer than marketplace, show publish update banner
-    // BUT only if there's no pending submission for this version
     const hasPublishUpdate =
       isUserCreator &&
-      !hasPendingSubmissionForCurrentVersion &&
-      latestMarketplaceVersion !== undefined &&
-      agent.graph_version > latestMarketplaceVersion;
+      agent.graph_version >
+        Math.max(latestMarketplaceVersion || 0, highestSubmittedVersion);
 
-    // If marketplace version is newer than user's version, show update banner
-    // This applies to both creators and non-creators
     const hasMarketplaceUpdate =
       latestMarketplaceVersion !== undefined &&
       latestMarketplaceVersion > agent.graph_version;
@@ -133,7 +143,7 @@ export function useMarketplaceUpdate({ agent }: UseMarketplaceUpdateProps) {
       isUserCreator,
       hasPublishUpdate,
     };
-  }, [agent, storeAgentData, user, submissionsData]);
+  }, [agent, storeAgentData, user, submissionsData, isSubmissionsLoading]);
 
   const handlePublishUpdate = () => {
     setModalOpen(true);

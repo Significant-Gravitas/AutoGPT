@@ -1,6 +1,6 @@
+import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/modals/CredentialsInputs/CredentialsInput";
 import { CredentialsMetaInput } from "@/app/api/__generated__/models/credentialsMetaInput";
 import { GraphMeta } from "@/app/api/__generated__/models/graphMeta";
-import { CredentialsInput } from "@/components/contextual/CredentialsInputs/CredentialsInputs";
 import { useState } from "react";
 import { getSchemaDefaultCredentials } from "../../helpers";
 import { areAllCredentialsSet, getCredentialFields } from "./helpers";
