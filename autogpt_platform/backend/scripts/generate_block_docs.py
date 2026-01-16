@@ -663,8 +663,9 @@ def check_docs_in_sync(output_dir: Path, blocks: list[BlockDoc]) -> bool:
             content_parts.append(expected_block_content)
 
             # Check if this specific block's section exists and matches
+            # Include the --- separator to match generate_block_markdown output
             block_pattern = (
-                rf"(?:^|\n)(##? {re.escape(block.name)}\s*\n.*?)(?=\n---|\Z)"
+                rf"(?:^|\n)(##? {re.escape(block.name)}\s*\n.*?\n---\n)"
             )
             block_match = re.search(block_pattern, existing_content, re.DOTALL)
             if not block_match:
