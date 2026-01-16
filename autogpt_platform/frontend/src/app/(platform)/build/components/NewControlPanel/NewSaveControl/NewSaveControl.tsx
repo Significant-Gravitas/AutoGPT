@@ -19,10 +19,18 @@ import { useNewSaveControl } from "./useNewSaveControl";
 
 export const NewSaveControl = () => {
   const { form, isSaving, graphVersion, handleSave } = useNewSaveControl();
-  const { saveControlOpen, setSaveControlOpen } = useControlPanelStore();
+  const { saveControlOpen, setSaveControlOpen, forceOpenSave } =
+    useControlPanelStore();
 
   return (
-    <Popover onOpenChange={setSaveControlOpen}>
+    <Popover
+      onOpenChange={(open) => {
+        if (!forceOpenSave || open) {
+          setSaveControlOpen(open);
+        }
+      }}
+      open={forceOpenSave ? true : saveControlOpen}
+    >
       <Tooltip delayDuration={100}>
         <TooltipTrigger asChild>
           <PopoverTrigger asChild>
@@ -94,6 +102,7 @@ export const NewSaveControl = () => {
                       value={graphVersion || "-"}
                       disabled
                       data-testid="save-control-version-output"
+                      data-tutorial-id="save-control-version-output"
                       label="Version"
                       wrapperClassName="!mb-0"
                     />

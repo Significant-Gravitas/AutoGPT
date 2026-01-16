@@ -38,6 +38,20 @@ POOL_TIMEOUT = os.getenv("DB_POOL_TIMEOUT")
 if POOL_TIMEOUT:
     DATABASE_URL = add_param(DATABASE_URL, "pool_timeout", POOL_TIMEOUT)
 
+# Add public schema to search_path for pgvector type access
+# The vector extension is in public schema, but search_path is determined by schema parameter
+# Extract the schema from DATABASE_URL or default to 'public' (matching get_database_schema())
+parsed_url = urlparse(DATABASE_URL)
+url_params = dict(parse_qsl(parsed_url.query))
+db_schema = url_params.get("schema", "public")
+# Build search_path, avoiding duplicates if db_schema is already 'public'
+search_path_schemas = list(
+    dict.fromkeys([db_schema, "public"])
+)  # Preserves order, removes duplicates
+search_path = ",".join(search_path_schemas)
+# This allows using ::vector without schema qualification
+DATABASE_URL = add_param(DATABASE_URL, "options", f"-c search_path={search_path}")
+
 HTTP_TIMEOUT = int(POOL_TIMEOUT) if POOL_TIMEOUT else None
 
 prisma = Prisma(
@@ -108,19 +122,100 @@ def get_database_schema() -> str:
     return query_params.get("schema", "public")
 
 
-async def query_raw_with_schema(query_template: str, *args) -> list[dict]:
-    """Execute raw SQL query with proper schema handling."""
+async def _raw_with_schema(
+    query_template: str,
+    *args,
+    execute: bool = False,
+    client: Prisma | None = None,
+    set_public_search_path: bool = False,
+) -> list[dict] | int:
+    """Internal: Execute raw SQL with proper schema handling.
+
+    Use query_raw_with_schema() or execute_raw_with_schema() instead.
+
+    Args:
+        query_template: SQL query with {schema_prefix} placeholder
+        *args: Query parameters
+        execute: If False, executes SELECT query. If True, executes INSERT/UPDATE/DELETE.
+        client: Optional Prisma client for transactions (only used when execute=True).
+        set_public_search_path: If True, sets search_path to include public schema.
+                                Needed for pgvector types and other public schema objects.
+
+    Returns:
+        - list[dict] if execute=False (query results)
+        - int if execute=True (number of affected rows)
+    """
     schema = get_database_schema()
     schema_prefix = f'"{schema}".' if schema != "public" else ""
     formatted_query = query_template.format(schema_prefix=schema_prefix)
 
     import prisma as prisma_module
 
-    result = await prisma_module.get_client().query_raw(
-        formatted_query, *args  # type: ignore
-    )
+    db_client = client if client else prisma_module.get_client()
+
+    # Set search_path to include public schema if requested
+    # Prisma doesn't support the 'options' connection parameter, so we set it per-session
+    # This is idempotent and safe to call multiple times
+    if set_public_search_path:
+        await db_client.execute_raw(f"SET search_path = {schema}, public")  # type: ignore
+
+    if execute:
+        result = await db_client.execute_raw(formatted_query, *args)  # type: ignore
+    else:
+        result = await db_client.query_raw(formatted_query, *args)  # type: ignore
 
     return result
+
+
+async def query_raw_with_schema(
+    query_template: str, *args, set_public_search_path: bool = False
+) -> list[dict]:
+    """Execute raw SQL SELECT query with proper schema handling.
+
+    Args:
+        query_template: SQL query with {schema_prefix} placeholder
+        *args: Query parameters
+        set_public_search_path: If True, sets search_path to include public schema.
+                                Needed for pgvector types and other public schema objects.
+
+    Returns:
+        List of result rows as dictionaries
+
+    Example:
+        results = await query_raw_with_schema(
+            'SELECT * FROM {schema_prefix}"User" WHERE id = $1',
+            user_id
+        )
+    """
+    return await _raw_with_schema(query_template, *args, execute=False, set_public_search_path=set_public_search_path)  # type: ignore
+
+
+async def execute_raw_with_schema(
+    query_template: str,
+    *args,
+    client: Prisma | None = None,
+    set_public_search_path: bool = False,
+) -> int:
+    """Execute raw SQL command (INSERT/UPDATE/DELETE) with proper schema handling.
+
+    Args:
+        query_template: SQL query with {schema_prefix} placeholder
+        *args: Query parameters
+        client: Optional Prisma client for transactions
+        set_public_search_path: If True, sets search_path to include public schema.
+                                Needed for pgvector types and other public schema objects.
+
+    Returns:
+        Number of affected rows
+
+    Example:
+        await execute_raw_with_schema(
+            'INSERT INTO {schema_prefix}"User" (id, name) VALUES ($1, $2)',
+            user_id, name,
+            client=tx  # Optional transaction client
+        )
+    """
+    return await _raw_with_schema(query_template, *args, execute=True, client=client, set_public_search_path=set_public_search_path)  # type: ignore
 
 
 class BaseDbModel(BaseModel):

@@ -1,6 +1,9 @@
 # Ignore everything by default, selectively add things to context
 *
 
+# Documentation (for embeddings/search)
+!docs/
+
 # Platform - Libs
 !autogpt_platform/autogpt_libs/autogpt_libs/
 !autogpt_platform/autogpt_libs/pyproject.toml
@@ -16,6 +19,7 @@
 !autogpt_platform/backend/poetry.lock
 !autogpt_platform/backend/README.md
 !autogpt_platform/backend/.env
+!autogpt_platform/backend/gen_prisma_types_stub.py
 
 # Platform - Market
 !autogpt_platform/market/market/

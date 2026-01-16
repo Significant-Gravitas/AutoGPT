@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import { customValidator } from "./utils/custom-validator";
 import Form from "./registry";
 import { ExtendedFormContextType } from "./types";
+import { generateUiSchemaForCustomFields } from "./utils/generate-ui-schema";
 
 type FormRendererProps = {
   jsonSchema: RJSFSchema;
@@ -24,8 +25,15 @@ export const FormRenderer = ({
     return preprocessInputSchema(jsonSchema);
   }, [jsonSchema]);
 
+  // Merge custom field ui:field settings with existing uiSchema
+  const mergedUiSchema = useMemo(() => {
+    return generateUiSchemaForCustomFields(preprocessedSchema, uiSchema);
+  }, [preprocessedSchema, uiSchema]);
+
+  console.log("preprocessedSchema", preprocessedSchema);
+
   return (
-    <div className={"mb-6 mt-4"}>
+    <div className={"mb-6 mt-4"} data-tutorial-id="input-handles">
       <Form
         formContext={formContext}
         idPrefix="agpt"
@@ -33,7 +41,7 @@ export const FormRenderer = ({
         schema={preprocessedSchema}
         validator={customValidator}
         onChange={handleChange}
-        uiSchema={uiSchema}
+        uiSchema={mergedUiSchema}
         formData={initialValues}
         liveValidate={false}
       />

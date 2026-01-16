@@ -7,7 +7,7 @@ import {
   getAgentCredentialsFields,
   getAgentInputFields,
 } from "../../modals/AgentInputsReadOnly/helpers";
-import { CredentialsInput } from "../../modals/CredentialsInputs/CredentialsInputs";
+import { CredentialsInput } from "../../modals/CredentialsInputs/CredentialsInput";
 import { RunAgentInputs } from "../../modals/RunAgentInputs/RunAgentInputs";
 import { LoadingSelectedContent } from "../LoadingSelectedContent";
 import { RunDetailCard } from "../RunDetailCard/RunDetailCard";
