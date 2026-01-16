@@ -450,6 +450,7 @@ model AgentGraphExecution {
   createdAt DateTime  @default(now())
   updatedAt DateTime? @updatedAt
   startedAt DateTime?
+  endedAt   DateTime?
 
   isDeleted Boolean @default(false)
 

@@ -60,8 +60,10 @@ class LateExecutionMonitor:
         if not all_late_executions:
             return "No late executions detected."
 
-        # Sort by created time (oldest first)
-        all_late_executions.sort(key=lambda x: x.started_at)
+        # Sort by started time (oldest first), with None values (unstarted) first
+        all_late_executions.sort(
+            key=lambda x: x.started_at or datetime.min.replace(tzinfo=timezone.utc)
+        )
 
         num_total_late = len(all_late_executions)
         num_queued = len(queued_late_executions)
@@ -74,7 +76,7 @@ class LateExecutionMonitor:
         was_truncated = num_total_late > tuncate_size
 
         late_execution_details = [
-            f"* `Execution ID: {exec.id}, Graph ID: {exec.graph_id}v{exec.graph_version}, User ID: {exec.user_id}, Status: {exec.status}, Created At: {exec.started_at.isoformat()}`"
+            f"* `Execution ID: {exec.id}, Graph ID: {exec.graph_id}v{exec.graph_version}, User ID: {exec.user_id}, Status: {exec.status}, Started At: {exec.started_at.isoformat() if exec.started_at else 'Not started'}`"
             for exec in truncated_executions
         ]
 
