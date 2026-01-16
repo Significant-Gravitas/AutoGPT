@@ -120,7 +120,7 @@ def class_name_to_display_name(class_name: str) -> str:
     return name.strip()
 
 
-def type_to_readable(type_schema: dict[str, Any]) -> str:
+def type_to_readable(type_schema: dict[str, Any] | Any) -> str:
     """Convert JSON schema type to human-readable string."""
     if not isinstance(type_schema, dict):
         return str(type_schema) if type_schema else "Any"
@@ -625,12 +625,16 @@ def check_docs_in_sync(output_dir: Path, blocks: list[BlockDoc]) -> bool:
     file_mapping = get_block_file_mapping(blocks)
 
     all_match = True
+    out_of_sync_details: list[tuple[str, list[str]]] = []
 
     for file_path, file_blocks in file_mapping.items():
         full_path = output_dir / file_path
 
         if not full_path.exists():
+            block_names = [b.name for b in sorted(file_blocks, key=lambda b: b.name)]
             print(f"MISSING: {file_path}")
+            print(f"  Blocks: {', '.join(block_names)}")
+            out_of_sync_details.append((file_path, block_names))
             all_match = False
             continue
 
@@ -648,22 +652,35 @@ def check_docs_in_sync(output_dir: Path, blocks: list[BlockDoc]) -> bool:
                     block_match.group(1)
                 )
 
-        # Generate expected content
+        # Generate expected content and check each block individually
         content_parts = []
+        mismatched_blocks = []
         for i, block in enumerate(sorted(file_blocks, key=lambda b: b.name)):
             manual_content = manual_sections_by_block.get(block.name, {})
-            content_parts.append(
-                generate_block_markdown(
-                    block,
-                    manual_content,
-                    is_first_in_file=(i == 0),
-                )
+            expected_block_content = generate_block_markdown(
+                block,
+                manual_content,
+                is_first_in_file=(i == 0),
             )
+            content_parts.append(expected_block_content)
+
+            # Check if this specific block's section exists and matches
+            block_pattern = (
+                rf"(?:^|\n)(##? {re.escape(block.name)}\s*\n.*?)(?=\n##? |\Z)"
+            )
+            block_match = re.search(block_pattern, existing_content, re.DOTALL)
+            if not block_match:
+                mismatched_blocks.append(f"{block.name} (missing)")
+            elif block_match.group(1).strip() != expected_block_content.strip():
+                mismatched_blocks.append(block.name)
 
         expected_content = "\n".join(content_parts)
 
         if existing_content.strip() != expected_content.strip():
             print(f"OUT OF SYNC: {file_path}")
+            if mismatched_blocks:
+                print(f"  Affected blocks: {', '.join(mismatched_blocks)}")
+            out_of_sync_details.append((file_path, mismatched_blocks))
             all_match = False
 
     # Check overview
@@ -673,9 +690,12 @@ def check_docs_in_sync(output_dir: Path, blocks: list[BlockDoc]) -> bool:
         expected_overview = generate_overview_table(blocks)
         if existing_overview.strip() != expected_overview.strip():
             print("OUT OF SYNC: README.md (overview)")
+            print("  The blocks overview table needs regeneration")
+            out_of_sync_details.append(("README.md", ["overview table"]))
             all_match = False
     else:
         print("MISSING: README.md (overview)")
+        out_of_sync_details.append(("README.md", ["overview table"]))
         all_match = False
 
     return all_match
@@ -726,10 +746,17 @@ def main():
             print("All documentation is in sync!")
             sys.exit(0)
         else:
-            print("\nDocumentation is out of sync!")
+            print("\n" + "=" * 60)
+            print("Documentation is out of sync!")
+            print("=" * 60)
+            print("\nTo fix this, run one of the following:")
+            print("\n  Option 1 - Run locally:")
             print(
-                "Run: cd autogpt_platform/backend && poetry run python scripts/generate_block_docs.py"
+                "    cd autogpt_platform/backend && poetry run python scripts/generate_block_docs.py"
             )
+            print("\n  Option 2 - Ask Claude Code to run it:")
+            print('    "Run the block docs generator script to sync documentation"')
+            print("\n" + "=" * 60)
             sys.exit(1)
     else:
         print(f"Generating docs to {args.output_dir}...")
