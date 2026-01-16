@@ -683,12 +683,23 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         return False, reviewed_data
 
     async def _execute(self, input_data: BlockInput, **kwargs) -> BlockOutput:
-        # Check for review requirement and get potentially modified input data
-        should_pause, input_data = await self.is_block_exec_need_review(
-            input_data, **kwargs
+        # Check for review requirement only if running within a graph execution context
+        # Direct block execution (e.g., from chat) skips the review process
+        has_graph_context = all(
+            key in kwargs
+            for key in (
+                "node_exec_id",
+                "graph_exec_id",
+                "graph_id",
+                "execution_context",
+            )
         )
-        if should_pause:
-            return
+        if has_graph_context:
+            should_pause, input_data = await self.is_block_exec_need_review(
+                input_data, **kwargs
+            )
+            if should_pause:
+                return
 
         # Validate the input data (original or reviewer-modified) once
         if error := self.input_schema.validate_data(input_data):

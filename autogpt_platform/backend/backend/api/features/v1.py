@@ -64,7 +64,6 @@ from backend.data.onboarding import (
     complete_re_run_agent,
     get_recommended_agents,
     get_user_onboarding,
-    increment_runs,
     onboarding_enabled,
     reset_user_onboarding,
     update_user_onboarding,
@@ -968,7 +967,6 @@ async def execute_graph(
         # Record successful graph execution
         record_graph_execution(graph_id=graph_id, status="success", user_id=user_id)
         record_graph_operation(operation="execute", status="success")
-        await increment_runs(user_id)
         await complete_re_run_agent(user_id, graph_id)
         if source == "library":
             await complete_onboarding_step(

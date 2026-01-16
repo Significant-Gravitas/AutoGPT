@@ -30,6 +30,8 @@ export function updateUiOption<T extends Record<string, any>>(
 }
 
 export const cleanUpHandleId = (handleId: string) => {
+  if (!handleId) return "";
+
   let newHandleId = handleId;
   if (handleId.includes(ANY_OF_FLAG)) {
     newHandleId = newHandleId.replace(ANY_OF_FLAG, "");
