@@ -937,7 +937,7 @@ model StoreListingVersion {
   // Old versions can be made unavailable by the author if desired
   isAvailable Boolean @default(true)
 
-  search Unsupported("tsvector")? @default(dbgenerated("''::tsvector"))
+  // Note: search column removed - now using UnifiedContentEmbedding.search
 
   // Version workflow state
   submissionStatus SubmissionStatus @default(DRAFT)
@@ -1002,6 +1002,7 @@ model UnifiedContentEmbedding {
   // Search data
   embedding      Unsupported("vector(1536)") // pgvector embedding (extension in platform schema)
   searchableText String // Combined text for search and fallback
+  search         Unsupported("tsvector")? @default(dbgenerated("''::tsvector")) // Full-text search (auto-populated by trigger)
   metadata       Json                        @default("{}") // Content-specific metadata
 
   @@unique([contentType, contentId, userId], map: "UnifiedContentEmbedding_contentType_contentId_userId_key")
@@ -1009,6 +1010,8 @@ model UnifiedContentEmbedding {
   @@index([userId])
   @@index([contentType, userId])
   @@index([embedding], map: "UnifiedContentEmbedding_embedding_idx")
+  // NO @@index for search - GIN index "UnifiedContentEmbedding_search_idx" created via SQL migration
+  // Prisma may generate DROP INDEX on migrate dev - that's okay, migration recreates it
 }
 
 model StoreListingReview {

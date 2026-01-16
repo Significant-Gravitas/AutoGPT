@@ -43,4 +43,6 @@ CREATE UNIQUE INDEX "UnifiedContentEmbedding_contentType_contentId_userId_key" O
 -- CreateIndex
 -- HNSW index for fast vector similarity search on embeddings
 -- Uses cosine distance operator (<=>), which matches the query in hybrid_search.py
+-- Note: Drop first in case Prisma created a btree index (Prisma doesn't support HNSW)
+DROP INDEX IF EXISTS "UnifiedContentEmbedding_embedding_idx";
 CREATE INDEX "UnifiedContentEmbedding_embedding_idx" ON "UnifiedContentEmbedding" USING hnsw ("embedding" public.vector_cosine_ops);
