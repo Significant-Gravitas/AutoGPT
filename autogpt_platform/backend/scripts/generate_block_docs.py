@@ -349,18 +349,19 @@ def generate_block_markdown(
     manual_content = manual_content or {}
     lines = []
 
-    # Block heading
+    # Block heading and derived section heading level
     heading_level = "#" if is_first_in_file else "##"
+    section_heading = heading_level + "#"  # One level deeper than block heading
     lines.append(f"{heading_level} {block.name}")
     lines.append("")
 
     # What it is (full description)
-    lines.append("### What it is")
+    lines.append(f"{section_heading} What it is")
     lines.append(block.description or "No description available.")
     lines.append("")
 
     # How it works (manual section)
-    lines.append("### How it works")
+    lines.append(f"{section_heading} How it works")
     how_it_works = manual_content.get(
         "how_it_works", "_Add technical explanation here._"
     )
@@ -372,32 +373,36 @@ def generate_block_markdown(
     # Inputs table (auto-generated)
     visible_inputs = [f for f in block.inputs if not f.hidden]
     if visible_inputs:
-        lines.append("### Inputs")
+        lines.append(f"{section_heading} Inputs")
         lines.append("| Input | Description | Type | Required |")
         lines.append("|-------|-------------|------|----------|")
         for inp in visible_inputs:
             required = "Yes" if inp.required else "No"
             desc = inp.description or "-"
+            type_str = inp.type_str or "-"
             # Normalize newlines and escape pipes for valid table syntax
             desc = desc.replace("\n", " ").replace("|", "\\|")
-            lines.append(f"| {inp.name} | {desc} | {inp.type_str} | {required} |")
+            type_str = type_str.replace("|", "\\|")
+            lines.append(f"| {inp.name} | {desc} | {type_str} | {required} |")
         lines.append("")
 
     # Outputs table (auto-generated)
     visible_outputs = [f for f in block.outputs if not f.hidden]
     if visible_outputs:
-        lines.append("### Outputs")
+        lines.append(f"{section_heading} Outputs")
         lines.append("| Output | Description | Type |")
         lines.append("|--------|-------------|------|")
         for out in visible_outputs:
             desc = out.description or "-"
+            type_str = out.type_str or "-"
             # Normalize newlines and escape pipes for valid table syntax
             desc = desc.replace("\n", " ").replace("|", "\\|")
-            lines.append(f"| {out.name} | {desc} | {out.type_str} |")
+            type_str = type_str.replace("|", "\\|")
+            lines.append(f"| {out.name} | {desc} | {type_str} |")
         lines.append("")
 
     # Possible use case (manual section)
-    lines.append("### Possible use case")
+    lines.append(f"{section_heading} Possible use case")
     use_case = manual_content.get("use_case", "_Add practical use case examples here._")
     lines.append("<!-- MANUAL: use_case -->")
     lines.append(use_case)
