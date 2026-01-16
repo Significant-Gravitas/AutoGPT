@@ -32,7 +32,7 @@ WITH latest_versions AS (
 agent_versions AS (
     SELECT
         "storeListingId",
-        array_agg(DISTINCT version::text ORDER BY version::text) AS versions
+        array_agg(DISTINCT version::text ORDER BY version) AS versions
     FROM "StoreListingVersion"
     WHERE "submissionStatus" = 'APPROVED'
     GROUP BY "storeListingId"
@@ -40,7 +40,7 @@ agent_versions AS (
 agent_graph_versions AS (
     SELECT
         "storeListingId",
-        array_agg(DISTINCT "agentGraphVersion"::text ORDER BY "agentGraphVersion"::text) AS graph_versions
+        array_agg(DISTINCT "agentGraphVersion"::text ORDER BY "agentGraphVersion") AS graph_versions
     FROM "StoreListingVersion"
     WHERE "submissionStatus" = 'APPROVED'
     GROUP BY "storeListingId"
