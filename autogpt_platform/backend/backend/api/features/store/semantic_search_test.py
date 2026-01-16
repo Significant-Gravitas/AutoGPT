@@ -3,14 +3,14 @@
 import pytest
 from prisma.enums import ContentType
 
-from backend.api.features.store.embeddings import semantic_search
+from backend.api.features.store.embeddings import EMBEDDING_DIM, semantic_search
 
 
 @pytest.mark.asyncio
 async def test_search_blocks_only(mocker):
     """Test searching only BLOCK content type."""
     # Mock embed_query to return a test embedding
-    mock_embedding = [0.1] * 1536
+    mock_embedding = [0.1] * EMBEDDING_DIM
     mocker.patch(
         "backend.api.features.store.embeddings.embed_query",
         return_value=mock_embedding,
@@ -45,7 +45,7 @@ async def test_search_blocks_only(mocker):
 @pytest.mark.asyncio
 async def test_search_multiple_content_types(mocker):
     """Test searching multiple content types simultaneously."""
-    mock_embedding = [0.1] * 1536
+    mock_embedding = [0.1] * EMBEDDING_DIM
     mocker.patch(
         "backend.api.features.store.embeddings.embed_query",
         return_value=mock_embedding,
@@ -85,7 +85,7 @@ async def test_search_multiple_content_types(mocker):
 @pytest.mark.asyncio
 async def test_search_with_min_similarity_threshold(mocker):
     """Test that results below min_similarity are filtered out."""
-    mock_embedding = [0.1] * 1536
+    mock_embedding = [0.1] * EMBEDDING_DIM
     mocker.patch(
         "backend.api.features.store.embeddings.embed_query",
         return_value=mock_embedding,
@@ -161,7 +161,7 @@ async def test_search_empty_query():
 @pytest.mark.asyncio
 async def test_search_with_user_id_filter(mocker):
     """Test searching with user_id filter for private content."""
-    mock_embedding = [0.1] * 1536
+    mock_embedding = [0.1] * EMBEDDING_DIM
     mocker.patch(
         "backend.api.features.store.embeddings.embed_query",
         return_value=mock_embedding,
@@ -194,7 +194,7 @@ async def test_search_with_user_id_filter(mocker):
 @pytest.mark.asyncio
 async def test_search_limit_parameter(mocker):
     """Test that limit parameter correctly limits results."""
-    mock_embedding = [0.1] * 1536
+    mock_embedding = [0.1] * EMBEDDING_DIM
     mocker.patch(
         "backend.api.features.store.embeddings.embed_query",
         return_value=mock_embedding,
@@ -228,7 +228,7 @@ async def test_search_limit_parameter(mocker):
 @pytest.mark.asyncio
 async def test_search_default_content_types(mocker):
     """Test that default content_types includes BLOCK, STORE_AGENT, and DOCUMENTATION."""
-    mock_embedding = [0.1] * 1536
+    mock_embedding = [0.1] * EMBEDDING_DIM
     mocker.patch(
         "backend.api.features.store.embeddings.embed_query",
         return_value=mock_embedding,
@@ -251,7 +251,7 @@ async def test_search_default_content_types(mocker):
 @pytest.mark.asyncio
 async def test_search_handles_database_error(mocker):
     """Test that database errors are handled gracefully."""
-    mock_embedding = [0.1] * 1536
+    mock_embedding = [0.1] * EMBEDDING_DIM
     mocker.patch(
         "backend.api.features.store.embeddings.embed_query",
         return_value=mock_embedding,

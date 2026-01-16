@@ -13,8 +13,9 @@ DROP FUNCTION IF EXISTS update_tsvector_column();
 -- Drop the index
 DROP INDEX IF EXISTS "StoreListingVersion_search_idx";
 
--- Remove the search column
-ALTER TABLE "StoreListingVersion" DROP COLUMN IF EXISTS "search";
+-- NOTE: Keeping search column for now to allow easy revert if needed
+-- Uncomment to fully remove once migration is verified in production:
+-- ALTER TABLE "StoreListingVersion" DROP COLUMN IF EXISTS "search";
 
 -- Recreate the StoreAgent view WITHOUT the search column
 -- (Search now handled by UnifiedContentEmbedding)
