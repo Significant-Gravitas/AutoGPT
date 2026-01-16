@@ -90,12 +90,14 @@ def bm25_rerank(
     for i, result in enumerate(results):
         original_score = result.get(original_score_field, 0) or 0
         result["bm25_score"] = normalized_bm25[i]
-        result["final_score"] = (
+        final_score = (
             original_weight * original_score + bm25_weight * normalized_bm25[i]
         )
+        result["final_score"] = final_score
+        result["relevance"] = final_score
 
-    # Sort by final score descending
-    results.sort(key=lambda x: x.get("final_score", 0), reverse=True)
+    # Sort by relevance descending
+    results.sort(key=lambda x: x.get("relevance", 0), reverse=True)
 
     return results
 
