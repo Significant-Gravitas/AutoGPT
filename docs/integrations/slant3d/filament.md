@@ -1,22 +1,22 @@
 # Slant3D Filament
 
-### What it is
+## What it is
 Get list of available filaments
 
-### How it works
+## How it works
 <!-- MANUAL: how_it_works -->
 This block queries the Slant3D API to retrieve a list of all available filament options for 3D printing. Each filament includes details like color, material type, and availability.
 
 Use this to populate filament selection dropdowns or validate filament choices before placing orders.
 <!-- END MANUAL -->
 
-### Outputs
+## Outputs
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
 | filaments | List of available filaments | List[Filament] |
 
-### Possible use case
+## Possible use case
 <!-- MANUAL: use_case -->
 **Product Configurator**: Display available filament options in a custom 3D printing order form.
 

@@ -1,16 +1,16 @@
 # Bannerbear Text Overlay
 
-### What it is
+## What it is
 Add text overlay to images using Bannerbear templates. Perfect for creating social media graphics, marketing materials, and dynamic image content.
 
-### How it works
+## How it works
 <!-- MANUAL: how_it_works -->
 This block uses Bannerbear's API to generate images by populating templates with dynamic text and images. Create templates in Bannerbear with text layers, then modify layer content programmatically.
 
 Webhooks can notify you when asynchronous generation completes. Include custom metadata for tracking generated images.
 <!-- END MANUAL -->
 
-### Inputs
+## Inputs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | template_id | The unique ID of your Bannerbear template | str | Yes |
@@ -21,7 +21,7 @@ Webhooks can notify you when asynchronous generation completes. Include custom m
 | webhook_url | Optional: URL to receive webhook notification when image is ready | str | No |
 | metadata | Optional: Custom metadata to attach to the image | str | No |
 
-### Outputs
+## Outputs
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -30,7 +30,7 @@ Webhooks can notify you when asynchronous generation completes. Include custom m
 | uid | Unique identifier for the generated image | str |
 | status | Status of the image generation | str |
 
-### Possible use case
+## Possible use case
 <!-- MANUAL: use_case -->
 **Social Media Graphics**: Generate personalized social posts with dynamic quotes, stats, or headlines.
 

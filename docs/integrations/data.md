@@ -1,27 +1,27 @@
 # Create Dictionary
 
-### What it is
+## What it is
 Creates a dictionary with the specified key-value pairs. Use this when you know all the values you want to add upfront.
 
-### How it works
+## How it works
 <!-- MANUAL: how_it_works -->
 This block creates a new dictionary from specified key-value pairs in a single operation. It's designed for cases where you know all the data upfront, rather than building the dictionary incrementally.
 
 The block takes a dictionary input and outputs it as-is, making it useful as a starting point for workflows that need to pass structured data between blocks.
 <!-- END MANUAL -->
 
-### Inputs
+## Inputs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | values | Key-value pairs to create the dictionary with | Dict[str, True] | Yes |
 
-### Outputs
+## Outputs
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if dictionary creation failed | str |
 | dictionary | The created dictionary containing the specified key-value pairs | Dict[str, True] |
 
-### Possible use case
+## Possible use case
 <!-- MANUAL: use_case -->
 **API Request Payloads**: Create complete request body objects with all required fields before sending to an API.
 
@@ -124,7 +124,7 @@ The stored data remains available until explicitly overwritten, enabling state m
 |-------|-------------|------|----------|
 | key | Key to store the information under | str | Yes |
 | value | Value to store | Value | Yes |
-| scope | Scope of persistence: within_agent (shared across all runs of this agent) or across_agents (shared across all agents for this user) | "within_agent" | "across_agents" | No |
+| scope | Scope of persistence: within_agent (shared across all runs of this agent) or across_agents (shared across all agents for this user) | "within_agent" \| "across_agents" | No |
 
 ### Outputs
 | Output | Description | Type |
@@ -203,7 +203,7 @@ Use within_agent scope for agent-specific data or across_agents for data shared 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | key | Key to retrieve the information for | str | Yes |
-| scope | Scope of persistence: within_agent (shared across all runs of this agent) or across_agents (shared across all agents for this user) | "within_agent" | "across_agents" | No |
+| scope | Scope of persistence: within_agent (shared across all runs of this agent) or across_agents (shared across all agents for this user) | "within_agent" \| "across_agents" | No |
 | default_value | Default value to return if key is not found | Default Value | No |
 
 ### Outputs
@@ -242,7 +242,7 @@ Optional features include blocking ads, cookie banners, and chat widgets for cle
 | viewport_width | Width of the viewport in pixels | int | No |
 | viewport_height | Height of the viewport in pixels | int | No |
 | full_page | Whether to capture the full page length | bool | No |
-| format | Output format (png, jpeg, webp) | "png" | "jpeg" | "webp" | No |
+| format | Output format (png, jpeg, webp) | "png" \| "jpeg" \| "webp" | No |
 | block_ads | Whether to block ads | bool | No |
 | block_cookie_banners | Whether to block cookie banners | bool | No |
 | block_chats | Whether to block chat widgets | bool | No |

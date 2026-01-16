@@ -1,32 +1,32 @@
 # Exa Create Monitor
 
-### What it is
+## What it is
 Create automated monitors to keep websets updated with fresh data on a schedule
 
-### How it works
+## How it works
 <!-- MANUAL: how_it_works -->
 This block creates a scheduled monitor that automatically updates a webset on a cron schedule. Monitors can either search for new items matching criteria or refresh existing item content and enrichments.
 
 Configure the cron expression for your desired frequency (daily, weekly, etc.) and choose between search behavior to find new items or refresh behavior to update existing data.
 <!-- END MANUAL -->
 
-### Inputs
+## Inputs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | webset_id | The ID or external ID of the Webset to monitor | str | Yes |
 | cron_expression | Cron expression for scheduling (5 fields, max once per day) | str | Yes |
 | timezone | IANA timezone for the schedule | str | No |
-| behavior_type | Type of monitor behavior (search for new items or refresh existing) | "search" | "refresh" | No |
+| behavior_type | Type of monitor behavior (search for new items or refresh existing) | "search" \| "refresh" | No |
 | search_query | Search query for finding new items (required for search behavior) | str | No |
 | search_count | Number of items to find in each search | int | No |
 | search_criteria | Criteria that items must meet | List[str] | No |
-| search_behavior | How new results interact with existing items | "append" | "override" | No |
+| search_behavior | How new results interact with existing items | "append" \| "override" | No |
 | entity_type | Type of entity to search for (company, person, etc.) | str | No |
 | refresh_content | Refresh content from source URLs (for refresh behavior) | bool | No |
 | refresh_enrichments | Re-run enrichments on items (for refresh behavior) | bool | No |
 | metadata | Metadata to attach to the monitor | Dict[str, True] | No |
 
-### Outputs
+## Outputs
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -39,7 +39,7 @@ Configure the cron expression for your desired frequency (daily, weekly, etc.) a
 | timezone | The timezone for scheduling | str |
 | created_at | When the monitor was created | str |
 
-### Possible use case
+## Possible use case
 <!-- MANUAL: use_case -->
 **Continuous Lead Generation**: Schedule daily searches to find new companies matching your criteria.
 
@@ -185,7 +185,7 @@ Changes take effect immediately. Disabling a monitor stops future scheduled runs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | monitor_id | The ID of the monitor to update | str | Yes |
-| status | New status for the monitor | "enabled" | "disabled" | "paused" | No |
+| status | New status for the monitor | "enabled" \| "disabled" \| "paused" | No |
 | cron_expression | New cron expression for scheduling | str | No |
 | timezone | New timezone for the schedule | str | No |
 | metadata | New metadata for the monitor | Dict[str, True] | No |

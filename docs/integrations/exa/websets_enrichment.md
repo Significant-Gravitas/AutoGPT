@@ -1,22 +1,22 @@
 # Exa Cancel Enrichment
 
-### What it is
+## What it is
 Cancel a running enrichment operation
 
-### How it works
+## How it works
 <!-- MANUAL: how_it_works -->
 This block stops a running enrichment operation on a webset. Items already enriched before cancellation retain their enrichment data, but remaining items will not be processed.
 
 Use this when an enrichment is taking too long, producing unexpected results, or is no longer needed. The block returns the approximate number of items enriched before cancellation.
 <!-- END MANUAL -->
 
-### Inputs
+## Inputs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | webset_id | The ID or external ID of the Webset | str | Yes |
 | enrichment_id | The ID of the enrichment to cancel | str | Yes |
 
-### Outputs
+## Outputs
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -25,7 +25,7 @@ Use this when an enrichment is taking too long, producing unexpected results, or
 | items_enriched_before_cancel | Approximate number of items enriched before cancellation | int |
 | success | Whether the cancellation was successful | str |
 
-### Possible use case
+## Possible use case
 <!-- MANUAL: use_case -->
 **Cost Control**: Stop enrichments that are exceeding budget or taking too long.
 
@@ -54,7 +54,7 @@ Enrichments support various output formats including text, dates, numbers, and p
 | webset_id | The ID or external ID of the Webset | str | Yes |
 | description | What data to extract from each item | str | Yes |
 | title | Short title for this enrichment (auto-generated if not provided) | str | No |
-| format | Expected format of the extracted data | "text" | "date" | "number" | No |
+| format | Expected format of the extracted data | "text" \| "date" \| "number" | No |
 | options | Available options when format is 'options' | List[str] | No |
 | apply_to_existing | Apply this enrichment to existing items in the webset | bool | No |
 | metadata | Metadata to attach to the enrichment | Dict[str, True] | No |
@@ -184,7 +184,7 @@ Changes apply to future items; existing enrichment data is not reprocessed unles
 | webset_id | The ID or external ID of the Webset | str | Yes |
 | enrichment_id | The ID of the enrichment to update | str | Yes |
 | description | New description for what data to extract | str | No |
-| format | New format for the extracted data | "text" | "date" | "number" | No |
+| format | New format for the extracted data | "text" \| "date" \| "number" | No |
 | options | New options when format is 'options' | List[str] | No |
 | metadata | New metadata to attach to the enrichment | Dict[str, True] | No |
 

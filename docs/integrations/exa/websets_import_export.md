@@ -1,27 +1,27 @@
 # Exa Create Import
 
-### What it is
+## What it is
 Import CSV data to use with websets for targeted searches
 
-### How it works
+## How it works
 <!-- MANUAL: how_it_works -->
 This block creates an import from CSV data that can be used as a source for webset searches. Imports allow you to bring your own data (like company lists or contact lists) and use them for scoped or exclusion searches.
 
 You specify the entity type and which columns contain identifiers and URLs. The import becomes available as a source that can be referenced when creating webset searches.
 <!-- END MANUAL -->
 
-### Inputs
+## Inputs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | title | Title for this import | str | Yes |
 | csv_data | CSV data to import (as a string) | str | Yes |
-| entity_type | Type of entities being imported | "company" | "person" | "article" | No |
+| entity_type | Type of entities being imported | "company" \| "person" \| "article" | No |
 | entity_description | Description for custom entity type | str | No |
 | identifier_column | Column index containing the identifier (0-based) | int | No |
 | url_column | Column index containing URLs (optional) | int | No |
 | metadata | Metadata to attach to the import | Dict[str, True] | No |
 
-### Outputs
+## Outputs
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -34,7 +34,7 @@ You specify the entity type and which columns contain identifiers and URLs. The 
 | upload_valid_until | Expiration time for upload URL (only if upload_url is provided) | str |
 | created_at | When the import was created | str |
 
-### Possible use case
+## Possible use case
 <!-- MANUAL: use_case -->
 **Customer Enrichment**: Import your customer list to find similar companies or related contacts.
 
@@ -96,7 +96,7 @@ Supported formats include JSON for structured data, CSV for spreadsheet compatib
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | webset_id | The ID or external ID of the Webset to export | str | Yes |
-| format | Export format | "json" | "csv" | "jsonl" | No |
+| format | Export format | "json" \| "csv" \| "jsonl" | No |
 | include_content | Include full content in export | bool | No |
 | include_enrichments | Include enrichment data in export | bool | No |
 | max_items | Maximum number of items to export | int | No |

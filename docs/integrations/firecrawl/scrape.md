@@ -1,16 +1,16 @@
 # Firecrawl Scrape
 
-### What it is
+## What it is
 Firecrawl scrapes a website to extract comprehensive data while bypassing blockers.
 
-### How it works
+## How it works
 <!-- MANUAL: how_it_works -->
 This block uses Firecrawl's scraping API to extract content from a single URL. It handles JavaScript rendering, bypasses anti-bot measures, and can return content in multiple formats including markdown, HTML, and screenshots.
 
 Configure output formats, filter to main content only, and set wait times for dynamic pages. The block returns comprehensive results including extracted content, links found on the page, and optional change tracking data.
 <!-- END MANUAL -->
 
-### Inputs
+## Inputs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | url | The URL to crawl | str | Yes |
@@ -18,9 +18,9 @@ Configure output formats, filter to main content only, and set wait times for dy
 | only_main_content | Only return the main content of the page excluding headers, navs, footers, etc. | bool | No |
 | max_age | The maximum age of the page in milliseconds - default is 1 hour | int | No |
 | wait_for | Specify a delay in milliseconds before fetching the content, allowing the page sufficient time to load. | int | No |
-| formats | The format of the crawl | List["markdown" | "html" | "rawHtml"] | No |
+| formats | The format of the crawl | List["markdown" \| "html" \| "rawHtml"] | No |
 
-### Outputs
+## Outputs
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the scrape failed | str |
@@ -34,7 +34,7 @@ Configure output formats, filter to main content only, and set wait times for dy
 | json_data | The json data of the crawl | Dict[str, True] |
 | change_tracking | The change tracking of the crawl | Dict[str, True] |
 
-### Possible use case
+## Possible use case
 <!-- MANUAL: use_case -->
 **Article Extraction**: Scrape news articles or blog posts to extract clean, readable content.
 

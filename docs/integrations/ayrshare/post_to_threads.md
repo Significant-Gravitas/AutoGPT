@@ -1,16 +1,16 @@
 # Post To Threads
 
-### What it is
+## What it is
 Post to Threads using Ayrshare
 
-### How it works
+## How it works
 <!-- MANUAL: how_it_works -->
 This block uses Ayrshare's API to publish content to Threads (Meta's text-based social platform). It supports text posts (up to 500 characters with one hashtag), images, videos, and carousels (up to 20 items), with automatic link previews when no media is attached.
 
 The block authenticates through Meta's API via Ayrshare. Content can mention users via @handle syntax, be scheduled for future publishing, and include approval workflows for content review.
 <!-- END MANUAL -->
 
-### Inputs
+## Inputs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | post | The post text (max 500 chars, empty string allowed). Only 1 hashtag allowed. Use @handle to mention users. | str | No |
@@ -25,14 +25,14 @@ The block authenticates through Meta's API via Ayrshare. Content can mention use
 | random_media_url | Whether to generate random media | bool | No |
 | notes | Additional notes for the post | str | No |
 
-### Outputs
+## Outputs
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
 | post_result | The result of the post | PostResponse |
 | post | The result of the post | PostIds |
 
-### Possible use case
+## Possible use case
 <!-- MANUAL: use_case -->
 **Thought Leadership**: Share quick insights, opinions, or industry commentary in a conversational format.
 

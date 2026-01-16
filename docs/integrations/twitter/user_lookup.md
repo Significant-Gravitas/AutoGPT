@@ -1,16 +1,16 @@
 # Twitter Get User
 
-### What it is
+## What it is
 This block retrieves information about a specified Twitter user.
 
-### How it works
+## How it works
 <!-- MANUAL: how_it_works -->
 This block queries the Twitter API v2 to retrieve detailed information about a single user. You can look up users either by their unique Twitter ID or by their username (handle). The block uses Tweepy with OAuth 2.0 authentication.
 
 Optional expansions allow you to include additional data such as the user's pinned tweet. The response includes profile information like display name, bio, follower count, and profile image URL based on the user_fields selected.
 <!-- END MANUAL -->
 
-### Inputs
+## Inputs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | expansions | Choose what extra information you want to get with user data. Currently only 'pinned_tweet_id' is available to see a user's pinned tweet. | UserExpansionsFilter | No |
@@ -18,7 +18,7 @@ Optional expansions allow you to include additional data such as the user's pinn
 | user_fields | Select what user information you want to see, like username, bio, profile picture, etc. | TweetUserFieldsFilter | No |
 | identifier | Choose whether to identify the user by their unique Twitter ID or by their username | Identifier | Yes |
 
-### Outputs
+## Outputs
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -28,7 +28,7 @@ Optional expansions allow you to include additional data such as the user's pinn
 | data | Complete user data | Dict[str, True] |
 | included | Additional data requested via expansions | Dict[str, True] |
 
-### Possible use case
+## Possible use case
 <!-- MANUAL: use_case -->
 **Profile Verification**: Look up a user's profile to verify their identity or check their account details before engaging.
 

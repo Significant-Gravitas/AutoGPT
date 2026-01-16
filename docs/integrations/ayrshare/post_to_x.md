@@ -1,16 +1,16 @@
 # Post To X
 
-### What it is
+## What it is
 Post to X / Twitter using Ayrshare
 
-### How it works
+## How it works
 <!-- MANUAL: how_it_works -->
 This block uses Ayrshare's API to publish content to X (formerly Twitter). It supports standard tweets (280 characters, or 25,000 for Premium users), threads, polls, quote tweets, and replies, with up to 4 media attachments including video with subtitles.
 
 The block authenticates through Ayrshare and handles X-specific features like automatic thread breaking using double newlines, thread numbering, per-post media attachments, and long-form video uploads (with approval). Poll options and duration can be configured for engagement posts.
 <!-- END MANUAL -->
 
-### Inputs
+## Inputs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | post | The post text (max 280 chars, up to 25,000 for Premium users). Use @handle to mention users. Use \n\n for thread breaks. | str | Yes |
@@ -38,14 +38,14 @@ The block authenticates through Ayrshare and handles X-specific features like au
 | subtitle_language | Language code for subtitles (default: 'en') | str | No |
 | subtitle_name | Name of caption track (max 150 chars, default: 'English') | str | No |
 
-### Outputs
+## Outputs
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
 | post_result | The result of the post | PostResponse |
 | post | The result of the post | PostIds |
 
-### Possible use case
+## Possible use case
 <!-- MANUAL: use_case -->
 **Thread Publishing**: Automatically format and publish long-form content as numbered thread sequences.
 

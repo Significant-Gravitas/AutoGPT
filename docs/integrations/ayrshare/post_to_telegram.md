@@ -1,16 +1,16 @@
 # Post To Telegram
 
-### What it is
+## What it is
 Post to Telegram using Ayrshare
 
-### How it works
+## How it works
 <!-- MANUAL: how_it_works -->
 This block uses Ayrshare's API to publish messages to Telegram channels. It supports text messages, images, videos, and animated GIFs, with automatic link preview generation unless media is included.
 
 The block authenticates through Ayrshare and sends content to your connected Telegram channel or bot. User mentions are supported via @handle syntax, and content can be scheduled for future delivery.
 <!-- END MANUAL -->
 
-### Inputs
+## Inputs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | post | The post text (empty string allowed). Use @handle to mention other Telegram users. | str | No |
@@ -25,14 +25,14 @@ The block authenticates through Ayrshare and sends content to your connected Tel
 | random_media_url | Whether to generate random media | bool | No |
 | notes | Additional notes for the post | str | No |
 
-### Outputs
+## Outputs
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
 | post_result | The result of the post | PostResponse |
 | post | The result of the post | PostIds |
 
-### Possible use case
+## Possible use case
 <!-- MANUAL: use_case -->
 **Channel Broadcasting**: Automatically distribute announcements, updates, or news to Telegram channel subscribers.
 

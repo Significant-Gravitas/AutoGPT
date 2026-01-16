@@ -1,16 +1,16 @@
 # Post To You Tube
 
-### What it is
+## What it is
 Post to YouTube using Ayrshare
 
-### How it works
+## How it works
 <!-- MANUAL: how_it_works -->
 This block uses Ayrshare's API to upload videos to YouTube. It handles video uploads with extensive metadata including titles, descriptions, tags, custom thumbnails, playlist assignment, category selection, and visibility controls (public, private, unlisted).
 
 The block supports YouTube Shorts (up to 3 minutes), geographic targeting to allow or block specific countries, subtitle files (SRT/SBV format), synthetic/AI content disclosure, kids content labeling, and subscriber notification controls. Videos can be scheduled for specific publish times.
 <!-- END MANUAL -->
 
-### Inputs
+## Inputs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | post | Video description (max 5,000 chars, empty string allowed). Cannot contain < or > characters. | str | Yes |
@@ -25,7 +25,7 @@ The block supports YouTube Shorts (up to 3 minutes), geographic targeting to all
 | random_media_url | Whether to generate random media | bool | No |
 | notes | Additional notes for the post | str | No |
 | title | Video title (max 100 chars, required). Cannot contain < or > characters. | str | Yes |
-| visibility | Video visibility: 'private' (default), 'public' , or 'unlisted' | "private" | "public" | "unlisted" | No |
+| visibility | Video visibility: 'private' (default), 'public' , or 'unlisted' | "private" \| "public" \| "unlisted" | No |
 | thumbnail | Thumbnail URL (JPEG/PNG under 2MB, must end in .png/.jpg/.jpeg). Requires phone verification. | str | No |
 | playlist_id | Playlist ID to add video (user must own playlist) | str | No |
 | tags | Video tags (min 2 chars each, max 500 chars total) | List[str] | No |
@@ -41,14 +41,14 @@ The block supports YouTube Shorts (up to 3 minutes), geographic targeting to all
 | subtitle_language | Language code for subtitles (default: 'en') | str | No |
 | subtitle_name | Name of caption track (max 150 chars, default: 'English') | str | No |
 
-### Outputs
+## Outputs
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
 | post_result | The result of the post | PostResponse |
 | post | The result of the post | PostIds |
 
-### Possible use case
+## Possible use case
 <!-- MANUAL: use_case -->
 **Video Publishing Pipeline**: Automate video uploads with thumbnails, descriptions, and playlist organization for content creators.
 

@@ -1,16 +1,16 @@
 # Agent Executor
 
-### What it is
+## What it is
 Executes an existing agent inside your agent
 
-### How it works
+## How it works
 <!-- MANUAL: how_it_works -->
 This block runs another agent as a sub-agent within your workflow. You provide the agent's graph ID, version, and input data, and the block executes that agent and returns its outputs.
 
 Input and output schemas define the expected data structure for communication between the parent and child agents, enabling modular, reusable agent composition.
 <!-- END MANUAL -->
 
-### Inputs
+## Inputs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | user_id | User ID | str | Yes |
@@ -21,13 +21,137 @@ Input and output schemas define the expected data structure for communication be
 | input_schema | Input schema for the graph | Dict[str, True] | Yes |
 | output_schema | Output schema for the graph | Dict[str, True] | Yes |
 
-### Possible use case
+## Possible use case
 <!-- MANUAL: use_case -->
 **Modular Workflows**: Break complex workflows into smaller, reusable agents that can be composed together.
 
 **Specialized Agents**: Call domain-specific agents (like a research agent or formatter) from a main orchestration agent.
 
 **Dynamic Routing**: Execute different agents based on input type or user preferences.
+<!-- END MANUAL -->
+
+---
+
+## Create Reddit Post
+
+### What it is
+Create a new post on a subreddit. Can create text posts or link posts.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+_Add technical explanation here._
+<!-- END MANUAL -->
+
+### Inputs
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| subreddit | Subreddit to post to, excluding the /r/ prefix | str | Yes |
+| title | Title of the post | str | Yes |
+| content | Body text of the post (for text posts) | str | No |
+| url | URL to submit (for link posts). If provided, content is ignored. | str | No |
+| flair_id | Flair template ID to apply to the post (from GetSubredditFlairsBlock) | str | No |
+| flair_text | Custom flair text (only used if the flair template allows editing) | str | No |
+
+### Outputs
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if the operation failed | str |
+| post_id | ID of the created post | str |
+| post_url | URL of the created post | str |
+| subreddit | The subreddit name (pass-through for chaining) | str |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+_Add practical use case examples here._
+<!-- END MANUAL -->
+
+---
+
+## Delete Reddit Comment
+
+### What it is
+Delete a Reddit comment that you own.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+_Add technical explanation here._
+<!-- END MANUAL -->
+
+### Inputs
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| comment_id | The ID of the comment to delete (must be your own comment) | str | Yes |
+
+### Outputs
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if deletion failed | str |
+| success | Whether the deletion was successful | bool |
+| comment_id | The comment ID (pass-through for chaining) | str |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+_Add practical use case examples here._
+<!-- END MANUAL -->
+
+---
+
+## Delete Reddit Post
+
+### What it is
+Delete a Reddit post that you own.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+_Add technical explanation here._
+<!-- END MANUAL -->
+
+### Inputs
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| post_id | The ID of the post to delete (must be your own post) | str | Yes |
+
+### Outputs
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if deletion failed | str |
+| success | Whether the deletion was successful | bool |
+| post_id | The post ID (pass-through for chaining) | str |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+_Add practical use case examples here._
+<!-- END MANUAL -->
+
+---
+
+## Edit Reddit Post
+
+### What it is
+Edit the body text of an existing Reddit post that you own. Only works for self/text posts.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+_Add technical explanation here._
+<!-- END MANUAL -->
+
+### Inputs
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| post_id | The ID of the post to edit (must be your own post) | str | Yes |
+| new_content | The new body text for the post | str | Yes |
+
+### Outputs
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if the edit failed | str |
+| success | Whether the edit was successful | bool |
+| post_id | The post ID (pass-through for chaining) | str |
+| post_url | URL of the edited post | str |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+_Add practical use case examples here._
 <!-- END MANUAL -->
 
 ---
@@ -47,11 +171,9 @@ The sandbox includes pip and npm pre-installed. Set timeout to limit execution t
 ### Inputs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| setup_commands | Shell commands to set up the sandbox before running the code. You can use `curl` or `git` to install your desired Debian based package manager. `pip` and `npm` are pre-installed.
-
-These commands are executed with `sh`, in the foreground. | List[str] | No |
+| setup_commands | Shell commands to set up the sandbox before running the code. You can use `curl` or `git` to install your desired Debian based package manager. `pip` and `npm` are pre-installed.  These commands are executed with `sh`, in the foreground. | List[str] | No |
 | code | Code to execute in the sandbox | str | No |
-| language | Programming language to execute | "python" | "js" | "bash" | No |
+| language | Programming language to execute | "python" \| "js" \| "bash" | No |
 | timeout | Execution timeout in seconds | int | No |
 | dispose_sandbox | Whether to dispose of the sandbox immediately after execution. If disabled, the sandbox will run until its timeout expires. | bool | No |
 | template_id | You can use an E2B sandbox template by entering its ID here. Check out the E2B docs for more details: [E2B - Sandbox template](https://e2b.dev/docs/sandbox-template) | str | No |
@@ -94,7 +216,7 @@ Use this for multi-step code execution where each step builds on previous result
 |-------|-------------|------|----------|
 | sandbox_id | ID of the sandbox instance to execute the code in | str | Yes |
 | step_code | Code to execute in the sandbox | str | No |
-| language | Programming language to execute | "python" | "js" | "bash" | No |
+| language | Programming language to execute | "python" \| "js" \| "bash" | No |
 | dispose_sandbox | Whether to dispose of the sandbox after executing this code. | bool | No |
 
 ### Outputs
@@ -114,6 +236,158 @@ Use this for multi-step code execution where each step builds on previous result
 **Stateful Computation**: Build up results across multiple code executions with shared variables.
 
 **Interactive Analysis**: Run exploratory data analysis steps sequentially in the same environment.
+<!-- END MANUAL -->
+
+---
+
+## Get Reddit Comment
+
+### What it is
+Get details about a specific Reddit comment by its ID.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+_Add technical explanation here._
+<!-- END MANUAL -->
+
+### Inputs
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| comment_id | The ID of the comment to fetch | str | Yes |
+
+### Outputs
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if comment couldn't be fetched | str |
+| comment | The comment details | RedditComment |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+_Add practical use case examples here._
+<!-- END MANUAL -->
+
+---
+
+## Get Reddit Comment Replies
+
+### What it is
+Get replies to a specific Reddit comment.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+_Add technical explanation here._
+<!-- END MANUAL -->
+
+### Inputs
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| comment_id | The ID of the comment to get replies from | str | Yes |
+| post_id | The ID of the post containing the comment | str | Yes |
+| limit | Maximum number of replies to fetch (max 50) | int | No |
+
+### Outputs
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if replies couldn't be fetched | str |
+| reply | A reply to the comment | RedditComment |
+| replies | All replies | List[RedditComment] |
+| comment_id | The parent comment ID (pass-through for chaining) | str |
+| post_id | The post ID (pass-through for chaining) | str |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+_Add practical use case examples here._
+<!-- END MANUAL -->
+
+---
+
+## Get Reddit Inbox
+
+### What it is
+Get messages, mentions, and comment replies from your Reddit inbox.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+_Add technical explanation here._
+<!-- END MANUAL -->
+
+### Inputs
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| inbox_type | Type of inbox items to fetch | "all" \| "unread" \| "messages" | No |
+| limit | Maximum number of items to fetch | int | No |
+| mark_read | Whether to mark fetched items as read | bool | No |
+
+### Outputs
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if fetch failed | str |
+| item | An inbox item | RedditInboxItem |
+| items | All fetched items | List[RedditInboxItem] |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+_Add practical use case examples here._
+<!-- END MANUAL -->
+
+---
+
+## Get Reddit Post
+
+### What it is
+Get detailed information about a specific Reddit post by its ID.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+_Add technical explanation here._
+<!-- END MANUAL -->
+
+### Inputs
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| post_id | The ID of the post to fetch (e.g., 'abc123' or full ID 't3_abc123') | str | Yes |
+
+### Outputs
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if the post couldn't be fetched | str |
+| post | Detailed post information | RedditPostDetails |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+_Add practical use case examples here._
+<!-- END MANUAL -->
+
+---
+
+## Get Reddit Post Comments
+
+### What it is
+Get top-level comments on a Reddit post.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+_Add technical explanation here._
+<!-- END MANUAL -->
+
+### Inputs
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| post_id | The ID of the post to get comments from | str | Yes |
+| limit | Maximum number of top-level comments to fetch (max 100) | int | No |
+| sort | Sort order for comments | "best" \| "top" \| "new" | No |
+
+### Outputs
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if comments couldn't be fetched | str |
+| comment | A comment on the post | RedditComment |
+| comments | All fetched comments | List[RedditComment] |
+| post_id | The post ID (pass-through for chaining) | str |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+_Add practical use case examples here._
 <!-- END MANUAL -->
 
 ---
@@ -150,6 +424,155 @@ A content curator could use this block to gather recent posts from a specific su
 
 ---
 
+## Get Reddit User Info
+
+### What it is
+Get information about a Reddit user including karma, account age, and verification status.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+_Add technical explanation here._
+<!-- END MANUAL -->
+
+### Inputs
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| username | The Reddit username to look up (without /u/ prefix) | str | Yes |
+
+### Outputs
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if user lookup failed | str |
+| user | User information | RedditUserInfo |
+| username | The username (pass-through for chaining) | str |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+_Add practical use case examples here._
+<!-- END MANUAL -->
+
+---
+
+## Get Subreddit Flairs
+
+### What it is
+Get available link flair options for a subreddit.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+_Add technical explanation here._
+<!-- END MANUAL -->
+
+### Inputs
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| subreddit | Subreddit name (without /r/ prefix) | str | Yes |
+
+### Outputs
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if fetch failed | str |
+| flair | A flair option | SubredditFlair |
+| flairs | All available flairs | List[SubredditFlair] |
+| subreddit | The subreddit name (pass-through for chaining) | str |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+_Add practical use case examples here._
+<!-- END MANUAL -->
+
+---
+
+## Get Subreddit Info
+
+### What it is
+Get information about a subreddit including subscriber count, description, and rules.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+_Add technical explanation here._
+<!-- END MANUAL -->
+
+### Inputs
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| subreddit | Subreddit name (without /r/ prefix) | str | Yes |
+
+### Outputs
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if the subreddit couldn't be fetched | str |
+| info | Subreddit information | SubredditInfo |
+| subreddit | The subreddit name (pass-through for chaining) | str |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+_Add practical use case examples here._
+<!-- END MANUAL -->
+
+---
+
+## Get Subreddit Rules
+
+### What it is
+Get the rules for a subreddit to ensure compliance before posting.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+_Add technical explanation here._
+<!-- END MANUAL -->
+
+### Inputs
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| subreddit | Subreddit name (without /r/ prefix) | str | Yes |
+
+### Outputs
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if fetch failed | str |
+| rule | A subreddit rule | SubredditRule |
+| rules | All subreddit rules | List[SubredditRule] |
+| subreddit | The subreddit name (pass-through for chaining) | str |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+_Add practical use case examples here._
+<!-- END MANUAL -->
+
+---
+
+## Get User Posts
+
+### What it is
+Fetch posts by a specific Reddit user.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+_Add technical explanation here._
+<!-- END MANUAL -->
+
+### Inputs
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| username | Reddit username to fetch posts from (without /u/ prefix) | str | Yes |
+| post_limit | Maximum number of posts to fetch | int | No |
+| sort | Sort order for user posts | "new" \| "hot" \| "top" | No |
+
+### Outputs
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if posts couldn't be fetched | str |
+| post | A post by the user | RedditPost |
+| posts | All posts by the user | List[RedditPost] |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+_Add practical use case examples here._
+<!-- END MANUAL -->
+
+---
+
 ## Instantiate Code Sandbox
 
 ### What it is
@@ -165,11 +588,9 @@ The sandbox persists until its timeout expires or it's explicitly disposed. Use 
 ### Inputs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| setup_commands | Shell commands to set up the sandbox before running the code. You can use `curl` or `git` to install your desired Debian based package manager. `pip` and `npm` are pre-installed.
-
-These commands are executed with `sh`, in the foreground. | List[str] | No |
+| setup_commands | Shell commands to set up the sandbox before running the code. You can use `curl` or `git` to install your desired Debian based package manager. `pip` and `npm` are pre-installed.  These commands are executed with `sh`, in the foreground. | List[str] | No |
 | setup_code | Code to execute in the sandbox | str | No |
-| language | Programming language to execute | "python" | "js" | "bash" | No |
+| language | Programming language to execute | "python" \| "js" \| "bash" | No |
 | timeout | Execution timeout in seconds | int | No |
 | template_id | You can use an E2B sandbox template by entering its ID here. Check out the E2B docs for more details: [E2B - Sandbox template](https://e2b.dev/docs/sandbox-template) | str | No |
 
@@ -206,13 +627,15 @@ The block connects to Reddit using the provided credentials, locates the specifi
 ### Inputs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| data | Reddit comment | RedditComment | Yes |
+| post_id | The ID of the post to comment on | str | Yes |
+| comment | The content of the comment to post | str | Yes |
 
 ### Outputs
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
 | comment_id | Posted comment ID | str |
+| post_id | The post ID (pass-through for chaining) | str |
 
 ### Possible use case
 <!-- MANUAL: use_case -->
@@ -236,15 +659,13 @@ Configure publish_status to publish immediately, save as draft, or make unlisted
 ### Inputs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| author_id | The Medium AuthorID of the user. You can get this by calling the /me endpoint of the Medium API.
-
-curl -H "Authorization: Bearer YOUR_ACCESS_TOKEN" https://api.medium.com/v1/me" the response will contain the authorId field. | str | No |
+| author_id | The Medium AuthorID of the user. You can get this by calling the /me endpoint of the Medium API.  curl -H "Authorization: Bearer YOUR_ACCESS_TOKEN" https://api.medium.com/v1/me" the response will contain the authorId field. | str | No |
 | title | The title of your Medium post | str | Yes |
 | content | The main content of your Medium post | str | Yes |
 | content_format | The format of the content: 'html' or 'markdown' | str | Yes |
 | tags | List of tags for your Medium post (up to 5) | List[str] | Yes |
 | canonical_url | The original home of this content, if it was originally published elsewhere | str | No |
-| publish_status | The publish status | "public" | "draft" | "unlisted" | Yes |
+| publish_status | The publish status | "public" \| "draft" \| "unlisted" | Yes |
 | license | The license of the post: 'all-rights-reserved', 'cc-40-by', 'cc-40-by-sa', 'cc-40-by-nd', 'cc-40-by-nc', 'cc-40-by-nc-nd', 'cc-40-by-nc-sa', 'cc-40-zero', 'public-domain' | str | No |
 | notify_followers | Whether to notify followers that the user has published | bool | No |
 
@@ -305,6 +726,99 @@ Each entry is output individually, enabling processing of new content as it appe
 
 ---
 
+## Reddit Get My Posts
+
+### What it is
+Fetch posts created by the authenticated Reddit user (you).
+
+### How it works
+<!-- MANUAL: how_it_works -->
+_Add technical explanation here._
+<!-- END MANUAL -->
+
+### Inputs
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| post_limit | Maximum number of posts to fetch | int | No |
+| sort | Sort order for posts | "new" \| "hot" \| "top" | No |
+
+### Outputs
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if posts couldn't be fetched | str |
+| post | A post by you | RedditPost |
+| posts | All your posts | List[RedditPost] |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+_Add practical use case examples here._
+<!-- END MANUAL -->
+
+---
+
+## Reply To Reddit Comment
+
+### What it is
+Reply to a specific Reddit comment. Useful for threaded conversations.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+_Add technical explanation here._
+<!-- END MANUAL -->
+
+### Inputs
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| comment_id | The ID of the comment to reply to | str | Yes |
+| reply_text | The text content of the reply | str | Yes |
+
+### Outputs
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if reply failed | str |
+| comment_id | ID of the newly created reply | str |
+| parent_comment_id | The parent comment ID (pass-through for chaining) | str |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+_Add practical use case examples here._
+<!-- END MANUAL -->
+
+---
+
+## Search Reddit
+
+### What it is
+Search Reddit for posts matching a query. Can search all of Reddit or a specific subreddit.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+_Add technical explanation here._
+<!-- END MANUAL -->
+
+### Inputs
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| query | Search query string | str | Yes |
+| subreddit | Limit search to a specific subreddit (without /r/ prefix) | str | No |
+| sort | Sort order for search results | "relevance" \| "hot" \| "top" | No |
+| time_filter | Time filter for search results | "all" \| "day" \| "hour" | No |
+| limit | Maximum number of results to return | int | No |
+
+### Outputs
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if search failed | str |
+| result | A search result | RedditSearchResult |
+| results | All search results | List[RedditSearchResult] |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+_Add practical use case examples here._
+<!-- END MANUAL -->
+
+---
+
 ## Send Authenticated Web Request
 
 ### What it is
@@ -321,7 +835,7 @@ Supports JSON, form-encoded, and multipart requests with file uploads. The respo
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | url | The URL to send the request to | str | Yes |
-| method | The HTTP method to use for the request | "GET" | "POST" | "PUT" | No |
+| method | The HTTP method to use for the request | "GET" \| "POST" \| "PUT" | No |
 | headers | The headers to include in the request | Dict[str, str] | No |
 | json_format | If true, send the body as JSON (unless files are also present). | bool | No |
 | body | Form/JSON body payload. If files are supplied, this must be a mapping of form‑fields. | Dict[str, True] | No |
@@ -384,6 +898,37 @@ The block handles connection, authentication, and message delivery, returning a 
 
 ---
 
+## Send Reddit Message
+
+### What it is
+Send a private message (DM) to a Reddit user.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+_Add technical explanation here._
+<!-- END MANUAL -->
+
+### Inputs
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| username | The Reddit username to send a message to (without /u/ prefix) | str | Yes |
+| subject | The subject line of the message | str | Yes |
+| message | The body content of the message | str | Yes |
+
+### Outputs
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if sending failed | str |
+| success | Whether the message was sent | bool |
+| username | The username (pass-through for chaining) | str |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+_Add practical use case examples here._
+<!-- END MANUAL -->
+
+---
+
 ## Send Web Request
 
 ### What it is
@@ -400,7 +945,7 @@ The response body is parsed and returned. Separate error outputs distinguish bet
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | url | The URL to send the request to | str | Yes |
-| method | The HTTP method to use for the request | "GET" | "POST" | "PUT" | No |
+| method | The HTTP method to use for the request | "GET" \| "POST" \| "PUT" | No |
 | headers | The headers to include in the request | Dict[str, str] | No |
 | json_format | If true, send the body as JSON (unless files are also present). | bool | No |
 | body | Form/JSON body payload. If files are supplied, this must be a mapping of form‑fields. | Dict[str, True] | No |

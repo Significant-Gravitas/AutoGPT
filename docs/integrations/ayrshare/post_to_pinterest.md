@@ -1,16 +1,16 @@
 # Post To Pinterest
 
-### What it is
+## What it is
 Post to Pinterest using Ayrshare
 
-### How it works
+## How it works
 <!-- MANUAL: how_it_works -->
 This block uses Ayrshare's API to publish pins to Pinterest boards. It supports image pins, video pins (with required thumbnails), and carousel pins (up to 5 images), with customizable titles, descriptions, destination links, and private notes.
 
 The block connects to Pinterest's API through Ayrshare, allowing you to specify target boards, add alt text for accessibility, and configure per-image carousel options including individual titles, links, and descriptions. Pins can be scheduled for future publishing.
 <!-- END MANUAL -->
 
-### Inputs
+## Inputs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | post | Pin description (max 500 chars, links not clickable - use link field instead) | str | No |
@@ -32,14 +32,14 @@ The block connects to Pinterest's API through Ayrshare, allowing you to specify 
 | carousel_options | Options for each image in carousel (title, link, description per image) | List[PinterestCarouselOption] | No |
 | alt_text | Alt text for each image/video (max 500 chars each, accessibility feature) | List[str] | No |
 
-### Outputs
+## Outputs
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
 | post_result | The result of the post | PostResponse |
 | post | The result of the post | PostIds |
 
-### Possible use case
+## Possible use case
 <!-- MANUAL: use_case -->
 **Product Catalog Distribution**: Automatically pin product images with direct links to purchase pages organized by board category.
 

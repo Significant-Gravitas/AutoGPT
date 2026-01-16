@@ -1,16 +1,16 @@
 # Data For Seo Keyword Suggestions
 
-### What it is
+## What it is
 Get keyword suggestions from DataForSEO Labs Google API
 
-### How it works
+## How it works
 <!-- MANUAL: how_it_works -->
 This block calls the DataForSEO Labs Google Keyword Suggestions API to generate keyword ideas based on a seed keyword. It provides search volume, competition metrics, CPC data, and keyword difficulty scores for each suggestion.
 
 Configure location and language targeting to get region-specific results. Optional SERP and clickstream data provide additional insights into search behavior and click patterns.
 <!-- END MANUAL -->
 
-### Inputs
+## Inputs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | keyword | Seed keyword to get suggestions for | str | Yes |
@@ -21,7 +21,7 @@ Configure location and language targeting to get region-specific results. Option
 | include_clickstream_data | Include clickstream metrics | bool | No |
 | limit | Maximum number of results (up to 3000) | int | No |
 
-### Outputs
+## Outputs
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -30,7 +30,7 @@ Configure location and language targeting to get region-specific results. Option
 | total_count | Total number of suggestions returned | int |
 | seed_keyword | The seed keyword used for the query | str |
 
-### Possible use case
+## Possible use case
 <!-- MANUAL: use_case -->
 **Content Planning**: Generate blog post and article ideas based on keyword suggestions with high search volume.
 

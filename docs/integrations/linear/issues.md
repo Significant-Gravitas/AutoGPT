@@ -1,16 +1,16 @@
 # Linear Create Issue
 
-### What it is
+## What it is
 Creates a new issue on Linear
 
-### How it works
+## How it works
 <!-- MANUAL: how_it_works -->
 This block creates a new issue in Linear using the GraphQL API. Specify the team, title, description, and optionally priority and project. The issue is created immediately and assigned to the specified team's workflow.
 
 Returns the created issue's ID and title for tracking or further operations.
 <!-- END MANUAL -->
 
-### Inputs
+## Inputs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | title | Title of the issue | str | Yes |
@@ -19,14 +19,14 @@ Returns the created issue's ID and title for tracking or further operations.
 | priority | Priority of the issue | int | No |
 | project_name | Name of the project to create the issue on | str | No |
 
-### Outputs
+## Outputs
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
 | issue_id | ID of the created issue | str |
 | issue_title | Title of the created issue | str |
 
-### Possible use case
+## Possible use case
 <!-- MANUAL: use_case -->
 **Bug Reporting**: Automatically create issues from error monitoring or customer reports.
 

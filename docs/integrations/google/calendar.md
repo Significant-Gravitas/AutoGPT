@@ -1,16 +1,16 @@
 # Google Calendar Create Event
 
-### What it is
+## What it is
 This block creates a new event in Google Calendar with customizable parameters.
 
-### How it works
+## How it works
 <!-- MANUAL: how_it_works -->
 This block creates events in Google Calendar via the Google Calendar API. It handles various event parameters including timing, location, guest invitations, Google Meet links, and recurring schedules. The block authenticates using your connected Google account credentials.
 
 When you specify guests, they receive email invitations (if notifications are enabled). The Google Meet option adds a video conference link to the event automatically.
 <!-- END MANUAL -->
 
-### Inputs
+## Inputs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | event_title | Title of the event | str | Yes |
@@ -24,14 +24,14 @@ When you specify guests, they receive email invitations (if notifications are en
 | recurrence | Whether the event repeats | Recurrence | No |
 | reminder_minutes | When to send reminders before the event | List[int] | No |
 
-### Outputs
+## Outputs
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
 | event_id | ID of the created event | str |
 | event_link | Link to view the event in Google Calendar | str |
 
-### Possible use case
+## Possible use case
 <!-- MANUAL: use_case -->
 **Automated Meeting Scheduling**: Create calendar events when appointments are booked through a form or scheduling system.
 

@@ -1,36 +1,29 @@
 # Twitter Get Liked Tweets
 
-### What it is
+## What it is
 This block gets information about tweets liked by a user.
 
-### How it works
+## How it works
 <!-- MANUAL: how_it_works -->
 This block queries the Twitter API v2 to retrieve tweets that a specified user has liked. Results are returned in reverse chronological order (most recently liked first) with pagination support.
 
 The block uses Tweepy with OAuth 2.0 authentication and supports extensive expansions to include additional data like media, author information, and location details. Returns tweet IDs, text content, author information, and complete tweet data objects.
 <!-- END MANUAL -->
 
-### Inputs
+## Inputs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| expansions | Choose what extra information you want to get with your tweets. For example:
-- Select 'Media_Keys' to get media details
-- Select 'Author_User_ID' to get user information
-- Select 'Place_ID' to get location details | ExpansionFilter | No |
+| expansions | Choose what extra information you want to get with your tweets. For example: - Select 'Media_Keys' to get media details - Select 'Author_User_ID' to get user information - Select 'Place_ID' to get location details | ExpansionFilter | No |
 | media_fields | Select what media information you want to see (images, videos, etc). To use this, you must first select 'Media_Keys' in the expansions above. | TweetMediaFieldsFilter | No |
 | place_fields | Select what location information you want to see (country, coordinates, etc). To use this, you must first select 'Place_ID' in the expansions above. | TweetPlaceFieldsFilter | No |
 | poll_fields | Select what poll information you want to see (options, voting status, etc). To use this, you must first select 'Poll_IDs' in the expansions above. | TweetPollFieldsFilter | No |
 | tweet_fields | Select what tweet information you want to see. For referenced tweets (like retweets), select 'Referenced_Tweet_ID' in the expansions above. | TweetFieldsFilter | No |
-| user_fields | Select what user information you want to see. To use this, you must first select one of these in expansions above:
-- 'Author_User_ID' for tweet authors
-- 'Mentioned_Usernames' for mentioned users
-- 'Reply_To_User_ID' for users being replied to
-- 'Referenced_Tweet_Author_ID' for authors of referenced tweets | TweetUserFieldsFilter | No |
+| user_fields | Select what user information you want to see. To use this, you must first select one of these in expansions above: - 'Author_User_ID' for tweet authors - 'Mentioned_Usernames' for mentioned users - 'Reply_To_User_ID' for users being replied to - 'Referenced_Tweet_Author_ID' for authors of referenced tweets | TweetUserFieldsFilter | No |
 | user_id | ID of the user to get liked tweets for | str | Yes |
 | max_results | Maximum number of results to return (5-100) | int | No |
 | pagination_token | Token for getting next/previous page of results | str | No |
 
-### Outputs
+## Outputs
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -43,7 +36,7 @@ The block uses Tweepy with OAuth 2.0 authentication and supports extensive expan
 | included | Additional data that you have requested (Optional) via Expansions field | Dict[str, True] |
 | meta | Provides metadata such as pagination info (next_token) or result counts | Dict[str, True] |
 
-### Possible use case
+## Possible use case
 <!-- MANUAL: use_case -->
 **Interest Analysis**: Analyze a user's liked tweets to understand their interests, preferences, and sentiment.
 

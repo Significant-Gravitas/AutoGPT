@@ -1,33 +1,33 @@
 # Airtable Create Field
 
-### What it is
+## What it is
 Add a new field to an Airtable table
 
-### How it works
+## How it works
 <!-- MANUAL: how_it_works -->
 This block adds a new field to an existing Airtable table using the Airtable API. Specify the field type (text, email, URL, etc.), name, and optional description and configuration options.
 
 The field is created immediately and becomes available for use in all records. Returns the created field object with its assigned ID.
 <!-- END MANUAL -->
 
-### Inputs
+## Inputs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | base_id | The Airtable base ID | str | Yes |
 | table_id | The table ID to add field to | str | Yes |
-| field_type | The type of the field to create | "singleLineText" | "email" | "url" | No |
+| field_type | The type of the field to create | "singleLineText" \| "email" \| "url" | No |
 | name | The name of the field to create | str | Yes |
 | description | The description of the field to create | str | No |
 | options | The options of the field to create | Dict[str, str] | No |
 
-### Outputs
+## Outputs
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
 | field | Created field object | Dict[str, True] |
 | field_id | ID of the created field | str |
 
-### Possible use case
+## Possible use case
 <!-- MANUAL: use_case -->
 **Schema Evolution**: Add new fields to tables as application requirements grow.
 

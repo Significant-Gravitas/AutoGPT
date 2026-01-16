@@ -1,33 +1,33 @@
 # AI Ad Maker Video Creator
 
-### What it is
+## What it is
 Creates an AI‑generated 30‑second advert (text + images)
 
-### How it works
+## How it works
 <!-- MANUAL: how_it_works -->
 This block generates video advertisements by combining AI-generated visuals with narrated scripts. Line breaks in the script create scene transitions. Choose from various voices and background music options.
 
 Optionally provide your own images via input_media_urls, or let the AI generate visuals. The finished video is returned as a URL for download or embedding.
 <!-- END MANUAL -->
 
-### Inputs
+## Inputs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | script | Short advertising copy. Line breaks create new scenes. | str | Yes |
 | ratio | Aspect ratio | str | No |
 | target_duration | Desired length of the ad in seconds. | int | No |
-| voice | Narration voice | "Lily" | "Daniel" | "Brian" | No |
-| background_music | Background track | "Observer" | "Futuristic Beat" | "Science Documentary" | No |
+| voice | Narration voice | "Lily" \| "Daniel" \| "Brian" | No |
+| background_music | Background track | "Observer" \| "Futuristic Beat" \| "Science Documentary" | No |
 | input_media_urls | List of image URLs to feature in the advert. | List[str] | No |
 | use_only_provided_media | Restrict visuals to supplied images only. | bool | No |
 
-### Outputs
+## Outputs
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
 | video_url | URL of the finished advert | str |
 
-### Possible use case
+## Possible use case
 <!-- MANUAL: use_case -->
 **Product Marketing**: Create quick promotional videos for products or services.
 
@@ -57,7 +57,7 @@ The result routes data to yes_output or no_output, enabling intelligent branchin
 | condition | A plaintext English description of the condition to evaluate | str | Yes |
 | yes_value | (Optional) Value to output if the condition is true. If not provided, input_value will be used. | Yes Value | No |
 | no_value | (Optional) Value to output if the condition is false. If not provided, input_value will be used. | No Value | No |
-| model | The language model to use for evaluating the condition. | "o3-mini" | "o3-2025-04-16" | "o1" | No |
+| model | The language model to use for evaluating the condition. | "o3-mini" \| "o3-2025-04-16" \| "o1" | No |
 
 ### Outputs
 | Output | Description | Type |
@@ -93,7 +93,7 @@ The block sends the entire conversation history to the chosen LLM, including sys
 |-------|-------------|------|----------|
 | prompt | The prompt to send to the language model. | str | No |
 | messages | List of messages in the conversation. | List[Any] | Yes |
-| model | The language model to use for the conversation. | "o3-mini" | "o3-2025-04-16" | "o1" | No |
+| model | The language model to use for the conversation. | "o3-mini" \| "o3-2025-04-16" \| "o1" | No |
 | max_tokens | The maximum number of tokens to generate in the chat completion. | int | No |
 | ollama_host | Ollama host for local  models | str | No |
 
@@ -127,10 +127,10 @@ Configure aspect ratio to match your needs and choose between JPG or PNG output 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | prompt | A text description of the image you want to generate | str | Yes |
-| model | The AI model to use for image generation and editing | "google/nano-banana" | "google/nano-banana-pro" | No |
+| model | The AI model to use for image generation and editing | "google/nano-banana" \| "google/nano-banana-pro" | No |
 | images | Optional list of input images to reference or modify | List[str (file)] | No |
-| aspect_ratio | Aspect ratio of the generated image | "match_input_image" | "1:1" | "2:3" | No |
-| output_format | Format of the output image | "jpg" | "png" | No |
+| aspect_ratio | Aspect ratio of the generated image | "match_input_image" \| "1:1" \| "2:3" | No |
+| output_format | Format of the output image | "jpg" \| "png" | No |
 
 ### Outputs
 | Output | Description | Type |
@@ -166,9 +166,9 @@ Choose between Flux Kontext Pro or Max for different quality/speed tradeoffs. Se
 |-------|-------------|------|----------|
 | prompt | Text instruction describing the desired edit | str | Yes |
 | input_image | Reference image URI (jpeg, png, gif, webp) | str (file) | No |
-| aspect_ratio | Aspect ratio of the generated image | "match_input_image" | "1:1" | "16:9" | No |
+| aspect_ratio | Aspect ratio of the generated image | "match_input_image" \| "1:1" \| "16:9" | No |
 | seed | Random seed. Set for reproducible generation | int | No |
-| model | Model variant to use | "Flux Kontext Pro" | "Flux Kontext Max" | No |
+| model | Model variant to use | "Flux Kontext Pro" \| "Flux Kontext Max" | No |
 
 ### Outputs
 | Output | Description | Type |
@@ -203,14 +203,9 @@ The unified interface allows switching between models without changing your work
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | prompt | Text prompt for image generation | str | Yes |
-| model | The AI model to use for image generation | "Flux 1.1 Pro" | "Flux 1.1 Pro Ultra" | "Recraft v3" | No |
-| size | Format of the generated image:
-- Square: Perfect for profile pictures, icons
-- Landscape: Traditional photo format
-- Portrait: Vertical photos, portraits
-- Wide: Cinematic format, desktop wallpapers
-- Tall: Mobile wallpapers, social media stories | "square" | "landscape" | "portrait" | No |
-| style | Visual style for the generated image | "any" | "realistic_image" | "realistic_image/b_and_w" | No |
+| model | The AI model to use for image generation | "Flux 1.1 Pro" \| "Flux 1.1 Pro Ultra" \| "Recraft v3" | No |
+| size | Format of the generated image: - Square: Perfect for profile pictures, icons - Landscape: Traditional photo format - Portrait: Vertical photos, portraits - Wide: Cinematic format, desktop wallpapers - Tall: Mobile wallpapers, social media stories | "square" \| "landscape" \| "portrait" | No |
+| style | Visual style for the generated image | "any" \| "realistic_image" \| "realistic_image/b_and_w" | No |
 
 ### Outputs
 | Output | Description | Type |
@@ -244,7 +239,7 @@ The block formulates a prompt based on the given focus or source data, sends it 
 |-------|-------------|------|----------|
 | focus | The focus of the list to generate. | str | No |
 | source_data | The data to generate the list from. | str | No |
-| model | The language model to use for generating the list. | "o3-mini" | "o3-2025-04-16" | "o1" | No |
+| model | The language model to use for generating the list. | "o3-mini" \| "o3-2025-04-16" \| "o1" | No |
 | max_retries | Maximum number of retries for generating a valid list. | int | No |
 | force_json_output | Whether to force the LLM to produce a JSON-only response. This can increase the block's reliability, but may also reduce the quality of the response because it prohibits the LLM from reasoning before providing its JSON response. | bool | No |
 | max_tokens | The maximum number of tokens to generate in the chat completion. | int | No |
@@ -281,14 +276,14 @@ Configure duration, temperature (for variety), and output format. Higher tempera
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | prompt | A description of the music you want to generate | str | Yes |
-| music_gen_model_version | Model to use for generation | "stereo-large" | "melody-large" | "large" | No |
+| music_gen_model_version | Model to use for generation | "stereo-large" \| "melody-large" \| "large" | No |
 | duration | Duration of the generated audio in seconds | int | No |
 | temperature | Controls the 'conservativeness' of the sampling process. Higher temperature means more diversity | float | No |
 | top_k | Reduces sampling to the k most likely tokens | int | No |
 | top_p | Reduces sampling to tokens with cumulative probability of p. When set to 0 (default), top_k sampling is used | float | No |
 | classifier_free_guidance | Increases the influence of inputs on the output. Higher values produce lower-variance outputs that adhere more closely to inputs | int | No |
-| output_format | Output format for generated audio | "wav" | "mp3" | No |
-| normalization_strategy | Strategy for normalizing audio | "loudness" | "clip" | "peak" | No |
+| output_format | Output format for generated audio | "wav" \| "mp3" | No |
+| normalization_strategy | Strategy for normalizing audio | "loudness" \| "clip" \| "peak" | No |
 
 ### Outputs
 | Output | Description | Type |
@@ -326,8 +321,8 @@ Choose from various voices and music tracks. The video showcases the screenshot 
 | screenshot_url | Screenshot or image URL to showcase. | str | Yes |
 | ratio | - | str | No |
 | target_duration | - | int | No |
-| voice | - | "Lily" | "Daniel" | "Brian" | No |
-| background_music | - | "Observer" | "Futuristic Beat" | "Science Documentary" | No |
+| voice | - | "Lily" \| "Daniel" \| "Brian" | No |
+| background_music | - | "Observer" \| "Futuristic Beat" \| "Science Documentary" | No |
 
 ### Outputs
 | Output | Description | Type |
@@ -361,18 +356,14 @@ Choose video style (stock video, moving images, or AI-generated), voice, backgro
 ### Inputs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| script | 1. Use short and punctuated sentences
-
-2. Use linebreaks to create a new clip
-
-3. Text outside of brackets is spoken by the AI, and [text between brackets] will be used to guide the visual generation. For example, [close-up of a cat] will show a close-up of a cat. | str | Yes |
+| script | 1. Use short and punctuated sentences  2. Use linebreaks to create a new clip  3. Text outside of brackets is spoken by the AI, and [text between brackets] will be used to guide the visual generation. For example, [close-up of a cat] will show a close-up of a cat. | str | Yes |
 | ratio | Aspect ratio of the video | str | No |
 | resolution | Resolution of the video | str | No |
 | frame_rate | Frame rate of the video | int | No |
-| generation_preset | Generation preset for visual style - only effects AI generated visuals | "Default" | "Anime" | "Realist" | No |
-| background_music | Background music track | "Observer" | "Futuristic Beat" | "Science Documentary" | No |
-| voice | AI voice to use for narration | "Lily" | "Daniel" | "Brian" | No |
-| video_style | Type of visual media to use for the video | "stockVideo" | "movingImage" | "aiVideo" | No |
+| generation_preset | Generation preset for visual style - only effects AI generated visuals | "Default" \| "Anime" \| "Realist" | No |
+| background_music | Background music track | "Observer" \| "Futuristic Beat" \| "Science Documentary" | No |
+| voice | AI voice to use for narration | "Lily" \| "Daniel" \| "Brian" | No |
+| video_style | Type of visual media to use for the video | "stockVideo" \| "movingImage" \| "aiVideo" | No |
 
 ### Outputs
 | Output | Description | Type |
@@ -407,7 +398,7 @@ The block sends the input prompt to a chosen LLM, along with any system prompts 
 | prompt | The prompt to send to the language model. | str | Yes |
 | expected_format | Expected format of the response. If provided, the response will be validated against this format. The keys should be the expected fields in the response, and the values should be the description of the field. | Dict[str, str] | Yes |
 | list_result | Whether the response should be a list of objects in the expected format. | bool | No |
-| model | The language model to use for answering the prompt. | "o3-mini" | "o3-2025-04-16" | "o1" | No |
+| model | The language model to use for answering the prompt. | "o3-mini" \| "o3-2025-04-16" \| "o1" | No |
 | force_json_output | Whether to force the LLM to produce a JSON-only response. This can increase the block's reliability, but may also reduce the quality of the response because it prohibits the LLM from reasoning before providing its JSON response. | bool | No |
 | sys_prompt | The system prompt to provide additional context to the model. | str | No |
 | conversation_history | The conversation history to provide context for the prompt. | List[Dict[str, True]] | No |
@@ -421,7 +412,7 @@ The block sends the input prompt to a chosen LLM, along with any system prompts 
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
-| response | The response object generated by the language model. | Dict[str, True] | List[Dict[str, True]] |
+| response | The response object generated by the language model. | Dict[str, True] \| List[Dict[str, True]] |
 | prompt | The prompt sent to the language model. | List[Any] |
 
 ### Possible use case
@@ -445,7 +436,7 @@ The block sends the input prompt to a chosen LLM, processes the response, and re
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | prompt | The prompt to send to the language model. You can use any of the {keys} from Prompt Values to fill in the prompt with values from the prompt values dictionary by putting them in curly braces. | str | Yes |
-| model | The language model to use for answering the prompt. | "o3-mini" | "o3-2025-04-16" | "o1" | No |
+| model | The language model to use for answering the prompt. | "o3-mini" \| "o3-2025-04-16" \| "o1" | No |
 | sys_prompt | The system prompt to provide additional context to the model. | str | No |
 | retry | Number of times to retry the LLM call if the response does not match the expected format. | int | No |
 | prompt_values | Values used to fill in the prompt. The values can be used in the prompt by putting them in a double curly braces, e.g. {{variable_name}}. | Dict[str, str] | No |
@@ -480,9 +471,9 @@ The block splits the input text into smaller chunks, sends each chunk to an LLM 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | text | The text to summarize. | str | Yes |
-| model | The language model to use for summarizing the text. | "o3-mini" | "o3-2025-04-16" | "o1" | No |
+| model | The language model to use for summarizing the text. | "o3-mini" \| "o3-2025-04-16" \| "o1" | No |
 | focus | The topic to focus on in the summary | str | No |
-| style | The style of the summary to generate. | "concise" | "detailed" | "bullet points" | No |
+| style | The style of the summary to generate. | "concise" \| "detailed" \| "bullet points" | No |
 | max_tokens | The maximum number of tokens to generate in the chat completion. | int | No |
 | chunk_overlap | The number of overlapping tokens between chunks to maintain context. | int | No |
 | ollama_host | Ollama host for local  models | str | No |
@@ -519,7 +510,7 @@ Configure reasoning_effort to control how much the model "thinks" before respond
 | prompt | Primary coding request passed to the Codex model. | str | Yes |
 | system_prompt | Optional instructions injected via the Responses API instructions field. | str | No |
 | model | Codex-optimized model served via the Responses API. | "gpt-5.1-codex" | No |
-| reasoning_effort | Controls the Responses API reasoning budget. Select 'none' to skip reasoning configs. | "none" | "low" | "medium" | No |
+| reasoning_effort | Controls the Responses API reasoning budget. Select 'none' to skip reasoning configs. | "none" \| "low" \| "medium" | No |
 | max_output_tokens | Upper bound for generated tokens (hard limit 128,000). Leave blank to let OpenAI decide. | int | No |
 
 ### Outputs
@@ -555,12 +546,12 @@ The block sends a request to the D-ID API with your specified parameters. It the
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | script_input | The text input for the script | str | Yes |
-| provider | The voice provider to use | "microsoft" | "elevenlabs" | "amazon" | No |
+| provider | The voice provider to use | "microsoft" \| "elevenlabs" \| "amazon" | No |
 | voice_id | The voice ID to use, get list of voices [here](https://docs.agpt.co/server/d_id) | str | No |
 | presenter_id | The presenter ID to use | str | No |
 | driver_id | The driver ID to use | str | No |
-| result_format | The desired result format | "mp4" | "gif" | "wav" | No |
-| crop_type | The crop type for the presenter | "wide" | "square" | "vertical" | No |
+| result_format | The desired result format | "mp4" \| "gif" \| "wav" | No |
+| crop_type | The crop type for the presenter | "wide" \| "square" \| "vertical" | No |
 | subtitles | Whether to include subtitles | bool | No |
 | ssml | Whether the input is SSML | bool | No |
 | max_polling_attempts | Maximum number of polling attempts | int | No |
@@ -595,14 +586,14 @@ Advanced options include upscaling, custom color palettes, and negative prompts 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | prompt | Text prompt for image generation | str | Yes |
-| ideogram_model_name | The name of the Image Generation Model, e.g., V_3 | "V_3" | "V_2" | "V_1" | No |
-| aspect_ratio | Aspect ratio for the generated image | "ASPECT_10_16" | "ASPECT_16_10" | "ASPECT_9_16" | No |
-| upscale | Upscale the generated image | "AI Upscale" | "No Upscale" | No |
-| magic_prompt_option | Whether to use MagicPrompt for enhancing the request | "AUTO" | "ON" | "OFF" | No |
+| ideogram_model_name | The name of the Image Generation Model, e.g., V_3 | "V_3" \| "V_2" \| "V_1" | No |
+| aspect_ratio | Aspect ratio for the generated image | "ASPECT_10_16" \| "ASPECT_16_10" \| "ASPECT_9_16" | No |
+| upscale | Upscale the generated image | "AI Upscale" \| "No Upscale" | No |
+| magic_prompt_option | Whether to use MagicPrompt for enhancing the request | "AUTO" \| "ON" \| "OFF" | No |
 | seed | Random seed. Set for reproducible generation | int | No |
-| style_type | Style type to apply, applicable for V_2 and above | "AUTO" | "GENERAL" | "REALISTIC" | No |
+| style_type | Style type to apply, applicable for V_2 and above | "AUTO" \| "GENERAL" \| "REALISTIC" | No |
 | negative_prompt | Description of what to exclude from the image | str | No |
-| color_palette_name | Color palette preset name, choose 'None' to skip | "NONE" | "EMBER" | "FRESH" | No |
+| color_palette_name | Color palette preset name, choose 'None' to skip | "NONE" \| "EMBER" \| "FRESH" | No |
 | custom_color_palette | Only available for model version V_2 or V_2_TURBO. Provide one or more color hex codes (e.g., ['#000030', '#1C0C47', '#9900FF', '#4285F4', '#FFFFFF']) to define a custom color palette. Only used if 'color_palette_name' is 'NONE'. | List[str] | No |
 
 ### Outputs
@@ -638,7 +629,7 @@ Choose from different sonar model variants including deep-research for comprehen
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | prompt | The query to send to the Perplexity model. | str | Yes |
-| model | The Perplexity sonar model to use. | "perplexity/sonar" | "perplexity/sonar-pro" | "perplexity/sonar-deep-research" | No |
+| model | The Perplexity sonar model to use. | "perplexity/sonar" \| "perplexity/sonar-pro" \| "perplexity/sonar-deep-research" | No |
 | system_prompt | Optional system prompt to provide context to the model. | str | No |
 | max_tokens | The maximum number of tokens to generate. | int | No |
 
@@ -676,7 +667,7 @@ Configure agent_mode_max_iterations to control loop behavior: 0 for single decis
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | prompt | The prompt to send to the language model. | str | Yes |
-| model | The language model to use for answering the prompt. | "o3-mini" | "o3-2025-04-16" | "o1" | No |
+| model | The language model to use for answering the prompt. | "o3-mini" \| "o3-2025-04-16" \| "o1" | No |
 | multiple_tool_calls | Whether to allow multiple tool calls in a single response. | bool | No |
 | sys_prompt | The system prompt to provide additional context to the model. | str | No |
 | conversation_history | The conversation history to provide context for the prompt. | List[Dict[str, True]] | No |

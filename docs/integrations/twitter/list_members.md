@@ -1,28 +1,28 @@
 # Twitter Add List Member
 
-### What it is
+## What it is
 This block adds a specified user to a Twitter List owned by the authenticated user.
 
-### How it works
+## How it works
 <!-- MANUAL: how_it_works -->
 This block uses the Twitter API v2 via Tweepy to add a user to a Twitter List that you own. The added user will appear in the list's member roster and their tweets will show in the list timeline.
 
 The block authenticates using OAuth 2.0 with list write permissions. Only the list owner can add members. The target user does not need to approve being added to public lists.
 <!-- END MANUAL -->
 
-### Inputs
+## Inputs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | list_id | The ID of the List to add the member to | str | Yes |
 | user_id | The ID of the user to add to the List | str | Yes |
 
-### Outputs
+## Outputs
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
 | success | Whether the member was successfully added | bool |
 
-### Possible use case
+## Possible use case
 <!-- MANUAL: use_case -->
 **List Curation**: Build curated lists by adding relevant accounts you discover.
 
@@ -92,25 +92,9 @@ The block uses Tweepy with OAuth 2.0 authentication and supports expansions for 
 ### Inputs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| expansions | Choose what extra information you want to get with your Twitter Lists:
-- Select 'List_Owner_ID' to get details about who owns the list
-
-This will let you see more details about the list owner when you also select user fields below. | ListExpansionsFilter | No |
-| user_fields | Choose what information you want to see about list owners. This only works when you select 'List_Owner_ID' in expansions above.
-
-You can see things like:
-- Their username
-- Profile picture
-- Account details
-- And more | TweetUserFieldsFilter | No |
-| list_fields | Choose what information you want to see about the Twitter Lists themselves, such as:
-- List name
-- Description
-- Number of followers
-- Number of members
-- Whether it's private
-- Creation date
-- And more | ListFieldsFilter | No |
+| expansions | Choose what extra information you want to get with your Twitter Lists: - Select 'List_Owner_ID' to get details about who owns the list  This will let you see more details about the list owner when you also select user fields below. | ListExpansionsFilter | No |
+| user_fields | Choose what information you want to see about list owners. This only works when you select 'List_Owner_ID' in expansions above.  You can see things like: - Their username - Profile picture - Account details - And more | TweetUserFieldsFilter | No |
+| list_fields | Choose what information you want to see about the Twitter Lists themselves, such as: - List name - Description - Number of followers - Number of members - Whether it's private - Creation date - And more | ListFieldsFilter | No |
 | user_id | The ID of the user whose List memberships to retrieve | str | Yes |
 | max_results | Maximum number of results per page (1-100) | int | No |
 | pagination_token | Token for pagination of results | str | No |

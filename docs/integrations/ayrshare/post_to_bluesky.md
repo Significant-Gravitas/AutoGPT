@@ -1,16 +1,16 @@
 # Post To Bluesky
 
-### What it is
+## What it is
 Post to Bluesky using Ayrshare
 
-### How it works
+## How it works
 <!-- MANUAL: how_it_works -->
 This block uses Ayrshare's social media API to publish content to Bluesky. It handles text posts (up to 300 characters), images (up to 4), and video content with support for scheduling, accessibility features like alt text, and link shortening.
 
 The block authenticates through your Ayrshare credentials and sends the post data to Ayrshare's unified API, which then publishes to Bluesky. It returns post identifiers and status information upon completion, or error details if the operation fails.
 <!-- END MANUAL -->
 
-### Inputs
+## Inputs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | post | The post text to be published (max 300 characters for Bluesky) | str | No |
@@ -26,14 +26,14 @@ The block authenticates through your Ayrshare credentials and sends the post dat
 | notes | Additional notes for the post | str | No |
 | alt_text | Alt text for each media item (accessibility) | List[str] | No |
 
-### Outputs
+## Outputs
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
 | post_result | The result of the post | PostResponse |
 | post | The result of the post | PostIds |
 
-### Possible use case
+## Possible use case
 <!-- MANUAL: use_case -->
 **Cross-Platform Publishing**: Automatically share content across Bluesky and other social networks from a single workflow.
 

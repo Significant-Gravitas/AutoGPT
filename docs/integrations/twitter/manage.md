@@ -1,27 +1,27 @@
 # Twitter Delete Tweet
 
-### What it is
+## What it is
 This block deletes a tweet on Twitter.
 
-### How it works
+## How it works
 <!-- MANUAL: how_it_works -->
 This block uses the Twitter API v2 via Tweepy to permanently delete a tweet from the authenticated user's account. The deletion is immediate and cannot be undone.
 
 The block authenticates using OAuth 2.0 with tweet write permissions and sends a DELETE request for the specified tweet ID. Only the tweet's author can delete their own tweets. Returns a success indicator confirming the deletion.
 <!-- END MANUAL -->
 
-### Inputs
+## Inputs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | tweet_id | ID of the tweet to delete | str | Yes |
 
-### Outputs
+## Outputs
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the tweet deletion failed | str |
 | success | Whether the tweet was successfully deleted | bool |
 
-### Possible use case
+## Possible use case
 <!-- MANUAL: use_case -->
 **Content Cleanup**: Remove outdated tweets that contain incorrect information or expired promotions.
 
@@ -92,19 +92,12 @@ Results can be filtered by time range (start/end times), sorted by recency or re
 | since_id | Returns results with Tweet ID  greater than this (more recent than), we give priority to since_id over start_time | str | No |
 | until_id | Returns results with Tweet ID less than this (that is, older than), and used with since_id | str | No |
 | sort_order | Order of returned tweets (recency or relevancy) | str | No |
-| expansions | Choose what extra information you want to get with your tweets. For example:
-- Select 'Media_Keys' to get media details
-- Select 'Author_User_ID' to get user information
-- Select 'Place_ID' to get location details | ExpansionFilter | No |
+| expansions | Choose what extra information you want to get with your tweets. For example: - Select 'Media_Keys' to get media details - Select 'Author_User_ID' to get user information - Select 'Place_ID' to get location details | ExpansionFilter | No |
 | media_fields | Select what media information you want to see (images, videos, etc). To use this, you must first select 'Media_Keys' in the expansions above. | TweetMediaFieldsFilter | No |
 | place_fields | Select what location information you want to see (country, coordinates, etc). To use this, you must first select 'Place_ID' in the expansions above. | TweetPlaceFieldsFilter | No |
 | poll_fields | Select what poll information you want to see (options, voting status, etc). To use this, you must first select 'Poll_IDs' in the expansions above. | TweetPollFieldsFilter | No |
 | tweet_fields | Select what tweet information you want to see. For referenced tweets (like retweets), select 'Referenced_Tweet_ID' in the expansions above. | TweetFieldsFilter | No |
-| user_fields | Select what user information you want to see. To use this, you must first select one of these in expansions above:
-- 'Author_User_ID' for tweet authors
-- 'Mentioned_Usernames' for mentioned users
-- 'Reply_To_User_ID' for users being replied to
-- 'Referenced_Tweet_Author_ID' for authors of referenced tweets | TweetUserFieldsFilter | No |
+| user_fields | Select what user information you want to see. To use this, you must first select one of these in expansions above: - 'Author_User_ID' for tweet authors - 'Mentioned_Usernames' for mentioned users - 'Reply_To_User_ID' for users being replied to - 'Referenced_Tweet_Author_ID' for authors of referenced tweets | TweetUserFieldsFilter | No |
 | query | Search query (up to 1024 characters) | str | Yes |
 | max_results | Maximum number of results per page (10-500) | int | No |
 | pagination | Token for pagination | str | No |

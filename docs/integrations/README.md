@@ -268,12 +268,26 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | Block Name | Description |
 |------------|-------------|
 | [Create Discord Thread](discord/bot_blocks.md#create-discord-thread) | Creates a new thread in a Discord channel |
+| [Create Reddit Post](misc.md#create-reddit-post) | Create a new post on a subreddit |
+| [Delete Reddit Comment](misc.md#delete-reddit-comment) | Delete a Reddit comment that you own |
+| [Delete Reddit Post](misc.md#delete-reddit-post) | Delete a Reddit post that you own |
 | [Discord Channel Info](discord/bot_blocks.md#discord-channel-info) | Resolves Discord channel names to IDs and vice versa |
 | [Discord Get Current User](discord/oauth_blocks.md#discord-get-current-user) | Gets information about the currently authenticated Discord user using OAuth2 credentials |
 | [Discord User Info](discord/bot_blocks.md#discord-user-info) | Gets information about a Discord user by their ID |
+| [Edit Reddit Post](misc.md#edit-reddit-post) | Edit the body text of an existing Reddit post that you own |
 | [Get Linkedin Profile](enrichlayer/linkedin.md#get-linkedin-profile) | Fetch LinkedIn profile data using Enrichlayer |
 | [Get Linkedin Profile Picture](enrichlayer/linkedin.md#get-linkedin-profile-picture) | Get LinkedIn profile pictures using Enrichlayer |
+| [Get Reddit Comment](misc.md#get-reddit-comment) | Get details about a specific Reddit comment by its ID |
+| [Get Reddit Comment Replies](misc.md#get-reddit-comment-replies) | Get replies to a specific Reddit comment |
+| [Get Reddit Inbox](misc.md#get-reddit-inbox) | Get messages, mentions, and comment replies from your Reddit inbox |
+| [Get Reddit Post](misc.md#get-reddit-post) | Get detailed information about a specific Reddit post by its ID |
+| [Get Reddit Post Comments](misc.md#get-reddit-post-comments) | Get top-level comments on a Reddit post |
 | [Get Reddit Posts](misc.md#get-reddit-posts) | This block fetches Reddit posts from a defined subreddit name |
+| [Get Reddit User Info](misc.md#get-reddit-user-info) | Get information about a Reddit user including karma, account age, and verification status |
+| [Get Subreddit Flairs](misc.md#get-subreddit-flairs) | Get available link flair options for a subreddit |
+| [Get Subreddit Info](misc.md#get-subreddit-info) | Get information about a subreddit including subscriber count, description, and rules |
+| [Get Subreddit Rules](misc.md#get-subreddit-rules) | Get the rules for a subreddit to ensure compliance before posting |
+| [Get User Posts](misc.md#get-user-posts) | Fetch posts by a specific Reddit user |
 | [Linkedin Person Lookup](enrichlayer/linkedin.md#linkedin-person-lookup) | Look up LinkedIn profiles by person information using Enrichlayer |
 | [Linkedin Role Lookup](enrichlayer/linkedin.md#linkedin-role-lookup) | Look up LinkedIn profiles by role in a company using Enrichlayer |
 | [Post Reddit Comment](misc.md#post-reddit-comment) | This block posts a Reddit comment on a specified Reddit post |
@@ -292,11 +306,15 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Post To You Tube](ayrshare/post_to_youtube.md#post-to-you-tube) | Post to YouTube using Ayrshare |
 | [Publish To Medium](misc.md#publish-to-medium) | Publishes a post to Medium |
 | [Read Discord Messages](discord/bot_blocks.md#read-discord-messages) | Reads messages from a Discord channel using a bot token |
+| [Reddit Get My Posts](misc.md#reddit-get-my-posts) | Fetch posts created by the authenticated Reddit user (you) |
 | [Reply To Discord Message](discord/bot_blocks.md#reply-to-discord-message) | Replies to a specific Discord message |
+| [Reply To Reddit Comment](misc.md#reply-to-reddit-comment) | Reply to a specific Reddit comment |
+| [Search Reddit](misc.md#search-reddit) | Search Reddit for posts matching a query |
 | [Send Discord DM](discord/bot_blocks.md#send-discord-dm) | Sends a direct message to a Discord user using their user ID |
 | [Send Discord Embed](discord/bot_blocks.md#send-discord-embed) | Sends a rich embed message to a Discord channel |
 | [Send Discord File](discord/bot_blocks.md#send-discord-file) | Sends a file attachment to a Discord channel |
 | [Send Discord Message](discord/bot_blocks.md#send-discord-message) | Sends a message to a Discord channel using a bot token |
+| [Send Reddit Message](misc.md#send-reddit-message) | Send a private message (DM) to a Reddit user |
 | [Transcribe Youtube Video](misc.md#transcribe-youtube-video) | Transcribes a YouTube video using a proxy |
 | [Twitter Add List Member](twitter/list_members.md#twitter-add-list-member) | This block adds a specified user to a Twitter List owned by the authenticated user |
 | [Twitter Bookmark Tweet](twitter/bookmark.md#twitter-bookmark-tweet) | This block bookmarks a tweet on Twitter |

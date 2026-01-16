@@ -1,21 +1,21 @@
 # Get Linkedin Profile
 
-### What it is
+## What it is
 Fetch LinkedIn profile data using Enrichlayer
 
-### How it works
+## How it works
 <!-- MANUAL: how_it_works -->
 This block retrieves comprehensive LinkedIn profile data using Enrichlayer's API. Provide a LinkedIn profile URL to fetch details including work history, education, skills, and contact information.
 
 Configure caching options for performance and optionally include additional data like inferred salary, personal email, or social media links.
 <!-- END MANUAL -->
 
-### Inputs
+## Inputs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | linkedin_url | LinkedIn profile URL to fetch data from | str | Yes |
-| fallback_to_cache | Cache usage if live fetch fails | "on-error" | "never" | No |
-| use_cache | Cache utilization strategy | "if-present" | "never" | No |
+| fallback_to_cache | Cache usage if live fetch fails | "on-error" \| "never" | No |
+| use_cache | Cache utilization strategy | "if-present" \| "never" | No |
 | include_skills | Include skills data | bool | No |
 | include_inferred_salary | Include inferred salary data | bool | No |
 | include_personal_email | Include personal email | bool | No |
@@ -23,13 +23,13 @@ Configure caching options for performance and optionally include additional data
 | include_social_media | Include social media profiles | bool | No |
 | include_extra | Include additional data | bool | No |
 
-### Outputs
+## Outputs
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
 | profile | LinkedIn profile data | PersonProfileResponse |
 
-### Possible use case
+## Possible use case
 <!-- MANUAL: use_case -->
 **Lead Enrichment**: Enrich sales leads with detailed professional background information.
 

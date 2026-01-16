@@ -1,22 +1,22 @@
 # Get Store Agent Details
 
-### What it is
+## What it is
 Get detailed information about an agent from the store
 
-### How it works
+## How it works
 <!-- MANUAL: how_it_works -->
 This block retrieves detailed metadata about a specific agent from the AutoGPT store using the creator's username and agent slug. It returns the agent's name, description, categories, run count, and average rating.
 
 The store_listing_version_id can be used with other blocks to add the agent to your library or execute it.
 <!-- END MANUAL -->
 
-### Inputs
+## Inputs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | creator | The username of the agent creator | str | Yes |
 | slug | The name of the agent | str | Yes |
 
-### Outputs
+## Outputs
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -29,7 +29,7 @@ The store_listing_version_id can be used with other blocks to add the agent to y
 | runs | Number of times the agent has been run | int |
 | rating | Average rating of the agent | float |
 
-### Possible use case
+## Possible use case
 <!-- MANUAL: use_case -->
 **Agent Discovery**: Fetch details about a specific agent before adding it to your library.
 
@@ -57,7 +57,7 @@ Results include basic agent information and are output both as a list and indivi
 |-------|-------------|------|----------|
 | query | Search query to find agents | str | No |
 | category | Filter by category | str | No |
-| sort_by | How to sort the results | "rating" | "runs" | "name" | No |
+| sort_by | How to sort the results | "rating" \| "runs" \| "name" | No |
 | limit | Maximum number of results to return | int | No |
 
 ### Outputs

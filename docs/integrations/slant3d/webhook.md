@@ -1,21 +1,21 @@
 # Slant3D Order Webhook
 
-### What it is
+## What it is
 This block triggers on Slant3D order status updates and outputs the event details, including tracking information when orders are shipped.
 
-### How it works
+## How it works
 <!-- MANUAL: how_it_works -->
 This block subscribes to Slant3D webhook events for order status updates. When an order's status changes (e.g., printing, shipped, delivered), Slant3D sends a webhook notification that triggers your workflow.
 
 The payload includes order details and, when applicable, shipping information like tracking numbers and carrier codes for fulfillment tracking.
 <!-- END MANUAL -->
 
-### Inputs
+## Inputs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | events | Order status events to subscribe to | Events | No |
 
-### Outputs
+## Outputs
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if payload processing failed | str |
@@ -25,7 +25,7 @@ The payload includes order details and, when applicable, shipping information li
 | tracking_number | The tracking number for the shipment | str |
 | carrier_code | The carrier code (e.g., 'usps') | str |
 
-### Possible use case
+## Possible use case
 <!-- MANUAL: use_case -->
 **Customer Notifications**: Automatically notify customers via email or SMS when their 3D print order ships.
 

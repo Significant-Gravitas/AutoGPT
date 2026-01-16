@@ -1,16 +1,16 @@
 # Exa Find Similar
 
-### What it is
+## What it is
 Finds similar links using Exa's findSimilar API
 
-### How it works
+## How it works
 <!-- MANUAL: how_it_works -->
 This block uses Exa's findSimilar API to discover web pages that are semantically similar to a given URL. The API analyzes the content and context of the provided page to find related content across the web.
 
 The block supports filtering by domains, date ranges, and text patterns to refine results. You can retrieve content directly with results and enable content moderation to filter unsafe content.
 <!-- END MANUAL -->
 
-### Inputs
+## Inputs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | url | The url for which you would like to find similar links | str | Yes |
@@ -26,7 +26,7 @@ The block supports filtering by domains, date ranges, and text patterns to refin
 | contents | Content retrieval settings | ContentSettings | No |
 | moderation | Enable content moderation to filter unsafe content from search results | bool | No |
 
-### Outputs
+## Outputs
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the request failed | str |
@@ -36,7 +36,7 @@ The block supports filtering by domains, date ranges, and text patterns to refin
 | request_id | Unique identifier for the request | str |
 | cost_dollars | Cost breakdown for the request | CostDollars |
 
-### Possible use case
+## Possible use case
 <!-- MANUAL: use_case -->
 **Content Discovery**: Find related articles, blog posts, or resources similar to content you already like.
 

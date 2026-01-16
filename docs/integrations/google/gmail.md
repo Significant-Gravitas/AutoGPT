@@ -1,26 +1,26 @@
 # Gmail Add Label
 
-### What it is
+## What it is
 A block that adds a label to a specific email message in Gmail, creating the label if it doesn't exist.
 
-### How it works
+## How it works
 <!-- MANUAL: how_it_works -->
 The block first checks if the specified label exists in the user's Gmail account. If it doesn't, it creates the label. Then, it adds the label to the specified email message using the message ID.
 <!-- END MANUAL -->
 
-### Inputs
+## Inputs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | message_id | Message ID to add label to | str | Yes |
 | label_name | Label name to add | str | Yes |
 
-### Outputs
+## Outputs
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if any | str |
 | result | Label addition result | GmailLabelResult |
 
-### Possible use case
+## Possible use case
 <!-- MANUAL: use_case -->
 Automatically categorizing incoming customer emails based on their content, adding labels like "Urgent," "Feedback," or "Invoice" for easier processing.
 <!-- END MANUAL -->
@@ -47,7 +47,7 @@ Plain text emails preserve natural formatting without forced line breaks. HTML e
 | body | Email body (plain text or HTML) | str | Yes |
 | cc | CC recipients | List[str] | No |
 | bcc | BCC recipients | List[str] | No |
-| content_type | Content type: 'auto' (default - detects HTML), 'plain', or 'html' | "auto" | "plain" | "html" | No |
+| content_type | Content type: 'auto' (default - detects HTML), 'plain', or 'html' | "auto" \| "plain" \| "html" | No |
 | attachments | Files to attach | List[str (file)] | No |
 
 ### Outputs
@@ -90,7 +90,7 @@ The block preserves the thread context and adds proper email headers for threadi
 | replyAll | Reply to all original recipients | bool | No |
 | subject | Email subject | str | No |
 | body | Email body (plain text or HTML) | str | Yes |
-| content_type | Content type: 'auto' (default - detects HTML), 'plain', or 'html' | "auto" | "plain" | "html" | No |
+| content_type | Content type: 'auto' (default - detects HTML), 'plain', or 'html' | "auto" \| "plain" \| "html" | No |
 | attachments | Files to attach | List[str (file)] | No |
 
 ### Outputs
@@ -135,7 +135,7 @@ The block handles proper email threading and formatting, prepending "Fwd:" to th
 | subject | Optional custom subject (defaults to 'Fwd: [original subject]') | str | No |
 | forwardMessage | Optional message to include before the forwarded content | str | No |
 | includeAttachments | Include attachments from the original message | bool | No |
-| content_type | Content type: 'auto' (default - detects HTML), 'plain', or 'html' | "auto" | "plain" | "html" | No |
+| content_type | Content type: 'auto' (default - detects HTML), 'plain', or 'html' | "auto" \| "plain" \| "html" | No |
 | additionalAttachments | Additional files to attach | List[str (file)] | No |
 
 ### Outputs
@@ -325,7 +325,7 @@ Use replyAll to respond to all recipients, or specify custom recipients. The blo
 | replyAll | Reply to all original recipients | bool | No |
 | subject | Email subject | str | No |
 | body | Email body (plain text or HTML) | str | Yes |
-| content_type | Content type: 'auto' (default - detects HTML), 'plain', or 'html' | "auto" | "plain" | "html" | No |
+| content_type | Content type: 'auto' (default - detects HTML), 'plain', or 'html' | "auto" \| "plain" \| "html" | No |
 | attachments | Files to attach | List[str (file)] | No |
 
 ### Outputs
@@ -366,7 +366,7 @@ The block authenticates with the user's Gmail account, creates an email message 
 | body | Email body (plain text or HTML) | str | Yes |
 | cc | CC recipients | List[str] | No |
 | bcc | BCC recipients | List[str] | No |
-| content_type | Content type: 'auto' (default - detects HTML), 'plain', or 'html' | "auto" | "plain" | "html" | No |
+| content_type | Content type: 'auto' (default - detects HTML), 'plain', or 'html' | "auto" \| "plain" \| "html" | No |
 | attachments | Files to attach | List[str (file)] | No |
 
 ### Outputs

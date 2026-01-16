@@ -1,16 +1,16 @@
 # Post To Instagram
 
-### What it is
+## What it is
 Post to Instagram using Ayrshare. Requires a Business or Creator Instagram Account connected with a Facebook Page
 
-### How it works
+## How it works
 <!-- MANUAL: how_it_works -->
 This block uses Ayrshare's API to publish content to Instagram Business or Creator accounts. It supports feed posts, Stories (24-hour expiration), Reels, and carousels (up to 10 images/videos), with features like collaborator invitations, location tagging, and user tags with coordinates.
 
 The block requires an Instagram account connected to a Facebook Page and authenticates through Meta's Graph API via Ayrshare. Instagram-specific features include auto-resize for optimal dimensions, audio naming for Reels, and thumbnail customization with frame offset control.
 <!-- END MANUAL -->
 
-### Inputs
+## Inputs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | post | The post text (max 2,200 chars, up to 30 hashtags, 3 @mentions) | str | No |
@@ -35,14 +35,14 @@ The block requires an Instagram account connected to a Facebook Page and authent
 | collaborators | Instagram usernames to invite as collaborators (max 3, public accounts only) | List[str] | No |
 | auto_resize | Auto-resize images to 1080x1080px for Instagram | bool | No |
 
-### Outputs
+## Outputs
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
 | post_result | The result of the post | PostResponse |
 | post | The result of the post | PostIds |
 
-### Possible use case
+## Possible use case
 <!-- MANUAL: use_case -->
 **Influencer Collaborations**: Create posts with collaborator tags to feature brand partnerships across multiple accounts.
 

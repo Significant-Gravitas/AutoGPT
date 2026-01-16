@@ -1,24 +1,24 @@
 # Github Get CI Results
 
-### What it is
+## What it is
 This block gets CI results for a commit or PR, with optional search for specific errors/warnings in logs.
 
-### How it works
+## How it works
 <!-- MANUAL: how_it_works -->
 This block retrieves CI check results for a specific commit or pull request using the GitHub Checks API. It aggregates results from all CI checks, providing an overall status summary along with individual check details.
 
 Optionally search through CI logs using regex patterns to find specific errors or warnings. You can filter by check name to focus on particular CI jobs. The block returns comprehensive results including pass/fail counts and matched log lines.
 <!-- END MANUAL -->
 
-### Inputs
+## Inputs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | repo | GitHub repository | str | Yes |
-| target | Commit SHA or PR number to get CI results for | str | int | Yes |
+| target | Commit SHA or PR number to get CI results for | str \| int | Yes |
 | search_pattern | Optional regex pattern to search for in CI logs (e.g., error messages, file names) | str | No |
 | check_name_filter | Optional filter for specific check names (supports wildcards) | str | No |
 
-### Outputs
+## Outputs
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -32,7 +32,7 @@ Optionally search through CI logs using regex patterns to find specific errors o
 | passed_checks | Number of passed checks | int |
 | failed_checks | Number of failed checks | int |
 
-### Possible use case
+## Possible use case
 <!-- MANUAL: use_case -->
 **CI Status Monitoring**: Check the overall CI status of commits or PRs before merging or deploying.
 

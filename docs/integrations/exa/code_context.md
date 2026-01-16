@@ -1,22 +1,22 @@
 # Exa Code Context
 
-### What it is
+## What it is
 Search billions of GitHub repos, docs, and Stack Overflow for relevant code examples
 
-### How it works
+## How it works
 <!-- MANUAL: how_it_works -->
 This block uses Exa's specialized code search API to find relevant code examples from GitHub repositories, official documentation, and Stack Overflow. The search is optimized for code context, returning formatted snippets with source references.
 
 The block returns code snippets along with metadata including the source URL, search time, and token counts. You can control response size with the tokens_num parameter to balance comprehensiveness with cost.
 <!-- END MANUAL -->
 
-### Inputs
+## Inputs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | query | Search query to find relevant code snippets. Describe what you're trying to do or what code you're looking for. | str | Yes |
-| tokens_num | Token limit for response. Use 'dynamic' for automatic sizing, 5000 for standard queries, or 10000 for comprehensive examples. | str | int | No |
+| tokens_num | Token limit for response. Use 'dynamic' for automatic sizing, 5000 for standard queries, or 10000 for comprehensive examples. | str \| int | No |
 
-### Outputs
+## Outputs
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -28,7 +28,7 @@ The block returns code snippets along with metadata including the source URL, se
 | search_time | Time taken to search in milliseconds | float |
 | output_tokens | Number of tokens in the response | int |
 
-### Possible use case
+## Possible use case
 <!-- MANUAL: use_case -->
 **API Integration Examples**: Find real-world code examples showing how to integrate with specific APIs or libraries.
 

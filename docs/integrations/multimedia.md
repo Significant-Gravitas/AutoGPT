@@ -1,30 +1,30 @@
 # Add Audio To Video
 
-### What it is
+## What it is
 Block to attach an audio file to a video file using moviepy.
 
-### How it works
+## How it works
 <!-- MANUAL: how_it_works -->
 This block combines a video file with an audio file using the moviepy library. The audio track is attached to the video, optionally with volume adjustment via the volume parameter (1.0 = original volume).
 
 Input files can be URLs, data URIs, or local paths. The output can be returned as either a file path or base64 data URI.
 <!-- END MANUAL -->
 
-### Inputs
+## Inputs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | video_in | Video input (URL, data URI, or local path). | str (file) | Yes |
 | audio_in | Audio input (URL, data URI, or local path). | str (file) | Yes |
 | volume | Volume scale for the newly attached audio track (1.0 = original). | float | No |
-| output_return_type | Return the final output as a relative path or base64 data URI. | "file_path" | "data_uri" | No |
+| output_return_type | Return the final output as a relative path or base64 data URI. | "file_path" \| "data_uri" | No |
 
-### Outputs
+## Outputs
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
 | video_out | Final video (with attached audio), as a path or data URI. | str (file) |
 
-### Possible use case
+## Possible use case
 <!-- MANUAL: use_case -->
 **Add Voiceover**: Combine generated voiceover audio with video content for narrated videos.
 
@@ -53,7 +53,7 @@ The looped video is seamlessly concatenated and can be output as a file path or 
 | video_in | The input video (can be a URL, data URI, or local path). | str (file) | Yes |
 | duration | Target duration (in seconds) to loop the video to. If omitted, defaults to no looping. | float | No |
 | n_loops | Number of times to repeat the video. If omitted, defaults to 1 (no repeat). | int | No |
-| output_return_type | How to return the output video. Either a relative path or base64 data URI. | "file_path" | "data_uri" | No |
+| output_return_type | How to return the output video. Either a relative path or base64 data URI. | "file_path" \| "data_uri" | No |
 
 ### Outputs
 | Output | Description | Type |

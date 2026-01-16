@@ -1,22 +1,22 @@
 # Exa Cancel Webset Search
 
-### What it is
+## What it is
 Cancel a running webset search
 
-### How it works
+## How it works
 <!-- MANUAL: how_it_works -->
 This block stops a running search operation on a webset. Items already found before cancellation are retained in the webset.
 
 Use this when a search is taking too long, returning unexpected results, or is no longer needed. The block returns the number of items found before cancellation.
 <!-- END MANUAL -->
 
-### Inputs
+## Inputs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | webset_id | The ID or external ID of the Webset | str | Yes |
 | search_id | The ID of the search to cancel | str | Yes |
 
-### Outputs
+## Outputs
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -25,7 +25,7 @@ Use this when a search is taking too long, returning unexpected results, or is n
 | items_found_before_cancel | Number of items found before cancellation | int |
 | success | Whether the cancellation was successful | str |
 
-### Possible use case
+## Possible use case
 <!-- MANUAL: use_case -->
 **Resource Control**: Stop searches that are taking longer than expected.
 
@@ -54,10 +54,10 @@ Searches support scoped and exclusion sources, criteria validation, and relation
 | webset_id | The ID or external ID of the Webset | str | Yes |
 | query | Search query describing what to find | str | Yes |
 | count | Number of items to find | int | No |
-| entity_type | Type of entity to search for | "company" | "person" | "article" | No |
+| entity_type | Type of entity to search for | "company" \| "person" \| "article" | No |
 | entity_description | Description for custom entity type | str | No |
 | criteria | List of criteria that items must meet. If not provided, auto-detected from query. | List[str] | No |
-| behavior | How new results interact with existing items | "override" | "append" | "merge" | No |
+| behavior | How new results interact with existing items | "override" \| "append" \| "merge" | No |
 | recall | Enable recall estimation for expected results | bool | No |
 | exclude_source_ids | IDs of imports/websets to exclude from results | List[str] | No |
 | exclude_source_types | Types of sources to exclude ('import' or 'webset') | List[str] | No |
@@ -110,8 +110,8 @@ Use this pattern to prevent duplicate searches when workflows retry or run multi
 | webset_id | The ID or external ID of the Webset | str | Yes |
 | query | Search query to find or create | str | Yes |
 | count | Number of items to find (only used if creating new search) | int | No |
-| entity_type | Entity type (only used if creating) | "company" | "person" | "article" | No |
-| behavior | Search behavior (only used if creating) | "override" | "append" | "merge" | No |
+| entity_type | Entity type (only used if creating) | "company" \| "person" \| "article" | No |
+| behavior | Search behavior (only used if creating) | "override" \| "append" \| "merge" | No |
 
 ### Outputs
 | Output | Description | Type |

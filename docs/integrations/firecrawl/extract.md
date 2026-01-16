@@ -1,16 +1,16 @@
 # Firecrawl Extract
 
-### What it is
+## What it is
 Firecrawl crawls websites to extract comprehensive data while bypassing blockers.
 
-### How it works
+## How it works
 <!-- MANUAL: how_it_works -->
 This block uses Firecrawl's extraction API to pull structured data from web pages based on a prompt or schema. It crawls the specified URLs and uses AI to extract information matching your requirements.
 
 Define the data structure you want using a JSON schema for precise extraction, or use natural language prompts for flexible extraction. Wildcards in URLs allow extracting data from multiple pages matching a pattern.
 <!-- END MANUAL -->
 
-### Inputs
+## Inputs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | urls | The URLs to crawl - at least one is required. Wildcards are supported. (/*) | List[str] | Yes |
@@ -18,13 +18,13 @@ Define the data structure you want using a JSON schema for precise extraction, o
 | output_schema | A Json Schema describing the output structure if more rigid structure is desired. | Dict[str, True] | No |
 | enable_web_search | When true, extraction can follow links outside the specified domain. | bool | No |
 
-### Outputs
+## Outputs
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the extraction failed | str |
 | data | The result of the crawl | Dict[str, True] |
 
-### Possible use case
+## Possible use case
 <!-- MANUAL: use_case -->
 **Product Data Extraction**: Extract structured product information (prices, specs, reviews) from e-commerce sites.
 

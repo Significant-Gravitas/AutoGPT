@@ -1,24 +1,22 @@
 # Github Discussion Trigger
 
-### What it is
+## What it is
 This block triggers on GitHub Discussions events. Great for syncing Q&A to Discord or auto-responding to common questions. Note: Discussions must be enabled on the repository.
 
-### How it works
+## How it works
 <!-- MANUAL: how_it_works -->
 This block creates a webhook subscription to GitHub Discussions events using the GitHub Webhooks API. When a discussion event occurs (created, edited, answered, etc.), GitHub sends a webhook payload that triggers your workflow.
 
 The block parses the webhook payload and extracts discussion details including the title, body, category, state, and the user who triggered the event. Note that GitHub Discussions must be enabled on the repository.
 <!-- END MANUAL -->
 
-### Inputs
+## Inputs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| repo | Repository to subscribe to.
-
-**Note:** Make sure your GitHub credentials have permissions to create webhooks on this repo. | str | Yes |
+| repo | Repository to subscribe to.  **Note:** Make sure your GitHub credentials have permissions to create webhooks on this repo. | str | Yes |
 | events | The discussion events to subscribe to | Events | Yes |
 
-### Outputs
+## Outputs
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the payload could not be processed | str |
@@ -34,7 +32,7 @@ The block parses the webhook payload and extracts discussion details including t
 | category_name | Name of the category | str |
 | state | Discussion state | str |
 
-### Possible use case
+## Possible use case
 <!-- MANUAL: use_case -->
 **Discord Sync**: Post new discussions to Discord channels to keep the community engaged across platforms.
 
@@ -60,9 +58,7 @@ The block extracts issue details including the title, body, labels, assignees, s
 ### Inputs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| repo | Repository to subscribe to.
-
-**Note:** Make sure your GitHub credentials have permissions to create webhooks on this repo. | str | Yes |
+| repo | Repository to subscribe to.  **Note:** Make sure your GitHub credentials have permissions to create webhooks on this repo. | str | Yes |
 | events | The issue events to subscribe to | Events | Yes |
 
 ### Outputs
@@ -107,9 +103,7 @@ The block extracts PR details including the number, URL, and full pull request o
 ### Inputs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| repo | Repository to subscribe to.
-
-**Note:** Make sure your GitHub credentials have permissions to create webhooks on this repo. | str | Yes |
+| repo | Repository to subscribe to.  **Note:** Make sure your GitHub credentials have permissions to create webhooks on this repo. | str | Yes |
 | events | The events to subscribe to | Events | Yes |
 
 ### Outputs
@@ -149,9 +143,7 @@ The block extracts release details including tag name, release name, release not
 ### Inputs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| repo | Repository to subscribe to.
-
-**Note:** Make sure your GitHub credentials have permissions to create webhooks on this repo. | str | Yes |
+| repo | Repository to subscribe to.  **Note:** Make sure your GitHub credentials have permissions to create webhooks on this repo. | str | Yes |
 | events | The release events to subscribe to | Events | Yes |
 
 ### Outputs
@@ -196,9 +188,7 @@ The block extracts star details including the timestamp, current star count, rep
 ### Inputs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| repo | Repository to subscribe to.
-
-**Note:** Make sure your GitHub credentials have permissions to create webhooks on this repo. | str | Yes |
+| repo | Repository to subscribe to.  **Note:** Make sure your GitHub credentials have permissions to create webhooks on this repo. | str | Yes |
 | events | The star events to subscribe to | Events | Yes |
 
 ### Outputs

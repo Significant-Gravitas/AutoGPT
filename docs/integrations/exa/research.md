@@ -1,25 +1,25 @@
 # Exa Create Research
 
-### What it is
+## What it is
 Create research task with optional waiting - explores web and synthesizes findings with citations
 
-### How it works
+## How it works
 <!-- MANUAL: how_it_works -->
 This block creates an asynchronous research task using Exa's Research API. The API autonomously explores the web, searches for relevant information, and synthesizes findings into a comprehensive report with citations.
 
 You can choose from different model tiers (fast, standard, pro) depending on your speed vs. depth requirements. The block supports structured output via JSON Schema and can optionally wait for completion to return results immediately.
 <!-- END MANUAL -->
 
-### Inputs
+## Inputs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | instructions | Research instructions - clearly define what information to find, how to conduct research, and desired output format. | str | Yes |
-| model | Research model: 'fast' for quick results, 'standard' for balanced quality, 'pro' for thorough analysis | "exa-research-fast" | "exa-research" | "exa-research-pro" | No |
+| model | Research model: 'fast' for quick results, 'standard' for balanced quality, 'pro' for thorough analysis | "exa-research-fast" \| "exa-research" \| "exa-research-pro" | No |
 | output_schema | JSON Schema to enforce structured output. When provided, results are validated and returned as parsed JSON. | Dict[str, True] | No |
 | wait_for_completion | Wait for research to complete before returning. Ensures you get results immediately. | bool | No |
 | polling_timeout | Maximum time to wait for completion in seconds (only if wait_for_completion is True) | int | No |
 
-### Outputs
+## Outputs
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -33,7 +33,7 @@ You can choose from different model tiers (fast, standard, pro) depending on you
 | cost_total | Total cost in USD (only if wait_for_completion was True and completed) | float |
 | elapsed_time | Time taken to complete in seconds (only if wait_for_completion was True) | float |
 
-### Possible use case
+## Possible use case
 <!-- MANUAL: use_case -->
 **Market Research**: Automatically research market trends, competitors, or industry developments with cited sources.
 

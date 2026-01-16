@@ -1,28 +1,28 @@
 # Github Assign PR Reviewer
 
-### What it is
+## What it is
 This block assigns a reviewer to a specified GitHub pull request.
 
-### How it works
+## How it works
 <!-- MANUAL: how_it_works -->
 This block requests a code review from a specific user on a GitHub pull request. It uses the GitHub API to add the specified username to the list of requested reviewers, triggering a notification to that user.
 
 The reviewer must have access to the repository. Organization members can typically be assigned as reviewers on any repository they have at least read access to.
 <!-- END MANUAL -->
 
-### Inputs
+## Inputs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | pr_url | URL of the GitHub pull request | str | Yes |
 | reviewer | Username of the reviewer to assign | str | Yes |
 
-### Outputs
+## Outputs
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the reviewer assignment failed | str |
 | status | Status of the reviewer assignment operation | str |
 
-### Possible use case
+## Possible use case
 <!-- MANUAL: use_case -->
 **Automated Code Review Assignment**: Automatically assign reviewers based on the files changed or the PR author.
 

@@ -1,28 +1,28 @@
 # Calculator
 
-### What it is
+## What it is
 Performs a mathematical operation on two numbers.
 
-### How it works
+## How it works
 <!-- MANUAL: how_it_works -->
 The Calculator block takes in two numbers and an operation choice. It then applies the chosen operation to the numbers and returns the result. If rounding is selected, it rounds the result to the nearest whole number.
 <!-- END MANUAL -->
 
-### Inputs
+## Inputs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| operation | Choose the math operation you want to perform | "Add" | "Subtract" | "Multiply" | Yes |
+| operation | Choose the math operation you want to perform | "Add" \| "Subtract" \| "Multiply" | Yes |
 | a | Enter the first number (A) | float | Yes |
 | b | Enter the second number (B) | float | Yes |
 | round_result | Do you want to round the result to a whole number? | bool | No |
 
-### Outputs
+## Outputs
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
 | result | The result of your calculation | float |
 
-### Possible use case
+## Possible use case
 <!-- MANUAL: use_case -->
 A user wants to quickly perform a calculation, such as adding two numbers or calculating a percentage. They can input the numbers and operation into this block and receive the result instantly.
 <!-- END MANUAL -->
@@ -45,7 +45,7 @@ Optionally specify yes_value and no_value to output different data than the inpu
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | value1 | Enter the first value for comparison | Value1 | Yes |
-| operator | Choose the comparison operator | "==" | "!=" | ">" | Yes |
+| operator | Choose the comparison operator | "==" \| "!=" \| ">" | Yes |
 | value2 | Enter the second value for comparison | Value2 | Yes |
 | yes_value | (Optional) Value to output if the condition is true. If not provided, value1 will be used. | Yes Value | No |
 | no_value | (Optional) Value to output if the condition is false. If not provided, value1 will be used. | No Value | No |
@@ -112,9 +112,9 @@ Configure sample_size to control how many items to select. Use random_seed for r
 ### Inputs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| data | The dataset to sample from. Can be a single dictionary, a list of dictionaries, or a list of lists. | Dict[str, True] | List[Dict[str, True] | List[Any]] | Yes |
+| data | The dataset to sample from. Can be a single dictionary, a list of dictionaries, or a list of lists. | Dict[str, True] \| List[Dict[str, True] \| List[Any]] | Yes |
 | sample_size | The number of samples to take from the dataset. | int | No |
-| sampling_method | The method to use for sampling. | "random" | "systematic" | "top" | No |
+| sampling_method | The method to use for sampling. | "random" \| "systematic" \| "top" | No |
 | accumulate | Whether to accumulate data before sampling. | bool | No |
 | random_seed | Seed for random number generator (optional). | int | No |
 | stratify_key | Key to use for stratified sampling (required for stratified sampling). | str | No |
@@ -125,7 +125,7 @@ Configure sample_size to control how many items to select. Use random_seed for r
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
-| sampled_data | The sampled subset of the input data. | List[Dict[str, True] | List[Any]] |
+| sampled_data | The sampled subset of the input data. | List[Dict[str, True] \| List[Any]] |
 | sample_indices | The indices of the sampled data in the original dataset. | List[int] |
 
 ### Possible use case

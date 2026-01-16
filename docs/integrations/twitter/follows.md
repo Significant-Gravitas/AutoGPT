@@ -1,27 +1,27 @@
 # Twitter Follow User
 
-### What it is
+## What it is
 This block follows a specified Twitter user.
 
-### How it works
+## How it works
 <!-- MANUAL: how_it_works -->
 This block uses the Twitter API v2 via Tweepy to create a follow relationship from the authenticated user to the specified target user. The follow action is public—the target user will be notified and can see that you followed them.
 
 The block authenticates using OAuth 2.0 with follow write permissions. If the target user has a protected account, a follow request is sent instead of an immediate follow. Returns a success indicator confirming the action.
 <!-- END MANUAL -->
 
-### Inputs
+## Inputs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | target_user_id | The user ID of the user that you would like to follow | str | Yes |
 
-### Outputs
+## Outputs
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
 | success | Whether the follow action was successful | bool |
 
-### Possible use case
+## Possible use case
 <!-- MANUAL: use_case -->
 **Influencer Engagement**: Automatically follow industry influencers or thought leaders you want to engage with.
 

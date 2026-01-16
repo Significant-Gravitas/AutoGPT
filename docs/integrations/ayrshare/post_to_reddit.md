@@ -1,16 +1,16 @@
 # Post To Reddit
 
-### What it is
+## What it is
 Post to Reddit using Ayrshare
 
-### How it works
+## How it works
 <!-- MANUAL: how_it_works -->
 This block uses Ayrshare's API to publish content to Reddit. It supports text posts, image posts, and video submissions with optional scheduling and link shortening features.
 
 The block authenticates through Ayrshare and submits content to your connected Reddit account. Common options include approval workflows for content review before publishing, random content generation, and Unsplash integration for sourcing images.
 <!-- END MANUAL -->
 
-### Inputs
+## Inputs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | post | The post text to be published | str | No |
@@ -25,14 +25,14 @@ The block authenticates through Ayrshare and submits content to your connected R
 | random_media_url | Whether to generate random media | bool | No |
 | notes | Additional notes for the post | str | No |
 
-### Outputs
+## Outputs
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
 | post_result | The result of the post | PostResponse |
 | post | The result of the post | PostIds |
 
-### Possible use case
+## Possible use case
 <!-- MANUAL: use_case -->
 **Community Engagement**: Share relevant content to niche subreddits as part of community marketing strategies.
 

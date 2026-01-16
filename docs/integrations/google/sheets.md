@@ -1,16 +1,16 @@
 # Google Sheets Add Column
 
-### What it is
+## What it is
 Add a new column with a header. Can add at the end or insert at a specific position.
 
-### How it works
+## How it works
 <!-- MANUAL: how_it_works -->
 This block adds a new column to a Google Sheet with a specified header name. You can add the column at the end or insert it before a specific column position. If you provide a default value, all existing data rows will be populated with that value.
 
 The block uses the Google Sheets API to perform the insertion, shifting existing columns to the right when inserting in the middle.
 <!-- END MANUAL -->
 
-### Inputs
+## Inputs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | spreadsheet | Select a Google Sheets spreadsheet | Spreadsheet | No |
@@ -19,7 +19,7 @@ The block uses the Google Sheets API to perform the insertion, shifting existing
 | position | Where to add: 'end' for last column, or column letter (e.g., 'C') to insert before | str | No |
 | default_value | Default value to fill in all data rows (optional). Requires existing data rows. | str | No |
 
-### Outputs
+## Outputs
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if any | str |
@@ -28,7 +28,7 @@ The block uses the Google Sheets API to perform the insertion, shifting existing
 | column_index | 0-based index of the new column | int |
 | spreadsheet | The spreadsheet for chaining | GoogleDriveFile |
 
-### Possible use case
+## Possible use case
 <!-- MANUAL: use_case -->
 **Schema Evolution**: Add new data fields to existing tracking sheets as requirements change.
 
@@ -135,7 +135,7 @@ This is ideal for continuously adding records to a log or database-style sheet.
 | spreadsheet | Select a Google Sheets spreadsheet | Spreadsheet | No |
 | row | Row values to append (e.g., ['Alice', 'alice@example.com', '25']) | List[str] | Yes |
 | sheet_name | Sheet to append to (optional, defaults to first sheet) | str | No |
-| value_input_option | How values are interpreted. USER_ENTERED: parsed like typed input (e.g., '=SUM(A1:A5)' becomes a formula, '1/2/2024' becomes a date). RAW: stored as-is without parsing. | "RAW" | "USER_ENTERED" | No |
+| value_input_option | How values are interpreted. USER_ENTERED: parsed like typed input (e.g., '=SUM(A1:A5)' becomes a formula, '1/2/2024' becomes a date). RAW: stored as-is without parsing. | "RAW" \| "USER_ENTERED" | No |
 
 ### Outputs
 | Output | Description | Type |
@@ -475,7 +475,7 @@ Returns matching rows along with their original 1-based row indices, making it e
 | sheet_name | Sheet name (optional, defaults to first sheet) | str | No |
 | filter_column | Column to filter on (header name or column letter like 'A', 'B') | str | Yes |
 | filter_value | Value to filter by (not used for is_empty/is_not_empty operators) | str | No |
-| operator | Filter comparison operator | "equals" | "not_equals" | "contains" | No |
+| operator | Filter comparison operator | "equals" \| "not_equals" \| "contains" | No |
 | match_case | Whether to match case in comparisons | bool | No |
 | include_header | Include header row in output | bool | No |
 
@@ -881,7 +881,7 @@ Use value_input_option to control whether values are parsed (USER_ENTERED) or st
 | row | Row values to insert (e.g., ['Alice', 'alice@example.com', '25']) | List[str] | Yes |
 | row_index | 1-based row index where to insert (existing rows shift down) | int | Yes |
 | sheet_name | Sheet name (optional, defaults to first sheet) | str | No |
-| value_input_option | How values are interpreted. USER_ENTERED: parsed like typed input (e.g., '=SUM(A1:A5)' becomes a formula, '1/2/2024' becomes a date). RAW: stored as-is without parsing. | "RAW" | "USER_ENTERED" | No |
+| value_input_option | How values are interpreted. USER_ENTERED: parsed like typed input (e.g., '=SUM(A1:A5)' becomes a formula, '1/2/2024' becomes a date). RAW: stored as-is without parsing. | "RAW" \| "USER_ENTERED" | No |
 
 ### Outputs
 | Output | Description | Type |
@@ -996,7 +996,7 @@ Use this to dynamically organize spreadsheet structure as part of workflows.
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | spreadsheet | Select a Google Sheets spreadsheet | Spreadsheet | No |
-| operation | Operation to perform | "create" | "delete" | "copy" | Yes |
+| operation | Operation to perform | "create" \| "delete" \| "copy" | Yes |
 | sheet_name | Target sheet name (defaults to first sheet for delete) | str | No |
 | source_sheet_id | Source sheet ID for copy | int | No |
 | destination_sheet_name | New sheet name for copy | str | No |
@@ -1182,7 +1182,7 @@ When made public, anyone with the link can access the spreadsheet. The share lin
 |-------|-------------|------|----------|
 | spreadsheet | The spreadsheet to modify access for | Spreadsheet | No |
 | public | True to make public, False to make private | bool | No |
-| role | Permission role for public access | "reader" | "commenter" | No |
+| role | Permission role for public access | "reader" \| "commenter" | No |
 
 ### Outputs
 | Output | Description | Type |
@@ -1220,7 +1220,7 @@ Leave the email blank to just generate a shareable link.
 |-------|-------------|------|----------|
 | spreadsheet | The spreadsheet to share | Spreadsheet | No |
 | email | Email address to share with. Leave empty for link sharing. | str | No |
-| role | Permission role for the user | "reader" | "writer" | "commenter" | No |
+| role | Permission role for the user | "reader" \| "writer" \| "commenter" | No |
 | send_notification | Send notification email to the user | bool | No |
 | message | Optional message to include in notification email | str | No |
 
@@ -1261,9 +1261,9 @@ Sorting is performed in-place, modifying the sheet directly.
 | spreadsheet | Select a Google Sheets spreadsheet | Spreadsheet | No |
 | sheet_name | Sheet name (optional, defaults to first sheet) | str | No |
 | sort_column | Primary column to sort by (header name or column letter) | str | Yes |
-| sort_order | Sort order for primary column | "ascending" | "descending" | No |
+| sort_order | Sort order for primary column | "ascending" \| "descending" | No |
 | secondary_column | Secondary column to sort by (optional) | str | No |
-| secondary_order | Sort order for secondary column | "ascending" | "descending" | No |
+| secondary_order | Sort order for secondary column | "ascending" \| "descending" | No |
 | has_header | Whether the data has a header row (header won't be sorted) | bool | No |
 
 ### Outputs
@@ -1302,7 +1302,7 @@ Use value_input_option to control whether values are parsed (USER_ENTERED) or st
 | spreadsheet | Select a Google Sheets spreadsheet | Spreadsheet | No |
 | cell | Cell address in A1 notation (e.g., 'A1', 'Sheet1!B2') | str | Yes |
 | value | Value to write to the cell | str | Yes |
-| value_input_option | How input data should be interpreted | "RAW" | "USER_ENTERED" | No |
+| value_input_option | How input data should be interpreted | "RAW" \| "USER_ENTERED" | No |
 
 ### Outputs
 | Output | Description | Type |

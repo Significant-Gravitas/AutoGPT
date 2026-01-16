@@ -1,30 +1,30 @@
 # Hub Spot Contact
 
-### What it is
+## What it is
 Manages HubSpot contacts - create, update, and retrieve contact information
 
-### How it works
+## How it works
 <!-- MANUAL: how_it_works -->
 This block interacts with the HubSpot CRM API to manage contact records. It supports creating new contacts, updating existing contacts, and retrieving contacts by email address.
 
 Contact data includes standard properties like email, first name, last name, phone, and any custom properties defined in your HubSpot account.
 <!-- END MANUAL -->
 
-### Inputs
+## Inputs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | operation | Operation to perform (create, update, get) | str | No |
 | contact_data | Contact data for create/update operations | Dict[str, True] | No |
 | email | Email address for get/update operations | str | No |
 
-### Outputs
+## Outputs
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
 | contact | Contact information | Dict[str, True] |
 | status | Operation status | str |
 
-### Possible use case
+## Possible use case
 <!-- MANUAL: use_case -->
 **Lead Capture**: Create contacts automatically from form submissions or integrations.
 

@@ -1,16 +1,16 @@
 # Add Memory
 
-### What it is
+## What it is
 Add new memories to Mem0 with user segmentation
 
-### How it works
+## How it works
 <!-- MANUAL: how_it_works -->
 This block integrates with Mem0, a memory layer service that stores and retrieves information across conversations. When you add a memory, the content is stored with the user's context and can optionally be segmented by run or agent, allowing for scoped memory retrieval later.
 
 The block accepts either plain text or structured message objects (like those from AI blocks). You can attach metadata to memories for better organization and filtering. Memories persist across workflow executions, enabling your agents to "remember" past interactions.
 <!-- END MANUAL -->
 
-### Inputs
+## Inputs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | content | Content to add - either a string or list of message objects as output from an AI block | Content | No |
@@ -18,7 +18,7 @@ The block accepts either plain text or structured message objects (like those fr
 | limit_memory_to_run | Limit the memory to the run | bool | No |
 | limit_memory_to_agent | Limit the memory to the agent | bool | No |
 
-### Outputs
+## Outputs
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -26,7 +26,7 @@ The block accepts either plain text or structured message objects (like those fr
 | memory | Memory created | str |
 | results | List of all results from the operation | List[Dict[str, str]] |
 
-### Possible use case
+## Possible use case
 <!-- MANUAL: use_case -->
 **Personalized Assistants**: Store user preferences, past interactions, or learned information so your AI agent can provide personalized responses in future conversations.
 
@@ -248,7 +248,7 @@ You can configure which file types to display (documents, spreadsheets, presenta
 | description | The description of the input. | str | No |
 | advanced | Whether to show the input in the advanced section, if the field is not required. | bool | No |
 | secret | Whether the input should be treated as a secret. | bool | No |
-| allowed_views | Which views to show in the file picker (DOCS, SPREADSHEETS, PRESENTATIONS, etc.). | List["DOCS" | "DOCUMENTS" | "SPREADSHEETS"] | No |
+| allowed_views | Which views to show in the file picker (DOCS, SPREADSHEETS, PRESENTATIONS, etc.). | List["DOCS" \| "DOCUMENTS" \| "SPREADSHEETS"] | No |
 | allow_folder_selection | Whether to allow selecting folders. | bool | No |
 
 ### Outputs
@@ -648,7 +648,7 @@ This enables safe data access with built-in handling for missing keys, preventin
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | input | Dictionary to lookup from | Input | Yes |
-| key | Key to lookup in the dictionary | str | int | Yes |
+| key | Key to lookup in the dictionary | str \| int | Yes |
 
 ### Outputs
 | Output | Description | Type |
@@ -1034,7 +1034,7 @@ If the key doesn't exist in the dictionary, the operation may error or return th
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | dictionary | The dictionary to modify. | Dict[str, True] | Yes |
-| key | Key to remove from the dictionary. | str | int | Yes |
+| key | Key to remove from the dictionary. | str \| int | Yes |
 | return_value | Whether to return the removed value. | bool | No |
 
 ### Outputs
@@ -1109,7 +1109,7 @@ This is useful for updating specific fields in a data object while preserving al
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | dictionary | The dictionary to modify. | Dict[str, True] | Yes |
-| key | Key to replace the value for. | str | int | Yes |
+| key | Key to replace the value for. | str \| int | Yes |
 | value | The new value for the given key. | Value | Yes |
 
 ### Outputs
@@ -1285,7 +1285,7 @@ This is useful when data from different sources needs to be in a consistent type
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | value | The value to convert to a universal type. | Value | Yes |
-| type | The type to convert the value to. | "string" | "number" | "boolean" | Yes |
+| type | The type to convert the value to. | "string" \| "number" \| "boolean" | Yes |
 
 ### Outputs
 | Output | Description | Type |

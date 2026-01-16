@@ -1,27 +1,27 @@
 # Slant3D Cancel Order
 
-### What it is
+## What it is
 Cancel an existing order
 
-### How it works
+## How it works
 <!-- MANUAL: how_it_works -->
 This block cancels an existing order in the Slant3D system using the order ID. The cancellation request is sent to the Slant3D API and returns a status message confirming the cancellation.
 
 Orders can only be cancelled before they enter production. Check order status before attempting cancellation.
 <!-- END MANUAL -->
 
-### Inputs
+## Inputs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | order_id | Slant3D order ID to cancel | str | Yes |
 
-### Outputs
+## Outputs
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
 | status | Cancellation status message | str |
 
-### Possible use case
+## Possible use case
 <!-- MANUAL: use_case -->
 **Customer Cancellations**: Allow customers to cancel orders through your interface.
 

@@ -1,30 +1,30 @@
 # Google Docs Append Markdown
 
-### What it is
+## What it is
 Append Markdown content to the end of a Google Doc with full formatting - ideal for LLM/AI output
 
-### How it works
+## How it works
 <!-- MANUAL: how_it_works -->
 This block appends Markdown content to the end of a Google Doc and automatically converts it to native Google Docs formatting using the Google Docs API. It supports headers, bold, italic, links, lists, and code formatting.
 
 Set add_newline to true to insert a line break before the appended content. The document is returned for chaining with other document operations.
 <!-- END MANUAL -->
 
-### Inputs
+## Inputs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | document | Select a Google Doc to append to | Document | No |
 | markdown | Markdown content to append to the document | str | Yes |
 | add_newline | Add a newline before the appended content | bool | No |
 
-### Outputs
+## Outputs
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if operation failed | str |
 | result | Result of the append operation | Dict[str, True] |
 | document | The document for chaining | GoogleDriveFile |
 
-### Possible use case
+## Possible use case
 <!-- MANUAL: use_case -->
 **AI Report Generation**: Append LLM-generated analysis or summaries to existing report documents with proper formatting.
 
@@ -162,7 +162,7 @@ The export preserves document formatting as closely as possible in the target fo
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | document | Select a Google Doc to export | Document | No |
-| format | Export format | "application/pdf" | "application/vnd.openxmlformats-officedocument.wordprocessingml.document" | "application/vnd.oasis.opendocument.text" | No |
+| format | Export format | "application/pdf" \| "application/vnd.openxmlformats-officedocument.wordprocessingml.document" \| "application/vnd.oasis.opendocument.text" | No |
 
 ### Outputs
 | Output | Description | Type |
@@ -653,7 +653,7 @@ When made public, anyone with the link can access the document according to the 
 |-------|-------------|------|----------|
 | document | Select a Google Doc | Document | No |
 | public | True to make public, False to make private | bool | No |
-| role | Permission role for public access | "reader" | "commenter" | No |
+| role | Permission role for public access | "reader" \| "commenter" | No |
 
 ### Outputs
 | Output | Description | Type |
@@ -691,7 +691,7 @@ Leave the email blank to just generate a shareable link. The block returns the s
 |-------|-------------|------|----------|
 | document | Select a Google Doc to share | Document | No |
 | email | Email address to share with. Leave empty for link sharing. | str | No |
-| role | Permission role for the user | "reader" | "writer" | "commenter" | No |
+| role | Permission role for the user | "reader" \| "writer" \| "commenter" | No |
 | send_notification | Send notification email to the user | bool | No |
 | message | Optional message to include in notification email | str | No |
 

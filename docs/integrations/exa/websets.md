@@ -1,21 +1,21 @@
 # Exa Cancel Webset
 
-### What it is
+## What it is
 Cancel all operations being performed on a Webset
 
-### How it works
+## How it works
 <!-- MANUAL: how_it_works -->
 This block cancels all running operations (searches, enrichments) on a webset. The webset transitions to an idle state and any in-progress operations are stopped.
 
 The block is useful for stopping long-running operations that are no longer needed or when you need to modify the webset configuration. Items already processed before cancellation are retained.
 <!-- END MANUAL -->
 
-### Inputs
+## Inputs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | webset_id | The ID or external ID of the Webset to cancel | str | Yes |
 
-### Outputs
+## Outputs
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -24,7 +24,7 @@ The block is useful for stopping long-running operations that are no longer need
 | external_id | The external identifier for the webset | str |
 | success | Whether the cancellation was successful | str |
 
-### Possible use case
+## Possible use case
 <!-- MANUAL: use_case -->
 **Resource Management**: Stop expensive operations on websets that are no longer needed.
 
@@ -90,19 +90,19 @@ The block supports advanced features like scoped searches (searching within spec
 |-------|-------------|------|----------|
 | search_query | Your search query. Use this to describe what you are looking for. Any URL provided will be crawled and used as context for the search. | str | Yes |
 | search_count | Number of items the search will attempt to find. The actual number of items found may be less than this number depending on the search complexity. | int | No |
-| search_entity_type | Entity type: 'company', 'person', 'article', 'research_paper', or 'custom'. If not provided, we automatically detect the entity from the query. | "company" | "person" | "article" | No |
+| search_entity_type | Entity type: 'company', 'person', 'article', 'research_paper', or 'custom'. If not provided, we automatically detect the entity from the query. | "company" \| "person" \| "article" | No |
 | search_entity_description | Description for custom entity type (required when search_entity_type is 'custom') | str | No |
 | search_criteria | List of criteria descriptions that every item will be evaluated against. If not provided, we automatically detect the criteria from the query. | List[str] | No |
 | search_exclude_sources | List of source IDs (imports or websets) to exclude from search results | List[str] | No |
-| search_exclude_types | List of source types corresponding to exclude sources ('import' or 'webset') | List["import" | "webset"] | No |
+| search_exclude_types | List of source types corresponding to exclude sources ('import' or 'webset') | List["import" \| "webset"] | No |
 | search_scope_sources | List of source IDs (imports or websets) to limit search scope to | List[str] | No |
-| search_scope_types | List of source types corresponding to scope sources ('import' or 'webset') | List["import" | "webset"] | No |
+| search_scope_types | List of source types corresponding to scope sources ('import' or 'webset') | List["import" \| "webset"] | No |
 | search_scope_relationships | List of relationship definitions for hop searches (optional, one per scope source) | List[str] | No |
 | search_scope_relationship_limits | List of limits on the number of related entities to find (optional, one per scope relationship) | List[int] | No |
 | import_sources | List of source IDs to import from | List[str] | No |
-| import_types | List of source types corresponding to import sources ('import' or 'webset') | List["import" | "webset"] | No |
+| import_types | List of source types corresponding to import sources ('import' or 'webset') | List["import" \| "webset"] | No |
 | enrichment_descriptions | List of enrichment task descriptions to perform on each webset item | List[str] | No |
-| enrichment_formats | List of formats for enrichment responses ('text', 'date', 'number', 'options', 'email', 'phone'). If not specified, we automatically select the best format. | List["text" | "date" | "number"] | No |
+| enrichment_formats | List of formats for enrichment responses ('text', 'date', 'number', 'options', 'email', 'phone'). If not specified, we automatically select the best format. | List["text" \| "date" \| "number"] | No |
 | enrichment_options | List of option lists for enrichments with 'options' format. Each inner list contains the option labels. | List[List[str]] | No |
 | enrichment_metadata | List of metadata dictionaries for enrichments | List[Dict[str, True]] | No |
 | external_id | External identifier for the webset. You can use this to reference the webset by your own internal identifiers. | str | No |
@@ -262,7 +262,7 @@ Use this to refine your query and understand what results to expect. The block a
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | query | Your search query to preview. Use this to see how Exa will interpret your search before creating a webset. | str | Yes |
-| entity_type | Entity type to force: 'company', 'person', 'article', 'research_paper', or 'custom'. If not provided, Exa will auto-detect. | "company" | "person" | "article" | No |
+| entity_type | Entity type to force: 'company', 'person', 'article', 'research_paper', or 'custom'. If not provided, Exa will auto-detect. | "company" \| "person" \| "article" | No |
 | entity_description | Description for custom entity type (required when entity_type is 'custom') | str | No |
 
 ### Outputs

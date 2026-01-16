@@ -1,35 +1,35 @@
 # Github Create Check Run
 
-### What it is
+## What it is
 Creates a new check run for a specific commit in a GitHub repository
 
-### How it works
+## How it works
 <!-- MANUAL: how_it_works -->
 This block creates a new check run associated with a specific commit using the GitHub Checks API. Check runs represent individual test suites, linting tools, or other CI processes that report status against commits or pull requests.
 
 You specify the commit SHA, check name, and current status. For completed checks, provide a conclusion (success, failure, or neutral) and optional detailed output including title, summary, and extended text for rich reporting in the GitHub UI.
 <!-- END MANUAL -->
 
-### Inputs
+## Inputs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | repo_url | URL of the GitHub repository | str | Yes |
 | name | The name of the check run (e.g., 'code-coverage') | str | Yes |
 | head_sha | The SHA of the commit to check | str | Yes |
-| status | Current status of the check run | "queued" | "in_progress" | "completed" | No |
-| conclusion | The final conclusion of the check (required if status is completed) | "success" | "failure" | "neutral" | No |
+| status | Current status of the check run | "queued" \| "in_progress" \| "completed" | No |
+| conclusion | The final conclusion of the check (required if status is completed) | "success" \| "failure" \| "neutral" | No |
 | details_url | The URL for the full details of the check | str | No |
 | output_title | Title of the check run output | str | No |
 | output_summary | Summary of the check run output | str | No |
 | output_text | Detailed text of the check run output | str | No |
 
-### Outputs
+## Outputs
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if check run creation failed | str |
 | check_run | Details of the created check run | CheckRunResult |
 
-### Possible use case
+## Possible use case
 <!-- MANUAL: use_case -->
 **Custom CI Integration**: Create check runs for external CI systems that aren't natively integrated with GitHub.
 
@@ -57,8 +57,8 @@ You can update the status from queued to in_progress to completed, and set the f
 |-------|-------------|------|----------|
 | repo_url | URL of the GitHub repository | str | Yes |
 | check_run_id | The ID of the check run to update | int | Yes |
-| status | New status of the check run | "queued" | "in_progress" | "completed" | Yes |
-| conclusion | The final conclusion of the check (required if status is completed) | "success" | "failure" | "neutral" | Yes |
+| status | New status of the check run | "queued" \| "in_progress" \| "completed" | Yes |
+| conclusion | The final conclusion of the check (required if status is completed) | "success" \| "failure" \| "neutral" | Yes |
 | output_title | New title of the check run output | str | No |
 | output_summary | New summary of the check run output | str | No |
 | output_text | New detailed text of the check run output | str | No |

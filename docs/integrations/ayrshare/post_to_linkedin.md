@@ -1,16 +1,16 @@
 # Post To Linked In
 
-### What it is
+## What it is
 Post to LinkedIn using Ayrshare
 
-### How it works
+## How it works
 <!-- MANUAL: how_it_works -->
 This block uses Ayrshare's social media API to post content to LinkedIn. It handles text posts, images, videos, and documents, with support for scheduling and audience targeting. The block authenticates through Ayrshare's API.
 
 LinkedIn-specific features include visibility controls, comment management, and targeting by country, seniority, industry, and other demographics (requires 300+ followers in target audience).
 <!-- END MANUAL -->
 
-### Inputs
+## Inputs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | post | The post text (max 3,000 chars, hashtags supported with #) | str | No |
@@ -37,14 +37,14 @@ LinkedIn-specific features include visibility controls, comment management, and 
 | targeting_job_functions | Job function categories for targeting. Requires 300+ followers in target audience. | List[str] | No |
 | targeting_staff_count_ranges | Company size ranges for targeting. Requires 300+ followers in target audience. | List[str] | No |
 
-### Outputs
+## Outputs
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
 | post_result | The result of the post | PostResponse |
 | post | The result of the post | PostIds |
 
-### Possible use case
+## Possible use case
 <!-- MANUAL: use_case -->
 **Thought Leadership**: Automatically share blog posts or industry insights with professional network.
 

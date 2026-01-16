@@ -1,22 +1,22 @@
 # Todoist Create Label
 
-### What it is
+## What it is
 Creates a new label in Todoist, It will not work if same name already exists
 
-### How it works
+## How it works
 <!-- MANUAL: how_it_works -->
 It takes label details as input, connects to Todoist API, creates the label and returns the created label's details.
 <!-- END MANUAL -->
 
-### Inputs
+## Inputs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | name | Name of the label | str | Yes |
 | order | Label order | int | No |
-| color | The color of the label icon | "berry_red" | "red" | "orange" | No |
+| color | The color of the label icon | "berry_red" \| "red" \| "orange" | No |
 | is_favorite | Whether the label is a favorite | bool | No |
 
-### Outputs
+## Outputs
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
@@ -26,7 +26,7 @@ It takes label details as input, connects to Todoist API, creates the label and 
 | order | Label order | int |
 | is_favorite | Favorite status | bool |
 
-### Possible use case
+## Possible use case
 <!-- MANUAL: use_case -->
 Creating new labels to organize and categorize tasks in Todoist.
 <!-- END MANUAL -->
@@ -240,7 +240,7 @@ Only the fields you provide are updated; omitted fields retain their current val
 | label_id | ID of the label to update | str | Yes |
 | name | New name of the label | str | No |
 | order | Label order | int | No |
-| color | The color of the label icon | "berry_red" | "red" | "orange" | No |
+| color | The color of the label icon | "berry_red" \| "red" \| "orange" | No |
 | is_favorite | Whether the label is a favorite (true/false) | bool | No |
 
 ### Outputs
