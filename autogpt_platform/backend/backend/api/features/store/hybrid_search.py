@@ -208,12 +208,14 @@ async def unified_hybrid_search(
             UNION
 
             -- Semantic matches (uses HNSW index on embedding)
-            SELECT uce.id, uce."contentType", uce."contentId"
-            FROM {{schema_prefix}}"UnifiedContentEmbedding" uce
-            WHERE uce."contentType" = ANY({content_types_param}::{{schema_prefix}}"ContentType"[])
-            {user_filter}
-            ORDER BY uce.embedding <=> {embedding_param}::vector
-            LIMIT 200
+            (
+                SELECT uce.id, uce."contentType", uce."contentId"
+                FROM {{schema_prefix}}"UnifiedContentEmbedding" uce
+                WHERE uce."contentType" = ANY({content_types_param}::{{schema_prefix}}"ContentType"[])
+                {user_filter}
+                ORDER BY uce.embedding <=> {embedding_param}::vector
+                LIMIT 200
+            )
         ),
         search_scores AS (
             SELECT
