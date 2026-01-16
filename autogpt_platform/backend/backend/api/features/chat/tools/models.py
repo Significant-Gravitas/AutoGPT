@@ -254,6 +254,8 @@ class ClarificationNeededResponse(ToolResponseBase):
 
     type: ResponseType = ResponseType.CLARIFICATION_NEEDED
     questions: list[ClarifyingQuestion] = Field(default_factory=list)
+
+
 # Documentation search models
 class DocSearchResult(BaseModel):
     """A single documentation search result."""
