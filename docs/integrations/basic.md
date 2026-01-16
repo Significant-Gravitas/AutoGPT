@@ -563,6 +563,40 @@ The toggle is ideal for binary choices like enabling features, confirming action
 
 ---
 
+## Block Installation
+
+### What it is
+Given a code string, this block allows the verification and installation of a block code into the system.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+This block allows dynamic installation of new block types into the system from Python code. The code is verified for safety and correctness before installation. Once installed, the new block becomes available for use in workflows.
+
+This enables extensibility by allowing custom blocks to be added without modifying the core system, though it requires the code to follow the block specification format.
+<!-- END MANUAL -->
+
+### Inputs
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| code | Python code of the block to be installed | str | Yes |
+
+### Outputs
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if the block installation fails | str |
+| success | Success message if the block is installed successfully | str |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+**Custom Integrations**: Install blocks that connect to proprietary or internal APIs not covered by built-in blocks.
+
+**Dynamic Workflows**: Allow administrators to extend workflow capabilities without redeploying the entire system.
+
+**Experimental Features**: Test new block implementations before formally adding them to the block library.
+<!-- END MANUAL -->
+
+---
+
 ## Dictionary Is Empty
 
 ### What it is
@@ -883,40 +917,6 @@ This enables human oversight at critical points in automated workflows, ensuring
 **Approval Workflows**: Require manager approval for actions like large purchases, access requests, or configuration changes.
 
 **Quality Assurance**: Let reviewers verify data transformations or calculations before they're committed to production systems.
-<!-- END MANUAL -->
-
----
-
-## Installation
-
-### What it is
-Given a code string, this block allows the verification and installation of a block code into the system.
-
-### How it works
-<!-- MANUAL: how_it_works -->
-This block allows dynamic installation of new block types into the system from Python code. The code is verified for safety and correctness before installation. Once installed, the new block becomes available for use in workflows.
-
-This enables extensibility by allowing custom blocks to be added without modifying the core system, though it requires the code to follow the block specification format.
-<!-- END MANUAL -->
-
-### Inputs
-| Input | Description | Type | Required |
-|-------|-------------|------|----------|
-| code | Python code of the block to be installed | str | Yes |
-
-### Outputs
-| Output | Description | Type |
-|--------|-------------|------|
-| error | Error message if the block installation fails | str |
-| success | Success message if the block is installed successfully | str |
-
-### Possible use case
-<!-- MANUAL: use_case -->
-**Custom Integrations**: Install blocks that connect to proprietary or internal APIs not covered by built-in blocks.
-
-**Dynamic Workflows**: Allow administrators to extend workflow capabilities without redeploying the entire system.
-
-**Experimental Features**: Test new block implementations before formally adding them to the block library.
 <!-- END MANUAL -->
 
 ---

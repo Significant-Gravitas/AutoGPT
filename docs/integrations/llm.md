@@ -547,7 +547,7 @@ The block sends a request to the D-ID API with your specified parameters. It the
 |-------|-------------|------|----------|
 | script_input | The text input for the script | str | Yes |
 | provider | The voice provider to use | "microsoft" \| "elevenlabs" \| "amazon" | No |
-| voice_id | The voice ID to use, get list of voices [here](https://docs.agpt.co/server/d_id) | str | No |
+| voice_id | The voice ID to use, see [available voice IDs](https://agpt.co/docs/platform/using-ai-services/d_id) | str | No |
 | presenter_id | The presenter ID to use | str | No |
 | driver_id | The driver ID to use | str | No |
 | result_format | The desired result format | "mp4" \| "gif" \| "wav" | No |

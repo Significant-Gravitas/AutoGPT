@@ -1,4 +1,4 @@
-# Twitter Geted Users
+# Twitter Get Blocked Users
 
 ## What it is
 This block retrieves a list of users blocked by the authenticating user.

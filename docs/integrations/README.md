@@ -29,6 +29,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Agent Table Input](basic.md#agent-table-input) | Block for table data input with customizable headers |
 | [Agent Time Input](basic.md#agent-time-input) | Block for time input |
 | [Agent Toggle Input](basic.md#agent-toggle-input) | Block for boolean toggle input |
+| [Block Installation](basic.md#block-installation) | Given a code string, this block allows the verification and installation of a block code into the system |
 | [Dictionary Is Empty](basic.md#dictionary-is-empty) | Checks if a dictionary is empty |
 | [File Store](basic.md#file-store) | Stores the input file in the temporary directory |
 | [Find In Dictionary](basic.md#find-in-dictionary) | A block that looks up a value in a dictionary, list, or object by key or index and returns the corresponding value |
@@ -39,7 +40,6 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Get Store Agent Details](system/store_operations.md#get-store-agent-details) | Get detailed information about an agent from the store |
 | [Get Weather Information](basic.md#get-weather-information) | Retrieves weather information for a specified location using OpenWeatherMap API |
 | [Human In The Loop](basic.md#human-in-the-loop) | Pause execution and wait for human approval or modification of data |
-| [Installation](basic.md#installation) | Given a code string, this block allows the verification and installation of a block code into the system |
 | [Linear Search Issues](linear/issues.md#linear-search-issues) | Searches for issues on Linear |
 | [List Is Empty](basic.md#list-is-empty) | Checks if a list is empty |
 | [List Library Agents](system/library_operations.md#list-library-agents) | List all agents in your personal library |
@@ -323,6 +323,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Twitter Delete Tweet](twitter/manage.md#twitter-delete-tweet) | This block deletes a tweet on Twitter |
 | [Twitter Follow List](twitter/list_follows.md#twitter-follow-list) | This block follows a specified Twitter list for the authenticated user |
 | [Twitter Follow User](twitter/follows.md#twitter-follow-user) | This block follows a specified Twitter user |
+| [Twitter Get Blocked Users](twitter/blocks.md#twitter-get-blocked-users) | This block retrieves a list of users blocked by the authenticating user |
 | [Twitter Get Bookmarked Tweets](twitter/bookmark.md#twitter-get-bookmarked-tweets) | This block retrieves bookmarked tweets from Twitter |
 | [Twitter Get Followers](twitter/follows.md#twitter-get-followers) | This block retrieves followers of a specified Twitter user |
 | [Twitter Get Following](twitter/follows.md#twitter-get-following) | This block retrieves the users that a specified Twitter user is following |
@@ -348,7 +349,6 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Twitter Get User Mentions](twitter/timeline.md#twitter-get-user-mentions) | This block retrieves Tweets mentioning a specific user |
 | [Twitter Get User Tweets](twitter/timeline.md#twitter-get-user-tweets) | This block retrieves Tweets composed by a single user |
 | [Twitter Get Users](twitter/user_lookup.md#twitter-get-users) | This block retrieves information about multiple Twitter users |
-| [Twitter Geted Users](twitter/blocks.md#twitter-geted-users) | This block retrieves a list of users blocked by the authenticating user |
 | [Twitter Hide Reply](twitter/hide.md#twitter-hide-reply) | This block hides a reply to a tweet |
 | [Twitter Like Tweet](twitter/like.md#twitter-like-tweet) | This block likes a tweet |
 | [Twitter Mute User](twitter/mutes.md#twitter-mute-user) | This block mutes a specified Twitter user |

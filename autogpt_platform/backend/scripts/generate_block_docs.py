@@ -111,8 +111,8 @@ CATEGORY_FILE_MAP = {
 
 def class_name_to_display_name(class_name: str) -> str:
     """Convert BlockClassName to 'Block Class Name'."""
-    # Remove 'Block' suffix
-    name = class_name.replace("Block", "")
+    # Remove 'Block' suffix (only at the end, not all occurrences)
+    name = class_name.removesuffix("Block")
     # Insert space before capitals
     name = re.sub(r"([a-z])([A-Z])", r"\1 \2", name)
     # Handle consecutive capitals (e.g., 'HTTPRequest' -> 'HTTP Request')
@@ -583,9 +583,9 @@ def write_block_docs(
                 manual_content = extract_legacy_content(existing_content)
             else:
                 # Extract manual content specific to this block
-                # Look for content after the block heading
+                # Match block heading (h1 or h2) and capture until --- separator
                 block_pattern = (
-                    rf"(?:^|\n)##? {re.escape(block.name)}\s*\n(.*?)(?=\n##? |\Z)"
+                    rf"(?:^|\n)##? {re.escape(block.name)}\s*\n(.*?)(?=\n---|\Z)"
                 )
                 block_match = re.search(block_pattern, existing_content, re.DOTALL)
                 if block_match:
@@ -650,7 +650,7 @@ def check_docs_in_sync(output_dir: Path, blocks: list[BlockDoc]) -> bool:
         manual_sections_by_block = {}
         for block in file_blocks:
             block_pattern = (
-                rf"(?:^|\n)##? {re.escape(block.name)}\s*\n(.*?)(?=\n##? |\Z)"
+                rf"(?:^|\n)##? {re.escape(block.name)}\s*\n(.*?)(?=\n---|\Z)"
             )
             block_match = re.search(block_pattern, existing_content, re.DOTALL)
             if block_match:
@@ -672,7 +672,7 @@ def check_docs_in_sync(output_dir: Path, blocks: list[BlockDoc]) -> bool:
 
             # Check if this specific block's section exists and matches
             block_pattern = (
-                rf"(?:^|\n)(##? {re.escape(block.name)}\s*\n.*?)(?=\n##? |\Z)"
+                rf"(?:^|\n)(##? {re.escape(block.name)}\s*\n.*?)(?=\n---|\Z)"
             )
             block_match = re.search(block_pattern, existing_content, re.DOTALL)
             if not block_match:
