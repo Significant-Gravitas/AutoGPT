@@ -185,9 +185,9 @@ export function EditModelModal({
               </span>
             </label>
           </div>
-          {/* Hidden defaults for credential_type and cost_unit */}
+          {/* Hidden defaults for credential_type and unit */}
           <input type="hidden" name="credential_type" value="api_key" />
-          <input type="hidden" name="cost_unit" value={cost?.unit ?? "RUN"} />
+          <input type="hidden" name="unit" value={cost?.unit ?? "RUN"} />
 
           <Dialog.Footer>
             <Button
