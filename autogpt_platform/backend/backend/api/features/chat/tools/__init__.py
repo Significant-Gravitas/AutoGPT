@@ -8,8 +8,12 @@ from .add_understanding import AddUnderstandingTool
 from .agent_output import AgentOutputTool
 from .base import BaseTool
 from .find_agent import FindAgentTool
+from .find_block import FindBlockTool
 from .find_library_agent import FindLibraryAgentTool
+from .get_doc_page import GetDocPageTool
 from .run_agent import RunAgentTool
+from .run_block import RunBlockTool
+from .search_docs import SearchDocsTool
 
 if TYPE_CHECKING:
     from backend.api.features.chat.response_model import StreamToolOutputAvailable
@@ -18,9 +22,13 @@ if TYPE_CHECKING:
 TOOL_REGISTRY: dict[str, BaseTool] = {
     "add_understanding": AddUnderstandingTool(),
     "find_agent": FindAgentTool(),
+    "find_block": FindBlockTool(),
     "find_library_agent": FindLibraryAgentTool(),
     "run_agent": RunAgentTool(),
+    "run_block": RunBlockTool(),
     "agent_output": AgentOutputTool(),
+    "search_docs": SearchDocsTool(),
+    "get_doc_page": GetDocPageTool(),
 }
 
 # Export individual tool instances for backwards compatibility
