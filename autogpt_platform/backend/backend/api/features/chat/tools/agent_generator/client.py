@@ -5,7 +5,7 @@ import os
 from openai import AsyncOpenAI
 
 # Configuration - use OPEN_ROUTER_API_KEY for consistency with chat/config.py
-OPENROUTER_API_KEY = os.getenv("OPEN_ROUTER_API_KEY") or os.getenv("OPENROUTER_API_KEY")
+OPENROUTER_API_KEY = os.getenv("OPEN_ROUTER_API_KEY") 
 AGENT_GENERATOR_MODEL = os.getenv("AGENT_GENERATOR_MODEL", "anthropic/claude-opus-4.5")
 
 # OpenRouter client (OpenAI-compatible API)
