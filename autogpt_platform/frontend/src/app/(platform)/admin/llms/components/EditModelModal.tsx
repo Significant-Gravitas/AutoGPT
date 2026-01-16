@@ -186,7 +186,11 @@ export function EditModelModal({
             </label>
           </div>
           {/* Hidden defaults for credential_type and unit */}
-          <input type="hidden" name="credential_type" value="api_key" />
+          <input
+            type="hidden"
+            name="credential_type"
+            value={cost?.credential_type ?? provider?.default_credential_type ?? "api_key"}
+          />
           <input type="hidden" name="unit" value={cost?.unit ?? "RUN"} />
 
           <Dialog.Footer>
