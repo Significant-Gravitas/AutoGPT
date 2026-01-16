@@ -219,6 +219,10 @@ class BlockHandler(ContentHandler):
 
                 searchable_text = " ".join(parts)
 
+                # Convert categories set of enums to list of strings for JSON serialization
+                categories = getattr(block_instance, "categories", set())
+                categories_list = [cat.value for cat in categories] if categories else []
+
                 items.append(
                     ContentItem(
                         content_id=block_id,
@@ -226,7 +230,7 @@ class BlockHandler(ContentHandler):
                         searchable_text=searchable_text,
                         metadata={
                             "name": getattr(block_instance, "name", ""),
-                            "categories": getattr(block_instance, "categories", []),
+                            "categories": categories_list,
                         },
                         user_id=None,  # Blocks are public
                     )

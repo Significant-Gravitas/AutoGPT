@@ -663,7 +663,19 @@ async def cleanup_orphaned_embeddings() -> dict[str, Any]:
                 continue
 
             # Get all current content IDs from handler
-            if content_type == ContentType.BLOCK:
+            if content_type == ContentType.STORE_AGENT:
+                # Get IDs of approved store listing versions from non-deleted listings
+                valid_agents = await query_raw_with_schema(
+                    """
+                    SELECT slv.id
+                    FROM {schema_prefix}"StoreListingVersion" slv
+                    JOIN {schema_prefix}"StoreListing" sl ON slv."storeListingId" = sl.id
+                    WHERE slv."submissionStatus" = 'APPROVED'
+                      AND sl."isDeleted" = false
+                    """,
+                )
+                current_ids = {row["id"] for row in valid_agents}
+            elif content_type == ContentType.BLOCK:
                 from backend.data.block import get_blocks
 
                 current_ids = set(get_blocks().keys())
@@ -680,7 +692,13 @@ async def cleanup_orphaned_embeddings() -> dict[str, Any]:
                 else:
                     current_ids = set()
             else:
-                current_ids = set()
+                # Skip unknown content types to avoid accidental deletion
+                logger.warning(f"Skipping cleanup for unknown content type: {content_type}")
+                results_by_type[content_type.value] = {
+                    "deleted": 0,
+                    "error": "Unknown content type - skipped for safety",
+                }
+                continue
 
             # Get all embedding IDs from database
             db_embeddings = await query_raw_with_schema(
@@ -814,6 +832,9 @@ async def semantic_search(
         ]
 
     # Validate inputs
+    if not content_types:
+        return []  # Empty content_types would cause invalid SQL (IN ())
+
     query = query.strip()
     if not query:
         return []
