@@ -21,6 +21,10 @@ class ResponseType(str, Enum):
     NO_RESULTS = "no_results"
     AGENT_OUTPUT = "agent_output"
     UNDERSTANDING_UPDATED = "understanding_updated"
+    BLOCK_LIST = "block_list"
+    BLOCK_OUTPUT = "block_output"
+    DOC_SEARCH_RESULTS = "doc_search_results"
+    DOC_PAGE = "doc_page"
 
 
 # Base response model
@@ -209,3 +213,83 @@ class UnderstandingUpdatedResponse(ToolResponseBase):
     type: ResponseType = ResponseType.UNDERSTANDING_UPDATED
     updated_fields: list[str] = Field(default_factory=list)
     current_understanding: dict[str, Any] = Field(default_factory=dict)
+
+
+# Documentation search models
+class DocSearchResult(BaseModel):
+    """A single documentation search result."""
+
+    title: str
+    path: str
+    section: str
+    snippet: str  # Short excerpt for UI display
+    score: float
+    doc_url: str | None = None
+
+
+class DocSearchResultsResponse(ToolResponseBase):
+    """Response for search_docs tool."""
+
+    type: ResponseType = ResponseType.DOC_SEARCH_RESULTS
+    results: list[DocSearchResult]
+    count: int
+    query: str
+
+
+class DocPageResponse(ToolResponseBase):
+    """Response for get_doc_page tool."""
+
+    type: ResponseType = ResponseType.DOC_PAGE
+    title: str
+    path: str
+    content: str  # Full document content
+    doc_url: str | None = None
+
+
+# Block models
+class BlockInputFieldInfo(BaseModel):
+    """Information about a block input field."""
+
+    name: str
+    type: str
+    description: str = ""
+    required: bool = False
+    default: Any | None = None
+
+
+class BlockInfoSummary(BaseModel):
+    """Summary of a block for search results."""
+
+    id: str
+    name: str
+    description: str
+    categories: list[str]
+    input_schema: dict[str, Any]
+    output_schema: dict[str, Any]
+    required_inputs: list[BlockInputFieldInfo] = Field(
+        default_factory=list,
+        description="List of required input fields for this block",
+    )
+
+
+class BlockListResponse(ToolResponseBase):
+    """Response for find_block tool."""
+
+    type: ResponseType = ResponseType.BLOCK_LIST
+    blocks: list[BlockInfoSummary]
+    count: int
+    query: str
+    usage_hint: str = Field(
+        default="To execute a block, call run_block with block_id set to the block's "
+        "'id' field and input_data containing the required fields from input_schema."
+    )
+
+
+class BlockOutputResponse(ToolResponseBase):
+    """Response for run_block tool."""
+
+    type: ResponseType = ResponseType.BLOCK_OUTPUT
+    block_id: str
+    block_name: str
+    outputs: dict[str, list[Any]]
+    success: bool = True
