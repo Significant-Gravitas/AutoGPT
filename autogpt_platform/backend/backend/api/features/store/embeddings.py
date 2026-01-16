@@ -682,9 +682,11 @@ async def cleanup_orphaned_embeddings() -> dict[str, Any]:
             elif content_type == ContentType.DOCUMENTATION:
                 from pathlib import Path
 
-                # Docs are at /docs relative to project root
-                backend_root = Path(__file__).parent.parent.parent.parent
-                docs_root = backend_root.parent.parent / "docs"
+                # embeddings.py is at: backend/backend/api/features/store/embeddings.py
+                # Need to go up to project root then into docs/
+                this_file = Path(__file__)
+                project_root = this_file.parent.parent.parent.parent.parent.parent.parent
+                docs_root = project_root / "docs"
                 if docs_root.exists():
                     all_docs = list(docs_root.rglob("*.md")) + list(
                         docs_root.rglob("*.mdx")

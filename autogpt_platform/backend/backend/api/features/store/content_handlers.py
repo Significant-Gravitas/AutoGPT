@@ -284,11 +284,13 @@ class DocumentationHandler(ContentHandler):
 
     def _get_docs_root(self) -> Path:
         """Get the documentation root directory."""
-        # Docs are at /docs relative to project root
-        # In container: /app/autogpt_platform/backend -> /app/docs
-        # In development: /path/to/repo/autogpt_platform/backend -> /path/to/repo/docs
-        backend_root = Path(__file__).parent.parent.parent.parent
-        docs_root = backend_root.parent.parent / "docs"
+        # content_handlers.py is at: backend/backend/api/features/store/content_handlers.py
+        # Need to go up to project root then into docs/
+        # In container: /app/autogpt_platform/backend/backend/api/features/store -> /app/docs
+        # In development: /repo/autogpt_platform/backend/backend/api/features/store -> /repo/docs
+        this_file = Path(__file__)  # .../backend/backend/api/features/store/content_handlers.py
+        project_root = this_file.parent.parent.parent.parent.parent.parent.parent  # -> /app or /repo
+        docs_root = project_root / "docs"
         return docs_root
 
     def _extract_title_and_content(self, file_path: Path) -> tuple[str, str]:
