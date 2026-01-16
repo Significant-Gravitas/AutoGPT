@@ -1010,9 +1010,8 @@ model UnifiedContentEmbedding {
   @@index([userId])
   @@index([contentType, userId])
   @@index([embedding], map: "UnifiedContentEmbedding_embedding_idx")
-  // IMPORTANT: search index declared to prevent Prisma DROP, but actual GIN index created via SQL migration
-  // After running prisma migrate, manually verify the index is GIN: \di+ UnifiedContentEmbedding_search_idx
-  @@index([search], map: "UnifiedContentEmbedding_search_idx")
+  // NO @@index for search - GIN index created via SQL migration with custom name "idx_uce_search_gin"
+  // (Same pattern as idx_slv_categories_gin on StoreListingVersion)
 }
 
 model StoreListingReview {

@@ -5,11 +5,10 @@
 ALTER TABLE "UnifiedContentEmbedding" ADD COLUMN IF NOT EXISTS "search" tsvector DEFAULT ''::tsvector;
 
 -- Create GIN index for fast full-text search
--- Prisma doesn't support GIN, so we drop any btree index and create GIN
--- The @@index([search]) in schema.prisma prevents Prisma from generating DROP INDEX migrations
--- But Prisma may create a btree index first - this migration converts it to GIN
-DROP INDEX IF EXISTS "UnifiedContentEmbedding_search_idx";
-CREATE INDEX "UnifiedContentEmbedding_search_idx" ON "UnifiedContentEmbedding" USING GIN ("search");
+-- Uses custom name "idx_uce_search_gin" (same pattern as idx_slv_categories_gin)
+-- NO @@index in schema.prisma - Prisma won't know about this index and won't try to manage it
+DROP INDEX IF EXISTS "idx_uce_search_gin";
+CREATE INDEX IF NOT EXISTS "idx_uce_search_gin" ON "UnifiedContentEmbedding" USING GIN ("search");
 
 -- Drop existing trigger/function if exists
 DROP TRIGGER IF EXISTS "update_unified_tsvector" ON "UnifiedContentEmbedding";
