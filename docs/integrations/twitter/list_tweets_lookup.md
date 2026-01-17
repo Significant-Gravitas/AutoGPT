@@ -1,6 +1,6 @@
 # Twitter List Tweets Lookup
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for retrieving tweets from Twitter/X lists.
 <!-- END MANUAL -->
 
 ## Twitter Get List Tweets

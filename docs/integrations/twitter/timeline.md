@@ -1,6 +1,6 @@
 # Twitter Timeline
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for retrieving Twitter/X timelines and user tweets.
 <!-- END MANUAL -->
 
 ## Twitter Get Home Timeline

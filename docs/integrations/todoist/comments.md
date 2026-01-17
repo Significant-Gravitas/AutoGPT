@@ -1,6 +1,6 @@
 # Todoist Comments
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for creating and managing comments on Todoist tasks and projects.
 <!-- END MANUAL -->
 
 ## Todoist Create Comment

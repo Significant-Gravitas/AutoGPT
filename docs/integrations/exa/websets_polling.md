@@ -1,6 +1,6 @@
 # Exa Websets Polling
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for polling and waiting on Exa webset operations to complete.
 <!-- END MANUAL -->
 
 ## Exa Wait For Enrichment

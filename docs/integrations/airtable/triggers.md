@@ -1,6 +1,6 @@
 # Airtable Triggers
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for triggering workflows based on Airtable events like record creation, updates, and deletions.
 <!-- END MANUAL -->
 
 ## Airtable Webhook Trigger

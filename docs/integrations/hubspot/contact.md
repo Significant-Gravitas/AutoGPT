@@ -1,6 +1,6 @@
 # HubSpot Contact
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for managing HubSpot contact records in the CRM.
 <!-- END MANUAL -->
 
 ## Hub Spot Contact

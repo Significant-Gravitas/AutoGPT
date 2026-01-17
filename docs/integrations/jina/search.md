@@ -1,6 +1,6 @@
 # Jina Search
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for extracting website content and performing web searches using Jina AI.
 <!-- END MANUAL -->
 
 ## Extract Website Content

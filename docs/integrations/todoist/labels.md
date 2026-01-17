@@ -1,6 +1,6 @@
 # Todoist Labels
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for creating and managing labels in Todoist.
 <!-- END MANUAL -->
 
 ## Todoist Create Label

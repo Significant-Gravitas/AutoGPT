@@ -1,6 +1,6 @@
 # Google Calendar
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for creating and reading events from Google Calendar.
 <!-- END MANUAL -->
 
 ## Google Calendar Create Event

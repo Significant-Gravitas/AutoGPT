@@ -1,6 +1,6 @@
 # Airtable Schema
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for managing Airtable schema including tables, fields, and their configurations.
 <!-- END MANUAL -->
 
 ## Airtable Create Field

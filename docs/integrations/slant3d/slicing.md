@@ -1,6 +1,6 @@
 # Slant3D Slicing
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for slicing 3D models and getting pricing information from Slant3D.
 <!-- END MANUAL -->
 
 ## Slant3D Slicer

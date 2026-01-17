@@ -1,6 +1,6 @@
 # Exa Research
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for creating and managing autonomous research tasks using Exa's Research API.
 <!-- END MANUAL -->
 
 ## Exa Create Research

@@ -1,6 +1,6 @@
 # GitHub Checks
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for creating and updating GitHub check runs, enabling custom CI integration and detailed status reporting on commits and pull requests.
 <!-- END MANUAL -->
 
 ## Github Create Check Run

@@ -1,6 +1,6 @@
 # Jina Chunking
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for splitting text into semantic chunks using Jina AI.
 <!-- END MANUAL -->
 
 ## Jina Chunking

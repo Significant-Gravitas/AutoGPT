@@ -1,6 +1,6 @@
 # Zerobounce Validate Emails
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for validating email deliverability using ZeroBounce.
 <!-- END MANUAL -->
 
 ## Validate Emails

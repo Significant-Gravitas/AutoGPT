@@ -1,6 +1,6 @@
 # GitHub Pull Requests
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for managing GitHub pull requests including creating, reading, listing PRs, and assigning or unassigning reviewers.
 <!-- END MANUAL -->
 
 ## Github Assign PR Reviewer

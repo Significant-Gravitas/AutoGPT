@@ -1,6 +1,6 @@
 # Jina Embeddings
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for generating text embeddings using Jina AI.
 <!-- END MANUAL -->
 
 ## Jina Embedding

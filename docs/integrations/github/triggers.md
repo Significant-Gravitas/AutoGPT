@@ -1,6 +1,6 @@
 # GitHub Triggers
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for triggering workflows from GitHub webhook events like pull requests, issues, releases, and stars.
 <!-- END MANUAL -->
 
 ## Github Discussion Trigger

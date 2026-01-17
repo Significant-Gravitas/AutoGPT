@@ -1,6 +1,6 @@
 # Exa Similar
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for finding semantically similar web pages using Exa's findSimilar API.
 <!-- END MANUAL -->
 
 ## Exa Find Similar

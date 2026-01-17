@@ -1,6 +1,6 @@
 # Twitter Mutes
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for managing muted users on Twitter/X.
 <!-- END MANUAL -->
 
 ## Twitter Get Muted Users

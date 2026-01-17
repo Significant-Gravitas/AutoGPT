@@ -1,6 +1,6 @@
 # GitHub Repo
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for managing GitHub repositories, branches, files, and repository metadata.
 <!-- END MANUAL -->
 
 ## Github Create File

@@ -1,6 +1,6 @@
 # Airtable Records
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for creating, reading, updating, and deleting records in Airtable tables.
 <!-- END MANUAL -->
 
 ## Airtable Create Records

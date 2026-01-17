@@ -1,6 +1,6 @@
 # Slant3D Webhook
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for receiving webhook notifications about Slant3D order status updates.
 <!-- END MANUAL -->
 
 ## Slant3D Order Webhook

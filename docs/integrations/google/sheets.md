@@ -1,6 +1,6 @@
 # Google Sheets
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for creating, reading, and editing Google Sheets spreadsheets.
 <!-- END MANUAL -->
 
 ## Google Sheets Add Column

@@ -1,6 +1,6 @@
 # Discord OAuth Blocks
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for Discord OAuth2 authentication and retrieving user information.
 <!-- END MANUAL -->
 
 ## Discord Get Current User

@@ -1,6 +1,6 @@
 # Airtable Bases
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for creating and managing Airtable bases, which are the top-level containers for tables, records, and data in Airtable.
 <!-- END MANUAL -->
 
 ## Airtable Create Base

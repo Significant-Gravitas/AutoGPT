@@ -1,6 +1,6 @@
 # HubSpot Company
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for managing HubSpot company records in the CRM.
 <!-- END MANUAL -->
 
 ## Hub Spot Company

@@ -1,6 +1,6 @@
 # GitHub Statuses
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for creating and managing GitHub commit statuses for CI/CD integration.
 <!-- END MANUAL -->
 
 ## Github Create Status

@@ -1,6 +1,6 @@
 # Linear Issues
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for creating and managing Linear issues.
 <!-- END MANUAL -->
 
 ## Linear Create Issue

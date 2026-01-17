@@ -1,6 +1,6 @@
 # Fal AI Video Generator
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for generating AI videos using FAL.ai models.
 <!-- END MANUAL -->
 
 ## AI Video Generator

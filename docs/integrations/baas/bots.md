@@ -1,6 +1,6 @@
 # Baas Bots
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for deploying and managing meeting recording bots using the BaaS (Bot as a Service) API.
 <!-- END MANUAL -->
 
 ## Baas Bot Delete Recording

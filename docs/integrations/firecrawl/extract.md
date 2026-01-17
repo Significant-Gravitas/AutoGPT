@@ -1,6 +1,6 @@
 # Firecrawl Extract
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for extracting structured data from web pages using Firecrawl's AI extraction.
 <!-- END MANUAL -->
 
 ## Firecrawl Extract

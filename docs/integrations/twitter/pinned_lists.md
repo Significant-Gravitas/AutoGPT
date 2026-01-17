@@ -1,6 +1,6 @@
 # Twitter Pinned Lists
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for managing pinned lists on Twitter/X.
 <!-- END MANUAL -->
 
 ## Twitter Get Pinned Lists

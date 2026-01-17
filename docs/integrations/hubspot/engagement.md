@@ -1,6 +1,6 @@
 # HubSpot Engagement
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for managing HubSpot engagements like emails and tracking metrics.
 <!-- END MANUAL -->
 
 ## Hub Spot Engagement

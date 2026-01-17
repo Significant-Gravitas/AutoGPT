@@ -1,6 +1,6 @@
 # Ayrshare Post To Pinterest
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for posting pins to Pinterest using the Ayrshare social media management API.
 <!-- END MANUAL -->
 
 ## Post To Pinterest

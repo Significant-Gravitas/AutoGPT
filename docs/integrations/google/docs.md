@@ -1,6 +1,6 @@
 # Google Docs
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for creating and editing Google Docs documents.
 <!-- END MANUAL -->
 
 ## Google Docs Append Markdown

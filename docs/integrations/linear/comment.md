@@ -1,6 +1,6 @@
 # Linear Comment
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for creating and managing comments on Linear issues.
 <!-- END MANUAL -->
 
 ## Linear Create Comment

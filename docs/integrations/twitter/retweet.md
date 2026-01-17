@@ -1,6 +1,6 @@
 # Twitter Retweet
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for retweeting and getting retweet information on Twitter/X.
 <!-- END MANUAL -->
 
 ## Twitter Get Retweeters

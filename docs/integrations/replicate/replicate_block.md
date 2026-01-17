@@ -1,6 +1,6 @@
 # Replicate Replicate Block
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for running any AI model hosted on the Replicate platform.
 <!-- END MANUAL -->
 
 ## Replicate Model

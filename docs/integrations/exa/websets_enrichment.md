@@ -1,6 +1,6 @@
 # Exa Websets Enrichment
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for enriching webset items with additional data using Exa's enrichment API.
 <!-- END MANUAL -->
 
 ## Exa Cancel Enrichment

@@ -1,6 +1,6 @@
 # Twitter List Members
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for managing members of Twitter/X lists.
 <!-- END MANUAL -->
 
 ## Twitter Add List Member

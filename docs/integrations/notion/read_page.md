@@ -1,6 +1,6 @@
 # Notion Read Page
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for reading Notion pages and retrieving their raw JSON data.
 <!-- END MANUAL -->
 
 ## Notion Read Page

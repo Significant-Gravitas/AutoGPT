@@ -1,6 +1,6 @@
 # Notion Create Page
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for creating new pages in Notion workspaces and databases.
 <!-- END MANUAL -->
 
 ## Notion Create Page

@@ -1,6 +1,6 @@
 # Ayrshare Post To TikTok
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for posting videos and image slideshows to TikTok using the Ayrshare social media management API.
 <!-- END MANUAL -->
 
 ## Post To Tik Tok

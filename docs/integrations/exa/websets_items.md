@@ -1,6 +1,6 @@
 # Exa Websets Items
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for retrieving and managing items within Exa websets.
 <!-- END MANUAL -->
 
 ## Exa Bulk Webset Items

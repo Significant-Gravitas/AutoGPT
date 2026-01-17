@@ -1,6 +1,6 @@
 # Slant3D Filament
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for getting available filament options from Slant3D.
 <!-- END MANUAL -->
 
 ## Slant3D Filament

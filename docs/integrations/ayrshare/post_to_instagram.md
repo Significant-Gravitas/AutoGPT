@@ -1,6 +1,6 @@
 # Ayrshare Post To Instagram
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for posting content to Instagram using the Ayrshare social media management API.
 <!-- END MANUAL -->
 
 ## Post To Instagram

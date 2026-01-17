@@ -1,6 +1,6 @@
 # Firecrawl Crawl
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for crawling multiple pages of a website using Firecrawl.
 <!-- END MANUAL -->
 
 ## Firecrawl Crawl

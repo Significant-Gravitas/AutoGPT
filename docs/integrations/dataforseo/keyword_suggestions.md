@@ -1,6 +1,6 @@
 # Dataforseo Keyword Suggestions
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for getting keyword suggestions with search volume and competition metrics from DataForSEO.
 <!-- END MANUAL -->
 
 ## Data For Seo Keyword Suggestions

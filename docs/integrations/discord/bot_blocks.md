@@ -1,6 +1,6 @@
 # Discord Bot Blocks
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for interacting with Discord using bot tokens, including sending messages, managing threads, and reading channel data.
 <!-- END MANUAL -->
 
 ## Create Discord Thread

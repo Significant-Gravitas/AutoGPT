@@ -1,6 +1,6 @@
 # Twitter Manage Lists
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for creating, updating, and deleting Twitter/X lists.
 <!-- END MANUAL -->
 
 ## Twitter Create List

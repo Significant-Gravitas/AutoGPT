@@ -1,6 +1,6 @@
 # GitHub CI
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for retrieving CI check results from commits or pull requests, including overall status, pass/fail counts, and optional log searching.
 <!-- END MANUAL -->
 
 ## Github Get CI Results

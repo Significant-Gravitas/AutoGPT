@@ -1,6 +1,6 @@
 # Google Gmail
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for reading, sending, and managing emails in Gmail.
 <!-- END MANUAL -->
 
 ## Gmail Add Label

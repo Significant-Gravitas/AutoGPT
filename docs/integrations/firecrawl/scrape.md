@@ -1,6 +1,6 @@
 # Firecrawl Scrape
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for scraping individual web pages and extracting content using Firecrawl.
 <!-- END MANUAL -->
 
 ## Firecrawl Scrape

@@ -1,6 +1,6 @@
 # Smartlead Campaign
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for managing email outreach campaigns in SmartLead.
 <!-- END MANUAL -->
 
 ## Add Lead To Campaign

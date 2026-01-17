@@ -1,6 +1,6 @@
 # Apollo Organization
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for searching and retrieving organization data from Apollo's B2B database.
 <!-- END MANUAL -->
 
 ## Search Organizations

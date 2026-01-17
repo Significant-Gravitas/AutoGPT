@@ -1,6 +1,6 @@
 # Exa Websets Import Export
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for importing and exporting data with Exa websets.
 <!-- END MANUAL -->
 
 ## Exa Create Import

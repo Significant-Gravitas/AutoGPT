@@ -1,6 +1,6 @@
 # Apollo People
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for searching people in Apollo's B2B contact database with various filters.
 <!-- END MANUAL -->
 
 ## Search People

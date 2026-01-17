@@ -1,6 +1,6 @@
 # Multimedia
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for processing and manipulating video and audio files.
 <!-- END MANUAL -->
 
 ## Add Audio To Video

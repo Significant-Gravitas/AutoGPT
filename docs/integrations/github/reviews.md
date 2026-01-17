@@ -1,6 +1,6 @@
 # GitHub Reviews
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for creating and managing GitHub pull request reviews and review comments.
 <!-- END MANUAL -->
 
 ## Github Create Comment Object

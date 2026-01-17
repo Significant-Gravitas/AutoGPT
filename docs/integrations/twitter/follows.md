@@ -1,6 +1,6 @@
 # Twitter Follows
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for following and unfollowing users on Twitter/X.
 <!-- END MANUAL -->
 
 ## Twitter Follow User

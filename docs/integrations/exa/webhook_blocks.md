@@ -1,6 +1,6 @@
 # Exa Webhook Blocks
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for receiving webhook notifications from Exa webset events.
 <!-- END MANUAL -->
 
 ## Exa Webset Webhook

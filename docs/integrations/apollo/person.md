@@ -1,6 +1,6 @@
 # Apollo Person
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for enriching individual person data including contact details and email discovery.
 <!-- END MANUAL -->
 
 ## Get Person Detail

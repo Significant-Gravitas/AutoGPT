@@ -1,6 +1,6 @@
 # Replicate Flux Advanced
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for generating images using Flux models on Replicate with advanced settings.
 <!-- END MANUAL -->
 
 ## Replicate Flux Advanced Model

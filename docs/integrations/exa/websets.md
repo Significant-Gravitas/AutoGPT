@@ -1,6 +1,6 @@
 # Exa Websets
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for creating and managing Exa websets for continuous web monitoring.
 <!-- END MANUAL -->
 
 ## Exa Cancel Webset

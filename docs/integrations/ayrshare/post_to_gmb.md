@@ -1,6 +1,6 @@
 # Ayrshare Post To GMB
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for posting content to Google My Business profiles using the Ayrshare social media management API.
 <!-- END MANUAL -->
 
 ## Post To GMB

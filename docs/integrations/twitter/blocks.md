@@ -1,6 +1,6 @@
 # Twitter Blocks
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for managing blocked users on Twitter/X.
 <!-- END MANUAL -->
 
 ## Twitter Get Blocked Users

@@ -1,6 +1,6 @@
 # Slant3D Order
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for managing 3D print orders through Slant3D.
 <!-- END MANUAL -->
 
 ## Slant3D Cancel Order

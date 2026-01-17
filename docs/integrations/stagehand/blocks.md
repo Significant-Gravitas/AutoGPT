@@ -1,6 +1,6 @@
 # Stagehand Blocks
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for AI-powered browser automation using Stagehand and Browserbase.
 <!-- END MANUAL -->
 
 ## Stagehand Act

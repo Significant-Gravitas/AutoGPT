@@ -1,6 +1,6 @@
 # Wolfram LLM API
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for querying Wolfram Alpha's computational knowledge engine.
 <!-- END MANUAL -->
 
 ## Ask Wolfram

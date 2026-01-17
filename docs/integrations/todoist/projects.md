@@ -1,6 +1,6 @@
 # Todoist Projects
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for creating and managing projects in Todoist.
 <!-- END MANUAL -->
 
 ## Todoist Create Project

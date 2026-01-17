@@ -1,6 +1,6 @@
 # Twitter Search Spaces
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for searching Twitter/X Spaces live audio conversations.
 <!-- END MANUAL -->
 
 ## Twitter Search Spaces

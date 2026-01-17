@@ -1,6 +1,6 @@
 # Firecrawl Map
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for mapping website structure and discovering all links using Firecrawl.
 <!-- END MANUAL -->
 
 ## Firecrawl Map Website

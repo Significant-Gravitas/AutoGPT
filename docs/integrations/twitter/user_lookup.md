@@ -1,6 +1,6 @@
 # Twitter User Lookup
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for looking up Twitter/X user profiles and information.
 <!-- END MANUAL -->
 
 ## Twitter Get User

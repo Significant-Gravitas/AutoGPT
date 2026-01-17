@@ -1,6 +1,6 @@
 # Notion Search
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for searching pages and databases in a Notion workspace.
 <!-- END MANUAL -->
 
 ## Notion Search

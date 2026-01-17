@@ -1,6 +1,6 @@
 # Twitter List Follows
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for following and unfollowing Twitter/X lists.
 <!-- END MANUAL -->
 
 ## Twitter Follow List

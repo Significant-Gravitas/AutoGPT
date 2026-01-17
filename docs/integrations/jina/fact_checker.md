@@ -1,6 +1,6 @@
 # Jina Fact Checker
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for verifying statement factuality using Jina AI's Grounding API.
 <!-- END MANUAL -->
 
 ## Fact Checker

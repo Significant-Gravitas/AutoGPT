@@ -1,6 +1,6 @@
 # Compass Triggers
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for triggering workflows from Compass AI transcription events.
 <!-- END MANUAL -->
 
 ## Compass AI Trigger

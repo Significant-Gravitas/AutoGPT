@@ -1,6 +1,6 @@
 # Exa Websets Monitor
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for creating scheduled monitors to automatically update Exa websets.
 <!-- END MANUAL -->
 
 ## Exa Create Monitor

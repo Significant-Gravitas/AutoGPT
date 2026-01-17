@@ -1,6 +1,6 @@
 # System Library Operations
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for managing agents in your personal AutoGPT library.
 <!-- END MANUAL -->
 
 ## Add To Library From Store

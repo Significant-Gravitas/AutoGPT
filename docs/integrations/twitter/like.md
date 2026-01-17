@@ -1,6 +1,6 @@
 # Twitter Like
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for liking tweets and retrieving liked tweets on Twitter/X.
 <!-- END MANUAL -->
 
 ## Twitter Get Liked Tweets

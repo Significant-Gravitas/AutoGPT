@@ -1,6 +1,6 @@
 # Exa Websets Search
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for running and managing searches within Exa websets.
 <!-- END MANUAL -->
 
 ## Exa Cancel Webset Search

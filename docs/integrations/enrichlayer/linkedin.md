@@ -1,6 +1,6 @@
 # Enrichlayer LinkedIn
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for enriching LinkedIn profile data and looking up profiles using the Enrichlayer API.
 <!-- END MANUAL -->
 
 ## Get Linkedin Profile

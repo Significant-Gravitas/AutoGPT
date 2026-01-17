@@ -1,6 +1,6 @@
 # GitHub Issues
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for managing GitHub issues including creating, reading, listing, commenting, labeling, and assigning issues programmatically.
 <!-- END MANUAL -->
 
 ## Github Add Label

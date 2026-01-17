@@ -1,6 +1,6 @@
 # Exa Answers
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for getting AI-generated answers to questions using Exa's search-informed answer API.
 <!-- END MANUAL -->
 
 ## Exa Answer

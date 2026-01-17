@@ -1,6 +1,6 @@
 # Todoist Sections
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for managing sections within Todoist projects.
 <!-- END MANUAL -->
 
 ## Todoist Delete Section

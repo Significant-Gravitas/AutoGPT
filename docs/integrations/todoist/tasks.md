@@ -1,6 +1,6 @@
 # Todoist Tasks
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for creating, updating, and managing tasks in Todoist.
 <!-- END MANUAL -->
 
 ## Todoist Close Task
@@ -136,7 +136,11 @@ Only active (uncompleted) tasks can be retrieved; closed tasks are not accessibl
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Task Details Retrieval**: Fetch complete information about a specific task for display or processing in workflows.
+
+**Workflow Branching**: Get task details to make decisions based on due dates, labels, or priority levels.
+
+**Task Auditing**: Retrieve individual tasks to verify their current state before performing updates or other operations.
 <!-- END MANUAL -->
 
 ---

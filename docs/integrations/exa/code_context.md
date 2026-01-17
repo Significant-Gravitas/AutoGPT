@@ -1,6 +1,6 @@
 # Exa Code Context
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for searching code repositories and documentation using Exa's code context API.
 <!-- END MANUAL -->
 
 ## Exa Code Context

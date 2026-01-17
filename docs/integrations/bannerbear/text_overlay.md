@@ -1,6 +1,6 @@
 # Bannerbear Text Overlay
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for generating dynamic images with text overlays using Bannerbear templates.
 <!-- END MANUAL -->
 
 ## Bannerbear Text Overlay

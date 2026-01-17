@@ -1,6 +1,6 @@
 # Nvidia Deepfake
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for detecting deepfakes and synthetic image manipulation using Nvidia AI.
 <!-- END MANUAL -->
 
 ## Nvidia Deepfake Detect

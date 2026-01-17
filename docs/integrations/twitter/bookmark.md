@@ -1,6 +1,6 @@
 # Twitter Bookmark
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for managing Twitter/X bookmarks.
 <!-- END MANUAL -->
 
 ## Twitter Bookmark Tweet

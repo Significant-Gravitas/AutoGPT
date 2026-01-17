@@ -1,6 +1,6 @@
 # Twitter Manage
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for posting, deleting, and managing tweets on Twitter/X.
 <!-- END MANUAL -->
 
 ## Twitter Delete Tweet

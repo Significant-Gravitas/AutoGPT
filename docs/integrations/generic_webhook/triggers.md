@@ -1,6 +1,6 @@
 # Generic Webhook Triggers
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for receiving and processing generic webhook payloads from external services.
 <!-- END MANUAL -->
 
 ## Generic Webhook Trigger

@@ -1,6 +1,6 @@
 # Twitter Quote
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for retrieving quote tweets on Twitter/X.
 <!-- END MANUAL -->
 
 ## Twitter Get Quote Tweets

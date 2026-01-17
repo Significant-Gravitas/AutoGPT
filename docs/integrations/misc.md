@@ -45,7 +45,9 @@ Create a new post on a subreddit. Can create text posts or link posts.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block uses the Reddit API via PRAW to create a new post in the specified subreddit. Provide the title and either text content for a self-post or a URL for a link post. Optionally apply flair using a flair ID from the GetSubredditFlairsBlock.
+
+The block returns the created post's ID and URL, which can be used for chaining with comment blocks or monitoring.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -70,7 +72,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Content Distribution**: Automatically share articles or content to relevant subreddits.
+
+**Community Engagement**: Post updates or announcements to subreddit communities.
+
+**Automated Posting**: Schedule and post content to Reddit based on workflow triggers.
 <!-- END MANUAL -->
 
 ---
@@ -82,7 +88,7 @@ Delete a Reddit comment that you own.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block uses the Reddit API via PRAW to delete a comment you previously posted. The deletion is permanent and removes the comment from the post thread. You can only delete your own comments.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -101,7 +107,9 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Content Cleanup**: Remove outdated or incorrect comments from discussions.
+
+**Automated Moderation**: Delete comments that fail quality checks or receive negative feedback.
 <!-- END MANUAL -->
 
 ---
@@ -113,7 +121,7 @@ Delete a Reddit post that you own.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block uses the Reddit API via PRAW to delete a post you previously created. The deletion is permanent and removes the post from the subreddit. You can only delete your own posts.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -132,7 +140,9 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Content Management**: Remove posts that are no longer relevant or contain errors.
+
+**Automated Cleanup**: Delete posts based on performance metrics or time-based rules.
 <!-- END MANUAL -->
 
 ---
@@ -144,7 +154,7 @@ Edit the body text of an existing Reddit post that you own. Only works for self/
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block uses the Reddit API via PRAW to edit the body text of a self-post you created. Link posts cannot be edited. The new content replaces the existing post body.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -165,7 +175,9 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Content Updates**: Update posts with new information or corrections.
+
+**Dynamic Content**: Modify post content based on changing data or feedback.
 <!-- END MANUAL -->
 
 ---
@@ -265,7 +277,7 @@ Get details about a specific Reddit comment by its ID.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block uses the Reddit API via PRAW to retrieve detailed information about a specific comment by its ID. Returns the comment content, author, score, timestamp, and other metadata.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -283,7 +295,9 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Comment Analysis**: Analyze specific comments for sentiment or content moderation.
+
+**Thread Tracking**: Monitor specific comments for engagement or replies.
 <!-- END MANUAL -->
 
 ---
@@ -295,7 +309,7 @@ Get replies to a specific Reddit comment.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block uses the Reddit API via PRAW to fetch replies to a specific comment. Returns a list of direct replies with their content, authors, and metadata.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -318,7 +332,9 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Conversation Threading**: Build complete comment threads for analysis or display.
+
+**Response Monitoring**: Track replies to your comments for engagement purposes.
 <!-- END MANUAL -->
 
 ---
@@ -330,7 +346,7 @@ Get messages, mentions, and comment replies from your Reddit inbox.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block uses the Reddit API via PRAW to fetch items from your Reddit inbox. Filter by type to get all items, unread only, direct messages, username mentions, or replies to your comments.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -351,7 +367,9 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Inbox Monitoring**: Check for new messages or mentions to respond to.
+
+**Engagement Tracking**: Monitor comment replies to stay engaged with discussions.
 <!-- END MANUAL -->
 
 ---
@@ -363,7 +381,7 @@ Get detailed information about a specific Reddit post by its ID.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block uses the Reddit API via PRAW to retrieve complete details about a specific post by its ID. Returns the post title, content, author, score, comment count, and other metadata.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -381,7 +399,9 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Post Analysis**: Analyze specific posts for content quality or engagement metrics.
+
+**Content Verification**: Verify post details before interacting with it programmatically.
 <!-- END MANUAL -->
 
 ---
@@ -393,7 +413,7 @@ Get top-level comments on a Reddit post.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block uses the Reddit API via PRAW to fetch top-level comments on a post. Configure the sort order and limit to control which comments are returned.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -415,7 +435,9 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Sentiment Analysis**: Analyze comments to gauge community sentiment on a topic.
+
+**Content Moderation**: Review comments for compliance with community guidelines.
 <!-- END MANUAL -->
 
 ---
@@ -461,7 +483,7 @@ Get information about a Reddit user including karma, account age, and verificati
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block uses the Reddit API via PRAW to retrieve public profile information about a Reddit user, including karma scores, account age, and verification status.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -480,7 +502,9 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**User Verification**: Check user account age and karma before engaging.
+
+**User Research**: Gather user profile data for analysis or outreach decisions.
 <!-- END MANUAL -->
 
 ---
@@ -492,7 +516,7 @@ Get available link flair options for a subreddit.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block uses the Reddit API via PRAW to retrieve available link flair options for a subreddit. Use the flair IDs with the Create Reddit Post block to apply flair to your posts.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -512,7 +536,9 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Post Preparation**: Get available flairs before creating posts to ensure proper categorization.
+
+**Flair Selection**: Present flair options to users or select appropriate flair programmatically.
 <!-- END MANUAL -->
 
 ---
@@ -524,7 +550,7 @@ Get information about a subreddit including subscriber count, description, and r
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block uses the Reddit API via PRAW to retrieve metadata about a subreddit including subscriber count, description, creation date, and posting rules.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -543,7 +569,9 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Subreddit Research**: Analyze subreddits before deciding to post or engage.
+
+**Community Analysis**: Compare subreddit sizes and activity for market research.
 <!-- END MANUAL -->
 
 ---
@@ -555,7 +583,7 @@ Get the rules for a subreddit to ensure compliance before posting.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block uses the Reddit API via PRAW to retrieve the posting rules for a subreddit. Review these rules before posting to ensure compliance.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -575,7 +603,9 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Compliance Check**: Review rules before automated posting to avoid violations.
+
+**Content Guidelines**: Display rules to users before they submit content to a subreddit.
 <!-- END MANUAL -->
 
 ---
@@ -587,7 +617,7 @@ Fetch posts by a specific Reddit user.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block uses the Reddit API via PRAW to fetch posts submitted by a specific user. Configure sort order and limit to control which posts are returned.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -608,7 +638,9 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**User Analysis**: Analyze a user's posting history for content patterns or topics.
+
+**Influencer Research**: Research prolific posters in specific communities.
 <!-- END MANUAL -->
 
 ---
@@ -781,7 +813,7 @@ Fetch posts created by the authenticated Reddit user (you).
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block uses the Reddit API via PRAW to fetch posts you've submitted to Reddit. Useful for managing or analyzing your own posting history.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -801,7 +833,9 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Content Management**: Review and manage your Reddit posting history.
+
+**Performance Tracking**: Analyze the engagement of your previous posts.
 <!-- END MANUAL -->
 
 ---
@@ -813,7 +847,7 @@ Reply to a specific Reddit comment. Useful for threaded conversations.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block uses the Reddit API via PRAW to post a reply to an existing comment. The reply appears as a nested response in the comment thread.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -833,7 +867,9 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Automated Responses**: Reply to comments that mention your product or brand.
+
+**Conversation Engagement**: Participate in discussions by responding to relevant comments.
 <!-- END MANUAL -->
 
 ---
@@ -845,7 +881,7 @@ Search Reddit for posts matching a query. Can search all of Reddit or a specific
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block uses the Reddit API via PRAW to search for posts matching your query. Optionally limit the search to a specific subreddit and configure sort order and time filters.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -868,7 +904,9 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Brand Monitoring**: Search for mentions of your product or company across Reddit.
+
+**Topic Research**: Find discussions about specific topics or keywords.
 <!-- END MANUAL -->
 
 ---
@@ -963,7 +1001,7 @@ Send a private message (DM) to a Reddit user.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block uses the Reddit API via PRAW to send a private message to another Reddit user. The message appears in their inbox.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -984,7 +1022,9 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Outreach**: Send direct messages to users for collaboration or feedback requests.
+
+**Support**: Provide private support or follow-up to users who engaged with your content.
 <!-- END MANUAL -->
 
 ---

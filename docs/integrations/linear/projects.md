@@ -1,6 +1,6 @@
 # Linear Projects
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for searching and managing Linear projects.
 <!-- END MANUAL -->
 
 ## Linear Search Projects

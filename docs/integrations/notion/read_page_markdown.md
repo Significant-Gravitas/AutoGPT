@@ -1,6 +1,6 @@
 # Notion Read Page Markdown
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for reading Notion pages and converting them to Markdown format.
 <!-- END MANUAL -->
 
 ## Notion Read Page Markdown

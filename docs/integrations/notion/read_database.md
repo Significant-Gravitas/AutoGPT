@@ -1,6 +1,6 @@
 # Notion Read Database
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for querying and reading data from Notion databases.
 <!-- END MANUAL -->
 
 ## Notion Read Database

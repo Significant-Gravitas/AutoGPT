@@ -1,6 +1,6 @@
 # System Store Operations
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for browsing and retrieving agent details from the AutoGPT store.
 <!-- END MANUAL -->
 
 ## Get Store Agent Details

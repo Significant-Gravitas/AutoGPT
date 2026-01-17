@@ -1,6 +1,6 @@
 # Dataforseo Related Keywords
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for finding semantically related keywords using the DataForSEO Labs API.
 <!-- END MANUAL -->
 
 ## Data For Seo Related Keywords
