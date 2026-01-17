@@ -96,9 +96,9 @@ jina_credentials = APIKeyCredentials(
 )
 unreal_credentials = APIKeyCredentials(
     id="66f20754-1b81-48e4-91d0-f4f0dd82145f",
-    provider="unreal",
+    provider="unreal_speech",
     api_key=SecretStr(settings.secrets.unreal_speech_api_key),
-    title="Use Credits for Unreal",
+    title="Use Credits for Unreal Speech",
     expires_at=None,
 )
 open_router_credentials = APIKeyCredentials(
@@ -216,6 +216,14 @@ webshare_proxy_credentials = UserPasswordCredentials(
     title="Use Credits for Webshare Proxy",
 )
 
+openweathermap_credentials = APIKeyCredentials(
+    id="8b3d4e5f-6a7b-8c9d-0e1f-2a3b4c5d6e7f",
+    provider="openweathermap",
+    api_key=SecretStr(settings.secrets.openweathermap_api_key),
+    title="Use Credits for OpenWeatherMap",
+    expires_at=None,
+)
+
 DEFAULT_CREDENTIALS = [
     ollama_credentials,
     revid_credentials,
@@ -243,6 +251,7 @@ DEFAULT_CREDENTIALS = [
     llama_api_credentials,
     v0_credentials,
     webshare_proxy_credentials,
+    openweathermap_credentials,
 ]
 
 SYSTEM_CREDENTIAL_IDS = {cred.id for cred in DEFAULT_CREDENTIALS}
@@ -346,11 +355,17 @@ class IntegrationCredentialsStore:
             all_credentials.append(zerobounce_credentials)
         if settings.secrets.google_maps_api_key:
             all_credentials.append(google_maps_credentials)
+        if settings.secrets.llama_api_key:
+            all_credentials.append(llama_api_credentials)
+        if settings.secrets.v0_api_key:
+            all_credentials.append(v0_credentials)
         if (
             settings.secrets.webshare_proxy_username
             and settings.secrets.webshare_proxy_password
         ):
             all_credentials.append(webshare_proxy_credentials)
+        if settings.secrets.openweathermap_api_key:
+            all_credentials.append(openweathermap_credentials)
         return all_credentials
 
     async def get_creds_by_id(

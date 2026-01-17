@@ -602,6 +602,18 @@ class Scheduler(AppService):
         self.scheduler.add_listener(job_max_instances_listener, EVENT_JOB_MAX_INSTANCES)
         self.scheduler.start()
 
+        # Run embedding backfill immediately on startup
+        # This ensures blocks/docs are searchable right away, not after 6 hours
+        # Safe to run on multiple pods - uses upserts and checks for existing embeddings
+        if self.register_system_tasks:
+            logger.info("Running embedding backfill on startup...")
+            try:
+                result = ensure_embeddings_coverage()
+                logger.info(f"Startup embedding backfill complete: {result}")
+            except Exception as e:
+                logger.error(f"Startup embedding backfill failed: {e}")
+                # Don't fail startup - the scheduled job will retry later
+
         # Keep the service running since BackgroundScheduler doesn't block
         super().run_service()
 
