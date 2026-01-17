@@ -119,25 +119,32 @@ export function GenerateTestDataButton() {
               options={scriptTypeOptions}
             />
 
-            <div className="rounded-md bg-yellow-50 p-3 text-sm text-yellow-800">
-              <strong>Warning:</strong> This will add significant data to your
-              database. This endpoint is disabled in production environments.
+            <div className="rounded-md bg-yellow-50 p-3 text-yellow-800">
+              <Text variant="small" as="span">
+                <Text variant="small-medium" as="span">
+                  Warning:
+                </Text>{" "}
+                This will add significant data to your database. This endpoint
+                is disabled in production environments.
+              </Text>
             </div>
 
             {result && (
               <div
-                className={`rounded-md p-3 text-sm ${
+                className={`rounded-md p-3 ${
                   result.success
                     ? "bg-green-50 text-green-800"
                     : "bg-red-50 text-red-800"
                 }`}
               >
-                <p className="font-medium">{result.message}</p>
+                <Text variant="small-medium">{result.message}</Text>
                 {result.details && (
                   <ul className="mt-2 list-inside list-disc">
                     {Object.entries(result.details).map(([key, value]) => (
                       <li key={key}>
-                        {key.replace(/_/g, " ")}: {String(value)}
+                        <Text variant="small" as="span">
+                          {key.replace(/_/g, " ")}: {String(value)}
+                        </Text>
                       </li>
                     ))}
                   </ul>
