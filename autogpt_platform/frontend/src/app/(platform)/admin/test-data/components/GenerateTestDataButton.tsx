@@ -1,29 +1,28 @@
 "use client";
 
 import { useState } from "react";
-import { Button } from "@/components/__legacy__/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/__legacy__/ui/dialog";
-import { Label } from "@/components/__legacy__/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/__legacy__/ui/select";
+import { Button } from "@/components/atoms/Button/Button";
+import { Dialog } from "@/components/molecules/Dialog/Dialog";
+import { Select, SelectOption } from "@/components/atoms/Select/Select";
+import { Text } from "@/components/atoms/Text/Text";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 // Generated types and hooks from OpenAPI spec
 // Run `npm run generate:api` to regenerate after backend changes
 import { usePostAdminGenerateTestData } from "@/app/api/__generated__/endpoints/admin/admin";
 import type { GenerateTestDataResponse } from "@/app/api/__generated__/models/generateTestDataResponse";
 import type { TestDataScriptType } from "@/app/api/__generated__/models/testDataScriptType";
+
+const scriptTypeOptions: SelectOption[] = [
+  {
+    value: "e2e",
+    label:
+      "E2E Test Data - 15 users with graphs, agents, and store submissions",
+  },
+  {
+    value: "full",
+    label: "Full Test Data - 100+ users with comprehensive data (takes longer)",
+  },
+];
 
 export function GenerateTestDataButton() {
   const { toast } = useToast();
@@ -75,11 +74,15 @@ export function GenerateTestDataButton() {
     });
   };
 
+  const handleDialogClose = () => {
+    setIsDialogOpen(false);
+  };
+
   return (
     <>
       <Button
-        size="lg"
-        variant="default"
+        size="large"
+        variant="primary"
         onClick={() => {
           setIsDialogOpen(true);
           setResult(null);
@@ -88,49 +91,33 @@ export function GenerateTestDataButton() {
         Generate Test Data
       </Button>
 
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Generate Test Data</DialogTitle>
-            <DialogDescription className="pt-2">
-              This will populate the database with sample test data including
-              users, agents, graphs, store listings, and more.
-            </DialogDescription>
-          </DialogHeader>
+      <Dialog
+        title="Generate Test Data"
+        controlled={{
+          isOpen: isDialogOpen,
+          set: (open) => {
+            if (!open) handleDialogClose();
+          },
+        }}
+        styling={{ maxWidth: "32rem" }}
+      >
+        <Dialog.Content>
+          <Text variant="body" className="pb-4 text-neutral-600">
+            This will populate the database with sample test data including
+            users, agents, graphs, store listings, and more.
+          </Text>
 
           <div className="grid gap-4 py-4">
-            <div className="grid gap-2">
-              <Label htmlFor="scriptType">Script Type</Label>
-              <Select
-                value={scriptType}
-                onValueChange={(value) =>
-                  setScriptType(value as TestDataScriptType)
-                }
-                disabled={generateMutation.isPending}
-              >
-                <SelectTrigger id="scriptType">
-                  <SelectValue placeholder="Select script type" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="e2e">
-                    <div className="flex flex-col">
-                      <span className="font-medium">E2E Test Data</span>
-                      <span className="text-xs text-gray-500">
-                        15 users with graphs, agents, and store submissions
-                      </span>
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="full">
-                    <div className="flex flex-col">
-                      <span className="font-medium">Full Test Data</span>
-                      <span className="text-xs text-gray-500">
-                        100+ users with comprehensive data (takes longer)
-                      </span>
-                    </div>
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            <Select
+              label="Script Type"
+              id="scriptType"
+              value={scriptType}
+              onValueChange={(value) =>
+                setScriptType(value as TestDataScriptType)
+              }
+              disabled={generateMutation.isPending}
+              options={scriptTypeOptions}
+            />
 
             <div className="rounded-md bg-yellow-50 p-3 text-sm text-yellow-800">
               <strong>Warning:</strong> This will add significant data to your
@@ -159,26 +146,26 @@ export function GenerateTestDataButton() {
             )}
           </div>
 
-          <DialogFooter>
+          <Dialog.Footer>
             <Button
-              type="button"
               variant="outline"
-              onClick={() => setIsDialogOpen(false)}
+              onClick={handleDialogClose}
               disabled={generateMutation.isPending}
             >
               Cancel
             </Button>
             <Button
-              type="button"
+              variant="primary"
               onClick={handleGenerate}
               disabled={generateMutation.isPending}
+              loading={generateMutation.isPending}
             >
               {generateMutation.isPending
                 ? "Generating..."
                 : "Generate Test Data"}
             </Button>
-          </DialogFooter>
-        </DialogContent>
+          </Dialog.Footer>
+        </Dialog.Content>
       </Dialog>
     </>
   );
