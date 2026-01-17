@@ -19,7 +19,7 @@ The block supports subpage crawling to gather related content and offers various
 | text | Retrieve text content from pages | bool | No |
 | highlights | Text snippets most relevant from each page | HighlightSettings | No |
 | summary | LLM-generated summary of the webpage | SummarySettings | No |
-| livecrawl | Livecrawling options: never, fallback (default), always, preferred | "never" \| "fallback" \| "always" | No |
+| livecrawl | Livecrawling options: never, fallback (default), always, preferred | "never" \| "fallback" \| "always" \| "preferred" | No |
 | livecrawl_timeout | Timeout for livecrawling in milliseconds | int | No |
 | subpages | Number of subpages to crawl | int | No |
 | subpage_target | Keyword(s) to find specific subpages of search results | str \| List[str] | No |

@@ -14,7 +14,7 @@ It takes label details as input, connects to Todoist API, creates the label and 
 |-------|-------------|------|----------|
 | name | Name of the label | str | Yes |
 | order | Label order | int | No |
-| color | The color of the label icon | "berry_red" \| "red" \| "orange" | No |
+| color | The color of the label icon | "berry_red" \| "red" \| "orange" \| "yellow" \| "olive_green" \| "lime_green" \| "green" \| "mint_green" \| "teal" \| "sky_blue" \| "light_blue" \| "blue" \| "grape" \| "violet" \| "lavender" \| "magenta" \| "salmon" \| "charcoal" \| "grey" \| "taupe" | No |
 | is_favorite | Whether the label is a favorite | bool | No |
 
 ## Outputs
@@ -253,7 +253,7 @@ Only the fields you provide are updated; omitted fields retain their current val
 | label_id | ID of the label to update | str | Yes |
 | name | New name of the label | str | No |
 | order | Label order | int | No |
-| color | The color of the label icon | "berry_red" \| "red" \| "orange" | No |
+| color | The color of the label icon | "berry_red" \| "red" \| "orange" \| "yellow" \| "olive_green" \| "lime_green" \| "green" \| "mint_green" \| "teal" \| "sky_blue" \| "light_blue" \| "blue" \| "grape" \| "violet" \| "lavender" \| "magenta" \| "salmon" \| "charcoal" \| "grey" \| "taupe" | No |
 | is_favorite | Whether the label is a favorite (true/false) | bool | No |
 
 ### Outputs

@@ -16,7 +16,7 @@ You specify the entity type and which columns contain identifiers and URLs. The 
 |-------|-------------|------|----------|
 | title | Title for this import | str | Yes |
 | csv_data | CSV data to import (as a string) | str | Yes |
-| entity_type | Type of entities being imported | "company" \| "person" \| "article" | No |
+| entity_type | Type of entities being imported | "company" \| "person" \| "article" \| "research_paper" \| "custom" | No |
 | entity_description | Description for custom entity type | str | No |
 | identifier_column | Column index containing the identifier (0-based) | int | No |
 | url_column | Column index containing URLs (optional) | int | No |

@@ -16,7 +16,7 @@ The field is created immediately and becomes available for use in all records. R
 |-------|-------------|------|----------|
 | base_id | The Airtable base ID | str | Yes |
 | table_id | The table ID to add field to | str | Yes |
-| field_type | The type of the field to create | "singleLineText" \| "email" \| "url" | No |
+| field_type | The type of the field to create | "singleLineText" \| "email" \| "url" \| "multilineText" \| "number" \| "percent" \| "currency" \| "singleSelect" \| "multipleSelects" \| "singleCollaborator" \| "multipleCollaborators" \| "multipleRecordLinks" \| "date" \| "dateTime" \| "phoneNumber" \| "multipleAttachments" \| "checkbox" \| "formula" \| "createdTime" \| "rollup" \| "count" \| "lookup" \| "multipleLookupValues" \| "autoNumber" \| "barcode" \| "rating" \| "richText" \| "duration" \| "lastModifiedTime" \| "button" \| "createdBy" \| "lastModifiedBy" \| "externalSyncSource" \| "aiText" | No |
 | name | The name of the field to create | str | Yes |
 | description | The description of the field to create | str | No |
 | options | The options of the field to create | Dict[str, str] | No |

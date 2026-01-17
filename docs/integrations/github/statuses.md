@@ -16,7 +16,7 @@ Provide a context label to differentiate this status from others, an optional ta
 |-------|-------------|------|----------|
 | repo_url | URL of the GitHub repository | str | Yes |
 | sha | The SHA of the commit to set status for | str | Yes |
-| state | The state of the status (error, failure, pending, success) | "error" \| "failure" \| "pending" | Yes |
+| state | The state of the status (error, failure, pending, success) | "error" \| "failure" \| "pending" \| "success" | Yes |
 | target_url | URL with additional details about this status | str | No |
 | description | Short description of the status | str | No |
 | check_name | Label to differentiate this status from others | str | No |

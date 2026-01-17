@@ -17,8 +17,8 @@ You specify the commit SHA, check name, and current status. For completed checks
 | repo_url | URL of the GitHub repository | str | Yes |
 | name | The name of the check run (e.g., 'code-coverage') | str | Yes |
 | head_sha | The SHA of the commit to check | str | Yes |
-| status | Current status of the check run | "queued" \| "in_progress" \| "completed" | No |
-| conclusion | The final conclusion of the check (required if status is completed) | "success" \| "failure" \| "neutral" | No |
+| status | Current status of the check run | "queued" \| "in_progress" \| "completed" \| "waiting" \| "requested" \| "pending" | No |
+| conclusion | The final conclusion of the check (required if status is completed) | "success" \| "failure" \| "neutral" \| "cancelled" \| "timed_out" \| "action_required" \| "skipped" | No |
 | details_url | The URL for the full details of the check | str | No |
 | output_title | Title of the check run output | str | No |
 | output_summary | Summary of the check run output | str | No |
@@ -60,8 +60,8 @@ You can update the status from queued to in_progress to completed, and set the f
 |-------|-------------|------|----------|
 | repo_url | URL of the GitHub repository | str | Yes |
 | check_run_id | The ID of the check run to update | int | Yes |
-| status | New status of the check run | "queued" \| "in_progress" \| "completed" | Yes |
-| conclusion | The final conclusion of the check (required if status is completed) | "success" \| "failure" \| "neutral" | Yes |
+| status | New status of the check run | "queued" \| "in_progress" \| "completed" \| "waiting" \| "requested" \| "pending" | Yes |
+| conclusion | The final conclusion of the check (required if status is completed) | "success" \| "failure" \| "neutral" \| "cancelled" \| "timed_out" \| "action_required" \| "skipped" | Yes |
 | output_title | New title of the check run output | str | No |
 | output_summary | New summary of the check run output | str | No |
 | output_text | New detailed text of the check run output | str | No |

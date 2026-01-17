@@ -19,7 +19,7 @@ Configure the crawl depth with the limit parameter, choose output formats (markd
 | only_main_content | Only return the main content of the page excluding headers, navs, footers, etc. | bool | No |
 | max_age | The maximum age of the page in milliseconds - default is 1 hour | int | No |
 | wait_for | Specify a delay in milliseconds before fetching the content, allowing the page sufficient time to load. | int | No |
-| formats | The format of the crawl | List["markdown" \| "html" \| "rawHtml"] | No |
+| formats | The format of the crawl | List["markdown" \| "html" \| "rawHtml" \| "links" \| "screenshot" \| "screenshot@fullPage" \| "json" \| "changeTracking"] | No |
 
 ## Outputs
 

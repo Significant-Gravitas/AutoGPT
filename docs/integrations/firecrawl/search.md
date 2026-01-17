@@ -18,7 +18,7 @@ Configure the number of results to return, output formats (markdown, HTML, raw H
 | limit | The number of pages to crawl | int | No |
 | max_age | The maximum age of the page in milliseconds - default is 1 hour | int | No |
 | wait_for | Specify a delay in milliseconds before fetching the content, allowing the page sufficient time to load. | int | No |
-| formats | Returns the content of the search if specified | List["markdown" \| "html" \| "rawHtml"] | No |
+| formats | Returns the content of the search if specified | List["markdown" \| "html" \| "rawHtml" \| "links" \| "screenshot" \| "screenshot@fullPage" \| "json" \| "changeTracking"] | No |
 
 ## Outputs
 

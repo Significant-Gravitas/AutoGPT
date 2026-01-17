@@ -57,7 +57,7 @@ Enrichments support various output formats including text, dates, numbers, and p
 | webset_id | The ID or external ID of the Webset | str | Yes |
 | description | What data to extract from each item | str | Yes |
 | title | Short title for this enrichment (auto-generated if not provided) | str | No |
-| format | Expected format of the extracted data | "text" \| "date" \| "number" | No |
+| format | Expected format of the extracted data | "text" \| "date" \| "number" \| "options" \| "email" \| "phone" | No |
 | options | Available options when format is 'options' | List[str] | No |
 | apply_to_existing | Apply this enrichment to existing items in the webset | bool | No |
 | metadata | Metadata to attach to the enrichment | Dict[str, Any] | No |
@@ -193,7 +193,7 @@ Changes apply to future items; existing enrichment data is not reprocessed unles
 | webset_id | The ID or external ID of the Webset | str | Yes |
 | enrichment_id | The ID of the enrichment to update | str | Yes |
 | description | New description for what data to extract | str | No |
-| format | New format for the extracted data | "text" \| "date" \| "number" | No |
+| format | New format for the extracted data | "text" \| "date" \| "number" \| "options" \| "email" \| "phone" | No |
 | options | New options when format is 'options' | List[str] | No |
 | metadata | New metadata to attach to the enrichment | Dict[str, Any] | No |
 

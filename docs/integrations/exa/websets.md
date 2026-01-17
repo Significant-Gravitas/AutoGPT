@@ -95,7 +95,7 @@ The block supports advanced features like scoped searches (searching within spec
 |-------|-------------|------|----------|
 | search_query | Your search query. Use this to describe what you are looking for. Any URL provided will be crawled and used as context for the search. | str | Yes |
 | search_count | Number of items the search will attempt to find. The actual number of items found may be less than this number depending on the search complexity. | int | No |
-| search_entity_type | Entity type: 'company', 'person', 'article', 'research_paper', or 'custom'. If not provided, we automatically detect the entity from the query. | "company" \| "person" \| "article" | No |
+| search_entity_type | Entity type: 'company', 'person', 'article', 'research_paper', or 'custom'. If not provided, we automatically detect the entity from the query. | "company" \| "person" \| "article" \| "research_paper" \| "custom" \| "auto" | No |
 | search_entity_description | Description for custom entity type (required when search_entity_type is 'custom') | str | No |
 | search_criteria | List of criteria descriptions that every item will be evaluated against. If not provided, we automatically detect the criteria from the query. | List[str] | No |
 | search_exclude_sources | List of source IDs (imports or websets) to exclude from search results | List[str] | No |
@@ -107,7 +107,7 @@ The block supports advanced features like scoped searches (searching within spec
 | import_sources | List of source IDs to import from | List[str] | No |
 | import_types | List of source types corresponding to import sources ('import' or 'webset') | List["import" \| "webset"] | No |
 | enrichment_descriptions | List of enrichment task descriptions to perform on each webset item | List[str] | No |
-| enrichment_formats | List of formats for enrichment responses ('text', 'date', 'number', 'options', 'email', 'phone'). If not specified, we automatically select the best format. | List["text" \| "date" \| "number"] | No |
+| enrichment_formats | List of formats for enrichment responses ('text', 'date', 'number', 'options', 'email', 'phone'). If not specified, we automatically select the best format. | List["text" \| "date" \| "number" \| "options" \| "email" \| "phone"] | No |
 | enrichment_options | List of option lists for enrichments with 'options' format. Each inner list contains the option labels. | List[List[str]] | No |
 | enrichment_metadata | List of metadata dictionaries for enrichments | List[Dict[str, Any]] | No |
 | external_id | External identifier for the webset. You can use this to reference the webset by your own internal identifiers. | str | No |
@@ -275,7 +275,7 @@ Use this to refine your query and understand what results to expect. The block a
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | query | Your search query to preview. Use this to see how Exa will interpret your search before creating a webset. | str | Yes |
-| entity_type | Entity type to force: 'company', 'person', 'article', 'research_paper', or 'custom'. If not provided, Exa will auto-detect. | "company" \| "person" \| "article" | No |
+| entity_type | Entity type to force: 'company', 'person', 'article', 'research_paper', or 'custom'. If not provided, Exa will auto-detect. | "company" \| "person" \| "article" \| "research_paper" \| "custom" \| "auto" | No |
 | entity_description | Description for custom entity type (required when entity_type is 'custom') | str | No |
 
 ### Outputs

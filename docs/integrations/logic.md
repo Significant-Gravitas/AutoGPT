@@ -12,7 +12,7 @@ The Calculator block takes in two numbers and an operation choice. It then appli
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| operation | Choose the math operation you want to perform | "Add" \| "Subtract" \| "Multiply" | Yes |
+| operation | Choose the math operation you want to perform | "Add" \| "Subtract" \| "Multiply" \| "Divide" \| "Power" | Yes |
 | a | Enter the first number (A) | float | Yes |
 | b | Enter the second number (B) | float | Yes |
 | round_result | Do you want to round the result to a whole number? | bool | No |
@@ -48,7 +48,7 @@ Optionally specify yes_value and no_value to output different data than the inpu
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | value1 | Enter the first value for comparison | Value1 | Yes |
-| operator | Choose the comparison operator | "==" \| "!=" \| ">" | Yes |
+| operator | Choose the comparison operator | "==" \| "!=" \| ">" \| "<" \| ">=" \| "<=" | Yes |
 | value2 | Enter the second value for comparison | Value2 | Yes |
 | yes_value | (Optional) Value to output if the condition is true. If not provided, value1 will be used. | Yes Value | No |
 | no_value | (Optional) Value to output if the condition is false. If not provided, value1 will be used. | No Value | No |
@@ -121,7 +121,7 @@ Configure sample_size to control how many items to select. Use random_seed for r
 |-------|-------------|------|----------|
 | data | The dataset to sample from. Can be a single dictionary, a list of dictionaries, or a list of lists. | Dict[str, Any] \| List[Dict[str, Any] \| List[Any]] | Yes |
 | sample_size | The number of samples to take from the dataset. | int | No |
-| sampling_method | The method to use for sampling. | "random" \| "systematic" \| "top" | No |
+| sampling_method | The method to use for sampling. | "random" \| "systematic" \| "top" \| "bottom" \| "stratified" \| "weighted" \| "reservoir" \| "cluster" | No |
 | accumulate | Whether to accumulate data before sampling. | bool | No |
 | random_seed | Seed for random number generator (optional). | int | No |
 | stratify_key | Key to use for stratified sampling (required for stratified sampling). | str | No |

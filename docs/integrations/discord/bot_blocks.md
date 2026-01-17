@@ -18,7 +18,7 @@ Configure auto-archive duration and optionally send an initial message when the 
 | server_name | Server name (only needed if using channel name) | str | No |
 | thread_name | The name of the thread to create | str | Yes |
 | is_private | Whether to create a private thread (requires Boost Level 2+) or public thread | bool | No |
-| auto_archive_duration | Duration before the thread is automatically archived | "60" \| "1440" \| "4320" | No |
+| auto_archive_duration | Duration before the thread is automatically archived | "60" \| "1440" \| "4320" \| "10080" | No |
 | message_content | Optional initial message to send in the thread | str | No |
 
 ## Outputs

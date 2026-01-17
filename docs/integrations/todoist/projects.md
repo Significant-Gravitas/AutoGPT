@@ -14,7 +14,7 @@ Takes project details and creates via Todoist API.
 |-------|-------------|------|----------|
 | name | Name of the project | str | Yes |
 | parent_id | Parent project ID | str | No |
-| color | Color of the project icon | "berry_red" \| "red" \| "orange" | No |
+| color | Color of the project icon | "berry_red" \| "red" \| "orange" \| "yellow" \| "olive_green" \| "lime_green" \| "green" \| "mint_green" \| "teal" \| "sky_blue" \| "light_blue" \| "blue" \| "grape" \| "violet" \| "lavender" \| "magenta" \| "salmon" \| "charcoal" \| "grey" \| "taupe" | No |
 | is_favorite | Whether the project is a favorite | bool | No |
 | view_style | Display style (list or board) | str | No |
 
@@ -171,7 +171,7 @@ Takes project ID and updated fields, applies via Todoist API.
 |-------|-------------|------|----------|
 | project_id | ID of project to update | str | Yes |
 | name | New name for the project | str | No |
-| color | New color for the project icon | "berry_red" \| "red" \| "orange" | No |
+| color | New color for the project icon | "berry_red" \| "red" \| "orange" \| "yellow" \| "olive_green" \| "lime_green" \| "green" \| "mint_green" \| "teal" \| "sky_blue" \| "light_blue" \| "blue" \| "grape" \| "violet" \| "lavender" \| "magenta" \| "salmon" \| "charcoal" \| "grey" \| "taupe" | No |
 | is_favorite | Whether the project should be a favorite | bool | No |
 | view_style | Display style (list or board) | str | No |
 

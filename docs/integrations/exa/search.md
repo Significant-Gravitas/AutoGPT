@@ -15,8 +15,8 @@ The block supports powerful filtering by domain, date ranges, content categories
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | query | The search query | str | Yes |
-| type | Type of search | "keyword" \| "neural" \| "fast" | No |
-| category | Category to search within: company, research paper, news, pdf, github, tweet, personal site, linkedin profile, financial report | "company" \| "research paper" \| "news" | No |
+| type | Type of search | "keyword" \| "neural" \| "fast" \| "auto" | No |
+| category | Category to search within: company, research paper, news, pdf, github, tweet, personal site, linkedin profile, financial report | "company" \| "research paper" \| "news" \| "pdf" \| "github" \| "tweet" \| "personal site" \| "linkedin profile" \| "financial report" | No |
 | user_location | The two-letter ISO country code of the user (e.g., 'US') | str | No |
 | number_of_results | Number of results to return | int | No |
 | include_domains | Domains to include in search | List[str] | No |

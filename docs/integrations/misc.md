@@ -183,7 +183,7 @@ The sandbox includes pip and npm pre-installed. Set timeout to limit execution t
 |-------|-------------|------|----------|
 | setup_commands | Shell commands to set up the sandbox before running the code. You can use `curl` or `git` to install your desired Debian based package manager. `pip` and `npm` are pre-installed.  These commands are executed with `sh`, in the foreground. | List[str] | No |
 | code | Code to execute in the sandbox | str | No |
-| language | Programming language to execute | "python" \| "js" \| "bash" | No |
+| language | Programming language to execute | "python" \| "js" \| "bash" \| "r" \| "java" | No |
 | timeout | Execution timeout in seconds | int | No |
 | dispose_sandbox | Whether to dispose of the sandbox immediately after execution. If disabled, the sandbox will run until its timeout expires. | bool | No |
 | template_id | You can use an E2B sandbox template by entering its ID here. Check out the E2B docs for more details: [E2B - Sandbox template](https://e2b.dev/docs/sandbox-template) | str | No |
@@ -228,7 +228,7 @@ Use this for multi-step code execution where each step builds on previous result
 |-------|-------------|------|----------|
 | sandbox_id | ID of the sandbox instance to execute the code in | str | Yes |
 | step_code | Code to execute in the sandbox | str | No |
-| language | Programming language to execute | "python" \| "js" \| "bash" | No |
+| language | Programming language to execute | "python" \| "js" \| "bash" \| "r" \| "java" | No |
 | dispose_sandbox | Whether to dispose of the sandbox after executing this code. | bool | No |
 
 ### Outputs
@@ -332,7 +332,7 @@ _Add technical explanation here._
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| inbox_type | Type of inbox items to fetch | "all" \| "unread" \| "messages" | No |
+| inbox_type | Type of inbox items to fetch | "all" \| "unread" \| "messages" \| "mentions" \| "comment_replies" | No |
 | limit | Maximum number of items to fetch | int | No |
 | mark_read | Whether to mark fetched items as read | bool | No |
 
@@ -397,7 +397,7 @@ _Add technical explanation here._
 |-------|-------------|------|----------|
 | post_id | The ID of the post to get comments from | str | Yes |
 | limit | Maximum number of top-level comments to fetch (max 100) | int | No |
-| sort | Sort order for comments | "best" \| "top" \| "new" | No |
+| sort | Sort order for comments | "best" \| "top" \| "new" \| "controversial" \| "old" \| "qa" | No |
 
 ### Outputs
 
@@ -591,7 +591,7 @@ _Add technical explanation here._
 |-------|-------------|------|----------|
 | username | Reddit username to fetch posts from (without /u/ prefix) | str | Yes |
 | post_limit | Maximum number of posts to fetch | int | No |
-| sort | Sort order for user posts | "new" \| "hot" \| "top" | No |
+| sort | Sort order for user posts | "new" \| "hot" \| "top" \| "controversial" | No |
 
 ### Outputs
 
@@ -626,7 +626,7 @@ The sandbox persists until its timeout expires or it's explicitly disposed. Use 
 |-------|-------------|------|----------|
 | setup_commands | Shell commands to set up the sandbox before running the code. You can use `curl` or `git` to install your desired Debian based package manager. `pip` and `npm` are pre-installed.  These commands are executed with `sh`, in the foreground. | List[str] | No |
 | setup_code | Code to execute in the sandbox | str | No |
-| language | Programming language to execute | "python" \| "js" \| "bash" | No |
+| language | Programming language to execute | "python" \| "js" \| "bash" \| "r" \| "java" | No |
 | timeout | Execution timeout in seconds | int | No |
 | template_id | You can use an E2B sandbox template by entering its ID here. Check out the E2B docs for more details: [E2B - Sandbox template](https://e2b.dev/docs/sandbox-template) | str | No |
 
@@ -784,7 +784,7 @@ _Add technical explanation here._
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | post_limit | Maximum number of posts to fetch | int | No |
-| sort | Sort order for posts | "new" \| "hot" \| "top" | No |
+| sort | Sort order for posts | "new" \| "hot" \| "top" \| "controversial" | No |
 
 ### Outputs
 
@@ -849,8 +849,8 @@ _Add technical explanation here._
 |-------|-------------|------|----------|
 | query | Search query string | str | Yes |
 | subreddit | Limit search to a specific subreddit (without /r/ prefix) | str | No |
-| sort | Sort order for search results | "relevance" \| "hot" \| "top" | No |
-| time_filter | Time filter for search results | "all" \| "day" \| "hour" | No |
+| sort | Sort order for search results | "relevance" \| "hot" \| "top" \| "new" \| "comments" | No |
+| time_filter | Time filter for search results | "all" \| "day" \| "hour" \| "month" \| "week" \| "year" | No |
 | limit | Maximum number of results to return | int | No |
 
 ### Outputs
@@ -885,7 +885,7 @@ Supports JSON, form-encoded, and multipart requests with file uploads. The respo
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | url | The URL to send the request to | str | Yes |
-| method | The HTTP method to use for the request | "GET" \| "POST" \| "PUT" | No |
+| method | The HTTP method to use for the request | "GET" \| "POST" \| "PUT" \| "DELETE" \| "PATCH" \| "OPTIONS" \| "HEAD" | No |
 | headers | The headers to include in the request | Dict[str, str] | No |
 | json_format | If true, send the body as JSON (unless files are also present). | bool | No |
 | body | Form/JSON body payload. If files are supplied, this must be a mapping of form‑fields. | Dict[str, Any] | No |
@@ -1001,7 +1001,7 @@ The response body is parsed and returned. Separate error outputs distinguish bet
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | url | The URL to send the request to | str | Yes |
-| method | The HTTP method to use for the request | "GET" \| "POST" \| "PUT" | No |
+| method | The HTTP method to use for the request | "GET" \| "POST" \| "PUT" \| "DELETE" \| "PATCH" \| "OPTIONS" \| "HEAD" | No |
 | headers | The headers to include in the request | Dict[str, str] | No |
 | json_format | If true, send the body as JSON (unless files are also present). | bool | No |
 | body | Form/JSON body payload. If files are supplied, this must be a mapping of form‑fields. | Dict[str, Any] | No |

@@ -171,7 +171,7 @@ The export preserves document formatting as closely as possible in the target fo
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | document | Select a Google Doc to export | Document | No |
-| format | Export format | "application/pdf" \| "application/vnd.openxmlformats-officedocument.wordprocessingml.document" \| "application/vnd.oasis.opendocument.text" | No |
+| format | Export format | "application/pdf" \| "application/vnd.openxmlformats-officedocument.wordprocessingml.document" \| "application/vnd.oasis.opendocument.text" \| "text/plain" \| "text/html" \| "application/epub+zip" \| "application/rtf" | No |
 
 ### Outputs
 

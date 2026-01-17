@@ -261,7 +261,7 @@ You can configure which file types to display (documents, spreadsheets, presenta
 | description | The description of the input. | str | No |
 | advanced | Whether to show the input in the advanced section, if the field is not required. | bool | No |
 | secret | Whether the input should be treated as a secret. | bool | No |
-| allowed_views | Which views to show in the file picker (DOCS, SPREADSHEETS, PRESENTATIONS, etc.). | List["DOCS" \| "DOCUMENTS" \| "SPREADSHEETS"] | No |
+| allowed_views | Which views to show in the file picker (DOCS, SPREADSHEETS, PRESENTATIONS, etc.). | List["DOCS" \| "DOCUMENTS" \| "SPREADSHEETS" \| "PRESENTATIONS" \| "DOCS_IMAGES" \| "FOLDERS"] | No |
 | allow_folder_selection | Whether to allow selecting folders. | bool | No |
 
 ### Outputs
@@ -1356,7 +1356,7 @@ This is useful when data from different sources needs to be in a consistent type
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | value | The value to convert to a universal type. | Value | Yes |
-| type | The type to convert the value to. | "string" \| "number" \| "boolean" | Yes |
+| type | The type to convert the value to. | "string" \| "number" \| "boolean" \| "list" \| "dictionary" | Yes |
 
 ### Outputs
 

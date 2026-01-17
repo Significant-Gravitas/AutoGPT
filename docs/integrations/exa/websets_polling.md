@@ -107,7 +107,7 @@ Use this for general-purpose waiting on webset operations when you don't need to
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | webset_id | The ID or external ID of the Webset to monitor | str | Yes |
-| target_status | Status to wait for (idle=all operations complete, completed=search done, running=actively processing) | "idle" \| "completed" \| "running" | No |
+| target_status | Status to wait for (idle=all operations complete, completed=search done, running=actively processing) | "idle" \| "completed" \| "running" \| "paused" \| "any_complete" | No |
 | timeout | Maximum time to wait in seconds | int | No |
 | check_interval | Initial interval between status checks in seconds | int | No |
 | max_interval | Maximum interval between checks (for exponential backoff) | int | No |

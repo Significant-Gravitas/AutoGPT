@@ -60,7 +60,7 @@ Results include basic agent information and are output both as a list and indivi
 |-------|-------------|------|----------|
 | query | Search query to find agents | str | No |
 | category | Filter by category | str | No |
-| sort_by | How to sort the results | "rating" \| "runs" \| "name" | No |
+| sort_by | How to sort the results | "rating" \| "runs" \| "name" \| "updated_at" | No |
 | limit | Maximum number of results to return | int | No |
 
 ### Outputs

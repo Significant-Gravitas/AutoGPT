@@ -57,7 +57,7 @@ Searches support scoped and exclusion sources, criteria validation, and relation
 | webset_id | The ID or external ID of the Webset | str | Yes |
 | query | Search query describing what to find | str | Yes |
 | count | Number of items to find | int | No |
-| entity_type | Type of entity to search for | "company" \| "person" \| "article" | No |
+| entity_type | Type of entity to search for | "company" \| "person" \| "article" \| "research_paper" \| "custom" \| "auto" | No |
 | entity_description | Description for custom entity type | str | No |
 | criteria | List of criteria that items must meet. If not provided, auto-detected from query. | List[str] | No |
 | behavior | How new results interact with existing items | "override" \| "append" \| "merge" | No |
@@ -115,7 +115,7 @@ Use this pattern to prevent duplicate searches when workflows retry or run multi
 | webset_id | The ID or external ID of the Webset | str | Yes |
 | query | Search query to find or create | str | Yes |
 | count | Number of items to find (only used if creating new search) | int | No |
-| entity_type | Entity type (only used if creating) | "company" \| "person" \| "article" | No |
+| entity_type | Entity type (only used if creating) | "company" \| "person" \| "article" \| "research_paper" \| "custom" \| "auto" | No |
 | behavior | Search behavior (only used if creating) | "override" \| "append" \| "merge" | No |
 
 ### Outputs

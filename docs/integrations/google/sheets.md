@@ -500,7 +500,7 @@ Returns matching rows along with their original 1-based row indices, making it e
 | sheet_name | Sheet name (optional, defaults to first sheet) | str | No |
 | filter_column | Column to filter on (header name or column letter like 'A', 'B') | str | Yes |
 | filter_value | Value to filter by (not used for is_empty/is_not_empty operators) | str | No |
-| operator | Filter comparison operator | "equals" \| "not_equals" \| "contains" | No |
+| operator | Filter comparison operator | "equals" \| "not_equals" \| "contains" \| "not_contains" \| "greater_than" \| "less_than" \| "greater_than_or_equal" \| "less_than_or_equal" \| "is_empty" \| "is_not_empty" | No |
 | match_case | Whether to match case in comparisons | bool | No |
 | include_header | Include header row in output | bool | No |
 
