@@ -6,6 +6,7 @@ import Avatar, {
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
 import { Button } from "@/components/atoms/Button/Button";
+import { isLogoutInProgress } from "@/lib/autogpt-server-api/helpers";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { cn } from "@/lib/utils";
 import {
@@ -47,6 +48,7 @@ export function ChatMessage({
   const { user } = useSupabase();
   const router = useRouter();
   const [copied, setCopied] = useState(false);
+  const logoutInProgress = isLogoutInProgress();
   const {
     isUser,
     isToolCall,
@@ -58,7 +60,7 @@ export function ChatMessage({
   const { data: profile } = useGetV2GetUserProfile({
     query: {
       select: (res) => (res.status === 200 ? res.data : null),
-      enabled: isUser && !!user,
+      enabled: isUser && !!user && !logoutInProgress,
       queryKey: ["/api/store/profile", user?.id],
     },
   });

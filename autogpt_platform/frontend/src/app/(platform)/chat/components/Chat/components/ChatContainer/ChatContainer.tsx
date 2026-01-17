@@ -1,6 +1,6 @@
 import type { SessionDetailResponse } from "@/app/api/__generated__/models/sessionDetailResponse";
 import { cn } from "@/lib/utils";
-import { useCallback } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { usePageContext } from "../../usePageContext";
 import { ChatInput } from "../ChatInput/ChatInput";
 import { MessageList } from "../MessageList/MessageList";
@@ -11,12 +11,14 @@ export interface ChatContainerProps {
   sessionId: string | null;
   initialMessages: SessionDetailResponse["messages"];
   className?: string;
+  initialPrompt?: string | null;
 }
 
 export function ChatContainer({
   sessionId,
   initialMessages,
   className,
+  initialPrompt,
 }: ChatContainerProps) {
   const { messages, streamingChunks, isStreaming, sendMessage } =
     useChatContainer({
@@ -24,6 +26,7 @@ export function ChatContainer({
       initialMessages,
     });
   const { capturePageContext } = usePageContext();
+  const hasSentInitialRef = useRef(false);
 
   // Wrap sendMessage to automatically capture page context
   const sendMessageWithContext = useCallback(
@@ -32,6 +35,18 @@ export function ChatContainer({
       await sendMessage(content, isUserMessage, context);
     },
     [sendMessage, capturePageContext],
+  );
+
+  useEffect(
+    function handleInitialPrompt() {
+      if (!initialPrompt) return;
+      if (hasSentInitialRef.current) return;
+      if (!sessionId) return;
+      if (messages.length > 0) return;
+      hasSentInitialRef.current = true;
+      void sendMessageWithContext(initialPrompt);
+    },
+    [initialPrompt, messages.length, sendMessageWithContext, sessionId],
   );
 
   const quickActions = [
@@ -74,7 +89,7 @@ export function ChatContainer({
       </div>
 
       {/* Input - Always visible */}
-      <div className="fixed bottom-0 left-0 right-0 z-50 border-t border-zinc-200 bg-white p-4">
+      <div className="sticky bottom-0 z-50 border-t border-zinc-200 bg-white p-4">
         <ChatInput
           onSend={sendMessageWithContext}
           disabled={isStreaming || !sessionId}

@@ -1,12 +1,13 @@
 "use client";
 
 import { IconLaptop } from "@/components/__legacy__/ui/icons";
+import { getHomepageRoute } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import {
-  ChatsIcon,
   CubeIcon,
   HouseIcon,
+  ListChecksIcon,
   StorefrontIcon,
 } from "@phosphor-icons/react/dist/ssr";
 import Link from "next/link";
@@ -22,8 +23,13 @@ interface Props {
 
 export function NavbarLink({ name, href }: Props) {
   const pathname = usePathname();
-  const isActive = pathname.includes(href);
-  const chat_enabled = useGetFlag(Flag.CHAT);
+  const isChatEnabled = useGetFlag(Flag.CHAT);
+  const homepageRoute = getHomepageRoute(isChatEnabled);
+
+  const isActive =
+    href === homepageRoute
+      ? pathname === "/" || pathname.startsWith(homepageRoute)
+      : pathname.includes(href);
 
   return (
     <Link href={href} data-testid={`navbar-link-${name.toLowerCase()}`}>
@@ -58,7 +64,7 @@ export function NavbarLink({ name, href }: Props) {
             )}
           />
         )}
-        {href === "/library" && (
+        {href === "/copilot" && (
           <HouseIcon
             className={cn(
               iconWidthClass,
@@ -66,14 +72,22 @@ export function NavbarLink({ name, href }: Props) {
             )}
           />
         )}
-        {chat_enabled && href === "/chat" && (
-          <ChatsIcon
-            className={cn(
-              iconWidthClass,
-              isActive && "text-white dark:text-black",
-            )}
-          />
-        )}
+        {href === "/library" &&
+          (isChatEnabled ? (
+            <ListChecksIcon
+              className={cn(
+                iconWidthClass,
+                isActive && "text-white dark:text-black",
+              )}
+            />
+          ) : (
+            <HouseIcon
+              className={cn(
+                iconWidthClass,
+                isActive && "text-white dark:text-black",
+              )}
+            />
+          ))}
         <Text
           variant="h5"
           className={cn(

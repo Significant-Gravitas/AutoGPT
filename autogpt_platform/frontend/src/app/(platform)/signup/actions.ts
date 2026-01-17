@@ -1,5 +1,6 @@
 "use server";
 
+import { getHomepageRoute } from "@/lib/constants";
 import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
 import { signupFormSchema } from "@/types/auth";
 import * as Sentry from "@sentry/nextjs";
@@ -58,7 +59,7 @@ export async function signup(
     }
 
     const isOnboardingEnabled = await shouldShowOnboarding();
-    const next = isOnboardingEnabled ? "/onboarding" : "/";
+    const next = isOnboardingEnabled ? "/onboarding" : getHomepageRoute();
 
     return { success: true, next };
   } catch (err) {

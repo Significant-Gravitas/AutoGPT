@@ -6,7 +6,11 @@ import { toast } from "sonner";
 import { useChatSession } from "./useChatSession";
 import { useChatStream } from "./useChatStream";
 
-export function useChat() {
+interface UseChatArgs {
+  urlSessionId?: string | null;
+}
+
+export function useChat({ urlSessionId }: UseChatArgs = {}) {
   const hasCreatedSessionRef = useRef(false);
   const hasClaimedSessionRef = useRef(false);
   const { user } = useSupabase();
@@ -24,7 +28,7 @@ export function useChat() {
     clearSession: clearSessionBase,
     loadSession,
   } = useChatSession({
-    urlSessionId: null,
+    urlSessionId,
     autoCreate: false,
   });
 

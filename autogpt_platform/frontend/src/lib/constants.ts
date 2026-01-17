@@ -8,3 +8,9 @@ export const IMPERSONATION_STORAGE_KEY = "admin-impersonate-user-id";
 
 // API key authentication
 export const API_KEY_HEADER_NAME = "X-API-Key";
+
+// Routes
+export function getHomepageRoute(isChatEnabled?: boolean | null): string {
+  if (isChatEnabled === true) return "/copilot";
+  return "/library";
+}

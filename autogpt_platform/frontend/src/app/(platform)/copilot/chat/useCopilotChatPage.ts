@@ -7,13 +7,14 @@ import {
   useGetFlag,
 } from "@/services/feature-flags/use-get-flag";
 import { useFlags } from "launchdarkly-react-client-sdk";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect } from "react";
 
-export default function ChatPage() {
+export function useCopilotChatPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const isChatEnabled = useGetFlag(Flag.CHAT);
   const flags = useFlags<FlagValues>();
-  const router = useRouter();
   const homepageRoute = getHomepageRoute(isChatEnabled);
   const envEnabled = process.env.NEXT_PUBLIC_LAUNCHDARKLY_ENABLED === "true";
   const clientId = process.env.NEXT_PUBLIC_LAUNCHDARKLY_CLIENT_ID;
@@ -21,14 +22,23 @@ export default function ChatPage() {
   const isFlagReady =
     !isLaunchDarklyConfigured || flags[Flag.CHAT] !== undefined;
 
-  useEffect(() => {
-    if (!isFlagReady) return;
-    if (isChatEnabled === false) {
-      router.replace(homepageRoute);
-      return;
-    }
-    router.replace("/copilot/chat");
-  }, [homepageRoute, isChatEnabled, isFlagReady, router]);
+  const sessionId = searchParams.get("sessionId");
+  const prompt = searchParams.get("prompt");
 
-  return null;
+  useEffect(
+    function guardAccess() {
+      if (!isFlagReady) return;
+      if (isChatEnabled === false) {
+        router.replace(homepageRoute);
+      }
+    },
+    [homepageRoute, isChatEnabled, isFlagReady, router],
+  );
+
+  return {
+    isFlagReady,
+    isChatEnabled,
+    sessionId,
+    prompt,
+  };
 }

@@ -4,6 +4,7 @@ import { useGetV2GetUserProfile } from "@/app/api/__generated__/endpoints/store/
 import { okData } from "@/app/api/helpers";
 import { IconAutoGPTLogo, IconType } from "@/components/__legacy__/ui/icons";
 import { PreviewBanner } from "@/components/layout/Navbar/components/PreviewBanner/PreviewBanner";
+import { isLogoutInProgress } from "@/lib/autogpt-server-api/helpers";
 import { useBreakpoint } from "@/lib/hooks/useBreakpoint";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { environment } from "@/services/environment";
@@ -24,12 +25,13 @@ export function Navbar() {
   const dynamicMenuItems = getAccountMenuItems(user?.role);
   const isChatEnabled = useGetFlag(Flag.CHAT);
   const previewBranchName = environment.getPreviewStealingDev();
+  const logoutInProgress = isLogoutInProgress();
 
   const { data: profile, isLoading: isProfileLoading } = useGetV2GetUserProfile(
     {
       query: {
         select: okData,
-        enabled: isLoggedIn && !!user,
+        enabled: isLoggedIn && !!user && !logoutInProgress,
         // Include user ID in query key to ensure cache invalidation when user changes
         queryKey: ["/api/store/profile", user?.id],
       },
@@ -40,10 +42,13 @@ export function Navbar() {
 
   const shouldShowPreviewBanner = Boolean(isLoggedIn && previewBranchName);
 
-  const actualLoggedInLinks =
-    isChatEnabled === true
-      ? loggedInLinks.concat([{ name: "Chat", href: "/chat" }])
-      : loggedInLinks;
+  const homeHref = isChatEnabled === true ? "/copilot" : "/library";
+
+  const actualLoggedInLinks = [
+    { name: "Home", href: homeHref },
+    ...(isChatEnabled === true ? [{ name: "Tasks", href: "/library" }] : []),
+    ...loggedInLinks,
+  ];
 
   if (isUserLoading) {
     return <NavbarLoading />;
@@ -117,21 +122,17 @@ export function Navbar() {
                   groupName: "Navigation",
                   items: actualLoggedInLinks
                     .map((link) => {
-                      if (link.name === "Chat" && !isChatEnabled) {
-                        return null;
-                      }
-
                       return {
                         icon:
-                          link.name === "Marketplace"
+                          link.href === "/marketplace"
                             ? IconType.Marketplace
-                            : link.name === "Library"
-                              ? IconType.Library
-                              : link.name === "Build"
-                                ? IconType.Builder
-                                : link.name === "Chat"
-                                  ? IconType.Chat
-                                  : link.name === "Monitor"
+                            : link.href === "/build"
+                              ? IconType.Builder
+                              : link.href === "/copilot"
+                                ? IconType.Chat
+                                : link.href === "/library"
+                                  ? IconType.Library
+                                  : link.href === "/monitor"
                                     ? IconType.Library
                                     : IconType.LayoutDashboard,
                         text: link.name,

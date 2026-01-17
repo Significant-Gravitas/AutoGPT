@@ -21,7 +21,7 @@ export function AuthPromptWidget({
   message,
   sessionId,
   agentInfo,
-  returnUrl = "/chat",
+  returnUrl = "/copilot/chat",
   className,
 }: AuthPromptWidgetProps) {
   const router = useRouter();
