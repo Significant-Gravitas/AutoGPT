@@ -1,5 +1,11 @@
 import { Sidebar } from "@/components/__legacy__/Sidebar";
-import { Users, DollarSign, UserSearch, FileText, Database } from "lucide-react";
+import {
+  Users,
+  DollarSign,
+  UserSearch,
+  FileText,
+  Database,
+} from "lucide-react";
 
 import { IconSliders } from "@/components/__legacy__/ui/icons";
 

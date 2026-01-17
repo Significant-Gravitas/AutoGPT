@@ -105,7 +105,7 @@ async def generate_test_data(
             sys.path.insert(0, str(test_dir))
 
             try:
-                from e2e_test_data import TestDataCreator
+                from e2e_test_data import TestDataCreator  # type: ignore[import-not-found]
 
                 # Connect to database if not already connected
                 if not prisma.is_connected():
@@ -140,7 +140,7 @@ async def generate_test_data(
             sys.path.insert(0, str(test_dir))
 
             try:
-                from test_data_creator import main as create_full_test_data
+                from test_data_creator import main as create_full_test_data  # type: ignore[import-not-found]
 
                 await create_full_test_data()
 
