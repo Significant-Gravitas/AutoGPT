@@ -1,16 +1,21 @@
-# Google Sheets Add Column
+# Google Sheets
+<!-- MANUAL: file_description -->
+_Add a description of this category of blocks._
+<!-- END MANUAL -->
 
-## What it is
+## Google Sheets Add Column
+
+### What it is
 Add a new column with a header. Can add at the end or insert at a specific position.
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 This block adds a new column to a Google Sheet with a specified header name. You can add the column at the end or insert it before a specific column position. If you provide a default value, all existing data rows will be populated with that value.
 
 The block uses the Google Sheets API to perform the insertion, shifting existing columns to the right when inserting in the middle.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
@@ -20,7 +25,7 @@ The block uses the Google Sheets API to perform the insertion, shifting existing
 | position | Where to add: 'end' for last column, or column letter (e.g., 'C') to insert before | str | No |
 | default_value | Default value to fill in all data rows (optional). Requires existing data rows. | str | No |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
@@ -30,7 +35,7 @@ The block uses the Google Sheets API to perform the insertion, shifting existing
 | column_index | 0-based index of the new column | int |
 | spreadsheet | The spreadsheet for chaining | GoogleDriveFile |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 **Schema Evolution**: Add new data fields to existing tracking sheets as requirements change.
 

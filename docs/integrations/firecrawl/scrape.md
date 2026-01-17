@@ -1,16 +1,21 @@
 # Firecrawl Scrape
+<!-- MANUAL: file_description -->
+_Add a description of this category of blocks._
+<!-- END MANUAL -->
 
-## What it is
+## Firecrawl Scrape
+
+### What it is
 Firecrawl scrapes a website to extract comprehensive data while bypassing blockers.
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 This block uses Firecrawl's scraping API to extract content from a single URL. It handles JavaScript rendering, bypasses anti-bot measures, and can return content in multiple formats including markdown, HTML, and screenshots.
 
 Configure output formats, filter to main content only, and set wait times for dynamic pages. The block returns comprehensive results including extracted content, links found on the page, and optional change tracking data.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
@@ -21,7 +26,7 @@ Configure output formats, filter to main content only, and set wait times for dy
 | wait_for | Specify a delay in milliseconds before fetching the content, allowing the page sufficient time to load. | int | No |
 | formats | The format of the crawl | List["markdown" \| "html" \| "rawHtml" \| "links" \| "screenshot" \| "screenshot@fullPage" \| "json" \| "changeTracking"] | No |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
@@ -36,7 +41,7 @@ Configure output formats, filter to main content only, and set wait times for dy
 | json_data | The json data of the crawl | Dict[str, Any] |
 | change_tracking | The change tracking of the crawl | Dict[str, Any] |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 **Article Extraction**: Scrape news articles or blog posts to extract clean, readable content.
 

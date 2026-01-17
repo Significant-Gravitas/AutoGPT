@@ -1,16 +1,21 @@
-# Twitter Get Quote Tweets
+# Twitter Quote
+<!-- MANUAL: file_description -->
+_Add a description of this category of blocks._
+<!-- END MANUAL -->
 
-## What it is
+## Twitter Get Quote Tweets
+
+### What it is
 This block gets quote tweets for a specific tweet.
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 This block queries the Twitter API v2 to retrieve tweets that quote a specific tweet. Quote tweets are retweets with added commentary, allowing users to share the original tweet while adding their own thoughts.
 
 The block uses Tweepy with OAuth 2.0 authentication and supports extensive expansions to include additional data like media, author information, and location details. Returns paginated results with tweet IDs, text content, and complete tweet data.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
@@ -25,7 +30,7 @@ The block uses Tweepy with OAuth 2.0 authentication and supports extensive expan
 | exclude | Types of tweets to exclude | TweetExcludesFilter | No |
 | pagination_token | Token for pagination | str | No |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
@@ -37,7 +42,7 @@ The block uses Tweepy with OAuth 2.0 authentication and supports extensive expan
 | included | Additional data that you have requested (Optional) via Expansions field | Dict[str, Any] |
 | meta | Provides metadata such as pagination info (next_token) or result counts | Dict[str, Any] |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 **Sentiment Analysis**: Analyze how users are commenting on your tweets through quote tweets to understand sentiment.
 

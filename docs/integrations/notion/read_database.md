@@ -1,16 +1,21 @@
 # Notion Read Database
+<!-- MANUAL: file_description -->
+_Add a description of this category of blocks._
+<!-- END MANUAL -->
 
-## What it is
+## Notion Read Database
+
+### What it is
 Query a Notion database with optional filtering and sorting, returning structured entries.
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 This block queries a Notion database using the Notion API. It retrieves entries with optional filtering by property values and sorting. The block requires your Notion integration to have access to the database.
 
 Results include all property values for each entry, the entry IDs for further operations, and the total count. The database connection must be shared with your integration from Notion.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
@@ -21,7 +26,7 @@ Results include all property values for each entry, the entry IDs for further op
 | sort_direction | Sort direction: 'ascending' or 'descending' | str | No |
 | limit | Maximum number of entries to retrieve | int | No |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
@@ -33,7 +38,7 @@ Results include all property values for each entry, the entry IDs for further op
 | count | Number of entries retrieved. | int |
 | database_title | Title of the database. | str |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 **Task Management**: Query a Notion task database to find items with a specific status or assigned to a particular person.
 

@@ -1,16 +1,21 @@
-# Twitter Get Muted Users
+# Twitter Mutes
+<!-- MANUAL: file_description -->
+_Add a description of this category of blocks._
+<!-- END MANUAL -->
 
-## What it is
+## Twitter Get Muted Users
+
+### What it is
 This block gets a list of users muted by the authenticating user.
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 This block connects to the Twitter API v2 via Tweepy to retrieve all users that the authenticated account has muted. It uses OAuth 2.0 authentication with appropriate scopes and returns paginated results with user IDs, usernames, and optional expanded data.
 
 The mute list is returned in batches (default 100, up to 1,000 per page), with pagination tokens for navigating large lists. Unlike blocking, muted users can still see and interact with your content—they're simply hidden from your timeline.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
@@ -20,7 +25,7 @@ The mute list is returned in batches (default 100, up to 1,000 per page), with p
 | max_results | The maximum number of results to be returned per page (1-1000). Default is 100. | int | No |
 | pagination_token | Token to request next/previous page of results | str | No |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
@@ -32,7 +37,7 @@ The mute list is returned in batches (default 100, up to 1,000 per page), with p
 | includes | Additional data requested via expansions | Dict[str, Any] |
 | meta | Metadata including pagination info | Dict[str, Any] |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 **Timeline Cleanup**: Review which accounts you've muted to decide if you want to unmute any or convert mutes to blocks.
 

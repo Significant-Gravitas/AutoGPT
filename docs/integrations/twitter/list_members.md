@@ -1,30 +1,35 @@
-# Twitter Add List Member
+# Twitter List Members
+<!-- MANUAL: file_description -->
+_Add a description of this category of blocks._
+<!-- END MANUAL -->
 
-## What it is
+## Twitter Add List Member
+
+### What it is
 This block adds a specified user to a Twitter List owned by the authenticated user.
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 This block uses the Twitter API v2 via Tweepy to add a user to a Twitter List that you own. The added user will appear in the list's member roster and their tweets will show in the list timeline.
 
 The block authenticates using OAuth 2.0 with list write permissions. Only the list owner can add members. The target user does not need to approve being added to public lists.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | list_id | The ID of the List to add the member to | str | Yes |
 | user_id | The ID of the user to add to the List | str | Yes |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
 | success | Whether the member was successfully added | bool |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 **List Curation**: Build curated lists by adding relevant accounts you discover.
 

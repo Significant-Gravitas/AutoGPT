@@ -1,22 +1,27 @@
-# Code Extraction
+# Text
+<!-- MANUAL: file_description -->
+Blocks for text processing including formatting, extraction, transformation, splitting, combining, and template rendering.
+<!-- END MANUAL -->
 
-## What it is
+## Code Extraction
+
+### What it is
 Extracts code blocks from text and identifies their programming languages
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 This block parses text content (typically from AI responses) and extracts code blocks enclosed in markdown-style triple backticks. It identifies the programming language from the code fence annotation (e.g., ```python) and routes each extracted code block to the appropriate language-specific output.
 
 The block supports 16 programming languages including Python, JavaScript, HTML, CSS, SQL, and more. Any text that remains after extracting all code blocks is output as "remaining_text", allowing you to process both the code and surrounding context separately.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | text | Text containing code blocks to extract (e.g., AI response) | str | Yes |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
@@ -39,7 +44,7 @@ The block supports 16 programming languages including Python, JavaScript, HTML, 
 | xml | Extracted XML code | str |
 | remaining_text | Remaining text after code extraction | str |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 **AI Code Generation Pipeline**: When an AI model generates a response containing multiple code blocks (HTML, CSS, JavaScript), use this block to separate each language into individual files for a complete web component.
 

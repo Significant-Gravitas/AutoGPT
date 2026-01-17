@@ -1,16 +1,21 @@
-# Get Linkedin Profile
+# Enrichlayer LinkedIn
+<!-- MANUAL: file_description -->
+_Add a description of this category of blocks._
+<!-- END MANUAL -->
 
-## What it is
+## Get Linkedin Profile
+
+### What it is
 Fetch LinkedIn profile data using Enrichlayer
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 This block retrieves comprehensive LinkedIn profile data using Enrichlayer's API. Provide a LinkedIn profile URL to fetch details including work history, education, skills, and contact information.
 
 Configure caching options for performance and optionally include additional data like inferred salary, personal email, or social media links.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
@@ -24,14 +29,14 @@ Configure caching options for performance and optionally include additional data
 | include_social_media | Include social media profiles | bool | No |
 | include_extra | Include additional data | bool | No |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
 | profile | LinkedIn profile data | PersonProfileResponse |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 **Lead Enrichment**: Enrich sales leads with detailed professional background information.
 

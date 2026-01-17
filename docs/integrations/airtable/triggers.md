@@ -1,16 +1,21 @@
-# Airtable Webhook Trigger
+# Airtable Triggers
+<!-- MANUAL: file_description -->
+_Add a description of this category of blocks._
+<!-- END MANUAL -->
 
-## What it is
+## Airtable Webhook Trigger
+
+### What it is
 Starts a flow whenever Airtable emits a webhook event
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 This block subscribes to Airtable webhook events for a specific base and table. When records are created, updated, or deleted, Airtable sends a webhook notification that triggers your workflow.
 
 You specify which events to listen for using the event selector. The webhook payload includes details about the changed records and the type of change that occurred.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
@@ -18,14 +23,14 @@ You specify which events to listen for using the event selector. The webhook pay
 | table_id_or_name | Airtable table ID or name | str | Yes |
 | events | Airtable webhook event filter | AirtableEventSelector | Yes |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
 | payload | Airtable webhook payload | WebhookPayload |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 **Real-Time Sync**: Automatically sync Airtable changes to other systems like CRMs or databases.
 

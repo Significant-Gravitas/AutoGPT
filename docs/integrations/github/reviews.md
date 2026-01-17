@@ -1,16 +1,21 @@
-# Github Create Comment Object
+# GitHub Reviews
+<!-- MANUAL: file_description -->
+_Add a description of this category of blocks._
+<!-- END MANUAL -->
 
-## What it is
+## Github Create Comment Object
+
+### What it is
 Creates a comment object for use with GitHub blocks. Note: For review comments, only path, body, and position are used. Side fields are only for standalone PR comments.
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 This block creates a structured comment object that can be used with GitHub review blocks. It formats the comment data according to GitHub API requirements, including file path, body text, and position information.
 
 For review comments, only path, body, and position fields are used. The side, start_line, and start_side fields are only applicable for standalone PR comments, not review comments.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
@@ -22,14 +27,14 @@ For review comments, only path, body, and position fields are used. The side, st
 | start_line | Start line for multi-line comments (NOTE: Only for standalone comments, not review comments) | int | No |
 | start_side | Side for the start of multi-line comments (NOTE: Only for standalone comments, not review comments) | str | No |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
 | comment_object | The comment object formatted for GitHub API | Dict[str, Any] |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 **Automated Code Review**: Generate comment objects for automated review systems that analyze code changes.
 

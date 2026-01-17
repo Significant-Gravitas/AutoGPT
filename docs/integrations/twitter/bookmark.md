@@ -1,29 +1,34 @@
-# Twitter Bookmark Tweet
+# Twitter Bookmark
+<!-- MANUAL: file_description -->
+_Add a description of this category of blocks._
+<!-- END MANUAL -->
 
-## What it is
+## Twitter Bookmark Tweet
+
+### What it is
 This block bookmarks a tweet on Twitter.
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 This block uses the Twitter API v2 via Tweepy to add a tweet to the authenticated user's bookmarks. The bookmark is private and only visible to you—the tweet author is not notified.
 
 The block authenticates using OAuth 2.0 with bookmark write permissions and sends a POST request to add the specified tweet ID to your bookmarks. Returns a success indicator confirming the bookmark was added.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | tweet_id | ID of the tweet to bookmark | str | Yes |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
 | success | Whether the bookmark was successful | bool |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 **Content Curation**: Save interesting tweets for later reading or to compile into a newsletter or blog post.
 

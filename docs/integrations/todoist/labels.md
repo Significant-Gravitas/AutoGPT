@@ -1,14 +1,19 @@
-# Todoist Create Label
+# Todoist Labels
+<!-- MANUAL: file_description -->
+_Add a description of this category of blocks._
+<!-- END MANUAL -->
 
-## What it is
+## Todoist Create Label
+
+### What it is
 Creates a new label in Todoist, It will not work if same name already exists
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 It takes label details as input, connects to Todoist API, creates the label and returns the created label's details.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
@@ -17,7 +22,7 @@ It takes label details as input, connects to Todoist API, creates the label and 
 | color | The color of the label icon | "berry_red" \| "red" \| "orange" \| "yellow" \| "olive_green" \| "lime_green" \| "green" \| "mint_green" \| "teal" \| "sky_blue" \| "light_blue" \| "blue" \| "grape" \| "violet" \| "lavender" \| "magenta" \| "salmon" \| "charcoal" \| "grey" \| "taupe" | No |
 | is_favorite | Whether the label is a favorite | bool | No |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
@@ -28,7 +33,7 @@ It takes label details as input, connects to Todoist API, creates the label and 
 | order | Label order | int |
 | is_favorite | Favorite status | bool |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 Creating new labels to organize and categorize tasks in Todoist.
 <!-- END MANUAL -->

@@ -1,16 +1,21 @@
 # Notion Create Page
+<!-- MANUAL: file_description -->
+_Add a description of this category of blocks._
+<!-- END MANUAL -->
 
-## What it is
+## Notion Create Page
+
+### What it is
 Create a new page in Notion. Requires EITHER a parent_page_id OR parent_database_id. Supports markdown content.
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 This block creates a new page in Notion using the Notion API. You can create pages as children of existing pages or as entries in a database. The parent must be accessible to your integration.
 
 Content can be provided as markdown, which gets converted to Notion blocks. For database pages, you can set additional properties like Status or Priority. Optionally add an emoji icon to the page.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
@@ -21,7 +26,7 @@ Content can be provided as markdown, which gets converted to Notion blocks. For 
 | properties | Additional properties for database pages (e.g., {'Status': 'In Progress', 'Priority': 'High'}) | Dict[str, Any] | No |
 | icon_emoji | Emoji to use as the page icon (e.g., '📄', '🚀') | str | No |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
@@ -29,7 +34,7 @@ Content can be provided as markdown, which gets converted to Notion blocks. For 
 | page_id | ID of the created page. | str |
 | page_url | URL of the created page. | str |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 **Meeting Notes**: Automatically create meeting notes pages from calendar events with template content.
 

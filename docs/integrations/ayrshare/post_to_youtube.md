@@ -1,16 +1,21 @@
-# Post To You Tube
+# Ayrshare Post To YouTube
+<!-- MANUAL: file_description -->
+_Add a description of this category of blocks._
+<!-- END MANUAL -->
 
-## What it is
+## Post To You Tube
+
+### What it is
 Post to YouTube using Ayrshare
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 This block uses Ayrshare's API to upload videos to YouTube. It handles video uploads with extensive metadata including titles, descriptions, tags, custom thumbnails, playlist assignment, category selection, and visibility controls (public, private, unlisted).
 
 The block supports YouTube Shorts (up to 3 minutes), geographic targeting to allow or block specific countries, subtitle files (SRT/SBV format), synthetic/AI content disclosure, kids content labeling, and subscriber notification controls. Videos can be scheduled for specific publish times.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
@@ -42,7 +47,7 @@ The block supports YouTube Shorts (up to 3 minutes), geographic targeting to all
 | subtitle_language | Language code for subtitles (default: 'en') | str | No |
 | subtitle_name | Name of caption track (max 150 chars, default: 'English') | str | No |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
@@ -50,7 +55,7 @@ The block supports YouTube Shorts (up to 3 minutes), geographic targeting to all
 | post_result | The result of the post | PostResponse |
 | post | The result of the post | PostIds |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 **Video Publishing Pipeline**: Automate video uploads with thumbnails, descriptions, and playlist organization for content creators.
 

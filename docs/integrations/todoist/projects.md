@@ -1,14 +1,19 @@
-# Todoist Create Project
+# Todoist Projects
+<!-- MANUAL: file_description -->
+_Add a description of this category of blocks._
+<!-- END MANUAL -->
 
-## What it is
+## Todoist Create Project
+
+### What it is
 Creates a new project in Todoist
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 Takes project details and creates via Todoist API.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
@@ -18,14 +23,14 @@ Takes project details and creates via Todoist API.
 | is_favorite | Whether the project is a favorite | bool | No |
 | view_style | Display style (list or board) | str | No |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
 | success | Whether the creation was successful | bool |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 Creating new projects programmatically for workflow automation.
 <!-- END MANUAL -->

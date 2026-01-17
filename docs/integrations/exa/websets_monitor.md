@@ -1,16 +1,21 @@
-# Exa Create Monitor
+# Exa Websets Monitor
+<!-- MANUAL: file_description -->
+_Add a description of this category of blocks._
+<!-- END MANUAL -->
 
-## What it is
+## Exa Create Monitor
+
+### What it is
 Create automated monitors to keep websets updated with fresh data on a schedule
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 This block creates a scheduled monitor that automatically updates a webset on a cron schedule. Monitors can either search for new items matching criteria or refresh existing item content and enrichments.
 
 Configure the cron expression for your desired frequency (daily, weekly, etc.) and choose between search behavior to find new items or refresh behavior to update existing data.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
@@ -27,7 +32,7 @@ Configure the cron expression for your desired frequency (daily, weekly, etc.) a
 | refresh_enrichments | Re-run enrichments on items (for refresh behavior) | bool | No |
 | metadata | Metadata to attach to the monitor | Dict[str, Any] | No |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
@@ -41,7 +46,7 @@ Configure the cron expression for your desired frequency (daily, weekly, etc.) a
 | timezone | The timezone for scheduling | str |
 | created_at | When the monitor was created | str |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 **Continuous Lead Generation**: Schedule daily searches to find new companies matching your criteria.
 

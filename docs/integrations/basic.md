@@ -1,16 +1,21 @@
-# Add Memory
+# Basic
+<!-- MANUAL: file_description -->
+Core utility blocks for storing values, printing output, file operations, type conversion, and basic data manipulation.
+<!-- END MANUAL -->
 
-## What it is
+## Add Memory
+
+### What it is
 Add new memories to Mem0 with user segmentation
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 This block integrates with Mem0, a memory layer service that stores and retrieves information across conversations. When you add a memory, the content is stored with the user's context and can optionally be segmented by run or agent, allowing for scoped memory retrieval later.
 
 The block accepts either plain text or structured message objects (like those from AI blocks). You can attach metadata to memories for better organization and filtering. Memories persist across workflow executions, enabling your agents to "remember" past interactions.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
@@ -19,7 +24,7 @@ The block accepts either plain text or structured message objects (like those fr
 | limit_memory_to_run | Limit the memory to the run | bool | No |
 | limit_memory_to_agent | Limit the memory to the agent | bool | No |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
@@ -28,7 +33,7 @@ The block accepts either plain text or structured message objects (like those fr
 | memory | Memory created | str |
 | results | List of all results from the operation | List[Dict[str, str]] |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 **Personalized Assistants**: Store user preferences, past interactions, or learned information so your AI agent can provide personalized responses in future conversations.
 

@@ -1,23 +1,28 @@
-# Exa Cancel Webset Search
+# Exa Websets Search
+<!-- MANUAL: file_description -->
+_Add a description of this category of blocks._
+<!-- END MANUAL -->
 
-## What it is
+## Exa Cancel Webset Search
+
+### What it is
 Cancel a running webset search
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 This block stops a running search operation on a webset. Items already found before cancellation are retained in the webset.
 
 Use this when a search is taking too long, returning unexpected results, or is no longer needed. The block returns the number of items found before cancellation.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | webset_id | The ID or external ID of the Webset | str | Yes |
 | search_id | The ID of the search to cancel | str | Yes |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
@@ -27,7 +32,7 @@ Use this when a search is taking too long, returning unexpected results, or is n
 | items_found_before_cancel | Number of items found before cancellation | int |
 | success | Whether the cancellation was successful | str |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 **Resource Control**: Stop searches that are taking longer than expected.
 

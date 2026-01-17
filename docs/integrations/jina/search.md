@@ -1,28 +1,33 @@
-# Extract Website Content
+# Jina Search
+<!-- MANUAL: file_description -->
+_Add a description of this category of blocks._
+<!-- END MANUAL -->
 
-## What it is
+## Extract Website Content
+
+### What it is
 This block scrapes the content from the given web URL.
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 The block sends a request to the given URL, downloads the HTML content, and uses content extraction algorithms to identify and extract the main text content of the page.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | url | The URL to scrape the content from | str | Yes |
 | raw_content | Whether to do a raw scrape of the content or use Jina-ai Reader to scrape the content | bool | No |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the content cannot be retrieved | str |
 | content | The scraped content from the given URL | str |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 A data analyst could use this block to automatically extract article content from news websites for sentiment analysis or topic modeling.
 <!-- END MANUAL -->

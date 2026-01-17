@@ -1,16 +1,21 @@
-# Exa Wait For Enrichment
+# Exa Websets Polling
+<!-- MANUAL: file_description -->
+_Add a description of this category of blocks._
+<!-- END MANUAL -->
 
-## What it is
+## Exa Wait For Enrichment
+
+### What it is
 Wait for a webset enrichment to complete with progress tracking
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 This block polls an enrichment operation until it completes or times out. It checks status at configurable intervals and can include sample results when done.
 
 Use this to block workflow execution until enrichments finish, enabling sequential operations that depend on enrichment data being available.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
@@ -20,7 +25,7 @@ Use this to block workflow execution until enrichments finish, enabling sequenti
 | check_interval | Initial interval between status checks in seconds | int | No |
 | sample_results | Include sample enrichment results in output | bool | No |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
@@ -33,7 +38,7 @@ Use this to block workflow execution until enrichments finish, enabling sequenti
 | sample_data | Sample of enriched data (if requested) | List[SampleEnrichmentModel] |
 | timed_out | Whether the operation timed out | bool |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 **Sequential Processing**: Wait for enrichments to complete before proceeding to export or analysis.
 

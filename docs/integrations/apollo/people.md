@@ -1,16 +1,21 @@
-# Search People
+# Apollo People
+<!-- MANUAL: file_description -->
+_Add a description of this category of blocks._
+<!-- END MANUAL -->
 
-## What it is
+## Search People
+
+### What it is
 Search for people in Apollo
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 This block searches Apollo's database for people based on job titles, seniority, location, company, and other criteria. It's designed for finding prospects and contacts for sales and marketing.
 
 Enable enrich_info to get detailed contact information including verified email addresses (costs more credits).
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
@@ -26,14 +31,14 @@ Enable enrich_info to get detailed contact information including verified email 
 | max_results | The maximum number of results to return. If you don't specify this parameter, the default is 25. Limited to 500 to prevent overspending. | int | No |
 | enrich_info | Whether to enrich contacts with detailed information including real email addresses. This will double the search cost. | bool | No |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the search failed | str |
 | people | List of people found | List[Dict[str, Any]] |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 **Prospecting**: Find decision-makers at target companies for outbound sales.
 

@@ -1,16 +1,21 @@
-# Add Lead To Campaign
+# Smartlead Campaign
+<!-- MANUAL: file_description -->
+_Add a description of this category of blocks._
+<!-- END MANUAL -->
 
-## What it is
+## Add Lead To Campaign
+
+### What it is
 Add a lead to a campaign in SmartLead
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 This block adds up to 100 leads to an existing SmartLead campaign using the SmartLead API. Each lead includes contact details and optional custom fields for personalization.
 
 Configure upload settings to control duplicate handling and campaign status. The response includes counts for successful uploads, duplicates, and invalid entries.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
@@ -18,7 +23,7 @@ Configure upload settings to control duplicate handling and campaign status. The
 | lead_list | An array of JSON objects, each representing a lead's details. Can hold max 100 leads. | List[LeadInput] | No |
 | settings | Settings for lead upload | LeadUploadSettings | No |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
@@ -31,7 +36,7 @@ Configure upload settings to control duplicate handling and campaign status. The
 | is_lead_limit_exhausted | Whether the lead limit was exhausted | bool |
 | lead_import_stopped_count | The number of leads that were not added to the campaign because the lead import was stopped | int |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 **Lead Import**: Bulk import leads from CRM exports, web forms, or enrichment services.
 

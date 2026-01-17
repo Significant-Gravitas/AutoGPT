@@ -193,6 +193,52 @@ def safe_get(d: Any, key: str, default: Any = None) -> Any:
     return default
 
 
+def file_path_to_title(file_path: str) -> str:
+    """Convert file path to a readable title.
+
+    Examples:
+        "github/issues.md" -> "GitHub Issues"
+        "basic.md" -> "Basic"
+        "llm.md" -> "LLM"
+        "google/sheets.md" -> "Google Sheets"
+    """
+    # Special case replacements (applied after title casing)
+    TITLE_FIXES = {
+        "Llm": "LLM",
+        "Github": "GitHub",
+        "Api": "API",
+        "Ai": "AI",
+        "Oauth": "OAuth",
+        "Url": "URL",
+        "Ci": "CI",
+        "Pr": "PR",
+        "Gmb": "GMB",  # Google My Business
+        "Hubspot": "HubSpot",
+        "Linkedin": "LinkedIn",
+        "Tiktok": "TikTok",
+        "Youtube": "YouTube",
+    }
+
+    def apply_fixes(text: str) -> str:
+        # Split into words, fix each word, rejoin
+        words = text.split()
+        fixed_words = [TITLE_FIXES.get(word, word) for word in words]
+        return " ".join(fixed_words)
+
+    path = Path(file_path)
+    name = path.stem  # e.g., "issues" or "sheets"
+
+    # Get parent dir if exists
+    parent = path.parent.name if path.parent.name != "." else None
+
+    # Title case and apply fixes
+    if parent:
+        parent_title = apply_fixes(parent.replace("_", " ").title())
+        name_title = apply_fixes(name.replace("_", " ").title())
+        return f"{parent_title} {name_title}"
+    return apply_fixes(name.replace("_", " ").title())
+
+
 def extract_block_doc(block_cls: type) -> BlockDoc:
     """Extract documentation data from a block class."""
     block = block_cls.create()
@@ -310,25 +356,22 @@ def extract_manual_content(existing_content: str) -> dict[str, str]:
 def generate_block_markdown(
     block: BlockDoc,
     manual_content: dict[str, str] | None = None,
-    is_first_in_file: bool = True,
 ) -> str:
     """Generate markdown documentation for a single block."""
     manual_content = manual_content or {}
     lines = []
 
-    # Block heading and derived section heading level
-    heading_level = "#" if is_first_in_file else "##"
-    section_heading = heading_level + "#"  # One level deeper than block heading
-    lines.append(f"{heading_level} {block.name}")
+    # All blocks use ## heading, sections use ### (consistent siblings)
+    lines.append(f"## {block.name}")
     lines.append("")
 
     # What it is (full description)
-    lines.append(f"{section_heading} What it is")
+    lines.append(f"### What it is")
     lines.append(block.description or "No description available.")
     lines.append("")
 
     # How it works (manual section)
-    lines.append(f"{section_heading} How it works")
+    lines.append(f"### How it works")
     how_it_works = manual_content.get(
         "how_it_works", "_Add technical explanation here._"
     )
@@ -340,7 +383,7 @@ def generate_block_markdown(
     # Inputs table (auto-generated)
     visible_inputs = [f for f in block.inputs if not f.hidden]
     if visible_inputs:
-        lines.append(f"{section_heading} Inputs")
+        lines.append(f"### Inputs")
         lines.append("")
         lines.append("| Input | Description | Type | Required |")
         lines.append("|-------|-------------|------|----------|")
@@ -357,7 +400,7 @@ def generate_block_markdown(
     # Outputs table (auto-generated)
     visible_outputs = [f for f in block.outputs if not f.hidden]
     if visible_outputs:
-        lines.append(f"{section_heading} Outputs")
+        lines.append(f"### Outputs")
         lines.append("")
         lines.append("| Output | Description | Type |")
         lines.append("|--------|-------------|------|")
@@ -371,7 +414,7 @@ def generate_block_markdown(
         lines.append("")
 
     # Possible use case (manual section)
-    lines.append(f"{section_heading} Possible use case")
+    lines.append(f"### Possible use case")
     use_case = manual_content.get("use_case", "_Add practical use case examples here._")
     lines.append("<!-- MANUAL: use_case -->")
     lines.append(use_case)
@@ -571,14 +614,32 @@ def write_block_docs(
         if full_path.exists():
             existing_content = full_path.read_text()
 
+        # Always generate title from file path (with fixes applied)
+        file_title = file_path_to_title(file_path)
+
+        # Extract existing file description if present (preserve manual content)
+        file_header_pattern = (
+            r"^# .+?\n<!-- MANUAL: file_description -->\n(.*?)\n<!-- END MANUAL -->"
+        )
+        file_header_match = re.search(file_header_pattern, existing_content, re.DOTALL)
+
+        if file_header_match:
+            file_description = file_header_match.group(1)
+        else:
+            file_description = "_Add a description of this category of blocks._"
+
+        # Generate file header
+        file_header = f"# {file_title}\n"
+        file_header += "<!-- MANUAL: file_description -->\n"
+        file_header += f"{file_description}\n"
+        file_header += "<!-- END MANUAL -->\n"
+
         # Generate content for each block
         content_parts = []
-        for i, block in enumerate(sorted(file_blocks, key=lambda b: b.name)):
+        for block in sorted(file_blocks, key=lambda b: b.name):
             # Extract manual content specific to this block
-            # Match block heading (h1 or h2) and capture until --- separator
-            block_pattern = (
-                rf"(?:^|\n)##? {re.escape(block.name)}\s*\n(.*?)(?=\n---|\Z)"
-            )
+            # Match block heading (h2) and capture until --- separator
+            block_pattern = rf"(?:^|\n)## {re.escape(block.name)}\s*\n(.*?)(?=\n---|\Z)"
             block_match = re.search(block_pattern, existing_content, re.DOTALL)
             if block_match:
                 manual_content = extract_manual_content(block_match.group(1))
@@ -589,11 +650,10 @@ def write_block_docs(
                 generate_block_markdown(
                     block,
                     manual_content,
-                    is_first_in_file=(i == 0),
                 )
             )
 
-        full_content = "\n".join(content_parts)
+        full_content = file_header + "\n" + "\n".join(content_parts)
         generated_files[str(file_path)] = full_content
 
         if verbose:
@@ -638,12 +698,30 @@ def check_docs_in_sync(output_dir: Path, blocks: list[BlockDoc]) -> bool:
 
         existing_content = full_path.read_text()
 
+        # Always generate title from file path (with fixes applied)
+        file_title = file_path_to_title(file_path)
+
+        # Extract existing file description if present (preserve manual content)
+        file_header_pattern = (
+            r"^# .+?\n<!-- MANUAL: file_description -->\n(.*?)\n<!-- END MANUAL -->"
+        )
+        file_header_match = re.search(file_header_pattern, existing_content, re.DOTALL)
+
+        if file_header_match:
+            file_description = file_header_match.group(1)
+        else:
+            file_description = "_Add a description of this category of blocks._"
+
+        # Generate expected file header
+        file_header = f"# {file_title}\n"
+        file_header += "<!-- MANUAL: file_description -->\n"
+        file_header += f"{file_description}\n"
+        file_header += "<!-- END MANUAL -->\n"
+
         # Extract manual content from existing file
         manual_sections_by_block = {}
         for block in file_blocks:
-            block_pattern = (
-                rf"(?:^|\n)##? {re.escape(block.name)}\s*\n(.*?)(?=\n---|\Z)"
-            )
+            block_pattern = rf"(?:^|\n)## {re.escape(block.name)}\s*\n(.*?)(?=\n---|\Z)"
             block_match = re.search(block_pattern, existing_content, re.DOTALL)
             if block_match:
                 manual_sections_by_block[block.name] = extract_manual_content(
@@ -653,25 +731,24 @@ def check_docs_in_sync(output_dir: Path, blocks: list[BlockDoc]) -> bool:
         # Generate expected content and check each block individually
         content_parts = []
         mismatched_blocks = []
-        for i, block in enumerate(sorted(file_blocks, key=lambda b: b.name)):
+        for block in sorted(file_blocks, key=lambda b: b.name):
             manual_content = manual_sections_by_block.get(block.name, {})
             expected_block_content = generate_block_markdown(
                 block,
                 manual_content,
-                is_first_in_file=(i == 0),
             )
             content_parts.append(expected_block_content)
 
             # Check if this specific block's section exists and matches
             # Include the --- separator to match generate_block_markdown output
-            block_pattern = rf"(?:^|\n)(##? {re.escape(block.name)}\s*\n.*?\n---\n)"
+            block_pattern = rf"(?:^|\n)(## {re.escape(block.name)}\s*\n.*?\n---\n)"
             block_match = re.search(block_pattern, existing_content, re.DOTALL)
             if not block_match:
                 mismatched_blocks.append(f"{block.name} (missing)")
             elif block_match.group(1).strip() != expected_block_content.strip():
                 mismatched_blocks.append(block.name)
 
-        expected_content = "\n".join(content_parts)
+        expected_content = file_header + "\n" + "\n".join(content_parts)
 
         if existing_content.strip() != expected_content.strip():
             print(f"OUT OF SYNC: {file_path}")
@@ -694,6 +771,29 @@ def check_docs_in_sync(output_dir: Path, blocks: list[BlockDoc]) -> bool:
         print("MISSING: README.md (overview)")
         out_of_sync_details.append(("README.md", ["overview table"]))
         all_match = False
+
+    # Check for unfilled manual sections
+    unfilled_patterns = [
+        "_Add a description of this category of blocks._",
+        "_Add technical explanation here._",
+        "_Add practical use case examples here._",
+    ]
+    files_with_unfilled = []
+    for file_path in file_mapping.keys():
+        full_path = output_dir / file_path
+        if full_path.exists():
+            content = full_path.read_text()
+            unfilled_count = sum(1 for p in unfilled_patterns if p in content)
+            if unfilled_count > 0:
+                files_with_unfilled.append((file_path, unfilled_count))
+
+    if files_with_unfilled:
+        print("\nWARNING: Files with unfilled manual sections:")
+        for file_path, count in sorted(files_with_unfilled):
+            print(f"  {file_path}: {count} unfilled section(s)")
+        print(
+            f"\nTotal: {len(files_with_unfilled)} files with unfilled manual sections"
+        )
 
     return all_match
 

@@ -1,16 +1,21 @@
-# Data For Seo Related Keywords
+# Dataforseo Related Keywords
+<!-- MANUAL: file_description -->
+_Add a description of this category of blocks._
+<!-- END MANUAL -->
 
-## What it is
+## Data For Seo Related Keywords
+
+### What it is
 Get related keywords from DataForSEO Labs Google API
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 This block uses the DataForSEO Labs Google Related Keywords API to find semantically related keywords based on a seed keyword. It returns keywords that share similar search intent or topic relevance.
 
 The depth parameter controls the breadth of the search, with higher values returning exponentially more related keywords. Results include search metrics, competition data, and optional SERP/clickstream information.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
@@ -23,7 +28,7 @@ The depth parameter controls the breadth of the search, with higher values retur
 | limit | Maximum number of results (up to 3000) | int | No |
 | depth | Keyword search depth (0-4). Controls the number of returned keywords: 0=1 keyword, 1=~8 keywords, 2=~72 keywords, 3=~584 keywords, 4=~4680 keywords | int | No |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
@@ -33,7 +38,7 @@ The depth parameter controls the breadth of the search, with higher values retur
 | total_count | Total number of related keywords returned | int |
 | seed_keyword | The seed keyword used for the query | str |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 **Topic Clustering**: Group related keywords to build comprehensive content clusters around a topic.
 

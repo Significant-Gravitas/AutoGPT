@@ -1,23 +1,28 @@
 # Notion Read Page Markdown
+<!-- MANUAL: file_description -->
+_Add a description of this category of blocks._
+<!-- END MANUAL -->
 
-## What it is
+## Notion Read Page Markdown
+
+### What it is
 Read a Notion page and convert it to Markdown format with proper formatting for headings, lists, links, and rich text.
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 This block reads a Notion page and converts its content to Markdown format. It handles Notion's block structure and rich text, translating headings, lists, links, bold, italic, and other formatting into standard Markdown.
 
 The conversion preserves the document structure while making the content portable and usable in other contexts. Optionally include the page title as a top-level header in the output.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | page_id | Notion page ID. Must be accessible by the connected integration. You can get this from the page URL notion.so/A-Page-586edd711467478da59fe35e29a1ffab would be 586edd711467478da59fe35e29a1ffab | str | Yes |
 | include_title | Whether to include the page title as a header in the markdown | bool | No |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
@@ -25,7 +30,7 @@ The conversion preserves the document structure while making the content portabl
 | markdown | Page content in Markdown format. | str |
 | title | Page title. | str |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 **Content Export**: Export Notion pages as Markdown for use in static site generators or documentation tools.
 

@@ -1,27 +1,32 @@
-# Todoist Close Task
+# Todoist Tasks
+<!-- MANUAL: file_description -->
+_Add a description of this category of blocks._
+<!-- END MANUAL -->
 
-## What it is
+## Todoist Close Task
+
+### What it is
 Closes a task in Todoist
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 Uses task ID to mark it complete via Todoist API.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | task_id | Task ID to close | str | Yes |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
 | success | Whether the task was successfully closed | bool |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 Marking tasks as done in automated workflows.
 <!-- END MANUAL -->

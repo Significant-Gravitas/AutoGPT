@@ -1,23 +1,28 @@
-# Compass AI Trigger
+# Compass Triggers
+<!-- MANUAL: file_description -->
+_Add a description of this category of blocks._
+<!-- END MANUAL -->
 
-## What it is
+## Compass AI Trigger
+
+### What it is
 This block will output the contents of the compass transcription.
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 This block triggers when a Compass AI transcription is received. It outputs the transcription text content, enabling workflows that process voice input or meeting transcripts from Compass AI.
 
 The transcription is output as a string for downstream processing, analysis, or storage.
 <!-- END MANUAL -->
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
 | transcription | The contents of the compass transcription. | str |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 **Voice Command Processing**: Trigger workflows from voice commands transcribed by Compass AI.
 

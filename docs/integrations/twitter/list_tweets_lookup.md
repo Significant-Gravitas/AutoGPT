@@ -1,16 +1,21 @@
-# Twitter Get List Tweets
+# Twitter List Tweets Lookup
+<!-- MANUAL: file_description -->
+_Add a description of this category of blocks._
+<!-- END MANUAL -->
 
-## What it is
+## Twitter Get List Tweets
+
+### What it is
 This block retrieves tweets from a specified Twitter list.
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 This block queries the Twitter API v2 to retrieve tweets posted by members of a specific Twitter List. Results include all tweets from list members in reverse chronological order, providing a curated timeline based on the list's membership.
 
 The block uses Tweepy with OAuth 2.0 authentication and supports extensive expansions to include additional data like media, author profiles, and referenced tweets. Pagination allows retrieving large volumes of list content in batches of up to 100 tweets.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
@@ -24,7 +29,7 @@ The block uses Tweepy with OAuth 2.0 authentication and supports extensive expan
 | max_results | Maximum number of results per page (1-100) | int | No |
 | pagination_token | Token for paginating through results | str | No |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
@@ -36,7 +41,7 @@ The block uses Tweepy with OAuth 2.0 authentication and supports extensive expan
 | included | Additional data requested via expansions | Dict[str, Any] |
 | meta | Response metadata including pagination tokens | Dict[str, Any] |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 **Industry News Aggregation**: Retrieve tweets from curated industry expert lists to create automated news digests.
 

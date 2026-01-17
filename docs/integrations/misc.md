@@ -1,16 +1,21 @@
-# Agent Executor
+# Misc
+<!-- MANUAL: file_description -->
+Miscellaneous blocks including agent execution, scheduling, HTTP requests, webhooks, and other utility functions.
+<!-- END MANUAL -->
 
-## What it is
+## Agent Executor
+
+### What it is
 Executes an existing agent inside your agent
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 This block runs another agent as a sub-agent within your workflow. You provide the agent's graph ID, version, and input data, and the block executes that agent and returns its outputs.
 
 Input and output schemas define the expected data structure for communication between the parent and child agents, enabling modular, reusable agent composition.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
@@ -22,7 +27,7 @@ Input and output schemas define the expected data structure for communication be
 | input_schema | Input schema for the graph | Dict[str, Any] | Yes |
 | output_schema | Output schema for the graph | Dict[str, Any] | Yes |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 **Modular Workflows**: Break complex workflows into smaller, reusable agents that can be composed together.
 

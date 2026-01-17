@@ -1,29 +1,34 @@
-# Twitter Delete Tweet
+# Twitter Manage
+<!-- MANUAL: file_description -->
+_Add a description of this category of blocks._
+<!-- END MANUAL -->
 
-## What it is
+## Twitter Delete Tweet
+
+### What it is
 This block deletes a tweet on Twitter.
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 This block uses the Twitter API v2 via Tweepy to permanently delete a tweet from the authenticated user's account. The deletion is immediate and cannot be undone.
 
 The block authenticates using OAuth 2.0 with tweet write permissions and sends a DELETE request for the specified tweet ID. Only the tweet's author can delete their own tweets. Returns a success indicator confirming the deletion.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | tweet_id | ID of the tweet to delete | str | Yes |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the tweet deletion failed | str |
 | success | Whether the tweet was successfully deleted | bool |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 **Content Cleanup**: Remove outdated tweets that contain incorrect information or expired promotions.
 

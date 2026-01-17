@@ -1,16 +1,21 @@
 # Jina Chunking
+<!-- MANUAL: file_description -->
+_Add a description of this category of blocks._
+<!-- END MANUAL -->
 
-## What it is
+## Jina Chunking
+
+### What it is
 Chunks texts using Jina AI's segmentation service
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 This block uses Jina AI's segmentation service to split texts into semantically meaningful chunks. Unlike simple splitting by character count, Jina's chunking preserves semantic coherence, making it ideal for RAG applications.
 
 Configure maximum chunk length and optionally return token information for each chunk.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
@@ -18,7 +23,7 @@ Configure maximum chunk length and optionally return token information for each 
 | max_chunk_length | Maximum length of each chunk | int | No |
 | return_tokens | Whether to return token information | bool | No |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
@@ -26,7 +31,7 @@ Configure maximum chunk length and optionally return token information for each 
 | chunks | List of chunked texts | List[Any] |
 | tokens | List of token information for each chunk | List[Any] |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 **RAG Preprocessing**: Chunk documents for retrieval-augmented generation systems.
 

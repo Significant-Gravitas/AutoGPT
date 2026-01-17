@@ -1,16 +1,21 @@
-# Google Docs Append Markdown
+# Google Docs
+<!-- MANUAL: file_description -->
+_Add a description of this category of blocks._
+<!-- END MANUAL -->
 
-## What it is
+## Google Docs Append Markdown
+
+### What it is
 Append Markdown content to the end of a Google Doc with full formatting - ideal for LLM/AI output
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 This block appends Markdown content to the end of a Google Doc and automatically converts it to native Google Docs formatting using the Google Docs API. It supports headers, bold, italic, links, lists, and code formatting.
 
 Set add_newline to true to insert a line break before the appended content. The document is returned for chaining with other document operations.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
@@ -18,7 +23,7 @@ Set add_newline to true to insert a line break before the appended content. The 
 | markdown | Markdown content to append to the document | str | Yes |
 | add_newline | Add a newline before the appended content | bool | No |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
@@ -26,7 +31,7 @@ Set add_newline to true to insert a line break before the appended content. The 
 | result | Result of the append operation | Dict[str, Any] |
 | document | The document for chaining | GoogleDriveFile |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 **AI Report Generation**: Append LLM-generated analysis or summaries to existing report documents with proper formatting.
 

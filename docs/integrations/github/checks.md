@@ -1,16 +1,21 @@
-# Github Create Check Run
+# GitHub Checks
+<!-- MANUAL: file_description -->
+_Add a description of this category of blocks._
+<!-- END MANUAL -->
 
-## What it is
+## Github Create Check Run
+
+### What it is
 Creates a new check run for a specific commit in a GitHub repository
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 This block creates a new check run associated with a specific commit using the GitHub Checks API. Check runs represent individual test suites, linting tools, or other CI processes that report status against commits or pull requests.
 
 You specify the commit SHA, check name, and current status. For completed checks, provide a conclusion (success, failure, or neutral) and optional detailed output including title, summary, and extended text for rich reporting in the GitHub UI.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
@@ -24,14 +29,14 @@ You specify the commit SHA, check name, and current status. For completed checks
 | output_summary | Summary of the check run output | str | No |
 | output_text | Detailed text of the check run output | str | No |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if check run creation failed | str |
 | check_run | Details of the created check run | CheckRunResult |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 **Custom CI Integration**: Create check runs for external CI systems that aren't natively integrated with GitHub.
 

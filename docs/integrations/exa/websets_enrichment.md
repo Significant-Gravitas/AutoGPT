@@ -1,23 +1,28 @@
-# Exa Cancel Enrichment
+# Exa Websets Enrichment
+<!-- MANUAL: file_description -->
+_Add a description of this category of blocks._
+<!-- END MANUAL -->
 
-## What it is
+## Exa Cancel Enrichment
+
+### What it is
 Cancel a running enrichment operation
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 This block stops a running enrichment operation on a webset. Items already enriched before cancellation retain their enrichment data, but remaining items will not be processed.
 
 Use this when an enrichment is taking too long, producing unexpected results, or is no longer needed. The block returns the approximate number of items enriched before cancellation.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | webset_id | The ID or external ID of the Webset | str | Yes |
 | enrichment_id | The ID of the enrichment to cancel | str | Yes |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
@@ -27,7 +32,7 @@ Use this when an enrichment is taking too long, producing unexpected results, or
 | items_enriched_before_cancel | Approximate number of items enriched before cancellation | int |
 | success | Whether the cancellation was successful | str |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 **Cost Control**: Stop enrichments that are exceeding budget or taking too long.
 

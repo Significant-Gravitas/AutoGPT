@@ -1,28 +1,33 @@
-# Github Add Label
+# GitHub Issues
+<!-- MANUAL: file_description -->
+_Add a description of this category of blocks._
+<!-- END MANUAL -->
 
-## What it is
+## Github Add Label
+
+### What it is
 A block that adds a label to a GitHub issue or pull request for categorization and organization.
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 The block takes the GitHub credentials, the URL of the issue or pull request, and the label to be added as inputs. It then sends a request to the GitHub API to add the label to the specified issue or pull request.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | issue_url | URL of the GitHub issue or pull request | str | Yes |
 | label | Label to add to the issue or pull request | str | Yes |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the label addition failed | str |
 | status | Status of the label addition operation | str |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 Automatically categorizing issues based on their content or assigning priority labels to newly created issues.
 <!-- END MANUAL -->

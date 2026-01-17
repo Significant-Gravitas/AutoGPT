@@ -1,16 +1,21 @@
-# Twitter Get Retweeters
+# Twitter Retweet
+<!-- MANUAL: file_description -->
+_Add a description of this category of blocks._
+<!-- END MANUAL -->
 
-## What it is
+## Twitter Get Retweeters
+
+### What it is
 This block gets information about who has retweeted a tweet.
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 This block queries the Twitter API v2 to retrieve a paginated list of users who have retweeted a specific tweet. Results include user IDs, usernames, display names, and optionally expanded profile data.
 
 The block uses Tweepy with OAuth 2.0 authentication. Users are returned with pagination support for tweets with many retweets. Expansions can include pinned tweet data for each user who retweeted.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
@@ -21,7 +26,7 @@ The block uses Tweepy with OAuth 2.0 authentication. Users are returned with pag
 | max_results | Maximum number of results per page (1-100) | int | No |
 | pagination_token | Token for pagination | str | No |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
@@ -34,7 +39,7 @@ The block uses Tweepy with OAuth 2.0 authentication. Users are returned with pag
 | included | Additional data that you have requested (Optional) via Expansions field | Dict[str, Any] |
 | meta | Provides metadata such as pagination info (next_token) or result counts | Dict[str, Any] |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 **Reach Analysis**: Identify who is amplifying your content to understand your audience's network.
 

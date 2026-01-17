@@ -1,16 +1,21 @@
-# Twitter Create List
+# Twitter Manage Lists
+<!-- MANUAL: file_description -->
+_Add a description of this category of blocks._
+<!-- END MANUAL -->
 
-## What it is
+## Twitter Create List
+
+### What it is
 This block creates a new Twitter List for the authenticated user.
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 This block uses the Twitter API v2 via Tweepy to create a new Twitter List under your account. You can specify the list name, description, and whether it should be public or private.
 
 The block authenticates using OAuth 2.0 with list write permissions and sends a POST request to create the list. Returns the new list's ID and URL upon successful creation.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
@@ -18,7 +23,7 @@ The block authenticates using OAuth 2.0 with list write permissions and sends a 
 | description | Description of the List | str | No |
 | private | Whether the List should be private | bool | No |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
@@ -26,7 +31,7 @@ The block authenticates using OAuth 2.0 with list write permissions and sends a 
 | url | URL of the created list | str |
 | list_id | ID of the created list | str |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 **Automated List Setup**: Programmatically create lists as part of onboarding workflows or project initialization.
 

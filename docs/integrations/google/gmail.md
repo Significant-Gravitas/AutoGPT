@@ -1,28 +1,33 @@
-# Gmail Add Label
+# Google Gmail
+<!-- MANUAL: file_description -->
+_Add a description of this category of blocks._
+<!-- END MANUAL -->
 
-## What it is
+## Gmail Add Label
+
+### What it is
 A block that adds a label to a specific email message in Gmail, creating the label if it doesn't exist.
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 The block first checks if the specified label exists in the user's Gmail account. If it doesn't, it creates the label. Then, it adds the label to the specified email message using the message ID.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | message_id | Message ID to add label to | str | Yes |
 | label_name | Label name to add | str | Yes |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if any | str |
 | result | Label addition result | GmailLabelResult |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 Automatically categorizing incoming customer emails based on their content, adding labels like "Urgent," "Feedback," or "Invoice" for easier processing.
 <!-- END MANUAL -->

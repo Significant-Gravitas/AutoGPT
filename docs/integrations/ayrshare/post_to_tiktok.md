@@ -1,16 +1,21 @@
-# Post To Tik Tok
+# Ayrshare Post To TikTok
+<!-- MANUAL: file_description -->
+_Add a description of this category of blocks._
+<!-- END MANUAL -->
 
-## What it is
+## Post To Tik Tok
+
+### What it is
 Post to TikTok using Ayrshare
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 This block uses Ayrshare's API to publish content to TikTok. It supports video posts and image slideshows (up to 35 images), with extensive options for content labeling including AI-generated disclosure, branded content, and brand organic content tags.
 
 The block connects to TikTok's API through Ayrshare with controls for visibility, duet/stitch permissions, comment settings, auto-music, and thumbnail selection. Videos can be posted as drafts for final review, and scheduled for future publishing.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
@@ -37,7 +42,7 @@ The block connects to TikTok's API through Ayrshare with controls for visibility
 | visibility | Post visibility: 'public', 'private', 'followers', or 'friends' | "public" \| "private" \| "followers" | No |
 | draft | Create as draft post (video only) | bool | No |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
@@ -45,7 +50,7 @@ The block connects to TikTok's API through Ayrshare with controls for visibility
 | post_result | The result of the post | PostResponse |
 | post | The result of the post | PostIds |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 **Creator Content Pipeline**: Automate video uploads with proper AI disclosure labels and visibility settings for content creators.
 

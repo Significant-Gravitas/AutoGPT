@@ -1,16 +1,21 @@
 # Firecrawl Search
+<!-- MANUAL: file_description -->
+_Add a description of this category of blocks._
+<!-- END MANUAL -->
 
-## What it is
+## Firecrawl Search
+
+### What it is
 Firecrawl searches the web for the given query.
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 This block uses Firecrawl's search API to find web pages matching your query and optionally extract their content. It performs a web search and can return results with full page content in your chosen format.
 
 Configure the number of results to return, output formats (markdown, HTML, raw HTML), and caching behavior. The wait_for parameter allows time for JavaScript-heavy pages to fully render before extraction.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
@@ -20,7 +25,7 @@ Configure the number of results to return, output formats (markdown, HTML, raw H
 | wait_for | Specify a delay in milliseconds before fetching the content, allowing the page sufficient time to load. | int | No |
 | formats | Returns the content of the search if specified | List["markdown" \| "html" \| "rawHtml" \| "links" \| "screenshot" \| "screenshot@fullPage" \| "json" \| "changeTracking"] | No |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
@@ -28,7 +33,7 @@ Configure the number of results to return, output formats (markdown, HTML, raw H
 | data | The result of the search | Dict[str, Any] |
 | site | The site of the search | Dict[str, Any] |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 **Research Automation**: Search for topics and automatically extract content from relevant pages for analysis.
 

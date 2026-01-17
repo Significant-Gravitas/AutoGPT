@@ -1,14 +1,19 @@
-# Todoist Create Comment
+# Todoist Comments
+<!-- MANUAL: file_description -->
+_Add a description of this category of blocks._
+<!-- END MANUAL -->
 
-## What it is
+## Todoist Create Comment
+
+### What it is
 Creates a new comment on a Todoist task or project
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 Takes comment content and task/project ID, creates comment via Todoist API.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
@@ -16,7 +21,7 @@ Takes comment content and task/project ID, creates comment via Todoist API.
 | id_type | Specify either task_id or project_id to comment on | Id Type | No |
 | attachment | Optional file attachment | Dict[str, Any] | No |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
@@ -27,7 +32,7 @@ Takes comment content and task/project ID, creates comment via Todoist API.
 | task_id | Associated task ID | str |
 | project_id | Associated project ID | str |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 Adding notes and comments to tasks or projects automatically.
 <!-- END MANUAL -->

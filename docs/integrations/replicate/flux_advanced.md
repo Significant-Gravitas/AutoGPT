@@ -1,14 +1,19 @@
-# Replicate Flux Advanced Model
+# Replicate Flux Advanced
+<!-- MANUAL: file_description -->
+_Add a description of this category of blocks._
+<!-- END MANUAL -->
 
-## What it is
+## Replicate Flux Advanced Model
+
+### What it is
 This block runs Flux models on Replicate with advanced settings.
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 The block takes a text prompt and several customization options as input. It then sends this information to the selected Flux model on the Replicate platform. The AI model processes the input and generates an image based on the provided specifications. Finally, the block returns a URL to the generated image.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
@@ -23,14 +28,14 @@ The block takes a text prompt and several customization options as input. It the
 | output_quality | Quality when saving the output images, from 0 to 100. Not relevant for .png outputs | int | No |
 | safety_tolerance | Safety tolerance, 1 is most strict and 5 is most permissive | int | No |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
 | result | Generated output | str |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 A graphic designer could use this block to quickly generate concept art for a sci-fi game. They might input a prompt like "A futuristic spaceport on a distant planet with multiple moons in the sky" and adjust the settings to get the desired style and quality. The generated image could then serve as inspiration or a starting point for further design work.
 - API Key: Your Replicate API key for authentication

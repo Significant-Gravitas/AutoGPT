@@ -1,16 +1,21 @@
-# Hub Spot Company
+# HubSpot Company
+<!-- MANUAL: file_description -->
+_Add a description of this category of blocks._
+<!-- END MANUAL -->
 
-## What it is
+## Hub Spot Company
+
+### What it is
 Manages HubSpot companies - create, update, and retrieve company information
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 This block interacts with the HubSpot CRM API to manage company records. It supports three operations: create new companies, update existing companies, and retrieve company information by domain.
 
 Company data is passed as a dictionary with standard HubSpot company properties like name, domain, industry, and custom properties.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
@@ -18,7 +23,7 @@ Company data is passed as a dictionary with standard HubSpot company properties 
 | company_data | Company data for create/update operations | Dict[str, Any] | No |
 | domain | Company domain for get/update operations | str | No |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
@@ -26,7 +31,7 @@ Company data is passed as a dictionary with standard HubSpot company properties 
 | company | Company information | Dict[str, Any] |
 | status | Operation status | str |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 **Lead Enrichment**: Create or update company records when new leads come in from forms or integrations.
 

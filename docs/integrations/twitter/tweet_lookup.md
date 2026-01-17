@@ -1,16 +1,21 @@
-# Twitter Get Tweet
+# Twitter Tweet Lookup
+<!-- MANUAL: file_description -->
+_Add a description of this category of blocks._
+<!-- END MANUAL -->
 
-## What it is
+## Twitter Get Tweet
+
+### What it is
 This block retrieves information about a specific Tweet.
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 This block queries the Twitter API v2 to retrieve detailed information about a specific tweet by its ID. Returns tweet content, author information, engagement metrics, and any requested expanded data.
 
 The block uses Tweepy with OAuth 2.0 authentication and supports extensive expansions to include additional data like media, author profile, location, poll results, and referenced tweets. Useful for analyzing individual tweets or verifying tweet content.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
@@ -22,7 +27,7 @@ The block uses Tweepy with OAuth 2.0 authentication and supports extensive expan
 | user_fields | Select what user information you want to see. To use this, you must first select one of these in expansions above: - 'Author_User_ID' for tweet authors - 'Mentioned_Usernames' for mentioned users - 'Reply_To_User_ID' for users being replied to - 'Referenced_Tweet_Author_ID' for authors of referenced tweets | TweetUserFieldsFilter | No |
 | tweet_id | Unique identifier of the Tweet to request (ex: 1460323737035677698) | str | Yes |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
@@ -35,7 +40,7 @@ The block uses Tweepy with OAuth 2.0 authentication and supports extensive expan
 | included | Additional data that you have requested (Optional) via Expansions field | Dict[str, Any] |
 | meta | Metadata about the tweet | Dict[str, Any] |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 **Content Verification**: Retrieve a specific tweet to verify its content, author, or current engagement metrics.
 

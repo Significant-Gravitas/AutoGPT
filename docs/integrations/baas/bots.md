@@ -1,29 +1,34 @@
-# Baas Bot Delete Recording
+# Baas Bots
+<!-- MANUAL: file_description -->
+_Add a description of this category of blocks._
+<!-- END MANUAL -->
 
-## What it is
+## Baas Bot Delete Recording
+
+### What it is
 Permanently delete a meeting's recorded data
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 This block permanently deletes the recorded data for a meeting bot using the BaaS (Bot as a Service) API. The deletion is irreversible and removes all associated recording files and transcripts.
 
 Provide the bot_id from a previous recording session to delete that specific meeting's data.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | bot_id | UUID of the bot whose data to delete | str | Yes |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
 | deleted | Whether the data was successfully deleted | bool |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 **Privacy Compliance**: Delete recordings to comply with data retention policies or user requests.
 

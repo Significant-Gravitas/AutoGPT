@@ -1,16 +1,21 @@
 # Exa Contents
+<!-- MANUAL: file_description -->
+_Add a description of this category of blocks._
+<!-- END MANUAL -->
 
-## What it is
+## Exa Contents
+
+### What it is
 Retrieves document contents using Exa's contents API
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 This block retrieves full content from web pages using Exa's contents API. You can provide URLs directly or document IDs from previous searches. The API supports live crawling to fetch fresh content and can extract text, highlights, and AI-generated summaries.
 
 The block supports subpage crawling to gather related content and offers various content retrieval options including full text extraction, relevant highlights, and customizable summary generation. Results are formatted for easy use with LLMs.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
@@ -25,7 +30,7 @@ The block supports subpage crawling to gather related content and offers various
 | subpage_target | Keyword(s) to find specific subpages of search results | str \| List[str] | No |
 | extras | Extra parameters for additional content | ExtrasSettings | No |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
@@ -37,7 +42,7 @@ The block supports subpage crawling to gather related content and offers various
 | statuses | Status information for each requested URL | List[ContentStatus] |
 | cost_dollars | Cost breakdown for the request | CostDollars |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 **Content Aggregation**: Retrieve full article content from multiple URLs for analysis or summarization.
 

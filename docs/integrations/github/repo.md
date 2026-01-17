@@ -1,16 +1,21 @@
-# Github Create File
+# GitHub Repo
+<!-- MANUAL: file_description -->
+_Add a description of this category of blocks._
+<!-- END MANUAL -->
 
-## What it is
+## Github Create File
+
+### What it is
 This block creates a new file in a GitHub repository.
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 This block creates a new file in a GitHub repository using the GitHub Contents API. It commits the file with the specified content to the chosen branch (or the default branch if not specified).
 
 The commit message can be customized, and the block returns the URL of the created file along with the commit SHA for tracking purposes.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
@@ -20,7 +25,7 @@ The commit message can be customized, and the block returns the URL of the creat
 | branch | Branch where the file should be created | str | No |
 | commit_message | Message for the commit | str | No |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
@@ -28,7 +33,7 @@ The commit message can be customized, and the block returns the URL of the creat
 | url | URL of the created file | str |
 | sha | SHA of the commit | str |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 **Configuration Deployment**: Automatically add configuration files to repositories during project setup.
 

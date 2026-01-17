@@ -1,16 +1,21 @@
-# AI Ad Maker Video Creator
+# LLM
+<!-- MANUAL: file_description -->
+Blocks for interacting with Large Language Models including AI conversations, image generation, video creation, and intelligent condition evaluation.
+<!-- END MANUAL -->
 
-## What it is
+## AI Ad Maker Video Creator
+
+### What it is
 Creates an AI‑generated 30‑second advert (text + images)
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 This block generates video advertisements by combining AI-generated visuals with narrated scripts. Line breaks in the script create scene transitions. Choose from various voices and background music options.
 
 Optionally provide your own images via input_media_urls, or let the AI generate visuals. The finished video is returned as a URL for download or embedding.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
@@ -22,14 +27,14 @@ Optionally provide your own images via input_media_urls, or let the AI generate 
 | input_media_urls | List of image URLs to feature in the advert. | List[str] | No |
 | use_only_provided_media | Restrict visuals to supplied images only. | bool | No |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
 | video_url | URL of the finished advert | str |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 **Product Marketing**: Create quick promotional videos for products or services.
 

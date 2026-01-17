@@ -1,29 +1,34 @@
-# Create Dictionary
+# Data
+<!-- MANUAL: file_description -->
+Blocks for creating, reading, and manipulating data structures including lists, dictionaries, spreadsheets, and persistent storage.
+<!-- END MANUAL -->
 
-## What it is
+## Create Dictionary
+
+### What it is
 Creates a dictionary with the specified key-value pairs. Use this when you know all the values you want to add upfront.
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 This block creates a new dictionary from specified key-value pairs in a single operation. It's designed for cases where you know all the data upfront, rather than building the dictionary incrementally.
 
 The block takes a dictionary input and outputs it as-is, making it useful as a starting point for workflows that need to pass structured data between blocks.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | values | Key-value pairs to create the dictionary with | Dict[str, Any] | Yes |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if dictionary creation failed | str |
 | dictionary | The created dictionary containing the specified key-value pairs | Dict[str, Any] |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 **API Request Payloads**: Create complete request body objects with all required fields before sending to an API.
 

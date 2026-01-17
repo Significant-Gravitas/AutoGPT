@@ -1,16 +1,21 @@
-# Twitter Get Space Buyers
+# Twitter Spaces Lookup
+<!-- MANUAL: file_description -->
+_Add a description of this category of blocks._
+<!-- END MANUAL -->
 
-## What it is
+## Twitter Get Space Buyers
+
+### What it is
 This block retrieves a list of users who purchased tickets to a Twitter Space.
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 This block queries the Twitter API v2 to retrieve a list of users who purchased tickets to a ticketed Twitter Space. Only the Space creator or hosts can access buyer information.
 
 The block uses Tweepy with OAuth 2.0 authentication and returns buyer user IDs, usernames, and optionally expanded profile data. This is useful for managing ticketed events and understanding your paying audience.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
@@ -19,7 +24,7 @@ The block uses Tweepy with OAuth 2.0 authentication and returns buyer user IDs, 
 | user_fields | Select what user information you want to see, like username, bio, profile picture, etc. | TweetUserFieldsFilter | No |
 | space_id | Space ID to lookup buyers for | str | Yes |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
@@ -29,7 +34,7 @@ The block uses Tweepy with OAuth 2.0 authentication and returns buyer user IDs, 
 | data | Complete space buyers data | List[Dict[str, Any]] |
 | includes | Additional data requested via expansions | Dict[str, Any] |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 **Audience Management**: Track who purchased tickets to manage attendee lists and send follow-ups.
 

@@ -1,16 +1,21 @@
-# Twitter Get Pinned Lists
+# Twitter Pinned Lists
+<!-- MANUAL: file_description -->
+_Add a description of this category of blocks._
+<!-- END MANUAL -->
 
-## What it is
+## Twitter Get Pinned Lists
+
+### What it is
 This block returns the Lists pinned by the authenticated user.
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 This block queries the Twitter API v2 to retrieve all Lists that the authenticated user has pinned for quick access. Pinned lists appear prominently in the user's Lists tab on Twitter.
 
 The block uses Tweepy with OAuth 2.0 authentication and supports expansions to include owner profile data and detailed list metadata. Returns list IDs, names, and complete list data objects.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
@@ -18,7 +23,7 @@ The block uses Tweepy with OAuth 2.0 authentication and supports expansions to i
 | user_fields | Choose what information you want to see about list owners. This only works when you select 'List_Owner_ID' in expansions above.  You can see things like: - Their username - Profile picture - Account details - And more | TweetUserFieldsFilter | No |
 | list_fields | Choose what information you want to see about the Twitter Lists themselves, such as: - List name - Description - Number of followers - Number of members - Whether it's private - Creation date - And more | ListFieldsFilter | No |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
@@ -29,7 +34,7 @@ The block uses Tweepy with OAuth 2.0 authentication and supports expansions to i
 | included | Additional data requested via expansions | Dict[str, Any] |
 | meta | Metadata about the response | Dict[str, Any] |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 **Workflow Configuration**: Retrieve pinned lists to understand which lists are prioritized in user workflows.
 

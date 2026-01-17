@@ -1,16 +1,21 @@
-# Stagehand Act
+# Stagehand Blocks
+<!-- MANUAL: file_description -->
+_Add a description of this category of blocks._
+<!-- END MANUAL -->
 
-## What it is
+## Stagehand Act
+
+### What it is
 Interact with a web page by performing actions on a web page. Use it to build self-healing and deterministic automations that adapt to website chang.
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 This block uses Stagehand with Browserbase to perform web actions using AI-powered element detection. Actions like click, fill, type, scroll, and select are described in natural language and executed reliably even if the page structure changes.
 
 Configure timeouts for DOM settlement and page loading. Variables can be passed to actions for dynamic data entry.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
@@ -23,7 +28,7 @@ Configure timeouts for DOM settlement and page loading. Variables can be passed 
 | domSettleTimeoutMs | Timeout in milliseconds for DOM settlement.Wait longer for dynamic content | int | No |
 | timeoutMs | Timeout in milliseconds for DOM ready. Extended timeout for slow-loading forms | int | No |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
@@ -32,7 +37,7 @@ Configure timeouts for DOM settlement and page loading. Variables can be passed 
 | message | Details about the action’s execution. | str |
 | action | Action performed | str |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 **Form Automation**: Fill out web forms, submit applications, or complete checkout flows.
 

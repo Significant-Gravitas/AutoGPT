@@ -1,29 +1,34 @@
-# Twitter Hide Reply
+# Twitter Hide
+<!-- MANUAL: file_description -->
+_Add a description of this category of blocks._
+<!-- END MANUAL -->
 
-## What it is
+## Twitter Hide Reply
+
+### What it is
 This block hides a reply to a tweet.
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 This block uses the Twitter API v2 via Tweepy to hide a reply to one of your tweets. Hidden replies are not deleted—they're moved behind a "View hidden replies" option that viewers can click to see. Only the original tweet author can hide replies.
 
 The block authenticates using OAuth 2.0 and sends a PUT request to change the reply's hidden status. This is useful for managing conversation threads and reducing visibility of off-topic or inappropriate replies.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | tweet_id | ID of the tweet reply to hide | str | Yes |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
 | success | Whether the operation was successful | bool |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 **Conversation Moderation**: Hide off-topic or spam replies to keep your tweet threads focused and readable.
 

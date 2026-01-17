@@ -1,16 +1,21 @@
 # Twitter Search Spaces
+<!-- MANUAL: file_description -->
+_Add a description of this category of blocks._
+<!-- END MANUAL -->
 
-## What it is
+## Twitter Search Spaces
+
+### What it is
 This block searches for Twitter Spaces based on specified terms.
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 This block queries the Twitter API v2 to search for Twitter Spaces (live audio conversations) matching a search term. Results can be filtered by state (live, scheduled, or all) and include Space metadata like title, host information, and participant counts.
 
 The block uses Tweepy with OAuth 2.0 authentication and supports expansions to include additional data about creators, hosts, speakers, invited users, and topics. Returns paginated results with Space IDs, titles, and host information.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
@@ -21,7 +26,7 @@ The block uses Tweepy with OAuth 2.0 authentication and supports expansions to i
 | max_results | Maximum number of results to return (1-100) | int | No |
 | state | Type of Spaces to return (live, scheduled, or all) | "live" \| "scheduled" \| "all" | No |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
@@ -34,7 +39,7 @@ The block uses Tweepy with OAuth 2.0 authentication and supports expansions to i
 | includes | Additional data requested via expansions | Dict[str, Any] |
 | meta | Metadata including pagination info | Dict[str, Any] |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 **Event Discovery**: Find live or upcoming Spaces about topics you're interested in to join or monitor.
 

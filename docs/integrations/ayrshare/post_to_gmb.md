@@ -1,16 +1,21 @@
-# Post To GMB
+# Ayrshare Post To GMB
+<!-- MANUAL: file_description -->
+_Add a description of this category of blocks._
+<!-- END MANUAL -->
 
-## What it is
+## Post To GMB
+
+### What it is
 Post to Google My Business using Ayrshare
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 This block uses Ayrshare's API to publish content to Google My Business profiles. It supports standard posts, photo/video posts (categorized by type like exterior, interior, product), and special post types including events and promotional offers with coupon codes.
 
 The block integrates with Google's Business Profile API through Ayrshare, enabling call-to-action buttons (book, order, shop, learn more, sign up, call), event scheduling with start/end dates, and promotional offers with terms and redemption URLs.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
@@ -39,7 +44,7 @@ The block integrates with Google's Business Profile API through Ayrshare, enabli
 | offer_redeem_online_url | URL where customers can redeem the offer online | str | No |
 | offer_terms_conditions | Terms and conditions for the offer | str | No |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
@@ -47,7 +52,7 @@ The block integrates with Google's Business Profile API through Ayrshare, enabli
 | post_result | The result of the post | PostResponse |
 | post | The result of the post | PostIds |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 **Local Business Updates**: Post daily specials, new arrivals, or service announcements directly to your Google Business Profile.
 

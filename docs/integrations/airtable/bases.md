@@ -1,16 +1,21 @@
-# Airtable Create Base
+# Airtable Bases
+<!-- MANUAL: file_description -->
+_Add a description of this category of blocks._
+<!-- END MANUAL -->
 
-## What it is
+## Airtable Create Base
+
+### What it is
 Create or find a base in Airtable
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 This block creates a new Airtable base in a specified workspace, or finds an existing one with the same name. When creating, you can optionally define initial tables and their fields to set up the schema.
 
 Enable find_existing to search for a base with the same name before creating a new one, preventing duplicates in your workspace.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
@@ -19,7 +24,7 @@ Enable find_existing to search for a base with the same name before creating a n
 | find_existing | If true, return existing base with same name instead of creating duplicate | bool | No |
 | tables | At least one table and field must be specified. Array of table objects to create in the base. Each table should have 'name' and 'fields' properties | List[Dict[str, Any]] | No |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
@@ -29,7 +34,7 @@ Enable find_existing to search for a base with the same name before creating a n
 | table | A single table object | Dict[str, Any] |
 | was_created | True if a new base was created, False if existing was found | bool |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 **Project Setup**: Automatically create new bases when projects start with predefined table structures.
 

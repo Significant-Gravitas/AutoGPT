@@ -1,16 +1,21 @@
-# Exa Create Import
+# Exa Websets Import Export
+<!-- MANUAL: file_description -->
+_Add a description of this category of blocks._
+<!-- END MANUAL -->
 
-## What it is
+## Exa Create Import
+
+### What it is
 Import CSV data to use with websets for targeted searches
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 This block creates an import from CSV data that can be used as a source for webset searches. Imports allow you to bring your own data (like company lists or contact lists) and use them for scoped or exclusion searches.
 
 You specify the entity type and which columns contain identifiers and URLs. The import becomes available as a source that can be referenced when creating webset searches.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
@@ -22,7 +27,7 @@ You specify the entity type and which columns contain identifiers and URLs. The 
 | url_column | Column index containing URLs (optional) | int | No |
 | metadata | Metadata to attach to the import | Dict[str, Any] | No |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
@@ -36,7 +41,7 @@ You specify the entity type and which columns contain identifiers and URLs. The 
 | upload_valid_until | Expiration time for upload URL (only if upload_url is provided) | str |
 | created_at | When the import was created | str |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 **Customer Enrichment**: Import your customer list to find similar companies or related contacts.
 

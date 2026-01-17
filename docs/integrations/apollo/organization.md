@@ -1,16 +1,21 @@
-# Search Organizations
+# Apollo Organization
+<!-- MANUAL: file_description -->
+_Add a description of this category of blocks._
+<!-- END MANUAL -->
 
-## What it is
+## Search Organizations
+
+### What it is
 Search for organizations in Apollo
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 This block searches the Apollo database for organizations using various filters like employee count, location, and keywords. Apollo maintains a comprehensive database of company information for sales and marketing purposes.
 
 Results can be filtered by headquarters location, excluded locations, industry keywords, and specific Apollo organization IDs.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
@@ -22,7 +27,7 @@ Results can be filtered by headquarters location, excluded locations, industry k
 | organization_ids | The Apollo IDs for the companies you want to include in your search results. Each company in the Apollo database is assigned a unique ID.  To find IDs, identify the values for organization_id when you call this endpoint. | List[str] | No |
 | max_results | The maximum number of results to return. If you don't specify this parameter, the default is 100. | int | No |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
@@ -30,7 +35,7 @@ Results can be filtered by headquarters location, excluded locations, industry k
 | organizations | List of organizations found | List[Dict[str, Any]] |
 | organization | Each found organization, one at a time | Dict[str, Any] |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 **Market Research**: Find companies matching specific criteria for market analysis.
 

@@ -1,23 +1,28 @@
-# Add To Library From Store
+# System Library Operations
+<!-- MANUAL: file_description -->
+_Add a description of this category of blocks._
+<!-- END MANUAL -->
 
-## What it is
+## Add To Library From Store
+
+### What it is
 Add an agent from the store to your personal library
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 This block copies an agent from the public store into your personal library using its store_listing_version_id. Optionally provide a custom agent_name to rename it in your library.
 
 The block returns the library entry ID and agent graph ID, which can be used to execute the agent or manage your library.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | store_listing_version_id | The ID of the store listing version to add to library | str | Yes |
 | agent_name | Optional custom name for the agent in your library | str | No |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
@@ -29,7 +34,7 @@ The block returns the library entry ID and agent graph ID, which can be used to 
 | agent_name | The name of the agent | str |
 | message | Success or error message | str |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 **Agent Provisioning**: Automatically add recommended agents to a user's library.
 

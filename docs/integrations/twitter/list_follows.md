@@ -1,29 +1,34 @@
-# Twitter Follow List
+# Twitter List Follows
+<!-- MANUAL: file_description -->
+_Add a description of this category of blocks._
+<!-- END MANUAL -->
 
-## What it is
+## Twitter Follow List
+
+### What it is
 This block follows a specified Twitter list for the authenticated user.
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 This block uses the Twitter API v2 via Tweepy to follow a Twitter List. Following a list adds it to your Lists tab and shows tweets from list members in your timeline when viewing that list.
 
 The block authenticates using OAuth 2.0 with list write permissions and sends a POST request to add the follow relationship. Returns a success indicator confirming the list was followed.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | list_id | The ID of the List to follow | str | Yes |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
 | success | Whether the follow was successful | bool |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 **Curated Content Discovery**: Follow lists curated by industry experts to access filtered content streams.
 

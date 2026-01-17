@@ -1,22 +1,27 @@
-# Exa Cancel Webset
+# Exa Websets
+<!-- MANUAL: file_description -->
+_Add a description of this category of blocks._
+<!-- END MANUAL -->
 
-## What it is
+## Exa Cancel Webset
+
+### What it is
 Cancel all operations being performed on a Webset
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 This block cancels all running operations (searches, enrichments) on a webset. The webset transitions to an idle state and any in-progress operations are stopped.
 
 The block is useful for stopping long-running operations that are no longer needed or when you need to modify the webset configuration. Items already processed before cancellation are retained.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | webset_id | The ID or external ID of the Webset to cancel | str | Yes |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
@@ -26,7 +31,7 @@ The block is useful for stopping long-running operations that are no longer need
 | external_id | The external identifier for the webset | str |
 | success | Whether the cancellation was successful | str |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 **Resource Management**: Stop expensive operations on websets that are no longer needed.
 

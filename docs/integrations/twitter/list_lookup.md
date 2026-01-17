@@ -1,16 +1,21 @@
-# Twitter Get List
+# Twitter List Lookup
+<!-- MANUAL: file_description -->
+_Add a description of this category of blocks._
+<!-- END MANUAL -->
 
-## What it is
+## Twitter Get List
+
+### What it is
 This block retrieves information about a specified Twitter List.
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 This block queries the Twitter API v2 to retrieve detailed information about a specific Twitter List by its ID. Returns list metadata including name, description, member count, follower count, and privacy status.
 
 The block uses Tweepy with OAuth 2.0 authentication and supports expansions to include owner profile data. Works for both public lists and private lists you own or follow.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
@@ -19,7 +24,7 @@ The block uses Tweepy with OAuth 2.0 authentication and supports expansions to i
 | list_fields | Choose what information you want to see about the Twitter Lists themselves, such as: - List name - Description - Number of followers - Number of members - Whether it's private - Creation date - And more | ListFieldsFilter | No |
 | list_id | The ID of the List to lookup | str | Yes |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
@@ -32,7 +37,7 @@ The block uses Tweepy with OAuth 2.0 authentication and supports expansions to i
 | included | Additional data requested via expansions | Dict[str, Any] |
 | meta | Metadata about the response | Dict[str, Any] |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 **List Verification**: Verify a list exists and check its current details before performing operations on it.
 

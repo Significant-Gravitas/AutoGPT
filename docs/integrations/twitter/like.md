@@ -1,16 +1,21 @@
-# Twitter Get Liked Tweets
+# Twitter Like
+<!-- MANUAL: file_description -->
+_Add a description of this category of blocks._
+<!-- END MANUAL -->
 
-## What it is
+## Twitter Get Liked Tweets
+
+### What it is
 This block gets information about tweets liked by a user.
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 This block queries the Twitter API v2 to retrieve tweets that a specified user has liked. Results are returned in reverse chronological order (most recently liked first) with pagination support.
 
 The block uses Tweepy with OAuth 2.0 authentication and supports extensive expansions to include additional data like media, author information, and location details. Returns tweet IDs, text content, author information, and complete tweet data objects.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
@@ -24,7 +29,7 @@ The block uses Tweepy with OAuth 2.0 authentication and supports extensive expan
 | max_results | Maximum number of results to return (5-100) | int | No |
 | pagination_token | Token for getting next/previous page of results | str | No |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
@@ -38,7 +43,7 @@ The block uses Tweepy with OAuth 2.0 authentication and supports extensive expan
 | included | Additional data that you have requested (Optional) via Expansions field | Dict[str, Any] |
 | meta | Provides metadata such as pagination info (next_token) or result counts | Dict[str, Any] |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 **Interest Analysis**: Analyze a user's liked tweets to understand their interests, preferences, and sentiment.
 

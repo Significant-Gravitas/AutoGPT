@@ -1,14 +1,19 @@
-# Calculator
+# Logic
+<!-- MANUAL: file_description -->
+Blocks for conditional logic, comparisons, calculations, data sampling, and control flow operations in workflows.
+<!-- END MANUAL -->
 
-## What it is
+## Calculator
+
+### What it is
 Performs a mathematical operation on two numbers.
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 The Calculator block takes in two numbers and an operation choice. It then applies the chosen operation to the numbers and returns the result. If rounding is selected, it rounds the result to the nearest whole number.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
@@ -17,14 +22,14 @@ The Calculator block takes in two numbers and an operation choice. It then appli
 | b | Enter the second number (B) | float | Yes |
 | round_result | Do you want to round the result to a whole number? | bool | No |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
 | result | The result of your calculation | float |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 A user wants to quickly perform a calculation, such as adding two numbers or calculating a percentage. They can input the numbers and operation into this block and receive the result instantly.
 <!-- END MANUAL -->

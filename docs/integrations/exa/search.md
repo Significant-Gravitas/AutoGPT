@@ -1,16 +1,21 @@
 # Exa Search
+<!-- MANUAL: file_description -->
+_Add a description of this category of blocks._
+<!-- END MANUAL -->
 
-## What it is
+## Exa Search
+
+### What it is
 Searches the web using Exa's advanced search API
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 This block uses Exa's advanced search API to find web content. Unlike traditional search engines, Exa offers neural search that understands semantic meaning, making it excellent for finding specific types of content. You can choose between keyword search (traditional), neural search (semantic understanding), or fast search.
 
 The block supports powerful filtering by domain, date ranges, content categories (companies, research papers, news, etc.), and text patterns. Results include URLs, titles, and optionally full content extraction.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
@@ -30,7 +35,7 @@ The block supports powerful filtering by domain, date ranges, content categories
 | contents | Content retrieval settings | ContentSettings | No |
 | moderation | Enable content moderation to filter unsafe content from search results | bool | No |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
@@ -42,7 +47,7 @@ The block supports powerful filtering by domain, date ranges, content categories
 | resolved_search_type | The search type that was actually used for this request (neural or keyword) | str |
 | cost_dollars | Cost breakdown for the request | CostDollars |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 **Competitive Research**: Search for companies in a specific industry, filtered by recent news or funding announcements.
 

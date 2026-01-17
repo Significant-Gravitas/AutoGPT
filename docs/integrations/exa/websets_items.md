@@ -1,16 +1,21 @@
-# Exa Bulk Webset Items
+# Exa Websets Items
+<!-- MANUAL: file_description -->
+_Add a description of this category of blocks._
+<!-- END MANUAL -->
 
-## What it is
+## Exa Bulk Webset Items
+
+### What it is
 Get all items from a webset in bulk (with configurable limits)
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 This block retrieves all items from a webset in a single operation, automatically handling pagination internally. You can specify a maximum number of items and choose whether to include enrichments and full content.
 
 Use this for batch processing when you need all webset data at once rather than paginating through results manually.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
@@ -19,7 +24,7 @@ Use this for batch processing when you need all webset data at once rather than 
 | include_enrichments | Include enrichment data for each item | bool | No |
 | include_content | Include full content for each item | bool | No |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
@@ -29,7 +34,7 @@ Use this for batch processing when you need all webset data at once rather than 
 | total_retrieved | Total number of items retrieved | int |
 | truncated | Whether results were truncated due to max_items limit | bool |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 **Batch Processing**: Retrieve all webset items for bulk analysis or processing in external systems.
 

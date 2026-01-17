@@ -1,16 +1,21 @@
-# Create Discord Thread
+# Discord Bot Blocks
+<!-- MANUAL: file_description -->
+_Add a description of this category of blocks._
+<!-- END MANUAL -->
 
-## What it is
+## Create Discord Thread
+
+### What it is
 Creates a new thread in a Discord channel.
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 This block uses the Discord API with a bot token to create a new thread in a specified channel. Threads can be public or private (private requires Boost Level 2+).
 
 Configure auto-archive duration and optionally send an initial message when the thread is created.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
@@ -21,7 +26,7 @@ Configure auto-archive duration and optionally send an initial message when the 
 | auto_archive_duration | Duration before the thread is automatically archived | "60" \| "1440" \| "4320" \| "10080" | No |
 | message_content | Optional initial message to send in the thread | str | No |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
@@ -30,7 +35,7 @@ Configure auto-archive duration and optionally send an initial message when the 
 | thread_id | ID of the created thread | str |
 | thread_name | Name of the created thread | str |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 **Support Tickets**: Create threads for individual support conversations to keep channels organized.
 

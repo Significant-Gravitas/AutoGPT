@@ -1,16 +1,21 @@
-# Add Audio To Video
+# Multimedia
+<!-- MANUAL: file_description -->
+_Add a description of this category of blocks._
+<!-- END MANUAL -->
 
-## What it is
+## Add Audio To Video
+
+### What it is
 Block to attach an audio file to a video file using moviepy.
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 This block combines a video file with an audio file using the moviepy library. The audio track is attached to the video, optionally with volume adjustment via the volume parameter (1.0 = original volume).
 
 Input files can be URLs, data URIs, or local paths. The output can be returned as either a file path or base64 data URI.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
@@ -19,14 +24,14 @@ Input files can be URLs, data URIs, or local paths. The output can be returned a
 | volume | Volume scale for the newly attached audio track (1.0 = original). | float | No |
 | output_return_type | Return the final output as a relative path or base64 data URI. | "file_path" \| "data_uri" | No |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
 | video_out | Final video (with attached audio), as a path or data URI. | str (file) |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 **Add Voiceover**: Combine generated voiceover audio with video content for narrated videos.
 

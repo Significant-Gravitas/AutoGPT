@@ -1,16 +1,21 @@
 # Notion Search
+<!-- MANUAL: file_description -->
+_Add a description of this category of blocks._
+<!-- END MANUAL -->
 
-## What it is
+## Notion Search
+
+### What it is
 Search your Notion workspace for pages and databases by text query.
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 This block searches across your Notion workspace using the Notion Search API. It finds pages and databases matching your query text, with optional filtering by type (page or database).
 
 Results include titles, types, URLs, and metadata for each match. Leave the query empty to retrieve all accessible pages and databases. Pagination is handled automatically up to the specified limit.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
@@ -18,7 +23,7 @@ Results include titles, types, URLs, and metadata for each match. Leave the quer
 | filter_type | Filter results by type: 'page' or 'database'. Leave empty for both. | str | No |
 | limit | Maximum number of results to return | int | No |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
@@ -28,7 +33,7 @@ Results include titles, types, URLs, and metadata for each match. Leave the quer
 | result_ids | List of IDs from search results for batch operations. | List[str] |
 | count | Number of results found. | int |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 **Content Discovery**: Find relevant pages in your workspace based on keywords or topics.
 

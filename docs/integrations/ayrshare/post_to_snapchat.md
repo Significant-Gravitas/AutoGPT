@@ -1,16 +1,21 @@
-# Post To Snapchat
+# Ayrshare Post To Snapchat
+<!-- MANUAL: file_description -->
+_Add a description of this category of blocks._
+<!-- END MANUAL -->
 
-## What it is
+## Post To Snapchat
+
+### What it is
 Post to Snapchat using Ayrshare
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 This block uses Ayrshare's API to publish video content to Snapchat. Snapchat only supports video content, with three destination options: Stories (24-hour ephemeral content), Saved Stories (persistent Stories), and Spotlight (public discovery feed).
 
 The block authenticates through Ayrshare and uploads video content with optional custom thumbnails. Videos can be scheduled for future publishing and support approval workflows for content review before going live.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
@@ -28,7 +33,7 @@ The block authenticates through Ayrshare and uploads video content with optional
 | story_type | Type of Snapchat content: 'story' (24-hour Stories), 'saved_story' (Saved Stories), or 'spotlight' (Spotlight posts) | str | No |
 | video_thumbnail | Thumbnail URL for video content (optional, auto-generated if not provided) | str | No |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
@@ -36,7 +41,7 @@ The block authenticates through Ayrshare and uploads video content with optional
 | post_result | The result of the post | PostResponse |
 | post | The result of the post | PostIds |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 **Ephemeral Marketing**: Share time-sensitive promotions or behind-the-scenes content that creates urgency through 24-hour Stories.
 

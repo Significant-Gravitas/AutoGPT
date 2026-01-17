@@ -1,16 +1,21 @@
-# Github Create Status
+# GitHub Statuses
+<!-- MANUAL: file_description -->
+_Add a description of this category of blocks._
+<!-- END MANUAL -->
 
-## What it is
+## Github Create Status
+
+### What it is
 Creates a new commit status in a GitHub repository
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 This block creates a commit status using the GitHub Status API. Commit statuses are simpler than check runs and appear as colored indicators (pending yellow, success green, failure red, error red) on commits and pull requests.
 
 Provide a context label to differentiate this status from others, an optional target URL for detailed results, and a description. Multiple statuses can exist on the same commit with different context labels.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
@@ -21,14 +26,14 @@ Provide a context label to differentiate this status from others, an optional ta
 | description | Short description of the status | str | No |
 | check_name | Label to differentiate this status from others | str | No |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
 | status | Details of the created status | StatusResult |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 **External CI Integration**: Report build status from CI systems that don't have native GitHub integration.
 

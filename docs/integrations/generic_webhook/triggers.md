@@ -1,22 +1,27 @@
-# Generic Webhook Trigger
+# Generic Webhook Triggers
+<!-- MANUAL: file_description -->
+_Add a description of this category of blocks._
+<!-- END MANUAL -->
 
-## What it is
+## Generic Webhook Trigger
+
+### What it is
 This block will output the contents of the generic input for the webhook.
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 This block creates a webhook endpoint that receives and outputs any incoming HTTP payload. When external services send data to this webhook URL, the block triggers and outputs the complete payload as a dictionary.
 
 Constants can be configured to pass additional static values alongside the dynamic webhook data.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | constants | The constants to be set when the block is put on the graph | Dict[str, Any] | No |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
@@ -24,7 +29,7 @@ Constants can be configured to pass additional static values alongside the dynam
 | payload | The complete webhook payload that was received from the generic webhook. | Dict[str, Any] |
 | constants | The constants to be set when the block is put on the graph | Dict[str, Any] |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 **External Integrations**: Receive data from any third-party service that supports webhooks.
 

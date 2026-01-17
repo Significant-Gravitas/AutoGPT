@@ -1,16 +1,21 @@
-# Airtable Create Records
+# Airtable Records
+<!-- MANUAL: file_description -->
+_Add a description of this category of blocks._
+<!-- END MANUAL -->
 
-## What it is
+## Airtable Create Records
+
+### What it is
 Create records in an Airtable table
 
-## How it works
+### How it works
 <!-- MANUAL: how_it_works -->
 This block creates new records in an Airtable table using the Airtable API. Each record is specified with a fields object containing field names and values. You can create up to 10 records in a single call.
 
 Enable typecast to automatically convert string values to appropriate field types (dates, numbers, etc.). The block returns the created records with their assigned IDs.
 <!-- END MANUAL -->
 
-## Inputs
+### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
@@ -21,7 +26,7 @@ Enable typecast to automatically convert string values to appropriate field type
 | typecast | Automatically convert string values to appropriate types | bool | No |
 | return_fields_by_field_id | Return fields by field ID | bool | No |
 
-## Outputs
+### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
@@ -29,7 +34,7 @@ Enable typecast to automatically convert string values to appropriate field type
 | records | Array of created record objects | List[Dict[str, Any]] |
 | details | Details of the created records | Dict[str, Any] |
 
-## Possible use case
+### Possible use case
 <!-- MANUAL: use_case -->
 **Data Import**: Bulk import data from external sources into Airtable tables.
 
