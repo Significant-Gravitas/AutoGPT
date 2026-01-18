@@ -21,12 +21,14 @@ from forge.components.code_executor.code_executor import (
 )
 from forge.config.ai_directives import AIDirectives
 from forge.config.ai_profile import AIProfile
+from forge.config.workspace_settings import AgentPermissions, WorkspaceSettings
 from forge.file_storage import FileStorageBackendName, get_storage
 from forge.llm.providers import MultiProvider
 from forge.logging.config import configure_logging
 from forge.logging.utils import print_attribute, speak
 from forge.models.action import ActionInterruptedByHuman, ActionProposal
 from forge.models.utils import ModelWithSummary
+from forge.permissions import ApprovalScope, CommandPermissionManager
 from forge.utils.const import FINISH_COMMAND
 from forge.utils.exceptions import AgentTerminated, InvalidAgentResponseError
 
@@ -87,6 +89,9 @@ async def run_auto_gpt(
     # Agent data is stored in .autogpt/ subdirectory of the workspace
     data_dir = workspace / ".autogpt"
 
+    # Load workspace settings (creates autogpt.yaml if missing)
+    workspace_settings = WorkspaceSettings.load_or_create(workspace)
+
     # Storage
     local = config.file_storage_backend == FileStorageBackendName.LOCAL
     restrict_to_root = not local or config.restrict_to_workspace
@@ -96,6 +101,30 @@ async def run_auto_gpt(
         restrict_to_root=restrict_to_root,
     )
     file_storage.initialize()
+
+    # Create prompt callback for permission requests
+    def prompt_permission(cmd: str, args_str: str, args: dict) -> ApprovalScope:
+        """Prompt user for command permission.
+
+        Args:
+            cmd: Command name.
+            args_str: Formatted arguments string.
+            args: Full arguments dictionary.
+
+        Returns:
+            ApprovalScope indicating user's choice.
+        """
+        response = clean_input(
+            f"\nAgent wants to execute:\n"
+            f"  {cmd}({args_str})\n"
+            f"Allow? [y=this agent / Y=all agents / n=deny] "
+        )
+        if response in ("Y", "YES", "all"):
+            return ApprovalScope.WORKSPACE
+        elif response.lower() in ("y", "yes"):
+            return ApprovalScope.AGENT
+        else:
+            return ApprovalScope.DENY
 
     # Set up logging module
     if speak:
@@ -199,11 +228,23 @@ async def run_auto_gpt(
                 break
 
     if agent_state:
+        # Create permission manager for this agent
+        agent_dir = data_dir / "agents" / agent_state.agent_id
+        agent_permissions = AgentPermissions.load_or_create(agent_dir)
+        perm_manager = CommandPermissionManager(
+            workspace=workspace,
+            agent_dir=agent_dir,
+            workspace_settings=workspace_settings,
+            agent_permissions=agent_permissions,
+            prompt_fn=prompt_permission if not config.noninteractive_mode else None,
+        )
+
         agent = configure_agent_with_state(
             state=agent_state,
             app_config=config,
             file_storage=file_storage,
             llm_provider=llm_provider,
+            permission_manager=perm_manager,
         )
         apply_overrides_to_ai_settings(
             ai_profile=agent.state.ai_profile,
@@ -296,14 +337,27 @@ async def run_auto_gpt(
         else:
             logger.info("AI config overrides specified through CLI; skipping revision")
 
+        # Generate agent ID and create permission manager
+        new_agent_id = agent_manager.generate_id(ai_profile.ai_name)
+        agent_dir = data_dir / "agents" / new_agent_id
+        agent_permissions = AgentPermissions.load_or_create(agent_dir)
+        perm_manager = CommandPermissionManager(
+            workspace=workspace,
+            agent_dir=agent_dir,
+            workspace_settings=workspace_settings,
+            agent_permissions=agent_permissions,
+            prompt_fn=prompt_permission if not config.noninteractive_mode else None,
+        )
+
         agent = create_agent(
-            agent_id=agent_manager.generate_id(ai_profile.ai_name),
+            agent_id=new_agent_id,
             task=task,
             ai_profile=ai_profile,
             directives=additional_ai_directives,
             app_config=config,
             file_storage=file_storage,
             llm_provider=llm_provider,
+            permission_manager=perm_manager,
         )
 
         file_manager = agent.file_manager

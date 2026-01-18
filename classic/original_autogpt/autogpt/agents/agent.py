@@ -30,6 +30,7 @@ from forge.components.image_gen import ImageGeneratorComponent
 from forge.components.system import SystemComponent
 from forge.components.user_interaction import UserInteractionComponent
 from forge.components.watchdog import WatchdogComponent
+from forge.components.todo import TodoComponent
 from forge.components.web import WebSearchComponent, WebSeleniumComponent
 from forge.file_storage.base import FileStorage
 from forge.llm.prompting.schema import ChatPrompt
@@ -48,6 +49,7 @@ from forge.models.action import (
     ActionSuccessResult,
 )
 from forge.models.config import Configurable
+from forge.permissions import CommandPermissionManager
 from forge.utils.exceptions import (
     AgentException,
     AgentTerminated,
@@ -96,8 +98,9 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
         llm_provider: MultiProvider,
         file_storage: FileStorage,
         app_config: AppConfig,
+        permission_manager: Optional[CommandPermissionManager] = None,
     ):
-        super().__init__(settings)
+        super().__init__(settings, permission_manager=permission_manager)
 
         self.llm_provider = llm_provider
         prompt_config = OneShotAgentPromptStrategy.default_configuration.model_copy(
@@ -142,6 +145,7 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
             app_config.app_data_dir,
         )
         self.context = ContextComponent(self.file_manager.workspace, settings.context)
+        self.todo = TodoComponent()
         self.watchdog = WatchdogComponent(settings.config, settings.history).run_after(
             ContextComponent
         )
@@ -201,14 +205,14 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
         if exception:
             prompt.messages.append(ChatMessage.system(f"Error: {exception}"))
 
-        response: ChatModelResponse[
-            OneShotAgentActionProposal
-        ] = await self.llm_provider.create_chat_completion(
-            prompt.messages,
-            model_name=self.llm.name,
-            completion_parser=self.prompt_strategy.parse_response_content,
-            functions=prompt.functions,
-            prefill_response=prompt.prefill_response,
+        response: ChatModelResponse[OneShotAgentActionProposal] = (
+            await self.llm_provider.create_chat_completion(
+                prompt.messages,
+                model_name=self.llm.name,
+                completion_parser=self.prompt_strategy.parse_response_content,
+                functions=prompt.functions,
+                prefill_response=prompt.prefill_response,
+            )
         )
         result = response.parsed_result
 
@@ -226,6 +230,13 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
         # Get commands
         self.commands = await self.run_pipeline(CommandProvider.get_commands)
         self._remove_disabled_commands()
+
+        # Check permissions before execution
+        if self.permission_manager:
+            if not self.permission_manager.check_command(tool.name, tool.arguments):
+                return ActionErrorResult(
+                    reason=f"Permission denied for command '{tool.name}'",
+                )
 
         try:
             return_value = await self._execute_tool(tool)

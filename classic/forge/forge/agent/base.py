@@ -34,6 +34,7 @@ from forge.llm.providers import CHAT_MODELS, ModelName, OpenAIModelName
 from forge.llm.providers.schema import ChatModelInfo
 from forge.models.action import ActionResult, AnyProposal
 from forge.models.config import SystemConfiguration, SystemSettings, UserConfigurable
+from forge.permissions import CommandPermissionManager
 
 logger = logging.getLogger(__name__)
 
@@ -130,10 +131,12 @@ class BaseAgent(Generic[AnyProposal], metaclass=AgentMeta):
     def __init__(
         self,
         settings: BaseAgentSettings,
+        permission_manager: Optional[CommandPermissionManager] = None,
     ):
         self.state = settings
         self.components: list[AgentComponent] = []
         self.config = settings.config
+        self.permission_manager = permission_manager
         # Execution data for debugging
         self._trace: list[str] = []
 
@@ -156,24 +159,21 @@ class BaseAgent(Generic[AnyProposal], metaclass=AgentMeta):
         return self.config.send_token_limit or self.llm.max_tokens * 3 // 4
 
     @abstractmethod
-    async def propose_action(self) -> AnyProposal:
-        ...
+    async def propose_action(self) -> AnyProposal: ...
 
     @abstractmethod
     async def execute(
         self,
         proposal: AnyProposal,
         user_feedback: str = "",
-    ) -> ActionResult:
-        ...
+    ) -> ActionResult: ...
 
     @abstractmethod
     async def do_not_execute(
         self,
         denied_proposal: AnyProposal,
         user_feedback: str,
-    ) -> ActionResult:
-        ...
+    ) -> ActionResult: ...
 
     def reset_trace(self):
         self._trace = []
@@ -181,8 +181,7 @@ class BaseAgent(Generic[AnyProposal], metaclass=AgentMeta):
     @overload
     async def run_pipeline(
         self, protocol_method: Callable[P, Iterator[T]], *args, retry_limit: int = 3
-    ) -> list[T]:
-        ...
+    ) -> list[T]: ...
 
     @overload
     async def run_pipeline(
@@ -190,8 +189,7 @@ class BaseAgent(Generic[AnyProposal], metaclass=AgentMeta):
         protocol_method: Callable[P, None | Awaitable[None]],
         *args,
         retry_limit: int = 3,
-    ) -> list[None]:
-        ...
+    ) -> list[None]: ...
 
     async def run_pipeline(
         self,

@@ -4,6 +4,7 @@ from forge.config.ai_directives import AIDirectives
 from forge.config.ai_profile import AIProfile
 from forge.file_storage.base import FileStorage
 from forge.llm.providers import MultiProvider
+from forge.permissions import CommandPermissionManager
 
 from autogpt.agents.agent import Agent, AgentConfiguration, AgentSettings
 from autogpt.app.config import AppConfig
@@ -17,6 +18,7 @@ def create_agent(
     llm_provider: MultiProvider,
     ai_profile: Optional[AIProfile] = None,
     directives: Optional[AIDirectives] = None,
+    permission_manager: Optional[CommandPermissionManager] = None,
 ) -> Agent:
     if not task:
         raise ValueError("No task specified for new agent")
@@ -31,6 +33,7 @@ def create_agent(
         app_config=app_config,
         file_storage=file_storage,
         llm_provider=llm_provider,
+        permission_manager=permission_manager,
     )
 
     return agent
@@ -41,12 +44,14 @@ def configure_agent_with_state(
     app_config: AppConfig,
     file_storage: FileStorage,
     llm_provider: MultiProvider,
+    permission_manager: Optional[CommandPermissionManager] = None,
 ) -> Agent:
     return _configure_agent(
         state=state,
         app_config=app_config,
         file_storage=file_storage,
         llm_provider=llm_provider,
+        permission_manager=permission_manager,
     )
 
 
@@ -59,6 +64,7 @@ def _configure_agent(
     ai_profile: Optional[AIProfile] = None,
     directives: Optional[AIDirectives] = None,
     state: Optional[AgentSettings] = None,
+    permission_manager: Optional[CommandPermissionManager] = None,
 ) -> Agent:
     if state:
         agent_state = state
@@ -81,6 +87,7 @@ def _configure_agent(
         llm_provider=llm_provider,
         file_storage=file_storage,
         app_config=app_config,
+        permission_manager=permission_manager,
     )
 
 
