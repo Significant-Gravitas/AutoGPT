@@ -75,15 +75,24 @@ async def run_auto_gpt(
     best_practices: Optional[list[str]] = None,
     override_directives: bool = False,
     component_config_file: Optional[Path] = None,
+    workspace: Optional[Path] = None,
 ):
+    # Determine workspace directory - default to current working directory
+    if workspace is None:
+        workspace = Path.cwd()
+
     # Set up configuration
-    config = ConfigBuilder.build_config_from_env()
+    config = ConfigBuilder.build_config_from_env(workspace=workspace)
+
+    # Agent data is stored in .autogpt/ subdirectory of the workspace
+    data_dir = workspace / ".autogpt"
+
     # Storage
     local = config.file_storage_backend == FileStorageBackendName.LOCAL
     restrict_to_root = not local or config.restrict_to_workspace
     file_storage = get_storage(
         config.file_storage_backend,
-        root_path=Path("data"),
+        root_path=data_dir,
         restrict_to_root=restrict_to_root,
     )
     file_storage.initialize()
@@ -358,16 +367,25 @@ async def run_auto_gpt_server(
     log_format: Optional[str] = None,
     log_file_format: Optional[str] = None,
     install_plugin_deps: bool = False,
+    workspace: Optional[Path] = None,
 ):
     from .agent_protocol_server import AgentProtocolServer
 
-    config = ConfigBuilder.build_config_from_env()
+    # Determine workspace directory - default to current working directory
+    if workspace is None:
+        workspace = Path.cwd()
+
+    config = ConfigBuilder.build_config_from_env(workspace=workspace)
+
+    # Agent data is stored in .autogpt/ subdirectory of the workspace
+    data_dir = workspace / ".autogpt"
+
     # Storage
     local = config.file_storage_backend == FileStorageBackendName.LOCAL
     restrict_to_root = not local or config.restrict_to_workspace
     file_storage = get_storage(
         config.file_storage_backend,
-        root_path=Path("data"),
+        root_path=data_dir,
         restrict_to_root=restrict_to_root,
     )
     file_storage.initialize()
@@ -391,8 +409,9 @@ async def run_auto_gpt_server(
     llm_provider = _configure_llm_provider(config)
 
     # Set up & start server
+    db_path = data_dir / "ap_server.db"
     database = AgentDB(
-        database_string=os.getenv("AP_SERVER_DB_URL", "sqlite:///data/ap_server.db"),
+        database_string=os.getenv("AP_SERVER_DB_URL", f"sqlite:///{db_path}"),
         debug_enabled=debug,
     )
     port: int = int(os.getenv("AP_SERVER_PORT", default=8000))
@@ -723,9 +742,7 @@ def print_assistant_thoughts(
     thoughts_text = remove_ansi_escape(
         thoughts.text
         if isinstance(thoughts, AssistantThoughts)
-        else thoughts.summary()
-        if isinstance(thoughts, ModelWithSummary)
-        else thoughts
+        else thoughts.summary() if isinstance(thoughts, ModelWithSummary) else thoughts
     )
     print_attribute(
         f"{ai_name.upper()} THOUGHTS", thoughts_text, title_color=Fore.YELLOW

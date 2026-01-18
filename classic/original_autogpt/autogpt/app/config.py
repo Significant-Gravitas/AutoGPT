@@ -1,4 +1,5 @@
 """Configuration class to store the state of bools for different scripts access."""
+
 from __future__ import annotations
 
 import logging
@@ -7,7 +8,6 @@ import re
 from pathlib import Path
 from typing import Optional, Union
 
-import forge
 from forge.config.base import BaseConfig
 from forge.llm.providers import CHAT_MODELS, ModelName
 from forge.llm.providers.openai import OpenAICredentials, OpenAIModelName
@@ -17,7 +17,6 @@ from pydantic import SecretStr, ValidationInfo, field_validator
 
 logger = logging.getLogger(__name__)
 
-PROJECT_ROOT = Path(forge.__file__).parent.parent
 AZURE_CONFIG_FILE = Path("azure.yaml")
 
 GPT_4_MODEL = OpenAIModelName.GPT4
@@ -31,8 +30,8 @@ class AppConfig(BaseConfig):
     ########################
     # Application Settings #
     ########################
-    project_root: Path = PROJECT_ROOT
-    app_data_dir: Path = project_root / "data"
+    workspace: Path = Path.cwd()
+    app_data_dir: Path = workspace / ".autogpt"
     skip_news: bool = False
     skip_reprompt: bool = False
     authorise_key: str = UserConfigurable(default="y", from_env="AUTHORISE_COMMAND_KEY")
@@ -64,7 +63,7 @@ class AppConfig(BaseConfig):
     )
 
     # Run loop configuration
-    continuous_mode: bool = False
+    continuous_mode: bool = True
     continuous_limit: int = 0
 
     ############
@@ -106,17 +105,25 @@ class ConfigBuilder(Configurable[AppConfig]):
     default_settings = AppConfig()
 
     @classmethod
-    def build_config_from_env(cls, project_root: Path = PROJECT_ROOT) -> AppConfig:
-        """Initialize the Config class"""
+    def build_config_from_env(cls, workspace: Optional[Path] = None) -> AppConfig:
+        """Initialize the Config class
+
+        Args:
+            workspace: The workspace directory where AutoGPT will operate.
+                       Defaults to current working directory.
+        """
+        if workspace is None:
+            workspace = Path.cwd()
 
         config = cls.build_agent_configuration()
-        config.project_root = project_root
+        config.workspace = workspace
+        config.app_data_dir = workspace / ".autogpt"
 
         # Make relative paths absolute
         for k in {
-            "azure_config_file",  # TODO: move from project root
+            "azure_config_file",
         }:
-            setattr(config, k, project_root / getattr(config, k))
+            setattr(config, k, workspace / getattr(config, k))
 
         if (
             config.openai_credentials

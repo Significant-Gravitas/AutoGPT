@@ -1,17 +1,27 @@
 [tool.poetry]
-name = "agpt"
+name = "autogpt"
 version = "0.5.0"
 authors = ["Significant Gravitas <support@agpt.co>"]
 readme = "README.md"
-description = "An open-source attempt to make GPT-4 autonomous"
+description = "An open-source attempt to make GPT-4 autonomous. Run 'autogpt' in any directory to start."
 homepage = "https://github.com/Significant-Gravitas/AutoGPT/tree/master/autogpt"
 classifiers = [
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 packages = [{ include = "autogpt" }]
+keywords = ["autogpt", "ai", "agents", "autonomous", "llm", "gpt", "openai"]
 
+[tool.poetry.urls]
+"Bug Tracker" = "https://github.com/Significant-Gravitas/AutoGPT/issues"
+"Documentation" = "https://docs.agpt.co"
 
 [tool.poetry.scripts]
 autogpt = "autogpt.app.cli:cli"
@@ -20,8 +30,9 @@ serve = "autogpt.app.cli:serve"
 
 [tool.poetry.dependencies]
 python = "^3.10"
+# For development, use local path; for publishing, use versioned package
 autogpt-forge = { path = "../forge", develop = true }
-# autogpt-forge = {git = "https://github.com/Significant-Gravitas/AutoGPT.git", subdirectory = "forge"}
+# autogpt-forge = "^0.2.0"  # Uncomment for PyPI release
 click = "*"
 colorama = "^0.4.6"
 distro = "^1.8.0"

@@ -24,13 +24,13 @@ pytest_plugins = [
 
 
 @pytest.fixture()
-def tmp_project_root(tmp_path: Path) -> Path:
+def tmp_workspace(tmp_path: Path) -> Path:
     return tmp_path
 
 
 @pytest.fixture()
-def app_data_dir(tmp_project_root: Path) -> Path:
-    dir = tmp_project_root / "data"
+def app_data_dir(tmp_workspace: Path) -> Path:
+    dir = tmp_workspace / ".autogpt"
     dir.mkdir(parents=True, exist_ok=True)
     return dir
 
@@ -46,12 +46,12 @@ def storage(app_data_dir: Path) -> FileStorage:
 
 @pytest.fixture(scope="function")
 def config(
-    tmp_project_root: Path,
+    tmp_workspace: Path,
     app_data_dir: Path,
 ):
     if not os.environ.get("OPENAI_API_KEY"):
         os.environ["OPENAI_API_KEY"] = "sk-dummy"
-    config = ConfigBuilder.build_config_from_env(project_root=tmp_project_root)
+    config = ConfigBuilder.build_config_from_env(workspace=tmp_workspace)
 
     config.app_data_dir = app_data_dir
 

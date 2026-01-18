@@ -1,11 +1,26 @@
 [tool.poetry]
-name = "AutoGPT-Forge"
+name = "autogpt-forge"
 version = "0.2.0"
-description = ""
+description = "Core library for building autonomous AI agents"
 authors = ["AutoGPT <support@agpt.co>"]
 license = "MIT"
 readme = "README.md"
 packages = [{ include = "forge" }]
+keywords = ["autogpt", "ai", "agents", "autonomous", "llm"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+[tool.poetry.urls]
+"Homepage" = "https://github.com/Significant-Gravitas/AutoGPT"
+"Bug Tracker" = "https://github.com/Significant-Gravitas/AutoGPT/issues"
 
 [tool.poetry.dependencies]
 python = "^3.10"
