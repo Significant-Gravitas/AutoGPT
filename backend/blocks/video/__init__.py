@@ -20,9 +20,9 @@ from .text_overlay import VideoTextOverlayBlock
 from .narration import VideoNarrationBlock
 
 __all__ = [
-    "VideoDownloadBlock",
     "VideoClipBlock",
     "VideoConcatBlock",
-    "VideoTextOverlayBlock",
+    "VideoDownloadBlock",
     "VideoNarrationBlock",
+    "VideoTextOverlayBlock",
 ]

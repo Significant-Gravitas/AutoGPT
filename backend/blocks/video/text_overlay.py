@@ -78,15 +78,26 @@ class VideoTextOverlayBlock(Block):
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         try:
             from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip
-        except ImportError:
+        except ImportError as e:
             raise BlockExecutionError(
                 message="moviepy is not installed. Please install it with: pip install moviepy",
+                block_name=self.name,
+                block_id=str(self.id)
+            ) from e
+
+        # Validate time range if both are provided
+        if (input_data.start_time is not None and
+            input_data.end_time is not None and
+            input_data.end_time <= input_data.start_time):
+            raise BlockExecutionError(
+                message=f"end_time ({input_data.end_time}) must be greater than start_time ({input_data.start_time})",
                 block_name=self.name,
                 block_id=str(self.id)
             )
 
         video = None
         final = None
+        txt_clip = None
         try:
             video = VideoFileClip(input_data.video_in)
 
@@ -113,7 +124,8 @@ class VideoTextOverlayBlock(Block):
             # Set timing
             start = input_data.start_time or 0
             end = input_data.end_time or video.duration
-            txt_clip = txt_clip.set_start(start).set_end(end)
+            duration = max(0, end - start)
+            txt_clip = txt_clip.set_start(start).set_end(end).set_duration(duration)
 
             final = CompositeVideoClip([video, txt_clip])
 
@@ -127,8 +139,10 @@ class VideoTextOverlayBlock(Block):
                 message=f"Failed to add text overlay: {e}",
                 block_name=self.name,
                 block_id=str(self.id)
-            )
+            ) from e
         finally:
+            if txt_clip:
+                txt_clip.close()
             if final:
                 final.close()
             if video:

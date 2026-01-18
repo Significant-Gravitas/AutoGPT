@@ -4,7 +4,7 @@ VideoDownloadBlock - Download video from URL (YouTube, Vimeo, news sites, direct
 import uuid
 from typing import Literal
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import Block, BlockCategory, BlockOutput
 from backend.data.block import BlockSchemaInput, BlockSchemaOutput
 from backend.data.model import SchemaField
 from backend.util.exceptions import BlockExecutionError
@@ -21,16 +21,6 @@ class VideoDownloadBlock(Block):
         quality: Literal["best", "1080p", "720p", "480p", "audio_only"] = SchemaField(
             description="Video quality preference",
             default="720p"
-        )
-        start_time: float | None = SchemaField(
-            description="Start time in seconds (optional, for clipping)",
-            default=None,
-            advanced=True
-        )
-        end_time: float | None = SchemaField(
-            description="End time in seconds (optional, for clipping)",
-            default=None,
-            advanced=True
         )
         output_format: Literal["mp4", "webm", "mkv"] = SchemaField(
             description="Output video format",
@@ -72,12 +62,12 @@ class VideoDownloadBlock(Block):
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         try:
             import yt_dlp
-        except ImportError:
+        except ImportError as e:
             raise BlockExecutionError(
                 message="yt-dlp is not installed. Please install it with: pip install yt-dlp",
                 block_name=self.name,
                 block_id=str(self.id)
-            )
+            ) from e
 
         video_id = str(uuid.uuid4())[:8]
         output_template = f"/tmp/{video_id}.%(ext)s"
@@ -100,8 +90,8 @@ class VideoDownloadBlock(Block):
                     video_path = video_path.rsplit(".", 1)[0] + f".{input_data.output_format}"
 
                 yield "video_file", video_path
-                yield "duration", info.get("duration", 0.0)
-                yield "title", info.get("title", "Unknown")
+                yield "duration", info.get("duration") or 0.0
+                yield "title", info.get("title") or "Unknown"
                 yield "source_url", input_data.url
 
         except Exception as e:
@@ -109,4 +99,4 @@ class VideoDownloadBlock(Block):
                 message=f"Failed to download video: {e}",
                 block_name=self.name,
                 block_id=str(self.id)
-            )
+            ) from e

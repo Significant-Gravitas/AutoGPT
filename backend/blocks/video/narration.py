@@ -91,10 +91,11 @@ class VideoNarrationBlock(Block):
                 message=f"Missing dependency: {e}. Install moviepy and requests.",
                 block_name=self.name,
                 block_id=str(self.id)
-            )
+            ) from e
 
         video = None
         final = None
+        narration = None
         try:
             # Generate narration via ElevenLabs
             response = requests.post(
@@ -107,7 +108,7 @@ class VideoNarrationBlock(Block):
                     "text": input_data.script,
                     "model_id": "eleven_monolingual_v1"
                 },
-                timeout=60
+                timeout=120
             )
             response.raise_for_status()
 
@@ -117,7 +118,8 @@ class VideoNarrationBlock(Block):
 
             # Combine with video
             video = VideoFileClip(input_data.video_in)
-            narration = AudioFileClip(audio_path).volumex(input_data.narration_volume)
+            narration = AudioFileClip(audio_path)
+            narration = narration.volumex(input_data.narration_volume)
 
             if input_data.mix_mode == "replace":
                 final_audio = narration
@@ -127,9 +129,11 @@ class VideoNarrationBlock(Block):
                     final_audio = CompositeAudioClip([original, narration])
                 else:
                     final_audio = narration
-            else:  # ducking
+            else:  # ducking - lower original volume more when narration plays
                 if video.audio:
-                    original = video.audio.volumex(input_data.original_volume)
+                    # Apply stronger attenuation for ducking effect
+                    ducking_volume = input_data.original_volume * 0.3
+                    original = video.audio.volumex(ducking_volume)
                     final_audio = CompositeAudioClip([original, narration])
                 else:
                     final_audio = narration
@@ -147,14 +151,16 @@ class VideoNarrationBlock(Block):
                 message=f"ElevenLabs API error: {e}",
                 block_name=self.name,
                 block_id=str(self.id)
-            )
+            ) from e
         except Exception as e:
             raise BlockExecutionError(
                 message=f"Failed to add narration: {e}",
                 block_name=self.name,
                 block_id=str(self.id)
-            )
+            ) from e
         finally:
+            if narration:
+                narration.close()
             if final:
                 final.close()
             if video:

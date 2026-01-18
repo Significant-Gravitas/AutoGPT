@@ -54,27 +54,45 @@ class VideoConcatBlock(Block):
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         try:
             from moviepy.editor import VideoFileClip, concatenate_videoclips
-        except ImportError:
+        except ImportError as e:
             raise BlockExecutionError(
                 message="moviepy is not installed. Please install it with: pip install moviepy",
+                block_name=self.name,
+                block_id=str(self.id)
+            ) from e
+
+        # Validate minimum clips
+        if len(input_data.videos) < 2:
+            raise BlockExecutionError(
+                message="At least 2 videos are required for concatenation",
                 block_name=self.name,
                 block_id=str(self.id)
             )
 
         clips = []
+        faded_clips = []
+        final = None
         try:
-            clips = [VideoFileClip(v) for v in input_data.videos]
+            # Load clips one by one to handle partial failures
+            for v in input_data.videos:
+                clips.append(VideoFileClip(v))
 
             if input_data.transition == "crossfade":
-                # Apply crossfade between clips
+                # Apply crossfade between clips using crossfadein/crossfadeout
+                transition_dur = input_data.transition_duration
+                for i, clip in enumerate(clips):
+                    if i > 0:
+                        clip = clip.crossfadein(transition_dur)
+                    if i < len(clips) - 1:
+                        clip = clip.crossfadeout(transition_dur)
+                    faded_clips.append(clip)
                 final = concatenate_videoclips(
-                    clips,
+                    faded_clips,
                     method="compose",
-                    padding=-input_data.transition_duration
+                    padding=-transition_dur
                 )
             elif input_data.transition == "fade_black":
                 # Fade to black between clips
-                faded_clips = []
                 for clip in clips:
                     faded = clip.fadein(input_data.transition_duration).fadeout(
                         input_data.transition_duration
@@ -90,14 +108,16 @@ class VideoConcatBlock(Block):
             yield "video_out", output_path
             yield "total_duration", final.duration
 
-            final.close()
-
         except Exception as e:
             raise BlockExecutionError(
                 message=f"Failed to concatenate videos: {e}",
                 block_name=self.name,
                 block_id=str(self.id)
-            )
+            ) from e
         finally:
+            if final:
+                final.close()
+            for clip in faded_clips:
+                clip.close()
             for clip in clips:
                 clip.close()

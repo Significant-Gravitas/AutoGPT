@@ -51,14 +51,22 @@ class VideoClipBlock(Block):
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
+        # Validate time range
+        if input_data.end_time <= input_data.start_time:
+            raise BlockExecutionError(
+                message=f"end_time ({input_data.end_time}) must be greater than start_time ({input_data.start_time})",
+                block_name=self.name,
+                block_id=str(self.id)
+            )
+
         try:
             from moviepy.video.io.VideoFileClip import VideoFileClip
-        except ImportError:
+        except ImportError as e:
             raise BlockExecutionError(
                 message="moviepy is not installed. Please install it with: pip install moviepy",
                 block_name=self.name,
                 block_id=str(self.id)
-            )
+            ) from e
 
         clip = None
         subclip = None
@@ -77,7 +85,7 @@ class VideoClipBlock(Block):
                 message=f"Failed to clip video: {e}",
                 block_name=self.name,
                 block_id=str(self.id)
-            )
+            ) from e
         finally:
             if subclip:
                 subclip.close()
