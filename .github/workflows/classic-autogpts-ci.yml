@@ -11,9 +11,6 @@ on:
       - 'classic/original_autogpt/**'
       - 'classic/forge/**'
       - 'classic/benchmark/**'
-      - 'classic/run'
-      - 'classic/cli.py'
-      - 'classic/setup.py'
       - '!**/*.md'
   pull_request:
     branches: [ master, dev, release-* ]
@@ -22,9 +19,6 @@ on:
       - 'classic/original_autogpt/**'
       - 'classic/forge/**'
       - 'classic/benchmark/**'
-      - 'classic/run'
-      - 'classic/cli.py'
-      - 'classic/setup.py'
       - '!**/*.md'
 
 defaults:
@@ -59,10 +53,15 @@ jobs:
         run: |
           curl -sSL https://install.python-poetry.org | python -
 
+      - name: Install dependencies
+        working-directory: ./classic/${{ matrix.agent-name }}/
+        run: poetry install
+
       - name: Run regression tests
         run: |
-          ./run agent start ${{ matrix.agent-name }}
           cd ${{ matrix.agent-name }}
+          poetry run serve &
+          sleep 10  # Wait for server to start
           poetry run agbenchmark --mock --test=BasicRetrieval --test=Battleship --test=WebArenaTask_0
           poetry run agbenchmark --test=WriteFile
         env:

@@ -128,11 +128,16 @@ jobs:
         run: |
           curl -sSL https://install.python-poetry.org | python -
 
+      - name: Install agent dependencies
+        working-directory: classic/${{ matrix.agent-name }}
+        run: poetry install
+
       - name: Run regression tests
         working-directory: classic
         run: |
-          ./run agent start ${{ matrix.agent-name }}
           cd ${{ matrix.agent-name }}
+          poetry run python -m forge &
+          sleep 10  # Wait for server to start
 
           set +e # Ignore non-zero exit codes and continue execution
           echo "Running the following command: poetry run agbenchmark --maintain --mock"
