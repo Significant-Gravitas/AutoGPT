@@ -32,24 +32,39 @@ from .schema import (
 from .utils import validate_tool_calls
 
 if TYPE_CHECKING:
-    from anthropic.types.beta.tools import MessageCreateParams
-    from anthropic.types.beta.tools import ToolsBetaMessage as Message
-    from anthropic.types.beta.tools import ToolsBetaMessageParam as MessageParam
+    from anthropic.types import Message, MessageParam
+    from anthropic.types.message_create_params import MessageCreateParams
 
 _T = TypeVar("_T")
 _P = ParamSpec("_P")
 
 
 class AnthropicModelName(str, enum.Enum):
+    # Claude 3 models (legacy)
     CLAUDE3_OPUS_v1 = "claude-3-opus-20240229"
     CLAUDE3_SONNET_v1 = "claude-3-sonnet-20240229"
-    CLAUDE3_5_SONNET_v1 = "claude-3-5-sonnet-20240620"
     CLAUDE3_HAIKU_v1 = "claude-3-haiku-20240307"
+
+    # Claude 3.5 models
+    CLAUDE3_5_SONNET_v1 = "claude-3-5-sonnet-20240620"
+    CLAUDE3_5_SONNET_v2 = "claude-3-5-sonnet-20241022"
+    CLAUDE3_5_HAIKU_v1 = "claude-3-5-haiku-20241022"
+
+    # Claude 4 models
+    CLAUDE4_SONNET_v1 = "claude-sonnet-4-20250514"
+    CLAUDE4_OPUS_v1 = "claude-opus-4-20250514"
+    CLAUDE4_5_OPUS_v1 = "claude-opus-4-5-20251101"
+
+    # Rolling aliases
+    CLAUDE_SONNET = "claude-sonnet-4-20250514"
+    CLAUDE_OPUS = "claude-opus-4-5-20251101"
+    CLAUDE_HAIKU = "claude-3-5-haiku-20241022"
 
 
 ANTHROPIC_CHAT_MODELS = {
     info.name: info
     for info in [
+        # Claude 3 models (legacy)
         ChatModelInfo(
             name=AnthropicModelName.CLAUDE3_OPUS_v1,
             provider_name=ModelProviderName.ANTHROPIC,
@@ -67,6 +82,15 @@ ANTHROPIC_CHAT_MODELS = {
             has_function_call_api=True,
         ),
         ChatModelInfo(
+            name=AnthropicModelName.CLAUDE3_HAIKU_v1,
+            provider_name=ModelProviderName.ANTHROPIC,
+            prompt_token_cost=0.25 / 1e6,
+            completion_token_cost=1.25 / 1e6,
+            max_tokens=200000,
+            has_function_call_api=True,
+        ),
+        # Claude 3.5 models
+        ChatModelInfo(
             name=AnthropicModelName.CLAUDE3_5_SONNET_v1,
             provider_name=ModelProviderName.ANTHROPIC,
             prompt_token_cost=3 / 1e6,
@@ -75,15 +99,60 @@ ANTHROPIC_CHAT_MODELS = {
             has_function_call_api=True,
         ),
         ChatModelInfo(
-            name=AnthropicModelName.CLAUDE3_HAIKU_v1,
+            name=AnthropicModelName.CLAUDE3_5_SONNET_v2,
             provider_name=ModelProviderName.ANTHROPIC,
-            prompt_token_cost=0.25 / 1e6,
-            completion_token_cost=1.25 / 1e6,
+            prompt_token_cost=3 / 1e6,
+            completion_token_cost=15 / 1e6,
+            max_tokens=200000,
+            has_function_call_api=True,
+        ),
+        ChatModelInfo(
+            name=AnthropicModelName.CLAUDE3_5_HAIKU_v1,
+            provider_name=ModelProviderName.ANTHROPIC,
+            prompt_token_cost=0.80 / 1e6,
+            completion_token_cost=4 / 1e6,
+            max_tokens=200000,
+            has_function_call_api=True,
+        ),
+        # Claude 4 models
+        ChatModelInfo(
+            name=AnthropicModelName.CLAUDE4_SONNET_v1,
+            provider_name=ModelProviderName.ANTHROPIC,
+            prompt_token_cost=3 / 1e6,
+            completion_token_cost=15 / 1e6,
+            max_tokens=200000,
+            has_function_call_api=True,
+        ),
+        ChatModelInfo(
+            name=AnthropicModelName.CLAUDE4_OPUS_v1,
+            provider_name=ModelProviderName.ANTHROPIC,
+            prompt_token_cost=15 / 1e6,
+            completion_token_cost=75 / 1e6,
+            max_tokens=200000,
+            has_function_call_api=True,
+        ),
+        ChatModelInfo(
+            name=AnthropicModelName.CLAUDE4_5_OPUS_v1,
+            provider_name=ModelProviderName.ANTHROPIC,
+            prompt_token_cost=15 / 1e6,
+            completion_token_cost=75 / 1e6,
             max_tokens=200000,
             has_function_call_api=True,
         ),
     ]
 }
+# Copy entries for aliased models
+chat_model_mapping = {
+    AnthropicModelName.CLAUDE4_SONNET_v1: [AnthropicModelName.CLAUDE_SONNET],
+    AnthropicModelName.CLAUDE4_5_OPUS_v1: [AnthropicModelName.CLAUDE_OPUS],
+    AnthropicModelName.CLAUDE3_5_HAIKU_v1: [AnthropicModelName.CLAUDE_HAIKU],
+}
+for base, copies in chat_model_mapping.items():
+    for copy in copies:
+        copy_info = ANTHROPIC_CHAT_MODELS[base].model_copy()
+        ANTHROPIC_CHAT_MODELS[copy] = copy_info.__class__(
+            **{**copy_info.model_dump(), "name": copy}
+        )
 
 
 class AnthropicCredentials(ModelProviderCredentials):
@@ -265,23 +334,27 @@ class AnthropicProvider(BaseChatModelProvider[AnthropicModelName, AnthropicSetti
                                         "content": [
                                             {
                                                 "type": "text",
-                                                "text": "Not executed because parsing "
-                                                "of your last message failed"
-                                                if not tool_call_errors
-                                                else str(e)
-                                                if (
-                                                    e := next(
-                                                        (
-                                                            tce
-                                                            for tce in tool_call_errors
-                                                            if tce.name
-                                                            == tc.function.name
-                                                        ),
-                                                        None,
+                                                "text": (
+                                                    "Not executed because parsing "
+                                                    "of your last message failed"
+                                                    if not tool_call_errors
+                                                    else (
+                                                        str(e)
+                                                        if (
+                                                            e := next(
+                                                                (
+                                                                    tce
+                                                                    for tce in tool_call_errors
+                                                                    if tce.name
+                                                                    == tc.function.name
+                                                                ),
+                                                                None,
+                                                            )
+                                                        )
+                                                        else "Not executed because validation "
+                                                        "of tool input failed"
                                                     )
-                                                )
-                                                else "Not executed because validation "
-                                                "of tool input failed",
+                                                ),
                                             }
                                         ],
                                     }
@@ -450,7 +523,7 @@ class AnthropicProvider(BaseChatModelProvider[AnthropicModelName, AnthropicSetti
 
         @self._retry_api_request
         async def _create_chat_completion_with_retry() -> Message:
-            return await self._client.beta.tools.messages.create(
+            return await self._client.messages.create(
                 model=model, **completion_kwargs  # type: ignore
             )
 
