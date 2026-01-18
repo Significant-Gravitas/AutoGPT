@@ -3,6 +3,7 @@
 classic/original_autogpt/keys.py
 classic/original_autogpt/*.json
 auto_gpt_workspace/*
+.autogpt/
 *.mpeg
 .env
 # Root .env files
