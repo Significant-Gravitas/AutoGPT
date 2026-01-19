@@ -7561,6 +7561,20 @@
           "error_message": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Error Message"
+          },
+          "started_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Started At"
+          },
+          "ended_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Ended At"
           }
         },
         "type": "object",
@@ -7667,14 +7681,20 @@
           },
           "status": { "$ref": "#/components/schemas/AgentExecutionStatus" },
           "started_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Started At"
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Started At",
+            "description": "When execution started running. Null if not yet started (QUEUED)."
           },
           "ended_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Ended At"
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Ended At",
+            "description": "When execution finished. Null if not yet completed (QUEUED, RUNNING, INCOMPLETE, REVIEW)."
           },
           "is_shared": {
             "type": "boolean",
@@ -7708,8 +7728,6 @@
           "nodes_input_masks",
           "preset_id",
           "status",
-          "started_at",
-          "ended_at",
           "stats",
           "outputs"
         ],
@@ -7808,14 +7826,20 @@
           },
           "status": { "$ref": "#/components/schemas/AgentExecutionStatus" },
           "started_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Started At"
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Started At",
+            "description": "When execution started running. Null if not yet started (QUEUED)."
           },
           "ended_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Ended At"
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Ended At",
+            "description": "When execution finished. Null if not yet completed (QUEUED, RUNNING, INCOMPLETE, REVIEW)."
           },
           "is_shared": {
             "type": "boolean",
@@ -7844,8 +7868,6 @@
           "nodes_input_masks",
           "preset_id",
           "status",
-          "started_at",
-          "ended_at",
           "stats"
         ],
         "title": "GraphExecutionMeta"
@@ -7892,14 +7914,20 @@
           },
           "status": { "$ref": "#/components/schemas/AgentExecutionStatus" },
           "started_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Started At"
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Started At",
+            "description": "When execution started running. Null if not yet started (QUEUED)."
           },
           "ended_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Ended At"
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Ended At",
+            "description": "When execution finished. Null if not yet completed (QUEUED, RUNNING, INCOMPLETE, REVIEW)."
           },
           "is_shared": {
             "type": "boolean",
@@ -7938,8 +7966,6 @@
           "nodes_input_masks",
           "preset_id",
           "status",
-          "started_at",
-          "ended_at",
           "stats",
           "outputs",
           "node_executions"

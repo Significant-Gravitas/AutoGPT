@@ -50,7 +50,9 @@ export function ActivityItem({ execution }: Props) {
       execution.status === AgentExecutionStatus.QUEUED;
 
     if (isActiveStatus) {
-      const timeAgo = formatTimeAgo(execution.started_at.toString());
+      const timeAgo = execution.started_at
+        ? formatTimeAgo(execution.started_at.toString())
+        : "recently";
       const statusText =
         execution.status === AgentExecutionStatus.QUEUED ? "queued" : "running";
       return [
@@ -61,7 +63,9 @@ export function ActivityItem({ execution }: Props) {
     // Handle all other statuses with time display
     const timeAgo = execution.ended_at
       ? formatTimeAgo(execution.ended_at.toString())
-      : formatTimeAgo(execution.started_at.toString());
+      : execution.started_at
+        ? formatTimeAgo(execution.started_at.toString())
+        : "recently";
 
     let statusText = "ended";
     switch (execution.status) {
