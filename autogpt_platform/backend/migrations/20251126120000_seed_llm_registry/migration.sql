@@ -221,5 +221,6 @@ FROM (VALUES
     ('v0-1.0-md', 1)
 ) AS costs(model_slug, cost)
 JOIN model_ids m ON m."slug" = costs.model_slug
-JOIN provider_ids p ON p."id" = m."providerId";
+JOIN provider_ids p ON p."id" = m."providerId"
+ON CONFLICT ("llmModelId", "credentialProvider", "unit") DO NOTHING;
 

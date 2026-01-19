@@ -1198,6 +1198,7 @@ model LlmModelCost {
   llmModelId String
   Model      LlmModel @relation(fields: [llmModelId], references: [id], onDelete: Cascade)
 
+  @@unique([llmModelId, credentialProvider, unit])
   @@index([llmModelId])
   @@index([credentialProvider])
 }
