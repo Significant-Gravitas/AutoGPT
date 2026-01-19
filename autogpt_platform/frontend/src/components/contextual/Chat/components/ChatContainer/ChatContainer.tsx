@@ -51,7 +51,7 @@ export function ChatContainer({
   return (
     <div
       className={cn(
-        "mx-auto flex h-full min-h-0 max-w-3xl flex-col bg-[#f8f8f9]",
+        "mx-auto flex h-full min-h-0 w-full max-w-3xl flex-col bg-[#f8f8f9]",
         className,
       )}
     >

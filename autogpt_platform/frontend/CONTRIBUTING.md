@@ -549,8 +549,47 @@ Files:
 Types:
 
 - Prefer `interface` for object shapes
-- Component props should be `interface Props { ... }`
+- Component props should be `interface Props { ... }` (not exported)
+- Only use specific exported names (e.g., `export interface MyComponentProps`) when the interface needs to be used outside the component
+- Keep type definitions inline with the component - do not create separate `types.ts` files unless types are shared across multiple files
 - Use precise types; avoid `any` and unsafe casts
+
+**Props naming examples:**
+
+```tsx
+// ✅ Good - internal props, not exported
+interface Props {
+  title: string;
+  onClose: () => void;
+}
+
+export function Modal({ title, onClose }: Props) {
+  // ...
+}
+
+// ✅ Good - exported when needed externally
+export interface ModalProps {
+  title: string;
+  onClose: () => void;
+}
+
+export function Modal({ title, onClose }: ModalProps) {
+  // ...
+}
+
+// ❌ Bad - unnecessarily specific name for internal use
+interface ModalComponentProps {
+  title: string;
+  onClose: () => void;
+}
+
+// ❌ Bad - separate types.ts file for single component
+// types.ts
+export interface ModalProps { ... }
+
+// Modal.tsx
+import type { ModalProps } from './types';
+```
 
 Parameters:
 
