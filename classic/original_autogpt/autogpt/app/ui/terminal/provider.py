@@ -18,7 +18,7 @@ from forge.permissions import ApprovalScope
 from ..protocol import ApprovalResult, MessageLevel, UIProvider
 
 if TYPE_CHECKING:
-    from autogpt.agents.prompt_strategies.one_shot import AssistantThoughts
+    from forge.models.utils import ModelWithSummary
 
 
 class TerminalUIProvider(UIProvider):
@@ -128,7 +128,7 @@ class TerminalUIProvider(UIProvider):
     async def display_thoughts(
         self,
         ai_name: str,
-        thoughts: "str | AssistantThoughts",
+        thoughts: "str | ModelWithSummary",
         speak_mode: bool = False,
     ) -> None:
         """Display the agent's thoughts.

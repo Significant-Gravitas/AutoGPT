@@ -223,7 +223,7 @@ class ToTActionProposal(ActionProposal):
     Note: thought_path, alternatives_explored, and phase are stored in strategy state.
     """
 
-    thoughts: ToTThoughts
+    thoughts: ToTThoughts  # type: ignore[assignment]
 
 
 class ToTPromptConfiguration(BasePromptStrategyConfiguration):

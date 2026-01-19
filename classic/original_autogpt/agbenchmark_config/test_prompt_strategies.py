@@ -202,7 +202,7 @@ def run_benchmark(
         )
 
         if result.returncode != 0:
-            # Non-zero exit code is normal - agbenchmark returns non-zero when tests fail
+            # Non-zero exit is normal - agbenchmark returns non-zero when tests fail
             print(f"  Benchmark completed with code {result.returncode}")
             if result.stderr:
                 print(f"  stderr: {result.stderr[:500]}")

@@ -135,7 +135,7 @@ class ReWOOActionProposal(ActionProposal):
     Note: plan, phase, is_synthesis are stored in strategy state, not in the proposal.
     """
 
-    thoughts: ReWOOThoughts
+    thoughts: ReWOOThoughts  # type: ignore[assignment]
 
 
 class ReWOOPromptConfiguration(BasePromptStrategyConfiguration):

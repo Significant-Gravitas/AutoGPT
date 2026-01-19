@@ -115,7 +115,7 @@ class ReflexionActionProposal(ActionProposal):
     Note: phase and reflection_context are stored in strategy state.
     """
 
-    thoughts: ReflexionThoughts
+    thoughts: ReflexionThoughts  # type: ignore[assignment]
 
 
 class ReflexionPromptConfiguration(BasePromptStrategyConfiguration):

@@ -141,7 +141,7 @@ class PlanExecuteActionProposal(ActionProposal):
     Note: plan and phase are stored in strategy state, not in the proposal.
     """
 
-    thoughts: PlanExecuteThoughts
+    thoughts: PlanExecuteThoughts  # type: ignore[assignment]
 
 
 class PlanExecutePromptConfiguration(BasePromptStrategyConfiguration):

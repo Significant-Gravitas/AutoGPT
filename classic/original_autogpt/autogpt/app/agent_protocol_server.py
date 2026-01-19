@@ -299,7 +299,15 @@ class AgentProtocolServer:
             if last_proposal and last_proposal.use_tool.name != ASK_COMMAND
             else ""
         )
-        output += f"{assistant_response.thoughts.speak}\n\n"
+        # Get speak text if available, otherwise use summary or string representation
+        thoughts = assistant_response.thoughts
+        if isinstance(thoughts, str):
+            thoughts_output = thoughts
+        elif hasattr(thoughts, "speak"):
+            thoughts_output = thoughts.speak  # type: ignore[union-attr]
+        else:
+            thoughts_output = thoughts.summary()
+        output += f"{thoughts_output}\n\n"
         output += (
             f"Next Command: {next_tool_to_use}"
             if next_tool_to_use.name != ASK_COMMAND

@@ -51,6 +51,7 @@ from forge.llm.providers.utils import function_specs_from_commands
 from forge.models.action import (
     ActionErrorResult,
     ActionInterruptedByHuman,
+    ActionProposal,
     ActionResult,
     ActionSuccessResult,
 )
@@ -64,12 +65,7 @@ from forge.utils.exceptions import (
 )
 from pydantic import Field
 
-from autogpt.agents.prompt_strategies.plan_execute import PlanExecutePromptConfiguration
-
-from .prompt_strategies.one_shot import (
-    OneShotAgentActionProposal,
-    OneShotAgentPromptStrategy,
-)
+from .prompt_strategies.one_shot import OneShotAgentPromptStrategy
 from .prompt_strategies.plan_execute import PlanExecutePromptStrategy
 from .prompt_strategies.reflexion import ReflexionPromptStrategy
 from .prompt_strategies.rewoo import ReWOOPromptStrategy
@@ -90,15 +86,15 @@ class AgentSettings(BaseAgentSettings):
         default_factory=AgentConfiguration
     )
 
-    history: EpisodicActionHistory[OneShotAgentActionProposal] = Field(
-        default_factory=EpisodicActionHistory[OneShotAgentActionProposal]
+    history: EpisodicActionHistory[ActionProposal] = Field(
+        default_factory=EpisodicActionHistory[ActionProposal]
     )
     """(STATE) The action history of the agent."""
 
     context: AgentContext = Field(default_factory=AgentContext)
 
 
-class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
+class Agent(BaseAgent[ActionProposal], Configurable[AgentSettings]):
     default_settings: ClassVar[AgentSettings] = AgentSettings(
         name="Agent",
         description=__doc__ if __doc__ else "",
@@ -166,7 +162,7 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
         self.event_history = settings.history
         self.app_config = app_config
 
-    async def propose_action(self) -> OneShotAgentActionProposal:
+    async def propose_action(self) -> ActionProposal:
         """Proposes the next action to execute, based on the task and current state.
 
         Returns:
@@ -214,11 +210,11 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
 
     async def complete_and_parse(
         self, prompt: ChatPrompt, exception: Optional[Exception] = None
-    ) -> OneShotAgentActionProposal:
+    ) -> ActionProposal:
         if exception:
             prompt.messages.append(ChatMessage.system(f"Error: {exception}"))
 
-        response: ChatModelResponse[OneShotAgentActionProposal] = (
+        response: ChatModelResponse[ActionProposal] = (
             await self.llm_provider.create_chat_completion(
                 prompt.messages,
                 model_name=self.llm.name,
@@ -235,7 +231,7 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
 
     async def execute(
         self,
-        proposal: OneShotAgentActionProposal,
+        proposal: ActionProposal,
         user_feedback: str = "",
     ) -> ActionResult:
         tool = proposal.use_tool
@@ -292,7 +288,7 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
         return result
 
     async def do_not_execute(
-        self, denied_proposal: OneShotAgentActionProposal, user_feedback: str
+        self, denied_proposal: ActionProposal, user_feedback: str
     ) -> ActionResult:
         result = ActionInterruptedByHuman(feedback=user_feedback)
 
@@ -371,27 +367,29 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
             return ReWOOPromptStrategy(config, logger)
 
         elif strategy_name == "plan_execute":
-            config: PlanExecutePromptConfiguration = (
-                PlanExecutePromptStrategy.default_configuration.model_copy(deep=True)
+            pe_config = PlanExecutePromptStrategy.default_configuration.model_copy(
+                deep=True
             )
-            config.use_prefill = use_prefill
-            return PlanExecutePromptStrategy(config, logger)
+            pe_config.use_prefill = use_prefill
+            return PlanExecutePromptStrategy(pe_config, logger)
 
         elif strategy_name == "reflexion":
-            config = ReflexionPromptStrategy.default_configuration.model_copy(deep=True)
-            config.use_prefill = use_prefill
-            return ReflexionPromptStrategy(config, logger)
+            ref_config = ReflexionPromptStrategy.default_configuration.model_copy(
+                deep=True
+            )
+            ref_config.use_prefill = use_prefill
+            return ReflexionPromptStrategy(ref_config, logger)
 
         elif strategy_name == "tree_of_thoughts":
-            config = TreeOfThoughtsPromptStrategy.default_configuration.model_copy(
+            tot_config = TreeOfThoughtsPromptStrategy.default_configuration.model_copy(
                 deep=True
             )
-            config.use_prefill = use_prefill
-            return TreeOfThoughtsPromptStrategy(config, logger)
+            tot_config.use_prefill = use_prefill
+            return TreeOfThoughtsPromptStrategy(tot_config, logger)
 
         else:  # Default to one_shot
-            config = OneShotAgentPromptStrategy.default_configuration.model_copy(
+            os_config = OneShotAgentPromptStrategy.default_configuration.model_copy(
                 deep=True
             )
-            config.use_prefill = use_prefill
-            return OneShotAgentPromptStrategy(config, logger)
+            os_config.use_prefill = use_prefill
+            return OneShotAgentPromptStrategy(os_config, logger)
