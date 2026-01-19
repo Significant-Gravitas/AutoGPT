@@ -195,9 +195,11 @@ class ImageGeneratorComponent(
         # TODO: integrate in `forge.llm.providers`(?)
         response = OpenAI(
             api_key=self.openai_credentials.api_key.get_secret_value(),
-            organization=self.openai_credentials.organization.get_secret_value()
-            if self.openai_credentials.organization
-            else None,
+            organization=(
+                self.openai_credentials.organization.get_secret_value()
+                if self.openai_credentials.organization
+                else None
+            ),
         ).images.generate(
             prompt=prompt,
             n=1,

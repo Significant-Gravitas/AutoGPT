@@ -88,9 +88,7 @@ class SafeEvaluator(ast.NodeVisitor):
         if node.id in self.CONSTANTS:
             return self.CONSTANTS[node.id]
         avail = list(self.CONSTANTS.keys())
-        raise CommandExecutionError(
-            f"Unknown variable: {node.id}. Available: {avail}"
-        )
+        raise CommandExecutionError(f"Unknown variable: {node.id}. Available: {avail}")
 
     def visit_BinOp(self, node: ast.BinOp) -> float:
         if type(node.op) not in self.OPERATORS:
