@@ -320,51 +320,30 @@ class AnthropicProvider(BaseChatModelProvider[AnthropicModelName, AnthropicSetti
                     anthropic_messages.append(
                         _assistant_msg.model_dump(include={"role", "content"})  # type: ignore # noqa
                     )
+
+                    # Build tool_result blocks for each tool call
+                    # (required if last assistant message had tool_use blocks)
+                    tool_results = []
+                    for tc in assistant_msg.tool_calls or []:
+                        error_msg = self._get_tool_error_message(tc, tool_call_errors)
+                        tool_results.append(
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": tc.id,
+                                "is_error": True,
+                                "content": [{"type": "text", "text": error_msg}],
+                            }
+                        )
+
                     anthropic_messages.append(
                         {
                             "role": "user",
                             "content": [
-                                *(
-                                    # tool_result is required if last assistant message
-                                    # had tool_use block(s)
-                                    {
-                                        "type": "tool_result",
-                                        "tool_use_id": tc.id,
-                                        "is_error": True,
-                                        "content": [
-                                            {
-                                                "type": "text",
-                                                "text": (
-                                                    "Not executed because parsing "
-                                                    "of your last message failed"
-                                                    if not tool_call_errors
-                                                    else (
-                                                        str(e)
-                                                        if (
-                                                            e := next(
-                                                                (
-                                                                    tce
-                                                                    for tce
-                                                                    in tool_call_errors
-                                                                    if tce.name
-                                                                    == tc.function.name
-                                                                ),
-                                                                None,
-                                                            )
-                                                        )
-                                                        else "Not executed: "
-                                                        "validation failed"
-                                                    )
-                                                ),
-                                            }
-                                        ],
-                                    }
-                                    for tc in assistant_msg.tool_calls or []
-                                ),
+                                *tool_results,
                                 {
                                     "type": "text",
                                     "text": (
-                                        "ERROR PARSING YOUR RESPONSE:\n\n"
+                                        f"ERROR PARSING YOUR RESPONSE:\n\n"
                                         f"{e.__class__.__name__}: {e}"
                                     ),
                                 },
@@ -536,6 +515,32 @@ class AnthropicProvider(BaseChatModelProvider[AnthropicModelName, AnthropicSetti
             output_tokens_used=response.usage.output_tokens,
         )
         return response, cost, response.usage.input_tokens, response.usage.output_tokens
+
+    def _get_tool_error_message(
+        self,
+        tool_call: AssistantToolCall,
+        tool_call_errors: list,
+    ) -> str:
+        """Get the error message for a failed tool call.
+
+        Args:
+            tool_call: The tool call that failed.
+            tool_call_errors: List of validation errors for tool calls.
+
+        Returns:
+            An appropriate error message for the tool result.
+        """
+        if not tool_call_errors:
+            return "Not executed because parsing of your last message failed"
+
+        # Find matching error for this specific tool call
+        matching_error = next(
+            (err for err in tool_call_errors if err.name == tool_call.function.name),
+            None,
+        )
+        if matching_error:
+            return str(matching_error)
+        return "Not executed: validation failed"
 
     def _parse_assistant_tool_calls(
         self, assistant_message: Message
