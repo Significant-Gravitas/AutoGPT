@@ -150,7 +150,7 @@ async def assign_user_to_session(
 async def stream_chat_completion(
     session_id: str,
     message: str | None = None,
-    tool_call_reponse: str | None = None,
+    tool_call_response: str | None = None,
     is_user_message: bool = True,
     user_id: str | None = None,
     retry_count: int = 0,
@@ -270,8 +270,8 @@ async def stream_chat_completion(
     # Create Langfuse trace for this LLM call (each call gets its own trace, grouped by session_id)
     # Using v3 SDK: start_observation creates a root span, update_trace sets trace-level attributes
     input = message
-    if not message and tool_call_reponse:
-        input = tool_call_reponse
+    if not message and tool_call_response:
+        input = tool_call_response
 
     langfuse = get_client()
     with langfuse.start_as_current_observation(
@@ -515,7 +515,7 @@ async def stream_chat_completion(
                     user_id=user_id,
                     session=session,  # Pass session object to avoid Redis refetch
                     context=context,
-                    tool_call_reponse=str(tool_response_messages),
+                    tool_call_response=str(tool_response_messages),
                 ):
                     yield chunk
 
