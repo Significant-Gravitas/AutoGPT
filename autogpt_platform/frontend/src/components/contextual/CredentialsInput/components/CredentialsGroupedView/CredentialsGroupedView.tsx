@@ -150,7 +150,8 @@ export function CredentialsGroupedView({
           <AccordionItem value="system-credentials" className="border-none">
             <AccordionTrigger className="py-2 text-sm text-muted-foreground hover:no-underline">
               <div className="flex items-center gap-1">
-                <SlidersHorizontalIcon size={16} weight="bold" /> System credentials
+                <SlidersHorizontalIcon size={16} weight="bold" /> System
+                credentials
                 {hasMissingSystemCredentials && (
                   <span className="text-destructive">(missing)</span>
                 )}

@@ -127,7 +127,10 @@ export const NodeDataRenderer = ({ nodeId }: { nodeId: string }) => {
             </div>
 
             {Object.keys(outputData).length > 2 && (
-              <ViewMoreData outputData={outputData} execId={executionResultId} />
+              <ViewMoreData
+                outputData={outputData}
+                execId={executionResultId}
+              />
             )}
           </AccordionContent>
         </AccordionItem>

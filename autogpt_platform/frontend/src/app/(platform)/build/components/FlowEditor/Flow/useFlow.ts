@@ -150,7 +150,6 @@ export const useFlow = () => {
     }
   }, [graph?.links, addLinks]);
 
-
   useEffect(() => {
     if (customNodes.length > 0 && graph?.links) {
       customNodes.forEach((node) => {

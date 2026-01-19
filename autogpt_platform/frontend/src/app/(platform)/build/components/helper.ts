@@ -61,10 +61,8 @@ export const convertNodesPlusBlockInfoIntoCustomNodes = (
   return customNode;
 };
 
-
 const isToolSourceName = (sourceName: string): boolean =>
   sourceName.startsWith("tools_^_");
-
 
 const cleanupSourceName = (sourceName: string): string =>
   isToolSourceName(sourceName) ? "tools" : sourceName;
