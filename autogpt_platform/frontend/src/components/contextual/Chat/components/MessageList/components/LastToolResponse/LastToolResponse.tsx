@@ -1,10 +1,7 @@
 import { AIChatBubble } from "../../../AIChatBubble/AIChatBubble";
 import type { ChatMessageData } from "../../../ChatMessage/useChatMessage";
 import { MarkdownContent } from "../../../MarkdownContent/MarkdownContent";
-import {
-  formatToolResultValue,
-  shouldSkipAgentOutput
-} from "../../helpers";
+import { formatToolResultValue, shouldSkipAgentOutput } from "../../helpers";
 
 export interface LastToolResponseProps {
   message: ChatMessageData;

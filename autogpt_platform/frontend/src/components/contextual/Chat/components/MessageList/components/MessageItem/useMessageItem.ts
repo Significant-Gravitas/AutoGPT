@@ -1,8 +1,5 @@
 import type { ChatMessageData } from "../../../ChatMessage/useChatMessage";
-import {
-  isAgentOutputResult,
-  isToolOutputPattern
-} from "../../helpers";
+import { isAgentOutputResult, isToolOutputPattern } from "../../helpers";
 
 export interface UseMessageItemArgs {
   message: ChatMessageData;

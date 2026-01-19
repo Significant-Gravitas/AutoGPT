@@ -105,11 +105,19 @@ export function shouldAutoSelectSession(
   shouldCreate: boolean;
 } {
   if (!areAllSessionsLoaded || hasAutoSelectedSession) {
-    return { shouldSelect: false, sessionIdToSelect: null, shouldCreate: false };
+    return {
+      shouldSelect: false,
+      sessionIdToSelect: null,
+      shouldCreate: false,
+    };
   }
 
   if (paramSessionId) {
-    return { shouldSelect: false, sessionIdToSelect: null, shouldCreate: false };
+    return {
+      shouldSelect: false,
+      sessionIdToSelect: null,
+      shouldCreate: false,
+    };
   }
 
   if (visibleSessions.length > 0) {
@@ -120,16 +128,16 @@ export function shouldAutoSelectSession(
     };
   }
 
-  if (
-    accumulatedSessions.length === 0 &&
-    !isLoading &&
-    totalCount === 0
-  ) {
+  if (accumulatedSessions.length === 0 && !isLoading && totalCount === 0) {
     return { shouldSelect: false, sessionIdToSelect: null, shouldCreate: true };
   }
 
   if (totalCount === 0) {
-    return { shouldSelect: false, sessionIdToSelect: null, shouldCreate: false };
+    return {
+      shouldSelect: false,
+      sessionIdToSelect: null,
+      shouldCreate: false,
+    };
   }
 
   return { shouldSelect: false, sessionIdToSelect: null, shouldCreate: false };
@@ -150,7 +158,8 @@ export function checkReadyToShowContent(
       (s) => s.id === paramSessionId,
     );
     return (
-      sessionFound || (!isCurrentSessionLoading && currentSessionData !== undefined)
+      sessionFound ||
+      (!isCurrentSessionLoading && currentSessionData !== undefined)
     );
   }
 

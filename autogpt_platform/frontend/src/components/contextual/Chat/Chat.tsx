@@ -73,7 +73,7 @@ export function Chat({
       )}
 
       {/* Main Content */}
-      <main className="flex min-h-0 flex-1 flex-col overflow-hidden w-full">
+      <main className="flex min-h-0 w-full flex-1 flex-col overflow-hidden">
         {/* Loading State - show loader when loading or creating a session (with 300ms delay) */}
         {showLoader && (isLoading || isCreating) && (
           <div className="flex flex-1 items-center justify-center">
