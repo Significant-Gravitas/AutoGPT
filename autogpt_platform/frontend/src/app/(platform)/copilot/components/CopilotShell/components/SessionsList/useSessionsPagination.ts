@@ -16,7 +16,7 @@ export function useSessionsPagination({ enabled }: UseSessionsPaginationArgs) {
   >([]);
   const [totalCount, setTotalCount] = useState<number | null>(null);
 
-  const { data, isLoading, isFetching } = useGetV2ListSessions(
+  const { data, isLoading, isFetching, isError } = useGetV2ListSessions(
     { limit: PAGE_SIZE, offset },
     {
       query: {
@@ -53,10 +53,16 @@ export function useSessionsPagination({ enabled }: UseSessionsPaginationArgs) {
   }, [accumulatedSessions.length, totalCount, isFetching, isLoading]);
 
   useEffect(() => {
-    if (hasNextPage && !isFetching && !isLoading && totalCount !== null) {
+    if (
+      hasNextPage &&
+      !isFetching &&
+      !isLoading &&
+      !isError &&
+      totalCount !== null
+    ) {
       setOffset((prev) => prev + PAGE_SIZE);
     }
-  }, [hasNextPage, isFetching, isLoading, totalCount]);
+  }, [hasNextPage, isFetching, isLoading, isError, totalCount]);
 
   function fetchNextPage() {
     if (hasNextPage && !isFetching) {
