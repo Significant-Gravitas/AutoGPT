@@ -19,8 +19,8 @@ logger = logging.getLogger(__name__)
 
 AZURE_CONFIG_FILE = Path("azure.yaml")
 
-GPT_4_MODEL = OpenAIModelName.GPT4
-GPT_3_MODEL = OpenAIModelName.GPT3
+GPT_4_MODEL = OpenAIModelName.GPT4_O
+GPT_3_MODEL = OpenAIModelName.GPT4_O_MINI  # Fallback model for when configured model is unavailable
 
 
 class AppConfig(BaseConfig):
