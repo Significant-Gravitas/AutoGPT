@@ -62,14 +62,22 @@ logger = logging.getLogger(__name__)
 
 
 class GraphSettings(BaseModel):
-    human_in_the_loop_safe_mode: bool | None = None
-    is_ai_generated_graph: bool = False
+    human_in_the_loop_safe_mode: bool = True
+    sensitive_action_safe_mode: bool = False
 
     @classmethod
-    def from_graph(cls, graph: "GraphModel", is_ai_generated: bool) -> "GraphSettings":
+    def from_graph(
+        cls,
+        graph: "GraphModel",
+        hitl_safe_mode: bool | None = None,
+        sensitive_action_safe_mode: bool = False,
+    ) -> "GraphSettings":
+        # Default to True if not explicitly set
+        if hitl_safe_mode is None:
+            hitl_safe_mode = True
         return cls(
-            human_in_the_loop_safe_mode=(True if graph.has_human_in_the_loop else None),
-            is_ai_generated_graph=is_ai_generated,
+            human_in_the_loop_safe_mode=hitl_safe_mode,
+            sensitive_action_safe_mode=sensitive_action_safe_mode,
         )
 
 
@@ -252,10 +260,14 @@ class BaseGraph(BaseDbModel):
         return any(
             node.block_id
             for node in self.nodes
-            if (
-                node.block.block_type == BlockType.HUMAN_IN_THE_LOOP
-                or node.block.requires_human_review
-            )
+            if node.block.block_type == BlockType.HUMAN_IN_THE_LOOP
+        )
+
+    @computed_field
+    @property
+    def has_sensitive_action(self) -> bool:
+        return any(
+            node.block_id for node in self.nodes if node.block.is_sensitive_action
         )
 
     @property

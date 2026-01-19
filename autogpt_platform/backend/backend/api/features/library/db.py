@@ -404,7 +404,7 @@ async def add_generated_agent_image(
 async def create_library_agent(
     graph: graph_db.GraphModel,
     user_id: str,
-    is_ai_generated: bool,
+    sensitive_action_safe_mode: bool = False,
     create_library_agents_for_sub_graphs: bool = True,
 ) -> list[library_model.LibraryAgent]:
     """
@@ -413,8 +413,8 @@ async def create_library_agent(
     Args:
         agent: The agent/Graph to add to the library.
         user_id: The user to whom the agent will be added.
+        sensitive_action_safe_mode: Whether sensitive action blocks require review.
         create_library_agents_for_sub_graphs: If True, creates LibraryAgent records for sub-graphs as well.
-        is_ai_generated: Whether this graph was AI-generated.
 
     Returns:
         The newly created LibraryAgent records.
@@ -450,7 +450,8 @@ async def create_library_agent(
                         },
                         settings=SafeJson(
                             GraphSettings.from_graph(
-                                graph_entry, is_ai_generated=is_ai_generated
+                                graph_entry,
+                                sensitive_action_safe_mode=sensitive_action_safe_mode,
                             ).model_dump()
                         ),
                     ),
@@ -797,9 +798,7 @@ async def add_store_agent_to_library(
                 "isCreatedByUser": False,
                 "useGraphIsActiveVersion": False,
                 "settings": SafeJson(
-                    GraphSettings.from_graph(
-                        graph_model, is_ai_generated=False
-                    ).model_dump()
+                    GraphSettings.from_graph(graph_model).model_dump()
                 ),
             },
             include=library_agent_include(
@@ -1189,12 +1188,12 @@ async def fork_library_agent(
         )
         new_graph = await on_graph_activate(new_graph, user_id=user_id)
 
-        # Create a library agent for the new graph, preserving is_ai_generated flag
+        # Create a library agent for the new graph, preserving sensitive_action_safe_mode
         return (
             await create_library_agent(
                 new_graph,
                 user_id,
-                is_ai_generated=original_agent.settings.is_ai_generated_graph,
+                sensitive_action_safe_mode=original_agent.settings.sensitive_action_safe_mode,
             )
         )[0]
     except prisma.errors.PrismaError as e:

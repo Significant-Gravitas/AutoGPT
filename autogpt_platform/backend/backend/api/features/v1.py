@@ -762,9 +762,7 @@ async def create_new_graph(
     graph.validate_graph(for_run=False)
 
     await graph_db.create_graph(graph, user_id=user_id)
-    await library_db.create_library_agent(
-        graph, user_id, is_ai_generated=create_graph.is_ai_generated
-    )
+    await library_db.create_library_agent(graph, user_id)
     activated_graph = await on_graph_activate(graph, user_id=user_id)
 
     if create_graph.source == "builder":
@@ -892,7 +890,9 @@ async def _update_library_agent_version_and_settings(
         user_id, agent_graph.id, agent_graph.version
     )
     updated_settings = GraphSettings.from_graph(
-        agent_graph, is_ai_generated=library.settings.is_ai_generated_graph
+        graph=agent_graph,
+        hitl_safe_mode=library.settings.human_in_the_loop_safe_mode,
+        sensitive_action_safe_mode=library.settings.sensitive_action_safe_mode,
     )
     if updated_settings != library.settings:
         library = await library_db.update_library_agent(

@@ -474,7 +474,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         self.block_type = block_type
         self.webhook_config = webhook_config
         self.execution_stats: NodeExecutionStats = NodeExecutionStats()
-        self.requires_human_review: bool = False
+        self.is_sensitive_action: bool = False
 
         if self.webhook_config:
             if isinstance(self.webhook_config, BlockWebhookConfig):
@@ -638,9 +638,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             - input_data_to_use: The input data to use (may be modified by reviewer)
         """
         if not (
-            self.requires_human_review
-            and execution_context.safe_mode
-            and execution_context.is_ai_generated_graph
+            self.is_sensitive_action and execution_context.sensitive_action_safe_mode
         ):
             return False, input_data
 
