@@ -10,7 +10,7 @@ from pytest_snapshot.plugin import Snapshot
 import backend.api.features.admin.llm_routes as llm_routes
 
 app = fastapi.FastAPI()
-app.include_router(llm_routes.router)
+app.include_router(llm_routes.router, prefix="/admin/llm")
 
 client = fastapi.testclient.TestClient(app)
 
