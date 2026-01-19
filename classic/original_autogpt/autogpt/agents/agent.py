@@ -68,6 +68,10 @@ from .prompt_strategies.one_shot import (
     OneShotAgentActionProposal,
     OneShotAgentPromptStrategy,
 )
+from .prompt_strategies.plan_execute import PlanExecutePromptStrategy
+from .prompt_strategies.reflexion import ReflexionPromptStrategy
+from .prompt_strategies.rewoo import ReWOOPromptStrategy
+from .prompt_strategies.tree_of_thoughts import TreeOfThoughtsPromptStrategy
 
 if TYPE_CHECKING:
     from autogpt.app.config import AppConfig
@@ -109,12 +113,7 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
         super().__init__(settings, permission_manager=permission_manager)
 
         self.llm_provider = llm_provider
-        prompt_config = OneShotAgentPromptStrategy.default_configuration.model_copy(
-            deep=True
-        )
-        # Anthropic doesn't support tools + prefilling, so disable prefill for Anthropic
-        prompt_config.use_prefill = self.llm.provider_name != "anthropic"
-        self.prompt_strategy = OneShotAgentPromptStrategy(prompt_config, logger)
+        self.prompt_strategy = self._create_prompt_strategy(app_config)
         self.commands: list[Command] = []
 
         # Components
@@ -217,14 +216,14 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
         if exception:
             prompt.messages.append(ChatMessage.system(f"Error: {exception}"))
 
-        response: ChatModelResponse[OneShotAgentActionProposal] = (
-            await self.llm_provider.create_chat_completion(
-                prompt.messages,
-                model_name=self.llm.name,
-                completion_parser=self.prompt_strategy.parse_response_content,
-                functions=prompt.functions,
-                prefill_response=prompt.prefill_response,
-            )
+        response: ChatModelResponse[
+            OneShotAgentActionProposal
+        ] = await self.llm_provider.create_chat_completion(
+            prompt.messages,
+            model_name=self.llm.name,
+            completion_parser=self.prompt_strategy.parse_response_content,
+            functions=prompt.functions,
+            prefill_response=prompt.prefill_response,
         )
         result = response.parsed_result
 
@@ -334,3 +333,46 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
             else:
                 seen_names.update(command.names)
         return list(reversed(obscured_commands))
+
+    def _create_prompt_strategy(self, app_config: AppConfig):
+        """Create the appropriate prompt strategy based on configuration.
+
+        Args:
+            app_config: The application configuration containing prompt_strategy setting.
+
+        Returns:
+            An instance of the selected prompt strategy.
+        """
+        strategy_name = app_config.prompt_strategy
+        use_prefill = self.llm.provider_name != "anthropic"
+
+        if strategy_name == "rewoo":
+            config = ReWOOPromptStrategy.default_configuration.model_copy(deep=True)
+            config.use_prefill = use_prefill
+            return ReWOOPromptStrategy(config, logger)
+
+        elif strategy_name == "plan_execute":
+            config = PlanExecutePromptStrategy.default_configuration.model_copy(
+                deep=True
+            )
+            config.use_prefill = use_prefill
+            return PlanExecutePromptStrategy(config, logger)
+
+        elif strategy_name == "reflexion":
+            config = ReflexionPromptStrategy.default_configuration.model_copy(deep=True)
+            config.use_prefill = use_prefill
+            return ReflexionPromptStrategy(config, logger)
+
+        elif strategy_name == "tree_of_thoughts":
+            config = TreeOfThoughtsPromptStrategy.default_configuration.model_copy(
+                deep=True
+            )
+            config.use_prefill = use_prefill
+            return TreeOfThoughtsPromptStrategy(config, logger)
+
+        else:  # Default to one_shot
+            config = OneShotAgentPromptStrategy.default_configuration.model_copy(
+                deep=True
+            )
+            config.use_prefill = use_prefill
+            return OneShotAgentPromptStrategy(config, logger)

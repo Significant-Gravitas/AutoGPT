@@ -182,7 +182,7 @@ class OneShotAgentPromptStrategy(PromptStrategy):
     def response_format_instruction(self) -> tuple[str, str]:
         response_schema = self.response_schema.model_copy(deep=True)
         assert response_schema.properties
-        # Always use tool calling - remove use_tool from schema since it comes from tool_calls
+        # use_tool comes from tool_calls, so remove from JSON schema
         if "use_tool" in response_schema.properties:
             del response_schema.properties["use_tool"]
 

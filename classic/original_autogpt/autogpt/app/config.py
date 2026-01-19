@@ -6,7 +6,7 @@ import logging
 import os
 import re
 from pathlib import Path
-from typing import Optional, Union
+from typing import Literal, Optional, Union
 
 from forge.config.base import BaseConfig
 from forge.llm.providers import ModelName
@@ -14,6 +14,11 @@ from forge.llm.providers.openai import OpenAICredentials, OpenAIModelName
 from forge.logging.config import LoggingConfig
 from forge.models.config import Configurable, UserConfigurable
 from pydantic import SecretStr
+
+# Type alias for prompt strategy options
+PromptStrategyName = Literal[
+    "one_shot", "rewoo", "plan_execute", "reflexion", "tree_of_thoughts"
+]
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +69,12 @@ class AppConfig(BaseConfig):
     # Run loop configuration
     continuous_mode: bool = True
     continuous_limit: int = 0
+
+    # Prompt strategy configuration
+    prompt_strategy: PromptStrategyName = UserConfigurable(
+        default="one_shot",
+        from_env="PROMPT_STRATEGY",
+    )
 
     ############
     # Commands #
