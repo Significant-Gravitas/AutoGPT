@@ -1,9 +1,10 @@
 -- CreateExtension
 -- Supabase: pgvector must be enabled via Dashboard → Database → Extensions first
--- Create in public schema so vector type is available across all schemas
+-- Creates extension in current schema (determined by search_path)
+-- The extension may already exist in a different schema (e.g., Supabase pre-enables it)
 DO $$
 BEGIN
-    CREATE EXTENSION IF NOT EXISTS "vector" WITH SCHEMA "public";
+    CREATE EXTENSION IF NOT EXISTS "vector";
 EXCEPTION WHEN OTHERS THEN
     RAISE NOTICE 'vector extension not available or already exists, skipping';
 END $$;
@@ -12,6 +13,7 @@ END $$;
 CREATE TYPE "ContentType" AS ENUM ('STORE_AGENT', 'BLOCK', 'INTEGRATION', 'DOCUMENTATION', 'LIBRARY_AGENT');
 
 -- CreateTable
+-- Note: vector type is unqualified - relies on search_path including the schema where pgvector is installed
 CREATE TABLE "UnifiedContentEmbedding" (
     "id" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -19,7 +21,7 @@ CREATE TABLE "UnifiedContentEmbedding" (
     "contentType" "ContentType" NOT NULL,
     "contentId" TEXT NOT NULL,
     "userId" TEXT,
-    "embedding" public.vector(1536) NOT NULL,
+    "embedding" vector(1536) NOT NULL,
     "searchableText" TEXT NOT NULL,
     "metadata" JSONB NOT NULL DEFAULT '{}',
 
@@ -45,4 +47,4 @@ CREATE UNIQUE INDEX "UnifiedContentEmbedding_contentType_contentId_userId_key" O
 -- Uses cosine distance operator (<=>), which matches the query in hybrid_search.py
 -- Note: Drop first in case Prisma created a btree index (Prisma doesn't support HNSW)
 DROP INDEX IF EXISTS "UnifiedContentEmbedding_embedding_idx";
-CREATE INDEX "UnifiedContentEmbedding_embedding_idx" ON "UnifiedContentEmbedding" USING hnsw ("embedding" public.vector_cosine_ops);
+CREATE INDEX "UnifiedContentEmbedding_embedding_idx" ON "UnifiedContentEmbedding" USING hnsw ("embedding" vector_cosine_ops);
