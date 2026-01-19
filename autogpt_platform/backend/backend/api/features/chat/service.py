@@ -16,7 +16,6 @@ from backend.data.understanding import (
 from backend.util.exceptions import NotFoundError
 from backend.util.settings import Settings
 
-from . import db as chat_db
 from .config import ChatConfig
 from .model import (
     ChatMessage,
@@ -62,47 +61,6 @@ def _is_langfuse_configured() -> bool:
     return bool(
         settings.secrets.langfuse_public_key and settings.secrets.langfuse_secret_key
     )
-
-
-def _get_environment() -> str:
-    """Get the current environment name for Langfuse tagging."""
-    return settings.config.app_env.value
-
-
-def _get_langfuse_prompt() -> str:
-    """Fetch the latest production prompt from Langfuse.
-
-    Returns:
-        The compiled prompt text from Langfuse.
-
-    Raises:
-        Exception: If Langfuse is unavailable or prompt fetch fails.
-    """
-    try:
-        # cache_ttl_seconds=0 disables SDK caching to always get the latest prompt
-        prompt = langfuse.get_prompt(config.langfuse_prompt_name, cache_ttl_seconds=0)
-        compiled = prompt.compile()
-        logger.info(
-            f"Fetched prompt '{config.langfuse_prompt_name}' from Langfuse "
-            f"(version: {prompt.version})"
-        )
-        return compiled
-    except Exception as e:
-        logger.error(f"Failed to fetch prompt from Langfuse: {e}")
-        raise
-
-
-async def _is_first_session(user_id: str) -> bool:
-    """Check if this is the user's first chat session.
-
-    Returns True if the user has 1 or fewer sessions (meaning this is their first).
-    """
-    try:
-        session_count = await chat_db.get_user_session_count(user_id)
-        return session_count <= 1
-    except Exception as e:
-        logger.warning(f"Failed to check session count for user {user_id}: {e}")
-        return False  # Default to non-onboarding if we can't check
 
 
 async def _build_system_prompt(user_id: str | None) -> tuple[str, Any]:
@@ -320,7 +278,7 @@ async def stream_chat_completion(
         as_type="span",
         name="user-copilot-request",
         input=input,
-    ):
+    ) as span:
         with propagate_attributes(
             session_id=session_id,
             user_id=user_id,
@@ -328,7 +286,7 @@ async def stream_chat_completion(
             metadata={
                 "users_information": format_understanding_for_prompt(understanding)[
                     :200
-                ]  # langfuse only accepts upto too chars
+                ]  # langfuse only accepts upto to 200 chars
             },
         ):
 
@@ -379,6 +337,12 @@ async def stream_chat_completion(
                         # Emit text-end after text completes
                         if has_received_text and not text_streaming_ended:
                             text_streaming_ended = True
+                            if assistant_response.content:
+                                logger.warn(
+                                    f"StreamTextEnd: Attempting to set output {assistant_response.content}"
+                                )
+                                span.update_trace(output=assistant_response.content)
+                                span.update(output=assistant_response.content)
                             yield chunk
                     elif isinstance(chunk, StreamToolInputStart):
                         # Emit text-end before first tool call, but only if we've received text
@@ -442,6 +406,13 @@ async def stream_chat_completion(
                         logger.error(
                             f"Unknown chunk type: {type(chunk)}", exc_info=True
                         )
+                if assistant_response.content:
+                    langfuse.update_current_trace(output=assistant_response.content)
+                    langfuse.update_current_span(output=assistant_response.content)
+                elif tool_response_messages:
+                    langfuse.update_current_trace(output=str(tool_response_messages))
+                    langfuse.update_current_span(output=str(tool_response_messages))
+
             except Exception as e:
                 logger.error(f"Error during stream: {e!s}", exc_info=True)
 
