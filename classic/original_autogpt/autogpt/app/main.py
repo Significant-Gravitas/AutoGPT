@@ -47,11 +47,13 @@ from autogpt.app.config import (
 
 if TYPE_CHECKING:
     from autogpt.agents.agent import Agent
+    from autogpt.app.ui.protocol import UIProvider
 
 from .configurator import apply_overrides_to_config
 from .input import clean_input
 from .setup import apply_overrides_to_ai_settings, interactively_revise_ai_settings
 from .spinner import Spinner
+from .ui import create_ui_provider
 from .utils import (
     coroutine,
     get_legal_warning,
@@ -110,6 +112,8 @@ async def run_auto_gpt(
     def prompt_permission(cmd: str, args_str: str, args: dict) -> ApprovalScope:
         """Prompt user for command permission.
 
+        Uses an interactive selector with arrow keys and a feedback option.
+
         Args:
             cmd: Command name.
             args_str: Formatted arguments string.
@@ -119,31 +123,37 @@ async def run_auto_gpt(
             ApprovalScope indicating user's choice.
 
         Raises:
-            UserFeedbackProvided: If user types feedback instead of choosing an option.
+            UserFeedbackProvided: If user selects feedback option.
         """
-        print(f"\n{Fore.CYAN}{cmd}({args_str}){Style.RESET_ALL}")
-        print(
-            f"  {Fore.GREEN}[1]{Style.RESET_ALL} Once  "
-            f"{Fore.GREEN}[2]{Style.RESET_ALL} Always (agent)  "
-            f"{Fore.GREEN}[3]{Style.RESET_ALL} Always (all)  "
-            f"{Fore.RED}[4]{Style.RESET_ALL} Deny"
-        )
-        response = clean_input("  Choice or feedback: ")
+        from autogpt.app.ui.rich_select import RichSelect
 
-        if response == "1":
-            return ApprovalScope.ONCE
-        elif response == "2":
-            return ApprovalScope.AGENT
-        elif response == "3":
-            return ApprovalScope.WORKSPACE
-        elif response == "4":
-            return ApprovalScope.DENY
-        elif response.strip():
-            # Any other non-empty input is feedback for the agent
-            raise UserFeedbackProvided(response)
-        else:
-            # Empty input defaults to deny
-            return ApprovalScope.DENY
+        choices = [
+            "Once",
+            "Always (this agent)",
+            "Always (all agents)",
+            "Deny",
+        ]
+
+        scope_map = {
+            0: ApprovalScope.ONCE,
+            1: ApprovalScope.AGENT,
+            2: ApprovalScope.WORKSPACE,
+            3: ApprovalScope.DENY,
+        }
+
+        selector = RichSelect(
+            choices=choices,
+            title="Approve command execution?",
+            subtitle=f"{cmd}({args_str})",
+        )
+        result = selector.run()
+
+        # If feedback was provided, raise it
+        if result.has_feedback and result.feedback:
+            raise UserFeedbackProvided(result.feedback)
+
+        scope = scope_map.get(result.index, ApprovalScope.DENY)
+        return scope
 
     # Set up logging module
     if speak:
@@ -416,9 +426,13 @@ async def run_auto_gpt(
     #################
     # Run the Agent #
     #################
-    try:
-        await run_interaction_loop(agent)
-    except AgentTerminated:
+    # Create UI provider for terminal output
+    ui_provider = create_ui_provider(
+        plain_output=config.logging.plain_console_output,
+    )
+
+    async def handle_agent_termination():
+        """Handle agent termination by saving state."""
         agent_id = agent.state.agent_id
         logger.info(f"Saving state of {agent_id}...")
 
@@ -431,6 +445,11 @@ async def run_auto_gpt(
         await agent.file_manager.save_state(
             save_as_id.strip() if not save_as_id.isspace() else None
         )
+
+    try:
+        await run_interaction_loop(agent, ui_provider)
+    except AgentTerminated:
+        await handle_agent_termination()
 
 
 @coroutine
@@ -529,11 +548,14 @@ class UserFeedback(str, enum.Enum):
 
 async def run_interaction_loop(
     agent: "Agent",
+    ui_provider: Optional["UIProvider"] = None,
 ) -> None:
     """Run the main interaction loop for the agent.
 
     Args:
         agent: The agent to run the interaction loop for.
+        ui_provider: Optional UI provider for displaying output.
+                    If not provided, a terminal provider will be created.
 
     Returns:
         None
@@ -543,9 +565,17 @@ async def run_interaction_loop(
     ai_profile = agent.state.ai_profile
     logger = logging.getLogger(__name__)
 
+    # Create default UI provider if not provided
+    if ui_provider is None:
+        ui_provider = create_ui_provider(
+            plain_output=app_config.logging.plain_console_output,
+        )
+    assert ui_provider is not None  # Satisfy type checker
+
     cycle_budget = cycles_remaining = _get_cycle_budget(
         app_config.continuous_mode, app_config.continuous_limit
     )
+    # Keep spinner for signal handler compatibility (but use UI provider in loop)
     spinner = Spinner(
         "Thinking...", plain_output=app_config.logging.plain_console_output
     )
@@ -597,7 +627,7 @@ async def run_interaction_loop(
         handle_stop_signal()
         # Have the agent determine the next action to take.
         if not (_ep := agent.event_history.current_episode) or _ep.result:
-            with spinner:
+            async with ui_provider.show_spinner("Thinking..."):
                 try:
                     action_proposal = await agent.propose_action()
                 except InvalidAgentResponseError as e:
@@ -621,12 +651,18 @@ async def run_interaction_loop(
         ###############
         # Update User #
         ###############
-        # Print the assistant's thoughts and the next command to the user.
-        update_user(
-            ai_profile,
-            action_proposal,
+        # Display the assistant's thoughts and the next command via UI provider
+        await ui_provider.display_thoughts(
+            ai_name=ai_profile.ai_name,
+            thoughts=action_proposal.thoughts,
             speak_mode=app_config.tts_config.speak_mode,
         )
+
+        if action_proposal.use_tool:
+            await ui_provider.display_command(
+                name=action_proposal.use_tool.name,
+                arguments=action_proposal.use_tool.arguments,
+            )
 
         # Permission manager handles per-command approval during execute()
         handle_stop_signal()
@@ -647,18 +683,19 @@ async def run_interaction_loop(
             cycles_remaining -= 1
         except UserFeedbackProvided as e:
             result = await agent.do_not_execute(action_proposal, e.feedback)
-            logger.info(
+            await ui_provider.display_message(
                 f"Feedback provided: {e.feedback}",
-                extra={"title": "USER:", "title_color": Fore.MAGENTA},
+                title="USER:",
             )
 
         if result.status == "success":
-            logger.info(result, extra={"title": "SYSTEM:", "title_color": Fore.YELLOW})
+            await ui_provider.display_result(str(result), is_error=False)
         elif result.status == "error":
-            logger.warning(
+            error_msg = (
                 f"Command {action_proposal.use_tool.name} returned an error: "
                 f"{result.error or result.reason}"
             )
+            await ui_provider.display_result(error_msg, is_error=True)
 
 
 def update_user(

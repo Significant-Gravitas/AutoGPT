@@ -45,9 +45,9 @@ pydantic = "^2.7.2"
 python-dotenv = "^1.0.0"
 requests = "*"
 sentry-sdk = "^1.40.4"
-# TUI dependencies
-textual = "^0.52.0"
+# UI dependencies
 rich = "^13.0"
+prompt-toolkit = "^3.0.0"
 
 # Benchmarking
 agbenchmark = { path = "../benchmark", optional = true }
