@@ -9,7 +9,7 @@ type LlmModelSchema = RJSFSchema & {
   llm_model_metadata?: LlmModelMetadataMap;
 };
 
-export const LlmModelField = (props: FieldProps) => {
+export function LlmModelField(props: FieldProps) {
   const { schema, formData, onChange, disabled, readonly, fieldPathId } = props;
 
   const metadata = useMemo(() => {
@@ -53,4 +53,4 @@ export const LlmModelField = (props: FieldProps) => {
       disabled={disabled || readonly}
     />
   );
-};
+}

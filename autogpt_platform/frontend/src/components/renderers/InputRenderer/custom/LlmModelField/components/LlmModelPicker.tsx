@@ -1,12 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { CaretDownIcon } from "@phosphor-icons/react";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/__legacy__/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "./Popover";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import {
@@ -44,12 +40,13 @@ export function LlmModelPicker({
   const [activeCreator, setActiveCreator] = useState<string | null>(null);
   const [activeTitle, setActiveTitle] = useState<string | null>(null);
 
-  const creators = useMemo(() => {
-    const grouped = groupByCreator(models);
-    return Array.from(grouped.keys()).sort((a, b) => a.localeCompare(b));
-  }, [models]);
-
   const modelsByCreator = useMemo(() => groupByCreator(models), [models]);
+
+  const creators = useMemo(() => {
+    return Array.from(modelsByCreator.keys()).sort((a, b) =>
+      a.localeCompare(b),
+    );
+  }, [modelsByCreator]);
 
   const creatorIconValues = useMemo(() => {
     const map = new Map<string, string>();
@@ -73,10 +70,14 @@ export function LlmModelPicker({
   }, [open, selectedModel, creators]);
 
   const currentCreator = activeCreator ?? creators[0] ?? null;
-  const currentModels = currentCreator
-    ? (modelsByCreator.get(currentCreator) ?? [])
-    : [];
-  const currentCreatorIcon = currentModels[0]?.creator ?? currentCreator;
+
+  const currentModels = useMemo(() => {
+    return currentCreator ? (modelsByCreator.get(currentCreator) ?? []) : [];
+  }, [currentCreator, modelsByCreator]);
+
+  const currentCreatorIcon = useMemo(() => {
+    return currentModels[0]?.creator ?? currentCreator;
+  }, [currentModels, currentCreator]);
 
   const modelsByTitle = useMemo(
     () => groupByTitle(currentModels),
@@ -103,10 +104,13 @@ export function LlmModelPicker({
     return modelsByTitle.get(activeTitle) ?? [];
   }, [activeTitle, modelsByTitle]);
 
-  const handleSelectModel = (modelName: string) => {
-    onSelect(modelName);
-    setOpen(false);
-  };
+  const handleSelectModel = useCallback(
+    (modelName: string) => {
+      onSelect(modelName);
+      setOpen(false);
+    },
+    [onSelect],
+  );
 
   const triggerModel = selectedModel ?? recommendedModel ?? models[0];
   const triggerTitle = triggerModel

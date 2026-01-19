@@ -38,7 +38,7 @@ export function LlmIcon({ value, size = 20 }: Props) {
   if (src) {
     return (
       <div
-        className="flex h-5 w-5 items-center justify-center overflow-hidden rounded-xsmall"
+        className="flex items-center justify-center overflow-hidden rounded-xsmall"
         style={{ width: size, height: size }}
       >
         <Image
@@ -55,7 +55,7 @@ export function LlmIcon({ value, size = 20 }: Props) {
   const fallback = value?.trim().slice(0, 1).toUpperCase() || "?";
   return (
     <div
-      className="flex h-5 w-5 items-center justify-center rounded-xsmall bg-zinc-100"
+      className="flex items-center justify-center rounded-xsmall bg-zinc-100"
       style={{ width: size, height: size }}
     >
       <Text variant="small" className="text-zinc-500">
