@@ -22,7 +22,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { getSystemCredentials } from "../CredentialsInputs/helpers";
+import { getSystemCredentials } from "../../../../../../../../../../components/contextual/CredentialsInput/helpers";
 import { showExecutionErrorToast } from "./errorHelpers";
 
 export type RunVariant =

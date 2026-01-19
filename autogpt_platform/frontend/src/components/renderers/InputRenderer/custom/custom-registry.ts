@@ -3,7 +3,10 @@ import { CredentialsField } from "./CredentialField/CredentialField";
 import { GoogleDrivePickerField } from "./GoogleDrivePickerField/GoogleDrivePickerField";
 import { JsonTextField } from "./JsonTextField/JsonTextField";
 import { MultiSelectField } from "./MultiSelectField/MultiSelectField";
-import { isMultiSelectSchema } from "../utils/schema-utils";
+import {
+  isGoogleDrivePickerSchema,
+  isMultiSelectSchema,
+} from "../utils/schema-utils";
 import { TableField } from "./TableField/TableField";
 import { LlmModelField } from "./LlmModelField/LlmModelField";
 
@@ -30,12 +33,7 @@ export const CUSTOM_FIELDS: CustomFieldDefinition[] = [
   },
   {
     id: "custom/google_drive_picker_field",
-    matcher: (schema: any) => {
-      return (
-        "google_drive_picker_config" in schema ||
-        ("format" in schema && schema.format === "google-drive-picker")
-      );
-    },
+    matcher: isGoogleDrivePickerSchema,
     component: GoogleDrivePickerField,
   },
   {

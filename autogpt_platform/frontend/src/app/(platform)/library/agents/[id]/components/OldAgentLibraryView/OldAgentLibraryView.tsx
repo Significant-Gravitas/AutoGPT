@@ -173,8 +173,9 @@ export function OldAgentLibraryView() {
     if (agentRuns.length > 0) {
       // select latest run
       const latestRun = agentRuns.reduce((latest, current) => {
-        if (latest.started_at && !current.started_at) return current;
-        else if (!latest.started_at) return latest;
+        if (!latest.started_at && !current.started_at) return latest;
+        if (!latest.started_at) return current;
+        if (!current.started_at) return latest;
         return latest.started_at > current.started_at ? latest : current;
       }, agentRuns[0]);
       selectRun(latestRun.id as GraphExecutionID);
