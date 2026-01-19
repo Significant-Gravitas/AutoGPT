@@ -59,7 +59,7 @@ jobs:
     needs: get-changed-parts
     runs-on: ubuntu-latest
     env:
-      min-python-version: "3.10"
+      min-python-version: "3.12"
 
     strategy:
       matrix:
@@ -111,7 +111,7 @@ jobs:
     needs: get-changed-parts
     runs-on: ubuntu-latest
     env:
-      min-python-version: "3.10"
+      min-python-version: "3.12"
 
     strategy:
       matrix:

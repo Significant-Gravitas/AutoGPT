@@ -7,9 +7,9 @@ description = "An open-source attempt to make GPT-4 autonomous. Run 'autogpt' in
 homepage = "https://github.com/Significant-Gravitas/AutoGPT/tree/master/autogpt"
 classifiers = [
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Development Status :: 4 - Beta",
@@ -29,7 +29,7 @@ serve = "autogpt.app.cli:serve"
 
 
 [tool.poetry.dependencies]
-python = "^3.10"
+python = "^3.12"
 # For development, use local path; for publishing, use versioned package
 autogpt-forge = { path = "../forge", develop = true }
 # autogpt-forge = "^0.2.0"  # Uncomment for PyPI release
@@ -45,6 +45,9 @@ pydantic = "^2.7.2"
 python-dotenv = "^1.0.0"
 requests = "*"
 sentry-sdk = "^1.40.4"
+# TUI dependencies
+textual = "^0.52.0"
+rich = "^13.0"
 
 # Benchmarking
 agbenchmark = { path = "../benchmark", optional = true }
@@ -87,7 +90,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.black]
 line-length = 88
-target-version = ['py310']
+target-version = ['py312']
 include = '\.pyi?$'
 
 
@@ -97,6 +100,6 @@ skip_glob = ["data"]
 
 
 [tool.pyright]
-pythonVersion = "3.10"
+pythonVersion = "3.12"
 exclude = ["data/**", "**/node_modules", "**/__pycache__", "**/.*"]
 ignore = ["../classic/forge/**"]

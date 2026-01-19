@@ -23,7 +23,7 @@ defaults:
     shell: bash
 
 env:
-  min-python-version: '3.10'
+  min-python-version: '3.12'
 
 jobs:
   test:
@@ -33,7 +33,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10"]
+        python-version: ["3.12", "3.13", "3.14"]
         platform-os: [ubuntu, macos, macos-arm64, windows]
     runs-on: ${{ matrix.platform-os != 'macos-arm64' && format('{0}-latest', matrix.platform-os) || 'macos-14' }}
     defaults:

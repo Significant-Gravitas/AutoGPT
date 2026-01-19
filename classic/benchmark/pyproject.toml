@@ -8,14 +8,14 @@ readme = "README.md"
 packages = [{ include = "agbenchmark" }]
 
 [tool.poetry.dependencies]
-python = "^3.10"
+python = "^3.12"
 agent-protocol-client = {git = "https://github.com/Significant-Gravitas/agent-protocol.git", subdirectory = "packages/client/python"}
 click = "^8.1.3"
 click-default-group = "^1.2.4"
 colorama = "^0.4.6"
 fastapi = "^0.109.1"
 gitpython = "^3.1.32"
-httpx = "^0.24.0"
+httpx = "^0.27.0"
 matplotlib = "^3.7.2"
 # Multidict 6.0.4 fails to install and is a dependency of aiohttp which is a depenedency of agent-protocol-client
 multidict = "^6.0.5"
@@ -62,7 +62,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.black]
 line-length = 88
-target-version = ['py310']
+target-version = ['py312']
 include = '\.pyi?$'
 
 
@@ -72,7 +72,7 @@ skip_glob = ["reports"]
 
 
 [tool.pyright]
-pythonVersion = "3.10"
+pythonVersion = "3.12"
 exclude = [
     "notebooks/**",
     "reports/**",
