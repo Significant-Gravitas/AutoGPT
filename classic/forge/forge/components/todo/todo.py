@@ -12,7 +12,7 @@ Features:
 
 import json
 import logging
-from typing import TYPE_CHECKING, Any, Iterator, Literal, Optional
+from typing import TYPE_CHECKING, Iterator, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -32,7 +32,8 @@ logger = logging.getLogger(__name__)
 TodoStatus = Literal["pending", "in_progress", "completed"]
 
 # System prompt for task decomposition
-DECOMPOSE_SYSTEM_PROMPT = """You are a task decomposition specialist. Your job is to break down a task into actionable sub-steps.
+DECOMPOSE_SYSTEM_PROMPT = """\
+You are a task decomposition specialist. Break down tasks into actionable sub-steps.
 
 Current Plan Context:
 {current_todos}
@@ -51,7 +52,8 @@ Instructions:
 5. Generate both imperative (content) and present continuous (active_form) versions
 
 Respond with ONLY a JSON object (no markdown, no explanation):
-{{"sub_items": [{{"content": "Do X", "active_form": "Doing X"}}, {{"content": "Do Y", "active_form": "Doing Y"}}], "summary": "Brief explanation of the breakdown"}}"""
+{{"sub_items": [{{"content": "Do X", "active_form": "Doing X"}}], \
+"summary": "Brief explanation"}}"""
 
 
 class TodoItem(BaseModel):
@@ -249,7 +251,7 @@ class TodoComponent(
         """
         Recursively serialize a TodoItem to a dict including sub_items.
         """
-        result = {
+        result: dict[str, str | list] = {
             "content": item.content,
             "status": item.status,
             "active_form": item.active_form,
@@ -292,18 +294,18 @@ class TodoComponent(
                         ),
                         "status": JSONSchema(
                             type=JSONSchema.Type.STRING,
-                            description="Task status: pending, in_progress, or completed",
+                            description="pending, in_progress, or completed",
                             enum=["pending", "in_progress", "completed"],
                             required=True,
                         ),
                         "active_form": JSONSchema(
                             type=JSONSchema.Type.STRING,
-                            description="Present continuous form (shown when in_progress)",
+                            description="Present continuous form (e.g. 'Fixing')",
                             required=True,
                         ),
                         "sub_items": JSONSchema(
                             type=JSONSchema.Type.ARRAY,
-                            description="Optional nested sub-tasks (recursive structure)",
+                            description="Optional nested sub-tasks",
                             required=False,
                         ),
                     },
@@ -446,19 +448,24 @@ class TodoComponent(
             }
 
         # Validate item index
-        if item_index < 0 or item_index >= len(self._todos.items):
+        max_idx = len(self._todos.items) - 1
+        if item_index < 0 or item_index > max_idx:
             return {
                 "status": "error",
-                "message": f"Invalid item_index {item_index}. Valid range: 0-{len(self._todos.items) - 1}",
+                "message": f"Invalid item_index {item_index}. Valid: 0-{max_idx}",
             }
 
         target_item = self._todos.items[item_index]
 
         # Check if already has sub-items
         if target_item.sub_items:
+            count = len(target_item.sub_items)
             return {
                 "status": "error",
-                "message": f"Item '{target_item.content}' already has {len(target_item.sub_items)} sub-items. Clear them first if you want to re-decompose.",
+                "message": (
+                    f"Item '{target_item.content}' already has {count} sub-items. "
+                    "Clear them first to re-decompose."
+                ),
             }
 
         # Build the decomposition prompt
@@ -472,9 +479,10 @@ class TodoComponent(
             from forge.llm.providers import ChatMessage
 
             # Call the LLM for decomposition
+            model = self.config.decompose_model or self._smart_llm
             response = await self._llm_provider.create_chat_completion(
                 model_prompt=[ChatMessage.user(prompt_content)],
-                model_name=self.config.decompose_model or self._smart_llm,
+                model_name=model,  # type: ignore[arg-type]
             )
 
             # Parse the JSON response

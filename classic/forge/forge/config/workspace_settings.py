@@ -22,7 +22,7 @@ class WorkspaceSettings(BaseModel):
         default_factory=lambda: PermissionsConfig(
             allow=[
                 "read_file({workspace}/**)",
-                "write_to_file({workspace}/**)",
+                "write_file({workspace}/**)",
                 "list_folder({workspace}/**)",
             ],
             deny=[
@@ -30,8 +30,11 @@ class WorkspaceSettings(BaseModel):
                 "read_file(**.env.*)",
                 "read_file(**.key)",
                 "read_file(**.pem)",
-                "execute_shell(rm -rf:*)",
-                "execute_shell(sudo:*)",
+                # Shell commands use format "executable:args"
+                # Use ** to match paths containing /
+                "execute_shell(rm:-rf **)",
+                "execute_shell(rm:-r **)",
+                "execute_shell(sudo:**)",
             ],
         )
     )

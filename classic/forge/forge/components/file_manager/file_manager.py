@@ -330,7 +330,7 @@ class FileManagerComponent(
 
     @command(
         ["search_in_files", "grep_files"],
-        "Search for a pattern in files. Returns matching lines with file names and line numbers.",
+        "Search for a pattern in files. Returns matches with filenames and lines.",
         {
             "pattern": JSONSchema(
                 type=JSONSchema.Type.STRING,

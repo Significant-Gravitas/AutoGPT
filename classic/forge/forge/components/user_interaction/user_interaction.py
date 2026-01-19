@@ -45,7 +45,7 @@ class UserInteractionComponent(CommandProvider):
             ),
             "default": JSONSchema(
                 type=JSONSchema.Type.BOOLEAN,
-                description="Default answer if user just presses Enter (default: None, requires explicit answer)",
+                description="Default if Enter pressed (None = require explicit)",
                 required=False,
             ),
         },

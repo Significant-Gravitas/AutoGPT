@@ -2,7 +2,7 @@ import contextlib
 import json
 import re
 from io import BytesIO
-from typing import Any
+from typing import Any, cast
 
 from vcr.request import Request
 
@@ -66,13 +66,11 @@ def freeze_request(request: Request) -> Request:
         return request
 
     with contextlib.suppress(ValueError):
-        request.body = freeze_request_body(
-            json.loads(
-                request.body.getvalue()
-                if isinstance(request.body, BytesIO)
-                else request.body
-            )
-        )
+        if isinstance(request.body, BytesIO):
+            body_data: bytes | str = request.body.getvalue()
+        else:
+            body_data = cast(bytes, request.body)
+        request.body = freeze_request_body(json.loads(body_data))
 
     return request
 

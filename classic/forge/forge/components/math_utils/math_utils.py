@@ -87,8 +87,9 @@ class SafeEvaluator(ast.NodeVisitor):
     def visit_Name(self, node: ast.Name) -> float:
         if node.id in self.CONSTANTS:
             return self.CONSTANTS[node.id]
+        avail = list(self.CONSTANTS.keys())
         raise CommandExecutionError(
-            f"Unknown variable: {node.id}. Available constants: {list(self.CONSTANTS.keys())}"
+            f"Unknown variable: {node.id}. Available: {avail}"
         )
 
     def visit_BinOp(self, node: ast.BinOp) -> float:
@@ -114,8 +115,9 @@ class SafeEvaluator(ast.NodeVisitor):
 
         func_name = node.func.id
         if func_name not in self.FUNCTIONS:
+            avail = list(self.FUNCTIONS.keys())
             raise CommandExecutionError(
-                f"Unknown function: {func_name}. Available: {list(self.FUNCTIONS.keys())}"
+                f"Unknown function: {func_name}. Available: {avail}"
             )
 
         args = [self.visit(arg) for arg in node.args]
@@ -148,11 +150,11 @@ class MathUtilsComponent(
 
     @command(
         ["calculate", "eval_math", "compute"],
-        "Safely evaluate a mathematical expression. Supports +, -, *, /, //, %, ** operators and functions like sqrt, sin, cos, log.",
+        "Evaluate math expressions. Supports operators, sqrt, sin, cos, log, etc.",
         {
             "expression": JSONSchema(
                 type=JSONSchema.Type.STRING,
-                description="Mathematical expression to evaluate (e.g., '2 * pi + sqrt(16)')",
+                description="Expression to evaluate (e.g. '2 * pi + sqrt(16)')",
                 required=True,
             ),
         },
@@ -195,7 +197,7 @@ class MathUtilsComponent(
             "operations": JSONSchema(
                 type=JSONSchema.Type.ARRAY,
                 items=JSONSchema(type=JSONSchema.Type.STRING),
-                description="Statistics to compute: mean, median, mode, stdev, variance, min, max, sum, count (default: all)",
+                description="Stats to compute: mean, median, mode, etc. (default: all)",
                 required=False,
             ),
         },
@@ -488,5 +490,5 @@ class MathUtilsComponent(
 
         raise CommandExecutionError(
             f"Cannot convert from '{from_unit}' to '{to_unit}'. "
-            "Units must be in the same category (length, weight, volume, time, temperature, data)."
+            "Units must be in the same category."
         )

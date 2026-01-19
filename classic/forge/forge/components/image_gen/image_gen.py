@@ -205,11 +205,13 @@ class ImageGeneratorComponent(
             size=f"{size}x{size}",  # type: ignore
             response_format="b64_json",
         )
-        assert response.data[0].b64_json is not None  # response_format = "b64_json"
+        # response_format="b64_json" guarantees b64_json is present
+        image_b64 = response.data[0].b64_json  # type: ignore[index]
+        assert image_b64 is not None
 
         logger.info(f"Image Generated for prompt: {prompt}")
 
-        image_data = b64decode(response.data[0].b64_json)
+        image_data = b64decode(image_b64)
 
         with open(output_file, mode="wb") as png:
             png.write(image_data)

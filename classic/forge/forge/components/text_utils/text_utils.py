@@ -88,12 +88,12 @@ class TextUtilsComponent(
             ),
             "flags": JSONSchema(
                 type=JSONSchema.Type.STRING,
-                description="Regex flags: i=ignore case, m=multiline, s=dotall, x=verbose",
+                description="Regex flags: i=ignorecase, m=multiline, s=dotall",
                 required=False,
             ),
             "return_groups": JSONSchema(
                 type=JSONSchema.Type.BOOLEAN,
-                description="Return capture groups instead of full matches (default: False)",
+                description="Return capture groups instead of matches (default: False)",
                 required=False,
             ),
         },
@@ -180,7 +180,7 @@ class TextUtilsComponent(
             ),
             "flags": JSONSchema(
                 type=JSONSchema.Type.STRING,
-                description="Regex flags: i=ignore case, m=multiline, s=dotall, x=verbose",
+                description="Regex flags: i=ignorecase, m=multiline, s=dotall",
                 required=False,
             ),
             "count": JSONSchema(

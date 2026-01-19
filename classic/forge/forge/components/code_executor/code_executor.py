@@ -322,7 +322,7 @@ class CodeExecutorComponent(
             ),
             "working_dir": JSONSchema(
                 type=JSONSchema.Type.STRING,
-                description="Working directory for command execution (default: workspace root)",
+                description="Working directory (default: workspace root)",
                 required=False,
             ),
         },

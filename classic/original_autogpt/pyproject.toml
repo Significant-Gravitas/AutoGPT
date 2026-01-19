@@ -73,6 +73,7 @@ pytest-cov = "*"
 pytest-mock = "*"
 pytest-recording = "*"
 pytest-xdist = "*"
+aiohttp-retry = "^2.9.1"
 
 [tool.poetry.group.build]
 optional = true
@@ -97,6 +98,15 @@ include = '\.pyi?$'
 [tool.isort]
 profile = "black"
 skip_glob = ["data"]
+
+
+[tool.pytest.ini_options]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+    "requires_agent: marks tests that require a running agent with API keys",
+]
+asyncio_mode = "auto"
 
 
 [tool.pyright]

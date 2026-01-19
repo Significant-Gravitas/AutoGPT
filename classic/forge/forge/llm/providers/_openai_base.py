@@ -290,7 +290,8 @@ class BaseOpenAIChatProvider(
         kwargs = cast(CompletionCreateParams, kwargs)
 
         if max_output_tokens:
-            # Newer models (o1, o3, o4, gpt-5, gpt-4.1, gpt-4o) use max_completion_tokens
+            # Newer models (o1, o3, o4, gpt-5, gpt-4.1, gpt-4o)
+            # use max_completion_tokens instead of max_tokens
             if (
                 model.startswith("o1")
                 or model.startswith("o3")

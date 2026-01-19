@@ -612,8 +612,8 @@ class OpenAIProvider(
         try:
             return tiktoken.encoding_for_model(model_name)
         except KeyError:
-            # Fallback for new models not yet in tiktoken's mapping
-            # GPT-4, GPT-4o, GPT-4.1, GPT-5, and O-series all use cl100k_base or o200k_base
+            # Fallback for new models not yet in tiktoken's mapping.
+            # GPT-4o, GPT-4.1, GPT-5, O-series use cl100k_base or o200k_base
             if (
                 model_name.startswith("gpt-4o")
                 or model_name.startswith("gpt-4.1")

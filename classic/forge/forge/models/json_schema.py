@@ -86,7 +86,9 @@ class JSONSchema(BaseModel):
                 v.required = k in schema_node["required"]
         return properties
 
-    def validate_object(self, object: object) -> tuple[bool, list[ValidationError]]:
+    def validate_object(
+        self, object: object  # noqa: A002 - shadows builtin intentionally
+    ) -> tuple[bool, list[ValidationError]]:
         """
         Validates an object or a value against the JSONSchema.
 
@@ -100,7 +102,10 @@ class JSONSchema(BaseModel):
         """
         validator = Draft7Validator(self.to_dict())
 
-        if errors := sorted(validator.iter_errors(object), key=lambda e: e.path):
+        if errors := sorted(
+            validator.iter_errors(object),  # type: ignore[arg-type]
+            key=lambda e: e.path,
+        ):
             return False, errors
 
         return True, []

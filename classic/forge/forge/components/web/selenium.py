@@ -415,12 +415,12 @@ class WebSeleniumComponent(
             ),
             "filename": JSONSchema(
                 type=JSONSchema.Type.STRING,
-                description="The filename to save the screenshot as (e.g., 'screenshot.png')",
+                description="Filename for screenshot (e.g. 'screenshot.png')",
                 required=True,
             ),
             "full_page": JSONSchema(
                 type=JSONSchema.Type.BOOLEAN,
-                description="Whether to capture the full page including scrollable content (default: False)",
+                description="Capture full page including scrollable content",
                 required=False,
             ),
         },

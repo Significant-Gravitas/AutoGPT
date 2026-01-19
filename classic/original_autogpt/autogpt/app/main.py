@@ -615,7 +615,7 @@ async def run_interaction_loop(
     stop_reason = None
 
     def graceful_agent_interrupt(signum: int, frame: Optional[FrameType]) -> None:
-        nonlocal cycle_budget, cycles_remaining, spinner, stop_reason
+        nonlocal cycles_remaining, stop_reason
         if stop_reason:
             logger.error("Quitting immediately...")
             sys.exit()
@@ -837,7 +837,9 @@ def print_assistant_thoughts(
     thoughts_text = remove_ansi_escape(
         thoughts.text
         if isinstance(thoughts, AssistantThoughts)
-        else thoughts.summary() if isinstance(thoughts, ModelWithSummary) else thoughts
+        else thoughts.summary()
+        if isinstance(thoughts, ModelWithSummary)
+        else thoughts
     )
     print_attribute(
         f"{ai_name.upper()} THOUGHTS", thoughts_text, title_color=Fore.YELLOW

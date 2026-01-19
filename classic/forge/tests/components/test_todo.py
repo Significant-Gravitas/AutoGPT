@@ -160,7 +160,7 @@ class TestTodoWrite:
 
     def test_write_enforces_max_items(self, todo_component):
         """Writing more items than max_items should fail."""
-        component = TodoComponent(TodoConfiguration(max_items=2))
+        component = TodoComponent(config=TodoConfiguration(max_items=2))
         result = component.todo_write(
             [
                 {"content": "Task 1", "status": "pending", "active_form": "Task 1"},
@@ -286,7 +286,7 @@ class TestProtocols:
 
     def test_get_messages_respects_show_in_prompt_config(self):
         """MessageProvider should respect show_in_prompt config."""
-        component = TodoComponent(TodoConfiguration(show_in_prompt=False))
+        component = TodoComponent(config=TodoConfiguration(show_in_prompt=False))
         component.todo_write(
             [{"content": "Task", "status": "pending", "active_form": "Task"}]
         )
@@ -306,7 +306,8 @@ class TestConfiguration:
 
     def test_custom_configuration(self):
         """Custom configuration should be respected."""
-        component = TodoComponent(TodoConfiguration(max_items=10, show_in_prompt=False))
+        cfg = TodoConfiguration(max_items=10, show_in_prompt=False)
+        component = TodoComponent(config=cfg)
         assert component.config.max_items == 10
         assert component.config.show_in_prompt is False
 

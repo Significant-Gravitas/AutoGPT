@@ -344,15 +344,16 @@ class AnthropicProvider(BaseChatModelProvider[AnthropicModelName, AnthropicSetti
                                                             e := next(
                                                                 (
                                                                     tce
-                                                                    for tce in tool_call_errors
+                                                                    for tce
+                                                                    in tool_call_errors
                                                                     if tce.name
                                                                     == tc.function.name
                                                                 ),
                                                                 None,
                                                             )
                                                         )
-                                                        else "Not executed because validation "
-                                                        "of tool input failed"
+                                                        else "Not executed: "
+                                                        "validation failed"
                                                     )
                                                 ),
                                             }

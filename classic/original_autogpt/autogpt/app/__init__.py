@@ -14,15 +14,15 @@ def _load_env_from_locations() -> None:
         4. Package installation directory
     """
     env_locations = [
-        Path.cwd() / ".env",
-        Path.home() / ".autogpt" / ".env",
-        Path.home() / ".config" / "autogpt" / ".env",
-        Path(__file__).parent.parent.parent / ".env",
+        Path.cwd() / ".env",  # noqa: F821
+        Path.home() / ".autogpt" / ".env",  # noqa: F821
+        Path.home() / ".config" / "autogpt" / ".env",  # noqa: F821
+        Path(__file__).parent.parent.parent / ".env",  # noqa: F821
     ]
 
     for env_path in env_locations:
         if env_path.exists():
-            load_dotenv(env_path, verbose=True, override=True)
+            load_dotenv(env_path, verbose=True, override=True)  # noqa: F821
             break
 
 

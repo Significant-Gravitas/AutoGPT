@@ -68,12 +68,24 @@ cd forge && poetry run pytest --cov             # With coverage
 ```
 
 ### Linting & Formatting
+
+Run from forge/ or original_autogpt/ directory:
+
 ```bash
-poetry run black .       # Format code
-poetry run isort .       # Sort imports
-poetry run flake8        # Lint
-poetry run pyright       # Type check
+# Format everything (recommended to run together)
+poetry run black . && poetry run isort .
+
+# Check formatting (CI-style, no changes)
+poetry run black --check . && poetry run isort --check-only .
+
+# Lint
+poetry run flake8        # Style linting
+
+# Type check
+poetry run pyright       # Type checking (some errors are expected in infrastructure code)
 ```
+
+Note: Always run linters over the entire directory, not specific files, for best results.
 
 ## Architecture
 

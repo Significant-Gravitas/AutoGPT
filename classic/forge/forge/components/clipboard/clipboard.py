@@ -26,7 +26,7 @@ class ClipboardConfiguration(BaseModel):
 class ClipboardComponent(
     DirectiveProvider, CommandProvider, ConfigurableComponent[ClipboardConfiguration]
 ):
-    """Provides an in-memory clipboard for storing and retrieving data between commands."""
+    """In-memory clipboard for storing and retrieving data between commands."""
 
     config_class = ClipboardConfiguration
 
@@ -74,9 +74,10 @@ class ClipboardComponent(
 
         # Check value size
         value_size = len(value.encode("utf-8"))
-        if value_size > self.config.max_value_size:
+        max_size = self.config.max_value_size
+        if value_size > max_size:
             raise CommandExecutionError(
-                f"Value too large: {value_size} bytes (max: {self.config.max_value_size})"
+                f"Value too large: {value_size} bytes (max: {max_size})"
             )
 
         # Check item limit (excluding update of existing key)

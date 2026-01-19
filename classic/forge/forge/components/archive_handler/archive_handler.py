@@ -78,7 +78,7 @@ class ArchiveHandlerComponent(
         {
             "output_path": JSONSchema(
                 type=JSONSchema.Type.STRING,
-                description="Path for the output archive (e.g., 'backup.zip', 'files.tar.gz')",
+                description="Output archive path (e.g. 'backup.zip')",
                 required=True,
             ),
             "source_paths": JSONSchema(
@@ -226,9 +226,10 @@ class ArchiveHandlerComponent(
 
         # Check archive size
         archive_size = full_archive.stat().st_size
-        if archive_size > self.config.max_archive_size:
+        max_size = self.config.max_archive_size
+        if archive_size > max_size:
             raise CommandExecutionError(
-                f"Archive too large: {archive_size} bytes (max: {self.config.max_archive_size})"
+                f"Archive too large: {archive_size} bytes (max: {max_size})"
             )
 
         # Create destination directory
@@ -244,7 +245,7 @@ class ArchiveHandlerComponent(
                         member_path = (full_dest / name).resolve()
                         if not str(member_path).startswith(str(full_dest.resolve())):
                             raise CommandExecutionError(
-                                f"Unsafe archive: path '{name}' would extract outside destination"
+                                f"Unsafe archive: '{name}' extracts outside dest"
                             )
 
                     # Check total uncompressed size
@@ -276,7 +277,7 @@ class ArchiveHandlerComponent(
                         member_path = (full_dest / member.name).resolve()
                         if not str(member_path).startswith(str(full_dest.resolve())):
                             raise CommandExecutionError(
-                                f"Unsafe archive: path '{member.name}' would extract outside destination"
+                                f"Unsafe archive: '{member.name}' extracts outside dest"
                             )
 
                     if members:
