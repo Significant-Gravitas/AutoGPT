@@ -91,6 +91,15 @@ class ActionHistoryComponent(
 
         yield from messages
 
+        # Include any pending user feedback (from approval + feedback scenarios)
+        # This feedback was provided when the user approved the command, so the
+        # command was executed successfully. Make this explicit to the agent.
+        pending_feedback = self.event_history.pop_pending_feedback()
+        for feedback in pending_feedback:
+            yield ChatMessage.user(
+                f"Command executed successfully. User feedback: {feedback}"
+            )
+
     def after_parse(self, result: AnyProposal) -> None:
         self.event_history.register_action(result)
 
@@ -133,7 +142,21 @@ class ActionHistoryComponent(
                 )
             )
         else:
-            return ChatMessage.user(result.feedback)
+            # ActionInterruptedByHuman - user provided feedback instead of executing
+            # Must return ToolResultMessage to satisfy API requirements (both Anthropic
+            # and OpenAI require tool_use/function_call to be followed by tool_result)
+            feedback_content = (
+                f"Command not executed. User provided feedback: {result.feedback}"
+            )
+            return (
+                ToolResultMessage(
+                    content=feedback_content,
+                    is_error=True,
+                    tool_call_id=episode.action.raw_message.tool_calls[0].id,
+                )
+                if episode.action.raw_message.tool_calls
+                else ChatMessage.user(feedback_content)
+            )
 
     def _compile_progress(
         self,

@@ -28,11 +28,7 @@ from forge.logging.config import configure_logging
 from forge.logging.utils import print_attribute, speak
 from forge.models.action import ActionInterruptedByHuman, ActionProposal
 from forge.models.utils import ModelWithSummary
-from forge.permissions import (
-    ApprovalScope,
-    CommandPermissionManager,
-    UserFeedbackProvided,
-)
+from forge.permissions import ApprovalScope, CommandPermissionManager
 from forge.utils.const import FINISH_COMMAND
 from forge.utils.exceptions import AgentTerminated, InvalidAgentResponseError
 
@@ -109,7 +105,9 @@ async def run_auto_gpt(
     file_storage.initialize()
 
     # Create prompt callback for permission requests
-    def prompt_permission(cmd: str, args_str: str, args: dict) -> ApprovalScope:
+    def prompt_permission(
+        cmd: str, args_str: str, args: dict
+    ) -> tuple[ApprovalScope, str | None]:
         """Prompt user for command permission.
 
         Uses an interactive selector with arrow keys and a feedback option.
@@ -120,10 +118,7 @@ async def run_auto_gpt(
             args: Full arguments dictionary.
 
         Returns:
-            ApprovalScope indicating user's choice.
-
-        Raises:
-            UserFeedbackProvided: If user selects feedback option.
+            Tuple of (ApprovalScope, feedback). Feedback is None if not provided.
         """
         from autogpt.app.ui.rich_select import RichSelect
 
@@ -148,12 +143,44 @@ async def run_auto_gpt(
         )
         result = selector.run()
 
-        # If feedback was provided, raise it
-        if result.has_feedback and result.feedback:
-            raise UserFeedbackProvided(result.feedback)
-
         scope = scope_map.get(result.index, ApprovalScope.DENY)
-        return scope
+        feedback = result.feedback if result.has_feedback else None
+        return (scope, feedback)
+
+    def display_auto_approved(
+        cmd: str, args_str: str, args: dict, scope: ApprovalScope
+    ) -> None:
+        """Display auto-approved command execution using Rich.
+
+        Called when a command is auto-approved from the allow lists,
+        so the user can see what's executing without needing to approve.
+
+        Args:
+            cmd: Command name.
+            args_str: Formatted arguments string.
+            args: Full arguments dictionary.
+            scope: The scope that granted the auto-approval.
+        """
+        from rich.console import Console
+        from rich.text import Text
+
+        console = Console()
+
+        # Build the display text
+        scope_label = "agent" if scope == ApprovalScope.AGENT else "workspace"
+        text = Text()
+        text.append("  ✓ ", style="bold green")
+        text.append("Auto-approved ", style="dim")
+        text.append(f"({scope_label})", style="dim cyan")
+        text.append(": ", style="dim")
+        text.append(cmd, style="bold cyan")
+        text.append("(", style="dim")
+        # Truncate args if too long
+        display_args = args_str[:60] + "..." if len(args_str) > 60 else args_str
+        text.append(display_args, style="dim")
+        text.append(")", style="dim")
+
+        console.print(text)
 
     # Set up logging module
     if speak:
@@ -266,6 +293,9 @@ async def run_auto_gpt(
             workspace_settings=workspace_settings,
             agent_permissions=agent_permissions,
             prompt_fn=prompt_permission if not config.noninteractive_mode else None,
+            on_auto_approve=(
+                display_auto_approved if not config.noninteractive_mode else None
+            ),
         )
 
         agent = configure_agent_with_state(
@@ -376,6 +406,9 @@ async def run_auto_gpt(
             workspace_settings=workspace_settings,
             agent_permissions=agent_permissions,
             prompt_fn=prompt_permission if not config.noninteractive_mode else None,
+            on_auto_approve=(
+                display_auto_approved if not config.noninteractive_mode else None
+            ),
         )
 
         agent = create_agent(
@@ -658,11 +691,8 @@ async def run_interaction_loop(
             speak_mode=app_config.tts_config.speak_mode,
         )
 
-        if action_proposal.use_tool:
-            await ui_provider.display_command(
-                name=action_proposal.use_tool.name,
-                arguments=action_proposal.use_tool.arguments,
-            )
+        # Note: Command details are shown in the approval prompt, so we don't
+        # display them separately here to avoid redundancy
 
         # Permission manager handles per-command approval during execute()
         handle_stop_signal()
@@ -676,15 +706,17 @@ async def run_interaction_loop(
         handle_stop_signal()
 
         # Execute the command. Permission manager will prompt user if needed.
-        # If user provides feedback instead of approving, catch the exception
-        # and pass the feedback to the agent.
-        try:
-            result = await agent.execute(action_proposal)
+        # If user denies with feedback, the agent will receive it via
+        # ActionInterruptedByHuman. If user approves with feedback, command
+        # executes and feedback is appended to history.
+        result = await agent.execute(action_proposal)
+        if result.status != "interrupted_by_human":
             cycles_remaining -= 1
-        except UserFeedbackProvided as e:
-            result = await agent.do_not_execute(action_proposal, e.feedback)
+
+        # Display user feedback if provided
+        if result.status == "interrupted_by_human" and result.feedback:
             await ui_provider.display_message(
-                f"Feedback provided: {e.feedback}",
+                f"Feedback provided: {result.feedback}",
                 title="USER:",
             )
 

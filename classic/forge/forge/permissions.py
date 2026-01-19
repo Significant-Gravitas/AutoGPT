@@ -31,6 +31,28 @@ class UserFeedbackProvided(Exception):
         super().__init__(f"User provided feedback: {feedback}")
 
 
+class PermissionCheckResult:
+    """Result of a permission check.
+
+    Attributes:
+        allowed: Whether the command is allowed to execute.
+        scope: The scope of the permission decision.
+        feedback: Optional user feedback provided along with the decision.
+    """
+
+    __slots__ = ("allowed", "scope", "feedback")
+
+    def __init__(
+        self,
+        allowed: bool,
+        scope: ApprovalScope,
+        feedback: str | None = None,
+    ):
+        self.allowed = allowed
+        self.scope = scope
+        self.feedback = feedback
+
+
 class CommandPermissionManager:
     """Manages layered permissions for agent command execution.
 
@@ -48,7 +70,10 @@ class CommandPermissionManager:
         agent_dir: Path,
         workspace_settings: WorkspaceSettings,
         agent_permissions: AgentPermissions,
-        prompt_fn: Callable[[str, str, dict], ApprovalScope] | None = None,
+        prompt_fn: (
+            Callable[[str, str, dict], tuple[ApprovalScope, str | None]] | None
+        ) = None,
+        on_auto_approve: Callable[[str, str, dict, ApprovalScope], None] | None = None,
     ):
         """Initialize the permission manager.
 
@@ -58,16 +83,23 @@ class CommandPermissionManager:
             workspace_settings: Workspace-level permission settings.
             agent_permissions: Agent-specific permission settings.
             prompt_fn: Callback to prompt user for permission.
-                Takes (command_name, args_str, arguments) and returns ApprovalScope.
+                Takes (command_name, args_str, arguments) and returns
+                (ApprovalScope, feedback) tuple.
+            on_auto_approve: Callback fired when a command is auto-approved
+                from the allow lists (not prompted). Takes (command_name,
+                args_str, arguments, scope).
         """
         self.workspace = workspace.resolve()
         self.agent_dir = agent_dir
         self.workspace_settings = workspace_settings
         self.agent_permissions = agent_permissions
         self.prompt_fn = prompt_fn
+        self.on_auto_approve = on_auto_approve
         self._session_denied: set[str] = set()
 
-    def check_command(self, command_name: str, arguments: dict[str, Any]) -> bool:
+    def check_command(
+        self, command_name: str, arguments: dict[str, Any]
+    ) -> PermissionCheckResult:
         """Check if command execution is allowed. Prompts if needed.
 
         Args:
@@ -75,7 +107,7 @@ class CommandPermissionManager:
             arguments: Command arguments.
 
         Returns:
-            True if command is allowed, False if denied.
+            PermissionCheckResult with allowed status, scope, and optional feedback.
         """
         args_str = self._format_args(command_name, arguments)
         perm_string = f"{command_name}({args_str})"
@@ -84,49 +116,58 @@ class CommandPermissionManager:
         if self._matches_patterns(
             command_name, args_str, self.agent_permissions.permissions.deny
         ):
-            return False
+            return PermissionCheckResult(False, ApprovalScope.DENY)
 
         # 2. Check workspace deny list
         if self._matches_patterns(
             command_name, args_str, self.workspace_settings.permissions.deny
         ):
-            return False
+            return PermissionCheckResult(False, ApprovalScope.DENY)
 
         # 3. Check agent allow list
         if self._matches_patterns(
             command_name, args_str, self.agent_permissions.permissions.allow
         ):
-            return True
+            if self.on_auto_approve:
+                self.on_auto_approve(
+                    command_name, args_str, arguments, ApprovalScope.AGENT
+                )
+            return PermissionCheckResult(True, ApprovalScope.AGENT)
 
         # 4. Check workspace allow list
         if self._matches_patterns(
             command_name, args_str, self.workspace_settings.permissions.allow
         ):
-            return True
+            if self.on_auto_approve:
+                self.on_auto_approve(
+                    command_name, args_str, arguments, ApprovalScope.WORKSPACE
+                )
+            return PermissionCheckResult(True, ApprovalScope.WORKSPACE)
 
         # 5. Check session denials
         if perm_string in self._session_denied:
-            return False
+            return PermissionCheckResult(False, ApprovalScope.DENY)
 
         # 6. Prompt user
         if self.prompt_fn is None:
-            return False
+            return PermissionCheckResult(False, ApprovalScope.DENY)
 
-        scope = self.prompt_fn(command_name, args_str, arguments)
+        scope, feedback = self.prompt_fn(command_name, args_str, arguments)
         pattern = self._generalize_pattern(command_name, args_str)
 
         if scope == ApprovalScope.ONCE:
             # Allow this one time only, don't save anywhere
-            return True
+            return PermissionCheckResult(True, ApprovalScope.ONCE, feedback)
         elif scope == ApprovalScope.WORKSPACE:
             self.workspace_settings.add_permission(pattern, self.workspace)
-            return True
+            return PermissionCheckResult(True, ApprovalScope.WORKSPACE, feedback)
         elif scope == ApprovalScope.AGENT:
             self.agent_permissions.add_permission(pattern, self.agent_dir)
-            return True
+            return PermissionCheckResult(True, ApprovalScope.AGENT, feedback)
         else:
+            # Denied - feedback goes to agent instead of execution
             self._session_denied.add(perm_string)
-            return False
+            return PermissionCheckResult(False, ApprovalScope.DENY, feedback)
 
     def _format_args(self, command_name: str, arguments: dict[str, Any]) -> str:
         """Format command arguments for pattern matching.
@@ -145,10 +186,15 @@ class CommandPermissionManager:
                 return str(Path(path).resolve())
             return ""
 
-        # For shell commands, format as "command:args"
+        # For shell commands, format as "executable:args" (first word is executable)
         if command_name in ("execute_shell", "execute_python"):
             cmd = arguments.get("command_line") or arguments.get("code") or ""
-            return str(cmd)
+            if not cmd:
+                return ""
+            parts = str(cmd).split(maxsplit=1)
+            if len(parts) == 2:
+                return f"{parts[0]}:{parts[1]}"
+            return f"{parts[0]}:"
 
         # For web operations
         if command_name == "web_search":
@@ -240,13 +286,12 @@ class CommandPermissionManager:
                 # Outside workspace, use exact path
                 return f"{command_name}({path})"
 
-        # For shell commands, use command:* pattern
+        # For shell commands, use executable:** pattern
         if command_name in ("execute_shell", "execute_python"):
-            # Extract command name (first word)
-            parts = args_str.split()
-            if parts:
-                base_cmd = parts[0]
-                return f"{command_name}({base_cmd}:*)"
+            # args_str is in format "executable:args", extract executable
+            if ":" in args_str:
+                executable = args_str.split(":", 1)[0]
+                return f"{command_name}({executable}:**)"
             return f"{command_name}(*)"
 
         # For web operations

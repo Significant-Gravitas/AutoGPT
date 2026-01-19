@@ -64,6 +64,8 @@ from forge.utils.exceptions import (
 )
 from pydantic import Field
 
+from autogpt.agents.prompt_strategies.plan_execute import PlanExecutePromptConfiguration
+
 from .prompt_strategies.one_shot import (
     OneShotAgentActionProposal,
     OneShotAgentPromptStrategy,
@@ -216,14 +218,14 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
         if exception:
             prompt.messages.append(ChatMessage.system(f"Error: {exception}"))
 
-        response: ChatModelResponse[
-            OneShotAgentActionProposal
-        ] = await self.llm_provider.create_chat_completion(
-            prompt.messages,
-            model_name=self.llm.name,
-            completion_parser=self.prompt_strategy.parse_response_content,
-            functions=prompt.functions,
-            prefill_response=prompt.prefill_response,
+        response: ChatModelResponse[OneShotAgentActionProposal] = (
+            await self.llm_provider.create_chat_completion(
+                prompt.messages,
+                model_name=self.llm.name,
+                completion_parser=self.prompt_strategy.parse_response_content,
+                functions=prompt.functions,
+                prefill_response=prompt.prefill_response,
+            )
         )
         result = response.parsed_result
 
@@ -244,10 +246,21 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
 
         # Check permissions before execution
         if self.permission_manager:
-            if not self.permission_manager.check_command(tool.name, tool.arguments):
+            perm_result = self.permission_manager.check_command(
+                tool.name, tool.arguments
+            )
+            if not perm_result.allowed:
+                # Permission denied - pass feedback to agent if provided
+                if perm_result.feedback:
+                    return await self.do_not_execute(proposal, perm_result.feedback)
                 return ActionErrorResult(
                     reason=f"Permission denied for command '{tool.name}'",
                 )
+
+            # Permission granted - execute command, then handle feedback if any
+            feedback_to_append = perm_result.feedback
+        else:
+            feedback_to_append = None
 
         try:
             return_value = await self._execute_tool(tool)
@@ -268,6 +281,11 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
             )
 
         await self.run_pipeline(AfterExecute.after_execute, result)
+
+        # If user provided feedback along with approval, append it to history
+        # so the agent sees it in the next iteration
+        if feedback_to_append:
+            self.event_history.append_user_feedback(feedback_to_append)
 
         logger.debug("\n".join(self.trace))
 
@@ -338,7 +356,8 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
         """Create the appropriate prompt strategy based on configuration.
 
         Args:
-            app_config: The application configuration containing prompt_strategy setting.
+            app_config: The application configuration containing the
+                prompt_strategy setting.
 
         Returns:
             An instance of the selected prompt strategy.
@@ -352,8 +371,8 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
             return ReWOOPromptStrategy(config, logger)
 
         elif strategy_name == "plan_execute":
-            config = PlanExecutePromptStrategy.default_configuration.model_copy(
-                deep=True
+            config: PlanExecutePromptConfiguration = (
+                PlanExecutePromptStrategy.default_configuration.model_copy(deep=True)
             )
             config.use_prefill = use_prefill
             return PlanExecutePromptStrategy(config, logger)

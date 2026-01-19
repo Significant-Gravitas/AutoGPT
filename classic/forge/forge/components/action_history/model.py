@@ -56,6 +56,8 @@ class EpisodicActionHistory(BaseModel, Generic[AnyProposal]):
 
     episodes: list[Episode[AnyProposal]] = Field(default_factory=list)
     cursor: int = 0
+    pending_user_feedback: list[str] = Field(default_factory=list)
+    """User feedback provided along with approval, for inclusion in next prompt"""
     _lock = asyncio.Lock()
 
     @property
@@ -88,6 +90,27 @@ class EpisodicActionHistory(BaseModel, Generic[AnyProposal]):
 
         self.current_episode.result = result
         self.cursor = len(self.episodes)
+
+    def append_user_feedback(self, feedback: str) -> None:
+        """Append user feedback to be included in the next prompt.
+
+        This is used when a user approves a command but also provides feedback.
+        The feedback will be sent to the agent in the next iteration.
+
+        Args:
+            feedback: The user's feedback text.
+        """
+        self.pending_user_feedback.append(feedback)
+
+    def pop_pending_feedback(self) -> list[str]:
+        """Get and clear all pending user feedback.
+
+        Returns:
+            List of feedback strings that were pending.
+        """
+        feedback = self.pending_user_feedback.copy()
+        self.pending_user_feedback.clear()
+        return feedback
 
     def rewind(self, number_of_episodes: int = 0) -> None:
         """Resets the history to an earlier state.
