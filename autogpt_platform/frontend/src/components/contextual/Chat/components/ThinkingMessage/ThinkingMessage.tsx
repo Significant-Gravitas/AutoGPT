@@ -1,7 +1,6 @@
 import { cn } from "@/lib/utils";
-import { RobotIcon } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
-import { MessageBubble } from "../MessageBubble/MessageBubble";
+import { AIChatBubble } from "../AIChatBubble/AIChatBubble";
 
 export interface ThinkingMessageProps {
   className?: string;
@@ -34,14 +33,8 @@ export function ThinkingMessage({ className }: ThinkingMessageProps) {
       )}
     >
       <div className="flex w-full max-w-3xl gap-3">
-        <div className="flex-shrink-0">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-500">
-            <RobotIcon className="h-4 w-4 text-indigo-50" />
-          </div>
-        </div>
-
         <div className="flex min-w-0 flex-1 flex-col">
-          <MessageBubble variant="assistant">
+          <AIChatBubble>
             <div className="transition-all duration-500 ease-in-out">
               {showSlowLoader ? (
                 <div className="flex flex-col items-center gap-3 py-2">
@@ -62,7 +55,7 @@ export function ThinkingMessage({ className }: ThinkingMessageProps) {
                 </span>
               )}
             </div>
-          </MessageBubble>
+          </AIChatBubble>
         </div>
       </div>
     </div>

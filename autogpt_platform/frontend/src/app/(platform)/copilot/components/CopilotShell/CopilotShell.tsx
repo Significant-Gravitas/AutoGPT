@@ -1,8 +1,9 @@
 "use client";
 
+import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 import { Button } from "@/components/atoms/Button/Button";
-import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Text } from "@/components/atoms/Text/Text";
+import { ChatLoader } from "@/components/contextual/Chat/components/ChatLoader/ChatLoader";
 import { InfiniteList } from "@/components/molecules/InfiniteList/InfiniteList";
 import { scrollbarStyles } from "@/components/styles/scrollbars";
 import { NAVBAR_HEIGHT_PX } from "@/lib/constants";
@@ -35,15 +36,15 @@ export function CopilotShell({ children }: CopilotShellProps) {
     isReadyToShowContent,
   } = useCopilotShell();
 
-  console.log(sessions)
-
   function renderSessionsList() {
-    if (isLoading && sessions.length === 0) {
+    if (isLoading) {
       return (
-        <div className="flex items-center justify-center py-8">
-          <Text variant="body" className="text-zinc-500">
-            Loading sessions...
-          </Text>
+        <div className="space-y-1">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="rounded-lg px-3 py-2.5">
+              <Skeleton className="h-5 w-full" />
+            </div>
+          ))}
         </div>
       );
     }
@@ -99,7 +100,7 @@ export function CopilotShell({ children }: CopilotShellProps) {
       style={{ height: `calc(100vh - ${NAVBAR_HEIGHT_PX}px)` }}
     >
       {!isMobile ? (
-        <aside className="flex h-full w-80 flex-col border-r border-zinc-200 bg-white">
+        <aside className="flex h-full w-80 flex-col border-r border-zinc-100 bg-white">
           <div className="shrink-0 px-6 py-4">
             <Text variant="h3" size="body-medium">
               Your chats
@@ -146,7 +147,7 @@ export function CopilotShell({ children }: CopilotShellProps) {
           ) : (
             <div className="flex flex-1 items-center justify-center">
               <div className="flex flex-col items-center gap-4">
-                <LoadingSpinner size="large" />
+                <ChatLoader />
                 <Text variant="body" className="text-zinc-500">
                   Loading your chats...
                 </Text>

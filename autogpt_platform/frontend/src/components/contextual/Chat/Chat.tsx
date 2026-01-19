@@ -1,12 +1,12 @@
 "use client";
 
 import { Button } from "@/components/atoms/Button/Button";
-import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
 import { ChatContainer } from "./components/ChatContainer/ChatContainer";
 import { ChatErrorState } from "./components/ChatErrorState/ChatErrorState";
+import { ChatLoader } from "./components/ChatLoader/ChatLoader";
 import { useChat } from "./useChat";
 
 export interface ChatProps {
@@ -38,6 +38,7 @@ export function Chat({
     sessionId,
     createSession,
     clearSession,
+    showLoader,
   } = useChat({ urlSessionId });
 
   function handleNewChat() {
@@ -73,11 +74,11 @@ export function Chat({
 
       {/* Main Content */}
       <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        {/* Loading State - show spinner when explicitly loading/creating OR when we don't have a session yet and no error */}
-        {(isLoading || isCreating || (!sessionId && !error)) && (
+        {/* Loading State - show loader when loading or creating a session (with 300ms delay) */}
+        {showLoader && (isLoading || isCreating) && (
           <div className="flex flex-1 items-center justify-center">
             <div className="flex flex-col items-center gap-4">
-              <LoadingSpinner size="large" />
+              <ChatLoader />
               <Text variant="body" className="text-zinc-500">
                 Loading your chats...
               </Text>

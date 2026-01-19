@@ -13,10 +13,9 @@ export function MessageBubble({
   className,
 }: MessageBubbleProps) {
   const userTheme = {
-    bg: "bg-slate-900",
-    border: "border-slate-800",
-    gradient: "from-slate-900/30 via-slate-800/20 to-transparent",
-    text: "text-slate-50",
+    bg: "bg-purple-100",
+    border: "border-purple-100",
+    text: "text-slate-900",
   };
 
   const assistantTheme = {
@@ -41,7 +40,7 @@ export function MessageBubble({
     >
       {/* Gradient flare background */}
       <div
-        className={cn("absolute inset-0 bg-gradient-to-br", theme.gradient)}
+        className={cn("absolute inset-0 bg-gradient-to-br")}
       />
       <div
         className={cn(

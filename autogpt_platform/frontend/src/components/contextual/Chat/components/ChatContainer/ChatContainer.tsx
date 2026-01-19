@@ -50,11 +50,11 @@ export function ChatContainer({
 
   return (
     <div
-      className={cn("flex h-full min-h-0 flex-col bg-[#f8f8f9]", className)}
+      className={cn("flex h-full min-h-0 flex-col max-w-3xl mx-auto bg-[#f8f8f9]", className)}
     >
       {/* Messages or Welcome Screen - Scrollable */}
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-        <div className="flex min-h-full flex-col justify-end pb-4">
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto relative">
+        <div className="flex min-h-full flex-col justify-end">
         <MessageList
               messages={messages}
               streamingChunks={streamingChunks}
@@ -66,13 +66,12 @@ export function ChatContainer({
       </div>
 
       {/* Input - Fixed at bottom */}
-      <div className="shrink-0 border-t border-zinc-200 bg-white p-4">
+      <div className="relative pb-4 pt-2">
+        <div className="absolute w-full top-[-18px] h-6 pointer-events-none bg-gradient-to-b from-transparent to-[#f8f8f9] z-10" />
         <ChatInput
           onSend={sendMessageWithContext}
           disabled={isStreaming || !sessionId}
-          placeholder={
-            sessionId ? "Type your message..." : "Creating session..."
-          }
+          placeholder="You can search or just ask — e.g. “create a blog post outline”"
         />
       </div>
     </div>

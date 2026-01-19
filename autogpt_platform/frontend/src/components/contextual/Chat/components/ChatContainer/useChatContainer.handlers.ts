@@ -33,13 +33,22 @@ export function handleTextEnded(
   console.log("[Text Ended] Saving streamed text as assistant message");
   const completedText = deps.streamingChunksRef.current.join("");
   if (completedText.trim()) {
-    const assistantMessage: ChatMessageData = {
-      type: "message",
-      role: "assistant",
-      content: completedText,
-      timestamp: new Date(),
-    };
-    deps.setMessages((prev) => [...prev, assistantMessage]);
+    deps.setMessages((prev) => {
+      const lastMessage = prev[prev.length - 1];
+      console.log("[Text Ended] Previous message:", {
+        type: lastMessage?.type,
+        toolName: lastMessage?.type === "tool_call" ? lastMessage.toolName : undefined,
+        content: completedText.substring(0, 200),
+      });
+      
+      const assistantMessage: ChatMessageData = {
+        type: "message",
+        role: "assistant",
+        content: completedText,
+        timestamp: new Date(),
+      };
+      return [...prev, assistantMessage];
+    });
   }
   deps.setStreamingChunks([]);
   deps.streamingChunksRef.current = [];

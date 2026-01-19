@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 import { ArrowUpIcon } from "@phosphor-icons/react";
 import { useChatInput } from "./useChatInput";
 
-export interface ChatInputProps {
+export interface Props {
   onSend: (message: string) => void;
   disabled?: boolean;
   placeholder?: string;
@@ -15,7 +15,7 @@ export function ChatInput({
   disabled = false,
   placeholder = "Type your message...",
   className,
-}: ChatInputProps) {
+}: Props) {
   const inputId = "chat-input";
   const { value, setValue, handleKeyDown, handleSend } = useChatInput({
     onSend,

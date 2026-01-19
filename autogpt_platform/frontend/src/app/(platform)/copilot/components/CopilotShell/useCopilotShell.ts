@@ -1,13 +1,13 @@
 "use client";
 
-import { useGetV2GetSession, useGetV2ListSessions } from "@/app/api/__generated__/endpoints/chat/chat";
+import { postV2CreateSession, useGetV2GetSession, useGetV2ListSessions } from "@/app/api/__generated__/endpoints/chat/chat";
 import type { SessionDetailResponse } from "@/app/api/__generated__/models/sessionDetailResponse";
 import type { SessionSummaryResponse } from "@/app/api/__generated__/models/sessionSummaryResponse";
 import { okData } from "@/app/api/helpers";
 import { useBreakpoint } from "@/lib/hooks/useBreakpoint";
 import { Key, storage } from "@/services/storage/local-storage";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { filterVisibleSessions } from "./helpers";
 
 function convertSessionDetailToSummary(
@@ -32,6 +32,8 @@ export function useCopilotShell() {
   const [offset, setOffset] = useState(0);
   const [accumulatedSessions, setAccumulatedSessions] = useState<SessionSummaryResponse[]>([]);
   const [totalCount, setTotalCount] = useState<number | null>(null);
+  const [hasAutoSelectedSession, setHasAutoSelectedSession] = useState(false);
+  const hasCreatedSessionRef = useRef(false);
   const PAGE_SIZE = 50;
 
   const { data, isLoading, isFetching } = useGetV2ListSessions(
@@ -63,6 +65,17 @@ export function useCopilotShell() {
     return accumulatedSessions.length < totalCount;
   }, [accumulatedSessions.length, totalCount]);
 
+  const areAllSessionsLoaded = useMemo(() => {
+    if (totalCount === null) return false;
+    return accumulatedSessions.length >= totalCount && !isFetching && !isLoading;
+  }, [accumulatedSessions.length, totalCount, isFetching, isLoading]);
+
+  useEffect(() => {
+    if (hasNextPage && !isFetching && !isLoading && totalCount !== null) {
+      setOffset((prev) => prev + PAGE_SIZE);
+    }
+  }, [hasNextPage, isFetching, isLoading, totalCount]);
+
   const fetchNextPage = () => {
     if (hasNextPage && !isFetching) {
       setOffset((prev) => prev + PAGE_SIZE);
@@ -76,6 +89,8 @@ export function useCopilotShell() {
       setOffset(0);
       setAccumulatedSessions([]);
       setTotalCount(null);
+      setHasAutoSelectedSession(false);
+      hasCreatedSessionRef.current = false;
     }
   }, [isMobile, isDrawerOpen]);
 
@@ -155,39 +170,76 @@ export function useCopilotShell() {
 
   function handleNewChat() {
     storage.clean(Key.CHAT_SESSION_ID);
-    router.push("/copilot");
+    setHasAutoSelectedSession(false);
+    hasCreatedSessionRef.current = false;
+    postV2CreateSession({ body: JSON.stringify({}) })
+      .then((response) => {
+        if (response.status === 200 && response.data) {
+          router.push(`/copilot/chat?sessionId=${response.data.id}`);
+          setHasAutoSelectedSession(true);
+        }
+      })
+      .catch(() => {
+        hasCreatedSessionRef.current = false;
+      });
     if (isMobile) setIsDrawerOpen(false);
   }
 
-  // Determine if we're ready to show the main content
-  // We need to wait for:
-  // 1. Sessions to load (at least first page)
-  // 2. If there's a sessionId query param, wait for that session to be found/loaded
-  const isReadyToShowContent = useMemo(() => {
-    // If still loading initial sessions, not ready
-    if (isLoading && accumulatedSessions.length === 0) {
-      return false;
+  const paramSessionId = searchParams.get("sessionId");
+
+  useEffect(() => {
+    if (!areAllSessionsLoaded || hasAutoSelectedSession) return;
+    
+    const visibleSessions = filterVisibleSessions(accumulatedSessions);
+    
+    if (paramSessionId) {
+      setHasAutoSelectedSession(true);
+      return;
     }
 
-    // If there's a sessionId query param, wait for it to be found/loaded
-    const paramSessionId = searchParams.get("sessionId");
+    if (visibleSessions.length > 0) {
+      const lastSession = visibleSessions[0];
+      setHasAutoSelectedSession(true);
+      router.push(`/copilot/chat?sessionId=${lastSession.id}`);
+    } else if (accumulatedSessions.length === 0 && !isLoading && totalCount === 0 && !hasCreatedSessionRef.current) {
+      hasCreatedSessionRef.current = true;
+      postV2CreateSession({ body: JSON.stringify({}) })
+        .then((response) => {
+          if (response.status === 200 && response.data) {
+            router.push(`/copilot/chat?sessionId=${response.data.id}`);
+            setHasAutoSelectedSession(true);
+          }
+        })
+        .catch(() => {
+          hasCreatedSessionRef.current = false;
+        });
+    } else if (totalCount === 0) {
+      setHasAutoSelectedSession(true);
+    }
+  }, [areAllSessionsLoaded, accumulatedSessions, paramSessionId, hasAutoSelectedSession, router, isLoading, totalCount]);
+
+  useEffect(() => {
     if (paramSessionId) {
-      // Check if session is in accumulated sessions or if we're still loading it
+      setHasAutoSelectedSession(true);
+    }
+  }, [paramSessionId]);
+
+  const isReadyToShowContent = useMemo(() => {
+    if (!areAllSessionsLoaded) return false;
+
+    if (paramSessionId) {
       const sessionFound = accumulatedSessions.some((s) => s.id === paramSessionId);
       const sessionLoading = isCurrentSessionLoading;
-      
-      // Ready if session is found OR if we've finished loading it (even if not in list)
       return sessionFound || (!sessionLoading && currentSessionData !== undefined);
     }
 
-    // No sessionId param, ready once sessions have loaded
-    return !isLoading || accumulatedSessions.length > 0;
-  }, [isLoading, accumulatedSessions, searchParams, isCurrentSessionLoading, currentSessionData]);
+    return hasAutoSelectedSession;
+  }, [areAllSessionsLoaded, accumulatedSessions, paramSessionId, isCurrentSessionLoading, currentSessionData, hasAutoSelectedSession]);
 
   return {
     isMobile,
     isDrawerOpen,
-    isLoading,
+    isLoading: isLoading || !areAllSessionsLoaded,
     sessions,
     currentSessionId,
     handleSelectSession,
@@ -199,5 +251,6 @@ export function useCopilotShell() {
     isFetchingNextPage: isFetching,
     fetchNextPage,
     isReadyToShowContent,
+    areAllSessionsLoaded,
   };
 }
