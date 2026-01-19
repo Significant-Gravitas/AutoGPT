@@ -73,7 +73,7 @@ class OneShotAgentPromptConfiguration(SystemConfiguration):
     choose_action_instruction: str = UserConfigurable(
         default=DEFAULT_CHOOSE_ACTION_INSTRUCTION
     )
-    use_functions_api: bool = UserConfigurable(default=False)
+    use_prefill: bool = True
 
     #########
     # State #
@@ -134,8 +134,8 @@ class OneShotAgentPromptStrategy(PromptStrategy):
                 *messages,
                 final_instruction_msg,
             ],
-            prefill_response=response_prefill,
-            functions=commands if self.config.use_functions_api else [],
+            prefill_response=response_prefill if self.config.use_prefill else "",
+            functions=commands,
         )
 
     def build_system_prompt(
@@ -152,9 +152,7 @@ class OneShotAgentPromptStrategy(PromptStrategy):
             str: The system prompt body
             str: The desired start for the LLM's response; used to steer the output
         """
-        response_fmt_instruction, response_prefill = self.response_format_instruction(
-            self.config.use_functions_api
-        )
+        response_fmt_instruction, response_prefill = self.response_format_instruction()
         system_prompt_parts = (
             self._generate_intro_prompt(ai_profile)
             + (self._generate_os_info() if include_os_info else [])
@@ -181,10 +179,11 @@ class OneShotAgentPromptStrategy(PromptStrategy):
             response_prefill,
         )
 
-    def response_format_instruction(self, use_functions_api: bool) -> tuple[str, str]:
+    def response_format_instruction(self) -> tuple[str, str]:
         response_schema = self.response_schema.model_copy(deep=True)
         assert response_schema.properties
-        if use_functions_api and "use_tool" in response_schema.properties:
+        # Always use tool calling - remove use_tool from schema since it comes from tool_calls
+        if "use_tool" in response_schema.properties:
             del response_schema.properties["use_tool"]
 
         # Unindent for performance
@@ -199,7 +198,7 @@ class OneShotAgentPromptStrategy(PromptStrategy):
             (
                 f"YOU MUST ALWAYS RESPOND WITH A JSON OBJECT OF THE FOLLOWING TYPE:\n"
                 f"{response_format}"
-                + ("\n\nYOU MUST ALSO INVOKE A TOOL!" if use_functions_api else "")
+                "\n\nYOU MUST ALSO INVOKE A TOOL!"
             ),
             response_prefill,
         )
@@ -269,13 +268,13 @@ class OneShotAgentPromptStrategy(PromptStrategy):
             "Parsing object extracted from LLM response:\n"
             f"{json.dumps(assistant_reply_dict, indent=4)}"
         )
-        if self.config.use_functions_api:
-            if not response.tool_calls:
-                raise InvalidAgentResponseError("Assistant did not use a tool")
-            assistant_reply_dict["use_tool"] = response.tool_calls[0].function
+        # Always expect tool calls - native tool calling is always enabled
+        if not response.tool_calls:
+            raise InvalidAgentResponseError("Assistant did not use a tool")
+        assistant_reply_dict["use_tool"] = response.tool_calls[0].function
 
         parsed_response = OneShotAgentActionProposal.model_validate(
             assistant_reply_dict
         )
-        parsed_response.raw_message = response.copy()
+        parsed_response.raw_message = response.model_copy()
         return parsed_response

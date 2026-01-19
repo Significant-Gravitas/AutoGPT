@@ -5,8 +5,6 @@ import logging
 from typing import TYPE_CHECKING, Any, ClassVar, Optional
 
 import sentry_sdk
-from pydantic import Field
-
 from forge.agent.base import BaseAgent, BaseAgentConfiguration, BaseAgentSettings
 from forge.agent.protocols import (
     AfterExecute,
@@ -64,6 +62,7 @@ from forge.utils.exceptions import (
     CommandExecutionError,
     UnknownCommandError,
 )
+from pydantic import Field
 
 from .prompt_strategies.one_shot import (
     OneShotAgentActionProposal,
@@ -113,11 +112,8 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
         prompt_config = OneShotAgentPromptStrategy.default_configuration.model_copy(
             deep=True
         )
-        prompt_config.use_functions_api = (
-            settings.config.use_functions_api
-            # Anthropic currently doesn't support tools + prefilling :(
-            and self.llm.provider_name != "anthropic"
-        )
+        # Anthropic doesn't support tools + prefilling, so disable prefill for Anthropic
+        prompt_config.use_prefill = self.llm.provider_name != "anthropic"
         self.prompt_strategy = OneShotAgentPromptStrategy(prompt_config, logger)
         self.commands: list[Command] = []
 

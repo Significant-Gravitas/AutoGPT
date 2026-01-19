@@ -27,7 +27,7 @@ python = "^3.10"
 agbenchmark = { path = "../benchmark", optional = true }
 # agbenchmark = {git = "https://github.com/Significant-Gravitas/AutoGPT.git", subdirectory = "benchmark", optional = true}
 aiohttp = "^3.8.5"
-anthropic = ">=0.40,<1.0"
+anthropic = "^0.45.0"
 beautifulsoup4 = "^4.12.2"
 boto3 = "^1.33.6"
 charset-normalizer = "^3.1.0"

@@ -109,7 +109,6 @@ def create_agent_state(
             fast_llm=app_config.fast_llm,
             smart_llm=app_config.smart_llm,
             allow_fs_access=not app_config.restrict_to_workspace,
-            use_functions_api=app_config.openai_functions,
         ),
         history=Agent.default_settings.history.model_copy(deep=True),
     )

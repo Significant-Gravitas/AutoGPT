@@ -9,18 +9,20 @@ from pathlib import Path
 from typing import Optional, Union
 
 from forge.config.base import BaseConfig
-from forge.llm.providers import CHAT_MODELS, ModelName
+from forge.llm.providers import ModelName
 from forge.llm.providers.openai import OpenAICredentials, OpenAIModelName
 from forge.logging.config import LoggingConfig
 from forge.models.config import Configurable, UserConfigurable
-from pydantic import SecretStr, ValidationInfo, field_validator
+from pydantic import SecretStr
 
 logger = logging.getLogger(__name__)
 
 AZURE_CONFIG_FILE = Path("azure.yaml")
 
 GPT_4_MODEL = OpenAIModelName.GPT4_O
-GPT_3_MODEL = OpenAIModelName.GPT4_O_MINI  # Fallback model for when configured model is unavailable
+GPT_3_MODEL = (
+    OpenAIModelName.GPT4_O_MINI
+)  # Fallback model for when configured model is unavailable
 
 
 class AppConfig(BaseConfig):
@@ -55,9 +57,6 @@ class AppConfig(BaseConfig):
         from_env="SMART_LLM",
     )
     temperature: float = UserConfigurable(default=0, from_env="TEMPERATURE")
-    openai_functions: bool = UserConfigurable(
-        default=False, from_env=lambda: os.getenv("OPENAI_FUNCTIONS", "False") == "True"
-    )
     embedding_model: str = UserConfigurable(
         default="text-embedding-3-small", from_env="EMBEDDING_MODEL"
     )
@@ -89,16 +88,6 @@ class AppConfig(BaseConfig):
     azure_config_file: Optional[Path] = UserConfigurable(
         default=AZURE_CONFIG_FILE, from_env="AZURE_CONFIG_FILE"
     )
-
-    @field_validator("openai_functions")
-    def validate_openai_functions(cls, value: bool, info: ValidationInfo):
-        if value:
-            smart_llm = info.data["smart_llm"]
-            assert CHAT_MODELS[smart_llm].has_function_call_api, (
-                f"Model {smart_llm} does not support tool calling. "
-                "Please disable OPENAI_FUNCTIONS or choose a suitable model."
-            )
-        return value
 
 
 class ConfigBuilder(Configurable[AppConfig]):

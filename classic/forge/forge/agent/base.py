@@ -18,7 +18,7 @@ from typing import (
 )
 
 from colorama import Fore
-from pydantic import BaseModel, Field, ValidationInfo, field_validator
+from pydantic import BaseModel, Field
 from pydantic_core import from_json, to_json
 
 from forge.agent import protocols
@@ -53,7 +53,6 @@ class BaseAgentConfiguration(SystemConfiguration):
 
     fast_llm: ModelName = UserConfigurable(default=OpenAIModelName.GPT3_16k)
     smart_llm: ModelName = UserConfigurable(default=OpenAIModelName.GPT4)
-    use_functions_api: bool = UserConfigurable(default=False)
 
     default_cycle_instruction: str = DEFAULT_TRIGGERING_PROMPT
     """The default instruction passed to the AI for a thinking cycle."""
@@ -84,22 +83,6 @@ class BaseAgentConfiguration(SystemConfiguration):
     The token limit for prompt construction. Should leave room for the completion;
     defaults to 75% of `llm.max_tokens`.
     """
-
-    @field_validator("use_functions_api")
-    def validate_openai_functions(cls, value: bool, info: ValidationInfo):
-        if value:
-            smart_llm = info.data["smart_llm"]
-            fast_llm = info.data["fast_llm"]
-            assert all(
-                [
-                    not any(s in name for s in {"-0301", "-0314"})
-                    for name in {smart_llm, fast_llm}
-                ]
-            ), (
-                f"Model {smart_llm} does not support OpenAI Functions. "
-                "Please disable OPENAI_FUNCTIONS or choose a suitable model."
-            )
-        return value
 
 
 class BaseAgentSettings(SystemSettings):

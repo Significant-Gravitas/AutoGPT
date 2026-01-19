@@ -102,7 +102,6 @@ smart_llm: ModelName = "gpt-4"
 big_brain: bool = True              # Use smart_llm
 cycle_budget: Optional[int] = 1     # Steps before approval needed
 send_token_limit: Optional[int]     # Prompt token budget
-use_functions_api: bool = False
 ```
 
 ### Component System (`agent/components.py`)
