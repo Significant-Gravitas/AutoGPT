@@ -15,7 +15,7 @@ click-default-group = "^1.2.4"
 colorama = "^0.4.6"
 fastapi = "^0.109.1"
 gitpython = "^3.1.32"
-httpx = "^0.27.0"
+httpx = ">=0.27.0"
 matplotlib = "^3.7.2"
 # Multidict 6.0.4 fails to install and is a dependency of aiohttp which is a depenedency of agent-protocol-client
 multidict = "^6.0.5"
