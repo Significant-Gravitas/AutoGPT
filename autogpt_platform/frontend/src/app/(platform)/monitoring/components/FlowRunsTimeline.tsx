@@ -98,40 +98,43 @@ export const FlowRunsTimeline = ({
         <Scatter
           key={flow.id}
           data={executions
-            .filter((e) => e.graph_id == flow.graph_id)
+            .filter((e) => e.graph_id == flow.graph_id && e.started_at)
             .map((e) => ({
               ...e,
               time:
-                e.started_at.getTime() + (e.stats?.node_exec_time ?? 0) * 1000,
+                (e.started_at?.getTime() ?? 0) +
+                (e.stats?.node_exec_time ?? 0) * 1000,
               _duration: e.stats?.node_exec_time ?? 0,
             }))}
           name={flow.name}
           fill={`hsl(${(hashString(flow.id) * 137.5) % 360}, 70%, 50%)`}
         />
       ))}
-      {executions.map((execution) => (
-        <Line
-          key={execution.id}
-          type="linear"
-          dataKey="_duration"
-          data={[
-            {
-              ...execution,
-              time: execution.started_at.getTime(),
-              _duration: 0,
-            },
-            {
-              ...execution,
-              time: execution.ended_at.getTime(),
-              _duration: execution.stats?.node_exec_time ?? 0,
-            },
-          ]}
-          stroke={`hsl(${(hashString(execution.graph_id) * 137.5) % 360}, 70%, 50%)`}
-          strokeWidth={2}
-          dot={false}
-          legendType="none"
-        />
-      ))}
+      {executions
+        .filter((e) => e.started_at && e.ended_at)
+        .map((execution) => (
+          <Line
+            key={execution.id}
+            type="linear"
+            dataKey="_duration"
+            data={[
+              {
+                ...execution,
+                time: execution.started_at!.getTime(),
+                _duration: 0,
+              },
+              {
+                ...execution,
+                time: execution.ended_at!.getTime(),
+                _duration: execution.stats?.node_exec_time ?? 0,
+              },
+            ]}
+            stroke={`hsl(${(hashString(execution.graph_id) * 137.5) % 360}, 70%, 50%)`}
+            strokeWidth={2}
+            dot={false}
+            legendType="none"
+          />
+        ))}
       <Legend
         content={<ScrollableLegend />}
         wrapperStyle={{
