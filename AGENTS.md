@@ -16,6 +16,20 @@ See `docs/content/platform/getting-started.md` for setup instructions.
 - Format Python code with `poetry run format`.
 - Format frontend code using `pnpm format`.
 
+## Frontend-specific guidelines
+
+**When working on files in `autogpt_platform/frontend/`, always read and follow the conventions in `autogpt_platform/frontend/CONTRIBUTING.md`.**
+
+Key frontend conventions:
+- Component props should be `interface Props { ... }` (not exported) unless the interface needs to be used outside the component
+- Separate render logic from business logic (component.tsx + useComponent.ts + helpers.ts)
+- Colocate state when possible and avoid create large components, use sub-components ( local `/components` folder next to the parent component ) when sensible
+- Avoid large hooks, abstract logic into `helpers.ts` files when sensible
+- Use function declarations for components and handlers, arrow functions only for small inline callbacks
+- No barrel files or `index.ts` re-exports
+
+See `autogpt_platform/frontend/CONTRIBUTING.md` for complete frontend architecture, patterns, and conventions.
+
 ## Testing
 
 - Backend: `poetry run test` (runs pytest with a docker based postgres + prisma).
