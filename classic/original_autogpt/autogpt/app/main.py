@@ -28,7 +28,11 @@ from forge.logging.config import configure_logging
 from forge.logging.utils import print_attribute, speak
 from forge.models.action import ActionInterruptedByHuman, ActionProposal
 from forge.models.utils import ModelWithSummary
-from forge.permissions import ApprovalScope, CommandPermissionManager
+from forge.permissions import (
+    ApprovalScope,
+    CommandPermissionManager,
+    UserFeedbackProvided,
+)
 from forge.utils.const import FINISH_COMMAND
 from forge.utils.exceptions import AgentTerminated, InvalidAgentResponseError
 
@@ -113,17 +117,32 @@ async def run_auto_gpt(
 
         Returns:
             ApprovalScope indicating user's choice.
+
+        Raises:
+            UserFeedbackProvided: If user types feedback instead of choosing an option.
         """
-        response = clean_input(
-            f"\nAgent wants to execute:\n"
-            f"  {cmd}({args_str})\n"
-            f"Allow? [y=this agent / Y=all agents / n=deny] "
+        print(f"\n{Fore.CYAN}{cmd}({args_str}){Style.RESET_ALL}")
+        print(
+            f"  {Fore.GREEN}[1]{Style.RESET_ALL} Once  "
+            f"{Fore.GREEN}[2]{Style.RESET_ALL} Always (agent)  "
+            f"{Fore.GREEN}[3]{Style.RESET_ALL} Always (all)  "
+            f"{Fore.RED}[4]{Style.RESET_ALL} Deny"
         )
-        if response in ("Y", "YES", "all"):
-            return ApprovalScope.WORKSPACE
-        elif response.lower() in ("y", "yes"):
+        response = clean_input("  Choice or feedback: ")
+
+        if response == "1":
+            return ApprovalScope.ONCE
+        elif response == "2":
             return ApprovalScope.AGENT
+        elif response == "3":
+            return ApprovalScope.WORKSPACE
+        elif response == "4":
+            return ApprovalScope.DENY
+        elif response.strip():
+            # Any other non-empty input is feedback for the agent
+            raise UserFeedbackProvided(response)
         else:
+            # Empty input defaults to deny
             return ApprovalScope.DENY
 
     # Set up logging module
@@ -492,15 +511,12 @@ def _configure_llm_provider(config: AppConfig) -> MultiProvider:
 
 
 def _get_cycle_budget(continuous_mode: bool, continuous_limit: int) -> int | float:
-    # Translate from the continuous_mode/continuous_limit config
-    # to a cycle_budget (maximum number of cycles to run without checking in with the
-    # user) and a count of cycles_remaining before we check in..
-    if continuous_mode:
-        cycle_budget = continuous_limit if continuous_limit else math.inf
-    else:
-        cycle_budget = 1
-
-    return cycle_budget
+    # Always run continuously - the permission manager handles per-command approval.
+    # The cycle budget is now only used for Ctrl+C handling graceful shutdown.
+    # If a limit is set, use it; otherwise run indefinitely.
+    if continuous_limit:
+        return continuous_limit
+    return math.inf
 
 
 class UserFeedback(str, enum.Enum):
@@ -612,73 +628,29 @@ async def run_interaction_loop(
             speak_mode=app_config.tts_config.speak_mode,
         )
 
-        ##################
-        # Get user input #
-        ##################
+        # Permission manager handles per-command approval during execute()
         handle_stop_signal()
-        if cycles_remaining == 1:  # Last cycle
-            feedback_type, feedback, new_cycles_remaining = await get_user_feedback(
-                app_config,
-                ai_profile,
-            )
-
-            if feedback_type == UserFeedback.AUTHORIZE:
-                if new_cycles_remaining is not None:
-                    # Case 1: User is altering the cycle budget.
-                    if cycle_budget > 1:
-                        cycle_budget = new_cycles_remaining + 1
-                    # Case 2: User is running iteratively and
-                    #   has initiated a one-time continuous cycle
-                    cycles_remaining = new_cycles_remaining + 1
-                else:
-                    # Case 1: Continuous iteration was interrupted -> resume
-                    if cycle_budget > 1:
-                        logger.info(
-                            f"The cycle budget is {cycle_budget}.",
-                            extra={
-                                "title": "RESUMING CONTINUOUS EXECUTION",
-                                "title_color": Fore.MAGENTA,
-                            },
-                        )
-                    # Case 2: The agent used up its cycle budget -> reset
-                    cycles_remaining = cycle_budget + 1
-                logger.info(
-                    "-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=",
-                    extra={"color": Fore.MAGENTA},
-                )
-            elif feedback_type == UserFeedback.EXIT:
-                logger.warning("Exiting...")
-                exit()
-            else:  # user_feedback == UserFeedback.TEXT
-                pass
-        else:
-            feedback = ""
-            # First log new-line so user can differentiate sections better in console
-            print()
-            if cycles_remaining != math.inf:
-                # Print authorized commands left value
-                print_attribute(
-                    "AUTHORIZED_COMMANDS_LEFT", cycles_remaining, title_color=Fore.CYAN
-                )
 
         ###################
         # Execute Command #
         ###################
-        # Decrement the cycle counter first to reduce the likelihood of a SIGINT
-        # happening during command execution, setting the cycles remaining to 1,
-        # and then having the decrement set it to 0, exiting the application.
-        if not feedback:
-            cycles_remaining -= 1
-
         if not action_proposal.use_tool:
             continue
 
         handle_stop_signal()
 
-        if not feedback:
+        # Execute the command. Permission manager will prompt user if needed.
+        # If user provides feedback instead of approving, catch the exception
+        # and pass the feedback to the agent.
+        try:
             result = await agent.execute(action_proposal)
-        else:
-            result = await agent.do_not_execute(action_proposal, feedback)
+            cycles_remaining -= 1
+        except UserFeedbackProvided as e:
+            result = await agent.do_not_execute(action_proposal, e.feedback)
+            logger.info(
+                f"Feedback provided: {e.feedback}",
+                extra={"title": "USER:", "title_color": Fore.MAGENTA},
+            )
 
         if result.status == "success":
             logger.info(result, extra={"title": "SYSTEM:", "title_color": Fore.YELLOW})

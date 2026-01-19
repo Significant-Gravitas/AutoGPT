@@ -13,9 +13,22 @@ from forge.config.workspace_settings import AgentPermissions, WorkspaceSettings
 class ApprovalScope(str, Enum):
     """Scope of permission approval."""
 
-    AGENT = "agent"  # y - this agent only
-    WORKSPACE = "workspace"  # Y - all agents
-    DENY = "deny"  # n - deny for session
+    ONCE = "once"  # Allow this one time only (not saved)
+    AGENT = "agent"  # Always allow for this agent
+    WORKSPACE = "workspace"  # Always allow for all agents
+    DENY = "deny"  # Deny this command
+
+
+class UserFeedbackProvided(Exception):
+    """Raised when user provides feedback instead of approving/denying a command.
+
+    This exception should be caught by the main loop to pass feedback to the agent
+    via do_not_execute() instead of executing the command.
+    """
+
+    def __init__(self, feedback: str):
+        self.feedback = feedback
+        super().__init__(f"User provided feedback: {feedback}")
 
 
 class CommandPermissionManager:
@@ -102,7 +115,10 @@ class CommandPermissionManager:
         scope = self.prompt_fn(command_name, args_str, arguments)
         pattern = self._generalize_pattern(command_name, args_str)
 
-        if scope == ApprovalScope.WORKSPACE:
+        if scope == ApprovalScope.ONCE:
+            # Allow this one time only, don't save anywhere
+            return True
+        elif scope == ApprovalScope.WORKSPACE:
             self.workspace_settings.add_permission(pattern, self.workspace)
             return True
         elif scope == ApprovalScope.AGENT:

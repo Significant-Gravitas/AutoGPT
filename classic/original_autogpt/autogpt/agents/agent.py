@@ -5,6 +5,8 @@ import logging
 from typing import TYPE_CHECKING, Any, ClassVar, Optional
 
 import sentry_sdk
+from pydantic import Field
+
 from forge.agent.base import BaseAgent, BaseAgentConfiguration, BaseAgentSettings
 from forge.agent.protocols import (
     AfterExecute,
@@ -19,18 +21,24 @@ from forge.components.action_history import (
     EpisodicActionHistory,
 )
 from forge.components.action_history.action_history import ActionHistoryConfiguration
+from forge.components.archive_handler import ArchiveHandlerComponent
+from forge.components.clipboard import ClipboardComponent
 from forge.components.code_executor.code_executor import (
     CodeExecutorComponent,
     CodeExecutorConfiguration,
 )
 from forge.components.context.context import AgentContext, ContextComponent
+from forge.components.data_processor import DataProcessorComponent
 from forge.components.file_manager import FileManagerComponent
 from forge.components.git_operations import GitOperationsComponent
+from forge.components.http_client import HTTPClientComponent
 from forge.components.image_gen import ImageGeneratorComponent
+from forge.components.math_utils import MathUtilsComponent
 from forge.components.system import SystemComponent
+from forge.components.text_utils import TextUtilsComponent
+from forge.components.todo import TodoComponent
 from forge.components.user_interaction import UserInteractionComponent
 from forge.components.watchdog import WatchdogComponent
-from forge.components.todo import TodoComponent
 from forge.components.web import WebSearchComponent, WebSeleniumComponent
 from forge.file_storage.base import FileStorage
 from forge.llm.prompting.schema import ChatPrompt
@@ -56,7 +64,6 @@ from forge.utils.exceptions import (
     CommandExecutionError,
     UnknownCommandError,
 )
-from pydantic import Field
 
 from .prompt_strategies.one_shot import (
     OneShotAgentActionProposal,
@@ -145,7 +152,16 @@ class Agent(BaseAgent[OneShotAgentActionProposal], Configurable[AgentSettings]):
             app_config.app_data_dir,
         )
         self.context = ContextComponent(self.file_manager.workspace, settings.context)
-        self.todo = TodoComponent()
+        self.todo = TodoComponent(
+            llm_provider=llm_provider,
+            smart_llm=str(app_config.smart_llm),
+        )
+        self.archive_handler = ArchiveHandlerComponent(self.file_manager.workspace)
+        self.clipboard = ClipboardComponent()
+        self.data_processor = DataProcessorComponent()
+        self.http_client = HTTPClientComponent()
+        self.math_utils = MathUtilsComponent()
+        self.text_utils = TextUtilsComponent()
         self.watchdog = WatchdogComponent(settings.config, settings.history).run_after(
             ContextComponent
         )
