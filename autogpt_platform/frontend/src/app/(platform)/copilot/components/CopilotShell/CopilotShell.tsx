@@ -1,13 +1,16 @@
 "use client";
 
 import { Button } from "@/components/atoms/Button/Button";
+import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Text } from "@/components/atoms/Text/Text";
+import { InfiniteList } from "@/components/molecules/InfiniteList/InfiniteList";
 import { scrollbarStyles } from "@/components/styles/scrollbars";
+import { NAVBAR_HEIGHT_PX } from "@/lib/constants";
 import { cn } from "@/lib/utils";
-import { List, X } from "@phosphor-icons/react";
+import { List, Plus, X } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
 import { Drawer } from "vaul";
-import { getSessionTitle, getSessionUpdatedLabel } from "./helpers";
+import { getSessionTitle } from "./helpers";
 import { useCopilotShell } from "./useCopilotShell";
 
 interface CopilotShellProps {
@@ -25,10 +28,17 @@ export function CopilotShell({ children }: CopilotShellProps) {
     handleOpenDrawer,
     handleCloseDrawer,
     handleDrawerOpenChange,
+    handleNewChat,
+    hasNextPage,
+    isFetchingNextPage,
+    fetchNextPage,
+    isReadyToShowContent,
   } = useCopilotShell();
 
+  console.log(sessions)
+
   function renderSessionsList() {
-    if (isLoading) {
+    if (isLoading && sessions.length === 0) {
       return (
         <div className="flex items-center justify-center py-8">
           <Text variant="body" className="text-zinc-500">
@@ -49,64 +59,77 @@ export function CopilotShell({ children }: CopilotShellProps) {
     }
 
     return (
-      <div className="space-y-2">
-        {sessions.map((session) => {
+      <InfiniteList
+        items={sessions}
+        hasMore={hasNextPage}
+        isFetchingMore={isFetchingNextPage}
+        onEndReached={fetchNextPage}
+        className="space-y-1"
+        renderItem={(session) => {
           const isActive = session.id === currentSessionId;
-          const updatedLabel = getSessionUpdatedLabel(session);
           return (
             <button
-              key={session.id}
               onClick={() => handleSelectSession(session.id)}
               className={cn(
-                "w-full rounded-lg border p-3 text-left transition-colors",
+                "w-full rounded-lg px-3 py-2.5 text-left transition-colors",
                 isActive
-                  ? "border-indigo-500 bg-zinc-50"
-                  : "border-zinc-200 bg-zinc-100/50 hover:border-zinc-300 hover:bg-zinc-50",
+                  ? "bg-zinc-100"
+                  : "hover:bg-zinc-50",
               )}
             >
-              <div className="flex flex-col gap-1">
-                <Text
-                  variant="body"
-                  className={cn(
-                    "font-medium",
-                    isActive ? "text-indigo-900" : "text-zinc-900",
-                  )}
-                >
-                  {getSessionTitle(session)}
-                </Text>
-                <div className="flex items-center gap-2 text-xs text-zinc-500">
-                  <span>{session.id.slice(0, 8)}...</span>
-                  {updatedLabel ? <span>•</span> : null}
-                  <span>{updatedLabel}</span>
-                </div>
-              </div>
+              <Text
+                variant="body"
+                className={cn(
+                  "font-normal",
+                  isActive ? "text-zinc-600" : "text-zinc-800",
+                )}
+              >
+                {getSessionTitle(session)}
+              </Text>
             </button>
           );
-        })}
-      </div>
+        }}
+      />
     );
   }
 
   return (
-    <div className="flex min-h-screen bg-zinc-50">
+    <div
+      className="flex overflow-hidden bg-zinc-50"
+      style={{ height: `calc(100vh - ${NAVBAR_HEIGHT_PX}px)` }}
+    >
       {!isMobile ? (
-        <aside className="flex w-80 flex-col border-r border-zinc-200 bg-white">
-          <div className="border-b border-zinc-200 px-4 py-4">
-            <Text variant="h5" className="text-zinc-900">
-              Chat Sessions
+        <aside className="flex h-full w-80 flex-col border-r border-zinc-200 bg-white">
+          <div className="shrink-0 px-6 py-4">
+            <Text variant="h3" size="body-medium">
+              Your chats
             </Text>
           </div>
           <div
-            className={cn("flex-1 overflow-y-auto px-4 py-4", scrollbarStyles)}
+            className={cn(
+              "flex min-h-0 flex-1 flex-col overflow-y-auto px-3 py-3",
+              scrollbarStyles,
+            )}
           >
             {renderSessionsList()}
+          </div>
+          <div className="shrink-0 bg-white p-3 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+            <Button
+              variant="primary"
+              size="small"
+              onClick={handleNewChat}
+              className="w-full"
+              leftIcon={<Plus width="1rem" height="1rem" />}
+            >
+              New Chat
+            </Button>
           </div>
         </aside>
       ) : null}
 
-      <div className="flex min-h-screen flex-1 flex-col">
+      <div className="flex min-h-0 flex-1 flex-col">
         {isMobile ? (
-          <header className="flex items-center justify-between border-b border-zinc-200 bg-white px-4 py-3">
+          <header className="flex items-center justify-between px-4 py-3">
             <Button
               variant="icon"
               size="icon"
@@ -115,13 +138,22 @@ export function CopilotShell({ children }: CopilotShellProps) {
             >
               <List width="1.25rem" height="1.25rem" />
             </Button>
-            <Text variant="body-medium" className="text-zinc-700">
-              Chat Sessions
-            </Text>
-            <div className="h-10 w-10" />
           </header>
         ) : null}
-        <div className="flex-1">{children}</div>
+        <div className="flex min-h-0 flex-1 flex-col">
+          {isReadyToShowContent ? (
+            children
+          ) : (
+            <div className="flex flex-1 items-center justify-center">
+              <div className="flex flex-col items-center gap-4">
+                <LoadingSpinner size="large" />
+                <Text variant="body" className="text-zinc-500">
+                  Loading your chats...
+                </Text>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {isMobile ? (
@@ -132,16 +164,11 @@ export function CopilotShell({ children }: CopilotShellProps) {
         >
           <Drawer.Portal>
             <Drawer.Overlay className="fixed inset-0 z-[60] bg-black/10 backdrop-blur-sm" />
-            <Drawer.Content
-              className={cn(
-                "fixed left-0 top-0 z-[70] flex h-full w-80 flex-col border-r border-zinc-200 bg-white",
-                scrollbarStyles,
-              )}
-            >
+            <Drawer.Content className="fixed left-0 top-0 z-[70] flex h-full w-80 flex-col border-r border-zinc-200 bg-white">
               <div className="shrink-0 border-b border-zinc-200 p-4">
                 <div className="flex items-center justify-between">
-                  <Drawer.Title className="text-lg font-semibold">
-                    Chat Sessions
+                  <Drawer.Title className="text-lg font-semibold text-zinc-800">
+                    Your tasks
                   </Drawer.Title>
                   <Button
                     variant="icon"
@@ -153,8 +180,24 @@ export function CopilotShell({ children }: CopilotShellProps) {
                   </Button>
                 </div>
               </div>
-              <div className="flex-1 overflow-y-auto px-4 py-4">
+              <div
+                className={cn(
+                  "flex min-h-0 flex-1 flex-col overflow-y-auto px-3 py-3",
+                  scrollbarStyles,
+                )}
+              >
                 {renderSessionsList()}
+              </div>
+              <div className="shrink-0 bg-white p-3 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+                <Button
+                  variant="primary"
+                  size="small"
+                  onClick={handleNewChat}
+                  className="w-full"
+                  leftIcon={<Plus width="1rem" height="1rem" />}
+                >
+                  New Chat
+                </Button>
               </div>
             </Drawer.Content>
           </Drawer.Portal>

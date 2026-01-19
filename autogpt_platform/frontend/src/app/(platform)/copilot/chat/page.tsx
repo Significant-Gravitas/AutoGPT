@@ -1,6 +1,6 @@
 "use client";
 
-import { Chat } from "@/app/(platform)/chat/components/Chat/Chat";
+import { Chat } from "@/components/contextual/Chat/Chat";
 import { useCopilotChatPage } from "./useCopilotChatPage";
 
 export default function CopilotChatPage() {
@@ -17,6 +17,7 @@ export default function CopilotChatPage() {
         className="flex-1"
         urlSessionId={sessionId}
         initialPrompt={prompt}
+        showNewChatButton={false}
       />
     </div>
   );

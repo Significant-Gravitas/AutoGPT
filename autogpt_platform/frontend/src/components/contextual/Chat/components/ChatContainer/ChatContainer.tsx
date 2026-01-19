@@ -4,7 +4,6 @@ import { useCallback, useEffect, useRef } from "react";
 import { usePageContext } from "../../usePageContext";
 import { ChatInput } from "../ChatInput/ChatInput";
 import { MessageList } from "../MessageList/MessageList";
-import { QuickActionsWelcome } from "../QuickActionsWelcome/QuickActionsWelcome";
 import { useChatContainer } from "./useChatContainer";
 
 export interface ChatContainerProps {
@@ -49,47 +48,25 @@ export function ChatContainer({
     [initialPrompt, messages.length, sendMessageWithContext, sessionId],
   );
 
-  const quickActions = [
-    "Find agents for social media management",
-    "Show me agents for content creation",
-    "Help me automate my business",
-    "What can you help me with?",
-  ];
-
   return (
     <div
-      className={cn("flex h-full min-h-0 flex-col", className)}
-      style={{
-        backgroundColor: "#ffffff",
-        backgroundImage:
-          "radial-gradient(#e5e5e5 0.5px, transparent 0.5px), radial-gradient(#e5e5e5 0.5px, #ffffff 0.5px)",
-        backgroundSize: "20px 20px",
-        backgroundPosition: "0 0, 10px 10px",
-      }}
+      className={cn("flex h-full min-h-0 flex-col bg-[#f8f8f9]", className)}
     >
-      {/* Messages or Welcome Screen */}
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden pb-24">
-        {messages.length === 0 ? (
-          <QuickActionsWelcome
-            title="Welcome to AutoGPT Copilot"
-            description="Start a conversation to discover and run AI agents."
-            actions={quickActions}
-            onActionClick={sendMessageWithContext}
-            disabled={isStreaming || !sessionId}
-          />
-        ) : (
-          <MessageList
-            messages={messages}
-            streamingChunks={streamingChunks}
-            isStreaming={isStreaming}
-            onSendMessage={sendMessageWithContext}
-            className="flex-1"
-          />
-        )}
+      {/* Messages or Welcome Screen - Scrollable */}
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+        <div className="flex min-h-full flex-col justify-end pb-4">
+        <MessageList
+              messages={messages}
+              streamingChunks={streamingChunks}
+              isStreaming={isStreaming}
+              onSendMessage={sendMessageWithContext}
+              className="flex-1"
+            />
+        </div>
       </div>
 
-      {/* Input - Always visible */}
-      <div className="sticky bottom-0 z-50 border-t border-zinc-200 bg-white p-4">
+      {/* Input - Fixed at bottom */}
+      <div className="shrink-0 border-t border-zinc-200 bg-white p-4">
         <ChatInput
           onSend={sendMessageWithContext}
           disabled={isStreaming || !sessionId}

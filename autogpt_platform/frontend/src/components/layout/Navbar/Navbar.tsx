@@ -5,6 +5,7 @@ import { okData } from "@/app/api/helpers";
 import { IconAutoGPTLogo, IconType } from "@/components/__legacy__/ui/icons";
 import { PreviewBanner } from "@/components/layout/Navbar/components/PreviewBanner/PreviewBanner";
 import { isLogoutInProgress } from "@/lib/autogpt-server-api/helpers";
+import { NAVBAR_HEIGHT_PX } from "@/lib/constants";
 import { useBreakpoint } from "@/lib/hooks/useBreakpoint";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { environment } from "@/services/environment";
@@ -60,7 +61,10 @@ export function Navbar() {
         {shouldShowPreviewBanner && previewBranchName ? (
           <PreviewBanner branchName={previewBranchName} />
         ) : null}
-        <nav className="border-zinc-[#EFEFF0] inline-flex h-[60px] w-full items-center border border-[#EFEFF0] bg-[#F3F4F6]/20 p-3 backdrop-blur-[26px]">
+        <nav
+          className="border-zinc-[#EFEFF0] inline-flex w-full items-center border border-[#EFEFF0] bg-[#F3F4F6]/20 p-3 backdrop-blur-[26px]"
+          style={{ height: NAVBAR_HEIGHT_PX }}
+        >
           {/* Left section */}
           {!isSmallScreen ? (
             <div className="flex flex-1 items-center gap-5">
