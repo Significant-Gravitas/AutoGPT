@@ -104,7 +104,7 @@ class WebSearchComponent(
             {
                 "title": r["title"],
                 "url": r["href"],
-                **({"exerpt": r["body"]} if r.get("body") else {}),
+                **({"excerpt": r["body"]} if r.get("body") else {}),
             }
             for r in search_results
         ]
@@ -112,7 +112,8 @@ class WebSearchComponent(
         results = ("## Search results\n") + "\n\n".join(
             f"### \"{r['title']}\"\n"
             f"**URL:** {r['url']}  \n"
-            "**Excerpt:** " + (f'"{exerpt}"' if (exerpt := r.get("exerpt")) else "N/A")
+            "**Excerpt:** "
+            + (f'"{excerpt}"' if (excerpt := r.get("excerpt")) else "N/A")
             for r in search_results
         )
         return self.safe_google_results(results)

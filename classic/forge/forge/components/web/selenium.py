@@ -94,6 +94,9 @@ class WebSeleniumComponent(
 
     def get_commands(self) -> Iterator[Command]:
         yield self.read_webpage
+        yield self.take_screenshot
+        yield self.click_element
+        yield self.fill_form
 
     @command(
         ["read_webpage"],
@@ -400,3 +403,222 @@ class WebSeleniumComponent(
                 spacy_model=self.config.browse_spacy_language_model,
             )
             return result
+
+    @command(
+        ["take_screenshot"],
+        "Take a screenshot of a webpage and save it to a file.",
+        {
+            "url": JSONSchema(
+                type=JSONSchema.Type.STRING,
+                description="The URL of the webpage to screenshot",
+                required=True,
+            ),
+            "filename": JSONSchema(
+                type=JSONSchema.Type.STRING,
+                description="The filename to save the screenshot as (e.g., 'screenshot.png')",
+                required=True,
+            ),
+            "full_page": JSONSchema(
+                type=JSONSchema.Type.BOOLEAN,
+                description="Whether to capture the full page including scrollable content (default: False)",
+                required=False,
+            ),
+        },
+    )
+    @validate_url
+    async def take_screenshot(
+        self, url: str, filename: str, full_page: bool = False
+    ) -> str:
+        """Take a screenshot of a webpage.
+
+        Args:
+            url: The URL to screenshot
+            filename: The filename to save to
+            full_page: Whether to capture full scrollable page
+
+        Returns:
+            str: Success message with file path
+        """
+        driver = None
+        try:
+            driver = await self.open_page_in_browser(url)
+
+            if full_page:
+                # Get full page dimensions
+                total_height = driver.execute_script(
+                    "return document.body.scrollHeight"
+                )
+                driver.set_window_size(1920, total_height)
+                await asyncio.sleep(0.5)  # Wait for resize
+
+            # Save screenshot
+            screenshot_path = self.data_dir / filename
+            screenshot_path.parent.mkdir(parents=True, exist_ok=True)
+            driver.save_screenshot(str(screenshot_path))
+
+            return f"Screenshot saved to {screenshot_path}"
+
+        except WebDriverException as e:
+            msg = e.msg.split("\n")[0] if e.msg else str(e)
+            raise CommandExecutionError(f"Screenshot failed: {msg}")
+        finally:
+            if driver:
+                driver.close()
+
+    @command(
+        ["click_element"],
+        "Click an element on a webpage identified by a CSS selector or XPath.",
+        {
+            "url": JSONSchema(
+                type=JSONSchema.Type.STRING,
+                description="The URL of the webpage",
+                required=True,
+            ),
+            "selector": JSONSchema(
+                type=JSONSchema.Type.STRING,
+                description="CSS selector or XPath expression to find the element",
+                required=True,
+            ),
+            "selector_type": JSONSchema(
+                type=JSONSchema.Type.STRING,
+                description="Type of selector: 'css' or 'xpath' (default: 'css')",
+                required=False,
+            ),
+            "timeout": JSONSchema(
+                type=JSONSchema.Type.INTEGER,
+                description="Timeout in seconds to wait for element (default: 10)",
+                required=False,
+            ),
+        },
+    )
+    @validate_url
+    async def click_element(
+        self,
+        url: str,
+        selector: str,
+        selector_type: str = "css",
+        timeout: int = 10,
+    ) -> str:
+        """Click an element on a webpage.
+
+        Args:
+            url: The URL of the webpage
+            selector: The CSS selector or XPath
+            selector_type: Type of selector ('css' or 'xpath')
+            timeout: Timeout to wait for element
+
+        Returns:
+            str: Success message
+        """
+        driver = None
+        try:
+            driver = await self.open_page_in_browser(url)
+
+            by_type = By.CSS_SELECTOR if selector_type == "css" else By.XPATH
+
+            # Wait for element to be clickable
+            element = WebDriverWait(driver, timeout).until(
+                EC.element_to_be_clickable((by_type, selector))
+            )
+
+            element.click()
+
+            # Wait for any page changes
+            await asyncio.sleep(1)
+
+            return f"Clicked element matching '{selector}'"
+
+        except WebDriverException as e:
+            msg = e.msg.split("\n")[0] if e.msg else str(e)
+            raise CommandExecutionError(f"Click failed: {msg}")
+        finally:
+            if driver:
+                driver.close()
+
+    @command(
+        ["fill_form"],
+        "Fill form fields on a webpage with provided values.",
+        {
+            "url": JSONSchema(
+                type=JSONSchema.Type.STRING,
+                description="The URL of the webpage with the form",
+                required=True,
+            ),
+            "fields": JSONSchema(
+                type=JSONSchema.Type.OBJECT,
+                description="Dictionary mapping CSS selectors to values to enter",
+                required=True,
+            ),
+            "submit": JSONSchema(
+                type=JSONSchema.Type.BOOLEAN,
+                description="Whether to submit the form after filling (default: False)",
+                required=False,
+            ),
+        },
+    )
+    @validate_url
+    async def fill_form(
+        self,
+        url: str,
+        fields: dict[str, str],
+        submit: bool = False,
+    ) -> str:
+        """Fill form fields on a webpage.
+
+        Args:
+            url: The URL of the webpage
+            fields: Dict mapping selectors to values
+            submit: Whether to submit the form
+
+        Returns:
+            str: Success message with filled fields
+        """
+        driver = None
+        try:
+            driver = await self.open_page_in_browser(url)
+
+            filled = []
+            for selector, value in fields.items():
+                try:
+                    element = WebDriverWait(driver, 10).until(
+                        EC.presence_of_element_located((By.CSS_SELECTOR, selector))
+                    )
+
+                    # Clear and fill
+                    element.clear()
+                    element.send_keys(value)
+                    filled.append(selector)
+
+                except Exception as e:
+                    raise CommandExecutionError(
+                        f"Could not fill field '{selector}': {e}"
+                    )
+
+            if submit and filled:
+                # Find and click submit button
+                try:
+                    submit_btn = driver.find_element(
+                        By.CSS_SELECTOR, "button[type='submit'], input[type='submit']"
+                    )
+                    submit_btn.click()
+                    await asyncio.sleep(2)  # Wait for submission
+                except Exception:
+                    # Try submitting the form directly
+                    try:
+                        form = driver.find_element(By.CSS_SELECTOR, "form")
+                        form.submit()
+                        await asyncio.sleep(2)
+                    except Exception as e:
+                        raise CommandExecutionError(f"Could not submit form: {e}")
+
+            msg = f"Filled {len(filled)} field(s): {', '.join(filled)}"
+            if submit:
+                msg += " and submitted form"
+            return msg
+
+        except WebDriverException as e:
+            msg = e.msg.split("\n")[0] if e.msg else str(e)
+            raise CommandExecutionError(f"Form fill failed: {msg}")
+        finally:
+            if driver:
+                driver.close()
