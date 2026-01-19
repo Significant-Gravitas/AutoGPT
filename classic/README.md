@@ -48,11 +48,35 @@ cd benchmark && poetry install
 
 ### Configuration
 
+Configuration uses a layered system:
+
+1. **Environment variables** (`.env` file)
+2. **Workspace settings** (`.autogpt/autogpt.yaml`)
+3. **Agent settings** (`.autogpt/agents/{id}/permissions.yaml`)
+
 Copy the example environment file and add your API keys:
 
 ```bash
 cp .env.example .env
-# Edit .env with your OPENAI_API_KEY, etc.
+```
+
+Key environment variables:
+```bash
+# Required
+OPENAI_API_KEY=sk-...
+
+# Optional LLM settings
+SMART_LLM=gpt-4o                    # Model for complex reasoning
+FAST_LLM=gpt-4o-mini                # Model for simple tasks
+
+# Optional search providers
+TAVILY_API_KEY=tvly-...
+SERPER_API_KEY=...
+
+# Optional infrastructure
+LOG_LEVEL=DEBUG
+PORT=8000
+FILE_STORAGE_BACKEND=local          # local, s3, or gcs
 ```
 
 ### Running
@@ -82,6 +106,74 @@ cd benchmark && poetry run agbenchmark
 cd forge && poetry run pytest
 cd original_autogpt && poetry run pytest
 ```
+
+## Workspaces
+
+Agents operate within a **workspace** directory that contains all agent data and files:
+
+```
+{workspace}/
+├── .autogpt/
+│   ├── autogpt.yaml              # Workspace-level permissions
+│   ├── ap_server.db              # Agent Protocol database (server mode)
+│   └── agents/
+│       └── AutoGPT-{agent_id}/
+│           ├── state.json        # Agent profile, directives, history
+│           ├── permissions.yaml  # Agent-specific permissions
+│           └── workspace/        # Agent's sandboxed working directory
+```
+
+- The workspace defaults to the current working directory
+- Multiple agents can coexist in the same workspace
+- Agent file access is sandboxed to their `workspace/` subdirectory
+- State persists across sessions via `state.json`
+
+## Permissions
+
+AutoGPT uses a **layered permission system** with pattern matching:
+
+### Permission Files
+
+| File | Scope | Location |
+|------|-------|----------|
+| `autogpt.yaml` | All agents in workspace | `.autogpt/autogpt.yaml` |
+| `permissions.yaml` | Single agent | `.autogpt/agents/{id}/permissions.yaml` |
+
+### Permission Format
+
+```yaml
+allow:
+  - read_file({workspace}/**)     # Read any file in workspace
+  - write_to_file({workspace}/**) # Write any file in workspace
+  - web_search(*)                 # All web searches
+
+deny:
+  - read_file(**.env)             # Block .env files
+  - execute_shell(sudo:*)         # Block sudo commands
+```
+
+### Check Order (First Match Wins)
+
+1. Agent deny → Block
+2. Workspace deny → Block
+3. Agent allow → Allow
+4. Workspace allow → Allow
+5. Prompt user → Interactive approval
+
+### Interactive Approval
+
+When prompted, users can approve commands with different scopes:
+- **Once** - Allow this one time only
+- **Agent** - Always allow for this agent
+- **Workspace** - Always allow for all agents
+- **Deny** - Block this command
+
+### Default Security
+
+Denied by default:
+- Sensitive files (`.env`, `.key`, `.pem`)
+- Destructive commands (`rm -rf`, `sudo`)
+- Operations outside the workspace
 
 ## Security Notice
 
