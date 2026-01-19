@@ -189,7 +189,11 @@ export function EditModelModal({
           <input
             type="hidden"
             name="credential_type"
-            value={cost?.credential_type ?? provider?.default_credential_type ?? "api_key"}
+            value={
+              cost?.credential_type ??
+              provider?.default_credential_type ??
+              "api_key"
+            }
           />
           <input type="hidden" name="unit" value={cost?.unit ?? "RUN"} />
 

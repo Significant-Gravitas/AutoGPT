@@ -209,7 +209,8 @@ export function DisableModelModal({
                     />
                     <p className="mt-1 text-xs text-muted-foreground">
                       Override pricing for migrated workflows. When set, billing
-                      will use this cost instead of the target model&apos;s cost.
+                      will use this cost instead of the target model&apos;s
+                      cost.
                     </p>
                   </label>
                 </div>
