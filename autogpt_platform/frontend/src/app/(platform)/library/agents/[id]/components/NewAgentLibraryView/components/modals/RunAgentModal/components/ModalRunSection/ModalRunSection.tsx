@@ -1,5 +1,5 @@
 import { Input } from "@/components/atoms/Input/Input";
-import { CredentialsGroupedView } from "@/components/contextual/CredentialsInput/components/CredentialsGroupedView";
+import { CredentialsGroupedView } from "@/components/contextual/CredentialsInput/components/CredentialsGroupedView/CredentialsGroupedView";
 import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
 import { useMemo } from "react";
 import { RunAgentInputs } from "../../../RunAgentInputs/RunAgentInputs";

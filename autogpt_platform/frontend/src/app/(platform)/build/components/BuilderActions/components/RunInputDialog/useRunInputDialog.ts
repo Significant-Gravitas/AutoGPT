@@ -11,7 +11,7 @@ import { useCallback, useMemo, useState } from "react";
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useReactFlow } from "@xyflow/react";
-import { CredentialField } from "@/components/contextual/CredentialsInput/components/CredentialsGroupedView";
+import type { CredentialField } from "@/components/contextual/CredentialsInput/components/CredentialsGroupedView/helpers";
 
 export const useRunInputDialog = ({
   setIsOpen,

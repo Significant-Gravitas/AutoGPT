@@ -10,7 +10,7 @@ import { useRunInputDialog } from "./useRunInputDialog";
 import { CronSchedulerDialog } from "../CronSchedulerDialog/CronSchedulerDialog";
 import { useTutorialStore } from "@/app/(platform)/build/stores/tutorialStore";
 import { useEffect } from "react";
-import { CredentialsGroupedView } from "@/components/contextual/CredentialsInput/components/CredentialsGroupedView";
+import { CredentialsGroupedView } from "@/components/contextual/CredentialsInput/components/CredentialsGroupedView/CredentialsGroupedView";
 
 export const RunInputDialog = ({
   isOpen,
