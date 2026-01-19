@@ -66,7 +66,6 @@ export function useChat({ urlSessionId }: UseChatArgs = {}) {
     ],
   );
 
-
   useEffect(() => {
     if (isLoading || isCreating) {
       const timer = setTimeout(() => {

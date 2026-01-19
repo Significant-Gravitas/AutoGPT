@@ -8,12 +8,7 @@ export interface AIChatBubbleProps {
 
 export function AIChatBubble({ children, className }: AIChatBubbleProps) {
   return (
-    <div
-      className={cn(
-        "text-left text-sm leading-relaxed",
-        className,
-      )}
-    >
+    <div className={cn("text-left text-sm leading-relaxed", className)}>
       {children}
     </div>
   );

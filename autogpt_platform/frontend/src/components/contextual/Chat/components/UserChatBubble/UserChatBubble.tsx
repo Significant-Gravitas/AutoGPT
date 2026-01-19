@@ -6,10 +6,7 @@ export interface UserChatBubbleProps {
   className?: string;
 }
 
-export function UserChatBubble({
-  children,
-  className,
-}: UserChatBubbleProps) {
+export function UserChatBubble({ children, className }: UserChatBubbleProps) {
   return (
     <div
       className={cn(

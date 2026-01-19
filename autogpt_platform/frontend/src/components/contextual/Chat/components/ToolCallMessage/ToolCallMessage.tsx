@@ -20,8 +20,8 @@ export function ToolCallMessage({
   const displayData = toolArguments
     ? JSON.stringify(toolArguments)
     : "No arguments";
-  
-    const displayText = `${displayKey}: ${displayData}`;
+
+  const displayText = `${displayKey}: ${displayData}`;
 
   return (
     <AIChatBubble className={className}>

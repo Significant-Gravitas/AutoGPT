@@ -245,16 +245,15 @@ export function ChatMessage({
             ) : (
               <AIChatBubble>
                 <MarkdownContent content={message.content} />
-                {agentOutput &&
-                  agentOutput.type === "tool_response" && (
-                    <div className="mt-4">
-                      <ToolResponseMessage
-                        toolId={agentOutput.toolId}
-                        toolName={agentOutput.toolName || "Agent Output"}
-                        result={agentOutput.result}
-                      />
-                    </div>
-                  )}
+                {agentOutput && agentOutput.type === "tool_response" && (
+                  <div className="mt-4">
+                    <ToolResponseMessage
+                      toolId={agentOutput.toolId}
+                      toolName={agentOutput.toolName || "Agent Output"}
+                      result={agentOutput.result}
+                    />
+                  </div>
+                )}
               </AIChatBubble>
             )}
             <div

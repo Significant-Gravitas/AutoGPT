@@ -73,9 +73,7 @@ export function CopilotShell({ children }: CopilotShellProps) {
               onClick={() => handleSelectSession(session.id)}
               className={cn(
                 "w-full rounded-lg px-3 py-2.5 text-left transition-colors",
-                isActive
-                  ? "bg-zinc-100"
-                  : "hover:bg-zinc-50",
+                isActive ? "bg-zinc-100" : "hover:bg-zinc-50",
               )}
             >
               <Text

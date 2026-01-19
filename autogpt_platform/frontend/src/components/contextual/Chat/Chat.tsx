@@ -50,7 +50,7 @@ export function Chat({
     <div className={cn("flex h-full flex-col", className)}>
       {/* Header */}
       {showHeader && (
-        <header className="shrink-0  bg-[#f8f8f9] p-3">
+        <header className="shrink-0 bg-[#f8f8f9] p-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               {showSessionInfo && sessionId && (

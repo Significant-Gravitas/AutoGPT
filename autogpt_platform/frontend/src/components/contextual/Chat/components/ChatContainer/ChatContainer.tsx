@@ -50,24 +50,27 @@ export function ChatContainer({
 
   return (
     <div
-      className={cn("flex h-full min-h-0 flex-col max-w-3xl mx-auto bg-[#f8f8f9]", className)}
+      className={cn(
+        "mx-auto flex h-full min-h-0 max-w-3xl flex-col bg-[#f8f8f9]",
+        className,
+      )}
     >
       {/* Messages or Welcome Screen - Scrollable */}
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto relative">
+      <div className="relative flex min-h-0 flex-1 flex-col overflow-y-auto">
         <div className="flex min-h-full flex-col justify-end">
-        <MessageList
-              messages={messages}
-              streamingChunks={streamingChunks}
-              isStreaming={isStreaming}
-              onSendMessage={sendMessageWithContext}
-              className="flex-1"
-            />
+          <MessageList
+            messages={messages}
+            streamingChunks={streamingChunks}
+            isStreaming={isStreaming}
+            onSendMessage={sendMessageWithContext}
+            className="flex-1"
+          />
         </div>
       </div>
 
       {/* Input - Fixed at bottom */}
       <div className="relative pb-4 pt-2">
-        <div className="absolute w-full top-[-18px] h-6 pointer-events-none bg-gradient-to-b from-transparent to-[#f8f8f9] z-10" />
+        <div className="pointer-events-none absolute top-[-18px] z-10 h-6 w-full bg-gradient-to-b from-transparent to-[#f8f8f9]" />
         <ChatInput
           onSend={sendMessageWithContext}
           disabled={isStreaming || !sessionId}

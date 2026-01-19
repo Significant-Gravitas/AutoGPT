@@ -39,9 +39,7 @@ export function MessageBubble({
       )}
     >
       {/* Gradient flare background */}
-      <div
-        className={cn("absolute inset-0 bg-gradient-to-br")}
-      />
+      <div className={cn("absolute inset-0 bg-gradient-to-br")} />
       <div
         className={cn(
           "relative z-10 transition-all duration-500 ease-in-out",

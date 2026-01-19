@@ -75,17 +75,17 @@ export function NavbarLink({ name, href }: Props) {
         {href === "/library" &&
           (isChatEnabled ? (
             <ListChecksIcon
-            className={cn(
-              iconWidthClass,
-              isActive && "text-white dark:text-black",
-            )}
-          />
+              className={cn(
+                iconWidthClass,
+                isActive && "text-white dark:text-black",
+              )}
+            />
           ) : (
             <HouseIcon
               className={cn(
                 iconWidthClass,
                 isActive && "text-white dark:text-black",
-        )}
+              )}
             />
           ))}
         <Text

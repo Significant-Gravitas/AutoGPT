@@ -1,6 +1,10 @@
 "use client";
 
-import { postV2CreateSession, useGetV2GetSession, useGetV2ListSessions } from "@/app/api/__generated__/endpoints/chat/chat";
+import {
+  postV2CreateSession,
+  useGetV2GetSession,
+  useGetV2ListSessions,
+} from "@/app/api/__generated__/endpoints/chat/chat";
 import type { SessionDetailResponse } from "@/app/api/__generated__/models/sessionDetailResponse";
 import type { SessionSummaryResponse } from "@/app/api/__generated__/models/sessionSummaryResponse";
 import { okData } from "@/app/api/helpers";
@@ -30,7 +34,9 @@ export function useCopilotShell() {
     breakpoint === "base" || breakpoint === "sm" || breakpoint === "md";
 
   const [offset, setOffset] = useState(0);
-  const [accumulatedSessions, setAccumulatedSessions] = useState<SessionSummaryResponse[]>([]);
+  const [accumulatedSessions, setAccumulatedSessions] = useState<
+    SessionSummaryResponse[]
+  >([]);
   const [totalCount, setTotalCount] = useState<number | null>(null);
   const [hasAutoSelectedSession, setHasAutoSelectedSession] = useState(false);
   const hasCreatedSessionRef = useRef(false);
@@ -51,7 +57,7 @@ export function useCopilotShell() {
       const newSessions = responseData.sessions;
       const total = responseData.total;
       setTotalCount(total);
-      
+
       if (offset === 0) {
         setAccumulatedSessions(newSessions);
       } else {
@@ -67,7 +73,9 @@ export function useCopilotShell() {
 
   const areAllSessionsLoaded = useMemo(() => {
     if (totalCount === null) return false;
-    return accumulatedSessions.length >= totalCount && !isFetching && !isLoading;
+    return (
+      accumulatedSessions.length >= totalCount && !isFetching && !isLoading
+    );
   }, [accumulatedSessions.length, totalCount, isFetching, isLoading]);
 
   useEffect(() => {
@@ -105,33 +113,35 @@ export function useCopilotShell() {
     [searchParams],
   );
 
-  const { data: currentSessionData, isLoading: isCurrentSessionLoading } = useGetV2GetSession(
-    currentSessionId || "",
-    {
+  const { data: currentSessionData, isLoading: isCurrentSessionLoading } =
+    useGetV2GetSession(currentSessionId || "", {
       query: {
         enabled: !!currentSessionId && (!isMobile || isDrawerOpen),
         select: okData,
       },
-    },
-  );
+    });
 
   const sessions = useMemo(
     function getSessions() {
       const filteredSessions: SessionSummaryResponse[] = [];
-      
+
       if (accumulatedSessions.length > 0) {
         const visibleSessions = filterVisibleSessions(accumulatedSessions);
-        
+
         if (currentSessionId) {
-          const currentInAll = accumulatedSessions.find((s) => s.id === currentSessionId);
+          const currentInAll = accumulatedSessions.find(
+            (s) => s.id === currentSessionId,
+          );
           if (currentInAll) {
-            const isInVisible = visibleSessions.some((s) => s.id === currentSessionId);
+            const isInVisible = visibleSessions.some(
+              (s) => s.id === currentSessionId,
+            );
             if (!isInVisible) {
               filteredSessions.push(currentInAll);
             }
           }
         }
-        
+
         filteredSessions.push(...visibleSessions);
       }
 
@@ -140,7 +150,8 @@ export function useCopilotShell() {
           (s) => s.id === currentSessionId,
         );
         if (!isCurrentInList) {
-          const summarySession = convertSessionDetailToSummary(currentSessionData);
+          const summarySession =
+            convertSessionDetailToSummary(currentSessionData);
           // Add new session at the beginning to match API order (most recent first)
           filteredSessions.unshift(summarySession);
         }
@@ -189,9 +200,9 @@ export function useCopilotShell() {
 
   useEffect(() => {
     if (!areAllSessionsLoaded || hasAutoSelectedSession) return;
-    
+
     const visibleSessions = filterVisibleSessions(accumulatedSessions);
-    
+
     if (paramSessionId) {
       setHasAutoSelectedSession(true);
       return;
@@ -201,7 +212,12 @@ export function useCopilotShell() {
       const lastSession = visibleSessions[0];
       setHasAutoSelectedSession(true);
       router.push(`/copilot/chat?sessionId=${lastSession.id}`);
-    } else if (accumulatedSessions.length === 0 && !isLoading && totalCount === 0 && !hasCreatedSessionRef.current) {
+    } else if (
+      accumulatedSessions.length === 0 &&
+      !isLoading &&
+      totalCount === 0 &&
+      !hasCreatedSessionRef.current
+    ) {
       hasCreatedSessionRef.current = true;
       postV2CreateSession({ body: JSON.stringify({}) })
         .then((response) => {
@@ -216,7 +232,15 @@ export function useCopilotShell() {
     } else if (totalCount === 0) {
       setHasAutoSelectedSession(true);
     }
-  }, [areAllSessionsLoaded, accumulatedSessions, paramSessionId, hasAutoSelectedSession, router, isLoading, totalCount]);
+  }, [
+    areAllSessionsLoaded,
+    accumulatedSessions,
+    paramSessionId,
+    hasAutoSelectedSession,
+    router,
+    isLoading,
+    totalCount,
+  ]);
 
   useEffect(() => {
     if (paramSessionId) {
@@ -228,13 +252,24 @@ export function useCopilotShell() {
     if (!areAllSessionsLoaded) return false;
 
     if (paramSessionId) {
-      const sessionFound = accumulatedSessions.some((s) => s.id === paramSessionId);
+      const sessionFound = accumulatedSessions.some(
+        (s) => s.id === paramSessionId,
+      );
       const sessionLoading = isCurrentSessionLoading;
-      return sessionFound || (!sessionLoading && currentSessionData !== undefined);
+      return (
+        sessionFound || (!sessionLoading && currentSessionData !== undefined)
+      );
     }
 
     return hasAutoSelectedSession;
-  }, [areAllSessionsLoaded, accumulatedSessions, paramSessionId, isCurrentSessionLoading, currentSessionData, hasAutoSelectedSession]);
+  }, [
+    areAllSessionsLoaded,
+    accumulatedSessions,
+    paramSessionId,
+    isCurrentSessionLoading,
+    currentSessionData,
+    hasAutoSelectedSession,
+  ]);
 
   return {
     isMobile,

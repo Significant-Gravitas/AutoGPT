@@ -37,10 +37,11 @@ export function handleTextEnded(
       const lastMessage = prev[prev.length - 1];
       console.log("[Text Ended] Previous message:", {
         type: lastMessage?.type,
-        toolName: lastMessage?.type === "tool_call" ? lastMessage.toolName : undefined,
+        toolName:
+          lastMessage?.type === "tool_call" ? lastMessage.toolName : undefined,
         content: completedText.substring(0, 200),
       });
-      
+
       const assistantMessage: ChatMessageData = {
         type: "message",
         role: "assistant",
