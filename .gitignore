@@ -178,5 +178,5 @@ autogpt_platform/backend/settings.py
 
 *.ign.*
 .test-contents
-.claude/settings.local.json
+**/.claude/settings.local.json
 /autogpt_platform/backend/logs
