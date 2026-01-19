@@ -5,30 +5,37 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/molecules/Accordion/Accordion";
+import {
+  CredentialsMetaInput,
+  CredentialsType,
+} from "@/lib/autogpt-server-api/types";
 import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
-import { SlidersHorizontal } from "@phosphor-icons/react";
+import { SlidersHorizontalIcon } from "@phosphor-icons/react";
 import { useContext, useEffect, useMemo, useRef } from "react";
-import { useRunAgentModalContext } from "../../context";
 import {
   areSystemCredentialProvidersLoading,
   CredentialField,
   findSavedCredentialByProviderAndType,
   hasMissingRequiredSystemCredentials,
   splitCredentialFieldsBySystem,
-} from "../helpers";
+} from "./helpers";
 
 type Props = {
   credentialFields: CredentialField[];
   requiredCredentials: Set<string>;
+  inputCredentials: Record<string, CredentialsMetaInput | undefined>;
+  inputValues: Record<string, any>;
+  onCredentialChange: (key: string, value?: CredentialsMetaInput) => void;
 };
 
 export function CredentialsGroupedView({
   credentialFields,
   requiredCredentials,
+  inputCredentials,
+  inputValues,
+  onCredentialChange,
 }: Props) {
   const allProviders = useContext(CredentialsProvidersContext);
-  const { inputCredentials, setInputCredentialsValue, inputValues } =
-    useRunAgentModalContext();
 
   const { userCredentialFields, systemCredentialFields } = useMemo(
     () =>
@@ -87,11 +94,11 @@ export function CredentialsGroupedView({
       );
 
       if (savedCredential) {
-        setInputCredentialsValue(key, {
+        onCredentialChange(key, {
           id: savedCredential.id,
           provider: savedCredential.provider,
-          type: savedCredential.type,
-          title: (savedCredential as { title?: string }).title,
+          type: savedCredential.type as CredentialsType,
+          title: savedCredential.title,
         });
       }
     }
@@ -103,7 +110,7 @@ export function CredentialsGroupedView({
     systemCredentialFields,
     requiredCredentials,
     inputCredentials,
-    setInputCredentialsValue,
+    onCredentialChange,
     isLoadingProviders,
   ]);
 
@@ -123,7 +130,7 @@ export function CredentialsGroupedView({
                   }
                   selectedCredentials={selectedCred}
                   onSelectCredentials={(value) => {
-                    setInputCredentialsValue(key, value);
+                    onCredentialChange(key, value);
                   }}
                   siblingInputs={inputValues}
                   isOptional={!requiredCredentials.has(key)}
@@ -143,7 +150,7 @@ export function CredentialsGroupedView({
           <AccordionItem value="system-credentials" className="border-none">
             <AccordionTrigger className="py-2 text-sm text-muted-foreground hover:no-underline">
               <div className="flex items-center gap-1">
-                <SlidersHorizontal size={16} weight="bold" /> System credentials
+                <SlidersHorizontalIcon size={16} weight="bold" /> System credentials
                 {hasMissingSystemCredentials && (
                   <span className="text-destructive">(missing)</span>
                 )}
@@ -163,7 +170,7 @@ export function CredentialsGroupedView({
                         }
                         selectedCredentials={selectedCred}
                         onSelectCredentials={(value) => {
-                          setInputCredentialsValue(key, value);
+                          onCredentialChange(key, value);
                         }}
                         siblingInputs={inputValues}
                         isOptional={!requiredCredentials.has(key)}
