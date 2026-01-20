@@ -17,6 +17,13 @@ class Evaluator:
         self, result: ChallengeResult, challenge: Challenge
     ) -> ChallengeResult:
         """Evaluate a challenge result and update success/score."""
+        # If the challenge timed out or had an error, don't override with evaluation
+        # A timed-out challenge cannot be considered a pass
+        if result.timed_out:
+            result.success = False
+            result.score = 0.0
+            return result
+
         ground = challenge.ground_truth
 
         if not ground:
