@@ -19,6 +19,8 @@ export type CustomEdgeData = {
   beadUp?: number;
   beadDown?: number;
   beadData?: Map<string, NodeExecutionResult["status"]>;
+  edgeColorClass?: string;
+  edgeHexColor?: string;
 };
 
 export type CustomEdge = XYEdge<CustomEdgeData, "custom">;
@@ -36,7 +38,6 @@ const CustomEdge = ({
   selected,
 }: EdgeProps<CustomEdge>) => {
   const removeConnection = useEdgeStore((state) => state.removeEdge);
-  // Subscribe to the brokenEdgeIDs map and check if this edge is broken across any node
   const isBroken = useNodeStore((state) => state.isEdgeBroken(id));
   const [isHovered, setIsHovered] = useState(false);
 
@@ -52,6 +53,7 @@ const CustomEdge = ({
   const isStatic = data?.isStatic ?? false;
   const beadUp = data?.beadUp ?? 0;
   const beadDown = data?.beadDown ?? 0;
+  const edgeColorClass = data?.edgeColorClass;
 
   const handleRemoveEdge = () => {
     removeConnection(id);
@@ -70,7 +72,9 @@ const CustomEdge = ({
             ? "!stroke-red-500 !stroke-[2px] [stroke-dasharray:4]"
             : selected
               ? "stroke-zinc-800"
-              : "stroke-zinc-500/50 hover:stroke-zinc-500",
+              : edgeColorClass
+                ? cn(edgeColorClass, "opacity-70 hover:opacity-100")
+                : "stroke-zinc-500/50 hover:stroke-zinc-500",
         )}
       />
       <JSBeads
