@@ -37,7 +37,7 @@ from forge.components.text_utils import TextUtilsComponent
 from forge.components.todo import TodoComponent
 from forge.components.user_interaction import UserInteractionComponent
 from forge.components.watchdog import WatchdogComponent
-from forge.components.web import WebSearchComponent, WebSeleniumComponent
+from forge.components.web import WebPlaywrightComponent, WebSearchComponent
 from forge.file_storage.base import FileStorage
 from forge.llm.prompting.schema import ChatPrompt
 from forge.llm.prompting.utils import dump_prompt
@@ -161,7 +161,7 @@ class Agent(BaseAgent[AnyActionProposal], Configurable[AgentSettings]):
         self.git_ops = GitOperationsComponent()
         self.image_gen = ImageGeneratorComponent(self.file_manager.workspace)
         self.web_search = WebSearchComponent()
-        self.web_selenium = WebSeleniumComponent(
+        self.web_browser = WebPlaywrightComponent(
             llm_provider,
             app_config.app_data_dir,
         )

@@ -633,10 +633,23 @@ class ReflexionPromptStrategy(BaseMultiStepPromptStrategy):
 
         # Phase and reflection_context are stored in strategy state, not in the proposal
 
-        # Ensure thoughts has all required fields
+        # Ensure thoughts has all required fields for ReflexionThoughts model
         thoughts = assistant_reply_dict.get("thoughts", {})
+        if not isinstance(thoughts, dict):
+            thoughts = {}
+        # Set defaults for all required fields
+        if "observations" not in thoughts:
+            thoughts["observations"] = thoughts.get("text", "")
+        if "reasoning" not in thoughts:
+            thoughts["reasoning"] = ""
         if "self_reflection" not in thoughts:
             thoughts["self_reflection"] = thoughts.get("reasoning", "")
+        if "self_criticism" not in thoughts:
+            thoughts["self_criticism"] = thoughts.get("criticism", "")
+        if "plan" not in thoughts:
+            thoughts["plan"] = thoughts.get("plan", [])
+            if isinstance(thoughts["plan"], str):
+                thoughts["plan"] = [thoughts["plan"]] if thoughts["plan"] else []
         if "lessons_applied" not in thoughts:
             thoughts["lessons_applied"] = []
         assistant_reply_dict["thoughts"] = thoughts

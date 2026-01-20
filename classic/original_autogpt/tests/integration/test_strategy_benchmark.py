@@ -86,10 +86,14 @@ def test_strategy_comparison_quick():
     Note: Requires API keys to be configured in environment.
     """
     result = run_harness(
-        "--strategies", "one_shot",
-        "--categories", "general",
-        "-N", "1",
-        "--tests", "ReadFile",  # Single fast test for smoke testing
+        "--strategies",
+        "one_shot",
+        "--categories",
+        "general",
+        "-N",
+        "1",
+        "--tests",
+        "ReadFile",  # Single fast test for smoke testing
     )
 
     # Print output for debugging
@@ -112,9 +116,12 @@ def test_single_strategy():
     to verify basic functionality without testing all strategies.
     """
     result = run_harness(
-        "--strategies", "one_shot",
-        "--categories", "coding",
-        "--tests", "ReadFile,WriteFile",
+        "--strategies",
+        "one_shot",
+        "--categories",
+        "coding",
+        "--tests",
+        "ReadFile,WriteFile",
     )
 
     # Print output for debugging

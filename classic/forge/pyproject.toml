@@ -51,6 +51,7 @@ litellm = "^1.17.9"
 numpy = ">=2.0.0"
 openai = "^1.50.0"
 Pillow = "*"
+playwright = "^1.50.0"
 playsound = "~1.2.2"
 pydantic = "^2.7.2"
 python-docx = "*"
@@ -60,7 +61,6 @@ pylatexenc = "*"
 pypdf = "^3.1.0"
 pyyaml = "^6.0"
 requests = "*"
-selenium = "^4.13.0"
 sqlalchemy = "^2.0.19"
 sentry-sdk = "^1.40.4"
 spacy = "^3.8.0"
@@ -69,7 +69,6 @@ tiktoken = ">=0.7.0,<1.0.0"
 toml = "^0.10.2"
 uvicorn = { extras = ["standard"], version = ">=0.23.2,<1" }
 watchdog = "^6.0.0"
-webdriver-manager = "^4.0.2"
 
 [tool.poetry.extras]
 # benchmark extra removed - use direct_benchmark instead

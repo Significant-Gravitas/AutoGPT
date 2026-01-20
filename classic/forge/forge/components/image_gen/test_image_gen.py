@@ -55,9 +55,7 @@ def test_dalle(
     )
 
 
-@pytest.mark.xfail(
-    reason="HuggingFace image generation is unreliable in CI."
-)
+@pytest.mark.xfail(reason="HuggingFace image generation is unreliable in CI.")
 @pytest.mark.parametrize(
     "image_model",
     ["CompVis/stable-diffusion-v1-4", "stabilityai/stable-diffusion-2-1"],

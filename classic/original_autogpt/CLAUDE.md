@@ -74,7 +74,7 @@ Agent(
 - `self.git_ops` - GitOperationsComponent
 - `self.image_gen` - ImageGeneratorComponent
 - `self.web_search` - WebSearchComponent
-- `self.web_selenium` - WebSeleniumComponent
+- `self.web_browser` - WebPlaywrightComponent
 - `self.context` - ContextComponent
 - `self.watchdog` - WatchdogComponent
 - `self.user_interaction` - UserInteractionComponent

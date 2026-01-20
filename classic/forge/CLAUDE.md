@@ -266,7 +266,7 @@ class MyComponent(CommandProvider):
 | `FileManagerComponent` | DirectiveProvider, CommandProvider | read/write/list files |
 | `CodeExecutorComponent` | CommandProvider | Python & shell execution (Docker) |
 | `WebSearchComponent` | DirectiveProvider, CommandProvider | DuckDuckGo & Google search |
-| `WebSeleniumComponent` | CommandProvider | Browser automation |
+| `WebPlaywrightComponent` | DirectiveProvider, CommandProvider | Browser automation (Playwright) |
 | `ActionHistoryComponent` | MessageProvider, AfterParse, AfterExecute | Track & summarize history |
 | `WatchdogComponent` | AfterParse | Loop detection, LLM switching |
 | `ContextComponent` | MessageProvider, CommandProvider | Keep files in prompt context |

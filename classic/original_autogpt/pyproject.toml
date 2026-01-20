@@ -49,12 +49,10 @@ sentry-sdk = "^1.40.4"
 rich = "^13.0"
 prompt-toolkit = "^3.0.0"
 
-# Benchmarking
-agbenchmark = { path = "../benchmark", optional = true, develop = true }
-# agbenchmark = {git = "https://github.com/Significant-Gravitas/AutoGPT.git", subdirectory = "benchmark", optional = true}
+# Benchmarking - use direct_benchmark instead (agbenchmark removed)
 
 [tool.poetry.extras]
-benchmark = ["agbenchmark"]
+# benchmark extra removed - use direct_benchmark instead
 
 [tool.poetry.group.dev.dependencies]
 black = "^23.12.1"
