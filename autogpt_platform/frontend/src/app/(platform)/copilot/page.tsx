@@ -24,7 +24,9 @@ export default function CopilotPage() {
   } = useCopilotHome();
 
   useEffect(() => {
-    const textarea = document.getElementById("copilot-prompt") as HTMLTextAreaElement;
+    const textarea = document.getElementById(
+      "copilot-prompt",
+    ) as HTMLTextAreaElement;
     if (!textarea) return;
     textarea.style.height = "auto";
     const lineHeight = parseInt(
@@ -46,10 +48,10 @@ export default function CopilotPage() {
   const isLoading = isUserLoading;
 
   return (
-    <div className="flex h-full flex-1 items-center justify-center overflow-y-auto px-6 py-10 bg-[#f8f8f9]">
-      <div className="w-full  text-center">
+    <div className="flex h-full flex-1 items-center justify-center overflow-y-auto bg-[#f8f8f9] px-6 py-10">
+      <div className="w-full text-center">
         {isLoading ? (
-          <div className="max-w-2xl mx-auto">
+          <div className="mx-auto max-w-2xl">
             <Skeleton className="mx-auto mb-3 h-8 w-64" />
             <Skeleton className="mx-auto mb-8 h-6 w-80" />
             <div className="mb-8">
@@ -63,13 +65,16 @@ export default function CopilotPage() {
           </div>
         ) : (
           <>
-          <div className="max-w-2xl mx-auto">
-            <Text variant="h3" className="mb-3 text-zinc-700 !text-[1.375rem]">
-              Hey, <span className="text-violet-600">{greetingName}</span>
-            </Text>
-            <Text variant="h3" className="mb-8 !font-normal">
-              What do you want to automate?
-            </Text>
+            <div className="mx-auto max-w-2xl">
+              <Text
+                variant="h3"
+                className="mb-3 !text-[1.375rem] text-zinc-700"
+              >
+                Hey, <span className="text-violet-600">{greetingName}</span>
+              </Text>
+              <Text variant="h3" className="mb-8 !font-normal">
+                What do you want to automate?
+              </Text>
 
               <form onSubmit={handleSubmit} className="mb-6">
                 <div className="relative">
@@ -84,7 +89,7 @@ export default function CopilotPage() {
                     rows={1}
                     placeholder='You can search or just ask - e.g. "create a blog post outline"'
                     wrapperClassName="mb-0"
-                    className="!py-5 !rounded-full pr-12 !text-[1rem] border-transparent [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
+                    className="!rounded-full border-transparent !py-5 pr-12 !text-[1rem] [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
                   />
                   <Button
                     type="submit"
@@ -99,14 +104,14 @@ export default function CopilotPage() {
                 </div>
               </form>
             </div>
-            <div className="flex flex-nowrap items-center justify-center gap-3 overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+            <div className="flex flex-nowrap items-center justify-center gap-3 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {quickActions.map((action) => (
                 <Button
                   key={action}
                   variant="outline"
                   size="small"
                   onClick={() => handleQuickAction(action)}
-                  className="border-zinc-600 text-zinc-600 text-[1rem] !py-2 !px-4 h-auto shrink-0"
+                  className="h-auto shrink-0 border-zinc-600 !px-4 !py-2 text-[1rem] text-zinc-600"
                 >
                   {action}
                 </Button>

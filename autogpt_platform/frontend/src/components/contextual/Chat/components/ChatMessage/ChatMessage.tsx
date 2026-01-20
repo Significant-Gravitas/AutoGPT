@@ -7,7 +7,7 @@ import {
   ArrowsClockwiseIcon,
   CheckCircleIcon,
   CheckIcon,
-  CopyIcon
+  CopyIcon,
 } from "@phosphor-icons/react";
 import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
@@ -269,7 +269,7 @@ export function ChatMessage({
                   onClick={handleTryAgain}
                   aria-label="Try again"
                 >
-                 <ArrowsClockwiseIcon className="size-4 text-zinc-600" />
+                  <ArrowsClockwiseIcon className="size-4 text-zinc-600" />
                 </Button>
               )}
               {(isUser || isFinalMessage) && (

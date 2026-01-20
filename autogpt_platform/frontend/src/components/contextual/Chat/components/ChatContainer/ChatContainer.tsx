@@ -29,7 +29,8 @@ export function ChatContainer({
   const { capturePageContext } = usePageContext();
   const hasSentInitialRef = useRef(false);
   const breakpoint = useBreakpoint();
-  const isMobile = breakpoint === "base" || breakpoint === "sm" || breakpoint === "md";
+  const isMobile =
+    breakpoint === "base" || breakpoint === "sm" || breakpoint === "md";
 
   // Wrap sendMessage to automatically capture page context
   const sendMessageWithContext = useCallback(
@@ -73,12 +74,16 @@ export function ChatContainer({
       </div>
 
       {/* Input - Fixed at bottom */}
-      <div className="relative pb-4 pt-2 px-3">
+      <div className="relative px-3 pb-4 pt-2">
         <div className="pointer-events-none absolute top-[-18px] z-10 h-6 w-full bg-gradient-to-b from-transparent to-[#f8f8f9]" />
         <ChatInput
           onSend={sendMessageWithContext}
           disabled={isStreaming || !sessionId}
-          placeholder={isMobile ? "You can search or just ask" : "You can search or just ask — e.g. “create a blog post outline”"}
+          placeholder={
+            isMobile
+              ? "You can search or just ask"
+              : "You can search or just ask — e.g. “create a blog post outline”"
+          }
         />
       </div>
     </div>

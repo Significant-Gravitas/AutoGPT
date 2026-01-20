@@ -28,7 +28,7 @@ export function useCopilotShell() {
   const { isLoggedIn } = useSupabase();
   const isMobile =
     breakpoint === "base" || breakpoint === "sm" || breakpoint === "md";
-  
+
   const isOnHomepage = pathname === "/copilot";
   const paramSessionId = searchParams.get("sessionId");
 
@@ -55,7 +55,7 @@ export function useCopilotShell() {
   });
 
   const storedSessionId = storage.get(Key.CHAT_SESSION_ID) ?? null;
-  const currentSessionId = getCurrentSessionId(searchParams, storedSessionId)
+  const currentSessionId = getCurrentSessionId(searchParams, storedSessionId);
 
   const { data: currentSessionData, isLoading: isCurrentSessionLoading } =
     useGetV2GetSession(currentSessionId || "", {
@@ -109,7 +109,7 @@ export function useCopilotShell() {
     }
 
     const visibleSessions = filterVisibleSessions(accumulatedSessions);
-    
+
     const autoSelect = shouldAutoSelectSession(
       areAllSessionsLoaded,
       hasAutoSelectedRef.current,
@@ -192,7 +192,7 @@ export function useCopilotShell() {
         currentSessionData,
         hasAutoSelectedSession,
       );
-      
+
   function handleSelectSession(sessionId: string) {
     router.push(`/copilot/chat?sessionId=${sessionId}`);
     if (isMobile) handleCloseDrawer();
@@ -215,7 +215,8 @@ export function useCopilotShell() {
     isMobile,
     isDrawerOpen,
     isLoggedIn,
-    hasActiveSession: Boolean(currentSessionId) && (!isOnHomepage || paramSessionId),
+    hasActiveSession:
+      Boolean(currentSessionId) && (!isOnHomepage || paramSessionId),
     isLoading: isSessionsLoading || !areAllSessionsLoaded,
     sessions,
     currentSessionId: sidebarSelectedSessionId,

@@ -34,7 +34,11 @@ export function CopilotShell({ children }: Props) {
   } = useCopilotShell();
 
   if (!isLoggedIn) {
-    return <div className="flex h-full items-center justify-center"><LoadingSpinner size="large" /></div>;
+    return (
+      <div className="flex h-full items-center justify-center">
+        <LoadingSpinner size="large" />
+      </div>
+    );
   }
 
   return (

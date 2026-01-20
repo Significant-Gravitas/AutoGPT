@@ -11,10 +11,7 @@ import {
 import { useFlags } from "launchdarkly-react-client-sdk";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import {
-  getGreetingName,
-  getQuickActions,
-} from "./helpers";
+import { getGreetingName, getQuickActions } from "./helpers";
 
 export function useCopilotHome() {
   const router = useRouter();
@@ -28,8 +25,8 @@ export function useCopilotHome() {
   const isLaunchDarklyConfigured = envEnabled && Boolean(clientId);
   const isFlagReady =
     !isLaunchDarklyConfigured || flags[Flag.CHAT] !== undefined;
-  
-    const greetingName = useMemo(
+
+  const greetingName = useMemo(
     function getName() {
       return getGreetingName(user);
     },
