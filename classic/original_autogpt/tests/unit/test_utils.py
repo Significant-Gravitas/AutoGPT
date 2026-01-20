@@ -5,8 +5,8 @@ from unittest.mock import patch
 
 import pytest
 import requests
-from forge.json.parsing import extract_dict_from_json
 from git import InvalidGitRepositoryError
+from tests.utils import skip_in_ci
 
 import autogpt.app.utils
 from autogpt.app.utils import (
@@ -15,7 +15,7 @@ from autogpt.app.utils import (
     get_latest_bulletin,
     set_env_config_value,
 )
-from tests.utils import skip_in_ci
+from forge.json.parsing import extract_dict_from_json
 
 
 @pytest.fixture

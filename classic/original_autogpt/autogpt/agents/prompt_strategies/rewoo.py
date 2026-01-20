@@ -24,6 +24,8 @@ from enum import Enum
 from logging import Logger
 from typing import Any, Optional
 
+from pydantic import Field
+
 from forge.config.ai_directives import AIDirectives
 from forge.config.ai_profile import AIProfile
 from forge.json.parsing import extract_dict_from_json
@@ -39,7 +41,6 @@ from forge.models.config import UserConfigurable
 from forge.models.json_schema import JSONSchema
 from forge.models.utils import ModelWithSummary
 from forge.utils.exceptions import InvalidAgentResponseError
-from pydantic import Field
 
 from .base import (
     BaseMultiStepPromptStrategy,
@@ -181,7 +182,14 @@ class ReWOOPromptConfiguration(BasePromptStrategyConfiguration):
     """Configuration for ReWOO prompt strategy."""
 
     DEFAULT_PLANNER_INSTRUCTION: str = (
-        "Create a complete plan to accomplish the task. For each step:\n"
+        "Create a complete plan to FULLY ACCOMPLISH the task. Your plan must include "
+        "all steps needed to produce the final deliverable - not just exploration.\n\n"
+        "IMPORTANT:\n"
+        "- Do NOT end with exploration, research, or todo/planning steps\n"
+        "- Your plan must result in the actual task being COMPLETE\n"
+        "- Include steps that create/modify files, write code, or produce output\n"
+        "- The final steps should verify the task is done, not plan future work\n\n"
+        "For each step:\n"
         "1. Write your reasoning (Plan:)\n"
         "2. Specify the tool to use and its arguments\n"
         "3. Assign a variable name (#E1, #E2, etc.) to store the result\n"
@@ -194,10 +202,14 @@ class ReWOOPromptConfiguration(BasePromptStrategyConfiguration):
 
     # Paper-style planner instruction (uses bracket syntax like the original paper)
     DEFAULT_PAPER_PLANNER_INSTRUCTION: str = (
-        "For the following task, make plans that can solve the problem step by step. "
+        "For the following task, make plans that can FULLY SOLVE the problem "
+        "step by step. "
         "For each plan, indicate which external tool together with tool input to "
         "retrieve evidence. You can store the evidence into a variable #E[n] that "
         "can be called by later tools.\n\n"
+        "IMPORTANT: Your plan must COMPLETE the task, not just explore or prepare. "
+        "Do not end with research or planning steps - include all actions needed "
+        "to produce the final deliverable.\n\n"
         "Tools can be one of the following:\n"
         "{available_tools}\n\n"
         "Format:\n"
@@ -211,11 +223,16 @@ class ReWOOPromptConfiguration(BasePromptStrategyConfiguration):
 
     DEFAULT_SYNTHESIZER_INSTRUCTION: str = (
         "You have executed the following plan and received these results.\n"
-        "Analyze the results and provide a final response to the original task.\n\n"
+        "Analyze the results and determine if the ORIGINAL TASK has been "
+        "accomplished.\n\n"
         "Plan and Results:\n{plan_with_results}\n\n"
         "Original Task: {task}\n\n"
-        "Provide your synthesis in the required JSON format, then use the "
-        "appropriate command to complete the task or report findings."
+        "IMPORTANT: The task is only complete if you have PRODUCED THE DELIVERABLE "
+        "(created/modified files, written code, generated output, etc). If you only "
+        "explored or planned, the task is NOT complete.\n\n"
+        "If the task is truly complete, call `finish` with your final answer. "
+        "If the task is NOT complete (only explored/planned), you must call other "
+        "commands to actually complete the work."
     )
 
     # Paper-style synthesizer instruction (Solver module from paper)
@@ -226,7 +243,9 @@ class ReWOOPromptConfiguration(BasePromptStrategyConfiguration):
         "with caution.\n\n"
         "Task: {task}\n\n"
         "Plans and Evidences:\n{plan_with_results}\n\n"
-        "Now solve the task. Provide your answer with clear reasoning."
+        "IMPORTANT: The task is only complete if you have PRODUCED THE DELIVERABLE. "
+        "If you only explored or planned, call commands to complete the actual work. "
+        "If the task is truly complete, call `finish` with your final answer."
     )
 
     planner_instruction: str = UserConfigurable(default=DEFAULT_PLANNER_INSTRUCTION)
@@ -630,12 +649,52 @@ class ReWOOPromptStrategy(BaseMultiStepPromptStrategy):
         return arguments
 
     def _parse_tool_arguments(self, args_str: str) -> dict[str, Any]:
-        """Parse tool arguments from a string like 'arg1="value1", arg2=123'."""
+        """Parse tool arguments from a string like 'arg1="value1", arg2=123'.
+
+        Supports:
+        - String values: arg="value"
+        - Numbers: arg=123 or arg=1.5
+        - Variable references: arg=#E1
+        - JSON arrays: arg=[{...}]
+        - JSON objects: arg={...}
+        - Booleans: arg=true/false
+        """
         arguments: dict[str, Any] = {}
 
-        # Simple pattern matching for key=value pairs
-        # This handles strings, numbers, and variable references
-        arg_pattern = re.compile(r'(\w+)\s*=\s*(?:"([^"]*)"|(#E\d+)|(\d+\.?\d*))')
+        # Try to parse as JSON-like structure
+        # Handle both JSON format ("key": value) and Python format (key=value)
+        try:
+            json_str = args_str.strip()
+
+            # Convert Python-style key=value to JSON-style "key": value
+            # Match: word= at start or after comma, followed by any value
+            json_str = re.sub(r"(?:^|,\s*)(\w+)\s*=\s*", r'"\1": ', json_str)
+
+            # Wrap in braces
+            json_str = "{" + json_str + "}"
+
+            # Fix common Python-isms: single quotes -> double, True/False -> true/false
+            json_str = json_str.replace("'", '"')
+            json_str = re.sub(r"\bTrue\b", "true", json_str)
+            json_str = re.sub(r"\bFalse\b", "false", json_str)
+            json_str = re.sub(r"\bNone\b", "null", json_str)
+
+            parsed = json.loads(json_str)
+            if isinstance(parsed, dict):
+                return parsed
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+        # Fall back to regex-based parsing for simpler cases
+        # Pattern for key=value where value can be:
+        # - quoted string: "..."
+        # - variable reference: #E1
+        # - number: 123 or 1.5
+        # - boolean: true/false
+        arg_pattern = re.compile(
+            r'(\w+)\s*=\s*(?:"([^"]*)"|(#E\d+)|(\d+\.?\d*)|(true|false))',
+            re.IGNORECASE,
+        )
 
         for match in arg_pattern.finditer(args_str):
             key = match.group(1)
@@ -646,6 +705,8 @@ class ReWOOPromptStrategy(BaseMultiStepPromptStrategy):
             elif match.group(4) is not None:  # Number
                 num_str = match.group(4)
                 arguments[key] = float(num_str) if "." in num_str else int(num_str)
+            elif match.group(5) is not None:  # Boolean
+                arguments[key] = match.group(5).lower() == "true"
 
         return arguments
 

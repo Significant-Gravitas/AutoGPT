@@ -12,6 +12,7 @@ Features:
 
 import json
 import logging
+import uuid
 from typing import TYPE_CHECKING, Iterator, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -56,9 +57,15 @@ Respond with ONLY a JSON object (no markdown, no explanation):
 "summary": "Brief explanation"}}"""
 
 
+def _generate_todo_id() -> str:
+    """Generate a short unique ID for todo items."""
+    return uuid.uuid4().hex[:8]
+
+
 class TodoItem(BaseModel):
     """A single todo item with optional nested sub-items."""
 
+    id: str = Field(default_factory=_generate_todo_id, description="Unique identifier")
     content: str = Field(..., description="Imperative form: 'Fix the bug'")
     status: TodoStatus = Field(default="pending", description="Task status")
     active_form: str = Field(
@@ -136,7 +143,9 @@ class TodoComponent(
         yield "A todo list to track and manage multi-step tasks. Use frequently!"
 
     def get_best_practices(self) -> Iterator[str]:
-        yield "Use todo_write when working on multi-step tasks to track progress"
+        yield "Use todo_bulk_add for initial planning, then incremental ops for updates"
+        yield "Use todo_set_status to mark tasks in_progress or completed"
+        yield "Use todo_add to add a single new task to an existing list"
         yield "Mark todos as in_progress before starting work on them"
         yield "Mark todos as completed immediately after finishing, not in batches"
         yield "Only have ONE todo as in_progress at a time"
@@ -237,8 +246,12 @@ class TodoComponent(
                 if parsed:
                     sub_items.append(parsed)
 
+        # Use provided ID or generate a new one
+        item_id = item.get("id") or _generate_todo_id()
+
         return (
             TodoItem(
+                id=item_id,
                 content=item["content"],
                 status=item["status"],
                 active_form=item["active_form"],
@@ -252,6 +265,7 @@ class TodoComponent(
         Recursively serialize a TodoItem to a dict including sub_items.
         """
         result: dict[str, str | list] = {
+            "id": item.id,
             "content": item.content,
             "status": item.status,
             "active_form": item.active_form,
@@ -262,121 +276,36 @@ class TodoComponent(
             ]
         return result
 
+    def _find_by_id(self, todo_id: str) -> Optional[TodoItem]:
+        """Find a todo item by its ID (top-level only)."""
+        for item in self._todos.items:
+            if item.id == todo_id:
+                return item
+        return None
+
+    def _find_index_by_id(self, todo_id: str) -> int:
+        """Find the index of a todo item by its ID. Returns -1 if not found."""
+        for i, item in enumerate(self._todos.items):
+            if item.id == todo_id:
+                return i
+        return -1
+
     # -------------------------------------------------------------------------
     # CommandProvider Implementation
     # -------------------------------------------------------------------------
 
     def get_commands(self) -> Iterator[Command]:
-        yield self.todo_write
+        # Incremental operations (token efficient)
+        yield self.todo_add
+        yield self.todo_set_status
+        yield self.todo_update
+        yield self.todo_delete
+        yield self.todo_bulk_add
+        yield self.todo_reorder
+        # Core operations
         yield self.todo_read
         yield self.todo_clear
         yield self.todo_decompose
-
-    @command(
-        names=["todo_write"],
-        parameters={
-            "todos": JSONSchema(
-                type=JSONSchema.Type.ARRAY,
-                description=(
-                    "The complete todo list. Each item must have: "
-                    "'content' (imperative form like 'Fix bug'), "
-                    "'status' (pending|in_progress|completed), "
-                    "'active_form' (present continuous like 'Fixing bug'). "
-                    "Optional: 'sub_items' (array of nested todo items)"
-                ),
-                items=JSONSchema(
-                    type=JSONSchema.Type.OBJECT,
-                    properties={
-                        "content": JSONSchema(
-                            type=JSONSchema.Type.STRING,
-                            description="Imperative form of the task",
-                            required=True,
-                        ),
-                        "status": JSONSchema(
-                            type=JSONSchema.Type.STRING,
-                            description="pending, in_progress, or completed",
-                            enum=["pending", "in_progress", "completed"],
-                            required=True,
-                        ),
-                        "active_form": JSONSchema(
-                            type=JSONSchema.Type.STRING,
-                            description="Present continuous form (e.g. 'Fixing')",
-                            required=True,
-                        ),
-                        "sub_items": JSONSchema(
-                            type=JSONSchema.Type.ARRAY,
-                            description="Optional nested sub-tasks",
-                            required=False,
-                        ),
-                    },
-                ),
-                required=True,
-            ),
-        },
-    )
-    def todo_write(self, todos: list[dict]) -> dict:
-        """
-        Replace the entire todo list with a new list.
-
-        This is the primary command for managing todos. Use it to:
-        - Create initial todos when starting a multi-step task
-        - Mark tasks as in_progress when you start working on them
-        - Mark tasks as completed when done
-        - Add new tasks discovered during work
-        - Remove tasks that are no longer relevant
-        - Update sub-items created by todo_decompose
-
-        The entire list is replaced atomically, ensuring consistency.
-        Supports nested sub_items for hierarchical task tracking.
-        """
-        # Validate item count
-        if len(todos) > self.config.max_items:
-            return {
-                "status": "error",
-                "message": f"Too many items. Maximum is {self.config.max_items}.",
-            }
-
-        # Validate and convert items recursively
-        validated_items = []
-        for i, item in enumerate(todos):
-            parsed, error = self._parse_todo_item(item, f"Item {i}")
-            if error:
-                return {
-                    "status": "error",
-                    "message": error,
-                }
-            if parsed:
-                validated_items.append(parsed)
-
-        # Count in_progress items and warn if more than one
-        in_progress_count = sum(1 for t in validated_items if t.status == "in_progress")
-        warning = None
-        if in_progress_count > 1:
-            warning = (
-                f"Warning: {in_progress_count} tasks are in_progress. "
-                "Best practice is to have only ONE task in_progress at a time."
-            )
-            logger.warning(warning)
-
-        # Replace the list
-        self._todos = TodoList(items=validated_items)
-
-        # Build response
-        pending = sum(1 for t in validated_items if t.status == "pending")
-        completed = sum(1 for t in validated_items if t.status == "completed")
-
-        response = {
-            "status": "success",
-            "item_count": len(validated_items),
-            "pending": pending,
-            "in_progress": in_progress_count,
-            "completed": completed,
-        }
-
-        if warning:
-            response["warning"] = warning
-
-        return response
 
     @command(names=["todo_read"])
     def todo_read(self) -> dict:
@@ -562,3 +491,363 @@ class TodoComponent(
                 "status": "error",
                 "message": f"Decomposition failed: {e}",
             }
+
+    # -------------------------------------------------------------------------
+    # Incremental Operations - Token-efficient todo management
+    # -------------------------------------------------------------------------
+
+    @command(
+        names=["todo_add"],
+        parameters={
+            "content": JSONSchema(
+                type=JSONSchema.Type.STRING,
+                description="Imperative form of the task (e.g., 'Fix the bug')",
+                required=True,
+            ),
+            "active_form": JSONSchema(
+                type=JSONSchema.Type.STRING,
+                description="Present continuous form (e.g., 'Fixing the bug')",
+                required=True,
+            ),
+            "status": JSONSchema(
+                type=JSONSchema.Type.STRING,
+                description="Initial status: pending, in_progress, or completed",
+                enum=["pending", "in_progress", "completed"],
+                required=False,
+            ),
+            "index": JSONSchema(
+                type=JSONSchema.Type.INTEGER,
+                description="Position to insert at (0-based). Appends if omitted.",
+                required=False,
+            ),
+        },
+    )
+    def todo_add(
+        self,
+        content: str,
+        active_form: str,
+        status: TodoStatus = "pending",
+        index: Optional[int] = None,
+    ) -> dict:
+        """
+        Add a single todo item. Returns the created item with its ID.
+
+        This is the most token-efficient way to add a new task.
+        Use this instead of todo_write when adding one item to an existing list.
+        """
+        # Validate inputs
+        if not content or not content.strip():
+            return {"status": "error", "message": "'content' is required"}
+        if not active_form or not active_form.strip():
+            return {"status": "error", "message": "'active_form' is required"}
+
+        # Check max items
+        if len(self._todos.items) >= self.config.max_items:
+            return {
+                "status": "error",
+                "message": f"Cannot add: max items ({self.config.max_items}) reached",
+            }
+
+        # Create the new item
+        new_item = TodoItem(
+            content=content.strip(),
+            active_form=active_form.strip(),
+            status=status,
+        )
+
+        # Insert at specified index or append
+        if index is not None:
+            if index < 0:
+                index = 0
+            if index > len(self._todos.items):
+                index = len(self._todos.items)
+            self._todos.items.insert(index, new_item)
+        else:
+            self._todos.items.append(new_item)
+
+        return {
+            "status": "success",
+            "item": self._serialize_todo_item(new_item),
+            "total_items": len(self._todos.items),
+        }
+
+    @command(
+        names=["todo_set_status"],
+        parameters={
+            "id": JSONSchema(
+                type=JSONSchema.Type.STRING,
+                description="The unique ID of the todo to update",
+                required=True,
+            ),
+            "status": JSONSchema(
+                type=JSONSchema.Type.STRING,
+                description="New status: pending, in_progress, or completed",
+                enum=["pending", "in_progress", "completed"],
+                required=True,
+            ),
+        },
+    )
+    def todo_set_status(self, id: str, status: TodoStatus) -> dict:
+        """
+        Update just the status of a todo by ID.
+
+        This is the most common operation and the most token-efficient way
+        to mark a task as in_progress or completed.
+        """
+        item = self._find_by_id(id)
+        if not item:
+            return {"status": "error", "message": f"Todo with ID '{id}' not found"}
+
+        old_status = item.status
+        item.status = status
+
+        return {
+            "status": "success",
+            "item": self._serialize_todo_item(item),
+            "changed": {"status": {"from": old_status, "to": status}},
+        }
+
+    @command(
+        names=["todo_update"],
+        parameters={
+            "id": JSONSchema(
+                type=JSONSchema.Type.STRING,
+                description="The unique ID of the todo to update",
+                required=True,
+            ),
+            "content": JSONSchema(
+                type=JSONSchema.Type.STRING,
+                description="New imperative form (optional)",
+                required=False,
+            ),
+            "active_form": JSONSchema(
+                type=JSONSchema.Type.STRING,
+                description="New present continuous form (optional)",
+                required=False,
+            ),
+            "status": JSONSchema(
+                type=JSONSchema.Type.STRING,
+                description="New status (optional)",
+                enum=["pending", "in_progress", "completed"],
+                required=False,
+            ),
+        },
+    )
+    def todo_update(
+        self,
+        id: str,
+        content: Optional[str] = None,
+        active_form: Optional[str] = None,
+        status: Optional[TodoStatus] = None,
+    ) -> dict:
+        """
+        Partial update of a todo - only specified fields change.
+
+        Use this when you need to update multiple fields at once.
+        For just status changes, prefer todo_set_status.
+        """
+        item = self._find_by_id(id)
+        if not item:
+            return {"status": "error", "message": f"Todo with ID '{id}' not found"}
+
+        changes: dict[str, dict[str, str]] = {}
+
+        if content is not None:
+            if not content.strip():
+                return {"status": "error", "message": "'content' cannot be empty"}
+            changes["content"] = {"from": item.content, "to": content.strip()}
+            item.content = content.strip()
+
+        if active_form is not None:
+            if not active_form.strip():
+                return {"status": "error", "message": "'active_form' cannot be empty"}
+            changes["active_form"] = {
+                "from": item.active_form,
+                "to": active_form.strip(),
+            }
+            item.active_form = active_form.strip()
+
+        if status is not None:
+            changes["status"] = {"from": item.status, "to": status}
+            item.status = status
+
+        if not changes:
+            return {
+                "status": "success",
+                "item": self._serialize_todo_item(item),
+                "message": "No changes specified",
+            }
+
+        return {
+            "status": "success",
+            "item": self._serialize_todo_item(item),
+            "changed": changes,
+        }
+
+    @command(
+        names=["todo_delete"],
+        parameters={
+            "id": JSONSchema(
+                type=JSONSchema.Type.STRING,
+                description="The unique ID of the todo to delete",
+                required=True,
+            ),
+        },
+    )
+    def todo_delete(self, id: str) -> dict:
+        """
+        Explicitly delete a todo by ID.
+
+        Unlike todo_write where items are removed by omission (easy to accidentally
+        delete), this is an explicit delete operation.
+        """
+        index = self._find_index_by_id(id)
+        if index == -1:
+            return {"status": "error", "message": f"Todo with ID '{id}' not found"}
+
+        deleted_item = self._todos.items.pop(index)
+
+        return {
+            "status": "success",
+            "deleted": self._serialize_todo_item(deleted_item),
+            "remaining_items": len(self._todos.items),
+        }
+
+    @command(
+        names=["todo_bulk_add"],
+        parameters={
+            "items": JSONSchema(
+                type=JSONSchema.Type.ARRAY,
+                description="Array of todo items to add",
+                items=JSONSchema(
+                    type=JSONSchema.Type.OBJECT,
+                    properties={
+                        "content": JSONSchema(
+                            type=JSONSchema.Type.STRING,
+                            description="Imperative form of the task",
+                            required=True,
+                        ),
+                        "active_form": JSONSchema(
+                            type=JSONSchema.Type.STRING,
+                            description="Present continuous form",
+                            required=True,
+                        ),
+                        "status": JSONSchema(
+                            type=JSONSchema.Type.STRING,
+                            description="Initial status (default: pending)",
+                            enum=["pending", "in_progress", "completed"],
+                            required=False,
+                        ),
+                    },
+                ),
+                required=True,
+            ),
+        },
+    )
+    def todo_bulk_add(self, items: list[dict]) -> dict:
+        """
+        Add multiple todos at once. Use for initial planning.
+
+        This is efficient for creating the initial todo list at the start
+        of a multi-step task. For subsequent additions, use todo_add.
+        """
+        if not items:
+            return {"status": "error", "message": "No items provided"}
+
+        # Check max items
+        if len(self._todos.items) + len(items) > self.config.max_items:
+            return {
+                "status": "error",
+                "message": (
+                    f"Cannot add {len(items)} items: would exceed max "
+                    f"({self.config.max_items}). Current: {len(self._todos.items)}"
+                ),
+            }
+
+        added_items = []
+        for i, item in enumerate(items):
+            content = item.get("content", "").strip()
+            active_form = item.get("active_form", "").strip()
+            status = item.get("status", "pending")
+
+            if not content:
+                return {
+                    "status": "error",
+                    "message": f"Item {i}: 'content' is required",
+                }
+            if not active_form:
+                return {
+                    "status": "error",
+                    "message": f"Item {i}: 'active_form' is required",
+                }
+            if status not in ("pending", "in_progress", "completed"):
+                return {
+                    "status": "error",
+                    "message": f"Item {i}: invalid status '{status}'",
+                }
+
+            new_item = TodoItem(
+                content=content,
+                active_form=active_form,
+                status=status,
+            )
+            self._todos.items.append(new_item)
+            added_items.append(self._serialize_todo_item(new_item))
+
+        return {
+            "status": "success",
+            "added": added_items,
+            "added_count": len(added_items),
+            "total_items": len(self._todos.items),
+        }
+
+    @command(
+        names=["todo_reorder"],
+        parameters={
+            "ids": JSONSchema(
+                type=JSONSchema.Type.ARRAY,
+                description="List of todo IDs in the desired order",
+                items=JSONSchema(type=JSONSchema.Type.STRING),
+                required=True,
+            ),
+        },
+    )
+    def todo_reorder(self, ids: list[str]) -> dict:
+        """
+        Reorder todos by providing the ID list in desired order.
+
+        All current todo IDs must be included. This operation only
+        changes the order, not the items themselves.
+        """
+        current_ids = {item.id for item in self._todos.items}
+        provided_ids = set(ids)
+
+        # Check for duplicates first (before other checks)
+        if len(ids) != len(provided_ids):
+            return {"status": "error", "message": "Duplicate IDs in reorder list"}
+
+        # Validate that all provided IDs exist
+        unknown = provided_ids - current_ids
+        if unknown:
+            return {
+                "status": "error",
+                "message": f"Unknown todo IDs: {', '.join(unknown)}",
+            }
+
+        # Validate that all current IDs are provided
+        missing = current_ids - provided_ids
+        if missing:
+            return {
+                "status": "error",
+                "message": f"Missing todo IDs in reorder list: {', '.join(missing)}",
+            }
+
+        # Reorder
+        id_to_item = {item.id: item for item in self._todos.items}
+        self._todos.items = [id_to_item[id] for id in ids]
+
+        return {
+            "status": "success",
+            "order": ids,
+            "message": f"Reordered {len(ids)} items",
+        }

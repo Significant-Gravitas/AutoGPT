@@ -5,6 +5,10 @@ import uuid
 from pathlib import Path
 
 import pytest
+
+from autogpt.agents.agent import Agent, AgentConfiguration, AgentSettings
+from autogpt.app.config import AppConfig, ConfigBuilder
+from autogpt.app.main import _configure_llm_provider
 from forge.config.ai_profile import AIProfile
 from forge.file_storage.local import (
     FileStorage,
@@ -13,10 +17,6 @@ from forge.file_storage.local import (
 )
 from forge.llm.providers import MultiProvider
 from forge.logging.config import configure_logging
-
-from autogpt.agents.agent import Agent, AgentConfiguration, AgentSettings
-from autogpt.app.config import AppConfig, ConfigBuilder
-from autogpt.app.main import _configure_llm_provider
 
 pytest_plugins = [
     "tests.integration.agent_factory",

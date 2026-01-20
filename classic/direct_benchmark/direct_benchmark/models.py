@@ -7,7 +7,13 @@ from pydantic import BaseModel, Field
 
 # Type aliases
 StrategyName = Literal[
-    "one_shot", "rewoo", "plan_execute", "reflexion", "tree_of_thoughts"
+    "one_shot",
+    "rewoo",
+    "plan_execute",
+    "reflexion",
+    "tree_of_thoughts",
+    "lats",
+    "multi_agent_debate",
 ]
 ReasoningEffort = Literal["low", "medium", "high"]
 
@@ -17,6 +23,8 @@ STRATEGIES: list[StrategyName] = [
     "plan_execute",
     "reflexion",
     "tree_of_thoughts",
+    "lats",
+    "multi_agent_debate",
 ]
 
 

@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any, AsyncIterator, Optional
 
 import click
 from colorama import Fore, Style
+
 from forge.logging.utils import print_attribute
 from forge.permissions import ApprovalScope
 
@@ -138,9 +139,8 @@ class TerminalUIProvider(UIProvider):
             thoughts: The agent's thoughts (string or structured).
             speak_mode: Whether to use text-to-speech.
         """
-        from forge.models.utils import ModelWithSummary
-
         from autogpt.agents.prompt_strategies.one_shot import AssistantThoughts
+        from forge.models.utils import ModelWithSummary
 
         thoughts_text = self._remove_ansi_escape(
             thoughts.text

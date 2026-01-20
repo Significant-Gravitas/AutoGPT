@@ -1,12 +1,12 @@
 """Set up the AI and its goals"""
+
 import logging
 from typing import Optional
 
+from autogpt.app.config import AppConfig
 from forge.config.ai_directives import AIDirectives
 from forge.config.ai_profile import AIProfile
 from forge.logging.utils import print_attribute
-
-from autogpt.app.config import AppConfig
 
 logger = logging.getLogger(__name__)
 

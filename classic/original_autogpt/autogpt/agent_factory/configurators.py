@@ -1,13 +1,15 @@
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
+from autogpt.agents.agent import Agent, AgentConfiguration, AgentSettings
+from autogpt.app.config import AppConfig
 from forge.config.ai_directives import AIDirectives
 from forge.config.ai_profile import AIProfile
 from forge.file_storage.base import FileStorage
 from forge.llm.providers import MultiProvider
 from forge.permissions import CommandPermissionManager
 
-from autogpt.agents.agent import Agent, AgentConfiguration, AgentSettings
-from autogpt.app.config import AppConfig
+if TYPE_CHECKING:
+    from forge.agent.execution_context import ExecutionContext
 
 
 def create_agent(
@@ -19,6 +21,7 @@ def create_agent(
     ai_profile: Optional[AIProfile] = None,
     directives: Optional[AIDirectives] = None,
     permission_manager: Optional[CommandPermissionManager] = None,
+    execution_context: Optional["ExecutionContext"] = None,
 ) -> Agent:
     if not task:
         raise ValueError("No task specified for new agent")
@@ -34,6 +37,7 @@ def create_agent(
         file_storage=file_storage,
         llm_provider=llm_provider,
         permission_manager=permission_manager,
+        execution_context=execution_context,
     )
 
     return agent
@@ -45,6 +49,7 @@ def configure_agent_with_state(
     file_storage: FileStorage,
     llm_provider: MultiProvider,
     permission_manager: Optional[CommandPermissionManager] = None,
+    execution_context: Optional["ExecutionContext"] = None,
 ) -> Agent:
     return _configure_agent(
         state=state,
@@ -52,6 +57,7 @@ def configure_agent_with_state(
         file_storage=file_storage,
         llm_provider=llm_provider,
         permission_manager=permission_manager,
+        execution_context=execution_context,
     )
 
 
@@ -65,6 +71,7 @@ def _configure_agent(
     directives: Optional[AIDirectives] = None,
     state: Optional[AgentSettings] = None,
     permission_manager: Optional[CommandPermissionManager] = None,
+    execution_context: Optional["ExecutionContext"] = None,
 ) -> Agent:
     if state:
         agent_state = state
@@ -88,6 +95,7 @@ def _configure_agent(
         file_storage=file_storage,
         app_config=app_config,
         permission_manager=permission_manager,
+        execution_context=execution_context,
     )
 
 

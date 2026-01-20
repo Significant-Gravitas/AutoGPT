@@ -6,6 +6,7 @@ implementations including ReWOO, Plan-and-Execute, Reflexion, and Tree of Though
 
 from __future__ import annotations
 
+import asyncio
 import enum
 import platform
 from abc import ABC, abstractmethod
@@ -14,6 +15,14 @@ from logging import Logger
 from typing import TYPE_CHECKING, Any, Literal, Optional, TypeVar
 
 import distro
+from pydantic import BaseModel, ConfigDict, Field
+
+from forge.agent.execution_context import (
+    ExecutionContext,
+    SubAgentHandle,
+    SubAgentStatus,
+    generate_sub_agent_id,
+)
 from forge.config.ai_directives import AIDirectives
 from forge.config.ai_profile import AIProfile
 from forge.llm.prompting import ChatPrompt, LanguageModelClassification
@@ -26,7 +35,6 @@ from forge.llm.providers.schema import (
 from forge.models.action import ActionProposal
 from forge.models.config import SystemConfiguration, UserConfigurable
 from forge.models.utils import ModelWithSummary
-from pydantic import BaseModel, ConfigDict, Field
 
 if TYPE_CHECKING:
     pass
@@ -40,6 +48,8 @@ class PromptStrategyType(str, enum.Enum):
     PLAN_EXECUTE = "plan_execute"
     REFLEXION = "reflexion"
     TREE_OF_THOUGHTS = "tree_of_thoughts"
+    LATS = "lats"  # Language Agent Tree Search (sub-agent based)
+    MULTI_AGENT_DEBATE = "multi_agent_debate"  # Multi-agent debate (sub-agent based)
 
 
 class PlannedStep(BaseModel):
@@ -248,12 +258,27 @@ class BasePromptStrategyConfiguration(SystemConfiguration):
     body_template: str = UserConfigurable(default=DEFAULT_BODY_TEMPLATE)
     use_prefill: bool = True
 
+    # Sub-agent configuration
+    enable_sub_agents: bool = UserConfigurable(default=True)
+    """Enable sub-agent spawning for this strategy."""
+
+    max_sub_agents: int = UserConfigurable(default=5)
+    """Maximum number of sub-agents that can be spawned."""
+
+    sub_agent_timeout_seconds: int = UserConfigurable(default=300)
+    """Timeout for sub-agent execution in seconds."""
+
+    sub_agent_max_cycles: int = UserConfigurable(default=25)
+    """Maximum execution cycles per sub-agent."""
+
 
 class BaseMultiStepPromptStrategy(ABC):
     """Base class for multi-step prompt strategies.
 
     Provides common utilities for strategies that involve multiple phases
     like planning, execution, synthesis, or reflection.
+
+    Also provides sub-agent spawning capabilities when enabled via config.
     """
 
     def __init__(
@@ -263,6 +288,300 @@ class BaseMultiStepPromptStrategy(ABC):
     ):
         self.config = configuration
         self.logger = logger
+        self._execution_context: Optional[ExecutionContext] = None
+
+    # ===== Sub-Agent Support Methods =====
+
+    def set_execution_context(self, context: ExecutionContext) -> None:
+        """Inject execution context. Called by Agent after creation.
+
+        This provides the strategy with access to shared resources needed
+        for sub-agent spawning (LLM provider, file storage, agent factory).
+
+        Args:
+            context: The execution context from the parent agent.
+        """
+        self._execution_context = context
+        self.logger.debug(
+            f"ExecutionContext set (depth={context.depth}, "
+            f"sub_agents_enabled={self.config.enable_sub_agents})"
+        )
+
+    def can_spawn_sub_agent(self) -> bool:
+        """Check if sub-agent spawning is available and allowed.
+
+        Returns:
+            True if sub-agents can be spawned, False otherwise.
+        """
+        if not self.config.enable_sub_agents:
+            return False
+        if self._execution_context is None:
+            return False
+        return self._execution_context.can_spawn_sub_agent()
+
+    async def spawn_sub_agent(
+        self,
+        task: str,
+        ai_profile: Optional[AIProfile] = None,
+        directives: Optional[AIDirectives] = None,
+        strategy: Optional[str] = None,
+    ) -> SubAgentHandle:
+        """Spawn a sub-agent to handle a subtask.
+
+        The sub-agent runs with its own execution context (reduced budget,
+        restricted file storage) and can be run synchronously or in background.
+
+        Args:
+            task: The task for the sub-agent to accomplish.
+            ai_profile: Optional AI profile override.
+            directives: Optional directives override.
+            strategy: Optional strategy name override (e.g., "one_shot").
+
+        Returns:
+            A SubAgentHandle for tracking and interacting with the sub-agent.
+
+        Raises:
+            RuntimeError: If sub-agent spawning is not available.
+        """
+        if not self.can_spawn_sub_agent():
+            raise RuntimeError(
+                "Cannot spawn sub-agent: "
+                + ("not enabled" if not self.config.enable_sub_agents else "no context")
+            )
+
+        assert self._execution_context is not None
+
+        # Generate unique ID for sub-agent
+        parent_id = self._execution_context.parent_agent_id
+        agent_id = generate_sub_agent_id(parent_id)
+
+        # Create handle
+        handle = SubAgentHandle(
+            agent_id=agent_id,
+            task=task,
+            status=SubAgentStatus.PENDING,
+        )
+
+        # Create child context with restricted resources
+        child_context = self._execution_context.create_child_context(agent_id)
+
+        # Create the sub-agent via factory
+        factory = self._execution_context.agent_factory
+        if factory is None:
+            raise RuntimeError("No agent factory available")
+
+        try:
+            agent = factory.create_agent(
+                agent_id=agent_id,
+                task=task,
+                context=child_context,
+                ai_profile=ai_profile,
+                directives=directives,
+                strategy=strategy,
+            )
+            handle._agent = agent
+            handle.status = SubAgentStatus.PENDING
+
+            # Register with parent context
+            self._execution_context.register_sub_agent(handle)
+
+            self.logger.info(f"Spawned sub-agent {agent_id} for task: {task[:100]}...")
+
+        except Exception as e:
+            handle.status = SubAgentStatus.FAILED
+            handle.error = str(e)
+            self.logger.error(f"Failed to spawn sub-agent: {e}")
+
+        return handle
+
+    async def run_sub_agent(
+        self,
+        handle: SubAgentHandle,
+        max_cycles: Optional[int] = None,
+    ) -> Any:
+        """Run a sub-agent until completion.
+
+        Executes the sub-agent's action loop until it finishes or hits
+        the cycle limit.
+
+        Args:
+            handle: The sub-agent handle from spawn_sub_agent().
+            max_cycles: Maximum cycles to run (default from config).
+
+        Returns:
+            The result from the sub-agent (typically the finish command output).
+
+        Raises:
+            RuntimeError: If the sub-agent is not in a runnable state.
+        """
+        if handle._agent is None:
+            raise RuntimeError(f"Sub-agent {handle.agent_id} has no agent instance")
+
+        if handle.status not in (SubAgentStatus.PENDING, SubAgentStatus.RUNNING):
+            raise RuntimeError(
+                f"Sub-agent {handle.agent_id} is not runnable "
+                f"(status={handle.status})"
+            )
+
+        max_cycles = max_cycles or self.config.sub_agent_max_cycles
+        timeout = self.config.sub_agent_timeout_seconds
+
+        handle.status = SubAgentStatus.RUNNING
+        agent = handle._agent
+
+        try:
+            result = await asyncio.wait_for(
+                self._run_agent_loop(agent, max_cycles, handle),
+                timeout=timeout,
+            )
+            handle.result = result
+            handle.status = SubAgentStatus.COMPLETED
+            return result
+
+        except asyncio.TimeoutError:
+            handle.status = SubAgentStatus.FAILED
+            handle.error = f"Timed out after {timeout}s"
+            self.logger.warning(f"Sub-agent {handle.agent_id} timed out")
+            return None
+
+        except asyncio.CancelledError:
+            handle.status = SubAgentStatus.CANCELLED
+            self.logger.info(f"Sub-agent {handle.agent_id} was cancelled")
+            raise
+
+        except Exception as e:
+            handle.status = SubAgentStatus.FAILED
+            handle.error = str(e)
+            self.logger.error(f"Sub-agent {handle.agent_id} failed: {e}")
+            return None
+
+    async def _run_agent_loop(
+        self,
+        agent: Any,
+        max_cycles: int,
+        handle: SubAgentHandle,
+    ) -> Any:
+        """Run the agent's propose/execute loop.
+
+        Args:
+            agent: The agent instance.
+            max_cycles: Maximum cycles to run.
+            handle: The sub-agent handle for status tracking.
+
+        Returns:
+            The result from the finish command, or None if max cycles reached.
+        """
+        for cycle in range(max_cycles):
+            # Check for cancellation
+            if self._execution_context and self._execution_context.cancelled:
+                handle.status = SubAgentStatus.CANCELLED
+                return None
+
+            # Propose next action
+            proposal = await agent.propose_action()
+
+            # Check for finish command
+            if proposal.use_tool.name == "finish":
+                # Extract result from finish arguments
+                result = proposal.use_tool.arguments.get("reason", "")
+                handle.summary = result[:200] if result else "Task completed"
+                return result
+
+            # Execute the action
+            result = await agent.execute(proposal)
+
+            # Log progress
+            self.logger.debug(
+                f"Sub-agent {handle.agent_id} cycle {cycle + 1}: "
+                f"{proposal.use_tool.name}"
+            )
+
+        # Hit max cycles
+        handle.summary = f"Reached max cycles ({max_cycles})"
+        return None
+
+    async def spawn_and_run(
+        self,
+        task: str,
+        ai_profile: Optional[AIProfile] = None,
+        directives: Optional[AIDirectives] = None,
+        strategy: Optional[str] = None,
+        max_cycles: Optional[int] = None,
+    ) -> Any:
+        """Convenience method: spawn and immediately run a sub-agent.
+
+        This is the most common pattern for sub-agent usage.
+
+        Args:
+            task: The task for the sub-agent.
+            ai_profile: Optional AI profile override.
+            directives: Optional directives override.
+            strategy: Optional strategy name override.
+            max_cycles: Maximum cycles to run.
+
+        Returns:
+            The result from the sub-agent.
+        """
+        handle = await self.spawn_sub_agent(
+            task=task,
+            ai_profile=ai_profile,
+            directives=directives,
+            strategy=strategy,
+        )
+
+        if handle.status == SubAgentStatus.FAILED:
+            self.logger.error(f"Failed to spawn sub-agent: {handle.error}")
+            return None
+
+        return await self.run_sub_agent(handle, max_cycles=max_cycles)
+
+    async def run_parallel(
+        self,
+        tasks: list[str],
+        strategy: Optional[str] = None,
+        max_cycles: Optional[int] = None,
+    ) -> list[Any]:
+        """Run multiple sub-agents in parallel.
+
+        Useful for patterns like multi-agent debate or parallel exploration.
+
+        Args:
+            tasks: List of tasks for sub-agents.
+            strategy: Optional strategy name for all sub-agents.
+            max_cycles: Maximum cycles per sub-agent.
+
+        Returns:
+            List of results from all sub-agents (in same order as tasks).
+        """
+        # Spawn all sub-agents
+        handles = []
+        for task in tasks:
+            handle = await self.spawn_sub_agent(task=task, strategy=strategy)
+            handles.append(handle)
+
+        # Run all in parallel
+        async def run_one(h: SubAgentHandle) -> Any:
+            if h.status == SubAgentStatus.FAILED:
+                return None
+            return await self.run_sub_agent(h, max_cycles=max_cycles)
+
+        results = await asyncio.gather(*[run_one(h) for h in handles])
+        return list(results)
+
+    def get_sub_agent_results(self) -> dict[str, Any]:
+        """Get results from all completed sub-agents.
+
+        Returns:
+            Dictionary mapping agent_id to result.
+        """
+        if self._execution_context is None:
+            return {}
+
+        return {
+            agent_id: handle.result
+            for agent_id, handle in self._execution_context.sub_agents.items()
+            if handle.status == SubAgentStatus.COMPLETED
+        }
 
     @property
     @abstractmethod
@@ -377,6 +696,14 @@ def get_strategy_class(
         from .tree_of_thoughts import TreeOfThoughtsPromptStrategy
 
         return TreeOfThoughtsPromptStrategy
+    elif strategy_type == PromptStrategyType.LATS:
+        from .lats import LATSPromptStrategy
+
+        return LATSPromptStrategy
+    elif strategy_type == PromptStrategyType.MULTI_AGENT_DEBATE:
+        from .multi_agent_debate import MultiAgentDebateStrategy
+
+        return MultiAgentDebateStrategy
 
     if strategy_type not in strategy_map:
         raise ValueError(f"Unknown strategy type: {strategy_type}")

@@ -5,7 +5,10 @@ import logging
 from typing import TYPE_CHECKING, Any, ClassVar, Optional
 
 import sentry_sdk
+from pydantic import Field
+
 from forge.agent.base import BaseAgent, BaseAgentConfiguration, BaseAgentSettings
+from forge.agent.execution_context import ExecutionContext
 from forge.agent.protocols import (
     AfterExecute,
     AfterParse,
@@ -63,8 +66,9 @@ from forge.utils.exceptions import (
     CommandExecutionError,
     UnknownCommandError,
 )
-from pydantic import Field
 
+from .prompt_strategies.lats import LATSActionProposal
+from .prompt_strategies.multi_agent_debate import DebateActionProposal
 from .prompt_strategies.one_shot import (
     OneShotAgentActionProposal,
     OneShotAgentPromptStrategy,
@@ -90,6 +94,8 @@ AnyActionProposal = (
     | ReWOOActionProposal
     | ReflexionActionProposal
     | ToTActionProposal
+    | LATSActionProposal
+    | DebateActionProposal
 )
 
 if TYPE_CHECKING:
@@ -128,11 +134,27 @@ class Agent(BaseAgent[AnyActionProposal], Configurable[AgentSettings]):
         file_storage: FileStorage,
         app_config: AppConfig,
         permission_manager: Optional[CommandPermissionManager] = None,
+        execution_context: Optional[ExecutionContext] = None,
     ):
         super().__init__(settings, permission_manager=permission_manager)
 
         self.llm_provider = llm_provider
+        self.app_config = app_config
+
+        # Create or use provided execution context
+        if execution_context:
+            self.execution_context = execution_context
+        else:
+            # Root agent - create new context
+            self.execution_context = self._create_root_execution_context(
+                llm_provider, file_storage, app_config
+            )
+
+        # Create prompt strategy and inject execution context
         self.prompt_strategy = self._create_prompt_strategy(app_config)
+        if hasattr(self.prompt_strategy, "set_execution_context"):
+            self.prompt_strategy.set_execution_context(self.execution_context)
+
         self.commands: list[Command] = []
 
         # Components
@@ -181,7 +203,40 @@ class Agent(BaseAgent[AnyActionProposal], Configurable[AgentSettings]):
         )
 
         self.event_history = settings.history
-        self.app_config = app_config
+
+    def _create_root_execution_context(
+        self,
+        llm_provider: MultiProvider,
+        file_storage: FileStorage,
+        app_config: AppConfig,
+    ) -> ExecutionContext:
+        """Create execution context for a root (top-level) agent.
+
+        Root agents create their own execution context with:
+        - Full access to shared resources
+        - Default resource budget
+        - An agent factory for spawning sub-agents
+
+        Args:
+            llm_provider: The LLM provider instance.
+            file_storage: The file storage instance.
+            app_config: The application configuration.
+
+        Returns:
+            A new ExecutionContext for this root agent.
+        """
+        from autogpt.agent_factory.default_factory import DefaultAgentFactory
+
+        factory = DefaultAgentFactory(app_config)
+
+        return ExecutionContext(
+            llm_provider=llm_provider,
+            file_storage=file_storage,
+            agent_factory=factory,
+            parent_agent_id=None,  # Root agent has no parent
+            depth=0,
+            _app_config=app_config,
+        )
 
     async def propose_action(self) -> AnyActionProposal:
         """Proposes the next action to execute, based on the task and current state.
@@ -457,6 +512,22 @@ class Agent(BaseAgent[AnyActionProposal], Configurable[AgentSettings]):
             )
             tot_config.use_prefill = use_prefill
             return TreeOfThoughtsPromptStrategy(tot_config, logger)
+
+        elif strategy_name == "lats":
+            from .prompt_strategies.lats import LATSPromptStrategy
+
+            lats_config = LATSPromptStrategy.default_configuration.model_copy(deep=True)
+            lats_config.use_prefill = use_prefill
+            return LATSPromptStrategy(lats_config, logger)
+
+        elif strategy_name == "multi_agent_debate":
+            from .prompt_strategies.multi_agent_debate import MultiAgentDebateStrategy
+
+            debate_config = MultiAgentDebateStrategy.default_configuration.model_copy(
+                deep=True
+            )
+            debate_config.use_prefill = use_prefill
+            return MultiAgentDebateStrategy(debate_config, logger)
 
         else:  # Default to one_shot
             os_config = OneShotAgentPromptStrategy.default_configuration.model_copy(
