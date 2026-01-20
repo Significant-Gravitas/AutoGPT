@@ -50,7 +50,7 @@ export function useCopilotShell() {
     fetchNextPage,
     reset: resetPagination,
   } = useSessionsPagination({
-    enabled: paginationEnabled && isLoggedIn,
+    enabled: paginationEnabled,
   });
 
   const storedSessionId = storage.get(Key.CHAT_SESSION_ID) ?? null;
@@ -62,7 +62,7 @@ export function useCopilotShell() {
   const { data: currentSessionData, isLoading: isCurrentSessionLoading } =
     useGetV2GetSession(currentSessionId || "", {
       query: {
-        enabled: !!currentSessionId && paginationEnabled && isLoggedIn,
+        enabled: !!currentSessionId && paginationEnabled,
         select: okData,
       },
     });
@@ -71,16 +71,6 @@ export function useCopilotShell() {
   const hasCreatedSessionRef = useRef(false);
   const paramSessionId = searchParams.get("sessionId");
   const paramPrompt = searchParams.get("prompt");
-  
-  useEffect(
-    () => {
-      if (!isLoggedIn) {
-        router.replace("/login");
-      }
-    },
-    [isLoggedIn],
-  );
-
 
   const createSessionAndNavigate = useCallback(
     function createSessionAndNavigate() {

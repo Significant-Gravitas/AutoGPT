@@ -5,6 +5,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
 import { ArrowUpIcon } from "@phosphor-icons/react";
+import { useEffect } from "react";
 import { useCopilotHome } from "./useCopilotHome";
 
 export default function CopilotPage() {
@@ -21,6 +22,22 @@ export default function CopilotPage() {
     handleKeyDown,
     handleQuickAction,
   } = useCopilotHome();
+
+  useEffect(() => {
+    const textarea = document.getElementById("copilot-prompt") as HTMLTextAreaElement;
+    if (!textarea) return;
+    textarea.style.height = "auto";
+    const lineHeight = parseInt(
+      window.getComputedStyle(textarea).lineHeight,
+      10,
+    );
+    const maxRows = 5;
+    const maxHeight = lineHeight * maxRows;
+    const newHeight = Math.min(textarea.scrollHeight, maxHeight);
+    textarea.style.height = `${newHeight}px`;
+    textarea.style.overflowY =
+      textarea.scrollHeight > maxHeight ? "auto" : "hidden";
+  }, [value]);
 
   if (!isFlagReady || isChatEnabled === false || !isLoggedIn) {
     return null;
@@ -46,10 +63,10 @@ export default function CopilotPage() {
           </>
         ) : (
           <>
-            <Text variant="h2" className="mb-3 text-zinc-700">
+            <Text variant="h3" className="mb-3 text-zinc-700 text-[1.5rem]">
               Hey, <span className="text-violet-600">{greetingName}</span>
             </Text>
-            <Text variant="h3" className="mb-8 text-zinc-900">
+            <Text variant="h3" className="mb-8">
               What do you want to automate?
             </Text>
 
@@ -66,7 +83,7 @@ export default function CopilotPage() {
                   rows={1}
                   placeholder='You can search or just ask - e.g. "create a blog post outline"'
                   wrapperClassName="mb-0"
-                  className="min-h-[3.5rem] pr-12 text-base"
+                  className="!py-5 !rounded-full pr-12 !text-[1rem]"
                 />
                 <Button
                   type="submit"
@@ -88,7 +105,7 @@ export default function CopilotPage() {
                   variant="outline"
                   size="small"
                   onClick={() => handleQuickAction(action)}
-                  className="border-zinc-300 text-zinc-700 hover:border-zinc-400 hover:bg-zinc-50"
+                  className="border-zinc-600 text-zinc-600 text-[1rem] !py-2 !px-4 h-auto"
                 >
                   {action}
                 </Button>
