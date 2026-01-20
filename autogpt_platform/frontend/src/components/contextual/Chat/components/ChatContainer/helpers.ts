@@ -1,5 +1,32 @@
+import {
+  SessionKey,
+  sessionStorage,
+} from "@/services/storage/session-storage";
 import type { ToolResult } from "@/types/chat";
 import type { ChatMessageData } from "../ChatMessage/useChatMessage";
+
+export function hasSentInitialPrompt(sessionId: string): boolean {
+  try {
+    const sent = JSON.parse(
+      sessionStorage.get(SessionKey.CHAT_SENT_INITIAL_PROMPTS) || "{}",
+    );
+    return sent[sessionId] === true;
+  } catch {
+    return false;
+  }
+}
+
+export function markInitialPromptSent(sessionId: string): void {
+  try {
+    const sent = JSON.parse(
+      sessionStorage.get(SessionKey.CHAT_SENT_INITIAL_PROMPTS) || "{}",
+    );
+    sent[sessionId] = true;
+    sessionStorage.set(SessionKey.CHAT_SENT_INITIAL_PROMPTS, JSON.stringify(sent));
+  } catch {
+    // Ignore storage errors
+  }
+}
 
 export function removePageContext(content: string): string {
   // Remove "Page URL: ..." pattern at start of line (case insensitive, handles various formats)

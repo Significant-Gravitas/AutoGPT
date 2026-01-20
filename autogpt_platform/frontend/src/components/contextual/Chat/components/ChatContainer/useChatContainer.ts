@@ -1,14 +1,17 @@
 import type { SessionDetailResponse } from "@/app/api/__generated__/models/sessionDetailResponse";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useChatStream } from "../../useChatStream";
+import { usePageContext } from "../../usePageContext";
 import type { ChatMessageData } from "../ChatMessage/useChatMessage";
 import { createStreamEventDispatcher } from "./createStreamEventDispatcher";
 import {
   createUserMessage,
   filterAuthMessages,
+  hasSentInitialPrompt,
   isToolCallArray,
   isValidMessage,
+  markInitialPromptSent,
   parseToolResponse,
   removePageContext,
 } from "./helpers";
@@ -16,9 +19,10 @@ import {
 interface Args {
   sessionId: string | null;
   initialMessages: SessionDetailResponse["messages"];
+  initialPrompt?: string;
 }
 
-export function useChatContainer({ sessionId, initialMessages }: Args) {
+export function useChatContainer({ sessionId, initialMessages, initialPrompt }: Args) {
   const [messages, setMessages] = useState<ChatMessageData[]>([]);
   const [streamingChunks, setStreamingChunks] = useState<string[]>([]);
   const [hasTextChunks, setHasTextChunks] = useState(false);
@@ -29,7 +33,6 @@ export function useChatContainer({ sessionId, initialMessages }: Args) {
 
   const allMessages = useMemo(() => {
     const processedInitialMessages: ChatMessageData[] = [];
-    // Map to track tool calls by their ID so we can look up tool names for tool responses
     const toolCallMap = new Map<string, string>();
 
     for (const msg of initialMessages) {
@@ -45,13 +48,9 @@ export function useChatContainer({ sessionId, initialMessages }: Args) {
         ? new Date(msg.timestamp as string)
         : undefined;
 
-      // Remove page context from user messages when loading existing sessions
       if (role === "user") {
         content = removePageContext(content);
-        // Skip user messages that become empty after removing page context
-        if (!content.trim()) {
-          continue;
-        }
+        if (!content.trim()) continue;
         processedInitialMessages.push({
           type: "message",
           role: "user",
@@ -61,19 +60,15 @@ export function useChatContainer({ sessionId, initialMessages }: Args) {
         continue;
       }
 
-      // Handle assistant messages first (before tool messages) to build tool call map
       if (role === "assistant") {
-        // Strip <thinking> tags from content
         content = content
           .replace(/<thinking>[\s\S]*?<\/thinking>/gi, "")
           .trim();
 
-        // If assistant has tool calls, create tool_call messages for each
         if (toolCalls && isToolCallArray(toolCalls) && toolCalls.length > 0) {
           for (const toolCall of toolCalls) {
             const toolName = toolCall.function.name;
             const toolId = toolCall.id;
-            // Store tool name for later lookup
             toolCallMap.set(toolId, toolName);
 
             try {
@@ -96,7 +91,6 @@ export function useChatContainer({ sessionId, initialMessages }: Args) {
               });
             }
           }
-          // Only add assistant message if there's content after stripping thinking tags
           if (content.trim()) {
             processedInitialMessages.push({
               type: "message",
@@ -106,7 +100,6 @@ export function useChatContainer({ sessionId, initialMessages }: Args) {
             });
           }
         } else if (content.trim()) {
-          // Assistant message without tool calls, but with content
           processedInitialMessages.push({
             type: "message",
             role: "assistant",
@@ -117,7 +110,6 @@ export function useChatContainer({ sessionId, initialMessages }: Args) {
         continue;
       }
 
-      // Handle tool messages - look up tool name from tool call map
       if (role === "tool") {
         const toolCallId = (msg.tool_call_id as string) || "";
         const toolName = toolCallMap.get(toolCallId) || "unknown";
@@ -133,7 +125,6 @@ export function useChatContainer({ sessionId, initialMessages }: Args) {
         continue;
       }
 
-      // Handle other message types (system, etc.)
       if (content.trim()) {
         processedInitialMessages.push({
           type: "message",
@@ -154,7 +145,7 @@ export function useChatContainer({ sessionId, initialMessages }: Args) {
       context?: { url: string; content: string },
     ) {
       if (!sessionId) {
-        console.error("Cannot send message: no session ID");
+        console.error("[useChatContainer] Cannot send message: no session ID");
         return;
       }
       if (isUserMessage) {
@@ -167,6 +158,7 @@ export function useChatContainer({ sessionId, initialMessages }: Args) {
       streamingChunksRef.current = [];
       setHasTextChunks(false);
       setIsStreamingInitiated(true);
+      
       const dispatcher = createStreamEventDispatcher({
         setHasTextChunks,
         setStreamingChunks,
@@ -175,6 +167,7 @@ export function useChatContainer({ sessionId, initialMessages }: Args) {
         sessionId,
         setIsStreamingInitiated,
       });
+      
       try {
         await sendStreamMessage(
           sessionId,
@@ -184,8 +177,12 @@ export function useChatContainer({ sessionId, initialMessages }: Args) {
           context,
         );
       } catch (err) {
-        console.error("Failed to send message:", err);
+        console.error("[useChatContainer] Failed to send message:", err);
         setIsStreamingInitiated(false);
+        
+        // Don't show error toast for AbortError (expected during cleanup)
+        if (err instanceof Error && err.name === "AbortError") return;
+        
         const errorMessage =
           err instanceof Error ? err.message : "Failed to send message";
         toast.error("Failed to send message", {
@@ -194,6 +191,22 @@ export function useChatContainer({ sessionId, initialMessages }: Args) {
       }
     },
     [sessionId, sendStreamMessage],
+  );
+
+  const { capturePageContext } = usePageContext();
+
+  // Send initial prompt if provided (for new sessions from homepage)
+  useEffect(
+    function handleInitialPrompt() {
+      if (!initialPrompt || !sessionId) return;
+      if (initialMessages.length > 0) return;
+      if (hasSentInitialPrompt(sessionId)) return;
+
+      markInitialPromptSent(sessionId);
+      const context = capturePageContext();
+      sendMessage(initialPrompt, true, context);
+    },
+    [initialPrompt, sessionId, initialMessages.length, sendMessage, capturePageContext],
   );
 
   return {

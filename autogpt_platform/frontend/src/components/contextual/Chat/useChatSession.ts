@@ -189,10 +189,7 @@ export function useChatSession({
 
   const refreshSession = useCallback(
     async function refreshSession() {
-      if (!sessionId) {
-        console.log("[refreshSession] Skipping - no session ID");
-        return;
-      }
+      if (!sessionId) return;
       try {
         setError(null);
         await refetch();

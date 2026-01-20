@@ -30,18 +30,9 @@ export function handleTextEnded(
   _chunk: StreamChunk,
   deps: HandlerDependencies,
 ) {
-  console.log("[Text Ended] Saving streamed text as assistant message");
   const completedText = deps.streamingChunksRef.current.join("");
   if (completedText.trim()) {
     deps.setMessages((prev) => {
-      const lastMessage = prev[prev.length - 1];
-      console.log("[Text Ended] Previous message:", {
-        type: lastMessage?.type,
-        toolName:
-          lastMessage?.type === "tool_call" ? lastMessage.toolName : undefined,
-        content: completedText.substring(0, 200),
-      });
-
       const assistantMessage: ChatMessageData = {
         type: "message",
         role: "assistant",
@@ -68,22 +59,12 @@ export function handleToolCallStart(
     timestamp: new Date(),
   };
   deps.setMessages((prev) => [...prev, toolCallMessage]);
-  console.log("[Tool Call Start]", {
-    toolId: toolCallMessage.toolId,
-    toolName: toolCallMessage.toolName,
-    timestamp: new Date().toISOString(),
-  });
 }
 
 export function handleToolResponse(
   chunk: StreamChunk,
   deps: HandlerDependencies,
 ) {
-  console.log("[Tool Response] Received:", {
-    toolId: chunk.tool_id,
-    toolName: chunk.tool_name,
-    timestamp: new Date().toISOString(),
-  });
   let toolName = chunk.tool_name || "unknown";
   if (!chunk.tool_name || chunk.tool_name === "unknown") {
     deps.setMessages((prev) => {
@@ -140,19 +121,8 @@ export function handleToolResponse(
     if (toolCallIndex !== -1) {
       const newMessages = [...prev];
       newMessages[toolCallIndex] = responseMessage;
-      console.log(
-        "[Tool Response] Replaced tool_call with matching tool_id:",
-        chunk.tool_id,
-        "at index:",
-        toolCallIndex,
-      );
       return newMessages;
     }
-    console.warn(
-      "[Tool Response] No tool_call found with tool_id:",
-      chunk.tool_id,
-      "appending instead",
-    );
     return [...prev, responseMessage];
   });
 }
@@ -177,50 +147,19 @@ export function handleStreamEnd(
   deps: HandlerDependencies,
 ) {
   const completedContent = deps.streamingChunksRef.current.join("");
-  // Only save message if there are uncommitted chunks
-  // (text_ended already saved if there were tool calls)
   if (completedContent.trim()) {
-    console.log(
-      "[Stream End] Saving remaining streamed text as assistant message",
-    );
     const assistantMessage: ChatMessageData = {
       type: "message",
       role: "assistant",
       content: completedContent,
       timestamp: new Date(),
     };
-    deps.setMessages((prev) => {
-      const updated = [...prev, assistantMessage];
-      console.log("[Stream End] Final state:", {
-        localMessages: updated.map((m) => ({
-          type: m.type,
-          ...(m.type === "message" && {
-            role: m.role,
-            contentLength: m.content.length,
-          }),
-          ...(m.type === "tool_call" && {
-            toolId: m.toolId,
-            toolName: m.toolName,
-          }),
-          ...(m.type === "tool_response" && {
-            toolId: m.toolId,
-            toolName: m.toolName,
-            success: m.success,
-          }),
-        })),
-        streamingChunks: deps.streamingChunksRef.current,
-        timestamp: new Date().toISOString(),
-      });
-      return updated;
-    });
-  } else {
-    console.log("[Stream End] No uncommitted chunks, message already saved");
+    deps.setMessages((prev) => [...prev, assistantMessage]);
   }
   deps.setStreamingChunks([]);
   deps.streamingChunksRef.current = [];
   deps.setHasTextChunks(false);
   deps.setIsStreamingInitiated(false);
-  console.log("[Stream End] Stream complete, messages in local state");
 }
 
 export function handleError(chunk: StreamChunk, deps: HandlerDependencies) {

@@ -1,28 +1,160 @@
 "use client";
 
+import { postV2CreateSession } from "@/app/api/__generated__/endpoints/chat/chat";
 import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
+import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Text } from "@/components/atoms/Text/Text";
+import { Chat } from "@/components/contextual/Chat/Chat";
+import { getHomepageRoute } from "@/lib/constants";
+import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import {
+  Flag,
+  type FlagValues,
+  useGetFlag,
+} from "@/services/feature-flags/use-get-flag";
 import { ArrowUpIcon } from "@phosphor-icons/react";
-import { useEffect } from "react";
-import { useCopilotHome } from "./useCopilotHome";
+import { useFlags } from "launchdarkly-react-client-sdk";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { getGreetingName, getQuickActions } from "./helpers";
+
+type PageState =
+  | { type: "welcome" }
+  | { type: "creating"; prompt: string }
+  | { type: "chat"; sessionId: string; initialPrompt?: string };
 
 export default function CopilotPage() {
-  const {
-    greetingName,
-    value,
-    quickActions,
-    isFlagReady,
-    isChatEnabled,
-    isUserLoading,
-    isLoggedIn,
-    handleChange,
-    handleSubmit,
-    handleKeyDown,
-    handleQuickAction,
-  } = useCopilotHome();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { user, isLoggedIn, isUserLoading } = useSupabase();
 
+  const isChatEnabled = useGetFlag(Flag.CHAT);
+  const flags = useFlags<FlagValues>();
+  const homepageRoute = getHomepageRoute(isChatEnabled);
+  const envEnabled = process.env.NEXT_PUBLIC_LAUNCHDARKLY_ENABLED === "true";
+  const clientId = process.env.NEXT_PUBLIC_LAUNCHDARKLY_CLIENT_ID;
+  const isLaunchDarklyConfigured = envEnabled && Boolean(clientId);
+  const isFlagReady =
+    !isLaunchDarklyConfigured || flags[Flag.CHAT] !== undefined;
+
+  const [inputValue, setInputValue] = useState("");
+  const [pageState, setPageState] = useState<PageState>({ type: "welcome" });
+  const initialPromptRef = useRef<Map<string, string>>(new Map());
+
+  const urlSessionId = searchParams.get("sessionId");
+
+  // Sync with URL sessionId (preserve initialPrompt from ref)
+  useEffect(
+    function syncSessionFromUrl() {
+      if (urlSessionId) {
+        // If we're already in chat state with this sessionId, don't overwrite
+        if (
+          pageState.type === "chat" &&
+          pageState.sessionId === urlSessionId
+        ) {
+          return;
+        }
+        // Get initialPrompt from ref or current state
+        const storedInitialPrompt = initialPromptRef.current.get(urlSessionId);
+        const currentInitialPrompt =
+          storedInitialPrompt ||
+          (pageState.type === "creating"
+            ? pageState.prompt
+            : pageState.type === "chat"
+              ? pageState.initialPrompt
+              : undefined);
+        if (currentInitialPrompt) {
+          initialPromptRef.current.set(urlSessionId, currentInitialPrompt);
+        }
+        setPageState({
+          type: "chat",
+          sessionId: urlSessionId,
+          initialPrompt: currentInitialPrompt,
+        });
+      } else if (pageState.type === "chat") {
+        setPageState({ type: "welcome" });
+      }
+    },
+    [urlSessionId],
+  );
+
+  useEffect(
+    function ensureAccess() {
+      if (!isFlagReady) return;
+      if (isChatEnabled === false) {
+        router.replace(homepageRoute);
+      }
+    },
+    [homepageRoute, isChatEnabled, isFlagReady, router],
+  );
+
+  const greetingName = useMemo(
+    function getName() {
+      return getGreetingName(user);
+    },
+    [user],
+  );
+
+  const quickActions = useMemo(function getActions() {
+    return getQuickActions();
+  }, []);
+
+  async function startChatWithPrompt(prompt: string) {
+    if (!prompt?.trim()) return;
+    if (pageState.type === "creating") return;
+
+    const trimmedPrompt = prompt.trim();
+    setPageState({ type: "creating", prompt: trimmedPrompt });
+    setInputValue("");
+
+    try {
+      // Create session
+      const sessionResponse = await postV2CreateSession({
+        body: JSON.stringify({}),
+      });
+
+      if (sessionResponse.status !== 200 || !sessionResponse.data?.id) {
+        throw new Error("Failed to create session");
+      }
+
+      const sessionId = sessionResponse.data.id;
+
+      // Store initialPrompt in ref so it persists across re-renders
+      initialPromptRef.current.set(sessionId, trimmedPrompt);
+
+      // Update URL and show Chat with initial prompt
+      // Chat will handle sending the message and streaming
+      window.history.replaceState(null, "", `/copilot?sessionId=${sessionId}`);
+      setPageState({ type: "chat", sessionId, initialPrompt: trimmedPrompt });
+    } catch (error) {
+      console.error("[CopilotPage] Failed to start chat:", error);
+      setPageState({ type: "welcome" });
+    }
+  }
+
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!inputValue.trim()) return;
+    startChatWithPrompt(inputValue.trim());
+  }
+
+  function handleKeyDown(
+    event: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>,
+  ) {
+    if (event.key !== "Enter") return;
+    if (event.shiftKey) return;
+    event.preventDefault();
+    if (!inputValue.trim()) return;
+    startChatWithPrompt(inputValue.trim());
+  }
+
+  function handleQuickAction(action: string) {
+    startChatWithPrompt(action);
+  }
+
+  // Auto-grow textarea
   useEffect(() => {
     const textarea = document.getElementById(
       "copilot-prompt",
@@ -39,12 +171,39 @@ export default function CopilotPage() {
     textarea.style.height = `${newHeight}px`;
     textarea.style.overflowY =
       textarea.scrollHeight > maxHeight ? "auto" : "hidden";
-  }, [value]);
+  }, [inputValue]);
 
   if (!isFlagReady || isChatEnabled === false || !isLoggedIn) {
     return null;
   }
 
+  // Show Chat when we have an active session
+  if (pageState.type === "chat") {
+    return (
+      <div className="flex h-full flex-col">
+        <Chat
+          key={pageState.sessionId ?? "welcome"}
+          className="flex-1"
+          urlSessionId={pageState.sessionId}
+          initialPrompt={pageState.initialPrompt}
+        />
+      </div>
+    );
+  }
+
+  // Show loading state while creating session and sending first message
+  if (pageState.type === "creating") {
+    return (
+      <div className="flex h-full flex-1 flex-col items-center justify-center bg-[#f8f8f9] px-6 py-10">
+        <LoadingSpinner size="large" />
+        <Text variant="body" className="mt-4 text-zinc-500">
+          Starting your chat...
+        </Text>
+      </div>
+    );
+  }
+
+  // Show Welcome screen
   const isLoading = isUserLoading;
 
   return (
@@ -83,8 +242,8 @@ export default function CopilotPage() {
                     label="Copilot prompt"
                     hideLabel
                     type="textarea"
-                    value={value}
-                    onChange={handleChange}
+                    value={inputValue}
+                    onChange={(e) => setInputValue(e.target.value)}
                     onKeyDown={handleKeyDown}
                     rows={1}
                     placeholder='You can search or just ask - e.g. "create a blog post outline"'
@@ -97,7 +256,7 @@ export default function CopilotPage() {
                     size="icon"
                     aria-label="Submit prompt"
                     className="absolute right-2 top-1/2 -translate-y-1/2 border-zinc-800 bg-zinc-800 text-white hover:border-zinc-900 hover:bg-zinc-900"
-                    disabled={!value.trim()}
+                    disabled={!inputValue.trim()}
                   >
                     <ArrowUpIcon className="h-4 w-4" weight="bold" />
                   </Button>
@@ -108,6 +267,7 @@ export default function CopilotPage() {
               {quickActions.map((action) => (
                 <Button
                   key={action}
+                  type="button"
                   variant="outline"
                   size="small"
                   onClick={() => handleQuickAction(action)}

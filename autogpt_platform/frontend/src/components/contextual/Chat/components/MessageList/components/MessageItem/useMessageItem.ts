@@ -45,28 +45,7 @@ export function useMessageItem({
           success: true,
           timestamp: message.timestamp,
         } as ChatMessageData;
-
-        console.log(
-          "[MessageItem] Converting assistant message to tool output:",
-          {
-            content: message.content.substring(0, 100),
-            prevToolName: prevMessage.toolName,
-          },
-        );
       }
-    }
-
-    // Log for debugging
-    if (message.type === "message" && message.role === "assistant") {
-      const prevMessageToolName =
-        prevMessage?.type === "tool_call" ? prevMessage.toolName : undefined;
-      console.log("[MessageItem] Assistant message:", {
-        index,
-        content: message.content.substring(0, 200),
-        fullContent: message.content,
-        prevMessageType: prevMessage?.type,
-        prevMessageToolName,
-      });
     }
   }
 

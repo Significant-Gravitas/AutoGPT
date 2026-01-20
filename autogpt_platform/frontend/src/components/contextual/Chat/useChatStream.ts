@@ -1,5 +1,5 @@
 import type { ToolArguments, ToolResult } from "@/types/chat";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { toast } from "sonner";
 
 const MAX_RETRIES = 3;
@@ -151,13 +151,14 @@ export function useChatStream() {
   const abortControllerRef = useRef<AbortController | null>(null);
 
   const stopStreaming = useCallback(() => {
-    if (abortControllerRef.current) {
+    const controller = abortControllerRef.current;
+    if (controller) {
       try {
-        if (!abortControllerRef.current.signal.aborted) {
-          abortControllerRef.current.abort();
+        if (!controller.signal.aborted) {
+          controller.abort();
         }
       } catch {
-        // Ignore abort errors - signal may already be aborted or invalid
+        // Ignore abort errors
       }
       abortControllerRef.current = null;
     }
@@ -167,12 +168,6 @@ export function useChatStream() {
     }
     setIsStreaming(false);
   }, []);
-
-  useEffect(() => {
-    return () => {
-      stopStreaming();
-    };
-  }, [stopStreaming]);
 
   const sendMessage = useCallback(
     async (
@@ -238,11 +233,9 @@ export function useChatStream() {
             onChunk({ type: "stream_end" });
           }
 
-          const cleanup = () => {
-            reader.cancel().catch(() => {
-              // Ignore cancel errors
-            });
-          };
+          function cleanup() {
+            reader.cancel().catch(() => {});
+          }
 
           async function readStream() {
             try {
@@ -283,10 +276,8 @@ export function useChatStream() {
                         continue;
                       }
 
-                      // Call the chunk handler
                       onChunk(chunk);
 
-                      // Handle stream lifecycle
                       if (chunk.type === "stream_end") {
                         didDispatchStreamEnd = true;
                         cleanup();
@@ -303,9 +294,8 @@ export function useChatStream() {
                         );
                         return;
                       }
-                    } catch (err) {
+                    } catch {
                       // Skip invalid JSON lines
-                      console.warn("Failed to parse SSE chunk:", err, data);
                     }
                   }
                 }
@@ -313,6 +303,9 @@ export function useChatStream() {
             } catch (err) {
               if (err instanceof Error && err.name === "AbortError") {
                 cleanup();
+                dispatchStreamEnd();
+                stopStreaming();
+                resolve();
                 return;
               }
 
@@ -336,9 +329,7 @@ export function useChatStream() {
                     isUserMessage,
                     context,
                     true,
-                  ).catch((_err) => {
-                    // Retry failed
-                  });
+                  ).catch(() => {});
                 }, retryDelay);
               } else {
                 setError(streamError);
@@ -358,6 +349,10 @@ export function useChatStream() {
           readStream();
         });
       } catch (err) {
+        if (err instanceof Error && err.name === "AbortError") {
+          setIsStreaming(false);
+          return Promise.resolve();
+        }
         const streamError =
           err instanceof Error ? err : new Error("Failed to start stream");
         setError(streamError);
