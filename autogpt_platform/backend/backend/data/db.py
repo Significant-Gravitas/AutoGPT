@@ -120,10 +120,11 @@ async def _raw_with_schema(
 
     Supports placeholders:
         - {schema_prefix}: Table/type prefix (e.g., "platform".)
-        - {schema}: Raw schema name (e.g., platform) for pgvector types and operators
+        - {schema}: Raw schema name for application tables (e.g., platform)
+        - {pgvector_schema}: Schema where pgvector is installed (defaults to "public")
 
     Args:
-        query_template: SQL query with {schema_prefix} and/or {schema} placeholders
+        query_template: SQL query with {schema_prefix}, {schema}, and/or {pgvector_schema} placeholders
         *args: Query parameters
         execute: If False, executes SELECT query. If True, executes INSERT/UPDATE/DELETE.
         client: Optional Prisma client for transactions (only used when execute=True).
@@ -134,16 +135,20 @@ async def _raw_with_schema(
 
     Example with vector type:
         await execute_raw_with_schema(
-            'INSERT INTO {schema_prefix}"Embedding" (vec) VALUES ($1::{schema}.vector)',
+            'INSERT INTO {schema_prefix}"Embedding" (vec) VALUES ($1::{pgvector_schema}.vector)',
             embedding_data
         )
     """
     schema = get_database_schema()
     schema_prefix = f'"{schema}".' if schema != "public" else ""
+    # pgvector extension is typically installed in "public" schema
+    # On Supabase it may be in "extensions" but "public" is the common default
+    pgvector_schema = "public"
 
     formatted_query = query_template.format(
         schema_prefix=schema_prefix,
         schema=schema,
+        pgvector_schema=pgvector_schema,
     )
 
     import prisma as prisma_module
