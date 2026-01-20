@@ -225,6 +225,28 @@ class BlockHandler(ContentHandler):
                     [cat.value for cat in categories] if categories else []
                 )
 
+                # Extract provider names from credentials fields
+                provider_names: list[str] = []
+                is_integration = False
+                if hasattr(block_instance, "input_schema"):
+                    credentials_info = (
+                        block_instance.input_schema.get_credentials_fields_info()
+                    )
+                    is_integration = len(credentials_info) > 0
+                    for info in credentials_info.values():
+                        for provider in info.provider:
+                            provider_names.append(provider.value.lower())
+
+                # Check if block has LlmModel field in input schema
+                has_llm_model_field = False
+                if hasattr(block_instance, "input_schema"):
+                    from backend.blocks.llm import LlmModel
+
+                    for field in block_instance.input_schema.model_fields.values():
+                        if field.annotation == LlmModel:
+                            has_llm_model_field = True
+                            break
+
                 items.append(
                     ContentItem(
                         content_id=block_id,
@@ -233,6 +255,9 @@ class BlockHandler(ContentHandler):
                         metadata={
                             "name": getattr(block_instance, "name", ""),
                             "categories": categories_list,
+                            "providers": provider_names,
+                            "has_llm_model_field": has_llm_model_field,
+                            "is_integration": is_integration,
                         },
                         user_id=None,  # Blocks are public
                     )
