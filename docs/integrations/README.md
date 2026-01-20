@@ -31,6 +31,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Agent Time Input](basic.md#agent-time-input) | Block for time input |
 | [Agent Toggle Input](basic.md#agent-toggle-input) | Block for boolean toggle input |
 | [Block Installation](basic.md#block-installation) | Given a code string, this block allows the verification and installation of a block code into the system |
+| [Concatenate Lists](basic.md#concatenate-lists) | Concatenates multiple lists into a single list |
 | [Dictionary Is Empty](basic.md#dictionary-is-empty) | Checks if a dictionary is empty |
 | [File Store](basic.md#file-store) | Stores the input file in the temporary directory |
 | [Find In Dictionary](basic.md#find-in-dictionary) | A block that looks up a value in a dictionary, list, or object by key or index and returns the corresponding value |
