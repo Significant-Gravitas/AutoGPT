@@ -10,6 +10,7 @@ import { useRunInputDialog } from "./useRunInputDialog";
 import { CronSchedulerDialog } from "../CronSchedulerDialog/CronSchedulerDialog";
 import { useTutorialStore } from "@/app/(platform)/build/stores/tutorialStore";
 import { useEffect } from "react";
+import { CredentialsGroupedView } from "@/components/contextual/CredentialsInput/components/CredentialsGroupedView/CredentialsGroupedView";
 
 export const RunInputDialog = ({
   isOpen,
@@ -23,19 +24,17 @@ export const RunInputDialog = ({
   const hasInputs = useGraphStore((state) => state.hasInputs);
   const hasCredentials = useGraphStore((state) => state.hasCredentials);
   const inputSchema = useGraphStore((state) => state.inputSchema);
-  const credentialsSchema = useGraphStore(
-    (state) => state.credentialsInputSchema,
-  );
 
   const {
-    credentialsUiSchema,
+    credentialFields,
+    requiredCredentials,
     handleManualRun,
     handleInputChange,
     openCronSchedulerDialog,
     setOpenCronSchedulerDialog,
     inputValues,
     credentialValues,
-    handleCredentialChange,
+    handleCredentialFieldChange,
     isExecutingGraph,
   } = useRunInputDialog({ setIsOpen });
 
@@ -67,7 +66,7 @@ export const RunInputDialog = ({
         <Dialog.Content>
           <div className="space-y-6 p-1" data-id="run-input-dialog-content">
             {/* Credentials Section */}
-            {hasCredentials() && (
+            {hasCredentials() && credentialFields.length > 0 && (
               <div data-id="run-input-credentials-section">
                 <div className="mb-4">
                   <Text variant="h4" className="text-gray-900">
@@ -75,16 +74,12 @@ export const RunInputDialog = ({
                   </Text>
                 </div>
                 <div className="px-2" data-id="run-input-credentials-form">
-                  <FormRenderer
-                    jsonSchema={credentialsSchema as RJSFSchema}
-                    handleChange={(v) => handleCredentialChange(v.formData)}
-                    uiSchema={credentialsUiSchema}
-                    initialValues={{}}
-                    formContext={{
-                      showHandles: false,
-                      size: "large",
-                      showOptionalToggle: false,
-                    }}
+                  <CredentialsGroupedView
+                    credentialFields={credentialFields}
+                    requiredCredentials={requiredCredentials}
+                    inputCredentials={credentialValues}
+                    inputValues={inputValues}
+                    onCredentialChange={handleCredentialFieldChange}
                   />
                 </div>
               </div>
