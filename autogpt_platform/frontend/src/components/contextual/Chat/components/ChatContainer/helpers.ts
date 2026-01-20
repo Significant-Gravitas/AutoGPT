@@ -304,23 +304,34 @@ export function extractCredentialsNeeded(
       | undefined;
     if (missingCreds && Object.keys(missingCreds).length > 0) {
       const agentName = (setupInfo?.agent_name as string) || "this block";
-      const credentials = Object.values(missingCreds).map((credInfo) => ({
-        provider: (credInfo.provider as string) || "unknown",
-        providerName:
-          (credInfo.provider_name as string) ||
-          (credInfo.provider as string) ||
-          "Unknown Provider",
-        credentialType:
+      const credentials = Object.values(missingCreds).map((credInfo) => {
+        // Normalize to array at boundary - prefer 'types' array, fall back to single 'type'
+        const typesArray = credInfo.types as
+          | Array<"api_key" | "oauth2" | "user_password" | "host_scoped">
+          | undefined;
+        const singleType =
           (credInfo.type as
             | "api_key"
             | "oauth2"
             | "user_password"
-            | "host_scoped") || "api_key",
-        title:
-          (credInfo.title as string) ||
-          `${(credInfo.provider_name as string) || (credInfo.provider as string)} credentials`,
-        scopes: credInfo.scopes as string[] | undefined,
-      }));
+            | "host_scoped"
+            | undefined) || "api_key";
+        const credentialTypes =
+          typesArray && typesArray.length > 0 ? typesArray : [singleType];
+
+        return {
+          provider: (credInfo.provider as string) || "unknown",
+          providerName:
+            (credInfo.provider_name as string) ||
+            (credInfo.provider as string) ||
+            "Unknown Provider",
+          credentialTypes,
+          title:
+            (credInfo.title as string) ||
+            `${(credInfo.provider_name as string) || (credInfo.provider as string)} credentials`,
+          scopes: credInfo.scopes as string[] | undefined,
+        };
+      });
       return {
         type: "credentials_needed",
         toolName,
@@ -395,11 +406,14 @@ export function extractInputsNeeded(
       credentials.forEach((cred) => {
         const id = cred.id as string;
         if (id) {
+          const credentialTypes = Array.isArray(cred.types)
+            ? cred.types
+            : [(cred.type as string) || "api_key"];
           credentialsSchema[id] = {
             type: "object",
             properties: {},
             credentials_provider: [cred.provider as string],
-            credentials_types: [(cred.type as string) || "api_key"],
+            credentials_types: credentialTypes,
             credentials_scopes: cred.scopes as string[] | undefined,
           };
         }

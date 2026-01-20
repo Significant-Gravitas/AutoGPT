@@ -61,63 +61,67 @@ export const RunInputDialog = ({
           isOpen,
           set: setIsOpen,
         }}
-        styling={{ maxWidth: "600px", minWidth: "600px" }}
+        styling={{ maxWidth: "700px", minWidth: "700px" }}
       >
         <Dialog.Content>
-          <div className="space-y-6 p-1" data-id="run-input-dialog-content">
-            {/* Credentials Section */}
-            {hasCredentials() && credentialFields.length > 0 && (
-              <div data-id="run-input-credentials-section">
-                <div className="mb-4">
-                  <Text variant="h4" className="text-gray-900">
-                    Credentials
-                  </Text>
+          <div
+            className="grid grid-cols-[1fr_auto] gap-10 p-1"
+            data-id="run-input-dialog-content"
+          >
+            <div className="space-y-6">
+              {/* Credentials Section */}
+              {hasCredentials() && credentialFields.length > 0 && (
+                <div data-id="run-input-credentials-section">
+                  <div className="mb-4">
+                    <Text variant="h4" className="text-gray-900">
+                      Credentials
+                    </Text>
+                  </div>
+                  <div className="px-2" data-id="run-input-credentials-form">
+                    <CredentialsGroupedView
+                      credentialFields={credentialFields}
+                      requiredCredentials={requiredCredentials}
+                      inputCredentials={credentialValues}
+                      inputValues={inputValues}
+                      onCredentialChange={handleCredentialFieldChange}
+                    />
+                  </div>
                 </div>
-                <div className="px-2" data-id="run-input-credentials-form">
-                  <CredentialsGroupedView
-                    credentialFields={credentialFields}
-                    requiredCredentials={requiredCredentials}
-                    inputCredentials={credentialValues}
-                    inputValues={inputValues}
-                    onCredentialChange={handleCredentialFieldChange}
-                  />
-                </div>
-              </div>
-            )}
+              )}
 
-            {/* Inputs Section */}
-            {hasInputs() && (
-              <div data-id="run-input-inputs-section">
-                <div className="mb-4">
-                  <Text variant="h4" className="text-gray-900">
-                    Inputs
-                  </Text>
+              {/* Inputs Section */}
+              {hasInputs() && (
+                <div data-id="run-input-inputs-section">
+                  <div className="mb-4">
+                    <Text variant="h4" className="text-gray-900">
+                      Inputs
+                    </Text>
+                  </div>
+                  <div data-id="run-input-inputs-form">
+                    <FormRenderer
+                      jsonSchema={inputSchema as RJSFSchema}
+                      handleChange={(v) => handleInputChange(v.formData)}
+                      uiSchema={uiSchema}
+                      initialValues={{}}
+                      formContext={{
+                        showHandles: false,
+                        size: "large",
+                      }}
+                    />
+                  </div>
                 </div>
-                <div data-id="run-input-inputs-form">
-                  <FormRenderer
-                    jsonSchema={inputSchema as RJSFSchema}
-                    handleChange={(v) => handleInputChange(v.formData)}
-                    uiSchema={uiSchema}
-                    initialValues={{}}
-                    formContext={{
-                      showHandles: false,
-                      size: "large",
-                    }}
-                  />
-                </div>
-              </div>
-            )}
+              )}
+            </div>
 
-            {/* Action Button */}
             <div
-              className="flex justify-end pt-2"
+              className="flex flex-col items-end justify-start"
               data-id="run-input-actions-section"
             >
               {purpose === "run" && (
                 <Button
                   variant="primary"
                   size="large"
-                  className="group h-fit min-w-0 gap-2"
+                  className="group h-fit min-w-0 gap-2 px-10"
                   onClick={handleManualRun}
                   loading={isExecutingGraph}
                   data-id="run-input-manual-run-button"
@@ -132,7 +136,7 @@ export const RunInputDialog = ({
                 <Button
                   variant="primary"
                   size="large"
-                  className="group h-fit min-w-0 gap-2"
+                  className="group h-fit min-w-0 gap-2 px-10"
                   onClick={() => setOpenCronSchedulerDialog(true)}
                   data-id="run-input-schedule-button"
                 >
