@@ -1,8 +1,11 @@
 """Rich UI components for the benchmark harness."""
 
+import logging
+from collections import defaultdict
 from datetime import datetime
 from typing import Optional
 
+from rich.columns import Columns
 from rich.console import Console, Group, RenderableType
 from rich.live import Live
 from rich.panel import Panel
@@ -35,21 +38,50 @@ CONFIG_COLORS = [
 ]
 
 
+def configure_logging_for_benchmark():
+    """Configure logging to reduce noise during benchmark runs."""
+    # Suppress noisy loggers
+    noisy_loggers = [
+        "forge.llm",
+        "forge.llm.providers",
+        "forge.llm.providers.anthropic",
+        "forge.llm.providers.openai",
+        "httpx",
+        "httpcore",
+        "openai",
+        "anthropic",
+    ]
+    for logger_name in noisy_loggers:
+        logging.getLogger(logger_name).setLevel(logging.WARNING)
+
+
 class BenchmarkUI:
     """Rich UI for benchmark progress and results."""
 
-    def __init__(self, max_parallel: int = 4, verbose: bool = False):
+    def __init__(
+        self, max_parallel: int = 4, verbose: bool = False, debug: bool = False
+    ):
         self.max_parallel = max_parallel
         self.verbose = verbose
+        self.debug = debug
         self.start_time: Optional[datetime] = None
+
+        # Configure logging to reduce noise
+        if not debug:
+            configure_logging_for_benchmark()
 
         # Track state
         self.active_runs: dict[str, str] = {}  # config_name -> challenge_name
         self.active_steps: dict[str, str] = {}  # config_name -> current step info
         self.completed: list[ChallengeResult] = []
         self.results_by_config: dict[str, list[ChallengeResult]] = {}
-        self.recent_steps: list[tuple[str, str, int, str, bool]] = []  # Last N steps
         self.config_colors: dict[str, str] = {}  # config_name -> color
+
+        # Step history for each config's current challenge
+        # config_name -> list of (step_num, tool_name, result_preview, is_error)
+        self.step_history: dict[str, list[tuple[int, str, str, bool]]] = defaultdict(
+            list
+        )
 
         # Progress tracking
         self.progress = Progress(
@@ -92,12 +124,10 @@ class BenchmarkUI:
         # Update active step info
         self.active_steps[config_name] = f"step {step_num}: {tool_name}"
 
-        # Add to recent steps (keep last 10)
-        self.recent_steps.append(
-            (config_name, challenge_name, step_num, tool_name, is_error)
+        # Store in step history for this config
+        self.step_history[config_name].append(
+            (step_num, tool_name, result_preview, is_error)
         )
-        if len(self.recent_steps) > 10:
-            self.recent_steps.pop(0)
 
         # In verbose mode, print immediately
         if self.verbose:
@@ -113,19 +143,32 @@ class BenchmarkUI:
         if progress.status == "starting":
             self.active_runs[progress.config_name] = progress.challenge_name
             self.active_steps[progress.config_name] = "starting..."
+            # Clear step history for new challenge
+            self.step_history[progress.config_name] = []
         elif progress.status in ("completed", "failed"):
+            # Capture step history before clearing
+            steps = self.step_history.get(progress.config_name, [])
+            challenge_name = self.active_runs.get(progress.config_name, "Unknown")
+
             if progress.config_name in self.active_runs:
                 del self.active_runs[progress.config_name]
             if progress.config_name in self.active_steps:
                 del self.active_steps[progress.config_name]
+
             if progress.result:
                 self.completed.append(progress.result)
                 self.results_by_config[progress.config_name].append(progress.result)
                 if self.main_task is not None:
                     self.progress.advance(self.main_task)
 
-                if self.verbose:
-                    self._print_challenge_result(progress.result)
+                # Print completion block (always for failures, verbose for passes)
+                if not progress.result.success or self.verbose:
+                    self._print_completion_block(
+                        progress.config_name,
+                        challenge_name,
+                        progress.result,
+                        steps,
+                    )
 
     def _print_challenge_result(self, result: ChallengeResult) -> None:
         """Print detailed result for a single challenge."""
@@ -135,26 +178,105 @@ class BenchmarkUI:
             f"({result.n_steps} steps, ${result.cost:.4f})"
         )
 
+    def _print_completion_block(
+        self,
+        config_name: str,
+        challenge_name: str,
+        result: ChallengeResult,
+        steps: list[tuple[int, str, str, bool]],
+    ) -> None:
+        """Print a copy-paste friendly completion block."""
+        color = self.get_config_color(config_name)
+        status = "PASS" if result.success else "FAIL"
+        status_style = "green" if result.success else "red"
+
+        # Print header
+        console.print()
+        console.print(f"[{status_style}]{'═' * 70}[/{status_style}]")
+        console.print(
+            f"[{status_style} bold][{status}][/{status_style} bold] "
+            f"[{color}]{config_name}[/{color}] - {challenge_name}"
+        )
+        console.print(f"[{status_style}]{'═' * 70}[/{status_style}]")
+
+        # Print steps
+        for step_num, tool_name, result_preview, is_error in steps:
+            step_status = "[red]ERR[/red]" if is_error else "[green]OK[/green]"
+            console.print(f"  Step {step_num}: {tool_name} {step_status}")
+            if result_preview and (is_error or self.debug):
+                # Indent the preview
+                for line in result_preview.split("\n")[:3]:  # First 3 lines
+                    console.print(f"    [dim]{line[:80]}[/dim]")
+
+        # Print summary
+        console.print()
+        console.print(
+            f"  [dim]Steps: {result.n_steps} | Time: {result.run_time_seconds:.1f}s | Cost: ${result.cost:.4f}[/dim]"
+        )
+
+        # Print error if any
+        if result.error_message:
+            console.print(f"  [red]Error: {result.error_message[:200]}[/red]")
+
+        if result.timed_out:
+            console.print("  [yellow]⚠ Timed out[/yellow]")
+
+        console.print(f"[{status_style}]{'─' * 70}[/{status_style}]")
+        console.print()
+
     def render_active_runs(self) -> Panel:
-        """Render panel showing active runs."""
+        """Render panel showing active runs with step history columns."""
         if not self.active_runs:
             content = Text("Waiting for runs to start...", style="dim")
-        else:
-            lines = []
-            for config_name, challenge_name in self.active_runs.items():
-                color = self.get_config_color(config_name)
-                step_info = self.active_steps.get(config_name, "")
+            return Panel(
+                content,
+                title=f"[bold]Active Runs (0/{self.max_parallel})[/bold]",
+                border_style="blue",
+            )
+
+        # Create a panel for each active config showing its step history
+        panels = []
+        for config_name, challenge_name in self.active_runs.items():
+            color = self.get_config_color(config_name)
+            steps = self.step_history.get(config_name, [])
+
+            # Build step lines (show last 6 steps)
+            lines = [Text(challenge_name, style="bold white")]
+            for step_num, tool_name, _, is_error in steps[-6:]:
+                status = "\u2717" if is_error else "\u2713"
+                status_style = "red" if is_error else "green"
                 lines.append(
                     Text.assemble(
-                        ("  ", ""),
-                        ("\u25cf ", "yellow"),  # Bullet point
-                        (f"{config_name}", color),
-                        (" \u2192 ", "dim"),  # Arrow
-                        (challenge_name, "white"),
-                        (f" ({step_info})", "dim") if step_info else ("", ""),
+                        (f"  {status} ", status_style),
+                        (f"#{step_num} ", "dim"),
+                        (tool_name, "white"),
                     )
                 )
-            content = Group(*lines)
+
+            # Add current step indicator
+            current_step = self.active_steps.get(config_name, "")
+            if current_step:
+                lines.append(
+                    Text.assemble(("  \u25cf ", "yellow"), (current_step, "dim"))
+                )
+
+            panel = Panel(
+                Group(*lines),
+                title=f"[{color}]{config_name}[/{color}]",
+                border_style=color,
+                width=35,
+            )
+            panels.append(panel)
+
+        # Arrange panels in columns (up to 4 per row)
+        if len(panels) <= 4:
+            content = Columns(panels, equal=True, expand=True)
+        else:
+            # Stack in rows of 4
+            rows = []
+            for i in range(0, len(panels), 4):
+                rows.append(Columns(panels[i : i + 4], equal=True, expand=True))
+            content = Group(*rows)
 
         return Panel(
             content,
@@ -221,52 +343,12 @@ class BenchmarkUI:
             border_style="green" if self.completed else "dim",
         )
 
-    def render_recent_steps(self) -> Panel:
-        """Render panel showing recent step executions."""
-        if not self.recent_steps:
-            content = Text("No steps yet", style="dim")
-        else:
-            lines = []
-            for (
-                config_name,
-                challenge,
-                step_num,
-                tool_name,
-                is_error,
-            ) in self.recent_steps[-5:]:
-                color = self.get_config_color(config_name)
-                status = (
-                    Text("\u2717", style="red")
-                    if is_error
-                    else Text("\u2713", style="green")
-                )
-                lines.append(
-                    Text.assemble(
-                        ("  ", ""),
-                        status,
-                        (" ", ""),
-                        (f"[{config_name}]", color),
-                        (" ", ""),
-                        (f"{challenge} #{step_num}: ", "dim"),
-                        (tool_name, "white"),
-                    )
-                )
-            content = Group(*lines)
-
-        return Panel(
-            content,
-            title="[bold]Recent Steps[/bold]",
-            border_style="dim",
-        )
-
     def render_live_display(self) -> Group:
         """Render the full live display."""
         return Group(
             self.progress,
             "",
             self.render_active_runs(),
-            "",
-            self.render_recent_steps(),
             "",
             self.render_recent_completions(),
         )

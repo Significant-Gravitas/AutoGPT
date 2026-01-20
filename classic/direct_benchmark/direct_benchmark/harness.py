@@ -26,6 +26,7 @@ class BenchmarkHarness:
         self,
         ui_mode: str = "default",
         verbose: bool = False,
+        debug: bool = False,
     ) -> dict[str, list[ChallengeResult]]:
         """Run the full benchmark suite.
 
@@ -72,6 +73,7 @@ class BenchmarkHarness:
             ui = BenchmarkUI(
                 max_parallel=self.config.max_parallel,
                 verbose=verbose,
+                debug=debug,
             )
 
         # Initialize UI
@@ -145,14 +147,16 @@ class BenchmarkHarness:
         self,
         ui_mode: str = "default",
         verbose: bool = False,
+        debug: bool = False,
     ) -> dict[str, list[ChallengeResult]]:
         """Synchronous wrapper for run().
 
         Args:
             ui_mode: UI mode - "default" (rich), "quiet", or "json".
             verbose: Whether to show detailed per-challenge output.
+            debug: Whether to enable debug mode (shows all logs).
 
         Returns:
             Dict mapping config_name -> list of ChallengeResult.
         """
-        return asyncio.run(self.run(ui_mode=ui_mode, verbose=verbose))
+        return asyncio.run(self.run(ui_mode=ui_mode, verbose=verbose, debug=debug))

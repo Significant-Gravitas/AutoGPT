@@ -310,7 +310,7 @@ def run(
 
     # Run harness
     harness = BenchmarkHarness(harness_config)
-    results = harness.run_sync(ui_mode=ui_mode, verbose=verbose)
+    results = harness.run_sync(ui_mode=ui_mode, verbose=verbose, debug=debug)
 
     # Exit with appropriate code
     if not results:
