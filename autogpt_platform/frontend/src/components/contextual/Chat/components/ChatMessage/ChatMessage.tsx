@@ -4,10 +4,10 @@ import { Button } from "@/components/atoms/Button/Button";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { cn } from "@/lib/utils";
 import {
-  ArrowClockwise,
+  ArrowsClockwiseIcon,
   CheckCircleIcon,
   CheckIcon,
-  CopyIcon,
+  CopyIcon
 } from "@phosphor-icons/react";
 import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
@@ -258,7 +258,7 @@ export function ChatMessage({
             )}
             <div
               className={cn(
-                "flex gap-1",
+                "flex gap-0",
                 isUser ? "justify-end" : "justify-start",
               )}
             >
@@ -269,7 +269,7 @@ export function ChatMessage({
                   onClick={handleTryAgain}
                   aria-label="Try again"
                 >
-                  <ArrowClockwise className="size-3 text-neutral-500" />
+                 <ArrowsClockwiseIcon className="size-4 text-zinc-600" />
                 </Button>
               )}
               {(isUser || isFinalMessage) && (
@@ -280,9 +280,9 @@ export function ChatMessage({
                   aria-label="Copy message"
                 >
                   {copied ? (
-                    <CheckIcon className="size-3 text-green-600" />
+                    <CheckIcon className="size-4 text-green-600" />
                   ) : (
-                    <CopyIcon className="size-3 text-neutral-500" />
+                    <CopyIcon className="size-4 text-zinc-600" />
                   )}
                 </Button>
               )}

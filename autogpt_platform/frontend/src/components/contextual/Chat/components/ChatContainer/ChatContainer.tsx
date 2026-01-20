@@ -1,4 +1,5 @@
 import type { SessionDetailResponse } from "@/app/api/__generated__/models/sessionDetailResponse";
+import { useBreakpoint } from "@/lib/hooks/useBreakpoint";
 import { cn } from "@/lib/utils";
 import { useCallback, useEffect, useRef } from "react";
 import { usePageContext } from "../../usePageContext";
@@ -24,8 +25,11 @@ export function ChatContainer({
       sessionId,
       initialMessages,
     });
+
   const { capturePageContext } = usePageContext();
   const hasSentInitialRef = useRef(false);
+  const breakpoint = useBreakpoint();
+  const isMobile = breakpoint === "base" || breakpoint === "sm" || breakpoint === "md";
 
   // Wrap sendMessage to automatically capture page context
   const sendMessageWithContext = useCallback(
@@ -56,7 +60,7 @@ export function ChatContainer({
       )}
     >
       {/* Messages or Welcome Screen - Scrollable */}
-      <div className="relative flex min-h-0 flex-1 flex-col overflow-y-auto">
+      <div className="relative flex min-h-0 flex-1 flex-col">
         <div className="flex min-h-full flex-col justify-end">
           <MessageList
             messages={messages}
@@ -69,12 +73,12 @@ export function ChatContainer({
       </div>
 
       {/* Input - Fixed at bottom */}
-      <div className="relative pb-4 pt-2">
+      <div className="relative pb-4 pt-2 px-3">
         <div className="pointer-events-none absolute top-[-18px] z-10 h-6 w-full bg-gradient-to-b from-transparent to-[#f8f8f9]" />
         <ChatInput
           onSend={sendMessageWithContext}
           disabled={isStreaming || !sessionId}
-          placeholder="You can search or just ask — e.g. “create a blog post outline”"
+          placeholder={isMobile ? "You can search or just ask" : "You can search or just ask — e.g. “create a blog post outline”"}
         />
       </div>
     </div>

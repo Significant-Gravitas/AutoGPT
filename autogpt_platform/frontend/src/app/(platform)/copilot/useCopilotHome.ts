@@ -1,5 +1,6 @@
 "use client";
 
+import { postV2CreateSession } from "@/app/api/__generated__/endpoints/chat/chat";
 import { getHomepageRoute } from "@/lib/constants";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import {
@@ -11,7 +12,6 @@ import { useFlags } from "launchdarkly-react-client-sdk";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
-  buildCopilotChatUrl,
   getGreetingName,
   getQuickActions,
 } from "./helpers";
@@ -56,24 +56,40 @@ export function useCopilotHome() {
     setValue(event.target.value);
   }
 
-  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!value.trim()) return;
-    router.push(buildCopilotChatUrl(value));
+  async function createSessionAndNavigate(prompt: string) {
+    try {
+      const response = await postV2CreateSession({ body: JSON.stringify({}) });
+      if (response.status === 200 && response.data) {
+        try {
+          sessionStorage.setItem("copilot_initial_prompt", prompt);
+        } catch {
+          // Ignore storage errors (private mode, etc.)
+        }
+        router.push(`/copilot/chat?sessionId=${response.data.id}`);
+      }
+    } catch (error) {
+      console.error("Failed to create session:", error);
+    }
   }
 
-  function handleKeyDown(
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!value.trim()) return;
+    await createSessionAndNavigate(value.trim());
+  }
+
+  async function handleKeyDown(
     event: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>,
   ) {
     if (event.key !== "Enter") return;
     if (event.shiftKey) return;
     event.preventDefault();
     if (!value.trim()) return;
-    router.push(buildCopilotChatUrl(value));
+    await createSessionAndNavigate(value.trim());
   }
 
-  function handleQuickAction(action: string) {
-    router.push(buildCopilotChatUrl(action));
+  async function handleQuickAction(action: string) {
+    await createSessionAndNavigate(action);
   }
 
   return {

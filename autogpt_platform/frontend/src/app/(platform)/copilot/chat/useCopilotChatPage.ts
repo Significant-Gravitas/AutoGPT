@@ -8,7 +8,7 @@ import {
 } from "@/services/feature-flags/use-get-flag";
 import { useFlags } from "launchdarkly-react-client-sdk";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 export function useCopilotChatPage() {
   const router = useRouter();
@@ -24,6 +24,22 @@ export function useCopilotChatPage() {
 
   const sessionId = searchParams.get("sessionId");
   const prompt = searchParams.get("prompt");
+  const [storedPrompt, setStoredPrompt] = useState<string | null>(null);
+
+  useEffect(
+    function loadStoredPrompt() {
+      if (prompt) return;
+      try {
+        const storedValue = sessionStorage.getItem("copilot_initial_prompt");
+        if (!storedValue) return;
+        sessionStorage.removeItem("copilot_initial_prompt");
+        setStoredPrompt(storedValue);
+      } catch {
+        // Ignore storage errors (private mode, etc.)
+      }
+    },
+    [prompt],
+  );
 
   useEffect(
     function guardAccess() {
@@ -39,6 +55,6 @@ export function useCopilotChatPage() {
     isFlagReady,
     isChatEnabled,
     sessionId,
-    prompt,
+    prompt: prompt ?? storedPrompt,
   };
 }

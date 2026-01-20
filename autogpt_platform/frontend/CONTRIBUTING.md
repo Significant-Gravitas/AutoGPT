@@ -175,6 +175,8 @@ While server components and actions are cool and cutting-edge, they introduce a 
 
 - Prefer [React Query](https://tanstack.com/query/latest/docs/framework/react/overview) for server state, colocated near consumers (see [state colocation](https://kentcdodds.com/blog/state-colocation-will-make-your-react-app-faster))
 - Co-locate UI state inside components/hooks; keep global state minimal
+- Avoid `useMemo` and `useCallback` unless you have a measured performance issue
+- Do not abuse `useEffect`; prefer state colocation and derive values directly when possible
 
 ### Styling and components
 

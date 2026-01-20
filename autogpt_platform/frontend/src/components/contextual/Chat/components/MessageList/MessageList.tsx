@@ -32,15 +32,19 @@ export function MessageList({
   });
 
   return (
-    <div
-      ref={messagesContainerRef}
-      className={cn(
-        "flex-1 overflow-y-auto overflow-x-hidden",
-        "scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-300",
-        className,
-      )}
-    >
-      <div className="mx-auto flex min-w-0 flex-col hyphens-auto break-words py-4">
+    <div className="relative flex min-h-0 flex-1 flex-col">
+      {/* Top fade shadow */}
+      <div className="pointer-events-none absolute top-0 z-10 h-8 w-full bg-gradient-to-b from-[#f8f8f9] to-transparent" />
+      
+      <div
+        ref={messagesContainerRef}
+        className={cn(
+          "flex-1 overflow-y-auto overflow-x-hidden",
+          "scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-300",
+          className,
+        )}
+      >
+        <div className="mx-auto flex min-w-0 flex-col hyphens-auto break-words py-4">
         {/* Render all persisted messages */}
         {(() => {
           const lastAssistantMessageIndex = findLastMessageIndex(
@@ -99,7 +103,11 @@ export function MessageList({
 
         {/* Invisible div to scroll to */}
         <div ref={messagesEndRef} />
+        </div>
       </div>
+      
+      {/* Bottom fade shadow */}
+      <div className="pointer-events-none absolute bottom-0 z-10 h-8 w-full bg-gradient-to-t from-[#f8f8f9] to-transparent" />
     </div>
   );
 }

@@ -152,7 +152,13 @@ export function useChatStream() {
 
   const stopStreaming = useCallback(() => {
     if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
+      try {
+        if (!abortControllerRef.current.signal.aborted) {
+          abortControllerRef.current.abort();
+        }
+      } catch {
+        // Ignore abort errors - signal may already be aborted or invalid
+      }
       abortControllerRef.current = null;
     }
     if (retryTimeoutRef.current) {

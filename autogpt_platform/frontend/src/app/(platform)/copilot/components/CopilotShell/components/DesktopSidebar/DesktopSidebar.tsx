@@ -15,6 +15,7 @@ interface Props {
   onSelectSession: (sessionId: string) => void;
   onFetchNextPage: () => void;
   onNewChat: () => void;
+  hasActiveSession: boolean;
 }
 
 export function DesktopSidebar({
@@ -26,9 +27,10 @@ export function DesktopSidebar({
   onSelectSession,
   onFetchNextPage,
   onNewChat,
+  hasActiveSession,
 }: Props) {
   return (
-    <aside className="flex h-full w-80 flex-col border-r border-zinc-100 bg-white">
+    <aside className="flex h-full w-80 flex-col border-r border-zinc-100 bg-zinc-50">
       <div className="shrink-0 px-6 py-4">
         <Text variant="h3" size="body-medium">
           Your chats
@@ -50,17 +52,19 @@ export function DesktopSidebar({
           onFetchNextPage={onFetchNextPage}
         />
       </div>
-      <div className="shrink-0 bg-white p-3 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
-        <Button
-          variant="primary"
-          size="small"
-          onClick={onNewChat}
-          className="w-full"
-          leftIcon={<Plus width="1rem" height="1rem" />}
-        >
-          New Chat
-        </Button>
-      </div>
+      {hasActiveSession && (
+        <div className="shrink-0 bg-zinc-50 p-3 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+          <Button
+            variant="primary"
+            size="small"
+            onClick={onNewChat}
+            className="w-full"
+            leftIcon={<Plus width="1rem" height="1rem" />}
+          >
+            New Chat
+          </Button>
+        </div>
+      )}
     </aside>
   );
 }

@@ -19,6 +19,7 @@ export function CopilotShell({ children }: Props) {
     isDrawerOpen,
     isLoading,
     isLoggedIn,
+    hasActiveSession,
     sessions,
     currentSessionId,
     handleSelectSession,
@@ -38,7 +39,7 @@ export function CopilotShell({ children }: Props) {
 
   return (
     <div
-      className="flex overflow-hidden bg-zinc-50"
+      className="flex overflow-hidden bg-[#EFEFF0]"
       style={{ height: `calc(100vh - ${NAVBAR_HEIGHT_PX}px)` }}
     >
       {!isMobile && (
@@ -51,10 +52,11 @@ export function CopilotShell({ children }: Props) {
           onSelectSession={handleSelectSession}
           onFetchNextPage={fetchNextPage}
           onNewChat={handleNewChat}
+          hasActiveSession={Boolean(hasActiveSession)}
         />
       )}
 
-      <div className="flex min-h-0 flex-1 flex-col">
+      <div className="relative flex min-h-0 flex-1 flex-col">
         {isMobile && <MobileHeader onOpenDrawer={handleOpenDrawer} />}
         <div className="flex min-h-0 flex-1 flex-col">
           {isReadyToShowContent ? children : <LoadingState />}
@@ -74,6 +76,7 @@ export function CopilotShell({ children }: Props) {
           onNewChat={handleNewChat}
           onClose={handleCloseDrawer}
           onOpenChange={handleDrawerOpenChange}
+          hasActiveSession={Boolean(hasActiveSession)}
         />
       )}
     </div>
