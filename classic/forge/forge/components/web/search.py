@@ -102,9 +102,9 @@ class WebSearchConfiguration(BaseModel):
     )
     # Legacy aliases for backwards compatibility
     duckduckgo_max_attempts: int = 3  # Now used as max backend attempts
-    duckduckgo_backend: Literal["api", "html", "lite"] = (
-        "api"  # Ignored, use ddgs_backend
-    )
+    duckduckgo_backend: Literal[
+        "api", "html", "lite"
+    ] = "api"  # Ignored, use ddgs_backend
 
 
 class WebSearchComponent(

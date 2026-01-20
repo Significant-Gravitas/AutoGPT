@@ -70,9 +70,9 @@ class BenchmarkUI:
             configure_logging_for_benchmark()
 
         # Track state - use run_key (config:challenge) for uniqueness
-        self.active_runs: dict[str, tuple[str, str]] = (
-            {}
-        )  # run_key -> (config_name, challenge_name)
+        self.active_runs: dict[
+            str, tuple[str, str]
+        ] = {}  # run_key -> (config_name, challenge_name)
         self.active_steps: dict[str, str] = {}  # run_key -> current step info
         self.completed: list[ChallengeResult] = []
         self.results_by_config: dict[str, list[ChallengeResult]] = {}

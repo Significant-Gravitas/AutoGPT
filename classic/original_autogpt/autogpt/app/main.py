@@ -885,7 +885,9 @@ def print_assistant_thoughts(
     thoughts_text = remove_ansi_escape(
         thoughts.text
         if isinstance(thoughts, AssistantThoughts)
-        else thoughts.summary() if isinstance(thoughts, ModelWithSummary) else thoughts
+        else thoughts.summary()
+        if isinstance(thoughts, ModelWithSummary)
+        else thoughts
     )
     print_attribute(
         f"{ai_name.upper()} THOUGHTS", thoughts_text, title_color=Fore.YELLOW

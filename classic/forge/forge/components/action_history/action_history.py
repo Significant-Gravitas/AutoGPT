@@ -110,6 +110,17 @@ class ActionHistoryComponent(
 
     async def after_execute(self, result: ActionResult) -> None:
         self.event_history.register_result(result)
+        # Note: Compression is now lazy - happens in prepare_messages() when needed
+
+    async def prepare_messages(self) -> None:
+        """Prepare messages by compressing older episodes if needed.
+
+        Call this before get_messages() when building prompts. This enables
+        lazy compression - only compress when we actually need the history.
+
+        For strategies like ReWOO EXECUTING phase that skip prompt building,
+        this won't be called, avoiding unnecessary LLM calls.
+        """
         if self.config.enable_compression:
             await self.event_history.handle_compression(
                 self.llm_provider,
