@@ -63,7 +63,7 @@ def _is_langfuse_configured() -> bool:
     )
 
 
-async def _build_system_prompt(user_id: str | None) -> tuple[str, Any]:
+async def _build_system_prompt(user_id: str | None) -> tuple[str, Any, Any]:
     """Build the full system prompt including business understanding if available.
 
     Args:
@@ -71,7 +71,7 @@ async def _build_system_prompt(user_id: str | None) -> tuple[str, Any]:
                      If "default" and this is the user's first session, will use "onboarding" instead.
 
     Returns:
-        Tuple of (compiled prompt string, Langfuse prompt object for tracing)
+        Tuple of (compiled prompt string, understanding object, Langfuse prompt object for tracing)
     """
 
     # cache_ttl_seconds=0 disables SDK caching to always get the latest prompt
@@ -91,7 +91,7 @@ async def _build_system_prompt(user_id: str | None) -> tuple[str, Any]:
         context = "This is the first time you are meeting the user. Greet them and introduce them to the platform"
 
     compiled = prompt.compile(users_information=context)
-    return compiled, understanding
+    return compiled, understanding, prompt
 
 
 async def _generate_session_title(message: str) -> str | None:
@@ -156,6 +156,7 @@ async def stream_chat_completion(
     retry_count: int = 0,
     session: ChatSession | None = None,
     context: dict[str, str] | None = None,  # {url: str, content: str}
+    tags: list[str] | None = None,  # Custom tags for Langfuse tracing
 ) -> AsyncGenerator[StreamBaseResponse, None]:
     """Main entry point for streaming chat completions with database handling.
 
@@ -265,7 +266,7 @@ async def stream_chat_completion(
             asyncio.create_task(_update_title())
 
     # Build system prompt with business understanding
-    system_prompt, understanding = await _build_system_prompt(user_id)
+    system_prompt, understanding, langfuse_prompt = await _build_system_prompt(user_id)
 
     # Create Langfuse trace for this LLM call (each call gets its own trace, grouped by session_id)
     # Using v3 SDK: start_observation creates a root span, update_trace sets trace-level attributes
@@ -279,10 +280,15 @@ async def stream_chat_completion(
         name="user-copilot-request",
         input=input,
     ) as span:
+        # Merge custom tags with default "copilot" tag
+        all_tags = ["copilot"]
+        if tags:
+            all_tags.extend(tags)
+
         with propagate_attributes(
             session_id=session_id,
             user_id=user_id,
-            tags=["copilot"],
+            tags=all_tags,
             metadata={
                 "users_information": format_understanding_for_prompt(understanding)[
                     :200
@@ -321,6 +327,7 @@ async def stream_chat_completion(
                     tools=tools,
                     system_prompt=system_prompt,
                     text_block_id=text_block_id,
+                    langfuse_prompt=langfuse_prompt,
                 ):
 
                     if isinstance(chunk, StreamTextStart):
@@ -534,8 +541,8 @@ def _is_retryable_error(error: Exception) -> bool:
         return True
     if isinstance(error, APIStatusError):
         # APIStatusError has a response with status_code
-        # Retry on 5xx status codes (server errors)
-        if error.response.status_code >= 500:
+        # Retry on 5xx status codes (server errors) or 429 (rate limit)
+        if error.response.status_code >= 500 or error.response.status_code == 429:
             return True
     if isinstance(error, APIError):
         # Retry on overloaded errors or 500 errors (may not have status code)
@@ -550,6 +557,7 @@ async def _stream_chat_chunks(
     tools: list[ChatCompletionToolParam],
     system_prompt: str | None = None,
     text_block_id: str | None = None,
+    langfuse_prompt: Any | None = None,
 ) -> AsyncGenerator[StreamBaseResponse, None]:
     """
     Pure streaming function for OpenAI chat completions with tool calling.
@@ -561,6 +569,7 @@ async def _stream_chat_chunks(
         session: Chat session with conversation history
         tools: Available tools for the model
         system_prompt: System prompt to prepend to messages
+        langfuse_prompt: Langfuse prompt object for linking to traces
 
     Yields:
         SSE formatted JSON response objects
@@ -594,6 +603,7 @@ async def _stream_chat_chunks(
                 )
 
                 # Create the stream with proper types
+                # Pass langfuse_prompt to link generation to prompt version in Langfuse
                 stream = await client.chat.completions.create(
                     model=model,
                     messages=messages,
@@ -601,6 +611,7 @@ async def _stream_chat_chunks(
                     tool_choice="auto",
                     stream=True,
                     stream_options={"include_usage": True},
+                    langfuse_prompt=langfuse_prompt,  # type: ignore[call-overload]
                 )
 
                 # Variables to accumulate tool calls
