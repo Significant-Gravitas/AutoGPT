@@ -45,6 +45,7 @@ from .base import (
     BaseMultiStepPromptStrategy,
     BasePromptStrategyConfiguration,
     PlannedStep,
+    WorkerExecution,
 )
 
 
@@ -71,10 +72,9 @@ class ReWOOThoughts(ModelWithSummary):
     plan: list[str] = Field(
         default_factory=list, description="Planned steps or conclusions"
     )
-    speak: str = Field(description="Summary to say to user")
 
     def summary(self) -> str:
-        return self.reasoning if self.reasoning else self.speak
+        return self.reasoning if self.reasoning else self.observations
 
 
 class ReWOOPlan(ModelWithSummary):
@@ -83,6 +83,9 @@ class ReWOOPlan(ModelWithSummary):
     steps: list[PlannedStep] = Field(default_factory=list)
     current_step_index: int = Field(default=0)
     execution_results: dict[str, str] = Field(default_factory=dict)
+
+    # Worker execution tracking (per ReWOO paper)
+    worker_executions: list[WorkerExecution] = Field(default_factory=list)
 
     def summary(self) -> str:
         return f"Plan with {len(self.steps)} steps, {self.current_step_index} completed"
@@ -116,6 +119,29 @@ class ReWOOPlan(ModelWithSummary):
                 step.result = result
                 break
         self.current_step_index += 1
+
+    def record_worker_execution(
+        self,
+        step: PlannedStep,
+        substituted_args: dict[str, Any],
+        output: str,
+        error: Optional[str] = None,
+    ) -> None:
+        """Record a Worker module execution (per ReWOO paper).
+
+        Args:
+            step: The planned step that was executed
+            substituted_args: Arguments after variable substitution
+            output: Raw output from tool execution
+            error: Error message if execution failed
+        """
+        execution = WorkerExecution(
+            step=step,
+            input_substituted=substituted_args,
+            raw_output=output,
+            error=error,
+        )
+        self.worker_executions.append(execution)
 
     def substitute_variables(self, text: str) -> str:
         """Substitute variable placeholders with actual results."""
@@ -153,6 +179,23 @@ class ReWOOPromptConfiguration(BasePromptStrategyConfiguration):
         "After all steps, provide the response in the required JSON format."
     )
 
+    # Paper-style planner instruction (uses bracket syntax like the original paper)
+    DEFAULT_PAPER_PLANNER_INSTRUCTION: str = (
+        "For the following task, make plans that can solve the problem step by step. "
+        "For each plan, indicate which external tool together with tool input to "
+        "retrieve evidence. You can store the evidence into a variable #E[n] that "
+        "can be called by later tools.\n\n"
+        "Tools can be one of the following:\n"
+        "{available_tools}\n\n"
+        "Format:\n"
+        "Plan: [first action to take based on input question]\n"
+        "#E1 = ToolName[tool input]\n"
+        "Plan: [next action to take, based on result of #E1]\n"
+        "#E2 = ToolName[tool input, possibly referencing #E1]\n"
+        "...\n\n"
+        "Begin! Describe your plans with rich details."
+    )
+
     DEFAULT_SYNTHESIZER_INSTRUCTION: str = (
         "You have executed the following plan and received these results.\n"
         "Analyze the results and provide a final response to the original task.\n\n"
@@ -162,12 +205,32 @@ class ReWOOPromptConfiguration(BasePromptStrategyConfiguration):
         "appropriate command to complete the task or report findings."
     )
 
+    # Paper-style synthesizer instruction (Solver module from paper)
+    DEFAULT_PAPER_SYNTHESIZER_INSTRUCTION: str = (
+        "Solve the following task or problem. To assist you, we provide some "
+        "plans and corresponding evidences that might be helpful. Notice that "
+        "some of these information may contain noise, so you should use them "
+        "with caution.\n\n"
+        "Task: {task}\n\n"
+        "Plans and Evidences:\n{plan_with_results}\n\n"
+        "Now solve the task. Provide your answer with clear reasoning."
+    )
+
     planner_instruction: str = UserConfigurable(default=DEFAULT_PLANNER_INSTRUCTION)
+    paper_planner_instruction: str = UserConfigurable(
+        default=DEFAULT_PAPER_PLANNER_INSTRUCTION
+    )
     synthesizer_instruction: str = UserConfigurable(
         default=DEFAULT_SYNTHESIZER_INSTRUCTION
     )
+    paper_synthesizer_instruction: str = UserConfigurable(
+        default=DEFAULT_PAPER_SYNTHESIZER_INSTRUCTION
+    )
     max_plan_steps: int = UserConfigurable(default=10)
     allow_parallel_execution: bool = UserConfigurable(default=True)
+
+    # Use paper-style bracket format (#E1 = Tool[arg]) vs function format
+    use_paper_format: bool = UserConfigurable(default=False)
 
 
 class ReWOOPromptStrategy(BaseMultiStepPromptStrategy):
@@ -191,6 +254,9 @@ class ReWOOPromptStrategy(BaseMultiStepPromptStrategy):
         self._response_schema = JSONSchema.from_dict(
             ReWOOActionProposal.model_json_schema()
         )
+        # Worker execution tracking
+        self._pending_step: Optional[PlannedStep] = None
+        self._pending_substituted_args: Optional[dict[str, Any]] = None
 
     @property
     def llm_classification(self) -> LanguageModelClassification:
@@ -412,13 +478,11 @@ class ReWOOPromptStrategy(BaseMultiStepPromptStrategy):
         # Ensure thoughts dict has required fields
         thoughts_dict = assistant_reply_dict.get("thoughts", {})
         if not isinstance(thoughts_dict, dict):
-            thoughts_dict = {"observations": "", "reasoning": "", "speak": ""}
+            thoughts_dict = {"observations": "", "reasoning": ""}
         if "observations" not in thoughts_dict:
             thoughts_dict["observations"] = ""
         if "reasoning" not in thoughts_dict:
             thoughts_dict["reasoning"] = ""
-        if "speak" not in thoughts_dict:
-            thoughts_dict["speak"] = ""
         assistant_reply_dict["thoughts"] = thoughts_dict
 
         parsed_response = ReWOOActionProposal.model_validate(assistant_reply_dict)
@@ -429,26 +493,42 @@ class ReWOOPromptStrategy(BaseMultiStepPromptStrategy):
     def _extract_plan_from_response(self, content: str) -> Optional[ReWOOPlan]:
         """Extract a structured plan from the LLM response.
 
-        Looks for patterns like:
-        Plan: [reasoning]
-        #E1 = tool_name(arg1="value1", arg2=#E0)
+        Supports two formats:
+        1. Paper-style bracket format: #E1 = Tool[argument]
+        2. Function-style parenthesis format: #E1 = tool(arg1="value1")
         """
         plan = ReWOOPlan()
 
-        # Pattern to match plan steps
-        step_pattern = re.compile(
+        # Pattern for paper-style bracket format: #E1 = Tool[argument]
+        bracket_pattern = re.compile(
+            r"Plan:\s*(.+?)\n\s*#(E\d+)\s*=\s*(\w+)\s*\[([^\]]*)\]",
+            re.MULTILINE | re.DOTALL,
+        )
+
+        # Pattern for function-style: #E1 = tool(arg="value")
+        paren_pattern = re.compile(
             r"Plan:\s*(.+?)\n\s*#(E\d+)\s*=\s*(\w+)\s*\(([^)]*)\)",
             re.MULTILINE | re.DOTALL,
         )
 
-        matches = step_pattern.findall(content)
+        # Try bracket format first (paper-style)
+        matches = bracket_pattern.findall(content)
+        is_bracket_format = bool(matches)
+
+        if not matches:
+            # Fall back to parenthesis format
+            matches = paren_pattern.findall(content)
+            is_bracket_format = False
 
         for match in matches[: self.config.max_plan_steps]:
             thought, var_num, tool_name, args_str = match
             variable_name = f"#{var_num}"
 
-            # Parse arguments
-            tool_arguments = self._parse_tool_arguments(args_str)
+            # Parse arguments based on format
+            if is_bracket_format:
+                tool_arguments = self._parse_bracket_arguments(args_str)
+            else:
+                tool_arguments = self._parse_tool_arguments(args_str)
 
             # Find dependencies (references to other variables)
             depends_on = re.findall(r"#E\d+", args_str)
@@ -463,6 +543,52 @@ class ReWOOPromptStrategy(BaseMultiStepPromptStrategy):
             plan.steps.append(step)
 
         return plan if plan.steps else None
+
+    def _parse_bracket_arguments(self, args_str: str) -> dict[str, Any]:
+        """Parse paper-style bracket arguments: Tool[query, #E1].
+
+        The bracket format from the paper uses simpler argument syntax:
+        - Tool[search query]
+        - Tool[#E1]
+        - Tool[query, #E1]
+        """
+        args_str = args_str.strip()
+        arguments: dict[str, Any] = {}
+
+        # Empty arguments
+        if not args_str:
+            return arguments
+
+        # Single variable reference
+        if args_str.startswith("#E") and "," not in args_str:
+            return {"input": args_str}
+
+        # Check for key=value pairs first
+        if "=" in args_str:
+            # Mixed format: key=value pairs
+            parts = [p.strip() for p in args_str.split(",")]
+            for i, part in enumerate(parts):
+                if "=" in part:
+                    key, value = part.split("=", 1)
+                    value = value.strip().strip("\"'")
+                    arguments[key.strip()] = value
+                else:
+                    # Positional argument
+                    arg_key = "query" if i == 0 else f"arg{i}"
+                    arguments[arg_key] = part.strip().strip("\"'")
+            return arguments
+
+        # Simple format: comma-separated values
+        if "," in args_str:
+            parts = [p.strip() for p in args_str.split(",")]
+            arguments["query"] = parts[0].strip("\"'")
+            for i, part in enumerate(parts[1:], 1):
+                arguments[f"arg{i}"] = part.strip().strip("\"'")
+        else:
+            # Single argument - treat as query
+            arguments["query"] = args_str.strip("\"'")
+
+        return arguments
 
     def _parse_tool_arguments(self, args_str: str) -> dict[str, Any]:
         """Parse tool arguments from a string like 'arg1="value1", arg2=123'."""
@@ -503,14 +629,39 @@ class ReWOOPromptStrategy(BaseMultiStepPromptStrategy):
             else:
                 substituted_args[key] = value
 
+        # Store the substituted args for worker execution tracking
+        self._pending_substituted_args = substituted_args
+        self._pending_step = next_step
+
         return AssistantFunctionCall(
             name=next_step.tool_name,
             arguments=substituted_args,
         )
 
-    def record_execution_result(self, variable_name: str, result: str) -> None:
-        """Record the result of a step execution."""
+    def record_execution_result(
+        self, variable_name: str, result: str, error: Optional[str] = None
+    ) -> None:
+        """Record the result of a step execution (Worker module output).
+
+        Args:
+            variable_name: The variable name (#E1, etc.) for this step
+            result: The raw output from tool execution
+            error: Optional error message if execution failed
+        """
         if self.current_plan:
+            # Record worker execution if we have the pending step info
+            pending_step = self._pending_step
+            pending_args = self._pending_substituted_args
+            if pending_step is not None and pending_args is not None:
+                self.current_plan.record_worker_execution(
+                    step=pending_step,
+                    substituted_args=pending_args,
+                    output=result,
+                    error=error,
+                )
+                self._pending_step = None
+                self._pending_substituted_args = None
+
             self.current_plan.mark_step_complete(variable_name, result)
 
             # Check if we should move to synthesis phase
@@ -521,6 +672,8 @@ class ReWOOPromptStrategy(BaseMultiStepPromptStrategy):
         """Reset the strategy state for a new task."""
         self.current_plan = None
         self.current_phase = ReWOOPhase.PLANNING
+        self._pending_step = None
+        self._pending_substituted_args = None
 
     def is_plan_complete(self) -> bool:
         """Check if the current plan is fully executed."""

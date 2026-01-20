@@ -65,6 +65,14 @@ class AppConfig(BaseConfig):
     embedding_model: str = UserConfigurable(
         default="text-embedding-3-small", from_env="EMBEDDING_MODEL"
     )
+    thinking_budget_tokens: Optional[int] = UserConfigurable(
+        default=None, from_env="THINKING_BUDGET_TOKENS"
+    )
+    """Token budget for extended thinking (Anthropic Claude models). Minimum 1024."""
+    reasoning_effort: Optional[Literal["low", "medium", "high"]] = UserConfigurable(
+        default=None, from_env="REASONING_EFFORT"
+    )
+    """Reasoning effort level for OpenAI o-series and GPT-5 models."""
 
     # Run loop configuration
     continuous_mode: bool = True

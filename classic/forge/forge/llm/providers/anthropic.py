@@ -105,6 +105,7 @@ ANTHROPIC_CHAT_MODELS = {
             completion_token_cost=15 / 1e6,
             max_tokens=200000,
             has_function_call_api=True,
+            supports_extended_thinking=True,
         ),
         ChatModelInfo(
             name=AnthropicModelName.CLAUDE3_5_HAIKU_v1,
@@ -122,6 +123,7 @@ ANTHROPIC_CHAT_MODELS = {
             completion_token_cost=15 / 1e6,
             max_tokens=200000,
             has_function_call_api=True,
+            supports_extended_thinking=True,
         ),
         ChatModelInfo(
             name=AnthropicModelName.CLAUDE4_OPUS_v1,
@@ -130,6 +132,7 @@ ANTHROPIC_CHAT_MODELS = {
             completion_token_cost=75 / 1e6,
             max_tokens=200000,
             has_function_call_api=True,
+            supports_extended_thinking=True,
         ),
         ChatModelInfo(
             name=AnthropicModelName.CLAUDE4_5_OPUS_v1,
@@ -138,6 +141,7 @@ ANTHROPIC_CHAT_MODELS = {
             completion_token_cost=75 / 1e6,
             max_tokens=200000,
             has_function_call_api=True,
+            supports_extended_thinking=True,
         ),
     ]
 }
@@ -373,6 +377,7 @@ class AnthropicProvider(BaseChatModelProvider[AnthropicModelName, AnthropicSetti
         prompt_messages: list[ChatMessage],
         functions: Optional[list[CompletionModelFunction]] = None,
         max_output_tokens: Optional[int] = None,
+        thinking_budget_tokens: Optional[int] = None,
         **kwargs,
     ) -> tuple[list[MessageParam], MessageCreateParams]:
         """Prepare arguments for message completion API call.
@@ -380,6 +385,8 @@ class AnthropicProvider(BaseChatModelProvider[AnthropicModelName, AnthropicSetti
         Args:
             prompt_messages: List of ChatMessages.
             functions: Optional list of functions available to the LLM.
+            max_output_tokens: Maximum number of output tokens.
+            thinking_budget_tokens: Token budget for extended thinking (min 1024).
             kwargs: Additional keyword arguments.
 
         Returns:
@@ -408,6 +415,21 @@ class AnthropicProvider(BaseChatModelProvider[AnthropicModelName, AnthropicSetti
             ]
 
         kwargs["max_tokens"] = max_output_tokens or 4096
+
+        # Handle extended thinking if enabled
+        if thinking_budget_tokens is not None and thinking_budget_tokens > 0:
+            # Minimum budget is 1024 tokens per Anthropic's API requirements
+            budget = max(thinking_budget_tokens, 1024)
+            kwargs["thinking"] = {
+                "type": "enabled",
+                "budget_tokens": budget,
+            }
+            # Add beta header for interleaved thinking with tool use
+            if functions:
+                kwargs["extra_headers"] = kwargs.get("extra_headers", {})
+                kwargs["extra_headers"][
+                    "anthropic-beta"
+                ] = "interleaved-thinking-2025-05-14"
 
         if extra_headers := self._configuration.extra_request_headers:
             kwargs["extra_headers"] = kwargs.get("extra_headers", {})

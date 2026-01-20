@@ -4,6 +4,7 @@ from typing import (
     Awaitable,
     Callable,
     ClassVar,
+    Literal,
     Mapping,
     Optional,
     ParamSpec,
@@ -270,6 +271,7 @@ class BaseOpenAIChatProvider(
         model: _ModelName,
         functions: Optional[list[CompletionModelFunction]] = None,
         max_output_tokens: Optional[int] = None,
+        reasoning_effort: Optional[Literal["low", "medium", "high"]] = None,
         **kwargs,
     ) -> tuple[
         list[ChatCompletionMessageParam], CompletionCreateParams, dict[str, Any]
@@ -281,6 +283,7 @@ class BaseOpenAIChatProvider(
             model: The model to use
             functions (optional): List of functions available to the LLM
             max_output_tokens (optional): Maximum number of tokens to generate
+            reasoning_effort (optional): Reasoning effort for o-series and GPT-5 models
 
         Returns:
             list[ChatCompletionMessageParam]: Prompt messages for the API call
@@ -303,6 +306,10 @@ class BaseOpenAIChatProvider(
                 kwargs["max_completion_tokens"] = max_output_tokens  # type: ignore
             else:
                 kwargs["max_tokens"] = max_output_tokens
+
+        # Add reasoning_effort for o-series and GPT-5 models
+        if reasoning_effort and str(model).startswith(("o1", "o3", "o4", "gpt-5")):
+            kwargs["reasoning_effort"] = reasoning_effort  # type: ignore
 
         if functions:
             kwargs["tools"] = [  # pyright: ignore - it fails to infer the dict type

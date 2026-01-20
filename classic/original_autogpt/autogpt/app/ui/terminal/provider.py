@@ -8,11 +8,11 @@ from __future__ import annotations
 
 import logging
 from contextlib import asynccontextmanager
-from typing import TYPE_CHECKING, Any, AsyncIterator
+from typing import TYPE_CHECKING, Any, AsyncIterator, Optional
 
 import click
 from colorama import Fore, Style
-from forge.logging.utils import print_attribute, speak
+from forge.logging.utils import print_attribute
 from forge.permissions import ApprovalScope
 
 from ..protocol import ApprovalResult, MessageLevel, UIProvider
@@ -184,17 +184,6 @@ class TerminalUIProvider(UIProvider):
                 title_color=Fore.YELLOW,
             )
 
-            # Speak the assistant's thoughts
-            if assistant_thoughts_speak := self._remove_ansi_escape(thoughts.speak):
-                if speak_mode:
-                    speak(assistant_thoughts_speak)
-                else:
-                    print_attribute(
-                        "SPEAK", assistant_thoughts_speak, title_color=Fore.YELLOW
-                    )
-        else:
-            speak(thoughts_text)
-
     async def display_command(self, name: str, arguments: dict[str, Any]) -> None:
         """Display the next command to be executed.
 
@@ -314,3 +303,37 @@ class TerminalUIProvider(UIProvider):
     def _remove_ansi_escape(self, s: str) -> str:
         """Remove ANSI escape sequences from a string."""
         return s.replace("\x1B", "")
+
+    async def prompt_finish_continuation(
+        self,
+        summary: str,
+        suggested_next_task: Optional[str] = None,
+    ) -> str:
+        """Display task completion and prompt for next task."""
+        from rich.console import Console
+        from rich.panel import Panel
+        from rich.text import Text
+
+        console = Console()
+
+        # Build panel content
+        content = Text()
+        content.append(summary, style="green")
+
+        if suggested_next_task:
+            content.append("\n\n")
+            content.append("Suggested: ", style="bold yellow")
+            content.append(suggested_next_task, style="italic")
+
+        panel = Panel(
+            content,
+            title="[bold green]Task Completed[/bold green]",
+            border_style="green",
+            padding=(1, 2),
+        )
+
+        console.print()
+        console.print(panel)
+        console.print()
+
+        return await self.prompt_input("Enter next task (or press Enter to exit):")

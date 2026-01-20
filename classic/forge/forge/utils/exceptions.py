@@ -64,6 +64,12 @@ class AgentTerminated(AgentException):
 class AgentFinished(AgentTerminated):
     """The agent self-terminated"""
 
+    suggested_next_task: Optional[str] = None
+
+    def __init__(self, message: str, suggested_next_task: Optional[str] = None, *args):
+        super().__init__(message, *args)
+        self.suggested_next_task = suggested_next_task
+
 
 class ConfigurationError(AgentException):
     """Error caused by invalid, incompatible or otherwise incorrect configuration"""

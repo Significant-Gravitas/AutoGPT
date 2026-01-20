@@ -70,10 +70,18 @@ class SystemComponent(DirectiveProvider, MessageProvider, CommandProvider):
                 description="A summary to the user of how the goals were accomplished",
                 required=True,
             ),
+            "suggested_next_task": JSONSchema(
+                type=JSONSchema.Type.STRING,
+                description=(
+                    "An optional suggested follow-up task based on "
+                    "what was accomplished"
+                ),
+                required=False,
+            ),
         },
     )
-    def finish(self, reason: str):
+    def finish(self, reason: str, suggested_next_task: str = ""):
         """Use this to shut down once you have completed your task,
         or when there are insurmountable problems that make it impossible
         for you to finish your task."""
-        raise AgentFinished(reason)
+        raise AgentFinished(reason, suggested_next_task=suggested_next_task or None)

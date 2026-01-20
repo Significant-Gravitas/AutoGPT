@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections import Counter
 from enum import Enum
 from logging import Logger
 from typing import Any, Literal, Optional
@@ -73,7 +74,6 @@ class ToTThoughts(ModelWithSummary):
         le=1.0,
         description="Confidence in this path (0-1)",
     )
-    speak: str = Field(description="Summary to say to user")
 
     def summary(self) -> str:
         return self.reasoning
@@ -97,6 +97,25 @@ class ThoughtCandidate(ModelWithSummary):
         return self.thought
 
 
+class CategoricalEvaluation(ModelWithSummary):
+    """Categorical evaluation of a thought (from ToT paper).
+
+    The paper uses three categories:
+    - 'sure': Definitely correct, can be solved
+    - 'maybe': Might be correct, needs more exploration
+    - 'impossible': Definitely wrong or a dead end
+    """
+
+    thought_index: int = Field(description="Index of the thought being evaluated")
+    evaluation: Literal["sure", "maybe", "impossible"] = Field(
+        description="Categorical evaluation"
+    )
+    reasoning: str = Field(description="Reasoning for the evaluation")
+
+    def summary(self) -> str:
+        return f"{self.evaluation}: {self.reasoning}"
+
+
 class ThoughtEvaluation(ModelWithSummary):
     """Evaluation of a thought candidate."""
 
@@ -105,12 +124,34 @@ class ThoughtEvaluation(ModelWithSummary):
     reasoning: str = Field(description="Reasoning for the score")
     is_promising: bool = Field(description="Whether this path is worth exploring")
 
+    # Categorical evaluation support (from ToT paper)
+    categorical: Optional[Literal["sure", "maybe", "impossible"]] = Field(
+        default=None, description="Categorical evaluation if using categorical mode"
+    )
+
     def summary(self) -> str:
+        if self.categorical:
+            return f"{self.categorical} (score {self.score}): {self.reasoning}"
         return f"Score {self.score}: {self.reasoning}"
+
+    @classmethod
+    def from_categorical(cls, cat: CategoricalEvaluation) -> "ThoughtEvaluation":
+        """Create ThoughtEvaluation from a CategoricalEvaluation."""
+        score_map = {"sure": 10.0, "maybe": 5.0, "impossible": 0.0}
+        return cls(
+            thought_index=cat.thought_index,
+            score=score_map[cat.evaluation],
+            reasoning=cat.reasoning,
+            is_promising=cat.evaluation != "impossible",
+            categorical=cat.evaluation,
+        )
 
 
 class ThoughtTree:
-    """A tree of thoughts for exploration."""
+    """A tree of thoughts for exploration.
+
+    Uses parent pointers in Thought nodes for proper backtracking (per ToT paper).
+    """
 
     def __init__(self, root_content: str = ""):
         self.root = Thought(content=root_content, depth=0)
@@ -133,15 +174,20 @@ class ThoughtTree:
                     name=candidate.action_name,
                     arguments=candidate.action_arguments or {},
                 )
+            # add_child sets the parent pointer automatically
             self.current_node.add_child(thought)
             new_nodes.append(thought)
         return new_nodes
 
     def evaluate_candidates(self, evaluations: list[ThoughtEvaluation]) -> None:
         """Apply evaluations to the current node's children."""
-        for eval in evaluations:
-            if eval.thought_index < len(self.current_node.children):
-                self.current_node.children[eval.thought_index].score = eval.score
+        for eval_result in evaluations:
+            if eval_result.thought_index < len(self.current_node.children):
+                child = self.current_node.children[eval_result.thought_index]
+                child.score = eval_result.score
+                # Store categorical evaluation if present
+                if eval_result.categorical:
+                    child.categorical_evaluation = eval_result.categorical
 
     def select_best_child(self) -> Optional[Thought]:
         """Select and move to the best-scoring child."""
@@ -152,24 +198,48 @@ class ThoughtTree:
         return None
 
     def backtrack(self) -> bool:
-        """Backtrack to find unexplored paths. Returns False if exhausted."""
-        # Simple implementation: reset to root and try next best unexplored
-        # In a full implementation, would maintain parent pointers
+        """Backtrack to find unexplored paths using parent pointers.
+
+        Returns False if no more paths to explore (tree exhausted).
+        """
+        # Record current path as explored
         self.explored_paths.append(self.get_current_path_contents())
 
-        # For now, just check if we've explored too many paths
-        return len(self.explored_paths) < 10  # Max paths to explore
+        # Walk up parent pointers looking for unexplored siblings
+        node = self.current_node
+        while node.parent is not None:
+            parent = node.parent
+            # Look for unexplored siblings
+            for sibling in parent.children:
+                if sibling is not node and not self._is_fully_explored(sibling):
+                    self.current_node = sibling
+                    return True
+            # Move up to grandparent
+            node = parent
+
+        # No unexplored paths found
+        return False
+
+    def _is_fully_explored(self, node: Thought) -> bool:
+        """Check if a node and all its descendants are fully explored."""
+        # Terminal nodes are explored
+        if node.is_terminal:
+            return True
+
+        # Nodes with categorical evaluation of 'impossible' are explored
+        if node.categorical_evaluation == "impossible":
+            return True
+
+        # Nodes without children haven't been expanded yet
+        if not node.children:
+            return False
+
+        # Node is explored if all children are explored
+        return all(self._is_fully_explored(child) for child in node.children)
 
     def get_current_path(self) -> list[Thought]:
-        """Get the path from root to current node."""
-        # Simple implementation - in full version would use parent pointers
-        path = []
-        node = self.current_node
-        while node:
-            path.append(node)
-            # Would need parent pointer here
-            break  # Simplified
-        return list(reversed(path))
+        """Get the path from root to current node using parent pointers."""
+        return self.current_node.get_path_to_root()
 
     def get_current_path_contents(self) -> list[str]:
         """Get the content of thoughts in current path."""
@@ -253,6 +323,21 @@ class ToTPromptConfiguration(BasePromptStrategyConfiguration):
         "Format as a JSON array of evaluations."
     )
 
+    # Categorical evaluation instruction (from ToT paper)
+    DEFAULT_EVALUATE_CATEGORICAL_INSTRUCTION: str = (
+        "Evaluate each candidate thought's likelihood of leading to a correct "
+        "solution.\n\n"
+        "Task: {task}\n"
+        "Current path: {current_path}\n"
+        "Candidates:\n{candidates}\n\n"
+        "For each candidate, classify as:\n"
+        "- 'sure': Definitely correct, will solve the problem\n"
+        "- 'maybe': Might be correct, worth exploring further\n"
+        "- 'impossible': Definitely wrong or a dead end\n\n"
+        "Format: [{{'thought_index': N, 'evaluation': 'sure|maybe|impossible', "
+        "'reasoning': '...'}}]"
+    )
+
     DEFAULT_SELECT_INSTRUCTION: str = (
         "Based on the evaluations, select the best path forward.\n\n"
         "Provide your thoughts in the required JSON format, then invoke "
@@ -261,11 +346,22 @@ class ToTPromptConfiguration(BasePromptStrategyConfiguration):
 
     generate_instruction: str = UserConfigurable(default=DEFAULT_GENERATE_INSTRUCTION)
     evaluate_instruction: str = UserConfigurable(default=DEFAULT_EVALUATE_INSTRUCTION)
+    evaluate_categorical_instruction: str = UserConfigurable(
+        default=DEFAULT_EVALUATE_CATEGORICAL_INSTRUCTION
+    )
     select_instruction: str = UserConfigurable(default=DEFAULT_SELECT_INSTRUCTION)
     search_algorithm: Literal["bfs", "dfs"] = UserConfigurable(default="bfs")
     branching_factor: int = UserConfigurable(default=3)
     max_depth: int = UserConfigurable(default=5)
     min_score_threshold: float = UserConfigurable(default=5.0)
+
+    # Evaluation mode: numeric (0-10 scores) or categorical (sure/maybe/impossible)
+    evaluation_mode: Literal["numeric", "categorical"] = UserConfigurable(
+        default="numeric"
+    )
+
+    # Number of evaluation samples for aggregation (paper uses 3)
+    evaluation_samples: int = UserConfigurable(default=1)
 
 
 class TreeOfThoughtsPromptStrategy(BaseMultiStepPromptStrategy):
@@ -390,7 +486,7 @@ class TreeOfThoughtsPromptStrategy(BaseMultiStepPromptStrategy):
         include_os_info: bool,
     ) -> ChatPrompt:
         """Build the evaluation phase prompt."""
-        system_prompt, response_prefill = self._build_system_prompt(
+        system_prompt, _ = self._build_system_prompt(
             ai_profile=ai_profile,
             ai_directives=ai_directives,
             commands=commands,
@@ -410,11 +506,21 @@ class TreeOfThoughtsPromptStrategy(BaseMultiStepPromptStrategy):
             if path:
                 current_path = " → ".join(path)
 
-        evaluate_instruction = self.config.evaluate_instruction.format(
-            task=task,
-            current_path=current_path or "Starting point",
-            candidates=candidates_text,
-        )
+        # Use categorical or numeric evaluation instruction
+        if self.config.evaluation_mode == "categorical":
+            evaluate_instruction = self.config.evaluate_categorical_instruction.format(
+                task=task,
+                current_path=current_path or "Starting point",
+                candidates=candidates_text,
+            )
+            prefill = '[{"thought_index": 0, "evaluation": "'
+        else:
+            evaluate_instruction = self.config.evaluate_instruction.format(
+                task=task,
+                current_path=current_path or "Starting point",
+                candidates=candidates_text,
+            )
+            prefill = '[{"thought_index":'
 
         return ChatPrompt(
             messages=[
@@ -423,7 +529,7 @@ class TreeOfThoughtsPromptStrategy(BaseMultiStepPromptStrategy):
                 *messages,
                 ChatMessage.user(evaluate_instruction),
             ],
-            prefill_response='[{"thought_index":',
+            prefill_response=prefill,
             functions=commands,
         )
 
@@ -626,27 +732,53 @@ class TreeOfThoughtsPromptStrategy(BaseMultiStepPromptStrategy):
             array_match = re.search(r"\[.*\]", content, re.DOTALL)
             if array_match:
                 eval_data = json.loads(array_match.group())
+
+                if self.config.evaluation_mode == "categorical":
+                    # Parse categorical evaluations
+                    for i, e in enumerate(eval_data):
+                        if not isinstance(e, dict):
+                            continue
+                        cat_eval = CategoricalEvaluation(
+                            thought_index=e.get("thought_index", i),
+                            evaluation=e.get("evaluation", "maybe"),
+                            reasoning=e.get("reasoning", ""),
+                        )
+                        evaluations.append(ThoughtEvaluation.from_categorical(cat_eval))
+                else:
+                    # Parse numeric evaluations
+                    evaluations = [
+                        ThoughtEvaluation(
+                            thought_index=e.get("thought_index", i),
+                            score=float(e.get("score", 0)),
+                            reasoning=e.get("reasoning", ""),
+                            is_promising=e.get("is_promising", True),
+                        )
+                        for i, e in enumerate(eval_data)
+                        if isinstance(e, dict)
+                    ]
+        except (json.JSONDecodeError, ValueError):
+            # Fallback: assign default scores/categories
+            if self.config.evaluation_mode == "categorical":
                 evaluations = [
                     ThoughtEvaluation(
-                        thought_index=e.get("thought_index", i),
-                        score=float(e.get("score", 0)),
-                        reasoning=e.get("reasoning", ""),
-                        is_promising=e.get("is_promising", True),
+                        thought_index=i,
+                        score=5.0,
+                        reasoning="Default evaluation",
+                        is_promising=True,
+                        categorical="maybe",
                     )
-                    for i, e in enumerate(eval_data)
-                    if isinstance(e, dict)
+                    for i in range(len(self.pending_candidates))
                 ]
-        except (json.JSONDecodeError, ValueError):
-            # Fallback: assign equal scores
-            evaluations = [
-                ThoughtEvaluation(
-                    thought_index=i,
-                    score=5.0,
-                    reasoning="Default score",
-                    is_promising=True,
-                )
-                for i in range(len(self.pending_candidates))
-            ]
+            else:
+                evaluations = [
+                    ThoughtEvaluation(
+                        thought_index=i,
+                        score=5.0,
+                        reasoning="Default score",
+                        is_promising=True,
+                    )
+                    for i in range(len(self.pending_candidates))
+                ]
 
         self.tree.evaluate_candidates(evaluations)
 
@@ -658,6 +790,74 @@ class TreeOfThoughtsPromptStrategy(BaseMultiStepPromptStrategy):
             # BFS: would maintain a queue of nodes to explore
             # Simplified: just select best for now
             self.tree.select_best_child()
+
+    def _aggregate_evaluations(
+        self,
+        all_samples: list[list[ThoughtEvaluation]],
+    ) -> list[ThoughtEvaluation]:
+        """Aggregate multiple evaluation samples (from ToT paper).
+
+        For categorical mode, uses majority voting.
+        For numeric mode, uses average scores.
+
+        Args:
+            all_samples: List of evaluation lists from multiple sampling runs
+
+        Returns:
+            Aggregated evaluations
+        """
+        if not all_samples:
+            return []
+
+        if len(all_samples) == 1:
+            return all_samples[0]
+
+        num_thoughts = len(all_samples[0])
+        aggregated: list[ThoughtEvaluation] = []
+
+        for i in range(num_thoughts):
+            if self.config.evaluation_mode == "categorical":
+                # Majority voting for categorical
+                votes: Counter[str] = Counter()
+                for sample in all_samples:
+                    cat = sample[i].categorical if i < len(sample) else None
+                    if cat is not None:
+                        votes[cat] += 1
+
+                if votes:
+                    winner = votes.most_common(1)[0][0]
+                    vote_count = votes[winner]
+                else:
+                    winner = "maybe"
+                    vote_count = 0
+
+                score_map = {"sure": 10.0, "maybe": 5.0, "impossible": 0.0}
+                num_samples = len(all_samples)
+                reasoning = f"Majority: {winner} ({vote_count}/{num_samples})"
+                aggregated.append(
+                    ThoughtEvaluation(
+                        thought_index=i,
+                        score=score_map.get(winner, 5.0),
+                        reasoning=reasoning,
+                        is_promising=winner != "impossible",
+                        categorical=winner,  # type: ignore[arg-type]
+                    )
+                )
+            else:
+                # Average scores for numeric
+                scores = [sample[i].score for sample in all_samples if i < len(sample)]
+                avg_score = sum(scores) / len(scores) if scores else 5.0
+
+                aggregated.append(
+                    ThoughtEvaluation(
+                        thought_index=i,
+                        score=avg_score,
+                        reasoning=f"Average of {len(scores)} samples",
+                        is_promising=avg_score >= self.config.min_score_threshold,
+                    )
+                )
+
+        return aggregated
 
     def should_continue_search(self) -> bool:
         """Check if we should continue searching the tree."""

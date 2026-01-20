@@ -235,6 +235,16 @@ class Agent(BaseAgent[AnyActionProposal], Configurable[AgentSettings]):
         if exception:
             prompt.messages.append(ChatMessage.system(f"Error: {exception}"))
 
+        # Build thinking/reasoning kwargs from app config
+        thinking_kwargs: dict[str, Any] = {}
+        if hasattr(self, "app_config") and self.app_config:
+            if self.app_config.thinking_budget_tokens:
+                thinking_kwargs["thinking_budget_tokens"] = (
+                    self.app_config.thinking_budget_tokens
+                )
+            if self.app_config.reasoning_effort:
+                thinking_kwargs["reasoning_effort"] = self.app_config.reasoning_effort
+
         response: ChatModelResponse[AnyActionProposal] = (
             await self.llm_provider.create_chat_completion(
                 prompt.messages,
@@ -242,6 +252,7 @@ class Agent(BaseAgent[AnyActionProposal], Configurable[AgentSettings]):
                 completion_parser=self.prompt_strategy.parse_response_content,
                 functions=prompt.functions,
                 prefill_response=prompt.prefill_response,
+                **thinking_kwargs,
             )
         )
         result = response.parsed_result

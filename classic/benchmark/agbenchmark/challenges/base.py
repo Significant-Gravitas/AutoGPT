@@ -1,7 +1,7 @@
 import logging
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import AsyncIterator, Awaitable, ClassVar, Optional
+from typing import Any, AsyncIterator, Awaitable, ClassVar, Optional
 
 import pytest
 from agent_protocol_client import AgentApi, Step
@@ -12,6 +12,86 @@ from agbenchmark.config import AgentBenchmarkConfig
 from agbenchmark.utils.data_types import Category, DifficultyLevel, EvalResult
 
 logger = logging.getLogger(__name__)
+
+
+def format_step_output(step: Step, step_num: int, challenge_name: str) -> str:
+    """Format a step for concise, informative console output.
+
+    Format: [Challenge] step N: tool_name(args) → result [$cost]
+    """
+    parts = [f"[{challenge_name}]", f"step {step_num}:"]
+
+    # Get additional_output data
+    ao: dict[str, Any] = step.additional_output or {}
+
+    # Get the tool being used in this step
+    use_tool = ao.get("use_tool", {})
+    tool_name = use_tool.get("name", "")
+    tool_args = use_tool.get("arguments", {})
+
+    if tool_name:
+        # Format tool call with abbreviated arguments
+        args_str = _format_tool_args(tool_name, tool_args)
+        parts.append(f"{Fore.CYAN}{tool_name}{Fore.RESET}({args_str})")
+    else:
+        parts.append(f"{Fore.YELLOW}(no tool){Fore.RESET}")
+
+    # Get result from last action (this step's tool will be executed next iteration)
+    last_action = ao.get("last_action", {})
+    if last_action:
+        result = last_action.get("result", {})
+        if isinstance(result, dict):
+            if result.get("error"):
+                parts.append(f"→ {Fore.RED}error{Fore.RESET}")
+            elif result.get("status") == "success":
+                parts.append(f"→ {Fore.GREEN}✓{Fore.RESET}")
+
+    # Add cost if available
+    cost = ao.get("task_cumulative_cost", 0)
+    if cost > 0:
+        parts.append(f"{Fore.BLUE}${cost:.3f}{Fore.RESET}")
+
+    return " ".join(parts)
+
+
+def _format_tool_args(tool_name: str, args: dict) -> str:
+    """Format tool arguments for display, keeping it concise."""
+    if not args:
+        return ""
+
+    # For common tools, show the most relevant argument
+    key_args = {
+        "read_file": ["filename"],
+        "write_file": ["filename"],
+        "open_file": ["filename", "file_path"],
+        "execute_python": ["filename"],
+        "execute_shell": ["command_line"],
+        "web_search": ["query"],
+        "read_webpage": ["url"],
+        "finish": ["reason"],
+        "ask_user": ["question"],
+        "todo_write": [],  # Skip args for todo_write (too verbose)
+    }
+
+    if tool_name in key_args:
+        keys = key_args[tool_name]
+        if not keys:
+            return "..."
+        values = [str(args.get(k, ""))[:40] for k in keys if k in args]
+        if values:
+            return ", ".join(
+                f'"{v}"' if " " not in v else f'"{v[:20]}..."' for v in values
+            )
+
+    # Default: show first arg value, abbreviated
+    if args:
+        first_key = next(iter(args))
+        first_val = str(args[first_key])[:30]
+        return f'{first_key}="{first_val}"' + (
+            "..." if len(str(args[first_key])) > 30 else ""
+        )
+
+    return ""
 
 
 class ChallengeInfo(BaseModel):
@@ -95,7 +175,7 @@ class BaseChallenge(ABC):
             cls.info.task, config, timeout, cls.info.task_artifacts_dir, mock=mock
         ):
             i += 1
-            print(f"[{cls.info.name}] - step {step.name} ({i}. request)")
+            print(format_step_output(step, i, cls.info.name))
             yield step
         logger.debug(f"Finished {cls.info.name} challenge run")
 
@@ -103,5 +183,4 @@ class BaseChallenge(ABC):
     @abstractmethod
     async def evaluate_task_state(
         cls, agent: AgentApi, task_id: str
-    ) -> list[EvalResult]:
-        ...
+    ) -> list[EvalResult]: ...

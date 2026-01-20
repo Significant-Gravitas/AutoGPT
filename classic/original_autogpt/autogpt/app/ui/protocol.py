@@ -6,7 +6,7 @@ from abc import ABC, abstractmethod
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING, Any, AsyncIterator
+from typing import TYPE_CHECKING, Any, AsyncIterator, Optional
 
 from forge.permissions import ApprovalScope
 
@@ -165,6 +165,23 @@ class UIProvider(ABC):
 
         Returns:
             True if user confirms, False otherwise.
+        """
+        pass
+
+    @abstractmethod
+    async def prompt_finish_continuation(
+        self,
+        summary: str,
+        suggested_next_task: Optional[str] = None,
+    ) -> str:
+        """Display task completion and prompt for next task.
+
+        Args:
+            summary: The completion summary from the agent.
+            suggested_next_task: Optional suggested follow-up task.
+
+        Returns:
+            User's input for next task, or empty string to exit.
         """
         pass
 

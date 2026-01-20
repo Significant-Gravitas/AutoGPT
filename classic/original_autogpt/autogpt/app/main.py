@@ -25,12 +25,16 @@ from forge.config.workspace_settings import AgentPermissions, WorkspaceSettings
 from forge.file_storage import FileStorageBackendName, get_storage
 from forge.llm.providers import MultiProvider
 from forge.logging.config import configure_logging
-from forge.logging.utils import print_attribute, speak
+from forge.logging.utils import print_attribute
 from forge.models.action import ActionInterruptedByHuman, ActionProposal
 from forge.models.utils import ModelWithSummary
 from forge.permissions import ApprovalScope, CommandPermissionManager
 from forge.utils.const import FINISH_COMMAND
-from forge.utils.exceptions import AgentTerminated, InvalidAgentResponseError
+from forge.utils.exceptions import (
+    AgentFinished,
+    AgentTerminated,
+    InvalidAgentResponseError,
+)
 
 from autogpt.agent_factory.configurators import configure_agent_with_state, create_agent
 from autogpt.agents.agent_manager import AgentManager
@@ -709,7 +713,38 @@ async def run_interaction_loop(
         # If user denies with feedback, the agent will receive it via
         # ActionInterruptedByHuman. If user approves with feedback, command
         # executes and feedback is appended to history.
-        result = await agent.execute(action_proposal)
+        try:
+            result = await agent.execute(action_proposal)
+        except AgentFinished as e:
+            # Handle finish command
+            if app_config.noninteractive_mode:
+                # Non-interactive: exit (preserve benchmark behavior)
+                logger.info(f"Agent finished: {e.message}")
+                return
+
+            # Interactive mode: show panel and prompt for continuation
+            next_task = await ui_provider.prompt_finish_continuation(
+                summary=e.message,
+                suggested_next_task=e.suggested_next_task,
+            )
+
+            if not next_task.strip():
+                # Empty input = exit
+                logger.info("User chose to exit after task completion.")
+                return
+
+            # Start new task in same workspace
+            agent.state.task = next_task
+            agent.event_history.episodes.clear()  # Clear history for fresh context
+
+            # Reset cycle budget for new task
+            cycles_remaining = _get_cycle_budget(
+                app_config.continuous_mode, app_config.continuous_limit
+            )
+
+            logger.info(f"Starting new task: {next_task}")
+            continue
+
         if result.status != "interrupted_by_human":
             cycles_remaining -= 1
 
@@ -751,9 +786,6 @@ def update_user(
         thoughts=action_proposal.thoughts,
         speak_mode=speak_mode,
     )
-
-    if speak_mode:
-        speak(f"I want to execute {action_proposal.use_tool.name}")
 
     # First log new-line so user can differentiate sections better in console
     print()
@@ -869,17 +901,6 @@ def print_assistant_thoughts(
             remove_ansi_escape(thoughts.self_criticism),
             title_color=Fore.YELLOW,
         )
-
-        # Speak the assistant's thoughts
-        if assistant_thoughts_speak := remove_ansi_escape(thoughts.speak):
-            if speak_mode:
-                speak(assistant_thoughts_speak)
-            else:
-                print_attribute(
-                    "SPEAK", assistant_thoughts_speak, title_color=Fore.YELLOW
-                )
-    else:
-        speak(thoughts_text)
 
 
 def remove_ansi_escape(s: str) -> str:

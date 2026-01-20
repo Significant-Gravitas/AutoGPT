@@ -25,7 +25,7 @@ import re
 from datetime import datetime
 from enum import Enum
 from logging import Logger
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from forge.config.ai_directives import AIDirectives
 from forge.config.ai_profile import AIProfile
@@ -58,6 +58,27 @@ class ReflexionPhase(str, Enum):
     REFLECTING = "reflecting"
 
 
+class EvaluatorType(str, Enum):
+    """Type of evaluator for determining action success (from Reflexion paper)."""
+
+    LLM = "llm"  # Use LLM to evaluate result
+    HEURISTIC = "heuristic"  # Use pattern-based heuristics
+
+
+class EvaluationResult(ModelWithSummary):
+    """Result from the Evaluator component."""
+
+    success: bool = Field(description="Whether the action was successful")
+    score: Optional[float] = Field(
+        default=None, ge=0.0, le=1.0, description="Score from 0-1 if available"
+    )
+    feedback: str = Field(default="", description="Feedback about the result")
+
+    def summary(self) -> str:
+        status = "Success" if self.success else "Failure"
+        return f"{status}: {self.feedback}"
+
+
 class ReflexionThoughts(ModelWithSummary):
     """Thoughts model for Reflexion strategy.
 
@@ -79,7 +100,6 @@ class ReflexionThoughts(ModelWithSummary):
         description="Constructive self-criticism of current approach"
     )
     plan: list[str] = Field(description="Short list of planned steps")
-    speak: str = Field(description="Summary to say to user")
 
     def summary(self) -> str:
         return self.reasoning
@@ -143,12 +163,28 @@ class ReflexionPromptConfiguration(BasePromptStrategyConfiguration):
         "Provide your reflection in the JSON format below."
     )
 
+    # Verbal reflection instruction (from Reflexion paper - free-form reflections)
+    DEFAULT_VERBAL_REFLECT_INSTRUCTION: str = (
+        "Reflect on your last action in natural language.\n\n"
+        "Action: {action_name}({action_args})\n"
+        "Result: {result}\n"
+        "Evaluator Feedback: {evaluator_feedback}\n\n"
+        "Write a brief reflection covering:\n"
+        "- What happened and whether the goal was achieved\n"
+        "- What went wrong (if anything)\n"
+        "- What specific changes to make in the next attempt\n\n"
+        "Be concise and actionable. Focus on lessons learned."
+    )
+
     DEFAULT_CHOOSE_ACTION_INSTRUCTION: str = (
         "Based on your reflection on past attempts, determine the best next action."
     )
 
     propose_instruction: str = UserConfigurable(default=DEFAULT_PROPOSE_INSTRUCTION)
     reflect_instruction: str = UserConfigurable(default=DEFAULT_REFLECT_INSTRUCTION)
+    verbal_reflect_instruction: str = UserConfigurable(
+        default=DEFAULT_VERBAL_REFLECT_INSTRUCTION
+    )
     choose_action_instruction: str = UserConfigurable(
         default=DEFAULT_CHOOSE_ACTION_INSTRUCTION
     )
@@ -156,6 +192,14 @@ class ReflexionPromptConfiguration(BasePromptStrategyConfiguration):
     always_reflect: bool = UserConfigurable(default=True)
     reflect_on_success: bool = UserConfigurable(default=True)
     max_retry_attempts: int = UserConfigurable(default=3)
+
+    # Evaluator configuration (from Reflexion paper)
+    evaluator_type: EvaluatorType = UserConfigurable(default=EvaluatorType.HEURISTIC)
+
+    # Reflection format: structured (JSON fields), verbal (free-form), or auto
+    reflection_format: Literal["structured", "verbal", "auto"] = UserConfigurable(
+        default="structured"
+    )
 
 
 class ReflexionPromptStrategy(BaseMultiStepPromptStrategy):
@@ -177,6 +221,7 @@ class ReflexionPromptStrategy(BaseMultiStepPromptStrategy):
         self.current_phase: ReflexionPhase = ReflexionPhase.PROPOSING
         self.last_action: Optional[dict[str, Any]] = None
         self.last_result: Optional[str] = None
+        self.last_evaluation: Optional[EvaluationResult] = None
         self.retry_count: int = 0
         self._response_schema = JSONSchema.from_dict(
             ReflexionActionProposal.model_json_schema()
@@ -279,6 +324,19 @@ class ReflexionPromptStrategy(BaseMultiStepPromptStrategy):
         include_os_info: bool,
     ) -> ChatPrompt:
         """Build the reflection phase prompt."""
+        # Check if we should use verbal reflection format
+        reflection_format = self._get_reflection_format()
+        if reflection_format == "verbal":
+            return self._build_verbal_reflection_prompt(
+                messages=messages,
+                task=task,
+                ai_profile=ai_profile,
+                ai_directives=ai_directives,
+                commands=commands,
+                include_os_info=include_os_info,
+            )
+
+        # Structured reflection (original behavior)
         system_prompt, response_prefill = self._build_system_prompt(
             ai_profile=ai_profile,
             ai_directives=ai_directives,
@@ -395,6 +453,130 @@ class ReflexionPromptStrategy(BaseMultiStepPromptStrategy):
             "\n\nAfter reflecting, invoke a command to continue with the task."
         )
 
+    def _evaluate_heuristic(self, result: str) -> EvaluationResult:
+        """Simple heuristic evaluation based on error patterns.
+
+        This is the default evaluator that looks for common error indicators
+        in the result string. For more sophisticated evaluation, use
+        evaluator_type=EvaluatorType.LLM.
+        """
+        error_patterns = [
+            "error",
+            "failed",
+            "exception",
+            "traceback",
+            "invalid",
+            "not found",
+            "permission denied",
+            "timeout",
+            "refused",
+            "cannot",
+            "unable to",
+        ]
+
+        result_lower = result.lower()
+        has_error = any(pattern in result_lower for pattern in error_patterns)
+
+        # Check for success patterns that might override error detection
+        success_patterns = [
+            "success",
+            "completed",
+            "done",
+            "finished",
+            "created",
+            "saved",
+        ]
+        has_success = any(pattern in result_lower for pattern in success_patterns)
+
+        # If both error and success patterns, look at which appears first
+        if has_error and has_success:
+            # Find first occurrence of each
+            first_error_idx = min(
+                (result_lower.find(p) for p in error_patterns if p in result_lower),
+                default=len(result_lower),
+            )
+            first_success_idx = min(
+                (result_lower.find(p) for p in success_patterns if p in result_lower),
+                default=len(result_lower),
+            )
+            has_error = first_error_idx < first_success_idx
+
+        if has_error:
+            return EvaluationResult(
+                success=False,
+                score=0.2,
+                feedback="Detected error patterns in output",
+            )
+        else:
+            return EvaluationResult(
+                success=True,
+                score=0.8,
+                feedback="Execution completed without detected errors",
+            )
+
+    def _get_reflection_format(self) -> Literal["structured", "verbal"]:
+        """Determine the reflection format to use."""
+        if self.config.reflection_format == "auto":
+            # Auto mode: use verbal if there was an evaluation, structured otherwise
+            return "verbal" if self.last_evaluation is not None else "structured"
+        elif self.config.reflection_format == "verbal":
+            return "verbal"
+        else:
+            return "structured"
+
+    def _build_verbal_reflection_prompt(
+        self,
+        *,
+        messages: list[ChatMessage],
+        task: str,
+        ai_profile: AIProfile,
+        ai_directives: AIDirectives,
+        commands: list[CompletionModelFunction],
+        include_os_info: bool,
+    ) -> ChatPrompt:
+        """Build prompt for free-form verbal reflection (from Reflexion paper)."""
+        system_prompt, _ = self._build_system_prompt(
+            ai_profile=ai_profile,
+            ai_directives=ai_directives,
+            commands=commands,
+            include_os_info=include_os_info,
+            for_reflection=True,
+        )
+
+        action_name = (
+            self.last_action.get("name", "unknown") if self.last_action else "unknown"
+        )
+        action_args = (
+            json.dumps(self.last_action.get("arguments", {}))
+            if self.last_action
+            else "{}"
+        )
+        result = self.last_result or "No result"
+        evaluator_feedback = (
+            self.last_evaluation.feedback
+            if self.last_evaluation
+            else "No evaluation available"
+        )
+
+        verbal_instruction = self.config.verbal_reflect_instruction.format(
+            action_name=action_name,
+            action_args=action_args,
+            result=result,
+            evaluator_feedback=evaluator_feedback,
+        )
+
+        # For verbal reflection, we want free-form text, not JSON
+        return ChatPrompt(
+            messages=[
+                ChatMessage.system(system_prompt),
+                ChatMessage.user(f'Original Task: """{task}"""'),
+                *messages,
+                ChatMessage.user(verbal_instruction),
+            ],
+            prefill_response="Reflection: ",
+            functions=commands,
+        )
+
     def parse_response_content(
         self,
         response: AssistantChatMessage,
@@ -425,7 +607,17 @@ class ReflexionPromptStrategy(BaseMultiStepPromptStrategy):
 
         # If we're in reflection phase, process the reflection
         if self.current_phase == ReflexionPhase.REFLECTING:
-            self._process_reflection(assistant_reply_dict)
+            # Check if this is a verbal reflection
+            reflection_format = self._get_reflection_format()
+            if reflection_format == "verbal":
+                # Extract verbal reflection text from response
+                # It starts after "Reflection: " prefix
+                verbal_text = response.content
+                if verbal_text.startswith("Reflection:"):
+                    verbal_text = verbal_text[len("Reflection:") :].strip()
+                self._process_reflection(assistant_reply_dict, verbal_text=verbal_text)
+            else:
+                self._process_reflection(assistant_reply_dict)
             # After reflection, move back to proposing
             self.current_phase = ReflexionPhase.PROPOSING
 
@@ -444,9 +636,58 @@ class ReflexionPromptStrategy(BaseMultiStepPromptStrategy):
 
         return parsed_response
 
-    def _process_reflection(self, response_dict: dict[str, Any]) -> None:
-        """Process a reflection response and store in memory."""
-        # Extract reflection fields
+    def _process_reflection(
+        self, response_dict: dict[str, Any], verbal_text: Optional[str] = None
+    ) -> None:
+        """Process a reflection response and store in memory.
+
+        Args:
+            response_dict: Parsed JSON response (for structured reflections)
+            verbal_text: Raw verbal reflection text (for verbal format)
+        """
+        reflection_format = self._get_reflection_format()
+
+        if reflection_format == "verbal" and verbal_text:
+            # Verbal reflection format (from Reflexion paper)
+            # Extract evaluation score if available
+            evaluation_score = (
+                self.last_evaluation.score if self.last_evaluation else None
+            )
+            success = self.last_evaluation.success if self.last_evaluation else True
+
+            reflection = Reflection(
+                action_name=(
+                    self.last_action.get("name", "unknown")
+                    if self.last_action
+                    else "unknown"
+                ),
+                action_arguments=(
+                    self.last_action.get("arguments", {}) if self.last_action else {}
+                ),
+                result_summary=self.last_result or "",
+                verbal_reflection=verbal_text,
+                reflection_format="verbal",
+                evaluation_score=evaluation_score,
+                success=success,
+                timestamp=datetime.now(),
+            )
+
+            self.memory.add_reflection(reflection)
+            self.logger.debug(
+                f"Stored verbal reflection: {reflection.to_prompt_text()}"
+            )
+
+            # Handle retry logic based on evaluation
+            if not success and self.retry_count < self.config.max_retry_attempts:
+                self.retry_count += 1
+                self.logger.info(
+                    f"Evaluation suggests retry (attempt {self.retry_count})"
+                )
+            else:
+                self.retry_count = 0
+            return
+
+        # Structured reflection format (original behavior)
         action_summary = response_dict.get("action_summary", "")
         result_analysis = response_dict.get("result_analysis", "")
         what_failed = response_dict.get("what_failed", "")
@@ -464,6 +705,9 @@ class ReflexionPromptStrategy(BaseMultiStepPromptStrategy):
             "n/a",
         )
 
+        # Include evaluation score if available
+        evaluation_score = self.last_evaluation.score if self.last_evaluation else None
+
         # Create and store reflection
         reflection = Reflection(
             action_name=(
@@ -478,6 +722,7 @@ class ReflexionPromptStrategy(BaseMultiStepPromptStrategy):
             what_went_wrong=what_failed if not success else "",
             what_to_do_differently=lesson_learned,
             success=success,
+            evaluation_score=evaluation_score,
             timestamp=datetime.now(),
         )
 
@@ -498,9 +743,32 @@ class ReflexionPromptStrategy(BaseMultiStepPromptStrategy):
             "arguments": action_arguments,
         }
 
-    def record_result(self, result: str, success: bool = True) -> None:
-        """Record the result of an action and trigger reflection if needed."""
+    def record_result(self, result: str, success: Optional[bool] = None) -> None:
+        """Record the result of an action and trigger reflection if needed.
+
+        Args:
+            result: The result string from executing the action
+            success: Override for success determination. If None, uses evaluator.
+        """
         self.last_result = result
+
+        # Run evaluator if success is not explicitly provided
+        if success is None:
+            if self.config.evaluator_type == EvaluatorType.HEURISTIC:
+                self.last_evaluation = self._evaluate_heuristic(result)
+                success = self.last_evaluation.success
+            else:
+                # For LLM evaluator, would need to make an LLM call
+                # For now, fall back to heuristic
+                self.last_evaluation = self._evaluate_heuristic(result)
+                success = self.last_evaluation.success
+        else:
+            # Create evaluation result from explicit success
+            self.last_evaluation = EvaluationResult(
+                success=success,
+                score=0.9 if success else 0.1,
+                feedback="Explicit success/failure provided",
+            )
 
         if self.config.always_reflect or not success:
             if success and not self.config.reflect_on_success:
@@ -524,6 +792,7 @@ class ReflexionPromptStrategy(BaseMultiStepPromptStrategy):
         self.current_phase = ReflexionPhase.PROPOSING
         self.last_action = None
         self.last_result = None
+        self.last_evaluation = None
         self.retry_count = 0
 
     def clear_memory(self) -> None:

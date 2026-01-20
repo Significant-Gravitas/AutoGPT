@@ -299,12 +299,10 @@ class AgentProtocolServer:
             if last_proposal and last_proposal.use_tool.name != ASK_COMMAND
             else ""
         )
-        # Get speak text if available, otherwise use summary or string representation
+        # Get thoughts summary or string representation
         thoughts = assistant_response.thoughts
         if isinstance(thoughts, str):
             thoughts_output = thoughts
-        elif hasattr(thoughts, "speak"):
-            thoughts_output = thoughts.speak  # type: ignore[union-attr]
         else:
             thoughts_output = thoughts.summary()
         output += f"{thoughts_output}\n\n"

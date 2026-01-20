@@ -281,6 +281,7 @@ OPEN_AI_CHAT_MODELS = {
             completion_token_cost=60.00 / 1_000_000,
             max_tokens=200_000,
             has_function_call_api=True,
+            supports_reasoning_effort=True,
         ),
         ChatModelInfo(
             name=OpenAIModelName.O1_MINI,
@@ -289,6 +290,7 @@ OPEN_AI_CHAT_MODELS = {
             completion_token_cost=4.40 / 1_000_000,
             max_tokens=200_000,
             has_function_call_api=True,
+            supports_reasoning_effort=True,
         ),
         ChatModelInfo(
             name=OpenAIModelName.O1_PRO,
@@ -297,6 +299,7 @@ OPEN_AI_CHAT_MODELS = {
             completion_token_cost=600.00 / 1_000_000,
             max_tokens=200_000,
             has_function_call_api=True,
+            supports_reasoning_effort=True,
         ),
         ChatModelInfo(
             name=OpenAIModelName.O3,
@@ -305,6 +308,7 @@ OPEN_AI_CHAT_MODELS = {
             completion_token_cost=8.00 / 1_000_000,
             max_tokens=200_000,
             has_function_call_api=True,
+            supports_reasoning_effort=True,
         ),
         ChatModelInfo(
             name=OpenAIModelName.O3_MINI,
@@ -313,6 +317,7 @@ OPEN_AI_CHAT_MODELS = {
             completion_token_cost=4.40 / 1_000_000,
             max_tokens=200_000,
             has_function_call_api=True,
+            supports_reasoning_effort=True,
         ),
         ChatModelInfo(
             name=OpenAIModelName.O3_PRO,
@@ -321,6 +326,7 @@ OPEN_AI_CHAT_MODELS = {
             completion_token_cost=80.00 / 1_000_000,
             max_tokens=200_000,
             has_function_call_api=True,
+            supports_reasoning_effort=True,
         ),
         ChatModelInfo(
             name=OpenAIModelName.O4_MINI,
@@ -329,6 +335,7 @@ OPEN_AI_CHAT_MODELS = {
             completion_token_cost=4.40 / 1_000_000,
             max_tokens=200_000,
             has_function_call_api=True,
+            supports_reasoning_effort=True,
         ),
         # GPT-5 models (~400K context)
         ChatModelInfo(
@@ -338,6 +345,7 @@ OPEN_AI_CHAT_MODELS = {
             completion_token_cost=10.00 / 1_000_000,
             max_tokens=400_000,
             has_function_call_api=True,
+            supports_reasoning_effort=True,
         ),
         ChatModelInfo(
             name=OpenAIModelName.GPT5_1,
@@ -346,6 +354,7 @@ OPEN_AI_CHAT_MODELS = {
             completion_token_cost=10.00 / 1_000_000,
             max_tokens=400_000,
             has_function_call_api=True,
+            supports_reasoning_effort=True,
         ),
         ChatModelInfo(
             name=OpenAIModelName.GPT5_2,
@@ -354,6 +363,7 @@ OPEN_AI_CHAT_MODELS = {
             completion_token_cost=14.00 / 1_000_000,
             max_tokens=400_000,
             has_function_call_api=True,
+            supports_reasoning_effort=True,
         ),
         ChatModelInfo(
             name=OpenAIModelName.GPT5_MINI,
@@ -362,6 +372,7 @@ OPEN_AI_CHAT_MODELS = {
             completion_token_cost=2.00 / 1_000_000,
             max_tokens=400_000,
             has_function_call_api=True,
+            supports_reasoning_effort=True,
         ),
         ChatModelInfo(
             name=OpenAIModelName.GPT5_NANO,
@@ -370,6 +381,7 @@ OPEN_AI_CHAT_MODELS = {
             completion_token_cost=0.40 / 1_000_000,
             max_tokens=400_000,
             has_function_call_api=True,
+            supports_reasoning_effort=True,
         ),
         ChatModelInfo(
             name=OpenAIModelName.GPT5_PRO,
@@ -378,6 +390,7 @@ OPEN_AI_CHAT_MODELS = {
             completion_token_cost=120.00 / 1_000_000,
             max_tokens=400_000,
             has_function_call_api=True,
+            supports_reasoning_effort=True,
         ),
         ChatModelInfo(
             name=OpenAIModelName.GPT5_2_PRO,
@@ -386,6 +399,7 @@ OPEN_AI_CHAT_MODELS = {
             completion_token_cost=168.00 / 1_000_000,
             max_tokens=400_000,
             has_function_call_api=True,
+            supports_reasoning_effort=True,
         ),
     ]
 }

@@ -1,39 +1,37 @@
 #!/usr/bin/env python3
-"""Test harness for comparing different prompt strategies and LLM models.
+"""
+Unified Prompt Strategy Benchmark Suite
 
-This script runs the agbenchmark against the AutoGPT agent with different
-prompt strategies and LLM configurations, then compares the results.
+The main entry point for benchmarking AutoGPT with different prompt strategies
+and LLM configurations. Runs benchmarks and automatically analyzes results.
 
-Usage:
-    # Run all strategies on all tests (takes a long time)
-    python test_prompt_strategies.py
+USAGE:
+    # Run full benchmark suite (all strategies, all tests)
+    poetry run python agbenchmark_config/test_prompt_strategies.py
+
+    # Quick smoke test
+    poetry run python agbenchmark_config/test_prompt_strategies.py --quick
 
     # Run specific strategies
-    python test_prompt_strategies.py --strategies one_shot,plan_execute
+    poetry run python agbenchmark_config/test_prompt_strategies.py --strategies one_shot,rewoo
 
     # Run specific test categories
-    python test_prompt_strategies.py --categories code,retrieval
+    poetry run python agbenchmark_config/test_prompt_strategies.py --categories code,retrieval
 
-    # Run specific tests
-    python test_prompt_strategies.py --tests TestWriteFile,TestReadFile
+    # Compare existing reports (no new tests)
+    poetry run python agbenchmark_config/test_prompt_strategies.py --compare-only
 
-    # Quick smoke test (1 attempt, basic tests only)
-    python test_prompt_strategies.py --quick
-
-    # Compare existing reports without running new tests
-    python test_prompt_strategies.py --compare-only
-
-    # Run with multiple attempts per test
-    python test_prompt_strategies.py --attempts 3
+    # Analyze failures only (no benchmarks)
+    poetry run python agbenchmark_config/test_prompt_strategies.py --analyze-only
 
     # Run with specific model configurations
-    python test_prompt_strategies.py --models claude,openai
+    poetry run python agbenchmark_config/test_prompt_strategies.py --models claude,openai
 
-    # Run with custom smart/fast models
-    python test_prompt_strategies.py --smart-llm gpt-4o --fast-llm gpt-4o-mini
+    # Skip failure analysis after benchmarks
+    poetry run python agbenchmark_config/test_prompt_strategies.py --no-analyze
 
-    # Compare Claude vs OpenAI with one_shot strategy
-    python test_prompt_strategies.py --models claude,openai --strategies one_shot
+    # Compare models: Claude vs OpenAI on one_shot
+    poetry run python agbenchmark_config/test_prompt_strategies.py --models claude,openai --strategies one_shot
 """
 
 import argparse
@@ -77,16 +75,29 @@ class ModelConfig:
     name: str  # Display name for the configuration
     smart_llm: str  # Model for complex reasoning tasks
     fast_llm: str  # Model for quick operations
+    thinking_budget_tokens: Optional[int] = None  # Extended thinking budget (Anthropic)
+    reasoning_effort: Optional[str] = None  # Reasoning effort (OpenAI o-series/GPT-5)
 
     def to_env(self) -> dict[str, str]:
         """Return environment variables for this config."""
-        return {
-            "SMART_LLM": self.smart_llm,
-            "FAST_LLM": self.fast_llm,
-        }
+        env: dict[str, str] = {}
+        if self.smart_llm:
+            env["SMART_LLM"] = self.smart_llm
+        if self.fast_llm:
+            env["FAST_LLM"] = self.fast_llm
+        if self.thinking_budget_tokens:
+            env["THINKING_BUDGET_TOKENS"] = str(self.thinking_budget_tokens)
+        if self.reasoning_effort:
+            env["REASONING_EFFORT"] = self.reasoning_effort
+        return env
 
     def __str__(self) -> str:
-        return f"{self.name} (smart={self.smart_llm}, fast={self.fast_llm})"
+        parts = [f"smart={self.smart_llm}", f"fast={self.fast_llm}"]
+        if self.thinking_budget_tokens:
+            parts.append(f"thinking={self.thinking_budget_tokens}")
+        if self.reasoning_effort:
+            parts.append(f"reasoning={self.reasoning_effort}")
+        return f"{self.name} ({', '.join(parts)})"
 
 
 # Preset model configurations
@@ -153,6 +164,92 @@ MODEL_PRESETS: dict[str, ModelConfig] = {
         smart_llm="o1-mini",
         fast_llm="gpt-4o-mini",
     ),
+    # Claude extended thinking configurations
+    "claude-thinking-10k": ModelConfig(
+        name="claude-thinking-10k",
+        smart_llm="claude-sonnet-4-20250514",
+        fast_llm="claude-3-5-haiku-20241022",
+        thinking_budget_tokens=10000,
+    ),
+    "claude-thinking-25k": ModelConfig(
+        name="claude-thinking-25k",
+        smart_llm="claude-sonnet-4-20250514",
+        fast_llm="claude-3-5-haiku-20241022",
+        thinking_budget_tokens=25000,
+    ),
+    "claude-thinking-50k": ModelConfig(
+        name="claude-thinking-50k",
+        smart_llm="claude-sonnet-4-20250514",
+        fast_llm="claude-3-5-haiku-20241022",
+        thinking_budget_tokens=50000,
+    ),
+    "claude-opus-thinking": ModelConfig(
+        name="claude-opus-thinking",
+        smart_llm="claude-opus-4-5-20251101",
+        fast_llm="claude-sonnet-4-20250514",
+        thinking_budget_tokens=25000,
+    ),
+    "claude-opus-thinking-50k": ModelConfig(
+        name="claude-opus-thinking-50k",
+        smart_llm="claude-opus-4-5-20251101",
+        fast_llm="claude-sonnet-4-20250514",
+        thinking_budget_tokens=50000,
+    ),
+    # OpenAI reasoning effort configurations
+    "o1-low": ModelConfig(
+        name="o1-low",
+        smart_llm="o1",
+        fast_llm="gpt-4o-mini",
+        reasoning_effort="low",
+    ),
+    "o1-medium": ModelConfig(
+        name="o1-medium",
+        smart_llm="o1",
+        fast_llm="gpt-4o-mini",
+        reasoning_effort="medium",
+    ),
+    "o1-high": ModelConfig(
+        name="o1-high",
+        smart_llm="o1",
+        fast_llm="gpt-4o-mini",
+        reasoning_effort="high",
+    ),
+    "o3-low": ModelConfig(
+        name="o3-low",
+        smart_llm="o3",
+        fast_llm="gpt-4o-mini",
+        reasoning_effort="low",
+    ),
+    "o3-medium": ModelConfig(
+        name="o3-medium",
+        smart_llm="o3",
+        fast_llm="gpt-4o-mini",
+        reasoning_effort="medium",
+    ),
+    "o3-high": ModelConfig(
+        name="o3-high",
+        smart_llm="o3",
+        fast_llm="gpt-4o-mini",
+        reasoning_effort="high",
+    ),
+    "gpt5-low": ModelConfig(
+        name="gpt5-low",
+        smart_llm="gpt-5",
+        fast_llm="gpt-4o",
+        reasoning_effort="low",
+    ),
+    "gpt5-medium": ModelConfig(
+        name="gpt5-medium",
+        smart_llm="gpt-5",
+        fast_llm="gpt-4o",
+        reasoning_effort="medium",
+    ),
+    "gpt5-high": ModelConfig(
+        name="gpt5-high",
+        smart_llm="gpt-5",
+        fast_llm="gpt-4o",
+        reasoning_effort="high",
+    ),
 }
 
 # Default model config (uses environment defaults)
@@ -161,6 +258,32 @@ DEFAULT_MODEL_CONFIG = ModelConfig(
     smart_llm="",  # Empty means use env default
     fast_llm="",
 )
+
+# Matrix mode presets - curated set for comprehensive comparison
+# These are grouped by purpose for the --all flag
+MATRIX_MODELS = {
+    # Core models (always run in --all)
+    "core": [
+        "claude",  # Claude Sonnet + Haiku
+        "openai",  # GPT-4o + GPT-4o-mini
+    ],
+    # Extended thinking variants
+    "thinking": [
+        "claude-thinking-10k",
+        "claude-thinking-25k",
+        "claude-opus-thinking",
+    ],
+    # Reasoning effort variants (OpenAI o-series)
+    "reasoning": [
+        "o1-medium",
+        "o1-high",
+    ],
+    # Premium models (expensive but powerful)
+    "premium": [
+        "claude-opus",
+        "gpt5",
+    ],
+}
 
 
 @dataclass
@@ -275,6 +398,10 @@ def start_agent(
         log(f"  Smart LLM: {model_config.smart_llm}")
     if model_config.fast_llm:
         log(f"  Fast LLM: {model_config.fast_llm}")
+    if model_config.thinking_budget_tokens:
+        log(f"  Thinking Budget: {model_config.thinking_budget_tokens} tokens")
+    if model_config.reasoning_effort:
+        log(f"  Reasoning Effort: {model_config.reasoning_effort}")
 
     # Start the agent server (port is set via AP_SERVER_PORT env var)
     proc = subprocess.Popen(
@@ -742,6 +869,79 @@ def run_strategy_benchmark(
     )
 
 
+def run_failure_analysis(
+    reports_dir: Optional[Path] = None,
+    strategy: Optional[str] = None,
+    test_name: Optional[str] = None,
+    export_markdown: bool = True,
+) -> None:
+    """Run failure analysis on benchmark reports.
+
+    Args:
+        reports_dir: Path to reports directory (default: ./reports)
+        strategy: Focus on a specific strategy (optional)
+        test_name: Compare a specific test across strategies (optional)
+        export_markdown: Whether to export a markdown report (default: True)
+    """
+    if reports_dir is None:
+        reports_dir = Path(__file__).parent / "reports"
+
+    if not reports_dir.exists():
+        log("No reports directory found, skipping failure analysis", "WARN")
+        return
+
+    print()
+    print("=" * 70, flush=True)
+    log("FAILURE ANALYSIS")
+    print("=" * 70, flush=True)
+
+    try:
+        # Import the analyzer
+        from analyze_failures import FailureAnalyzer
+    except ImportError:
+        # Try relative import
+        try:
+            import sys
+
+            sys.path.insert(0, str(Path(__file__).parent))
+            from analyze_failures import FailureAnalyzer
+        except ImportError as e:
+            log(f"Could not import failure analyzer: {e}", "WARN")
+            return
+
+    try:
+        analyzer = FailureAnalyzer(reports_dir, use_llm=False)
+        analyzer.analyze_all()
+
+        if not analyzer.strategies:
+            log("No strategy reports found for analysis", "WARN")
+            return
+
+        # Print results
+        analyzer.print_summary()
+        analyzer.print_pattern_analysis()
+
+        if test_name:
+            analyzer.compare_test(test_name)
+        elif strategy:
+            analyzer.print_failed_tests(strategy)
+        else:
+            analyzer.print_failed_tests()
+
+        # Export markdown report
+        if export_markdown:
+            md_path = (
+                reports_dir / f"failure_analysis_{datetime.now():%Y%m%dT%H%M%S}.md"
+            )
+            analyzer.export_markdown(md_path)
+
+    except Exception as e:
+        log(f"Failure analysis error: {e}", "ERROR")
+        import traceback
+
+        traceback.print_exc()
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Test harness for comparing prompt strategies and LLM models"
@@ -769,6 +969,16 @@ def main():
         help="Custom fast LLM model name (e.g., gpt-4o-mini, claude-3-5-haiku)",
     )
     parser.add_argument(
+        "--thinking-budget",
+        type=int,
+        help="Override thinking budget tokens for Anthropic models (min 1024)",
+    )
+    parser.add_argument(
+        "--reasoning-effort",
+        choices=["low", "medium", "high"],
+        help="Override reasoning effort for OpenAI o-series/GPT-5 models",
+    )
+    parser.add_argument(
         "--categories",
         type=str,
         help="Comma-separated list of test categories to run",
@@ -790,9 +1000,31 @@ def main():
         help="Quick smoke test mode (basic tests only)",
     )
     parser.add_argument(
+        "--all",
+        action="store_true",
+        help="Full matrix mode: run all strategies across all core models",
+    )
+    parser.add_argument(
+        "--matrix",
+        type=str,
+        help="Matrix groups to include (comma-separated). "
+        f"Available: {', '.join(MATRIX_MODELS.keys())}. "
+        "Use --all for core, or --matrix core,thinking,premium for custom",
+    )
+    parser.add_argument(
         "--compare-only",
         action="store_true",
         help="Only compare existing reports, don't run new tests",
+    )
+    parser.add_argument(
+        "--analyze-only",
+        action="store_true",
+        help="Only run failure analysis on existing reports (no benchmarks)",
+    )
+    parser.add_argument(
+        "--no-analyze",
+        action="store_true",
+        help="Skip failure analysis after benchmarks",
     )
     parser.add_argument(
         "--port",
@@ -820,14 +1052,24 @@ def main():
     args = parser.parse_args()
     verbose = not args.quiet
 
+    # Handle analyze-only mode first
+    if args.analyze_only:
+        log("Running failure analysis only...")
+        run_failure_analysis()
+        sys.exit(0)
+
     # List models if requested
     if args.list_models:
         print("Available model presets:")
-        print("-" * 60)
+        print("-" * 70)
         for name, config in MODEL_PRESETS.items():
             print(f"  {name}:")
             print(f"    smart_llm: {config.smart_llm}")
             print(f"    fast_llm:  {config.fast_llm}")
+            if config.thinking_budget_tokens:
+                print(f"    thinking_budget: {config.thinking_budget_tokens}")
+            if config.reasoning_effort:
+                print(f"    reasoning_effort: {config.reasoning_effort}")
         sys.exit(0)
 
     # Parse strategies
@@ -844,12 +1086,41 @@ def main():
     # Parse model configurations
     model_configs: list[ModelConfig] = []
 
-    if args.smart_llm or args.fast_llm:
+    if args.all or args.matrix:
+        # Matrix mode: build list from matrix groups
+        if args.all:
+            # --all uses core models
+            matrix_groups = ["core"]
+        else:
+            # Parse custom matrix groups
+            matrix_groups = [g.strip() for g in args.matrix.split(",")]
+            invalid_groups = [g for g in matrix_groups if g not in MATRIX_MODELS]
+            if invalid_groups:
+                print(f"Invalid matrix groups: {invalid_groups}")
+                print(f"Available: {list(MATRIX_MODELS.keys())}")
+                sys.exit(1)
+
+        # Collect all model names from selected groups
+        model_names = []
+        for group in matrix_groups:
+            model_names.extend(MATRIX_MODELS[group])
+
+        # Convert to ModelConfig objects
+        model_configs = [MODEL_PRESETS[m] for m in model_names]
+        log(
+            f"Matrix mode: {len(model_configs)} model configurations from groups {matrix_groups}"
+        )
+
+    elif (
+        args.smart_llm or args.fast_llm or args.thinking_budget or args.reasoning_effort
+    ):
         # Custom model configuration
         custom_config = ModelConfig(
             name="custom",
             smart_llm=args.smart_llm or "",
             fast_llm=args.fast_llm or "",
+            thinking_budget_tokens=args.thinking_budget,
+            reasoning_effort=args.reasoning_effort,
         )
         model_configs.append(custom_config)
     elif args.models:
@@ -994,6 +1265,10 @@ def main():
     with open(comparison_file, "w") as f:
         json.dump(comparison.to_dict(), f, indent=2)
     print(f"Comparison report saved to: {comparison_file}")
+
+    # Run failure analysis (unless --no-analyze)
+    if not args.no_analyze:
+        run_failure_analysis(reports_dir)
 
     # Return exit code based on results
     if not results:

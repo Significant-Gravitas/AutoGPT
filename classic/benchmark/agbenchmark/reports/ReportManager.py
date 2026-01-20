@@ -70,7 +70,7 @@ class BaseReportManager:
 
     def load(self) -> None:
         if not self.report_file.exists():
-            self.report_file.parent.mkdir(exist_ok=True)
+            self.report_file.parent.mkdir(parents=True, exist_ok=True)
 
         try:
             with self.report_file.open("r") as f:

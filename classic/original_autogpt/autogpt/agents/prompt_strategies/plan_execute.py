@@ -23,7 +23,7 @@ import json
 import re
 from enum import Enum
 from logging import Logger
-from typing import Optional
+from typing import Optional, Union
 
 from forge.config.ai_directives import AIDirectives
 from forge.config.ai_profile import AIProfile
@@ -51,9 +51,120 @@ from .base import (
 class PlanExecutePhase(str, Enum):
     """Current phase of Plan-and-Execute."""
 
+    VARIABLE_EXTRACTION = "variable_extraction"  # PS+ phase
     PLANNING = "planning"
     EXECUTING = "executing"
     REPLANNING = "replanning"
+
+
+# PS+ (Plan-and-Solve Plus) Data Models
+# From the paper: "Plan-and-Solve Prompting" (arxiv.org/abs/2305.04091)
+
+
+class ExtractedVariable(ModelWithSummary):
+    """A variable extracted from the problem statement (PS+ feature)."""
+
+    name: str = Field(description="Variable name or label")
+    value: Optional[Union[float, int, str]] = Field(
+        default=None, description="Extracted value if available"
+    )
+    unit: str = Field(default="", description="Unit of measurement")
+    description: str = Field(
+        default="", description="Description of what this represents"
+    )
+
+    def summary(self) -> str:
+        if self.value is not None:
+            return f"{self.name} = {self.value} {self.unit}".strip()
+        return f"{self.name}: {self.description}"
+
+
+class CalculationStep(ModelWithSummary):
+    """A calculation step with verification (PS+ feature)."""
+
+    expression: str = Field(description="The mathematical expression")
+    result: str = Field(description="The calculated result")
+    verification_method: str = Field(
+        default="", description="Method used to verify the result"
+    )
+    is_valid: bool = Field(default=True, description="Whether verification passed")
+
+    def summary(self) -> str:
+        status = "✓" if self.is_valid else "✗"
+        return f"{status} {self.expression} = {self.result}"
+
+
+class PSPlusContext(ModelWithSummary):
+    """Context for PS+ (Plan-and-Solve Plus) features.
+
+    Stores extracted variables and calculation steps for improved
+    mathematical and multi-step reasoning tasks.
+    """
+
+    extracted_variables: list[ExtractedVariable] = Field(default_factory=list)
+    calculation_steps: list[CalculationStep] = Field(default_factory=list)
+
+    def summary(self) -> str:
+        return (
+            f"{len(self.extracted_variables)} vars, {len(self.calculation_steps)} calcs"
+        )
+
+    def format_for_prompt(self) -> str:
+        """Format the context for inclusion in prompts."""
+        lines = []
+
+        if self.extracted_variables:
+            lines.append("## Extracted Variables")
+            for var in self.extracted_variables:
+                if var.value is not None:
+                    lines.append(
+                        f"- {var.name} = {var.value} {var.unit}: {var.description}"
+                    )
+                else:
+                    lines.append(f"- {var.name}: {var.description}")
+            lines.append("")
+
+        if self.calculation_steps:
+            lines.append("## Calculations Performed")
+            for calc in self.calculation_steps:
+                status = "valid" if calc.is_valid else "INVALID"
+                lines.append(f"- {calc.expression} = {calc.result} [{status}]")
+                if calc.verification_method:
+                    lines.append(f"  Verified by: {calc.verification_method}")
+            lines.append("")
+
+        return "\n".join(lines) if lines else ""
+
+    def add_variable(
+        self,
+        name: str,
+        value: Optional[Union[float, int, str]] = None,
+        unit: str = "",
+        description: str = "",
+    ) -> None:
+        """Add an extracted variable."""
+        self.extracted_variables.append(
+            ExtractedVariable(
+                name=name, value=value, unit=unit, description=description
+            )
+        )
+
+    def add_calculation(
+        self,
+        expression: str,
+        result: str,
+        verification_method: str = "",
+        is_valid: bool = True,
+    ) -> None:
+        """Add a calculation step."""
+        self.calculation_steps.append(
+            CalculationStep(
+                expression=expression,
+                result=result,
+                verification_method=verification_method,
+                is_valid=is_valid,
+            )
+        )
 
 
 class PlanExecuteThoughts(ModelWithSummary):
@@ -68,7 +179,6 @@ class PlanExecuteThoughts(ModelWithSummary):
     )
     plan_status: str = Field(default="", description="Status of the overall plan")
     self_criticism: str = Field(description="Constructive self-criticism")
-    speak: str = Field(description="Summary to say to user")
 
     def summary(self) -> str:
         return self.reasoning
@@ -183,14 +293,50 @@ class PlanExecutePromptConfiguration(BasePromptStrategyConfiguration):
         "Based on your plan and current progress, execute the next step."
     )
 
+    # PS+ (Plan-and-Solve Plus) Variable Extraction Instruction
+    DEFAULT_VARIABLE_EXTRACTION_INSTRUCTION: str = (
+        "Before solving this problem, first extract all relevant variables "
+        "and quantities mentioned in the problem statement.\n\n"
+        "For each variable, identify:\n"
+        "- Name/label (e.g., 'initial_speed', 'total_cost', 'num_items')\n"
+        "- Value (if given explicitly)\n"
+        "- Unit of measurement (if applicable)\n"
+        "- Description of what it represents\n\n"
+        "Format as:\n"
+        "Variables:\n"
+        "- [name]: [value] [unit] - [description]\n"
+        "- [name]: [value] [unit] - [description]\n"
+        "...\n\n"
+        "This will help structure the solution approach."
+    )
+
+    # PS+ Calculation Verification Instruction
+    DEFAULT_CALCULATION_VERIFICATION_INSTRUCTION: str = (
+        "After each calculation step, verify the result:\n\n"
+        "1. Show the calculation: [expression] = [result]\n"
+        "2. Verify using an alternative method or sanity check\n"
+        "3. Confirm: Valid [yes/no] - [reason]\n\n"
+        "This ensures accuracy in mathematical reasoning."
+    )
+
     planner_instruction: str = UserConfigurable(default=DEFAULT_PLANNER_INSTRUCTION)
     executor_instruction: str = UserConfigurable(default=DEFAULT_EXECUTOR_INSTRUCTION)
     replanner_instruction: str = UserConfigurable(default=DEFAULT_REPLANNER_INSTRUCTION)
     choose_action_instruction: str = UserConfigurable(
         default=DEFAULT_CHOOSE_ACTION_INSTRUCTION
     )
+    variable_extraction_instruction: str = UserConfigurable(
+        default=DEFAULT_VARIABLE_EXTRACTION_INSTRUCTION
+    )
+    calculation_verification_instruction: str = UserConfigurable(
+        default=DEFAULT_CALCULATION_VERIFICATION_INSTRUCTION
+    )
     enable_replanning: bool = UserConfigurable(default=True)
     max_replan_attempts: int = UserConfigurable(default=3)
+
+    # PS+ feature flags
+    enable_variable_extraction: bool = UserConfigurable(default=False)
+    enable_calculation_verification: bool = UserConfigurable(default=False)
 
 
 class PlanExecutePromptStrategy(BaseMultiStepPromptStrategy):
@@ -208,17 +354,28 @@ class PlanExecutePromptStrategy(BaseMultiStepPromptStrategy):
         super().__init__(configuration, logger)
         self.config: PlanExecutePromptConfiguration = configuration
         self.current_plan: Optional[ExecutionPlan] = None
-        self.current_phase: PlanExecutePhase = PlanExecutePhase.PLANNING
+
+        # Start with variable extraction if enabled, otherwise planning
+        self.current_phase: PlanExecutePhase = (
+            PlanExecutePhase.VARIABLE_EXTRACTION
+            if configuration.enable_variable_extraction
+            else PlanExecutePhase.PLANNING
+        )
+
         self.replan_count: int = 0
         self._pending_step_advance: bool = False
         self._response_schema = JSONSchema.from_dict(
             PlanExecuteActionProposal.model_json_schema()
         )
 
+        # PS+ context for variable extraction and calculation verification
+        self.ps_plus_context: Optional[PSPlusContext] = None
+
     @property
     def llm_classification(self) -> LanguageModelClassification:
-        # Use smart model for planning, fast for execution
+        # Use smart model for planning and variable extraction, fast for execution
         if self.current_phase in (
+            PlanExecutePhase.VARIABLE_EXTRACTION,
             PlanExecutePhase.PLANNING,
             PlanExecutePhase.REPLANNING,
         ):
@@ -237,7 +394,16 @@ class PlanExecutePromptStrategy(BaseMultiStepPromptStrategy):
         **extras,
     ) -> ChatPrompt:
         """Build prompt based on current phase."""
-        if self.current_phase == PlanExecutePhase.REPLANNING:
+        if self.current_phase == PlanExecutePhase.VARIABLE_EXTRACTION:
+            return self._build_variable_extraction_prompt(
+                messages=messages,
+                task=task,
+                ai_profile=ai_profile,
+                ai_directives=ai_directives,
+                commands=commands,
+                include_os_info=include_os_info,
+            )
+        elif self.current_phase == PlanExecutePhase.REPLANNING:
             return self._build_replan_prompt(
                 messages=messages,
                 task=task,
@@ -293,6 +459,38 @@ class PlanExecutePromptStrategy(BaseMultiStepPromptStrategy):
                 ChatMessage.system(system_prompt),
                 *messages,
                 planning_msg,
+            ],
+            prefill_response=response_prefill if self.config.use_prefill else "",
+            functions=commands,
+        )
+
+    def _build_variable_extraction_prompt(
+        self,
+        *,
+        messages: list[ChatMessage],
+        task: str,
+        ai_profile: AIProfile,
+        ai_directives: AIDirectives,
+        commands: list[CompletionModelFunction],
+        include_os_info: bool,
+    ) -> ChatPrompt:
+        """Build the variable extraction phase prompt (PS+ feature)."""
+        system_prompt, response_prefill = self._build_system_prompt(
+            ai_profile=ai_profile,
+            ai_directives=ai_directives,
+            commands=commands,
+            include_os_info=include_os_info,
+        )
+
+        extraction_msg = ChatMessage.user(
+            f"{self.config.variable_extraction_instruction}\n\n" f'Task:\n"""{task}"""'
+        )
+
+        return ChatPrompt(
+            messages=[
+                ChatMessage.system(system_prompt),
+                *messages,
+                extraction_msg,
             ],
             prefill_response=response_prefill if self.config.use_prefill else "",
             functions=commands,
@@ -397,6 +595,10 @@ class PlanExecutePromptStrategy(BaseMultiStepPromptStrategy):
         response_fmt_instruction, response_prefill = self._response_format_instruction()
 
         phase_instruction = {
+            PlanExecutePhase.VARIABLE_EXTRACTION: (
+                "You are in VARIABLE EXTRACTION mode (PS+). Extract all relevant "
+                "variables and quantities from the problem before solving."
+            ),
             PlanExecutePhase.PLANNING: (
                 "You are in PLANNING mode. Create a comprehensive plan "
                 "before taking any action."
@@ -410,10 +612,18 @@ class PlanExecutePromptStrategy(BaseMultiStepPromptStrategy):
             ),
         }.get(self.current_phase, "")
 
+        # Include PS+ context if available
+        ps_plus_section = ""
+        if self.ps_plus_context:
+            formatted_context = self.ps_plus_context.format_for_prompt()
+            if formatted_context:
+                ps_plus_section = f"\n## Problem Context (PS+)\n{formatted_context}"
+
         system_prompt_parts = (
             self.generate_intro_prompt(ai_profile)
             + (self.generate_os_info() if include_os_info else [])
             + [self.build_body(ai_directives, commands)]
+            + ([ps_plus_section] if ps_plus_section else [])
             + [f"## Current Mode\n{phase_instruction}"]
             + ["## RESPONSE FORMAT\n" + response_fmt_instruction]
         )
@@ -475,8 +685,13 @@ class PlanExecutePromptStrategy(BaseMultiStepPromptStrategy):
 
         assistant_reply_dict["use_tool"] = response.tool_calls[0].function
 
+        # Handle variable extraction phase (PS+)
+        if self.current_phase == PlanExecutePhase.VARIABLE_EXTRACTION:
+            self._process_variable_extraction(response.content)
+            # After extraction, move to planning phase
+            self.current_phase = PlanExecutePhase.PLANNING
         # Extract plan from response if in planning phase
-        if self.current_phase == PlanExecutePhase.PLANNING:
+        elif self.current_phase == PlanExecutePhase.PLANNING:
             plan = self._extract_plan_from_response(response.content)
             if plan:
                 self.current_plan = plan
@@ -585,6 +800,56 @@ class PlanExecutePromptStrategy(BaseMultiStepPromptStrategy):
     def reset(self) -> None:
         """Reset the strategy for a new task."""
         self.current_plan = None
-        self.current_phase = PlanExecutePhase.PLANNING
+        # Start with variable extraction if enabled, otherwise planning
+        self.current_phase = (
+            PlanExecutePhase.VARIABLE_EXTRACTION
+            if self.config.enable_variable_extraction
+            else PlanExecutePhase.PLANNING
+        )
         self.replan_count = 0
         self._pending_step_advance = False
+        self.ps_plus_context = None
+
+    def _process_variable_extraction(self, content: str) -> None:
+        """Process the variable extraction phase response (PS+ feature).
+
+        Extracts variables from the LLM response and stores them in ps_plus_context.
+        """
+        self.ps_plus_context = PSPlusContext()
+
+        # Pattern to match variables in format: "- name: value unit - description"
+        # or "- name = value unit : description"
+        var_pattern = re.compile(
+            r"-\s*(\w+)\s*[:=]\s*"
+            r"(?:(\d+(?:\.\d+)?)\s*(\w*)\s*[-:]?\s*)?"
+            r"(.+?)(?=\n-|\n\n|$)",
+            re.MULTILINE | re.IGNORECASE,
+        )
+
+        matches = var_pattern.findall(content)
+        for match in matches:
+            name, value_str, unit, description = match
+            value: Optional[Union[float, int, str]] = None
+            if value_str:
+                try:
+                    if "." in value_str:
+                        value = float(value_str)
+                    else:
+                        value = int(value_str)
+                except ValueError:
+                    value = value_str
+
+            self.ps_plus_context.add_variable(
+                name=name.strip(),
+                value=value,
+                unit=unit.strip() if unit else "",
+                description=description.strip(),
+            )
+
+        self.logger.debug(
+            f"Extracted {len(self.ps_plus_context.extracted_variables)} variables"
+        )
+
+    def get_ps_plus_context(self) -> Optional[PSPlusContext]:
+        """Get the PS+ context for use in prompts."""
+        return self.ps_plus_context

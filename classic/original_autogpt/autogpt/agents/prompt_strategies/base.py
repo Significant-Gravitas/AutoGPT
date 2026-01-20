@@ -26,7 +26,7 @@ from forge.llm.providers.schema import (
 from forge.models.action import ActionProposal
 from forge.models.config import SystemConfiguration, UserConfigurable
 from forge.models.utils import ModelWithSummary
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 if TYPE_CHECKING:
     pass
@@ -74,6 +74,7 @@ class Reflection(BaseModel):
     """A stored reflection from past action execution.
 
     Used by the Reflexion strategy for episodic memory.
+    Supports both structured and verbal (free-form) reflection formats.
     """
 
     action_name: str = Field(description="Name of the action taken")
@@ -90,14 +91,37 @@ class Reflection(BaseModel):
     success: bool = Field(default=True, description="Whether the action succeeded")
     timestamp: datetime = Field(default_factory=datetime.now)
 
+    # Verbal reflection support (from Reflexion paper)
+    verbal_reflection: str = Field(
+        default="", description="Free-form verbal reflection text"
+    )
+    reflection_format: Literal["structured", "verbal"] = Field(
+        default="structured", description="Format of this reflection"
+    )
+    evaluation_score: Optional[float] = Field(
+        default=None, description="Evaluator score (0-1) if available"
+    )
+
     def to_prompt_text(self) -> str:
         """Format reflection for inclusion in prompts."""
+        # If verbal format, return the verbal reflection directly
+        if self.reflection_format == "verbal" and self.verbal_reflection:
+            score_text = (
+                f" [score: {self.evaluation_score:.2f}]"
+                if self.evaluation_score is not None
+                else ""
+            )
+            return f"Reflection{score_text}: {self.verbal_reflection}"
+
+        # Structured format
         status = "succeeded" if self.success else "failed"
         text = f"Action '{self.action_name}' {status}: {self.result_summary}"
         if self.what_went_wrong:
             text += f"\n  - Issue: {self.what_went_wrong}"
         if self.what_to_do_differently:
             text += f"\n  - Lesson: {self.what_to_do_differently}"
+        if self.evaluation_score is not None:
+            text += f"\n  - Score: {self.evaluation_score:.2f}"
         return text
 
 
@@ -129,16 +153,37 @@ class ReflexionMemory(BaseModel):
         return failed[-limit:]
 
 
+class WorkerExecution(BaseModel):
+    """Worker execution record for ReWOO strategy.
+
+    Tracks the execution of each planned step by the Worker module,
+    including variable substitutions and raw outputs (per the ReWOO paper).
+    """
+
+    step: PlannedStep = Field(description="The planned step that was executed")
+    input_substituted: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Arguments after variable substitution (e.g., #E1 -> actual value)",
+    )
+    raw_output: str = Field(default="", description="Raw output from tool execution")
+    error: Optional[str] = Field(
+        default=None, description="Error message if execution failed"
+    )
+
+
 class Thought(BaseModel):
     """A node in the Tree of Thoughts.
 
     Represents a single thought/reasoning step that can branch into children.
+    Includes parent pointer for proper backtracking (per ToT paper).
     """
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     content: str = Field(description="The thought content")
     score: float = Field(default=0.0, description="Self-evaluation score (0-10)")
     depth: int = Field(default=0, description="Depth in the tree")
-    children: list[Thought] = Field(default_factory=list)
+    children: list["Thought"] = Field(default_factory=list)
     is_terminal: bool = Field(
         default=False, description="Whether this thought leads to an action"
     )
@@ -146,16 +191,37 @@ class Thought(BaseModel):
         default=None, description="Action if terminal"
     )
 
-    def add_child(self, thought: Thought) -> None:
-        """Add a child thought."""
+    # Parent pointer for backtracking (excluded from serialization)
+    parent: Optional["Thought"] = Field(default=None, exclude=True)
+
+    # Categorical evaluation support (from ToT paper)
+    categorical_evaluation: Optional[Literal["sure", "maybe", "impossible"]] = Field(
+        default=None, description="Categorical evaluation: sure/maybe/impossible"
+    )
+    evaluation_votes: dict[str, int] = Field(
+        default_factory=dict, description="Vote counts for multi-sample evaluation"
+    )
+
+    def add_child(self, thought: "Thought") -> None:
+        """Add a child thought and set its parent pointer."""
         thought.depth = self.depth + 1
+        thought.parent = self  # Set parent pointer for backtracking
         self.children.append(thought)
 
-    def best_child(self) -> Optional[Thought]:
+    def best_child(self) -> Optional["Thought"]:
         """Return the highest-scoring child."""
         if not self.children:
             return None
         return max(self.children, key=lambda t: t.score)
+
+    def get_path_to_root(self) -> list["Thought"]:
+        """Traverse parent pointers to get path from this node to root."""
+        path = []
+        node: Optional[Thought] = self
+        while node is not None:
+            path.append(node)
+            node = node.parent
+        return list(reversed(path))
 
 
 class BasePromptStrategyConfiguration(SystemConfiguration):
@@ -268,7 +334,6 @@ class MultiStepThoughts(ModelWithSummary):
     reasoning: str = Field(description="Reasoning behind the thoughts")
     self_criticism: str = Field(description="Constructive self-criticism")
     plan: list[str] = Field(description="Short list that conveys the long-term plan")
-    speak: str = Field(description="Summary of thoughts, to say to user")
     reflections_used: list[str] = Field(
         default_factory=list, description="Lessons applied from past reflections"
     )
