@@ -404,6 +404,7 @@ async def add_generated_agent_image(
 async def create_library_agent(
     graph: graph_db.GraphModel,
     user_id: str,
+    hitl_safe_mode: bool = True,
     sensitive_action_safe_mode: bool = False,
     create_library_agents_for_sub_graphs: bool = True,
 ) -> list[library_model.LibraryAgent]:
@@ -413,6 +414,7 @@ async def create_library_agent(
     Args:
         agent: The agent/Graph to add to the library.
         user_id: The user to whom the agent will be added.
+        hitl_safe_mode: Whether HITL blocks require manual review (default True).
         sensitive_action_safe_mode: Whether sensitive action blocks require review.
         create_library_agents_for_sub_graphs: If True, creates LibraryAgent records for sub-graphs as well.
 
@@ -451,6 +453,7 @@ async def create_library_agent(
                         settings=SafeJson(
                             GraphSettings.from_graph(
                                 graph_entry,
+                                hitl_safe_mode=hitl_safe_mode,
                                 sensitive_action_safe_mode=sensitive_action_safe_mode,
                             ).model_dump()
                         ),
@@ -1188,11 +1191,12 @@ async def fork_library_agent(
         )
         new_graph = await on_graph_activate(new_graph, user_id=user_id)
 
-        # Create a library agent for the new graph, preserving sensitive_action_safe_mode
+        # Create a library agent for the new graph, preserving safe mode settings
         return (
             await create_library_agent(
                 new_graph,
                 user_id,
+                hitl_safe_mode=original_agent.settings.human_in_the_loop_safe_mode,
                 sensitive_action_safe_mode=original_agent.settings.sensitive_action_safe_mode,
             )
         )[0]
