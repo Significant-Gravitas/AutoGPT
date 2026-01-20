@@ -1,9 +1,16 @@
 "use client";
 
-import { FieldProps, RJSFSchema } from "@rjsf/utils";
+import {
+  descriptionId,
+  FieldProps,
+  getTemplate,
+  RJSFSchema,
+  titleId,
+} from "@rjsf/utils";
 import { useMemo } from "react";
 import { LlmModelPicker } from "./components/LlmModelPicker";
 import { LlmModelMetadataMap } from "./types";
+import { updateUiOption } from "../../helpers";
 
 type LlmModelSchema = RJSFSchema & {
   llm_model_metadata?: LlmModelMetadataMap;
@@ -44,13 +51,42 @@ export function LlmModelField(props: FieldProps) {
     return null;
   }
 
+  const TitleFieldTemplate = getTemplate("TitleFieldTemplate", props.registry);
+  const DescriptionFieldTemplate = getTemplate(
+    "DescriptionFieldTemplate",
+    props.registry,
+  );
+
+  const updatedUiSchema = updateUiOption(props.uiSchema, {
+    showHandles: false,
+  });
+
   return (
-    <LlmModelPicker
-      models={models}
-      selectedModel={selectedModel}
-      recommendedModel={recommendedModel}
-      onSelect={(value) => onChange(value, fieldPathId?.path)}
-      disabled={disabled || readonly}
-    />
+    <>
+      <div className="flex items-center gap-2">
+        <TitleFieldTemplate
+          id={titleId(fieldPathId)}
+          title={schema.title || ""}
+          required={true}
+          schema={schema}
+          uiSchema={updatedUiSchema}
+          registry={props.registry}
+        />
+        <DescriptionFieldTemplate
+          id={descriptionId(fieldPathId)}
+          description={schema.description || ""}
+          schema={schema}
+          registry={props.registry}
+        />
+      </div>
+
+      <LlmModelPicker
+        models={models}
+        selectedModel={selectedModel}
+        recommendedModel={recommendedModel}
+        onSelect={(value) => onChange(value, fieldPathId?.path)}
+        disabled={disabled || readonly}
+      />
+    </>
   );
 }
