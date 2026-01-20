@@ -45,7 +45,7 @@ function SafeModeButton({
           size="small"
           onClick={onToggle}
           disabled={isPending}
-          className={cn(fullWidth ? "w-full" : "")}
+          className={cn("justify-start", fullWidth ? "w-full" : "")}
         >
           {isEnabled ? (
             <>
