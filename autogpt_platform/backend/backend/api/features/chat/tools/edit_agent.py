@@ -3,6 +3,8 @@
 import logging
 from typing import Any
 
+from langfuse import observe
+
 from backend.api.features.chat.model import ChatSession
 
 from .agent_generator import (
@@ -85,6 +87,7 @@ class EditAgentTool(BaseTool):
             "required": ["agent_id", "changes"],
         }
 
+    @observe(as_type="tool", name="edit_agent")
     async def _execute(
         self,
         user_id: str | None,

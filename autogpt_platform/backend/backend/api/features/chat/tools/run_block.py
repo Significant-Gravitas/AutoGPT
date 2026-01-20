@@ -4,6 +4,8 @@ import logging
 from collections import defaultdict
 from typing import Any
 
+from langfuse import observe
+
 from backend.api.features.chat.model import ChatSession
 from backend.data.block import get_block
 from backend.data.execution import ExecutionContext
@@ -127,6 +129,7 @@ class RunBlockTool(BaseTool):
 
         return matched_credentials, missing_credentials
 
+    @observe(as_type="tool", name="run_block")
     async def _execute(
         self,
         user_id: str | None,
