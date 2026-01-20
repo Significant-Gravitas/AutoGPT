@@ -20,7 +20,7 @@ export function ChatContainer({
   initialPrompt,
   className,
 }: ChatContainerProps) {
-  const { messages, streamingChunks, isStreaming, sendMessage } =
+  const { messages, streamingChunks, isStreaming, sendMessage, stopStreaming } =
     useChatContainer({
       sessionId,
       initialMessages,
@@ -66,6 +66,8 @@ export function ChatContainer({
         <ChatInput
           onSend={sendMessageWithContext}
           disabled={isStreaming || !sessionId}
+          isStreaming={isStreaming}
+          onStop={stopStreaming}
           placeholder={
             isMobile
               ? "You can search or just ask"

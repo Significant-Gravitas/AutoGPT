@@ -28,7 +28,7 @@ export function useChatContainer({ sessionId, initialMessages, initialPrompt }: 
   const [hasTextChunks, setHasTextChunks] = useState(false);
   const [isStreamingInitiated, setIsStreamingInitiated] = useState(false);
   const streamingChunksRef = useRef<string[]>([]);
-  const { error, sendMessage: sendStreamMessage } = useChatStream();
+  const { error, sendMessage: sendStreamMessage, stopStreaming } = useChatStream();
   const isStreaming = isStreamingInitiated || hasTextChunks;
 
   const allMessages = useMemo(() => {
@@ -193,6 +193,14 @@ export function useChatContainer({ sessionId, initialMessages, initialPrompt }: 
     [sessionId, sendStreamMessage],
   );
 
+  const handleStopStreaming = useCallback(() => {
+    stopStreaming();
+    setStreamingChunks([]);
+    streamingChunksRef.current = [];
+    setHasTextChunks(false);
+    setIsStreamingInitiated(false);
+  }, [stopStreaming]);
+
   const { capturePageContext } = usePageContext();
 
   // Send initial prompt if provided (for new sessions from homepage)
@@ -215,5 +223,6 @@ export function useChatContainer({ sessionId, initialMessages, initialPrompt }: 
     isStreaming,
     error,
     sendMessage,
+    stopStreaming: handleStopStreaming,
   };
 }

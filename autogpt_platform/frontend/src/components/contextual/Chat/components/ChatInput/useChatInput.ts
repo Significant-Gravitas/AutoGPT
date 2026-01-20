@@ -14,39 +14,84 @@ export function useChatInput({
   inputId = "chat-input",
 }: UseChatInputArgs) {
   const [value, setValue] = useState("");
+  const [hasMultipleLines, setHasMultipleLines] = useState(false);
 
   useEffect(() => {
     const textarea = document.getElementById(inputId) as HTMLTextAreaElement;
-    if (!textarea) return;
+    const wrapper = document.getElementById(`${inputId}-wrapper`) as HTMLDivElement;
+    if (!textarea || !wrapper) return;
+    
+    const isEmpty = !value.trim();
+    const lines = value.split("\n").length;
+    const hasExplicitNewlines = lines > 1;
+    
+    const computedStyle = window.getComputedStyle(textarea);
+    const lineHeight = parseInt(computedStyle.lineHeight, 10);
+    const paddingTop = parseInt(computedStyle.paddingTop, 10);
+    const paddingBottom = parseInt(computedStyle.paddingBottom, 10);
+    
+    const singleLinePadding = paddingTop + paddingBottom;
+    
     textarea.style.height = "auto";
-    const lineHeight = parseInt(
-      window.getComputedStyle(textarea).lineHeight,
-      10,
-    );
-    const maxHeight = lineHeight * maxRows;
-    const newHeight = Math.min(textarea.scrollHeight, maxHeight);
-    textarea.style.height = `${newHeight}px`;
-    textarea.style.overflowY =
-      textarea.scrollHeight > maxHeight ? "auto" : "hidden";
+    const scrollHeight = textarea.scrollHeight;
+    
+    const singleLineHeight = lineHeight + singleLinePadding;
+    const isMultiLine = hasExplicitNewlines || scrollHeight > singleLineHeight + 2;
+    setHasMultipleLines(isMultiLine);
+    
+    if (isEmpty) {
+      wrapper.style.height = `${singleLineHeight}px`;
+      wrapper.style.maxHeight = "";
+      textarea.style.height = `${singleLineHeight}px`;
+      textarea.style.maxHeight = "";
+      textarea.style.overflowY = "hidden";
+      return;
+    }
+
+    if (isMultiLine) {
+      const wrapperMaxHeight = 196;
+      const currentMultilinePadding = paddingTop + paddingBottom;
+      const contentMaxHeight = wrapperMaxHeight - currentMultilinePadding;
+      const minMultiLineHeight = lineHeight * 2 + currentMultilinePadding;
+      const contentHeight = scrollHeight;
+      const targetWrapperHeight = Math.min(Math.max(contentHeight + currentMultilinePadding, minMultiLineHeight), wrapperMaxHeight);
+      
+      wrapper.style.height = `${targetWrapperHeight}px`;
+      wrapper.style.maxHeight = `${wrapperMaxHeight}px`;
+      textarea.style.height = `${contentHeight}px`;
+      textarea.style.maxHeight = `${contentMaxHeight}px`;
+      textarea.style.overflowY = contentHeight > contentMaxHeight ? "auto" : "hidden";
+    } else {
+      wrapper.style.height = `${singleLineHeight}px`;
+      wrapper.style.maxHeight = "";
+      textarea.style.height = `${singleLineHeight}px`;
+      textarea.style.maxHeight = "";
+      textarea.style.overflowY = "hidden";
+    }
   }, [value, maxRows, inputId]);
 
   const handleSend = useCallback(() => {
     if (disabled || !value.trim()) return;
     onSend(value.trim());
     setValue("");
+    setHasMultipleLines(false);
     const textarea = document.getElementById(inputId) as HTMLTextAreaElement;
+    const wrapper = document.getElementById(`${inputId}-wrapper`) as HTMLDivElement;
     if (textarea) {
       textarea.style.height = "auto";
+    }
+    if (wrapper) {
+      wrapper.style.height = "";
+      wrapper.style.maxHeight = "";
     }
   }, [value, onSend, disabled, inputId]);
 
   const handleKeyDown = useCallback(
-    (event: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    (event: KeyboardEvent<HTMLTextAreaElement>) => {
       if (event.key === "Enter" && !event.shiftKey) {
         event.preventDefault();
         handleSend();
       }
-      // Shift+Enter allows default behavior (new line) - no need to handle explicitly
     },
     [handleSend],
   );
@@ -56,5 +101,6 @@ export function useChatInput({
     setValue,
     handleKeyDown,
     handleSend,
+    hasMultipleLines,
   };
 }

@@ -1,5 +1,5 @@
 import type { ToolArguments, ToolResult } from "@/types/chat";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 const MAX_RETRIES = 3;
@@ -151,16 +151,31 @@ export function useChatStream() {
   const abortControllerRef = useRef<AbortController | null>(null);
 
   const stopStreaming = useCallback(() => {
+    console.log("[useChatStream] stopStreaming called", {
+      hasAbortController: !!abortControllerRef.current,
+      isAborted: abortControllerRef.current?.signal.aborted,
+      stack: new Error().stack,
+    });
     const controller = abortControllerRef.current;
     if (controller) {
       try {
-        if (!controller.signal.aborted) {
+        const signal = controller.signal;
+        
+        if (signal && typeof signal.aborted === "boolean" && !signal.aborted) {
+          console.log("[useChatStream] Aborting stream");
           controller.abort();
+        } else {
+          console.log("[useChatStream] Stream already aborted or signal invalid");
         }
-      } catch {
-        // Ignore abort errors
+      } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") {
+          console.log("[useChatStream] AbortError caught (expected during cleanup)");
+        } else {
+          console.warn("[useChatStream] Error aborting stream:", error);
+        }
+      } finally {
+        abortControllerRef.current = null;
       }
-      abortControllerRef.current = null;
     }
     if (retryTimeoutRef.current) {
       clearTimeout(retryTimeoutRef.current);
@@ -168,6 +183,14 @@ export function useChatStream() {
     }
     setIsStreaming(false);
   }, []);
+
+  useEffect(() => {
+    console.log("[useChatStream] Component mounted");
+    return () => {
+      console.log("[useChatStream] Component unmounting, calling stopStreaming");
+      stopStreaming();
+    };
+  }, [stopStreaming]);
 
   const sendMessage = useCallback(
     async (
@@ -178,10 +201,20 @@ export function useChatStream() {
       context?: { url: string; content: string },
       isRetry: boolean = false,
     ) => {
+      console.log("[useChatStream] sendMessage called", {
+        sessionId,
+        message: message.substring(0, 50),
+        isUserMessage,
+        isRetry,
+        stack: new Error().stack,
+      });
       stopStreaming();
 
       const abortController = new AbortController();
       abortControllerRef.current = abortController;
+      console.log("[useChatStream] Created new AbortController", {
+        sessionId,
+      });
 
       if (abortController.signal.aborted) {
         return Promise.reject(new Error("Request aborted"));
@@ -233,9 +266,11 @@ export function useChatStream() {
             onChunk({ type: "stream_end" });
           }
 
-          function cleanup() {
-            reader.cancel().catch(() => {});
-          }
+          const cleanup = () => {
+            reader.cancel().catch(() => {
+              // Ignore cancel errors
+            });
+          };
 
           async function readStream() {
             try {
@@ -276,8 +311,10 @@ export function useChatStream() {
                         continue;
                       }
 
+                      // Call the chunk handler
                       onChunk(chunk);
 
+                      // Handle stream lifecycle
                       if (chunk.type === "stream_end") {
                         didDispatchStreamEnd = true;
                         cleanup();
@@ -294,8 +331,9 @@ export function useChatStream() {
                         );
                         return;
                       }
-                    } catch {
+                    } catch (err) {
                       // Skip invalid JSON lines
+                      console.warn("Failed to parse SSE chunk:", err, data);
                     }
                   }
                 }
@@ -329,7 +367,9 @@ export function useChatStream() {
                     isUserMessage,
                     context,
                     true,
-                  ).catch(() => {});
+                  ).catch((_err) => {
+                    // Retry failed
+                  });
                 }, retryDelay);
               } else {
                 setError(streamError);

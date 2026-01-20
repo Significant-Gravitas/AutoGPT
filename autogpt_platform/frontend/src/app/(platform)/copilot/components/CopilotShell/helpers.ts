@@ -44,7 +44,7 @@ export function getSessionUpdatedLabel(
 export function mergeCurrentSessionIntoList(
   accumulatedSessions: SessionSummaryResponse[],
   currentSessionId: string | null,
-  currentSessionData: SessionDetailResponse | undefined,
+  currentSessionData: SessionDetailResponse | null | undefined,
 ): SessionSummaryResponse[] {
   const filteredSessions: SessionSummaryResponse[] = [];
 
@@ -148,7 +148,7 @@ export function checkReadyToShowContent(
   paramSessionId: string | null,
   accumulatedSessions: SessionSummaryResponse[],
   isCurrentSessionLoading: boolean,
-  currentSessionData: SessionDetailResponse | undefined,
+  currentSessionData: SessionDetailResponse | null | undefined,
   hasAutoSelectedSession: boolean,
 ): boolean {
   if (!areAllSessionsLoaded) return false;
@@ -159,7 +159,7 @@ export function checkReadyToShowContent(
     );
     return (
       sessionFound ||
-      (!isCurrentSessionLoading && currentSessionData !== undefined)
+      (!isCurrentSessionLoading && currentSessionData !== undefined && currentSessionData !== null)
     );
   }
 

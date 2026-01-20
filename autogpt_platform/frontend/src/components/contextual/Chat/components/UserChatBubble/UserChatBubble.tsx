@@ -10,7 +10,7 @@ export function UserChatBubble({ children, className }: UserChatBubbleProps) {
   return (
     <div
       className={cn(
-        "group relative min-w-20 overflow-hidden rounded-xl bg-purple-100 px-3 text-right text-sm leading-relaxed transition-all duration-500 ease-in-out",
+        "group relative min-w-20 overflow-hidden rounded-xl bg-purple-100 px-3 text-right text-[1rem] leading-relaxed transition-all duration-500 ease-in-out",
         className,
       )}
       style={{
