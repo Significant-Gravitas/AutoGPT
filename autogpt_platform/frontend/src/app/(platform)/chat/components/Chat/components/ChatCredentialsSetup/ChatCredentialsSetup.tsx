@@ -9,7 +9,9 @@ import { useChatCredentialsSetup } from "./useChatCredentialsSetup";
 export interface CredentialInfo {
   provider: string;
   providerName: string;
-  credentialType: "api_key" | "oauth2" | "user_password" | "host_scoped";
+  credentialTypes: Array<
+    "api_key" | "oauth2" | "user_password" | "host_scoped"
+  >;
   title: string;
   scopes?: string[];
 }
@@ -30,7 +32,7 @@ function createSchemaFromCredentialInfo(
     type: "object",
     properties: {},
     credentials_provider: [credential.provider],
-    credentials_types: [credential.credentialType],
+    credentials_types: credential.credentialTypes,
     credentials_scopes: credential.scopes,
     discriminator: undefined,
     discriminator_mapping: undefined,

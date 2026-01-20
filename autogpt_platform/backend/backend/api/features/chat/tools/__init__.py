@@ -30,7 +30,7 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "find_library_agent": FindLibraryAgentTool(),
     "run_agent": RunAgentTool(),
     "run_block": RunBlockTool(),
-    "agent_output": AgentOutputTool(),
+    "view_agent_output": AgentOutputTool(),
     "search_docs": SearchDocsTool(),
     "get_doc_page": GetDocPageTool(),
 }
