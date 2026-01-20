@@ -634,6 +634,42 @@ This enables extensibility by allowing custom blocks to be added without modifyi
 
 ---
 
+## Concatenate Lists
+
+### What it is
+Concatenates multiple lists into a single list. All elements from all input lists are combined in order.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+The block iterates through each list in the input and extends a result list with all elements from each one. It processes lists in order, so `[[1, 2], [3, 4]]` becomes `[1, 2, 3, 4]`.
+
+The block includes validation to ensure each item is actually a list. If a non-list value (like a string or number) is encountered, the block outputs an error message instead of proceeding. None values are skipped automatically.
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| lists | A list of lists to concatenate together. All lists will be combined in order into a single list. | List[List[Any]] | Yes |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if concatenation failed due to invalid input types. | str |
+| concatenated_list | The concatenated list containing all elements from all input lists in order. | List[Any] |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+**Paginated API Merging**: Combine results from multiple API pages into a single list for batch processing or display.
+
+**Parallel Task Aggregation**: Merge outputs from parallel workflow branches that each produce a list of results.
+
+**Multi-Source Data Collection**: Combine data collected from different sources (like multiple RSS feeds or API endpoints) into one unified list.
+<!-- END MANUAL -->
+
+---
+
 ## Dictionary Is Empty
 
 ### What it is

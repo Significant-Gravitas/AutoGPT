@@ -35,12 +35,13 @@ export const CredentialFieldTitle = (props: {
     uiOptions,
   );
 
-  const credentialProvider = toDisplayName(
-    getCredentialProviderFromSchema(
-      useNodeStore.getState().getHardCodedValues(nodeId),
-      schema as BlockIOCredentialsSubSchema,
-    ) ?? "",
+  const provider = getCredentialProviderFromSchema(
+    useNodeStore.getState().getHardCodedValues(nodeId),
+    schema as BlockIOCredentialsSubSchema,
   );
+  const credentialProvider = provider
+    ? `${toDisplayName(provider)} credential`
+    : "credential";
 
   const updatedUiSchema = updateUiOption(uiSchema, {
     showHandles: false,

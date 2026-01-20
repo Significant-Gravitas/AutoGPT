@@ -8,7 +8,7 @@ from backend.api.features.library import model as library_model
 from backend.api.features.store import db as store_db
 from backend.data import graph as graph_db
 from backend.data.graph import GraphModel
-from backend.data.model import CredentialsMetaInput
+from backend.data.model import CredentialsFieldInfo, CredentialsMetaInput
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util.exceptions import NotFoundError
 
@@ -87,6 +87,59 @@ def extract_credentials_from_schema(
         )
 
     return credentials
+
+
+def _serialize_missing_credential(
+    field_key: str, field_info: CredentialsFieldInfo
+) -> dict[str, Any]:
+    """
+    Convert credential field info into a serializable dict that preserves all supported
+    credential types (e.g., api_key + oauth2) so the UI can offer multiple options.
+    """
+    supported_types = sorted(field_info.supported_types)
+    provider = next(iter(field_info.provider), "unknown")
+    scopes = sorted(field_info.required_scopes or [])
+
+    return {
+        "id": field_key,
+        "title": field_key.replace("_", " ").title(),
+        "provider": provider,
+        "provider_name": provider.replace("_", " ").title(),
+        "type": supported_types[0] if supported_types else "api_key",
+        "types": supported_types,
+        "scopes": scopes,
+    }
+
+
+def build_missing_credentials_from_graph(
+    graph: GraphModel, matched_credentials: dict[str, CredentialsMetaInput] | None
+) -> dict[str, Any]:
+    """
+    Build a missing_credentials mapping from a graph's aggregated credentials inputs,
+    preserving all supported credential types for each field.
+    """
+    matched_keys = set(matched_credentials.keys()) if matched_credentials else set()
+    aggregated_fields = graph.aggregate_credentials_inputs()
+
+    return {
+        field_key: _serialize_missing_credential(field_key, field_info)
+        for field_key, (field_info, _node_fields) in aggregated_fields.items()
+        if field_key not in matched_keys
+    }
+
+
+def build_missing_credentials_from_field_info(
+    credential_fields: dict[str, CredentialsFieldInfo],
+    matched_keys: set[str],
+) -> dict[str, Any]:
+    """
+    Build missing_credentials mapping from a simple credentials field info dictionary.
+    """
+    return {
+        field_key: _serialize_missing_credential(field_key, field_info)
+        for field_key, field_info in credential_fields.items()
+        if field_key not in matched_keys
+    }
 
 
 def extract_credentials_as_dict(
