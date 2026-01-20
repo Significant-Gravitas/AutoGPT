@@ -1,0 +1,194 @@
+name: Enhance Block Documentation
+
+on:
+  workflow_dispatch:
+    inputs:
+      block_pattern:
+        description: 'Block file pattern to enhance (e.g., "google/*.md" or "*" for all blocks)'
+        required: true
+        default: '*'
+        type: string
+      dry_run:
+        description: 'Dry run mode - show proposed changes without committing'
+        type: boolean
+        default: true
+      max_blocks:
+        description: 'Maximum number of blocks to process (0 for unlimited)'
+        type: number
+        default: 10
+
+jobs:
+  enhance-docs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+      pull-requests: write
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up Python dependency cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pypoetry
+          key: poetry-${{ runner.os }}-${{ hashFiles('autogpt_platform/backend/poetry.lock') }}
+          restore-keys: |
+            poetry-${{ runner.os }}-
+
+      - name: Install Poetry
+        run: |
+          cd autogpt_platform/backend
+          HEAD_POETRY_VERSION=$(python3 ../../.github/workflows/scripts/get_package_version_from_lockfile.py poetry)
+          curl -sSL https://install.python-poetry.org | POETRY_VERSION=$HEAD_POETRY_VERSION python3 -
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Install dependencies
+        working-directory: autogpt_platform/backend
+        run: |
+          poetry install --only main
+          poetry run prisma generate
+
+      - name: Run Claude Enhancement
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_args: |
+            --allowedTools "Read,Edit,Glob,Grep,Write,Bash(git:*),Bash(gh:*),Bash(find:*),Bash(ls:*)"
+          prompt: |
+            You are enhancing block documentation for AutoGPT. Your task is to improve the MANUAL sections
+            of block documentation files by reading the actual block implementations and writing helpful content.
+
+            ## Configuration
+            - Block pattern: ${{ inputs.block_pattern }}
+            - Dry run: ${{ inputs.dry_run }}
+            - Max blocks to process: ${{ inputs.max_blocks }}
+
+            ## Your Task
+
+            1. **Find Documentation Files**
+               Find block documentation files matching the pattern in `docs/integrations/`
+               Pattern: ${{ inputs.block_pattern }}
+
+               Use: `find docs/integrations -name "*.md" -type f`
+
+            2. **For Each Documentation File** (up to ${{ inputs.max_blocks }} files):
+
+               a. Read the documentation file
+
+               b. Identify which block(s) it documents (look for the block class name)
+
+               c. Find and read the corresponding block implementation in `autogpt_platform/backend/backend/blocks/`
+
+               d. Improve the MANUAL sections:
+
+                  **"How it works" section** (within `<!-- MANUAL: how_it_works -->` markers):
+                  - Explain the technical flow of the block
+                  - Describe what APIs or services it connects to
+                  - Note any important configuration or prerequisites
+                  - Keep it concise but informative (2-4 paragraphs)
+
+                  **"Possible use case" section** (within `<!-- MANUAL: use_case -->` markers):
+                  - Provide 2-3 practical, real-world examples
+                  - Make them specific and actionable
+                  - Show how this block could be used in an automation workflow
+
+            3. **Important Rules**
+               - ONLY modify content within `<!-- MANUAL: -->` and `<!-- END MANUAL -->` markers
+               - Do NOT modify auto-generated sections (inputs/outputs tables, descriptions)
+               - Keep content accurate based on the actual block implementation
+               - Write for users who may not be technical experts
+
+            4. **Output**
+               ${{ inputs.dry_run == true && 'DRY RUN MODE: Show proposed changes for each file but do NOT actually edit the files. Describe what you would change.' || 'LIVE MODE: Actually edit the files to improve the documentation.' }}
+
+            ## Example Improvements
+
+            **Before (How it works):**
+            ```
+            _Add technical explanation here._
+            ```
+
+            **After (How it works):**
+            ```
+            This block connects to the GitHub API to retrieve issue information. When executed,
+            it authenticates using your GitHub credentials and fetches issue details including
+            title, body, labels, and assignees.
+
+            The block requires a valid GitHub OAuth connection with repository access permissions.
+            It supports both public and private repositories you have access to.
+            ```
+
+            **Before (Possible use case):**
+            ```
+            _Add practical use case examples here._
+            ```
+
+            **After (Possible use case):**
+            ```
+            **Customer Support Automation**: Monitor a GitHub repository for new issues with
+            the "bug" label, then automatically create a ticket in your support system and
+            notify the on-call engineer via Slack.
+
+            **Release Notes Generation**: When a new release is published, gather all closed
+            issues since the last release and generate a summary for your changelog.
+            ```
+
+            Begin by finding and listing the documentation files to process.
+
+      - name: Create PR with enhanced documentation
+        if: ${{ inputs.dry_run == false }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Check if there are changes
+          if git diff --quiet docs/integrations/; then
+            echo "No changes to commit"
+            exit 0
+          fi
+
+          # Configure git
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Create branch and commit
+          BRANCH_NAME="docs/enhance-blocks-$(date +%Y%m%d-%H%M%S)"
+          git checkout -b "$BRANCH_NAME"
+          git add docs/integrations/
+          git commit -m "docs: enhance block documentation with LLM-generated content
+
+          Pattern: ${{ inputs.block_pattern }}
+          Max blocks: ${{ inputs.max_blocks }}
+
+          🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+          Co-Authored-By: Claude <noreply@anthropic.com>"
+
+          # Push and create PR
+          git push -u origin "$BRANCH_NAME"
+          gh pr create \
+            --title "docs: LLM-enhanced block documentation" \
+            --body "## Summary
+          This PR contains LLM-enhanced documentation for block files matching pattern: \`${{ inputs.block_pattern }}\`
+
+          The following manual sections were improved:
+          - **How it works**: Technical explanations based on block implementations
+          - **Possible use case**: Practical, real-world examples
+
+          ## Review Checklist
+          - [ ] Content is accurate based on block implementations
+          - [ ] Examples are practical and helpful
+          - [ ] No auto-generated sections were modified
+
+          ---
+          🤖 Generated with [Claude Code](https://claude.com/claude-code)" \
+            --base dev

@@ -76,7 +76,7 @@ class AgentInputBlock(Block):
         super().__init__(
             **{
                 "id": "c0a8e994-ebf1-4a9c-a4d8-89d09c86741b",
-                "description": "Base block for user inputs.",
+                "description": "A block that accepts and processes user input values within a workflow, supporting various input types and validation.",
                 "input_schema": AgentInputBlock.Input,
                 "output_schema": AgentInputBlock.Output,
                 "test_input": [
@@ -168,7 +168,7 @@ class AgentOutputBlock(Block):
     def __init__(self):
         super().__init__(
             id="363ae599-353e-4804-937e-b2ee3cef3da4",
-            description="Stores the output of the graph for users to see.",
+            description="A block that records and formats workflow results for display to users, with optional Jinja2 template formatting support.",
             input_schema=AgentOutputBlock.Input,
             output_schema=AgentOutputBlock.Output,
             test_input=[

@@ -81,7 +81,7 @@ class StoreValueBlock(Block):
     def __init__(self):
         super().__init__(
             id="1ff065e9-88e8-4358-9d82-8dc91f622ba9",
-            description="This block forwards an input value as output, allowing reuse without change.",
+            description="A basic block that stores and forwards a value throughout workflows, allowing it to be reused without changes across multiple blocks.",
             categories={BlockCategory.BASIC},
             input_schema=StoreValueBlock.Input,
             output_schema=StoreValueBlock.Output,
@@ -111,7 +111,7 @@ class PrintToConsoleBlock(Block):
     def __init__(self):
         super().__init__(
             id="f3b1c1b2-4c4f-4f0d-8d2f-4c4f0d8d2f4c",
-            description="Print the given text to the console, this is used for a debugging purpose.",
+            description="A debugging block that outputs text to the console for monitoring and troubleshooting workflow execution.",
             categories={BlockCategory.BASIC},
             input_schema=PrintToConsoleBlock.Input,
             output_schema=PrintToConsoleBlock.Output,
@@ -137,7 +137,7 @@ class NoteBlock(Block):
     def __init__(self):
         super().__init__(
             id="cc10ff7b-7753-4ff2-9af6-9399b1a7eddc",
-            description="This block is used to display a sticky note with the given text.",
+            description="A visual annotation block that displays a sticky note in the workflow editor for documentation and organization purposes.",
             categories={BlockCategory.BASIC},
             input_schema=NoteBlock.Input,
             output_schema=NoteBlock.Output,

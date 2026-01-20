@@ -98,7 +98,11 @@ const Monitor = () => {
           ...(selectedFlow
             ? executions.filter((v) => v.graph_id == selectedFlow.graph_id)
             : executions),
-        ].sort((a, b) => b.started_at.getTime() - a.started_at.getTime())}
+        ].sort((a, b) => {
+          const aTime = a.started_at?.getTime() ?? 0;
+          const bTime = b.started_at?.getTime() ?? 0;
+          return bTime - aTime;
+        })}
         selectedRun={selectedRun}
         onSelectRun={(r) => setSelectedRun(r.id == selectedRun?.id ? null : r)}
       />
