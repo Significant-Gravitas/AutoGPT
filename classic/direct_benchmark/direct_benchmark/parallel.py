@@ -8,6 +8,9 @@ from .evaluator import Evaluator
 from .models import BenchmarkConfig, Challenge, ChallengeResult, ExecutionProgress
 from .runner import AgentRunner, StepCallback
 
+# Type for skip predicate: (config_name, challenge_name, attempt) -> bool
+SkipPredicate = Callable[[str, str, int], bool]
+
 
 class ParallelExecutor:
     """Execute multiple benchmark configurations in parallel."""
@@ -19,12 +22,14 @@ class ParallelExecutor:
         on_step: Optional[StepCallback] = None,
         attempts: int = 1,
         no_cutoff: bool = False,
+        skip_fn: Optional[SkipPredicate] = None,
     ):
         self.max_parallel = max_parallel
         self.on_progress = on_progress
         self.on_step = on_step
         self.attempts = attempts
         self.no_cutoff = no_cutoff
+        self.skip_fn = skip_fn
         self._semaphore = asyncio.Semaphore(max_parallel)
         self._evaluator = Evaluator()
 
@@ -44,17 +49,28 @@ class ParallelExecutor:
         Yields:
             ChallengeResult for each completed challenge.
         """
-        # Create all tasks (including multiple attempts)
+        # Create all tasks (including multiple attempts), skipping already-completed
         tasks = []
+        skipped = 0
         for config in configs:
             for challenge in challenges:
                 for attempt in range(1, self.attempts + 1):
+                    # Check if this run should be skipped (already completed)
+                    if self.skip_fn and self.skip_fn(
+                        config.config_name, challenge.name, attempt
+                    ):
+                        skipped += 1
+                        continue
+
                     task = asyncio.create_task(
                         self._run_with_semaphore(
                             config, challenge, workspace_root, attempt
                         )
                     )
                     tasks.append(task)
+
+        # Store skipped count for external access
+        self.skipped_count = skipped
 
         # Give all tasks a chance to start and acquire semaphore
         await asyncio.sleep(0)

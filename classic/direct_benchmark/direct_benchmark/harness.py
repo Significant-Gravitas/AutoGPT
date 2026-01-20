@@ -1,6 +1,7 @@
 """Main benchmark harness orchestrator."""
 
 import asyncio
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Union
@@ -11,6 +12,7 @@ from .challenge_loader import ChallengeLoader
 from .models import ChallengeResult, ExecutionProgress, HarnessConfig
 from .parallel import ParallelExecutor
 from .report import ReportGenerator
+from .state import StateManager
 from .ui import BenchmarkUI, JsonUI, QuietUI, console
 
 
@@ -21,6 +23,7 @@ class BenchmarkHarness:
         self.config = config
         self.loader = ChallengeLoader(config.challenges_dir)
         self.reporter = ReportGenerator(config.reports_dir)
+        self.state_manager = StateManager(config.reports_dir)
 
     async def run(
         self,
@@ -41,6 +44,76 @@ class BenchmarkHarness:
             Dict mapping config_name -> list of ChallengeResult.
         """
         start_time = datetime.now()
+
+        # Handle state management (resume/fresh)
+        strategy_names = list({c.strategy for c in self.config.configs})
+        model_names = list({c.model.name for c in self.config.configs})
+
+        if self.config.fresh:
+            self.state_manager.reset()
+            if ui_mode != "json":
+                console.print(
+                    "[yellow]Starting fresh (cleared previous state)[/yellow]"
+                )
+        elif self.config.retry_failures:
+            failure_count = self.state_manager.get_failure_count()
+            if failure_count > 0:
+                self.state_manager.reset_failures()
+                if ui_mode != "json":
+                    console.print(
+                        f"[yellow]Retrying {failure_count} failed runs...[/yellow]"
+                    )
+            else:
+                if ui_mode != "json":
+                    console.print("[dim]No failures to retry.[/dim]")
+        elif (
+            self.config.reset_strategies
+            or self.config.reset_models
+            or self.config.reset_challenges
+        ):
+            # Handle selective resets
+            total_reset = 0
+            if self.config.reset_strategies:
+                for strat in self.config.reset_strategies:
+                    count = self.state_manager.reset_matching(strategy=strat)
+                    total_reset += count
+                    if ui_mode != "json" and count > 0:
+                        console.print(
+                            f"[yellow]Reset {count} runs for strategy: {strat}[/yellow]"
+                        )
+            if self.config.reset_models:
+                for model in self.config.reset_models:
+                    count = self.state_manager.reset_matching(model=model)
+                    total_reset += count
+                    if ui_mode != "json" and count > 0:
+                        console.print(
+                            f"[yellow]Reset {count} runs for model: {model}[/yellow]"
+                        )
+            if self.config.reset_challenges:
+                for chal in self.config.reset_challenges:
+                    count = self.state_manager.reset_matching(challenge=chal)
+                    total_reset += count
+                    if ui_mode != "json" and count > 0:
+                        console.print(
+                            f"[yellow]Reset {count} runs for challenge: {chal}[/yellow]"
+                        )
+        else:
+            # Check for config mismatch
+            if not self.state_manager.config_matches(
+                strategy_names, model_names, self.config.attempts
+            ):
+                prev_completed = self.state_manager.get_completed_count()
+                if prev_completed > 0:
+                    console.print(
+                        f"[yellow]Warning: Config changed from previous run "
+                        f"({prev_completed} completed). Use --fresh to start over.[/yellow]"
+                    )
+                    self.state_manager.reset()
+
+        # Save current config for future mismatch detection
+        self.state_manager.set_session_config(
+            strategy_names, model_names, self.config.attempts
+        )
 
         # Load challenges
         challenges = list(
@@ -89,16 +162,31 @@ class BenchmarkHarness:
             name: [] for name in config_names
         }
 
-        # Create progress callback
+        # Helper to parse challenge name and attempt from display name
+        def parse_challenge_display(display_name: str) -> tuple[str, int]:
+            """Parse 'ChallengeName (attempt N)' -> ('ChallengeName', N)"""
+            match = re.match(r"^(.+?) \(attempt (\d+)\)$", display_name)
+            if match:
+                return match.group(1), int(match.group(2))
+            return display_name, 1
+
+        # Create progress callback that also saves state
         def on_progress(progress: ExecutionProgress) -> None:
             ui.update(progress)
             if progress.result:
                 all_results[progress.config_name].append(progress.result)
+                # Mark as completed in state manager
+                _, attempt = parse_challenge_display(progress.challenge_name)
+                self.state_manager.mark_completed(progress.result, attempt)
 
         # Create step callback if UI supports it
         step_callback = None
         if hasattr(ui, "log_step"):
             step_callback = ui.log_step
+
+        # Create skip function for resume functionality
+        def should_skip(config_name: str, challenge_name: str, attempt: int) -> bool:
+            return self.state_manager.is_completed(config_name, challenge_name, attempt)
 
         # Create executor
         executor = ParallelExecutor(
@@ -107,10 +195,20 @@ class BenchmarkHarness:
             on_step=step_callback,
             attempts=self.config.attempts,
             no_cutoff=self.config.no_cutoff,
+            skip_fn=should_skip,
         )
 
         # Ensure workspace exists
         self.config.workspace_root.mkdir(parents=True, exist_ok=True)
+
+        # Check how many will be skipped (already completed)
+        previously_completed = self.state_manager.get_completed_count()
+        if previously_completed > 0 and ui_mode not in ("json", "quiet"):
+            console.print(
+                f"[cyan]Resuming: {previously_completed} runs already completed, "
+                f"will run remaining...[/cyan]"
+            )
+            console.print()
 
         # Run with or without live display
         if isinstance(ui, BenchmarkUI) and ui_mode == "default":
@@ -125,8 +223,9 @@ class BenchmarkHarness:
         else:
             # CI mode or non-BenchmarkUI - no Live display
             if ui_mode == "ci" and isinstance(ui, BenchmarkUI):
+                remaining = total_runs - previously_completed
                 console.print(
-                    f"[bold]Starting {total_runs} benchmark runs "
+                    f"[bold]Running {remaining} benchmark runs "
                     f"(parallel={self.config.max_parallel})...[/bold]"
                 )
                 console.print()
@@ -139,9 +238,10 @@ class BenchmarkHarness:
             ):
                 completed_count += 1
                 # For CI mode, print progress every 10 completions
+                remaining = total_runs - previously_completed
                 if ui_mode == "ci" and completed_count % 10 == 0:
                     console.print(
-                        f"[dim]Progress: {completed_count}/{total_runs} completed[/dim]"
+                        f"[dim]Progress: {completed_count}/{remaining} completed[/dim]"
                     )
 
         end_time = datetime.now()

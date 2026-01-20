@@ -66,7 +66,26 @@ poetry run python -m direct_benchmark list-strategies
 | `--verbose` | `-v` | Detailed per-challenge output |
 | `--json` | | JSON output for CI/scripting |
 | `--ci` | | CI mode: no live display, shows completion blocks (auto-enabled when CI env var is set or not a TTY) |
+| `--fresh` | | Clear all saved state and start fresh (don't resume) |
+| `--retry-failures` | | Re-run only the challenges that failed in previous run |
+| `--reset-strategy` | | Reset saved results for specific strategy (can repeat) |
+| `--reset-model` | | Reset saved results for specific model (can repeat) |
+| `--reset-challenge` | | Reset saved results for specific challenge (can repeat) |
 | `--debug` | | Enable debug output |
+
+### State Management Commands
+```bash
+# Show current state
+poetry run python -m direct_benchmark state show
+
+# Clear all state
+poetry run python -m direct_benchmark state clear
+
+# Reset specific strategy/model/challenge
+poetry run python -m direct_benchmark state reset --strategy reflexion
+poetry run python -m direct_benchmark state reset --model claude-thinking-25k
+poetry run python -m direct_benchmark state reset --challenge ThreeSum
+```
 
 ## Available Strategies
 
@@ -230,6 +249,39 @@ poetry run python -m direct_benchmark run \
     --tests FailingTest \
     --keep-answers \
     --verbose
+```
+
+### Resume / Incremental Runs
+The benchmark automatically saves progress and resumes from where it left off.
+State is saved to `.benchmark_state.json` in the reports directory.
+
+```bash
+# Run benchmarks - will resume from last run automatically
+poetry run python -m direct_benchmark run \
+    --strategies one_shot,reflexion \
+    --models claude
+
+# Start fresh (clear all saved state)
+poetry run python -m direct_benchmark run --fresh \
+    --strategies one_shot,reflexion \
+    --models claude
+
+# Reset specific strategy and re-run
+poetry run python -m direct_benchmark run \
+    --reset-strategy reflexion \
+    --strategies one_shot,reflexion \
+    --models claude
+
+# Reset specific model and re-run
+poetry run python -m direct_benchmark run \
+    --reset-model claude-thinking-25k \
+    --strategies one_shot \
+    --models claude,claude-thinking-25k
+
+# Retry only the failures from the last run
+poetry run python -m direct_benchmark run --retry-failures \
+    --strategies one_shot,reflexion \
+    --models claude
 ```
 
 ### CI/Scripting Mode

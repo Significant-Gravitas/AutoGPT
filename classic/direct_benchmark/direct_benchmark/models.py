@@ -231,6 +231,13 @@ class HarnessConfig(BaseModel):
     keep_answers: bool = False  # Keep answer files for debugging
     debug: bool = False  # Enable debug output
 
+    # Resume options
+    fresh: bool = False  # Clear state and start fresh (don't resume)
+    retry_failures: bool = False  # Reset and re-run only failed challenges
+    reset_strategies: Optional[list[str]] = None  # Reset specific strategies
+    reset_models: Optional[list[str]] = None  # Reset specific models
+    reset_challenges: Optional[list[str]] = None  # Reset specific challenges
+
     model_config = {"arbitrary_types_allowed": True}
 
 

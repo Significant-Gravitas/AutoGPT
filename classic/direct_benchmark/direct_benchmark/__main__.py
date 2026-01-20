@@ -169,6 +169,34 @@ def cli():
     help="CI mode: no live display, but shows completion blocks. Auto-enabled when CI env var is set.",
 )
 @click.option(
+    "--fresh",
+    is_flag=True,
+    help="Clear all saved state and start fresh (don't resume).",
+)
+@click.option(
+    "--retry-failures",
+    is_flag=True,
+    help="Re-run only the challenges that failed in the previous run.",
+)
+@click.option(
+    "--reset-strategy",
+    "reset_strategies",
+    multiple=True,
+    help="Reset saved results for specific strategy (can be used multiple times).",
+)
+@click.option(
+    "--reset-model",
+    "reset_models",
+    multiple=True,
+    help="Reset saved results for specific model (can be used multiple times).",
+)
+@click.option(
+    "--reset-challenge",
+    "reset_challenges",
+    multiple=True,
+    help="Reset saved results for specific challenge (can be used multiple times).",
+)
+@click.option(
     "--debug",
     is_flag=True,
     help="Enable debug output.",
@@ -197,6 +225,11 @@ def run(
     verbose: bool,
     json_output: bool,
     ci_mode: bool,
+    fresh: bool,
+    retry_failures: bool,
+    reset_strategies: tuple[str, ...],
+    reset_models: tuple[str, ...],
+    reset_challenges: tuple[str, ...],
     debug: bool,
 ):
     """Run benchmarks with specified configurations."""
@@ -270,6 +303,11 @@ def run(
         explore=explore,
         keep_answers=keep_answers,
         debug=debug,
+        fresh=fresh,
+        retry_failures=retry_failures,
+        reset_strategies=list(reset_strategies) if reset_strategies else None,
+        reset_models=list(reset_models) if reset_models else None,
+        reset_challenges=list(reset_challenges) if reset_challenges else None,
     )
 
     # Determine UI mode
@@ -401,6 +439,146 @@ def list_strategies():
     console.print("\n[bold]Available Strategies[/bold]\n")
     for s in STRATEGIES:
         console.print(f"  - {s}")
+
+
+@cli.group()
+def state():
+    """Manage saved benchmark state (resume/reset)."""
+    pass
+
+
+@state.command("show")
+@click.option(
+    "--reports-dir",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Path to reports directory.",
+)
+def state_show(reports_dir: Optional[Path]):
+    """Show current benchmark state."""
+    from .state import StateManager
+
+    if reports_dir is None:
+        reports_dir = Path.cwd() / "reports"
+
+    state_manager = StateManager(reports_dir)
+    summary = state_manager.get_summary()
+
+    if summary["total_completed"] == 0:
+        console.print("[dim]No saved state found.[/dim]")
+        return
+
+    console.print("\n[bold]Benchmark State[/bold]\n")
+    console.print(f"Session ID: {summary['session_id']}")
+    console.print(f"Started: {summary['started_at']}")
+    console.print(f"Total completed: {summary['total_completed']}")
+    console.print(f"  Passed: [green]{summary['passed']}[/green]")
+    console.print(f"  Failed: [red]{summary['failed']}[/red]")
+    console.print(f"Total cost: ${summary['total_cost']:.4f}")
+
+    # Show unique strategies and models
+    strategies = state_manager.list_strategies()
+    models = state_manager.list_models()
+    if strategies:
+        console.print(f"\nStrategies: {', '.join(sorted(strategies))}")
+    if models:
+        console.print(f"Models: {', '.join(sorted(models))}")
+
+    console.print(f"\nState file: {state_manager.state_file}")
+
+
+@state.command("clear")
+@click.option(
+    "--reports-dir",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Path to reports directory.",
+)
+@click.confirmation_option(prompt="Are you sure you want to clear all saved state?")
+def state_clear(reports_dir: Optional[Path]):
+    """Clear all saved benchmark state."""
+    from .state import StateManager
+
+    if reports_dir is None:
+        reports_dir = Path.cwd() / "reports"
+
+    state_manager = StateManager(reports_dir)
+    prev_count = state_manager.get_completed_count()
+    state_manager.reset()
+    console.print(f"[green]Cleared {prev_count} completed runs.[/green]")
+
+
+@state.command("reset")
+@click.option(
+    "--strategy",
+    "-s",
+    "strategies",
+    multiple=True,
+    help="Reset runs for specific strategy (can be used multiple times).",
+)
+@click.option(
+    "--model",
+    "-m",
+    "models",
+    multiple=True,
+    help="Reset runs for specific model (can be used multiple times).",
+)
+@click.option(
+    "--challenge",
+    "-c",
+    "challenges",
+    multiple=True,
+    help="Reset runs for specific challenge (can be used multiple times).",
+)
+@click.option(
+    "--reports-dir",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Path to reports directory.",
+)
+def state_reset(
+    strategies: tuple[str, ...],
+    models: tuple[str, ...],
+    challenges: tuple[str, ...],
+    reports_dir: Optional[Path],
+):
+    """Reset specific runs from saved state."""
+    from .state import StateManager
+
+    if not strategies and not models and not challenges:
+        console.print(
+            "[red]Must specify at least one of --strategy, --model, or --challenge[/red]"
+        )
+        sys.exit(1)
+
+    if reports_dir is None:
+        reports_dir = Path.cwd() / "reports"
+
+    state_manager = StateManager(reports_dir)
+    total_reset = 0
+
+    for strat in strategies:
+        count = state_manager.reset_matching(strategy=strat)
+        total_reset += count
+        if count > 0:
+            console.print(f"Reset {count} runs for strategy: {strat}")
+
+    for model in models:
+        count = state_manager.reset_matching(model=model)
+        total_reset += count
+        if count > 0:
+            console.print(f"Reset {count} runs for model: {model}")
+
+    for chal in challenges:
+        count = state_manager.reset_matching(challenge=chal)
+        total_reset += count
+        if count > 0:
+            console.print(f"Reset {count} runs for challenge: {chal}")
+
+    if total_reset == 0:
+        console.print("[dim]No matching runs found.[/dim]")
+    else:
+        console.print(f"\n[green]Total reset: {total_reset} runs[/green]")
 
 
 def main():
