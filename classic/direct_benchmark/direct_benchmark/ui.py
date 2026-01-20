@@ -7,7 +7,6 @@ from typing import Optional
 
 from rich.columns import Columns
 from rich.console import Console, Group, RenderableType
-from rich.live import Live
 from rich.panel import Panel
 from rich.progress import (
     BarColumn,
@@ -236,9 +235,8 @@ class BenchmarkUI:
             f"[{status_style} bold][{status}][/{status_style} bold] "
             f"[{color}]{config_name}[/{color}] - {challenge_display}"
         )
-        console.print(
-            f"[dim]Run ID: {config_name}:{challenge_name}:{result.attempt} @ {timestamp}[/dim]"
-        )
+        run_id = f"{config_name}:{challenge_name}:{result.attempt}"
+        console.print(f"[dim]Run ID: {run_id} @ {timestamp}[/dim]")
         console.print(f"[{status_style}]{'═' * 70}[/{status_style}]")
 
         # Print steps
@@ -252,9 +250,11 @@ class BenchmarkUI:
 
         # Print summary
         console.print()
-        console.print(
-            f"  [dim]Steps: {result.n_steps} | Time: {result.run_time_seconds:.1f}s | Cost: ${result.cost:.4f}[/dim]"
+        stats = (
+            f"Steps: {result.n_steps} | Time: {result.run_time_seconds:.1f}s "
+            f"| Cost: ${result.cost:.4f}"
         )
+        console.print(f"  [dim]{stats}[/dim]")
 
         # Print error if any (skip generic timeout message since status shows it)
         if result.error_message and result.error_message != "Challenge timed out":
@@ -321,11 +321,9 @@ class BenchmarkUI:
                 rows.append(Columns(panels[i : i + max_cols], equal=True, expand=True))
             content = Group(*rows)
 
-        return Panel(
-            content,
-            title=f"[bold]Active Runs ({len(self.active_runs)}/{self.max_parallel})[/bold]",
-            border_style="blue",
-        )
+        active = len(self.active_runs)
+        title = f"[bold]Active Runs ({active}/{self.max_parallel})[/bold]"
+        return Panel(content, title=title, border_style="blue")
 
     def render_summary_table(self) -> Table:
         """Render summary table of results by configuration."""
@@ -440,7 +438,9 @@ class BenchmarkUI:
         total_would_pass = sum(
             1 for r in self.completed if r.timed_out and r.score >= 0.9
         )
-        total_failed = len(self.completed) - total_passed - total_would_pass
+        _total_failed = (  # noqa: F841
+            len(self.completed) - total_passed - total_would_pass
+        )
         total_cost = sum(r.cost for r in self.completed)
         # Include "would pass" in the effective rate
         effective_passed = total_passed + total_would_pass
@@ -507,8 +507,6 @@ class JsonUI:
             self.results_by_config[progress.config_name].append(progress.result)
 
     def print_final_summary(self) -> None:
-        import json
-
         output = {
             "results": {
                 config: {

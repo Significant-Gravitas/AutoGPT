@@ -36,7 +36,13 @@ class ReportGenerator:
         tests = {}
         total_cost = 0.0
         highest_difficulty = "interface"
-        difficulty_order = ["interface", "basic", "intermediate", "advanced", "hard"]
+        _difficulty_order = [  # noqa: F841
+            "interface",
+            "basic",
+            "intermediate",
+            "advanced",
+            "hard",
+        ]
 
         for result in results:
             total_cost += result.cost
@@ -63,6 +69,17 @@ class ReportGenerator:
                         "reached_cutoff": result.timed_out,
                         "n_steps": result.n_steps,
                         "cost": result.cost,
+                        "steps": [
+                            {
+                                "step_num": step.step_num,
+                                "tool_name": step.tool_name,
+                                "tool_args": step.tool_args,
+                                "result": step.result,
+                                "is_error": step.is_error,
+                                "cost": step.cumulative_cost,
+                            }
+                            for step in result.steps
+                        ],
                     }
                 ],
             }
@@ -137,6 +154,22 @@ class ReportGenerator:
                         "success": r.success,
                         "n_steps": r.n_steps,
                         "cost": r.cost,
+                        "error": r.error_message,
+                        "timed_out": r.timed_out,
+                        "steps": [
+                            {
+                                "step": s.step_num,
+                                "tool": s.tool_name,
+                                "args": s.tool_args,
+                                "result": (
+                                    s.result[:500] + "..."
+                                    if len(s.result) > 500
+                                    else s.result
+                                ),
+                                "error": s.is_error,
+                            }
+                            for s in r.steps
+                        ],
                     }
                     for r in results
                 },

@@ -1,6 +1,6 @@
 """Tests for the web fetch component."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import httpx
 import pytest

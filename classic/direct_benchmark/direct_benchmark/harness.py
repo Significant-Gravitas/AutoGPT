@@ -3,8 +3,7 @@
 import asyncio
 import re
 from datetime import datetime
-from pathlib import Path
-from typing import Optional, Union
+from typing import Union
 
 from rich.live import Live
 
@@ -104,10 +103,11 @@ class BenchmarkHarness:
             ):
                 prev_completed = self.state_manager.get_completed_count()
                 if prev_completed > 0:
-                    console.print(
-                        f"[yellow]Warning: Config changed from previous run "
-                        f"({prev_completed} completed). Use --fresh to start over.[/yellow]"
+                    msg = (
+                        f"[yellow]Warning: Config changed ({prev_completed} "
+                        f"completed). Use --fresh to start over.[/yellow]"
                     )
+                    console.print(msg)
                     self.state_manager.reset()
 
         # Save current config for future mismatch detection

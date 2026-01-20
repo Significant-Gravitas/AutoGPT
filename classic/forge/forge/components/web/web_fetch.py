@@ -7,7 +7,7 @@ Uses trafilatura for intelligent content extraction.
 
 import logging
 from typing import Iterator, Literal, Optional
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin
 
 import httpx
 import trafilatura

@@ -27,8 +27,6 @@ Usage:
 
 import argparse
 import json
-import os
-import re
 import sys
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
@@ -52,10 +50,10 @@ Tree: Any = None
 
 try:
     from rich.console import Console
-    from rich.markdown import Markdown
+    from rich.markdown import Markdown  # noqa: F401
     from rich.panel import Panel
     from rich.progress import Progress, SpinnerColumn, TextColumn
-    from rich.prompt import Confirm, Prompt
+    from rich.prompt import Confirm, Prompt  # noqa: F401
     from rich.table import Table
     from rich.text import Text
     from rich.tree import Tree
@@ -277,7 +275,9 @@ class FailureAnalyzer:
         }
 
         planning_count = sum(test.tool_distribution.get(t, 0) for t in planning_tools)
-        execution_count = sum(test.tool_distribution.get(t, 0) for t in execution_tools)
+        _execution_count = sum(  # noqa: F841
+            test.tool_distribution.get(t, 0) for t in execution_tools
+        )
 
         if test.n_steps > 0:
             planning_ratio = planning_count / test.n_steps
@@ -402,17 +402,22 @@ class FailureAnalyzer:
             self.console.print(table)
         else:
             print("\n=== Strategy Comparison Summary ===")
-            print(
-                f"{'Strategy':<20} {'Tests':>6} {'Passed':>7} {'Failed':>7} {'Success%':>10} {'AvgSteps':>9} {'Cost':>10}"
+            hdr = (
+                f"{'Strategy':<20} {'Tests':>6} {'Passed':>7} "
+                f"{'Failed':>7} {'Success%':>10} {'AvgSteps':>9} {'Cost':>10}"
             )
+            print(hdr)
             print("-" * 80)
             for name, analysis in sorted(
                 self.strategies.items(), key=lambda x: x[1].success_rate, reverse=True
             ):
-                print(
-                    f"{name:<20} {analysis.total_tests:>6} {analysis.passed:>7} {analysis.failed:>7} "
-                    f"{analysis.success_rate:>9.1f}% {analysis.avg_steps:>9.1f} ${analysis.total_cost:>9.4f}"
+                row = (
+                    f"{name:<20} {analysis.total_tests:>6} "
+                    f"{analysis.passed:>7} {analysis.failed:>7} "
+                    f"{analysis.success_rate:>9.1f}% {analysis.avg_steps:>9.1f} "
+                    f"${analysis.total_cost:>9.4f}"
                 )
+                print(row)
 
     def print_pattern_analysis(self) -> None:
         """Print failure pattern analysis."""
@@ -430,12 +435,12 @@ class FailureAnalyzer:
             table.add_column("Description")
 
             pattern_descriptions = {
-                FailurePattern.OVER_PLANNING: "Agent spends too much time planning without executing",
-                FailurePattern.TOOL_LOOP: "Agent repeats same tool 3+ times consecutively",
-                FailurePattern.MISSING_CRITICAL: "Agent never performed key action (e.g., write_file)",
-                FailurePattern.TIMEOUT: "Agent hit step limit before completing task",
-                FailurePattern.ERROR_UNRECOVERED: "Agent hit errors and couldn't recover",
-                FailurePattern.WRONG_APPROACH: "Agent took fundamentally wrong approach",
+                FailurePattern.OVER_PLANNING: "Too much planning, not enough action",
+                FailurePattern.TOOL_LOOP: "Repeats same tool 3+ times consecutively",
+                FailurePattern.MISSING_CRITICAL: "Never performed key action",
+                FailurePattern.TIMEOUT: "Hit step limit before completing task",
+                FailurePattern.ERROR_UNRECOVERED: "Hit errors and couldn't recover",
+                FailurePattern.WRONG_APPROACH: "Took fundamentally wrong approach",
                 FailurePattern.UNKNOWN: "Pattern not categorized",
             }
 
@@ -457,15 +462,13 @@ class FailureAnalyzer:
         )
 
         for analysis in strategies_to_show:
-            self._print(f"\n")
+            self._print("\n")
             if RICH_AVAILABLE:
-                self.console.print(
-                    Panel(
-                        f"[bold]{analysis.strategy_name}[/bold] - "
-                        f"{analysis.failed} failures out of {analysis.total_tests} tests",
-                        title="Strategy Analysis",
-                    )
+                msg = (
+                    f"[bold]{analysis.strategy_name}[/bold] - "
+                    f"{analysis.failed} failures out of {analysis.total_tests} tests"
                 )
+                self.console.print(Panel(msg, title="Strategy Analysis"))
             else:
                 print(f"\n=== {analysis.strategy_name} ===")
                 print(f"Failures: {analysis.failed}/{analysis.total_tests}")
@@ -480,9 +483,8 @@ class FailureAnalyzer:
             tree.add(f"[dim]Task:[/dim] {test.task[:80]}...")
             tree.add(f"[dim]Steps:[/dim] {test.n_steps}")
             tree.add(f"[dim]Cost:[/dim] ${test.total_cost:.4f}")
-            tree.add(
-                f"[dim]Patterns:[/dim] {', '.join(p.value for p in test.patterns_detected)}"
-            )
+            patterns = ", ".join(p.value for p in test.patterns_detected)
+            tree.add(f"[dim]Patterns:[/dim] {patterns}")
 
             tools = tree.add("[dim]Tool sequence:[/dim]")
             tool_seq = [s.tool_name for s in test.steps[:10]]
@@ -514,14 +516,14 @@ class FailureAnalyzer:
             return
 
         results = self.test_comparison[test_name]
-        self._print(f"\n")
+        self._print("\n")
         if RICH_AVAILABLE:
             self.console.print(Panel(f"[bold]Comparing: {test_name}[/bold]"))
         else:
             print(f"\n=== Comparing: {test_name} ===")
 
         for strategy, test in sorted(results.items()):
-            self._print(f"\n")
+            self._print("\n")
             if RICH_AVAILABLE:
                 self.console.print(f"[cyan]--- {strategy} ---[/cyan]")
             else:
@@ -666,9 +668,8 @@ class FailureAnalyzer:
                     self.console.print(f"  [dim]{key}:[/dim] {value}")
 
             if step.tool_result:
-                self.console.print(
-                    f"\n[cyan]Result:[/cyan] {json.dumps(step.tool_result, indent=2)[:500]}"
-                )
+                result_str = json.dumps(step.tool_result, indent=2)[:500]
+                self.console.print(f"\n[cyan]Result:[/cyan] {result_str}")
 
             self.console.print(
                 f"\n[cyan]Cumulative Cost:[/cyan] ${step.cumulative_cost:.4f}"
@@ -702,10 +703,12 @@ class FailureAnalyzer:
         for name, analysis in sorted(
             self.strategies.items(), key=lambda x: x[1].success_rate, reverse=True
         ):
-            lines.append(
-                f"| {name} | {analysis.total_tests} | {analysis.passed} | {analysis.failed} | "
-                f"{analysis.success_rate:.1f}% | {analysis.avg_steps:.1f} | ${analysis.total_cost:.4f} |"
+            row = (
+                f"| {name} | {analysis.total_tests} | {analysis.passed} "
+                f"| {analysis.failed} | {analysis.success_rate:.1f}% "
+                f"| {analysis.avg_steps:.1f} | ${analysis.total_cost:.4f} |"
             )
+            lines.append(row)
 
         # Pattern analysis
         lines.append("\n## Failure Patterns\n")
@@ -728,12 +731,10 @@ class FailureAnalyzer:
                 lines.append(f"#### {test.test_name}\n")
                 lines.append(f"- **Task**: {test.task[:100]}...")
                 lines.append(f"- **Steps**: {test.n_steps}")
-                lines.append(
-                    f"- **Patterns**: {', '.join(p.value for p in test.patterns_detected)}"
-                )
-                lines.append(
-                    f"- **Tool sequence**: {' -> '.join(s.tool_name for s in test.steps[:8])}"
-                )
+                patterns = ", ".join(p.value for p in test.patterns_detected)
+                lines.append(f"- **Patterns**: {patterns}")
+                tools = " -> ".join(s.tool_name for s in test.steps[:8])
+                lines.append(f"- **Tool sequence**: {tools}")
                 if test.fail_reason:
                     lines.append(f"- **Fail reason**: {test.fail_reason[:150]}...")
                 lines.append("")

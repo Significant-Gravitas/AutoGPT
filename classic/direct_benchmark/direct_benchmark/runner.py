@@ -9,7 +9,7 @@ from typing import Callable, Optional
 
 from autogpt.agent_factory.configurators import create_agent
 from autogpt.agents.agent import Agent
-from autogpt.app.config import AppConfig, ConfigBuilder
+from autogpt.app.config import ConfigBuilder
 
 from forge.file_storage import FileStorageBackendName, get_storage
 from forge.llm.providers import MultiProvider
@@ -46,7 +46,7 @@ class AgentRunner:
         start_time = datetime.now()
         steps: list[StepResult] = []
 
-        # Create isolated workspace for this run (include attempt in name for uniqueness)
+        # Create isolated workspace for this run
         prefix = f"{challenge.name}_{self.config.strategy}_"
         if attempt > 1:
             prefix = f"{challenge.name}_{self.config.strategy}_attempt{attempt}_"

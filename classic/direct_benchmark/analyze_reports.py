@@ -47,7 +47,7 @@ for report_file in sorted(report_files):
         data = json.load(f)
         if "tests" in data:
             test_tree = data["tests"]
-            # Handle both old format (agent_git_commit_sha) and new format (config_name in folder)
+            # Handle old format (agent_git_commit_sha) and new (config_name)
             if "config" in data and "config_name" in data["config"]:
                 label = data["config"]["config_name"]
             elif "agent_git_commit_sha" in data and "/" in data["agent_git_commit_sha"]:
@@ -117,7 +117,7 @@ for report_file in sorted(report_files):
                 if test_name not in test_names:
                     test_names.append(test_name)
 
-                # Handle both old format (success: bool) and new format (success_percentage: float)
+                # Handle old format (success: bool) and new (success_percentage)
                 if "success" in test_metrics:
                     success_value = test_metrics["success"]
                 elif "success_percentage" in test_metrics:

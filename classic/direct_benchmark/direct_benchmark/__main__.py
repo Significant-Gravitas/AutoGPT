@@ -14,7 +14,6 @@ from .models import (
     STRATEGIES,
     BenchmarkConfig,
     HarnessConfig,
-    ModelConfig,
 )
 from .ui import console
 
@@ -166,7 +165,7 @@ def cli():
     "--ci",
     "ci_mode",
     is_flag=True,
-    help="CI mode: no live display, but shows completion blocks. Auto-enabled when CI env var is set.",
+    help="CI mode: no live display. Auto-enabled when CI env var is set.",
 )
 @click.option(
     "--fresh",
@@ -546,9 +545,8 @@ def state_reset(
     from .state import StateManager
 
     if not strategies and not models and not challenges:
-        console.print(
-            "[red]Must specify at least one of --strategy, --model, or --challenge[/red]"
-        )
+        msg = "[red]Must specify --strategy, --model, or --challenge[/red]"
+        console.print(msg)
         sys.exit(1)
 
     if reports_dir is None:

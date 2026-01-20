@@ -162,7 +162,7 @@ def find_challenges_dir() -> Optional[Path]:
     Looks for common relative paths from the current working directory
     and the package location.
     """
-    # First check relative to this file's location (preferred - challenges are in direct_benchmark/)
+    # First check relative to this file's location (preferred)
     pkg_dir = Path(__file__).parent.parent
     local_challenges = pkg_dir / "challenges"
     if local_challenges.exists() and (local_challenges / "abilities").exists():
