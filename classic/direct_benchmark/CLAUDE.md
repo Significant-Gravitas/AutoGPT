@@ -65,6 +65,7 @@ poetry run python -m direct_benchmark list-strategies
 | `--quiet` | `-q` | Minimal output |
 | `--verbose` | `-v` | Detailed per-challenge output |
 | `--json` | | JSON output for CI/scripting |
+| `--ci` | | CI mode: no live display, shows completion blocks (auto-enabled when CI env var is set or not a TTY) |
 | `--debug` | | Enable debug output |
 
 ## Available Strategies
@@ -233,5 +234,10 @@ poetry run python -m direct_benchmark run \
 
 ### CI/Scripting Mode
 ```bash
+# JSON output (parseable)
 poetry run python -m direct_benchmark run --json
+
+# CI mode - shows completion blocks without Live display
+# Auto-enabled when CI=true env var is set or stdout is not a TTY
+poetry run python -m direct_benchmark run --ci
 ```

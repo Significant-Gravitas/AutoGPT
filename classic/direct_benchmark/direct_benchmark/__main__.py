@@ -1,5 +1,6 @@
 """CLI entry point for the direct benchmark harness."""
 
+import os
 import sys
 from pathlib import Path
 from typing import Optional
@@ -162,6 +163,12 @@ def cli():
     help="JSON output mode for CI/scripting.",
 )
 @click.option(
+    "--ci",
+    "ci_mode",
+    is_flag=True,
+    help="CI mode: no live display, but shows completion blocks. Auto-enabled when CI env var is set.",
+)
+@click.option(
     "--debug",
     is_flag=True,
     help="Enable debug output.",
@@ -189,6 +196,7 @@ def run(
     quiet: bool,
     verbose: bool,
     json_output: bool,
+    ci_mode: bool,
     debug: bool,
 ):
     """Run benchmarks with specified configurations."""
@@ -265,10 +273,15 @@ def run(
     )
 
     # Determine UI mode
+    # Auto-detect CI: CI env var set or not a TTY
+    is_ci = ci_mode or os.environ.get("CI") == "true" or not sys.stdout.isatty()
+
     if json_output:
         ui_mode = "json"
     elif quiet:
         ui_mode = "quiet"
+    elif is_ci:
+        ui_mode = "ci"
     else:
         ui_mode = "default"
 
@@ -305,6 +318,8 @@ def run(
             console.print("Keep answers: [green]yes[/green]")
         if debug:
             console.print("Debug: [yellow]enabled[/yellow]")
+        if ui_mode == "ci":
+            console.print("UI Mode: [cyan]ci[/cyan] (no live display)")
         console.print("=" * 50)
         console.print()
 

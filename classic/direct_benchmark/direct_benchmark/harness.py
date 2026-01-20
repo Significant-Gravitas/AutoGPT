@@ -31,8 +31,11 @@ class BenchmarkHarness:
         """Run the full benchmark suite.
 
         Args:
-            ui_mode: UI mode - "default" (rich), "quiet", or "json".
+            ui_mode: UI mode - "default" (rich Live display), "ci" (no Live,
+                shows completion blocks, auto-enabled in CI environments),
+                "quiet", or "json".
             verbose: Whether to show detailed per-challenge output.
+            debug: Whether to enable debug mode.
 
         Returns:
             Dict mapping config_name -> list of ChallengeResult.
@@ -70,6 +73,8 @@ class BenchmarkHarness:
         elif ui_mode == "json":
             ui = JsonUI()
         else:
+            # "default" or "ci" mode - both use BenchmarkUI
+            # ci mode just skips the Live display
             ui = BenchmarkUI(
                 max_parallel=self.config.max_parallel,
                 verbose=verbose,
@@ -118,12 +123,26 @@ class BenchmarkHarness:
                 ):
                     pass  # Results collected via callback
         else:
+            # CI mode or non-BenchmarkUI - no Live display
+            if ui_mode == "ci" and isinstance(ui, BenchmarkUI):
+                console.print(
+                    f"[bold]Starting {total_runs} benchmark runs "
+                    f"(parallel={self.config.max_parallel})...[/bold]"
+                )
+                console.print()
+
+            completed_count = 0
             async for _ in executor.execute_matrix(
                 self.config.configs,
                 challenges,
                 self.config.workspace_root,
             ):
-                pass  # Results collected via callback
+                completed_count += 1
+                # For CI mode, print progress every 10 completions
+                if ui_mode == "ci" and completed_count % 10 == 0:
+                    console.print(
+                        f"[dim]Progress: {completed_count}/{total_runs} completed[/dim]"
+                    )
 
         end_time = datetime.now()
 
@@ -152,7 +171,8 @@ class BenchmarkHarness:
         """Synchronous wrapper for run().
 
         Args:
-            ui_mode: UI mode - "default" (rich), "quiet", or "json".
+            ui_mode: UI mode - "default" (rich Live), "ci" (no Live, completion
+                blocks only), "quiet", or "json".
             verbose: Whether to show detailed per-challenge output.
             debug: Whether to enable debug mode (shows all logs).
 
