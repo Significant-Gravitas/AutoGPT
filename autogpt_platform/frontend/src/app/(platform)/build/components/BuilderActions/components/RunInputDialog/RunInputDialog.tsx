@@ -65,10 +65,9 @@ export const RunInputDialog = ({
       >
         <Dialog.Content>
           <div
-            className="grid grid-cols-[1fr_auto] gap-6 p-1"
+            className="grid grid-cols-[1fr_auto] gap-10 p-1"
             data-id="run-input-dialog-content"
           >
-            {/* Left Column: Inputs */}
             <div className="space-y-6">
               {/* Credentials Section */}
               {hasCredentials() && credentialFields.length > 0 && (
@@ -114,16 +113,15 @@ export const RunInputDialog = ({
               )}
             </div>
 
-            {/* Right Column: Action Button */}
             <div
-              className="flex flex-col items-end justify-end"
+              className="flex flex-col items-end justify-start"
               data-id="run-input-actions-section"
             >
               {purpose === "run" && (
                 <Button
                   variant="primary"
                   size="large"
-                  className="group h-fit min-w-0 gap-2"
+                  className="group h-fit min-w-0 gap-2 px-10"
                   onClick={handleManualRun}
                   loading={isExecutingGraph}
                   data-id="run-input-manual-run-button"
@@ -138,7 +136,7 @@ export const RunInputDialog = ({
                 <Button
                   variant="primary"
                   size="large"
-                  className="group h-fit min-w-0 gap-2"
+                  className="group h-fit min-w-0 gap-2 px-10"
                   onClick={() => setOpenCronSchedulerDialog(true)}
                   data-id="run-input-schedule-button"
                 >
