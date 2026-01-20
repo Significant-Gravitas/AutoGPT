@@ -41,6 +41,7 @@ function SafeModeIconButton({
           size="icon"
           aria-label={`${label}: ${isEnabled ? "ON" : "OFF"}. ${isEnabled ? tooltipEnabled : tooltipDisabled}`}
           onClick={onToggle}
+          disabled={isPending}
           className={cn(isPending ? "opacity-0" : "opacity-100")}
         >
           {isEnabled ? (
