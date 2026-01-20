@@ -111,9 +111,9 @@ export function FloatingSafeModeToggle({
       {showHITL && (
         <SafeModeButton
           isEnabled={currentHITLSafeMode}
-          label="Human-in-the-loop"
+          label="Human in the loop block approval"
           tooltipEnabled="The agent will pause at human-in-the-loop blocks and wait for your approval"
-          tooltipDisabled="Human-in-the-loop blocks will proceed automatically"
+          tooltipDisabled="Human in the loop blocks will proceed automatically"
           onToggle={handleHITLToggle}
           isPending={isPending}
           fullWidth={fullWidth}
@@ -122,7 +122,7 @@ export function FloatingSafeModeToggle({
       {showSensitive && (
         <SafeModeButton
           isEnabled={currentSensitiveActionSafeMode}
-          label="Sensitive actions"
+          label="Sensitive actions blocks approval"
           tooltipEnabled="The agent will pause at sensitive action blocks and wait for your approval"
           tooltipDisabled="Sensitive action blocks will proceed automatically"
           onToggle={handleSensitiveActionToggle}
