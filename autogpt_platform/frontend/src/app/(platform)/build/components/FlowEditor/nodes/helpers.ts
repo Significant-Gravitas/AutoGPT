@@ -192,7 +192,10 @@ export function getEdgeColorFromOutputType(
   outputSchema: RJSFSchema | undefined,
   sourceHandle: string,
 ): { colorClass: string; hexColor: string } {
-  const defaultColor = { colorClass: "stroke-zinc-500/50", hexColor: "#6b7280" };
+  const defaultColor = {
+    colorClass: "stroke-zinc-500/50",
+    hexColor: "#6b7280",
+  };
 
   if (!outputSchema?.properties) return defaultColor;
 
