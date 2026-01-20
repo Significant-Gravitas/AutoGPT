@@ -273,18 +273,22 @@ class BenchmarkUI:
                 Group(*lines),
                 title=f"[{color}]{config_name}[/{color}]",
                 border_style=color,
-                width=35,
+                width=30,
             )
             panels.append(panel)
 
-        # Arrange panels in columns (up to 4 per row)
-        if len(panels) <= 4:
+        # Arrange panels in columns (up to 10 per row based on terminal width)
+        # Each panel is ~30 chars wide, so calculate how many fit
+        term_width = console.width or 120
+        max_cols = min(10, max(1, term_width // 31))
+
+        if len(panels) <= max_cols:
             content = Columns(panels, equal=True, expand=True)
         else:
-            # Stack in rows of 4
+            # Stack in rows
             rows = []
-            for i in range(0, len(panels), 4):
-                rows.append(Columns(panels[i : i + 4], equal=True, expand=True))
+            for i in range(0, len(panels), max_cols):
+                rows.append(Columns(panels[i : i + max_cols], equal=True, expand=True))
             content = Group(*rows)
 
         return Panel(
