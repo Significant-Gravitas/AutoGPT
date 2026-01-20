@@ -7,7 +7,7 @@ runner for agent creation.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, cast
 
 from autogpt.agents.agent import Agent, AgentConfiguration, AgentSettings
 
@@ -16,7 +16,7 @@ from forge.config.ai_directives import AIDirectives
 from forge.config.ai_profile import AIProfile
 
 if TYPE_CHECKING:
-    from autogpt.app.config import AppConfig
+    from autogpt.app.config import AppConfig, PromptStrategyName
 
 
 class DefaultAgentFactory(AgentFactory):
@@ -99,7 +99,7 @@ class DefaultAgentFactory(AgentFactory):
         # Copy app config and optionally override strategy
         config = self.app_config.model_copy(deep=True)
         if strategy:
-            config.prompt_strategy = strategy
+            config.prompt_strategy = cast("PromptStrategyName", strategy)
 
         # Sub-agents should always be non-interactive
         config.noninteractive_mode = True

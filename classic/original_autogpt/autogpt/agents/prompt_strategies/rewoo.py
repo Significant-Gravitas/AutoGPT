@@ -194,10 +194,17 @@ class ReWOOPromptConfiguration(BasePromptStrategyConfiguration):
         "2. Specify the tool to use and its arguments\n"
         "3. Assign a variable name (#E1, #E2, etc.) to store the result\n"
         "4. Later steps can reference earlier results using variable names\n\n"
-        "Format each step as:\n"
+        "Format each step EXACTLY as:\n"
         "Plan: [Your reasoning for this step]\n"
-        '#E[n] = tool_name(arg1="value1", arg2=#E[m])\n\n'
-        "After all steps, provide the response in the required JSON format."
+        '#E1 = tool_name(arg1="value1", arg2="value2")\n\n'
+        "Example plan:\n"
+        "Plan: First, I need to list the files to understand the structure.\n"
+        '#E1 = list_folder(folder=".")\n'
+        "Plan: Next, I will read the main file to understand its contents.\n"
+        '#E2 = read_file(filename="main.py")\n'
+        "Plan: Finally, I will write the solution to a new file.\n"
+        '#E3 = write_to_file(filename="solution.txt", contents="The answer is 42")\n\n'
+        "Now create your plan following this EXACT format."
     )
 
     # Paper-style planner instruction (uses bracket syntax like the original paper)
@@ -315,10 +322,16 @@ class ReWOOPromptStrategy(BaseMultiStepPromptStrategy):
                 the cached action from the plan should be used instead of
                 making an LLM call. This is the core ReWOO optimization.
         """
+        self.logger.info(
+            f"ReWOO build_prompt: current_phase={self.current_phase.value}"
+        )
+
         # EXECUTING phase: use pre-planned actions without LLM calls
         if self.current_phase == ReWOOPhase.EXECUTING:
             cached_action = self._get_cached_action_proposal()
             if cached_action:
+                # current_plan is guaranteed to be set in EXECUTING phase
+                assert self.current_plan is not None
                 self.logger.debug(
                     f"ReWOO EXECUTING: Using cached action "
                     f"(step {self.current_plan.current_step_index + 1} "
@@ -427,7 +440,11 @@ class ReWOOPromptStrategy(BaseMultiStepPromptStrategy):
         is_synthesis: bool,
     ) -> tuple[str, str]:
         """Build the system prompt."""
-        response_fmt_instruction, response_prefill = self._response_format_instruction()
+        # During planning, we want plan text format, not tool calls
+        is_planning = not is_synthesis and self.current_phase == ReWOOPhase.PLANNING
+        response_fmt_instruction, response_prefill = self._response_format_instruction(
+            is_planning=is_planning
+        )
 
         system_prompt_parts = (
             self.generate_intro_prompt(ai_profile)
@@ -450,8 +467,26 @@ class ReWOOPromptStrategy(BaseMultiStepPromptStrategy):
             response_prefill,
         )
 
-    def _response_format_instruction(self) -> tuple[str, str]:
-        """Generate response format instruction."""
+    def _response_format_instruction(
+        self, is_planning: bool = False
+    ) -> tuple[str, str]:
+        """Generate response format instruction.
+
+        Args:
+            is_planning: If True, we're in PLANNING phase and want plan text,
+                not tool calls.
+        """
+        if is_planning:
+            # During planning, we want the plan in text format, not tool calls
+            return (
+                "Output your plan following the EXACT format specified in the "
+                "instructions. Each step must have:\n"
+                '- "Plan:" followed by your reasoning\n'
+                '- "#E[n] = tool_name(arg1=\\"value1\\", ...)" on the next line\n\n'
+                "Do NOT call any tools directly - just write out the plan steps.",
+                "",  # No prefill for planning
+            )
+
         schema = self._response_schema.model_copy(deep=True)
 
         assert schema.properties
@@ -510,6 +545,61 @@ class ReWOOPromptStrategy(BaseMultiStepPromptStrategy):
             )
         )
 
+        # Parse plan from response FIRST if in planning phase.
+        # During PLANNING, we expect plan text format, not JSON
+        if self.current_phase == ReWOOPhase.PLANNING:
+            self.logger.info("ReWOO: Attempting to extract plan from PLANNING response")
+            plan = self._extract_plan_from_response(response.content)
+            if plan and plan.steps:
+                self.current_plan = plan
+                # Transition to EXECUTING phase now that we have a plan
+                self.current_phase = ReWOOPhase.EXECUTING
+                self.logger.info(
+                    f"ReWOO: Extracted plan with {len(plan.steps)} steps, "
+                    f"transitioning to EXECUTING phase"
+                )
+
+                # Use the first step of the plan as the action to execute
+                first_step = plan.steps[0]
+                first_action = AssistantFunctionCall(
+                    name=first_step.tool_name,
+                    arguments=first_step.tool_arguments,
+                )
+
+                # Build a complete proposal from the plan
+                thoughts = ReWOOThoughts(
+                    observations="Created ReWOO execution plan",
+                    reasoning=first_step.thought,
+                    plan=[f"{s.variable_name}: {s.thought}" for s in plan.steps],
+                )
+
+                # Create synthetic raw message
+                from forge.llm.providers.schema import AssistantToolCall
+
+                raw_message = AssistantChatMessage(
+                    content=response.content,
+                    tool_calls=[
+                        AssistantToolCall(
+                            id="rewoo_plan_step_0",
+                            type="function",
+                            function=first_action,
+                        )
+                    ],
+                )
+
+                return ReWOOActionProposal(
+                    thoughts=thoughts,
+                    use_tool=first_action,
+                    raw_message=raw_message,
+                )
+            else:
+                self.logger.warning(
+                    "ReWOO: Failed to extract plan from response, staying in PLANNING. "
+                    f"Plan: {plan}, Steps: {plan.steps if plan else 'N/A'}"
+                )
+                # Fall through to standard JSON parsing if plan extraction fails
+
+        # For non-planning phases or if plan extraction failed, parse as JSON
         assistant_reply_dict = extract_dict_from_json(response.content)
         self.logger.debug(
             "Parsing object extracted from LLM response:\n"
@@ -520,18 +610,6 @@ class ReWOOPromptStrategy(BaseMultiStepPromptStrategy):
             raise InvalidAgentResponseError("Assistant did not use a tool")
 
         assistant_reply_dict["use_tool"] = response.tool_calls[0].function
-
-        # Parse plan from response if in planning phase
-        if self.current_phase == ReWOOPhase.PLANNING:
-            plan = self._extract_plan_from_response(response.content)
-            if plan and plan.steps:
-                self.current_plan = plan
-                # Transition to EXECUTING phase now that we have a plan
-                self.current_phase = ReWOOPhase.EXECUTING
-                self.logger.info(
-                    f"ReWOO: Extracted plan with {len(plan.steps)} steps, "
-                    f"transitioning to EXECUTING phase"
-                )
 
         # Ensure thoughts dict has required fields
         thoughts_dict = assistant_reply_dict.get("thoughts", {})
@@ -555,6 +633,7 @@ class ReWOOPromptStrategy(BaseMultiStepPromptStrategy):
         1. Paper-style bracket format: #E1 = Tool[argument]
         2. Function-style parenthesis format: #E1 = tool(arg1="value1")
         """
+        self.logger.debug(f"ReWOO: Extracting plan from content:\n{content[:1000]}...")
         plan = ReWOOPlan()
 
         # Pattern for paper-style bracket format: #E1 = Tool[argument]
@@ -572,11 +651,19 @@ class ReWOOPromptStrategy(BaseMultiStepPromptStrategy):
         # Try bracket format first (paper-style)
         matches = bracket_pattern.findall(content)
         is_bracket_format = bool(matches)
+        self.logger.debug(f"ReWOO: Bracket pattern matches: {len(matches)}")
 
         if not matches:
             # Fall back to parenthesis format
             matches = paren_pattern.findall(content)
             is_bracket_format = False
+            self.logger.debug(f"ReWOO: Paren pattern matches: {len(matches)}")
+
+        if not matches:
+            self.logger.warning(
+                "ReWOO: No plan pattern matched. Expected format:\n"
+                'Plan: [reasoning]\n#E1 = tool_name(arg="value")'
+            )
 
         for match in matches[: self.config.max_plan_steps]:
             thought, var_num, tool_name, args_str = match

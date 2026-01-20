@@ -127,15 +127,21 @@ class FailureAnalyzer:
     def __init__(self, reports_dir: Path, use_llm: bool = True):
         self.reports_dir = reports_dir
         self.use_llm = use_llm
-        self.console = Console() if RICH_AVAILABLE else None
+        self._console_instance = Console() if RICH_AVAILABLE else None
         self.strategies: dict[str, StrategyAnalysis] = {}
         self.test_comparison: dict[str, dict[str, TestResult]] = defaultdict(dict)
         self._llm_provider = None
 
-    def _print(self, *args, **kwargs):
+    @property
+    def console(self) -> Any:
+        """Get console instance (only call when RICH_AVAILABLE is True)."""
+        assert self._console_instance is not None
+        return self._console_instance
+
+    def _print(self, *args: Any, **kwargs: Any) -> None:
         """Print with Rich if available, otherwise standard print."""
-        if self.console:
-            self.console.print(*args, **kwargs)
+        if self._console_instance:
+            self._console_instance.print(*args, **kwargs)
         else:
             print(*args, **kwargs)
 

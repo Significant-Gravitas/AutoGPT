@@ -5,7 +5,10 @@ import shutil
 import tempfile
 from datetime import datetime
 from pathlib import Path
-from typing import Callable, Optional
+from typing import TYPE_CHECKING, Callable, Optional, cast
+
+if TYPE_CHECKING:
+    from forge.llm.providers import ModelName
 
 from autogpt.agent_factory.configurators import create_agent
 from autogpt.agents.agent import Agent
@@ -159,9 +162,9 @@ class AgentRunner:
 
         # Apply model and strategy configuration
         if self.config.model.smart_llm:
-            app_config.smart_llm = self.config.model.smart_llm
+            app_config.smart_llm = cast("ModelName", self.config.model.smart_llm)
         if self.config.model.fast_llm:
-            app_config.fast_llm = self.config.model.fast_llm
+            app_config.fast_llm = cast("ModelName", self.config.model.fast_llm)
         app_config.prompt_strategy = self.config.strategy
         app_config.noninteractive_mode = True
         app_config.continuous_mode = True
@@ -253,9 +256,7 @@ class AgentRunner:
                     cumulative_cost = self._llm_provider.get_incurred_cost()
 
                 # Get result info
-                result_str = str(
-                    result.outputs if hasattr(result, "outputs") else result
-                )
+                result_str = str(getattr(result, "outputs", result))
                 is_error = hasattr(result, "status") and result.status == "error"
 
                 # Record step

@@ -102,9 +102,9 @@ class WebSearchConfiguration(BaseModel):
     )
     # Legacy aliases for backwards compatibility
     duckduckgo_max_attempts: int = 3  # Now used as max backend attempts
-    duckduckgo_backend: Literal[
-        "api", "html", "lite"
-    ] = "api"  # Ignored, use ddgs_backend
+    duckduckgo_backend: Literal["api", "html", "lite"] = (
+        "api"  # Ignored, use ddgs_backend
+    )
 
 
 class WebSearchComponent(
@@ -123,7 +123,7 @@ class WebSearchComponent(
 
     def __init__(self, config: Optional[WebSearchConfiguration] = None):
         ConfigurableComponent.__init__(self, config)
-        self._ddgs_client: Optional["DDGS"] = None
+        self._ddgs_client: "Optional[DDGS]" = None  # type: ignore[type-arg]
         self._log_provider_status()
 
     def _log_provider_status(self) -> None:
@@ -145,7 +145,7 @@ class WebSearchComponent(
             )
 
     @property
-    def ddgs_client(self) -> "DDGS":
+    def ddgs_client(self) -> "DDGS":  # type: ignore[type-arg]
         """Lazy-loaded DDGS client."""
         if self._ddgs_client is None:
             self._ddgs_client = DDGS()

@@ -3,13 +3,19 @@
 import os
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Optional, cast
 
 import click
 
 from .challenge_loader import find_challenges_dir
 from .harness import BenchmarkHarness
-from .models import MODEL_PRESETS, STRATEGIES, BenchmarkConfig, HarnessConfig
+from .models import (
+    MODEL_PRESETS,
+    STRATEGIES,
+    BenchmarkConfig,
+    HarnessConfig,
+    StrategyName,
+)
 from .ui import console
 
 
@@ -272,7 +278,7 @@ def run(
             model = MODEL_PRESETS[model_name]
             configs.append(
                 BenchmarkConfig(
-                    strategy=strategy,
+                    strategy=cast(StrategyName, strategy),
                     model=model,
                     max_steps=max_steps,
                     timeout_seconds=timeout,

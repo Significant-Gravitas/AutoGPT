@@ -160,7 +160,13 @@ skip_glob = ["data"]
 
 [tool.pyright]
 pythonVersion = "3.12"
-exclude = ["data/**", "**/node_modules", "**/__pycache__", "**/.*"]
+exclude = [
+    "data/**",
+    "**/node_modules",
+    "**/__pycache__",
+    "**/.*",
+    "direct_benchmark/challenges/**",  # Legacy code with unavailable imports
+]
 
 
 [tool.pytest.ini_options]

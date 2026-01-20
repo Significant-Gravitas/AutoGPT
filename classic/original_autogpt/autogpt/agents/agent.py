@@ -152,8 +152,10 @@ class Agent(BaseAgent[AnyActionProposal], Configurable[AgentSettings]):
 
         # Create prompt strategy and inject execution context
         self.prompt_strategy = self._create_prompt_strategy(app_config)
-        if hasattr(self.prompt_strategy, "set_execution_context"):
-            self.prompt_strategy.set_execution_context(self.execution_context)
+        # Multi-step strategies have set_execution_context; one_shot doesn't
+        set_ctx = getattr(self.prompt_strategy, "set_execution_context", None)
+        if set_ctx is not None:
+            set_ctx(self.execution_context)
 
         self.commands: list[Command] = []
 
@@ -263,12 +265,11 @@ class Agent(BaseAgent[AnyActionProposal], Configurable[AgentSettings]):
         # Prepare messages (lazy compression) - skip if strategy will use cached actions
         # ReWOO EXECUTING phase doesn't need messages, so skip compression
         skip_message_prep = False
-        if hasattr(self.prompt_strategy, "current_phase"):
+        current_phase = getattr(self.prompt_strategy, "current_phase", None)
+        if current_phase is not None:
             from .prompt_strategies.rewoo import ReWOOPhase
 
-            skip_message_prep = (
-                self.prompt_strategy.current_phase == ReWOOPhase.EXECUTING
-            )
+            skip_message_prep = current_phase == ReWOOPhase.EXECUTING
 
         if not skip_message_prep and hasattr(self, "history"):
             await self.history.prepare_messages()
@@ -324,21 +325,21 @@ class Agent(BaseAgent[AnyActionProposal], Configurable[AgentSettings]):
         thinking_kwargs: dict[str, Any] = {}
         if hasattr(self, "app_config") and self.app_config:
             if self.app_config.thinking_budget_tokens:
-                thinking_kwargs[
-                    "thinking_budget_tokens"
-                ] = self.app_config.thinking_budget_tokens
+                thinking_kwargs["thinking_budget_tokens"] = (
+                    self.app_config.thinking_budget_tokens
+                )
             if self.app_config.reasoning_effort:
                 thinking_kwargs["reasoning_effort"] = self.app_config.reasoning_effort
 
-        response: ChatModelResponse[
-            AnyActionProposal
-        ] = await self.llm_provider.create_chat_completion(
-            prompt.messages,
-            model_name=self.llm.name,
-            completion_parser=self.prompt_strategy.parse_response_content,
-            functions=prompt.functions,
-            prefill_response=prompt.prefill_response,
-            **thinking_kwargs,
+        response: ChatModelResponse[AnyActionProposal] = (
+            await self.llm_provider.create_chat_completion(
+                prompt.messages,
+                model_name=self.llm.name,
+                completion_parser=self.prompt_strategy.parse_response_content,
+                functions=prompt.functions,
+                prefill_response=prompt.prefill_response,
+                **thinking_kwargs,
+            )
         )
         result = response.parsed_result
 
@@ -395,17 +396,16 @@ class Agent(BaseAgent[AnyActionProposal], Configurable[AgentSettings]):
 
         # Notify ReWOO strategy of execution result for variable tracking
         # This allows ReWOO to record results and substitute variables in later steps
-        if hasattr(self.prompt_strategy, "record_execution_result") and hasattr(
-            self.prompt_strategy, "current_plan"
-        ):
-            plan = getattr(self.prompt_strategy, "current_plan", None)
-            if plan and plan.current_step_index < len(plan.steps):
+        record_result = getattr(self.prompt_strategy, "record_execution_result", None)
+        plan = getattr(self.prompt_strategy, "current_plan", None)
+        if record_result is not None and plan is not None:
+            if plan.current_step_index < len(plan.steps):
                 step = plan.steps[plan.current_step_index]
                 error_msg = None
                 if isinstance(result, ActionErrorResult):
                     error_msg = getattr(result, "reason", None) or str(result)
                 result_str = str(getattr(result, "outputs", result))
-                self.prompt_strategy.record_execution_result(
+                record_result(
                     step.variable_name,
                     result_str,
                     error=error_msg,

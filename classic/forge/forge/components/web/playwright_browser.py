@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Iterator, Literal, Optional
+from typing import Any, Iterator, Literal, Optional
 
 from bs4 import BeautifulSoup
 from pydantic import BaseModel, SecretStr
@@ -186,7 +186,7 @@ class WebPlaywrightComponent(
         """Launch a local browser instance."""
         browser_launcher = getattr(self._playwright, self.config.browser_type)
 
-        launch_args = {
+        launch_args: dict[str, Any] = {
             "headless": self.config.headless,
         }
 
@@ -219,6 +219,7 @@ class WebPlaywrightComponent(
 
     async def _create_context(self):
         """Create a browser context with configured settings."""
+        assert self._browser is not None, "Browser not initialized"
         context = await self._browser.new_context(
             user_agent=self.config.user_agent,
             viewport={"width": 1920, "height": 1080},
@@ -296,6 +297,7 @@ class WebPlaywrightComponent(
     async def _open_page(self, url: str):
         """Open a new page and navigate to URL with smart waiting."""
         await self._ensure_browser()
+        assert self._context is not None, "Browser context not initialized"
 
         page = await self._context.new_page()
         try:

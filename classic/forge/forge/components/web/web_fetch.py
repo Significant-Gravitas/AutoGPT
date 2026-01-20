@@ -11,7 +11,7 @@ from urllib.parse import urljoin
 
 import httpx
 import trafilatura
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Tag
 from pydantic import BaseModel
 
 from forge.agent.components import ConfigurableComponent
@@ -158,30 +158,30 @@ class WebFetchComponent(
 
         # Meta description
         desc = soup.find("meta", attrs={"name": "description"})
-        if desc and desc.get("content"):
-            metadata["description"] = desc["content"]
+        if isinstance(desc, Tag) and desc.get("content"):
+            metadata["description"] = str(desc["content"])
 
         # Open Graph title/description
         og_title = soup.find("meta", attrs={"property": "og:title"})
-        if og_title and og_title.get("content"):
-            metadata["og_title"] = og_title["content"]
+        if isinstance(og_title, Tag) and og_title.get("content"):
+            metadata["og_title"] = str(og_title["content"])
 
         og_desc = soup.find("meta", attrs={"property": "og:description"})
-        if og_desc and og_desc.get("content"):
-            metadata["og_description"] = og_desc["content"]
+        if isinstance(og_desc, Tag) and og_desc.get("content"):
+            metadata["og_description"] = str(og_desc["content"])
 
         # Author
         author = soup.find("meta", attrs={"name": "author"})
-        if author and author.get("content"):
-            metadata["author"] = author["content"]
+        if isinstance(author, Tag) and author.get("content"):
+            metadata["author"] = str(author["content"])
 
         # Published date
         for attr in ["article:published_time", "datePublished", "date"]:
             date_tag = soup.find("meta", attrs={"property": attr}) or soup.find(
                 "meta", attrs={"name": attr}
             )
-            if date_tag and date_tag.get("content"):
-                metadata["published"] = date_tag["content"]
+            if isinstance(date_tag, Tag) and date_tag.get("content"):
+                metadata["published"] = str(date_tag["content"])
                 break
 
         return metadata
@@ -253,12 +253,20 @@ class WebFetchComponent(
 
         if output_format == "markdown":
             content = trafilatura.extract(
-                html, output_format="markdown", **extract_kwargs
+                html,
+                output_format="markdown",
+                **extract_kwargs,  # type: ignore[arg-type]
             )
         elif output_format == "xml":
-            content = trafilatura.extract(html, output_format="xml", **extract_kwargs)
+            content = trafilatura.extract(
+                html,
+                output_format="xml",
+                **extract_kwargs,  # type: ignore[arg-type]
+            )
         else:
-            content = trafilatura.extract(html, **extract_kwargs)
+            content = trafilatura.extract(
+                html, **extract_kwargs  # type: ignore[arg-type]
+            )
 
         if not content:
             # Fallback to basic BeautifulSoup extraction

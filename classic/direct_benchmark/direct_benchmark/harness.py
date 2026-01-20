@@ -180,9 +180,7 @@ class BenchmarkHarness:
                 self.state_manager.mark_completed(progress.result, attempt)
 
         # Create step callback if UI supports it
-        step_callback = None
-        if hasattr(ui, "log_step"):
-            step_callback = ui.log_step
+        step_callback = getattr(ui, "log_step", None)
 
         # Create skip function for resume functionality
         def should_skip(config_name: str, challenge_name: str, attempt: int) -> bool:

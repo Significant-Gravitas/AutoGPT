@@ -2,7 +2,17 @@ import enum
 import logging
 import os
 from pathlib import Path
-from typing import Any, Callable, Iterator, Mapping, Optional, ParamSpec, TypeVar, cast
+from typing import (
+    Any,
+    Callable,
+    Iterator,
+    Literal,
+    Mapping,
+    Optional,
+    ParamSpec,
+    TypeVar,
+    cast,
+)
 
 import tenacity
 import tiktoken
@@ -691,6 +701,7 @@ class OpenAIProvider(
         model: OpenAIModelName,
         functions: Optional[list[CompletionModelFunction]] = None,
         max_output_tokens: Optional[int] = None,
+        reasoning_effort: Optional[Literal["low", "medium", "high"]] = None,
         **kwargs,
     ) -> tuple[
         list[ChatCompletionMessageParam], CompletionCreateParams, dict[str, Any]
@@ -721,6 +732,7 @@ class OpenAIProvider(
             model=model,
             functions=functions,
             max_output_tokens=max_output_tokens,
+            reasoning_effort=reasoning_effort,
             **kwargs,
         )
         kwargs.update(self._credentials.get_model_access_kwargs(model))  # type: ignore

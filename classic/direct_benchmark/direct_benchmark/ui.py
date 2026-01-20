@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Optional
 
 from rich.columns import Columns
-from rich.console import Console, Group, RenderableType
+from rich.console import Console, ConsoleOptions, Group, RenderResult
 from rich.panel import Panel
 from rich.progress import (
     BarColumn,
@@ -70,9 +70,9 @@ class BenchmarkUI:
             configure_logging_for_benchmark()
 
         # Track state - use run_key (config:challenge) for uniqueness
-        self.active_runs: dict[
-            str, tuple[str, str]
-        ] = {}  # run_key -> (config_name, challenge_name)
+        self.active_runs: dict[str, tuple[str, str]] = (
+            {}
+        )  # run_key -> (config_name, challenge_name)
         self.active_steps: dict[str, str] = {}  # run_key -> current step info
         self.completed: list[ChallengeResult] = []
         self.results_by_config: dict[str, list[ChallengeResult]] = {}
@@ -414,7 +414,9 @@ class BenchmarkUI:
             self.render_recent_completions(),
         )
 
-    def __rich_console__(self, console: Console, options) -> RenderableType:
+    def __rich_console__(
+        self, console: Console, options: ConsoleOptions
+    ) -> RenderResult:
         """Support for Rich Live display - called on each refresh."""
         yield self.render_live_display()
 

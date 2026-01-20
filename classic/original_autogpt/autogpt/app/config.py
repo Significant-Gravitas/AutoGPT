@@ -18,7 +18,13 @@ from forge.models.config import Configurable, UserConfigurable
 
 # Type alias for prompt strategy options
 PromptStrategyName = Literal[
-    "one_shot", "rewoo", "plan_execute", "reflexion", "tree_of_thoughts"
+    "one_shot",
+    "rewoo",
+    "plan_execute",
+    "reflexion",
+    "tree_of_thoughts",
+    "lats",
+    "multi_agent_debate",
 ]
 
 logger = logging.getLogger(__name__)

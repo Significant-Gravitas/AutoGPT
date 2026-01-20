@@ -23,6 +23,7 @@ from openai.types.chat import (
     ChatCompletionAssistantMessageParam,
     ChatCompletionMessage,
     ChatCompletionMessageParam,
+    ChatCompletionMessageToolCall,
     CompletionCreateParams,
 )
 from openai.types.shared_params import FunctionDefinition
@@ -454,11 +455,13 @@ class BaseOpenAIChatProvider(
 
         if assistant_message.tool_calls:
             for _tc in assistant_message.tool_calls:
+                # Standard tool calls have a function attribute
+                tc = cast(ChatCompletionMessageToolCall, _tc)
                 try:
-                    parsed_arguments = json_loads(_tc.function.arguments)
+                    parsed_arguments = json_loads(tc.function.arguments)
                 except Exception as e:
                     err_message = (
-                        f"Decoding arguments for {_tc.function.name} failed: "
+                        f"Decoding arguments for {tc.function.name} failed: "
                         + str(e.args[0])
                     )
                     parse_errors.append(
@@ -470,10 +473,10 @@ class BaseOpenAIChatProvider(
 
                 tool_calls.append(
                     AssistantToolCall(
-                        id=_tc.id,
-                        type=_tc.type,
+                        id=tc.id,
+                        type=tc.type,
                         function=AssistantFunctionCall(
-                            name=_tc.function.name,
+                            name=tc.function.name,
                             arguments=parsed_arguments,
                         ),
                     )
