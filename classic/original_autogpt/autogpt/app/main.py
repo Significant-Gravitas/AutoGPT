@@ -529,6 +529,22 @@ async def run_auto_gpt_server(
         tts_config=config.tts_config,
     )
 
+    # Log configuration for debugging/verification
+    logger = logging.getLogger(__name__)
+    logger.info("=" * 60)
+    logger.info("AGENT CONFIGURATION")
+    logger.info("=" * 60)
+    logger.info(f"  Smart LLM:          {config.smart_llm}")
+    logger.info(f"  Fast LLM:           {config.fast_llm}")
+    logger.info(f"  Prompt Strategy:    {config.prompt_strategy}")
+    logger.info(f"  Temperature:        {config.temperature}")
+    logger.info(f"  Noninteractive:     {config.noninteractive_mode}")
+    if config.thinking_budget_tokens:
+        logger.info(f"  Thinking Budget:    {config.thinking_budget_tokens} tokens")
+    if config.reasoning_effort:
+        logger.info(f"  Reasoning Effort:   {config.reasoning_effort}")
+    logger.info("=" * 60)
+
     await assert_config_has_required_llm_api_keys(config)
 
     await apply_overrides_to_config(

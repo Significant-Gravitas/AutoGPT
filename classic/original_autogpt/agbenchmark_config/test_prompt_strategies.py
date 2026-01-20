@@ -380,11 +380,13 @@ def start_agent(
     strategy: str,
     model_config: ModelConfig,
     port: int = 8000,
+    show_agent_output: bool = False,
 ) -> subprocess.Popen:
     """Start the AutoGPT agent with a specific strategy and model config."""
     env = os.environ.copy()
     env["PROMPT_STRATEGY"] = strategy
     env["AP_SERVER_PORT"] = str(port)
+    env["NONINTERACTIVE_MODE"] = "True"
 
     # Set model configuration if specified
     model_env = model_config.to_env()
@@ -394,14 +396,14 @@ def start_agent(
 
     model_desc = f" with {model_config.name}" if model_config.name != "default" else ""
     log(f"Starting agent with strategy '{strategy}'{model_desc} on port {port}...")
-    if model_config.smart_llm:
-        log(f"  Smart LLM: {model_config.smart_llm}")
-    if model_config.fast_llm:
-        log(f"  Fast LLM: {model_config.fast_llm}")
+    log(f"  PROMPT_STRATEGY:      {env['PROMPT_STRATEGY']}")
+    log(f"  NONINTERACTIVE_MODE:  {env.get('NONINTERACTIVE_MODE', 'not set')}")
+    log(f"  SMART_LLM:            {env.get('SMART_LLM', '(env default)')}")
+    log(f"  FAST_LLM:             {env.get('FAST_LLM', '(env default)')}")
     if model_config.thinking_budget_tokens:
-        log(f"  Thinking Budget: {model_config.thinking_budget_tokens} tokens")
+        log(f"  THINKING_BUDGET:      {model_config.thinking_budget_tokens} tokens")
     if model_config.reasoning_effort:
-        log(f"  Reasoning Effort: {model_config.reasoning_effort}")
+        log(f"  REASONING_EFFORT:     {model_config.reasoning_effort}")
 
     # Start the agent server (port is set via AP_SERVER_PORT env var)
     proc = subprocess.Popen(
@@ -410,12 +412,26 @@ def start_agent(
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         cwd=Path(__file__).parent.parent,
+        text=True,
+        bufsize=1,  # Line buffered
     )
 
-    # Wait for agent to be ready with progress indicator
-    log_progress("  Waiting for agent to be ready")
+    # Wait for agent to be ready, streaming output
+    import select
+    import threading
+
+    # Thread to read and print agent output
+    def stream_output():
+        if proc.stdout:
+            for line in proc.stdout:
+                if show_agent_output:
+                    print(f"    [agent] {line.rstrip()}", flush=True)
+
+    output_thread = threading.Thread(target=stream_output, daemon=True)
+    output_thread.start()
+
+    log("  Waiting for agent to be ready...")
     start_time = time.time()
-    check_count = 0
     while time.time() - start_time < AGENT_STARTUP_TIMEOUT:
         try:
             import urllib.request
@@ -423,17 +439,12 @@ def start_agent(
             urllib.request.urlopen(
                 f"http://localhost:{port}/ap/v1/agent/tasks", timeout=2
             )
-            print()  # Newline after dots
             elapsed = time.time() - start_time
             log(f"Agent ready on port {port} (took {elapsed:.1f}s)")
             return proc
         except Exception:
-            check_count += 1
-            if check_count % 2 == 0:  # Print dot every second
-                print(".", end="", flush=True)
             time.sleep(0.5)
 
-    print()  # Newline after dots
     proc.kill()
     raise TimeoutError(f"Agent failed to start within {AGENT_STARTUP_TIMEOUT}s")
 
@@ -789,6 +800,7 @@ def run_benchmark_config(
     tests: Optional[list[str]],
     attempts: int,
     verbose: bool = True,
+    show_agent_output: bool = False,
 ) -> Optional[BenchmarkResult]:
     """Run benchmark for a single strategy and model configuration."""
     config_name = (
@@ -804,7 +816,7 @@ def run_benchmark_config(
     agent_proc = None
     try:
         # Start agent
-        agent_proc = start_agent(strategy, model_config, port)
+        agent_proc = start_agent(strategy, model_config, port, show_agent_output)
 
         # Run benchmark
         report_dir = run_benchmark(
@@ -1048,6 +1060,11 @@ def main():
         action="store_true",
         help="Suppress benchmark output (only show summary)",
     )
+    parser.add_argument(
+        "--agent-output",
+        action="store_true",
+        help="Show agent server output (useful for debugging config)",
+    )
 
     args = parser.parse_args()
     verbose = not args.quiet
@@ -1227,6 +1244,7 @@ def main():
                 tests=tests,
                 attempts=args.attempts,
                 verbose=verbose,
+                show_agent_output=args.agent_output,
             )
             if result:
                 results[config_name] = result

@@ -43,7 +43,9 @@ class AppConfig(BaseConfig):
     skip_reprompt: bool = False
     authorise_key: str = UserConfigurable(default="y", from_env="AUTHORISE_COMMAND_KEY")
     exit_key: str = UserConfigurable(default="n", from_env="EXIT_KEY")
-    noninteractive_mode: bool = False
+    noninteractive_mode: bool = UserConfigurable(
+        default=False, from_env="NONINTERACTIVE_MODE"
+    )
     logging: LoggingConfig = LoggingConfig()
     component_config_file: Optional[Path] = UserConfigurable(
         default=None, from_env="COMPONENT_CONFIG_FILE"
