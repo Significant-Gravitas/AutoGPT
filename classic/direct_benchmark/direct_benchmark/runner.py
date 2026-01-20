@@ -36,6 +36,7 @@ class AgentRunner:
         self.step_callback = step_callback
         self._agent: Optional[Agent] = None
         self._workspace: Optional[Path] = None
+        self._llm_provider: Optional[MultiProvider] = None
 
     async def run_challenge(
         self, challenge: Challenge, attempt: int = 1
@@ -182,6 +183,7 @@ class AgentRunner:
         )
 
         self._agent = agent
+        self._llm_provider = llm_provider
         return agent
 
     async def _run_agent_loop(
@@ -211,9 +213,9 @@ class AgentRunner:
                 # Execute the action
                 result = await agent.execute(proposal)
 
-                # Track cost (if available from provider)
-                step_cost = 0.0  # TODO: Extract from LLM provider
-                cumulative_cost += step_cost
+                # Get cumulative cost from LLM provider
+                if self._llm_provider:
+                    cumulative_cost = self._llm_provider.get_incurred_cost()
 
                 # Get result info
                 result_str = str(
