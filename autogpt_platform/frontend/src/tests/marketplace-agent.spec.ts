@@ -1,9 +1,13 @@
-import { test, expect } from "@playwright/test";
-import { MarketplacePage } from "./pages/marketplace.page";
+import { expect, test } from "@playwright/test";
+import { getTestUserWithLibraryAgents } from "./credentials";
 import { LoginPage } from "./pages/login.page";
-import { isVisible, hasUrl, matchesUrl } from "./utils/assertion";
-import { TEST_CREDENTIALS } from "./credentials";
+import { MarketplacePage } from "./pages/marketplace.page";
+import { hasUrl, isVisible, matchesUrl } from "./utils/assertion";
 import { getSelectors } from "./utils/selectors";
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 
 test.describe("Marketplace Agent Page - Basic Functionality", () => {
   test("User can access agent page when logged out", async ({ page }) => {
@@ -24,7 +28,8 @@ test.describe("Marketplace Agent Page - Basic Functionality", () => {
     const marketplacePage = new MarketplacePage(page);
 
     await loginPage.goto();
-    await loginPage.login(TEST_CREDENTIALS.email, TEST_CREDENTIALS.password);
+    const richUser = getTestUserWithLibraryAgents();
+    await loginPage.login(richUser.email, richUser.password);
     await hasUrl(page, "/marketplace");
     await marketplacePage.goto(page);
     await hasUrl(page, "/marketplace");
@@ -85,13 +90,20 @@ test.describe("Marketplace Agent Page - Basic Functionality", () => {
     const marketplacePage = new MarketplacePage(page);
 
     await loginPage.goto();
-    await loginPage.login(TEST_CREDENTIALS.email, TEST_CREDENTIALS.password);
+    const richUser = getTestUserWithLibraryAgents();
+    await loginPage.login(richUser.email, richUser.password);
     await hasUrl(page, "/marketplace");
     await marketplacePage.goto(page);
 
     const firstStoreCard = await marketplacePage.getFirstTopAgent();
     await firstStoreCard.click();
     await page.waitForURL("**/marketplace/agent/**");
+
+    const agentTitle = await getId("agent-title").textContent();
+    if (!agentTitle || !agentTitle.trim()) {
+      throw new Error("Agent title not found on marketplace agent page");
+    }
+    const agentName = agentTitle.trim();
 
     const addToLibraryButton = getId("agent-add-library-button");
     await isVisible(addToLibraryButton);
@@ -101,9 +113,8 @@ test.describe("Marketplace Agent Page - Basic Functionality", () => {
     await isVisible(addSuccessMessage);
 
     await page.waitForURL("**/library/agents/**");
-    const agentNameOnLibrary = await getId("agent-title").textContent();
-    expect(
-      agentNameOnLibrary && agentNameOnLibrary.trim().length,
-    ).toBeGreaterThan(0);
+    await expect(page).toHaveTitle(
+      new RegExp(`${escapeRegExp(agentName)} - Library - AutoGPT Platform`),
+    );
   });
 });

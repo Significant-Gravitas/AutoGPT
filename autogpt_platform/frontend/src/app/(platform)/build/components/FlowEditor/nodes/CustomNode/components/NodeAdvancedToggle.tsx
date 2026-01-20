@@ -8,7 +8,7 @@ export const NodeAdvancedToggle = ({ nodeId }: { nodeId: string }) => {
   );
   const setShowAdvanced = useNodeStore((state) => state.setShowAdvanced);
   return (
-    <div className="flex items-center justify-between gap-2 rounded-b-xlarge border-t border-slate-200/50 bg-white px-5 py-3.5">
+    <div className="flex items-center justify-between gap-2 rounded-b-xlarge border-t border-zinc-200 bg-white px-5 py-3.5">
       <Text variant="body" className="font-medium text-slate-700">
         Advanced
       </Text>

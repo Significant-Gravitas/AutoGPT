@@ -27,12 +27,13 @@ google-api-python-client = "^2.177.0"
 google-auth-oauthlib = "^1.2.2"
 google-cloud-storage = "^3.2.0"
 googlemaps = "^4.10.0"
-gravitasml = "^0.1.3"
+gravitasml = "^0.1.4"
 groq = "^0.30.0"
 html2text = "^2024.2.26"
 jinja2 = "^3.1.6"
 jsonref = "^1.1.0"
 jsonschema = "^4.25.0"
+langfuse = "^3.11.0"
 launchdarkly-server-sdk = "^9.12.0"
 mem0ai = "^0.1.115"
 moviepy = "^2.1.2"
@@ -45,6 +46,7 @@ poetry = "2.1.1" # CHECK DEPENDABOT SUPPORT BEFORE UPGRADING
 postmarker = "^1.0"
 praw = "~7.8.1"
 prisma = "^0.15.0"
+rank-bm25 = "^0.2.2"
 prometheus-client = "^0.22.1"
 prometheus-fastapi-instrumentator = "^7.0.0"
 psutil = "^7.0.0"
@@ -82,6 +84,7 @@ firecrawl-py = "^4.3.6"
 exa-py = "^1.14.20"
 croniter = "^6.0.0"
 stagehand = "^0.5.1"
+gravitas-md2gdocs = "^0.1.0"
 
 [tool.poetry.group.dev.dependencies]
 aiohappyeyeballs = "^2.6.1"
@@ -116,6 +119,7 @@ lint = "linter:lint"
 test = "run_tests:test"
 load-store-agents = "test.load_store_agents:run"
 export-api-schema = "backend.cli.generate_openapi_json:main"
+gen-prisma-stub = "gen_prisma_types_stub:main"
 oauth-tool = "backend.cli.oauth_tool:cli"
 
 [tool.isort]
@@ -133,6 +137,9 @@ ignore_patterns = []
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "session"
+# Disable syrupy plugin to avoid conflict with pytest-snapshot
+# Both provide --snapshot-update argument causing ArgumentError
+addopts = "-p no:syrupy"
 filterwarnings = [
     "ignore:'audioop' is deprecated:DeprecationWarning:discord.player",
     "ignore:invalid escape sequence:DeprecationWarning:tweepy.api",

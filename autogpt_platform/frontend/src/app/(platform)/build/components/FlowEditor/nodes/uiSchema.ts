@@ -1,6 +1,6 @@
 export const uiSchema = {
   credentials: {
-    "ui:field": "credentials",
+    "ui:field": "custom/credential_field",
     provider: { "ui:widget": "hidden" },
     type: { "ui:widget": "hidden" },
     id: { "ui:autofocus": true },
