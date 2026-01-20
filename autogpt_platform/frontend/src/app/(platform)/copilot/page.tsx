@@ -4,7 +4,6 @@ import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { ArrowUpIcon } from "@phosphor-icons/react";
 import { useCopilotHome } from "./useCopilotHome";
 
@@ -15,14 +14,15 @@ export default function CopilotPage() {
     quickActions,
     isFlagReady,
     isChatEnabled,
+    isUserLoading,
+    isLoggedIn,
     handleChange,
     handleSubmit,
     handleKeyDown,
     handleQuickAction,
   } = useCopilotHome();
-  const { isUserLoading } = useSupabase();
 
-  if (!isFlagReady || isChatEnabled === false) {
+  if (!isFlagReady || isChatEnabled === false || !isLoggedIn) {
     return null;
   }
 

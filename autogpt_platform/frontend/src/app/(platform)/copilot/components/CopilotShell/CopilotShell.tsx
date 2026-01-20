@@ -1,5 +1,6 @@
 "use client";
 
+import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { NAVBAR_HEIGHT_PX } from "@/lib/constants";
 import type { ReactNode } from "react";
 import { DesktopSidebar } from "./components/DesktopSidebar/DesktopSidebar";
@@ -17,6 +18,7 @@ export function CopilotShell({ children }: Props) {
     isMobile,
     isDrawerOpen,
     isLoading,
+    isLoggedIn,
     sessions,
     currentSessionId,
     handleSelectSession,
@@ -29,6 +31,10 @@ export function CopilotShell({ children }: Props) {
     fetchNextPage,
     isReadyToShowContent,
   } = useCopilotShell();
+
+  if (!isLoggedIn) {
+    return <div className="flex h-full items-center justify-center"><LoadingSpinner size="large" /></div>;
+  }
 
   return (
     <div

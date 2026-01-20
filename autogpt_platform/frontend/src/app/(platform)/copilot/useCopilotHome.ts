@@ -18,7 +18,7 @@ import {
 
 export function useCopilotHome() {
   const router = useRouter();
-  const { user } = useSupabase();
+  const { user, isLoggedIn, isUserLoading } = useSupabase();
   const [value, setValue] = useState("");
   const isChatEnabled = useGetFlag(Flag.CHAT);
   const flags = useFlags<FlagValues>();
@@ -28,8 +28,8 @@ export function useCopilotHome() {
   const isLaunchDarklyConfigured = envEnabled && Boolean(clientId);
   const isFlagReady =
     !isLaunchDarklyConfigured || flags[Flag.CHAT] !== undefined;
-
-  const greetingName = useMemo(
+  
+    const greetingName = useMemo(
     function getName() {
       return getGreetingName(user);
     },
@@ -82,6 +82,8 @@ export function useCopilotHome() {
     quickActions,
     isFlagReady,
     isChatEnabled,
+    isLoggedIn,
+    isUserLoading,
     handleChange,
     handleSubmit,
     handleKeyDown,

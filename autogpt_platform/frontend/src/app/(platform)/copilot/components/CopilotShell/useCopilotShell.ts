@@ -6,8 +6,9 @@ import {
 } from "@/app/api/__generated__/endpoints/chat/chat";
 import { okData } from "@/app/api/helpers";
 import { useBreakpoint } from "@/lib/hooks/useBreakpoint";
+import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { Key, storage } from "@/services/storage/local-storage";
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMobileDrawer } from "./components/MobileDrawer/useMobileDrawer";
 import { useSessionsPagination } from "./components/SessionsList/useSessionsPagination";
@@ -21,10 +22,14 @@ import {
 
 export function useCopilotShell() {
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const breakpoint = useBreakpoint();
+  const { isLoggedIn } = useSupabase();
   const isMobile =
     breakpoint === "base" || breakpoint === "sm" || breakpoint === "md";
+  
+  const isOnHomepage = pathname === "/copilot";
 
   const {
     isDrawerOpen,
@@ -45,7 +50,7 @@ export function useCopilotShell() {
     fetchNextPage,
     reset: resetPagination,
   } = useSessionsPagination({
-    enabled: paginationEnabled,
+    enabled: paginationEnabled && isLoggedIn,
   });
 
   const storedSessionId = storage.get(Key.CHAT_SESSION_ID) ?? null;
@@ -57,7 +62,7 @@ export function useCopilotShell() {
   const { data: currentSessionData, isLoading: isCurrentSessionLoading } =
     useGetV2GetSession(currentSessionId || "", {
       query: {
-        enabled: !!currentSessionId && paginationEnabled,
+        enabled: !!currentSessionId && paginationEnabled && isLoggedIn,
         select: okData,
       },
     });
@@ -65,13 +70,25 @@ export function useCopilotShell() {
   const [hasAutoSelectedSession, setHasAutoSelectedSession] = useState(false);
   const hasCreatedSessionRef = useRef(false);
   const paramSessionId = searchParams.get("sessionId");
+  const paramPrompt = searchParams.get("prompt");
+  
+  useEffect(
+    () => {
+      if (!isLoggedIn) {
+        router.replace("/login");
+      }
+    },
+    [isLoggedIn],
+  );
+
 
   const createSessionAndNavigate = useCallback(
     function createSessionAndNavigate() {
       postV2CreateSession({ body: JSON.stringify({}) })
         .then((response) => {
           if (response.status === 200 && response.data) {
-            router.push(`/copilot/chat?sessionId=${response.data.id}`);
+            const promptParam = paramPrompt ? `&prompt=${encodeURIComponent(paramPrompt)}` : "";
+            router.push(`/copilot/chat?sessionId=${response.data.id}${promptParam}`);
             setHasAutoSelectedSession(true);
           }
         })
@@ -79,13 +96,27 @@ export function useCopilotShell() {
           hasCreatedSessionRef.current = false;
         });
     },
-    [router],
+    [router, paramPrompt],
   );
 
   useEffect(() => {
+    // Don't auto-select or auto-create sessions on homepage
+    if (isOnHomepage) {
+      setHasAutoSelectedSession(true);
+      return;
+    }
+
     if (!areAllSessionsLoaded || hasAutoSelectedSession) return;
 
+    // If there's a prompt parameter, create a new session (don't auto-select existing)
+    if (paramPrompt && !paramSessionId && !hasCreatedSessionRef.current) {
+      hasCreatedSessionRef.current = true;
+      createSessionAndNavigate();
+      return;
+    }
+
     const visibleSessions = filterVisibleSessions(accumulatedSessions);
+    
     const autoSelect = shouldAutoSelectSession(
       areAllSessionsLoaded,
       hasAutoSelectedSession,
@@ -101,19 +132,28 @@ export function useCopilotShell() {
       return;
     }
 
+    // Don't auto-select existing sessions if there's a prompt (user wants new session)
+    if (paramPrompt) {
+      setHasAutoSelectedSession(true);
+      return;
+    }
+
     if (autoSelect.shouldSelect && autoSelect.sessionIdToSelect) {
       setHasAutoSelectedSession(true);
       router.push(`/copilot/chat?sessionId=${autoSelect.sessionIdToSelect}`);
     } else if (autoSelect.shouldCreate && !hasCreatedSessionRef.current) {
+      // Only auto-create on chat page when no sessions exist, not homepage
       hasCreatedSessionRef.current = true;
       createSessionAndNavigate();
     } else if (totalCount === 0) {
       setHasAutoSelectedSession(true);
     }
   }, [
+    isOnHomepage,
     areAllSessionsLoaded,
     accumulatedSessions,
     paramSessionId,
+    paramPrompt,
     hasAutoSelectedSession,
     router,
     isSessionsLoading,
@@ -163,29 +203,32 @@ export function useCopilotShell() {
     if (isMobile) handleCloseDrawer();
   }
 
-  const isReadyToShowContent = useMemo(
-    () =>
-      checkReadyToShowContent(
-        areAllSessionsLoaded,
-        paramSessionId,
-        accumulatedSessions,
-        isCurrentSessionLoading,
-        currentSessionData,
-        hasAutoSelectedSession,
-      ),
-    [
+  const isReadyToShowContent = useMemo(() => {
+    // On homepage, always show content (welcome screen) immediately
+    if (isOnHomepage) return true;
+    
+    return checkReadyToShowContent(
       areAllSessionsLoaded,
       paramSessionId,
       accumulatedSessions,
       isCurrentSessionLoading,
       currentSessionData,
       hasAutoSelectedSession,
-    ],
-  );
+    );
+  }, [
+    isOnHomepage,
+    areAllSessionsLoaded,
+    paramSessionId,
+    accumulatedSessions,
+    isCurrentSessionLoading,
+    currentSessionData,
+    hasAutoSelectedSession,
+  ]);
 
   return {
     isMobile,
     isDrawerOpen,
+    isLoggedIn,
     isLoading: isSessionsLoading || !areAllSessionsLoaded,
     sessions,
     currentSessionId,
