@@ -1,0 +1,40 @@
+[tool.poetry]
+name = "direct-benchmark"
+version = "0.1.0"
+authors = ["Significant Gravitas <support@agpt.co>"]
+description = "Direct benchmark harness for AutoGPT - parallel execution without HTTP server"
+readme = "README.md"
+packages = [{ include = "direct_benchmark" }]
+
+[tool.poetry.scripts]
+direct-benchmark = "direct_benchmark.__main__:main"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+# Core dependencies
+autogpt-forge = { path = "../forge", develop = true }
+autogpt = { path = "../original_autogpt", develop = true }
+click = "^8.0"
+pydantic = "^2.7.2"
+rich = "^13.0"
+
+[tool.poetry.group.dev.dependencies]
+black = "^23.12.1"
+isort = "^5.13.0"
+pyright = "^1.1.0"
+
+[tool.black]
+line-length = 88
+target-version = ['py312']
+
+[tool.isort]
+profile = "black"
+src_paths = ["direct_benchmark"]
+
+[tool.pyright]
+pythonVersion = "3.12"
+typeCheckingMode = "basic"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

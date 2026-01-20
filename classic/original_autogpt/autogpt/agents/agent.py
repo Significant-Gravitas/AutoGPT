@@ -214,14 +214,31 @@ class Agent(BaseAgent[AnyActionProposal], Configurable[AgentSettings]):
             else False
         )
 
-        prompt: ChatPrompt = self.prompt_strategy.build_prompt(
-            messages=messages,
-            task=self.state.task,
-            ai_profile=self.state.ai_profile,
-            ai_directives=directives,
-            commands=function_specs_from_commands(self.commands),
-            include_os_info=include_os_info,
-        )
+        # Try to build prompt - some strategies (like ReWOO in EXECUTING phase)
+        # may raise UseCachedActionException to skip LLM calls
+        try:
+            prompt: ChatPrompt = self.prompt_strategy.build_prompt(
+                messages=messages,
+                task=self.state.task,
+                ai_profile=self.state.ai_profile,
+                ai_directives=directives,
+                commands=function_specs_from_commands(self.commands),
+                include_os_info=include_os_info,
+            )
+        except Exception as e:
+            # Check if this is a UseCachedActionException from ReWOO
+            # We use string comparison to avoid import cycles
+            if type(e).__name__ == "UseCachedActionException":
+                # ReWOO EXECUTING phase - use pre-planned action, skip LLM call
+                logger.debug("Using cached action from ReWOO plan (no LLM call)")
+                output = e.action_proposal  # type: ignore
+                # Register the action with history (same as complete_and_parse does)
+                # This is required so execute() can later register the result
+                await self.run_pipeline(AfterParse.after_parse, output)
+                self.config.cycle_count += 1
+                return output
+            # Re-raise other exceptions
+            raise
 
         logger.debug(f"Executing prompt:\n{dump_prompt(prompt)}")
         output = await self.complete_and_parse(prompt)
@@ -307,6 +324,28 @@ class Agent(BaseAgent[AnyActionProposal], Configurable[AgentSettings]):
                 reason=f"Command {tool.name} returned too much output. "
                 "Do not execute this command again with the same arguments."
             )
+
+        # Notify ReWOO strategy of execution result for variable tracking
+        # This allows ReWOO to record results and substitute variables in later steps
+        if hasattr(self.prompt_strategy, "record_execution_result") and hasattr(
+            self.prompt_strategy, "current_plan"
+        ):
+            plan = getattr(self.prompt_strategy, "current_plan", None)
+            if plan and plan.current_step_index < len(plan.steps):
+                step = plan.steps[plan.current_step_index]
+                error_msg = None
+                if isinstance(result, ActionErrorResult):
+                    error_msg = getattr(result, "reason", None) or str(result)
+                result_str = str(getattr(result, "outputs", result))
+                self.prompt_strategy.record_execution_result(
+                    step.variable_name,
+                    result_str,
+                    error=error_msg,
+                )
+                logger.debug(
+                    f"ReWOO: Recorded result for {step.variable_name}, "
+                    f"step {plan.current_step_index + 1}/{len(plan.steps)}"
+                )
 
         await self.run_pipeline(AfterExecute.after_execute, result)
 

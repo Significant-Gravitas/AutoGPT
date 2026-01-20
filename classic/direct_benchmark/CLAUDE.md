@@ -1,0 +1,237 @@
+# CLAUDE.md - Direct Benchmark Harness
+
+This file provides guidance to Claude Code when working with the direct benchmark harness.
+
+## Overview
+
+The Direct Benchmark Harness is a high-performance testing framework for AutoGPT that directly instantiates agents without HTTP server overhead. It enables parallel execution of multiple strategy/model configurations.
+
+## Quick Reference
+
+```bash
+# Install
+cd classic/direct_benchmark
+poetry install
+
+# Run benchmarks
+poetry run python -m direct_benchmark run
+
+# Run specific strategies and models
+poetry run python -m direct_benchmark run \
+    --strategies one_shot,rewoo \
+    --models claude,openai \
+    --parallel 4
+
+# Run a single test
+poetry run python -m direct_benchmark run \
+    --strategies one_shot \
+    --tests ReadFile
+
+# List available challenges
+poetry run python -m direct_benchmark list-challenges
+
+# List model presets
+poetry run python -m direct_benchmark list-models
+
+# List strategies
+poetry run python -m direct_benchmark list-strategies
+```
+
+## CLI Options
+
+### Run Command
+
+| Option | Short | Description |
+|--------|-------|-------------|
+| `--strategies` | `-s` | Comma-separated strategies (one_shot, rewoo, plan_execute, reflexion, tree_of_thoughts) |
+| `--models` | `-m` | Comma-separated model presets (claude, openai, etc.) |
+| `--categories` | `-c` | Filter by challenge categories |
+| `--skip-category` | `-S` | Exclude categories |
+| `--tests` | `-t` | Filter by test names |
+| `--attempts` | `-N` | Number of times to run each challenge |
+| `--parallel` | `-p` | Maximum parallel runs (default: 4) |
+| `--timeout` | | Per-challenge timeout in seconds (default: 300) |
+| `--cutoff` | | Alias for --timeout |
+| `--no-cutoff` | `--nc` | Disable time limit |
+| `--max-steps` | | Maximum steps per challenge (default: 50) |
+| `--maintain` | | Run only regression tests |
+| `--improve` | | Run only non-regression tests |
+| `--explore` | | Run only never-beaten challenges |
+| `--no-dep` | | Ignore challenge dependencies |
+| `--workspace` | | Workspace root directory |
+| `--challenges-dir` | | Path to challenges directory |
+| `--reports-dir` | | Path to reports directory |
+| `--keep-answers` | | Keep answer files for debugging |
+| `--quiet` | `-q` | Minimal output |
+| `--verbose` | `-v` | Detailed per-challenge output |
+| `--json` | | JSON output for CI/scripting |
+| `--debug` | | Enable debug output |
+
+## Available Strategies
+
+- `one_shot` - Single-pass reasoning (default)
+- `rewoo` - Reasoning with observations
+- `plan_execute` - Plan then execute
+- `reflexion` - Self-reflection loop
+- `tree_of_thoughts` - Multiple reasoning paths
+
+## Available Model Presets
+
+### Claude
+- `claude` - sonnet-4 smart, haiku fast
+- `claude-smart` - sonnet-4 for both
+- `claude-fast` - haiku for both
+- `claude-opus` - opus smart, sonnet fast
+- `claude-opus-only` - opus for both
+
+### Claude with Extended Thinking
+- `claude-thinking-10k` - 10k thinking tokens
+- `claude-thinking-25k` - 25k thinking tokens
+- `claude-thinking-50k` - 50k thinking tokens
+- `claude-opus-thinking` - opus with 25k thinking
+- `claude-opus-thinking-50k` - opus with 50k thinking
+
+### OpenAI
+- `openai` - gpt-4o smart, gpt-4o-mini fast
+- `openai-smart` - gpt-4o for both
+- `openai-fast` - gpt-4o-mini for both
+- `gpt5` - gpt-5 smart, gpt-4o fast
+- `gpt5-only` - gpt-5 for both
+
+### OpenAI Reasoning Models
+- `o1`, `o1-mini` - o1 variants
+- `o1-low`, `o1-medium`, `o1-high` - o1 with reasoning effort
+- `o3-low`, `o3-medium`, `o3-high` - o3 with reasoning effort
+- `gpt5-low`, `gpt5-medium`, `gpt5-high` - gpt-5 with reasoning effort
+
+## Directory Structure
+
+```
+direct_benchmark/
+├── pyproject.toml           # Poetry config
+├── README.md                 # User documentation
+├── CLAUDE.md                 # This file
+├── .gitignore
+└── direct_benchmark/
+    ├── __init__.py
+    ├── __main__.py           # CLI entry point
+    ├── models.py             # Pydantic models, presets
+    ├── harness.py            # Main orchestrator
+    ├── runner.py             # AgentRunner (single agent lifecycle)
+    ├── parallel.py           # ParallelExecutor (concurrent runs)
+    ├── challenge_loader.py   # Load challenges from JSON
+    ├── evaluator.py          # Evaluate outputs vs ground truth
+    ├── report.py             # Report generation
+    └── ui.py                 # Rich UI components
+```
+
+## Architecture
+
+### Execution Flow
+
+```
+CLI args → HarnessConfig
+    ↓
+BenchmarkHarness.run()
+    ↓
+ChallengeLoader.load_all() → list[Challenge]
+    ↓
+ParallelExecutor.execute_matrix(configs × challenges × attempts)
+    ↓
+[Parallel with semaphore limiting to N concurrent]
+    ↓
+AgentRunner.run_challenge():
+  1. Create temp workspace
+  2. Copy input artifacts to agent workspace
+  3. Create AppConfig with strategy/model
+  4. create_agent() - direct instantiation
+  5. Run agent loop until finish/timeout
+  6. Collect output files
+    ↓
+Evaluator.evaluate() - check against ground truth
+    ↓
+ReportGenerator - write reports
+```
+
+### Key Components
+
+**AgentRunner** (`runner.py`)
+- Manages single agent lifecycle for one challenge
+- Creates isolated temp workspace per run
+- Copies input artifacts to `{workspace}/.autogpt/agents/{agent_id}/workspace/`
+- Instantiates agent directly via `create_agent()`
+- Runs agent loop: `propose_action()` → `execute()` until finish/timeout
+
+**ParallelExecutor** (`parallel.py`)
+- Manages concurrent execution with asyncio semaphore
+- Supports multiple attempts per challenge
+- Reports progress via callbacks
+
+**Evaluator** (`evaluator.py`)
+- String matching (should_contain/should_not_contain)
+- Python script execution
+- Pytest execution
+
+**ReportGenerator** (`report.py`)
+- Per-config `report.json` files (compatible with agbenchmark format)
+- Comparison reports across all configs
+
+## Report Format
+
+Reports are generated in `./reports/` with format:
+```
+reports/
+├── {timestamp}_{strategy}_{model}/
+│   └── report.json
+└── strategy_comparison_{timestamp}.json
+```
+
+## Dependencies
+
+- `autogpt-forge` - Core agent framework
+- `autogpt` - Original AutoGPT agent
+- `click` - CLI framework
+- `pydantic` - Data models
+- `rich` - Terminal UI
+
+## Key Differences from agbenchmark
+
+| agbenchmark | direct_benchmark |
+|-------------|-----------------|
+| `subprocess.Popen` + HTTP server | Direct `create_agent()` |
+| HTTP/REST via Agent Protocol | Direct `propose_action()`/`execute()` |
+| Sequential (one config at a time) | Parallel via asyncio semaphore |
+| Port-based isolation | Workspace-based isolation |
+| `agbenchmark run` CLI | Direct JSON parsing |
+
+## Common Tasks
+
+### Run Full Benchmark Suite
+```bash
+poetry run python -m direct_benchmark run \
+    --strategies one_shot,rewoo,plan_execute \
+    --models claude \
+    --parallel 8
+```
+
+### Compare Strategies
+```bash
+poetry run python -m direct_benchmark run \
+    --strategies one_shot,rewoo,plan_execute,reflexion \
+    --models claude \
+    --tests ReadFile,WriteFile,ThreeSum
+```
+
+### Debug a Failing Test
+```bash
+poetry run python -m direct_benchmark run \
+    --strategies one_shot \
+    --tests FailingTest \
+    --keep-answers \
+    --verbose
+```
+
+### CI/Scripting Mode
+```bash
+poetry run python -m direct_benchmark run --json
+```

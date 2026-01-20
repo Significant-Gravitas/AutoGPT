@@ -57,6 +57,19 @@ class ReWOOPhase(str, Enum):
     SYNTHESIZING = "synthesizing"
 
 
+class UseCachedActionException(Exception):
+    """Raised during EXECUTING phase to signal that cached action should be used.
+
+    ReWOO pre-plans all actions during PLANNING phase, so EXECUTING phase
+    should retrieve actions from the cached plan rather than making LLM calls.
+    This exception allows the agent to skip the LLM call and use the pre-planned action.
+    """
+
+    def __init__(self, action_proposal: "ReWOOActionProposal"):
+        self.action_proposal = action_proposal
+        super().__init__("Use cached action from ReWOO plan")
+
+
 class ReWOOThoughts(ModelWithSummary):
     """Unified thoughts model for ReWOO strategy.
 
@@ -276,7 +289,27 @@ class ReWOOPromptStrategy(BaseMultiStepPromptStrategy):
         include_os_info: bool,
         **extras,
     ) -> ChatPrompt:
-        """Build prompt based on current phase."""
+        """Build prompt based on current phase.
+
+        Raises:
+            UseCachedActionException: During EXECUTING phase, signals that
+                the cached action from the plan should be used instead of
+                making an LLM call. This is the core ReWOO optimization.
+        """
+        # EXECUTING phase: use pre-planned actions without LLM calls
+        if self.current_phase == ReWOOPhase.EXECUTING:
+            cached_action = self._get_cached_action_proposal()
+            if cached_action:
+                self.logger.debug(
+                    f"ReWOO EXECUTING: Using cached action "
+                    f"(step {self.current_plan.current_step_index + 1} "
+                    f"of {len(self.current_plan.steps)})"
+                )
+                raise UseCachedActionException(cached_action)
+            # No more steps - transition to SYNTHESIZING
+            self.logger.info("ReWOO: All steps executed, transitioning to SYNTHESIZING")
+            self.current_phase = ReWOOPhase.SYNTHESIZING
+
         if self.current_phase == ReWOOPhase.SYNTHESIZING:
             return self._build_synthesis_prompt(
                 messages=messages,
@@ -286,7 +319,7 @@ class ReWOOPromptStrategy(BaseMultiStepPromptStrategy):
                 commands=commands,
                 include_os_info=include_os_info,
             )
-        else:
+        else:  # PLANNING phase
             return self._build_planning_prompt(
                 messages=messages,
                 task=task,
@@ -474,6 +507,12 @@ class ReWOOPromptStrategy(BaseMultiStepPromptStrategy):
             plan = self._extract_plan_from_response(response.content)
             if plan and plan.steps:
                 self.current_plan = plan
+                # Transition to EXECUTING phase now that we have a plan
+                self.current_phase = ReWOOPhase.EXECUTING
+                self.logger.info(
+                    f"ReWOO: Extracted plan with {len(plan.steps)} steps, "
+                    f"transitioning to EXECUTING phase"
+                )
 
         # Ensure thoughts dict has required fields
         thoughts_dict = assistant_reply_dict.get("thoughts", {})
@@ -636,6 +675,65 @@ class ReWOOPromptStrategy(BaseMultiStepPromptStrategy):
         return AssistantFunctionCall(
             name=next_step.tool_name,
             arguments=substituted_args,
+        )
+
+    def _get_cached_action_proposal(self) -> Optional["ReWOOActionProposal"]:
+        """Get the next action from the cached plan as a full ActionProposal.
+
+        This wraps get_next_action() to return a complete ReWOOActionProposal
+        that can be used directly by the agent without making an LLM call.
+
+        Returns:
+            ReWOOActionProposal if there's a next step in the plan, None if complete.
+        """
+        from forge.llm.providers.schema import AssistantToolCall
+
+        if not self.current_plan:
+            return None
+
+        next_action = self.get_next_action()  # Returns AssistantFunctionCall
+        if not next_action:
+            return None
+
+        # Get the current step for context
+        current_step = self.current_plan.get_next_step()
+
+        # Build plan summary for thoughts
+        remaining_steps = self.current_plan.steps[
+            self.current_plan.current_step_index :
+        ]
+        plan_summary = [
+            f"Step {i + 1}: {s.thought}" for i, s in enumerate(remaining_steps)
+        ]
+
+        # Create thoughts with plan context
+        thoughts = ReWOOThoughts(
+            observations=(
+                f"Executing step {self.current_plan.current_step_index + 1} "
+                f"of {len(self.current_plan.steps)} from pre-computed ReWOO plan"
+            ),
+            reasoning=(
+                current_step.thought if current_step else "Executing planned step"
+            ),
+            plan=plan_summary[:5],  # Limit to 5 steps for brevity
+        )
+
+        # Create a synthetic raw message for action history compatibility
+        raw_message = AssistantChatMessage(
+            content=f"[ReWOO EXECUTING] Planned action: {next_action.name}",
+            tool_calls=[
+                AssistantToolCall(
+                    id=f"rewoo_step_{self.current_plan.current_step_index}",
+                    type="function",
+                    function=next_action,
+                )
+            ],
+        )
+
+        return ReWOOActionProposal(
+            thoughts=thoughts,
+            use_tool=next_action,
+            raw_message=raw_message,
         )
 
     def record_execution_result(

@@ -272,3 +272,29 @@ TEMPERATURE=0.7
    - Get feedback or auto-execute
    - `agent.execute()` or `agent.do_not_execute()`
    - Loop
+
+## Benchmarking
+
+Use `direct_benchmark` (sibling directory) to run performance benchmarks:
+
+```bash
+# From classic/direct_benchmark/
+cd ../direct_benchmark
+
+# Run a single test
+poetry run python -m direct_benchmark run --tests ReadFile
+
+# Run with specific strategies and models
+poetry run python -m direct_benchmark run \
+    --strategies one_shot,rewoo \
+    --models claude \
+    --parallel 4
+
+# Run regression tests only
+poetry run python -m direct_benchmark run --maintain
+
+# List available challenges
+poetry run python -m direct_benchmark list-challenges
+```
+
+See `direct_benchmark/CLAUDE.md` for full documentation on strategies, model presets, and CLI options.

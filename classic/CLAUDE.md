@@ -11,7 +11,7 @@ AutoGPT Classic is an experimental, **unsupported** project demonstrating autono
 ```
 /forge            - Core autonomous agent framework (main library)
 /original_autogpt - Original AutoGPT implementation (depends on forge)
-/benchmark        - Performance testing/benchmarking tools
+/direct_benchmark - Benchmark harness for testing agent performance
 ```
 
 Each Python subproject has its own `pyproject.toml` and uses Poetry for dependency management.
@@ -50,12 +50,20 @@ Agents run on `http://localhost:8000` by default.
 
 ### Benchmarking
 ```bash
-# Run benchmarks against an agent
-cd benchmark && poetry run agbenchmark
+# Run benchmarks
+cd direct_benchmark && poetry run python -m direct_benchmark run
 
-# Or from forge/original_autogpt with benchmark extra installed
-cd forge && poetry run agbenchmark
-cd original_autogpt && poetry run agbenchmark
+# Run specific strategies and models
+poetry run python -m direct_benchmark run \
+    --strategies one_shot,rewoo \
+    --models claude \
+    --parallel 4
+
+# Run a single test
+poetry run python -m direct_benchmark run --tests ReadFile
+
+# List available commands
+poetry run python -m direct_benchmark --help
 ```
 
 ### Testing
@@ -103,13 +111,15 @@ Depends on forge via local path (`autogpt-forge = { path = "../forge" }`):
 - `autogpt/agents/` - Agent implementations
 - `autogpt/agent_factory/` - Agent creation logic
 
-### Benchmark
-Independent testing framework for evaluating agent performance:
-- `agbenchmark/challenges/` - Test cases organized by category (code, retrieval, memory, etc.)
-- `agbenchmark/reports/` - Benchmark result reporting
+### Direct Benchmark
+Benchmark harness for testing agent performance:
+- `direct_benchmark/` - CLI and harness code
+- `benchmark/agbenchmark/challenges/` - Test cases organized by category (code, retrieval, data, etc.)
+- Reports generated in `direct_benchmark/reports/`
 
 ### Dependency Chain
-`original_autogpt` → `forge` ← `benchmark` (optional extra)
+`original_autogpt` → `forge`
+`direct_benchmark` → `original_autogpt` → `forge`
 
 ## Code Style
 
