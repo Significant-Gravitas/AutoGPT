@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
+import { getTestUserWithLibraryAgents } from "./credentials";
 import { LoginPage } from "./pages/login.page";
-import { TEST_CREDENTIALS } from "./credentials";
 import { hasUrl } from "./utils/assertion";
 import { getSelectors } from "./utils/selectors";
 
@@ -8,7 +8,8 @@ test.describe("API Keys Page", () => {
   test.beforeEach(async ({ page }) => {
     const loginPage = new LoginPage(page);
     await page.goto("/login");
-    await loginPage.login(TEST_CREDENTIALS.email, TEST_CREDENTIALS.password);
+    const richUser = getTestUserWithLibraryAgents();
+    await loginPage.login(richUser.email, richUser.password);
     await hasUrl(page, "/marketplace");
   });
 

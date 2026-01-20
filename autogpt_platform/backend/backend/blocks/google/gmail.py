@@ -353,7 +353,7 @@ class GmailReadBlock(GmailBase):
     def __init__(self):
         super().__init__(
             id="25310c70-b89b-43ba-b25c-4dfa7e2a481c",
-            description="This block reads emails from Gmail.",
+            description="A block that retrieves and reads emails from a Gmail account based on search criteria, returning detailed message information including subject, sender, body, and attachments.",
             categories={BlockCategory.COMMUNICATION},
             disabled=not GOOGLE_OAUTH_IS_CONFIGURED,
             input_schema=GmailReadBlock.Input,
@@ -743,7 +743,7 @@ class GmailListLabelsBlock(GmailBase):
     def __init__(self):
         super().__init__(
             id="3e1c2c1c-c689-4520-b956-1f3bf4e02bb7",
-            description="This block lists all labels in Gmail.",
+            description="A block that retrieves all labels (categories) from a Gmail account for organizing and categorizing emails.",
             categories={BlockCategory.COMMUNICATION},
             input_schema=GmailListLabelsBlock.Input,
             output_schema=GmailListLabelsBlock.Output,
@@ -807,7 +807,7 @@ class GmailAddLabelBlock(GmailBase):
     def __init__(self):
         super().__init__(
             id="f884b2fb-04f4-4265-9658-14f433926ac9",
-            description="This block adds a label to a Gmail message.",
+            description="A block that adds a label to a specific email message in Gmail, creating the label if it doesn't exist.",
             categories={BlockCategory.COMMUNICATION},
             input_schema=GmailAddLabelBlock.Input,
             output_schema=GmailAddLabelBlock.Output,
@@ -893,7 +893,7 @@ class GmailRemoveLabelBlock(GmailBase):
     def __init__(self):
         super().__init__(
             id="0afc0526-aba1-4b2b-888e-a22b7c3f359d",
-            description="This block removes a label from a Gmail message.",
+            description="A block that removes a label from a specific email message in a Gmail account.",
             categories={BlockCategory.COMMUNICATION},
             input_schema=GmailRemoveLabelBlock.Input,
             output_schema=GmailRemoveLabelBlock.Output,
@@ -961,7 +961,7 @@ class GmailGetThreadBlock(GmailBase):
     def __init__(self):
         super().__init__(
             id="21a79166-9df7-4b5f-9f36-96f639d86112",
-            description="Get a full Gmail thread by ID",
+            description="A block that retrieves an entire Gmail thread (email conversation) by ID, returning all messages with decoded bodies for reading complete conversations.",
             categories={BlockCategory.COMMUNICATION},
             input_schema=GmailGetThreadBlock.Input,
             output_schema=GmailGetThreadBlock.Output,

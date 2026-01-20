@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { NodeChange, XYPosition, applyNodeChanges } from "@xyflow/react";
 import { CustomNode } from "../components/FlowEditor/nodes/CustomNode/CustomNode";
+import { CustomEdge } from "../components/FlowEditor/edges/CustomEdge";
 import { BlockInfo } from "@/app/api/__generated__/models/blockInfo";
 import {
   convertBlockInfoIntoCustomNodeData,
@@ -13,6 +14,29 @@ import { useHistoryStore } from "./historyStore";
 import { useEdgeStore } from "./edgeStore";
 import { BlockUIType } from "../components/types";
 import { pruneEmptyValues } from "@/lib/utils";
+import {
+  ensurePathExists,
+  parseHandleIdToPath,
+} from "@/components/renderers/InputRenderer/helpers";
+import { IncompatibilityInfo } from "../hooks/useSubAgentUpdate/types";
+
+// Resolution mode data stored per node
+export type NodeResolutionData = {
+  incompatibilities: IncompatibilityInfo;
+  // The NEW schema from the update (what we're updating TO)
+  pendingUpdate: {
+    input_schema: Record<string, unknown>;
+    output_schema: Record<string, unknown>;
+  };
+  // The OLD schema before the update (what we're updating FROM)
+  // Needed to merge and show removed inputs during resolution
+  currentSchema: {
+    input_schema: Record<string, unknown>;
+    output_schema: Record<string, unknown>;
+  };
+  // The full updated hardcoded values to apply when resolution completes
+  pendingHardcodedValues: Record<string, unknown>;
+};
 
 // Minimum movement (in pixels) required before logging position change to history
 // Prevents spamming history with small movements when clicking on inputs inside blocks
@@ -21,9 +45,12 @@ const MINIMUM_MOVE_BEFORE_LOG = 50;
 // Track initial positions when drag starts (outside store to avoid re-renders)
 const dragStartPositions: Record<string, XYPosition> = {};
 
+let dragStartState: { nodes: CustomNode[]; edges: CustomEdge[] } | null = null;
+
 type NodeStore = {
   nodes: CustomNode[];
   nodeCounter: number;
+  setNodeCounter: (nodeCounter: number) => void;
   nodeAdvancedStates: Record<string, boolean>;
   setNodes: (nodes: CustomNode[]) => void;
   onNodesChange: (changes: NodeChange<CustomNode>[]) => void;
@@ -61,27 +88,59 @@ type NodeStore = {
     backendId: string,
     errors: { [key: string]: string },
   ) => void;
-  clearAllNodeErrors: () => void; // Add this
+
+  syncHardcodedValuesWithHandleIds: (nodeId: string) => void;
+
+  setCredentialsOptional: (nodeId: string, optional: boolean) => void;
+  clearAllNodeErrors: () => void;
+
+  nodesInResolutionMode: Set<string>;
+  brokenEdgeIDs: Map<string, Set<string>>;
+  nodeResolutionData: Map<string, NodeResolutionData>;
+  setNodeResolutionMode: (
+    nodeID: string,
+    inResolution: boolean,
+    resolutionData?: NodeResolutionData,
+  ) => void;
+  isNodeInResolutionMode: (nodeID: string) => boolean;
+  getNodeResolutionData: (nodeID: string) => NodeResolutionData | undefined;
+  setBrokenEdgeIDs: (nodeID: string, edgeIDs: string[]) => void;
+  removeBrokenEdgeID: (nodeID: string, edgeID: string) => void;
+  isEdgeBroken: (edgeID: string) => boolean;
+  clearResolutionState: () => void;
+
+  isInputBroken: (nodeID: string, handleID: string) => boolean;
+  getInputTypeMismatch: (
+    nodeID: string,
+    handleID: string,
+  ) => string | undefined;
 };
 
 export const useNodeStore = create<NodeStore>((set, get) => ({
   nodes: [],
   setNodes: (nodes) => set({ nodes }),
   nodeCounter: 0,
+  setNodeCounter: (nodeCounter) => set({ nodeCounter }),
   nodeAdvancedStates: {},
   incrementNodeCounter: () =>
     set((state) => ({
       nodeCounter: state.nodeCounter + 1,
     })),
   onNodesChange: (changes) => {
-    const prevState = {
-      nodes: get().nodes,
-      edges: useEdgeStore.getState().edges,
-    };
-
-    // Track initial positions when drag starts
     changes.forEach((change) => {
       if (change.type === "position" && change.dragging === true) {
+        if (!dragStartState) {
+          const currentNodes = get().nodes;
+          const currentEdges = useEdgeStore.getState().edges;
+          dragStartState = {
+            nodes: currentNodes.map((n) => ({
+              ...n,
+              position: { ...n.position },
+              data: { ...n.data },
+            })),
+            edges: currentEdges.map((e) => ({ ...e })),
+          };
+        }
         if (!dragStartPositions[change.id]) {
           const node = get().nodes.find((n) => n.id === change.id);
           if (node) {
@@ -91,12 +150,17 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
       }
     });
 
-    // Check if we should track this change in history
-    let shouldTrack = changes.some(
-      (change) => change.type === "remove" || change.type === "add",
-    );
+    let shouldTrack = changes.some((change) => change.type === "remove");
+    let stateToTrack: { nodes: CustomNode[]; edges: CustomEdge[] } | null =
+      null;
 
-    // For position changes, only track if movement exceeds threshold
+    if (shouldTrack) {
+      stateToTrack = {
+        nodes: get().nodes,
+        edges: useEdgeStore.getState().edges,
+      };
+    }
+
     if (!shouldTrack) {
       changes.forEach((change) => {
         if (change.type === "position" && change.dragging === false) {
@@ -108,20 +172,23 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
             );
             if (distanceMoved > MINIMUM_MOVE_BEFORE_LOG) {
               shouldTrack = true;
+              stateToTrack = dragStartState;
             }
           }
-          // Clean up tracked position after drag ends
           delete dragStartPositions[change.id];
         }
       });
+      if (Object.keys(dragStartPositions).length === 0) {
+        dragStartState = null;
+      }
     }
 
     set((state) => ({
       nodes: applyNodeChanges(changes, state.nodes),
     }));
 
-    if (shouldTrack) {
-      useHistoryStore.getState().pushState(prevState);
+    if (shouldTrack && stateToTrack) {
+      useHistoryStore.getState().pushState(stateToTrack);
     }
   },
 
@@ -135,6 +202,11 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
     hardcodedValues?: Record<string, any>,
     position?: XYPosition,
   ) => {
+    const prevState = {
+      nodes: get().nodes,
+      edges: useEdgeStore.getState().edges,
+    };
+
     const customNodeData = convertBlockInfoIntoCustomNodeData(
       block,
       hardcodedValues,
@@ -168,21 +240,24 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
     set((state) => ({
       nodes: [...state.nodes, customNode],
     }));
+
+    useHistoryStore.getState().pushState(prevState);
+
     return customNode;
   },
   updateNodeData: (nodeId, data) => {
+    const prevState = {
+      nodes: get().nodes,
+      edges: useEdgeStore.getState().edges,
+    };
+
     set((state) => ({
       nodes: state.nodes.map((n) =>
         n.id === nodeId ? { ...n, data: { ...n.data, ...data } } : n,
       ),
     }));
 
-    const newState = {
-      nodes: get().nodes,
-      edges: useEdgeStore.getState().edges,
-    };
-
-    useHistoryStore.getState().pushState(newState);
+    useHistoryStore.getState().pushState(prevState);
   },
   toggleAdvanced: (nodeId: string) =>
     set((state) => ({
@@ -219,6 +294,9 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
         position: node.position,
         ...(node.data.metadata?.customized_name !== undefined && {
           customized_name: node.data.metadata.customized_name,
+        }),
+        ...(node.data.metadata?.credentials_optional !== undefined && {
+          credentials_optional: node.data.metadata.credentials_optional,
         }),
       },
     };
@@ -304,5 +382,157 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
         data: { ...n.data, errors: undefined },
       })),
     }));
+  },
+
+  syncHardcodedValuesWithHandleIds: (nodeId: string) => {
+    const node = get().nodes.find((n) => n.id === nodeId);
+    if (!node) return;
+
+    const handleIds = useEdgeStore.getState().getAllHandleIdsOfANode(nodeId);
+    const additionalHandles = handleIds.filter((h) => h.includes("_#_"));
+
+    if (additionalHandles.length === 0) return;
+
+    const hardcodedValues = JSON.parse(
+      JSON.stringify(node.data.hardcodedValues || {}),
+    );
+
+    let modified = false;
+
+    additionalHandles.forEach((handleId) => {
+      const segments = parseHandleIdToPath(handleId);
+      if (ensurePathExists(hardcodedValues, segments)) {
+        modified = true;
+      }
+    });
+
+    if (modified) {
+      set((state) => ({
+        nodes: state.nodes.map((n) =>
+          n.id === nodeId ? { ...n, data: { ...n.data, hardcodedValues } } : n,
+        ),
+      }));
+    }
+  },
+
+  setCredentialsOptional: (nodeId: string, optional: boolean) => {
+    const prevState = {
+      nodes: get().nodes,
+      edges: useEdgeStore.getState().edges,
+    };
+
+    set((state) => ({
+      nodes: state.nodes.map((n) =>
+        n.id === nodeId
+          ? {
+              ...n,
+              data: {
+                ...n.data,
+                metadata: {
+                  ...n.data.metadata,
+                  credentials_optional: optional,
+                },
+              },
+            }
+          : n,
+      ),
+    }));
+
+    useHistoryStore.getState().pushState(prevState);
+  },
+
+  // Sub-agent resolution mode state
+  nodesInResolutionMode: new Set<string>(),
+  brokenEdgeIDs: new Map<string, Set<string>>(),
+  nodeResolutionData: new Map<string, NodeResolutionData>(),
+
+  setNodeResolutionMode: (
+    nodeID: string,
+    inResolution: boolean,
+    resolutionData?: NodeResolutionData,
+  ) => {
+    set((state) => {
+      const newNodesSet = new Set(state.nodesInResolutionMode);
+      const newResolutionDataMap = new Map(state.nodeResolutionData);
+      const newBrokenEdgeIDs = new Map(state.brokenEdgeIDs);
+
+      if (inResolution) {
+        newNodesSet.add(nodeID);
+        if (resolutionData) {
+          newResolutionDataMap.set(nodeID, resolutionData);
+        }
+      } else {
+        newNodesSet.delete(nodeID);
+        newResolutionDataMap.delete(nodeID);
+        newBrokenEdgeIDs.delete(nodeID); // Clean up broken edges when exiting resolution mode
+      }
+
+      return {
+        nodesInResolutionMode: newNodesSet,
+        nodeResolutionData: newResolutionDataMap,
+        brokenEdgeIDs: newBrokenEdgeIDs,
+      };
+    });
+  },
+
+  isNodeInResolutionMode: (nodeID: string) => {
+    return get().nodesInResolutionMode.has(nodeID);
+  },
+
+  getNodeResolutionData: (nodeID: string) => {
+    return get().nodeResolutionData.get(nodeID);
+  },
+
+  setBrokenEdgeIDs: (nodeID: string, edgeIDs: string[]) => {
+    set((state) => {
+      const newMap = new Map(state.brokenEdgeIDs);
+      newMap.set(nodeID, new Set(edgeIDs));
+      return { brokenEdgeIDs: newMap };
+    });
+  },
+
+  removeBrokenEdgeID: (nodeID: string, edgeID: string) => {
+    set((state) => {
+      const newMap = new Map(state.brokenEdgeIDs);
+      const nodeSet = new Set(newMap.get(nodeID) || []);
+      nodeSet.delete(edgeID);
+      newMap.set(nodeID, nodeSet);
+      return { brokenEdgeIDs: newMap };
+    });
+  },
+
+  isEdgeBroken: (edgeID: string) => {
+    // Check across all nodes
+    const brokenEdgeIDs = get().brokenEdgeIDs;
+    for (const edgeSet of brokenEdgeIDs.values()) {
+      if (edgeSet.has(edgeID)) {
+        return true;
+      }
+    }
+    return false;
+  },
+
+  clearResolutionState: () => {
+    set({
+      nodesInResolutionMode: new Set<string>(),
+      brokenEdgeIDs: new Map<string, Set<string>>(),
+      nodeResolutionData: new Map<string, NodeResolutionData>(),
+    });
+  },
+
+  // Helper functions for input renderers
+  isInputBroken: (nodeID: string, handleID: string) => {
+    const resolutionData = get().nodeResolutionData.get(nodeID);
+    if (!resolutionData) return false;
+    return resolutionData.incompatibilities.missingInputs.includes(handleID);
+  },
+
+  getInputTypeMismatch: (nodeID: string, handleID: string) => {
+    const resolutionData = get().nodeResolutionData.get(nodeID);
+    if (!resolutionData) return undefined;
+    const mismatch = resolutionData.incompatibilities.inputTypeMismatches.find(
+      (m) => m.name === handleID,
+    );
+    return mismatch?.newType;
   },
 }));

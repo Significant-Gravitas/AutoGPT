@@ -9,11 +9,11 @@ import { useAgentTableRow } from "./useAgentTableRow";
 import { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 import {
   DotsThreeVerticalIcon,
-  Eye,
+  EyeIcon,
   ImageBroken,
-  Star,
-  Trash,
-  PencilSimple,
+  StarIcon,
+  TrashIcon,
+  PencilIcon,
 } from "@phosphor-icons/react/dist/ssr";
 import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
 import { StoreSubmissionEditRequest } from "@/app/api/__generated__/models/storeSubmissionEditRequest";
@@ -34,6 +34,7 @@ export interface AgentTableRowProps {
   categories?: string[];
   store_listing_version_id?: string;
   changes_summary?: string;
+  listing_id?: string;
   onViewSubmission: (submission: StoreSubmission) => void;
   onDeleteSubmission: (submission_id: string) => void;
   onEditSubmission: (
@@ -60,6 +61,7 @@ export const AgentTableRow = ({
   categories,
   store_listing_version_id,
   changes_summary,
+  listing_id,
   onViewSubmission,
   onDeleteSubmission,
   onEditSubmission,
@@ -83,11 +85,10 @@ export const AgentTableRow = ({
     categories,
     store_listing_version_id,
     changes_summary,
+    listing_id,
   });
 
-  // Determine if we should show Edit or View button
-  const canEdit =
-    status === SubmissionStatus.APPROVED || status === SubmissionStatus.PENDING;
+  const canModify = status === SubmissionStatus.PENDING;
 
   return (
     <div
@@ -114,13 +115,22 @@ export const AgentTableRow = ({
             </div>
           )}
           <div className="flex flex-col">
-            <Text
-              variant="h3"
-              className="line-clamp-1 text-ellipsis text-neutral-800 dark:text-neutral-200"
-              size="large-medium"
-            >
-              {agentName}
-            </Text>
+            <div className="flex items-center gap-2">
+              <Text
+                variant="h3"
+                className="line-clamp-1 text-ellipsis text-neutral-800 dark:text-neutral-200"
+                size="large-medium"
+              >
+                {agentName}
+              </Text>
+              <Text
+                variant="body"
+                size="small"
+                className="text-neutral-500 dark:text-neutral-400"
+              >
+                v{agent_version}
+              </Text>
+            </div>
             <Text
               variant="body"
               className="line-clamp-1 text-ellipsis text-neutral-600 dark:text-neutral-400"
@@ -150,7 +160,7 @@ export const AgentTableRow = ({
           {rating ? (
             <div className="flex items-center justify-end gap-1">
               <span className="text-sm font-medium">{rating.toFixed(1)}</span>
-              <Star weight="fill" className="h-2 w-2" />
+              <StarIcon weight="fill" className="h-2 w-2" />
             </div>
           ) : (
             <span className="text-sm text-neutral-600 dark:text-neutral-400">
@@ -166,12 +176,12 @@ export const AgentTableRow = ({
               <DotsThreeVerticalIcon className="h-5 w-5 text-neutral-800" />
             </DropdownMenu.Trigger>
             <DropdownMenu.Content className="z-10 rounded-xl border bg-white p-1 shadow-md dark:bg-gray-800">
-              {canEdit ? (
+              {canModify ? (
                 <DropdownMenu.Item
                   onSelect={handleEdit}
                   className="flex cursor-pointer items-center rounded-md px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700"
                 >
-                  <PencilSimple className="mr-2 h-4 w-4 dark:text-gray-100" />
+                  <PencilIcon className="mr-2 h-4 w-4 dark:text-gray-100" />
                   <span className="dark:text-gray-100">Edit</span>
                 </DropdownMenu.Item>
               ) : (
@@ -179,18 +189,22 @@ export const AgentTableRow = ({
                   onSelect={handleView}
                   className="flex cursor-pointer items-center rounded-md px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700"
                 >
-                  <Eye className="mr-2 h-4 w-4 dark:text-gray-100" />
+                  <EyeIcon className="mr-2 h-4 w-4 dark:text-gray-100" />
                   <span className="dark:text-gray-100">View</span>
                 </DropdownMenu.Item>
               )}
-              <DropdownMenu.Separator className="my-1 h-px bg-gray-300 dark:bg-gray-600" />
-              <DropdownMenu.Item
-                onSelect={handleDelete}
-                className="flex cursor-pointer items-center rounded-md px-3 py-2 text-red-500 hover:bg-gray-100 dark:hover:bg-gray-700"
-              >
-                <Trash className="mr-2 h-4 w-4 text-red-500 dark:text-red-400" />
-                <span className="dark:text-red-400">Delete</span>
-              </DropdownMenu.Item>
+              {canModify && (
+                <>
+                  <DropdownMenu.Separator className="my-1 h-px bg-gray-300 dark:bg-gray-600" />
+                  <DropdownMenu.Item
+                    onSelect={handleDelete}
+                    className="flex cursor-pointer items-center rounded-md px-3 py-2 text-red-500 hover:bg-gray-100 dark:hover:bg-gray-700"
+                  >
+                    <TrashIcon className="mr-2 h-4 w-4 text-red-500 dark:text-red-400" />
+                    <span className="dark:text-red-400">Delete</span>
+                  </DropdownMenu.Item>
+                </>
+              )}
             </DropdownMenu.Content>
           </DropdownMenu.Root>
         </div>

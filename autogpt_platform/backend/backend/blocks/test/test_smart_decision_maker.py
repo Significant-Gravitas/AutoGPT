@@ -233,7 +233,7 @@ async def test_smart_decision_maker_tracks_llm_stats():
         # Create test input
         input_data = SmartDecisionMakerBlock.Input(
             prompt="Should I continue with this task?",
-            model=llm_module.LlmModel.GPT4O,
+            model=llm_module.DEFAULT_LLM_MODEL,
             credentials=llm_module.TEST_CREDENTIALS_INPUT,  # type: ignore
             agent_mode_max_iterations=0,
         )
@@ -335,7 +335,7 @@ async def test_smart_decision_maker_parameter_validation():
 
         input_data = SmartDecisionMakerBlock.Input(
             prompt="Search for keywords",
-            model=llm_module.LlmModel.GPT4O,
+            model=llm_module.DEFAULT_LLM_MODEL,
             credentials=llm_module.TEST_CREDENTIALS_INPUT,  # type: ignore
             retry=2,  # Set retry to 2 for testing
             agent_mode_max_iterations=0,
@@ -402,7 +402,7 @@ async def test_smart_decision_maker_parameter_validation():
 
         input_data = SmartDecisionMakerBlock.Input(
             prompt="Search for keywords",
-            model=llm_module.LlmModel.GPT4O,
+            model=llm_module.DEFAULT_LLM_MODEL,
             credentials=llm_module.TEST_CREDENTIALS_INPUT,  # type: ignore
             agent_mode_max_iterations=0,
         )
@@ -462,7 +462,7 @@ async def test_smart_decision_maker_parameter_validation():
 
         input_data = SmartDecisionMakerBlock.Input(
             prompt="Search for keywords",
-            model=llm_module.LlmModel.GPT4O,
+            model=llm_module.DEFAULT_LLM_MODEL,
             credentials=llm_module.TEST_CREDENTIALS_INPUT,  # type: ignore
             agent_mode_max_iterations=0,
         )
@@ -526,7 +526,7 @@ async def test_smart_decision_maker_parameter_validation():
 
         input_data = SmartDecisionMakerBlock.Input(
             prompt="Search for keywords",
-            model=llm_module.LlmModel.GPT4O,
+            model=llm_module.DEFAULT_LLM_MODEL,
             credentials=llm_module.TEST_CREDENTIALS_INPUT,  # type: ignore
             agent_mode_max_iterations=0,
         )
@@ -648,7 +648,7 @@ async def test_smart_decision_maker_raw_response_conversion():
 
         input_data = SmartDecisionMakerBlock.Input(
             prompt="Test prompt",
-            model=llm_module.LlmModel.GPT4O,
+            model=llm_module.DEFAULT_LLM_MODEL,
             credentials=llm_module.TEST_CREDENTIALS_INPUT,  # type: ignore
             retry=2,
             agent_mode_max_iterations=0,
@@ -722,7 +722,7 @@ async def test_smart_decision_maker_raw_response_conversion():
     ):
         input_data = SmartDecisionMakerBlock.Input(
             prompt="Simple prompt",
-            model=llm_module.LlmModel.GPT4O,
+            model=llm_module.DEFAULT_LLM_MODEL,
             credentials=llm_module.TEST_CREDENTIALS_INPUT,  # type: ignore
             agent_mode_max_iterations=0,
         )
@@ -778,7 +778,7 @@ async def test_smart_decision_maker_raw_response_conversion():
     ):
         input_data = SmartDecisionMakerBlock.Input(
             prompt="Another test",
-            model=llm_module.LlmModel.GPT4O,
+            model=llm_module.DEFAULT_LLM_MODEL,
             credentials=llm_module.TEST_CREDENTIALS_INPUT,  # type: ignore
             agent_mode_max_iterations=0,
         )
@@ -931,7 +931,7 @@ async def test_smart_decision_maker_agent_mode():
         # Test agent mode with max_iterations = 3
         input_data = SmartDecisionMakerBlock.Input(
             prompt="Complete this task using tools",
-            model=llm_module.LlmModel.GPT4O,
+            model=llm_module.DEFAULT_LLM_MODEL,
             credentials=llm_module.TEST_CREDENTIALS_INPUT,  # type: ignore
             agent_mode_max_iterations=3,  # Enable agent mode with 3 max iterations
         )
@@ -1020,7 +1020,7 @@ async def test_smart_decision_maker_traditional_mode_default():
         # Test default behavior (traditional mode)
         input_data = SmartDecisionMakerBlock.Input(
             prompt="Test prompt",
-            model=llm_module.LlmModel.GPT4O,
+            model=llm_module.DEFAULT_LLM_MODEL,
             credentials=llm_module.TEST_CREDENTIALS_INPUT,  # type: ignore
             agent_mode_max_iterations=0,  # Traditional mode
         )
@@ -1057,3 +1057,153 @@ async def test_smart_decision_maker_traditional_mode_default():
         )  # Should yield individual tool parameters
         assert "tools_^_test-sink-node-id_~_max_keyword_difficulty" in outputs
         assert "conversations" in outputs
+
+
+@pytest.mark.asyncio
+async def test_smart_decision_maker_uses_customized_name_for_blocks():
+    """Test that SmartDecisionMakerBlock uses customized_name from node metadata for tool names."""
+    from unittest.mock import MagicMock
+
+    from backend.blocks.basic import StoreValueBlock
+    from backend.blocks.smart_decision_maker import SmartDecisionMakerBlock
+    from backend.data.graph import Link, Node
+
+    # Create a mock node with customized_name in metadata
+    mock_node = MagicMock(spec=Node)
+    mock_node.id = "test-node-id"
+    mock_node.block_id = StoreValueBlock().id
+    mock_node.metadata = {"customized_name": "My Custom Tool Name"}
+    mock_node.block = StoreValueBlock()
+
+    # Create a mock link
+    mock_link = MagicMock(spec=Link)
+    mock_link.sink_name = "input"
+
+    # Call the function directly
+    result = await SmartDecisionMakerBlock._create_block_function_signature(
+        mock_node, [mock_link]
+    )
+
+    # Verify the tool name uses the customized name (cleaned up)
+    assert result["type"] == "function"
+    assert result["function"]["name"] == "my_custom_tool_name"  # Cleaned version
+    assert result["function"]["_sink_node_id"] == "test-node-id"
+
+
+@pytest.mark.asyncio
+async def test_smart_decision_maker_falls_back_to_block_name():
+    """Test that SmartDecisionMakerBlock falls back to block.name when no customized_name."""
+    from unittest.mock import MagicMock
+
+    from backend.blocks.basic import StoreValueBlock
+    from backend.blocks.smart_decision_maker import SmartDecisionMakerBlock
+    from backend.data.graph import Link, Node
+
+    # Create a mock node without customized_name
+    mock_node = MagicMock(spec=Node)
+    mock_node.id = "test-node-id"
+    mock_node.block_id = StoreValueBlock().id
+    mock_node.metadata = {}  # No customized_name
+    mock_node.block = StoreValueBlock()
+
+    # Create a mock link
+    mock_link = MagicMock(spec=Link)
+    mock_link.sink_name = "input"
+
+    # Call the function directly
+    result = await SmartDecisionMakerBlock._create_block_function_signature(
+        mock_node, [mock_link]
+    )
+
+    # Verify the tool name uses the block's default name
+    assert result["type"] == "function"
+    assert result["function"]["name"] == "storevalueblock"  # Default block name cleaned
+    assert result["function"]["_sink_node_id"] == "test-node-id"
+
+
+@pytest.mark.asyncio
+async def test_smart_decision_maker_uses_customized_name_for_agents():
+    """Test that SmartDecisionMakerBlock uses customized_name from metadata for agent nodes."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from backend.blocks.smart_decision_maker import SmartDecisionMakerBlock
+    from backend.data.graph import Link, Node
+
+    # Create a mock node with customized_name in metadata
+    mock_node = MagicMock(spec=Node)
+    mock_node.id = "test-agent-node-id"
+    mock_node.metadata = {"customized_name": "My Custom Agent"}
+    mock_node.input_default = {
+        "graph_id": "test-graph-id",
+        "graph_version": 1,
+        "input_schema": {"properties": {"test_input": {"description": "Test input"}}},
+    }
+
+    # Create a mock link
+    mock_link = MagicMock(spec=Link)
+    mock_link.sink_name = "test_input"
+
+    # Mock the database client
+    mock_graph_meta = MagicMock()
+    mock_graph_meta.name = "Original Agent Name"
+    mock_graph_meta.description = "Agent description"
+
+    mock_db_client = AsyncMock()
+    mock_db_client.get_graph_metadata.return_value = mock_graph_meta
+
+    with patch(
+        "backend.blocks.smart_decision_maker.get_database_manager_async_client",
+        return_value=mock_db_client,
+    ):
+        result = await SmartDecisionMakerBlock._create_agent_function_signature(
+            mock_node, [mock_link]
+        )
+
+    # Verify the tool name uses the customized name (cleaned up)
+    assert result["type"] == "function"
+    assert result["function"]["name"] == "my_custom_agent"  # Cleaned version
+    assert result["function"]["_sink_node_id"] == "test-agent-node-id"
+
+
+@pytest.mark.asyncio
+async def test_smart_decision_maker_agent_falls_back_to_graph_name():
+    """Test that agent node falls back to graph name when no customized_name."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from backend.blocks.smart_decision_maker import SmartDecisionMakerBlock
+    from backend.data.graph import Link, Node
+
+    # Create a mock node without customized_name
+    mock_node = MagicMock(spec=Node)
+    mock_node.id = "test-agent-node-id"
+    mock_node.metadata = {}  # No customized_name
+    mock_node.input_default = {
+        "graph_id": "test-graph-id",
+        "graph_version": 1,
+        "input_schema": {"properties": {"test_input": {"description": "Test input"}}},
+    }
+
+    # Create a mock link
+    mock_link = MagicMock(spec=Link)
+    mock_link.sink_name = "test_input"
+
+    # Mock the database client
+    mock_graph_meta = MagicMock()
+    mock_graph_meta.name = "Original Agent Name"
+    mock_graph_meta.description = "Agent description"
+
+    mock_db_client = AsyncMock()
+    mock_db_client.get_graph_metadata.return_value = mock_graph_meta
+
+    with patch(
+        "backend.blocks.smart_decision_maker.get_database_manager_async_client",
+        return_value=mock_db_client,
+    ):
+        result = await SmartDecisionMakerBlock._create_agent_function_signature(
+            mock_node, [mock_link]
+        )
+
+    # Verify the tool name uses the graph's default name
+    assert result["type"] == "function"
+    assert result["function"]["name"] == "original_agent_name"  # Graph name cleaned
+    assert result["function"]["_sink_node_id"] == "test-agent-node-id"

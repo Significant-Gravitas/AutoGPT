@@ -174,7 +174,7 @@ class AIShortformVideoCreatorBlock(Block):
         )
         frame_rate: int = SchemaField(description="Frame rate of the video", default=60)
         generation_preset: GenerationPreset = SchemaField(
-            description="Generation preset for visual style - only effects AI generated visuals",
+            description="Generation preset for visual style - only affects AI-generated visuals",
             default=GenerationPreset.LEONARDO,
             placeholder=GenerationPreset.LEONARDO,
         )

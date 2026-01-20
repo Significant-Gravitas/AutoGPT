@@ -92,8 +92,9 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     O1 = "o1"
     O1_MINI = "o1-mini"
     # GPT-5 models
-    GPT5 = "gpt-5-2025-08-07"
+    GPT5_2 = "gpt-5.2-2025-12-11"
     GPT5_1 = "gpt-5.1-2025-11-13"
+    GPT5 = "gpt-5-2025-08-07"
     GPT5_MINI = "gpt-5-mini-2025-08-07"
     GPT5_NANO = "gpt-5-nano-2025-08-07"
     GPT5_CHAT = "gpt-5-chat-latest"
@@ -194,8 +195,9 @@ MODEL_METADATA = {
     LlmModel.O1: ModelMetadata("openai", 200000, 100000),  # o1-2024-12-17
     LlmModel.O1_MINI: ModelMetadata("openai", 128000, 65536),  # o1-mini-2024-09-12
     # GPT-5 models
-    LlmModel.GPT5: ModelMetadata("openai", 400000, 128000),
+    LlmModel.GPT5_2: ModelMetadata("openai", 400000, 128000),
     LlmModel.GPT5_1: ModelMetadata("openai", 400000, 128000),
+    LlmModel.GPT5: ModelMetadata("openai", 400000, 128000),
     LlmModel.GPT5_MINI: ModelMetadata("openai", 400000, 128000),
     LlmModel.GPT5_NANO: ModelMetadata("openai", 400000, 128000),
     LlmModel.GPT5_CHAT: ModelMetadata("openai", 400000, 16384),
@@ -302,6 +304,8 @@ MODEL_METADATA = {
     LlmModel.V0_1_5_LG: ModelMetadata("v0", 512000, 64000),
     LlmModel.V0_1_0_MD: ModelMetadata("v0", 128000, 64000),
 }
+
+DEFAULT_LLM_MODEL = LlmModel.GPT5_2
 
 for model in LlmModel:
     if model not in MODEL_METADATA:
@@ -790,7 +794,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
         )
         model: LlmModel = SchemaField(
             title="LLM Model",
-            default=LlmModel.GPT4O,
+            default=DEFAULT_LLM_MODEL,
             description="The language model to use for answering the prompt.",
             advanced=False,
         )
@@ -850,12 +854,12 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
     def __init__(self):
         super().__init__(
             id="ed55ac19-356e-4243-a6cb-bc599e9b716f",
-            description="Call a Large Language Model (LLM) to generate formatted object based on the given prompt.",
+            description="A block that generates structured JSON responses using a Large Language Model (LLM), with schema validation and format enforcement.",
             categories={BlockCategory.AI},
             input_schema=AIStructuredResponseGeneratorBlock.Input,
             output_schema=AIStructuredResponseGeneratorBlock.Output,
             test_input={
-                "model": LlmModel.GPT4O,
+                "model": DEFAULT_LLM_MODEL,
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "expected_format": {
                     "key1": "value1",
@@ -1221,7 +1225,7 @@ class AITextGeneratorBlock(AIBlockBase):
         )
         model: LlmModel = SchemaField(
             title="LLM Model",
-            default=LlmModel.GPT4O,
+            default=DEFAULT_LLM_MODEL,
             description="The language model to use for answering the prompt.",
             advanced=False,
         )
@@ -1261,7 +1265,7 @@ class AITextGeneratorBlock(AIBlockBase):
     def __init__(self):
         super().__init__(
             id="1f292d4a-41a4-4977-9684-7c8d560b9f91",
-            description="Call a Large Language Model (LLM) to generate a string based on the given prompt.",
+            description="A block that produces text responses using a Large Language Model (LLM) based on customizable prompts and system instructions.",
             categories={BlockCategory.AI},
             input_schema=AITextGeneratorBlock.Input,
             output_schema=AITextGeneratorBlock.Output,
@@ -1317,7 +1321,7 @@ class AITextSummarizerBlock(AIBlockBase):
         )
         model: LlmModel = SchemaField(
             title="LLM Model",
-            default=LlmModel.GPT4O,
+            default=DEFAULT_LLM_MODEL,
             description="The language model to use for summarizing the text.",
         )
         focus: str = SchemaField(
@@ -1357,7 +1361,7 @@ class AITextSummarizerBlock(AIBlockBase):
     def __init__(self):
         super().__init__(
             id="a0a69be1-4528-491c-a85a-a4ab6873e3f0",
-            description="Utilize a Large Language Model (LLM) to summarize a long text.",
+            description="A block that summarizes long texts using a Large Language Model (LLM), with configurable focus topics and summary styles.",
             categories={BlockCategory.AI, BlockCategory.TEXT},
             input_schema=AITextSummarizerBlock.Input,
             output_schema=AITextSummarizerBlock.Output,
@@ -1534,7 +1538,7 @@ class AIConversationBlock(AIBlockBase):
         )
         model: LlmModel = SchemaField(
             title="LLM Model",
-            default=LlmModel.GPT4O,
+            default=DEFAULT_LLM_MODEL,
             description="The language model to use for the conversation.",
         )
         credentials: AICredentials = AICredentialsField()
@@ -1558,7 +1562,7 @@ class AIConversationBlock(AIBlockBase):
     def __init__(self):
         super().__init__(
             id="32a87eab-381e-4dd4-bdb8-4c47151be35a",
-            description="Advanced LLM call that takes a list of messages and sends them to the language model.",
+            description="A block that facilitates multi-turn conversations with a Large Language Model (LLM), maintaining context across message exchanges.",
             categories={BlockCategory.AI},
             input_schema=AIConversationBlock.Input,
             output_schema=AIConversationBlock.Output,
@@ -1572,7 +1576,7 @@ class AIConversationBlock(AIBlockBase):
                     },
                     {"role": "user", "content": "Where was it played?"},
                 ],
-                "model": LlmModel.GPT4O,
+                "model": DEFAULT_LLM_MODEL,
                 "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,
@@ -1635,7 +1639,7 @@ class AIListGeneratorBlock(AIBlockBase):
         )
         model: LlmModel = SchemaField(
             title="LLM Model",
-            default=LlmModel.GPT4O,
+            default=DEFAULT_LLM_MODEL,
             description="The language model to use for generating the list.",
             advanced=True,
         )
@@ -1678,7 +1682,7 @@ class AIListGeneratorBlock(AIBlockBase):
     def __init__(self):
         super().__init__(
             id="9c0b0450-d199-458b-a731-072189dd6593",
-            description="Generate a list of values based on the given prompt using a Large Language Model (LLM).",
+            description="A block that creates lists of items based on prompts using a Large Language Model (LLM), with optional source data for context.",
             categories={BlockCategory.AI, BlockCategory.TEXT},
             input_schema=AIListGeneratorBlock.Input,
             output_schema=AIListGeneratorBlock.Output,
@@ -1692,7 +1696,7 @@ class AIListGeneratorBlock(AIBlockBase):
                     "drawing explorers to uncover its mysteries. Each planet showcases the limitless possibilities of "
                     "fictional worlds."
                 ),
-                "model": LlmModel.GPT4O,
+                "model": DEFAULT_LLM_MODEL,
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "max_retries": 3,
                 "force_json_output": False,

@@ -12,6 +12,7 @@ import type { GetV2GetSpecificAgentParams } from "@/app/api/__generated__/models
 import { useAgentInfo } from "./useAgentInfo";
 import { useGetV2GetSpecificAgent } from "@/app/api/__generated__/endpoints/store/store";
 import { Text } from "@/components/atoms/Text/Text";
+import { formatTimeAgo } from "@/lib/utils/time";
 import * as React from "react";
 
 interface AgentInfoProps {
@@ -258,23 +259,29 @@ export const AgentInfo = ({
           </div>
         </div>
 
-        {/* Changelog */}
+        {/* Version history */}
         <div className="flex w-full flex-col gap-1.5 sm:gap-2">
-          <div className="decoration-skip-ink-none mb-1.5 text-base font-medium leading-6 text-neutral-800 dark:text-neutral-200 sm:mb-2">
-            Changelog
+          <div className="decoration-skip-ink-none text-base font-medium leading-6 text-neutral-800 dark:text-neutral-200">
+            Version history
           </div>
-          <div className="decoration-skip-ink-none text-base font-normal leading-6 text-neutral-600 underline-offset-[from-font] dark:text-neutral-400">
-            Last updated {lastUpdated}
+          <div className="decoration-skip-ink-none text-sm font-normal leading-6 text-neutral-600 underline-offset-[from-font] dark:text-neutral-400">
+            Last updated {formatTimeAgo(lastUpdated)}
+          </div>
+          <div className="decoration-skip-ink-none text-xs text-neutral-600 dark:text-neutral-400 sm:text-sm">
+            Version {version}.0
           </div>
 
           {/* Version List */}
           {agentVersions.length > 0 ? (
-            <div className="mt-4">
+            <div className="mt-3">
+              <div className="decoration-skip-ink-none mb-1.5 text-base font-medium leading-6 text-neutral-900 dark:text-neutral-200 sm:mb-2">
+                Changelog
+              </div>
               {agentVersions.map(renderVersionItem)}
               {hasMoreVersions && (
                 <button
                   onClick={() => setVisibleVersionCount((prev) => prev + 3)}
-                  className="mt-2 flex items-center gap-1 text-sm font-medium text-neutral-900 hover:text-neutral-700 dark:text-neutral-100 dark:hover:text-neutral-300"
+                  className="mt-2 flex items-center gap-1 text-sm font-medium text-neutral-700 hover:text-neutral-700 dark:text-neutral-100 dark:hover:text-neutral-300"
                 >
                   <svg
                     width="16"
@@ -297,7 +304,7 @@ export const AgentInfo = ({
             </div>
           ) : (
             <div className="text-xs text-neutral-600 dark:text-neutral-400 sm:text-sm">
-              Version {version}
+              Version {version}.0
             </div>
           )}
         </div>
