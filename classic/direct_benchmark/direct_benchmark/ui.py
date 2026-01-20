@@ -71,9 +71,9 @@ class BenchmarkUI:
             configure_logging_for_benchmark()
 
         # Track state - use run_key (config:challenge) for uniqueness
-        self.active_runs: dict[
-            str, tuple[str, str]
-        ] = {}  # run_key -> (config_name, challenge_name)
+        self.active_runs: dict[str, tuple[str, str]] = (
+            {}
+        )  # run_key -> (config_name, challenge_name)
         self.active_steps: dict[str, str] = {}  # run_key -> current step info
         self.completed: list[ChallengeResult] = []
         self.results_by_config: dict[str, list[ChallengeResult]] = {}
@@ -195,16 +195,29 @@ class BenchmarkUI:
         steps: list[tuple[int, str, str, bool]],
     ) -> None:
         """Print a copy-paste friendly completion block."""
+        from datetime import datetime
+
         color = self.get_config_color(config_name)
         status = "PASS" if result.success else "FAIL"
         status_style = "green" if result.success else "red"
 
-        # Print header
+        # Build challenge display with attempt if > 1
+        challenge_display = challenge_name
+        if result.attempt > 1:
+            challenge_display = f"{challenge_name} (attempt {result.attempt})"
+
+        # Generate timestamp for run identification
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+        # Print header with full identification
         console.print()
         console.print(f"[{status_style}]{'═' * 70}[/{status_style}]")
         console.print(
             f"[{status_style} bold][{status}][/{status_style} bold] "
-            f"[{color}]{config_name}[/{color}] - {challenge_name}"
+            f"[{color}]{config_name}[/{color}] - {challenge_display}"
+        )
+        console.print(
+            f"[dim]Run ID: {config_name}:{challenge_name}:{result.attempt} @ {timestamp}[/dim]"
         )
         console.print(f"[{status_style}]{'═' * 70}[/{status_style}]")
 
