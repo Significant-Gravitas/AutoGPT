@@ -17,6 +17,8 @@ autogpt = { path = "../original_autogpt", develop = true }
 click = "^8.0"
 pydantic = "^2.7.2"
 rich = "^13.0"
+# Required for evaluating challenges that use pytest-based tests
+pytest = "^8.0"
 
 [tool.poetry.group.dev.dependencies]
 black = "^23.12.1"
