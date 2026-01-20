@@ -1,6 +1,5 @@
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
 from difflib import SequenceMatcher
 from typing import Sequence
 
@@ -640,26 +639,15 @@ def _get_all_providers() -> dict[ProviderName, Provider]:
     return providers
 
 
-@cached(ttl_seconds=3600)
+@cached(ttl_seconds=3600, shared_cache=True)
 async def get_suggested_blocks(count: int = 5) -> list[BlockInfo]:
-    suggested_blocks = []
-    # Sum the number of executions for each block type
-    # Prisma cannot group by nested relations, so we do a raw query
-    # Calculate the cutoff timestamp
-    timestamp_threshold = datetime.now(timezone.utc) - timedelta(days=30)
-
+    # Query the materialized view for execution counts per block
+    # The view aggregates executions from the last 14 days and is refreshed hourly
     results = await query_raw_with_schema(
         """
-        SELECT
-            agent_node."agentBlockId" AS block_id,
-            COUNT(execution.id) AS execution_count
-        FROM {schema_prefix}"AgentNodeExecution" execution
-        JOIN {schema_prefix}"AgentNode" agent_node ON execution."agentNodeId" = agent_node.id
-        WHERE execution."endedTime" >= $1::timestamp
-        GROUP BY agent_node."agentBlockId"
-        ORDER BY execution_count DESC;
-        """,
-        timestamp_threshold,
+        SELECT block_id, execution_count
+        FROM {schema_prefix}"mv_suggested_blocks";
+        """
     )
 
     # Get the top blocks based on execution count
