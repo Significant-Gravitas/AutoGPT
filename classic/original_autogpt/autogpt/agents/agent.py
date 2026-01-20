@@ -260,6 +260,19 @@ class Agent(BaseAgent[AnyActionProposal], Configurable[AgentSettings]):
         self.commands = await self.run_pipeline(CommandProvider.get_commands)
         self._remove_disabled_commands()
 
+        # Prepare messages (lazy compression) - skip if strategy will use cached actions
+        # ReWOO EXECUTING phase doesn't need messages, so skip compression
+        skip_message_prep = False
+        if hasattr(self.prompt_strategy, "current_phase"):
+            from .prompt_strategies.rewoo import ReWOOPhase
+
+            skip_message_prep = (
+                self.prompt_strategy.current_phase == ReWOOPhase.EXECUTING
+            )
+
+        if not skip_message_prep and hasattr(self, "history"):
+            await self.history.prepare_messages()
+
         # Get messages
         messages = await self.run_pipeline(MessageProvider.get_messages)
 
