@@ -160,6 +160,10 @@ CURRENT_BULLETIN.md
 
 # AgBenchmark
 classic/benchmark/agbenchmark/reports/
+classic/reports/
+classic/direct_benchmark/reports/
+classic/.benchmark_workspaces/
+classic/direct_benchmark/.benchmark_workspaces/
 
 # Nodejs
 package-lock.json
