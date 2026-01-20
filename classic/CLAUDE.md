@@ -130,10 +130,9 @@ Benchmark harness for testing agent performance:
 
 ## Testing Patterns
 
-- VCR cassettes in `/forge/tests/vcr_cassettes/` for HTTP mocking
 - Async support via pytest-asyncio
 - Fixtures defined in `conftest.py` files provide: `tmp_project_root`, `storage`, `config`, `llm_provider`, `agent`
-- Tests require `OPENAI_API_KEY` environment variable (defaults to "sk-dummy" for mocked tests)
+- Tests requiring API keys (OPENAI_API_KEY, ANTHROPIC_API_KEY) will skip if not set
 
 ## Environment Setup
 

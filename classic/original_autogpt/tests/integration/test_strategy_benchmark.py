@@ -1,12 +1,12 @@
-"""Pytest wrapper for strategy benchmark test harness.
+"""Pytest wrapper for direct_benchmark harness.
 
-This provides CI-friendly integration of the strategy benchmark,
+This provides CI-friendly integration of the direct_benchmark harness,
 allowing it to be run as part of the pytest suite.
 
 Usage:
-    # Run tests that don't need an agent (--help, --compare-only, etc.)
+    # Run tests that don't need an agent (--help, invalid args, etc.)
     poetry run pytest tests/integration/test_strategy_benchmark.py \
-        -v -k "help or invalid or compare"
+        -v -k "help or invalid"
 
     # Run full tests (requires API keys and agent to be configured)
     poetry run pytest tests/integration/test_strategy_benchmark.py -v
@@ -49,25 +49,25 @@ requires_agent = pytest.mark.skipif(
 )
 
 
-def get_project_root() -> Path:
-    """Get the original_autogpt project root directory."""
-    return Path(__file__).parent.parent.parent
+def get_direct_benchmark_dir() -> Path:
+    """Get the direct_benchmark directory."""
+    return Path(__file__).parent.parent.parent.parent / "direct_benchmark"
 
 
 def run_harness(*args: str, timeout: int = 600) -> subprocess.CompletedProcess:
-    """Run the test harness with given arguments.
+    """Run the direct_benchmark harness with given arguments.
 
     Args:
-        *args: Arguments to pass to test_prompt_strategies.py
+        *args: Arguments to pass to direct_benchmark run command
         timeout: Timeout in seconds (default: 10 minutes)
 
     Returns:
         CompletedProcess with stdout/stderr captured
     """
-    cmd = [sys.executable, "agbenchmark_config/test_prompt_strategies.py", *args]
+    cmd = [sys.executable, "-m", "direct_benchmark", "run", *args]
     return subprocess.run(
         cmd,
-        cwd=get_project_root(),
+        cwd=get_direct_benchmark_dir(),
         capture_output=True,
         text=True,
         timeout=timeout,
@@ -79,13 +79,18 @@ def test_strategy_comparison_quick():
     """Run quick strategy comparison as CI smoke test.
 
     This test:
-    1. Starts the agent with each strategy
-    2. Runs interface tests (fastest category)
-    3. Verifies at least one strategy produces passing results
+    1. Starts the agent with one_shot strategy
+    2. Runs general category tests
+    3. Verifies at least one test produces passing results
 
     Note: Requires API keys to be configured in environment.
     """
-    result = run_harness("--quick")
+    result = run_harness(
+        "--strategies", "one_shot",
+        "--categories", "general",
+        "-N", "1",
+        "--tests", "ReadFile",  # Single fast test for smoke testing
+    )
 
     # Print output for debugging
     print(result.stdout)
@@ -99,41 +104,17 @@ def test_strategy_comparison_quick():
     )
 
 
-def test_harness_compare_only():
-    """Test that compare-only mode works with existing reports.
-
-    This test doesn't run any benchmarks, just verifies the report
-    comparison logic works correctly.
-    """
-    result = run_harness("--compare-only")
-
-    # Print output for debugging
-    print(result.stdout)
-    if result.stderr:
-        print("STDERR:", result.stderr)
-
-    # compare-only returns 0 if it can read reports (even if empty)
-    # It returns 1 only if there's an actual error
-    # We check that it ran without crashing
-    assert "PROMPT STRATEGY" in result.stdout or result.returncode in (0, 1), (
-        f"Harness crashed unexpectedly\n"
-        f"stdout: {result.stdout[-2000:]}\n"
-        f"stderr: {result.stderr[-500:]}"
-    )
-
-
 @requires_agent
 def test_single_strategy():
-    """Test running a single strategy with interface tests.
+    """Test running a single strategy with coding tests.
 
     This is a more focused test that only runs one_shot strategy
     to verify basic functionality without testing all strategies.
     """
     result = run_harness(
-        "--strategies",
-        "one_shot",
-        "--categories",
-        "interface",
+        "--strategies", "one_shot",
+        "--categories", "coding",
+        "--tests", "ReadFile,WriteFile",
     )
 
     # Print output for debugging
@@ -154,7 +135,7 @@ def test_harness_help():
 
     assert result.returncode == 0, "Harness --help should return 0"
     assert "strategies" in result.stdout.lower(), "Help should mention strategies"
-    assert "quick" in result.stdout.lower(), "Help should mention quick mode"
+    assert "categories" in result.stdout.lower(), "Help should mention categories"
 
 
 def test_harness_invalid_strategy():
@@ -162,4 +143,6 @@ def test_harness_invalid_strategy():
     result = run_harness("--strategies", "invalid_strategy", timeout=30)
 
     assert result.returncode != 0, "Invalid strategy should return non-zero"
-    assert "invalid" in result.stdout.lower(), "Should mention invalid strategy"
+    # Error message may be in stdout or stderr depending on the CLI framework
+    combined_output = (result.stdout + result.stderr).lower()
+    assert "invalid" in combined_output, "Should mention invalid strategy"

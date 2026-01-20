@@ -316,13 +316,13 @@ GET  /ap/v1/agent/tasks/{id}/artifacts  # List artifacts
 
 **Fixtures** (`conftest.py`):
 - `storage` - Temporary LocalFileStorage
-- VCR cassettes in `tests/vcr_cassettes/`
 
 ```bash
 poetry run pytest                    # All tests
 poetry run pytest --cov=forge        # With coverage
-poetry run pytest --record-mode=all  # Record HTTP cassettes
 ```
+
+**Note**: Tests requiring API keys (OPENAI_API_KEY, ANTHROPIC_API_KEY) will be skipped if not set.
 
 ## Creating a Custom Component
 

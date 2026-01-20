@@ -6,11 +6,15 @@ on:
     paths:
       - '.github/workflows/classic-autogpt-ci.yml'
       - 'classic/original_autogpt/**'
+      - 'classic/direct_benchmark/**'
+      - 'classic/forge/**'
   pull_request:
     branches: [ master, dev, release-* ]
     paths:
       - '.github/workflows/classic-autogpt-ci.yml'
       - 'classic/original_autogpt/**'
+      - 'classic/direct_benchmark/**'
+      - 'classic/forge/**'
 
 concurrency:
   group: ${{ format('classic-autogpt-ci-{0}', github.head_ref && format('{0}-{1}', github.event_name, github.event.pull_request.number) || github.sha) }}
@@ -108,6 +112,10 @@ jobs:
           echo "$env:APPDATA\Python\Scripts" >> $env:GITHUB_PATH
 
       - name: Install Python dependencies
+        run: poetry install
+
+      - name: Install direct_benchmark dependencies
+        working-directory: classic/direct_benchmark
         run: poetry install
 
       - name: Run pytest with coverage

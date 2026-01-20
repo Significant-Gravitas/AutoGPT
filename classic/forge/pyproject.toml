@@ -24,8 +24,7 @@ classifiers = [
 
 [tool.poetry.dependencies]
 python = "^3.12"
-agbenchmark = { path = "../benchmark", optional = true }
-# agbenchmark = {git = "https://github.com/Significant-Gravitas/AutoGPT.git", subdirectory = "benchmark", optional = true}
+# agbenchmark removed - use direct_benchmark instead
 aiohttp = "^3.8.5"
 anthropic = "^0.45.0"
 beautifulsoup4 = "^4.12.2"
@@ -73,7 +72,7 @@ watchdog = "^6.0.0"
 webdriver-manager = "^4.0.2"
 
 [tool.poetry.extras]
-benchmark = ["agbenchmark"]
+# benchmark extra removed - use direct_benchmark instead
 
 [tool.poetry.group.dev.dependencies]
 black = "^23.12.1"
@@ -94,9 +93,7 @@ pytest = "^7.4.0"
 pytest-asyncio = "^0.23.3"
 pytest-cov = "^5.0.0"
 pytest-mock = "*"
-pytest-recording = "*"
 mock = "^5.1.0"
-vcrpy = { git = "https://github.com/Significant-Gravitas/vcrpy.git", rev = "master" }
 
 
 [build-system]
