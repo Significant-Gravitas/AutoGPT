@@ -93,8 +93,8 @@ export function SafeModeToggle({ graph, className }: Props) {
       {showHITL && (
         <SafeModeIconButton
           isEnabled={currentHITLSafeMode}
-          label="Human-in-the-loop approval"
-          tooltipEnabled="The agent will pause at human-in-the-loop blocks and wait for your review"
+          label="Human-in-the-loop"
+          tooltipEnabled="The agent will pause at human-in-the-loop blocks and wait for your approval"
           tooltipDisabled="Human-in-the-loop blocks will proceed automatically"
           onToggle={handleHITLToggle}
           isPending={isPending}
@@ -103,8 +103,8 @@ export function SafeModeToggle({ graph, className }: Props) {
       {showSensitive && (
         <SafeModeIconButton
           isEnabled={currentSensitiveActionSafeMode}
-          label="Sensitive action approval"
-          tooltipEnabled="The agent will pause at sensitive action blocks and wait for your review"
+          label="Sensitive actions"
+          tooltipEnabled="The agent will pause at sensitive action blocks and wait for your approval"
           tooltipDisabled="Sensitive action blocks will proceed automatically"
           onToggle={handleSensitiveActionToggle}
           isPending={isPending}
