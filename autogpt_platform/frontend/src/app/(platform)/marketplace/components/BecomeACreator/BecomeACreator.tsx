@@ -38,7 +38,7 @@ export function BecomeACreator({
 
         <PublishAgentModal
           trigger={
-            <button className="inline-flex h-[48px] cursor-pointer items-center justify-center rounded-[38px] bg-neutral-800 px-8 py-3 transition-colors hover:bg-neutral-700 dark:bg-neutral-700 dark:hover:bg-neutral-600 md:h-[56px] md:px-10 md:py-4 lg:h-[68px] lg:px-12 lg:py-5">
+            <button className="inline-flex h-[48px] cursor-pointer items-center justify-center rounded-[38px] bg-neutral-800 px-8 py-3 transition-colors hover:bg-neutral-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-950 focus-visible:ring-offset-2 dark:bg-neutral-700 dark:hover:bg-neutral-600 dark:focus-visible:ring-neutral-50 md:h-[56px] md:px-10 md:py-4 lg:h-[68px] lg:px-12 lg:py-5">
               <span className="whitespace-nowrap font-poppins text-base font-medium leading-normal text-neutral-50 md:text-lg md:leading-relaxed lg:text-xl lg:leading-7">
                 {buttonText}
               </span>
