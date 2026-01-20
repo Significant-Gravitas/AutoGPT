@@ -180,3 +180,6 @@ autogpt_platform/backend/settings.py
 .test-contents
 **/.claude/settings.local.json
 /autogpt_platform/backend/logs
+
+# Test database
+test.db
