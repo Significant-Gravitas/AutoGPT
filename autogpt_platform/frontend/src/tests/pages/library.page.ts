@@ -450,21 +450,72 @@ export async function navigateToAgentByName(
   agentName: string,
 ): Promise<void> {
   const agentCard = getAgentCards(page).filter({ hasText: agentName }).first();
+  // Wait for the agent card to be visible before clicking
+  // This handles async loading of agents after page navigation
+  await agentCard.waitFor({ state: "visible", timeout: 15000 });
   await agentCard.click();
 }
 
 export async function clickRunButton(page: Page): Promise<void> {
   const { getId } = getSelectors(page);
+
+  // Wait for page to stabilize and buttons to render
+  // The NewAgentLibraryView shows either "Setup your task" (empty state)
+  // or "New task" (with items) button
+  const setupTaskButton = page.getByRole("button", {
+    name: /Setup your task/i,
+  });
+  const newTaskButton = page.getByRole("button", { name: /New task/i });
   const runButton = getId("agent-run-button");
   const runAgainButton = getId("run-again-button");
 
+  // Use Promise.race with waitFor to wait for any of the buttons to appear
+  // This handles the async rendering in CI environments
+  try {
+    await Promise.race([
+      setupTaskButton.waitFor({ state: "visible", timeout: 15000 }),
+      newTaskButton.waitFor({ state: "visible", timeout: 15000 }),
+      runButton.waitFor({ state: "visible", timeout: 15000 }),
+      runAgainButton.waitFor({ state: "visible", timeout: 15000 }),
+    ]);
+  } catch {
+    throw new Error(
+      "Could not find run/start task button - none of the expected buttons appeared",
+    );
+  }
+
+  // Now check which button is visible and click it
+  if (await setupTaskButton.isVisible()) {
+    await setupTaskButton.click();
+    const startTaskButton = page
+      .getByRole("button", { name: /Start Task/i })
+      .first();
+    await startTaskButton.waitFor({ state: "visible", timeout: 10000 });
+    await startTaskButton.click();
+    return;
+  }
+
+  if (await newTaskButton.isVisible()) {
+    await newTaskButton.click();
+    const startTaskButton = page
+      .getByRole("button", { name: /Start Task/i })
+      .first();
+    await startTaskButton.waitFor({ state: "visible", timeout: 10000 });
+    await startTaskButton.click();
+    return;
+  }
+
   if (await runButton.isVisible()) {
     await runButton.click();
-  } else if (await runAgainButton.isVisible()) {
-    await runAgainButton.click();
-  } else {
-    throw new Error("Neither run button nor run again button is visible");
+    return;
   }
+
+  if (await runAgainButton.isVisible()) {
+    await runAgainButton.click();
+    return;
+  }
+
+  throw new Error("Could not find run/start task button");
 }
 
 export async function clickNewRunButton(page: Page): Promise<void> {

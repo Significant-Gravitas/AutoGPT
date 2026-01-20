@@ -1,0 +1,149 @@
+.new-builder-tutorial-highlight * {
+  opacity: 1 !important;
+  filter: none !important;
+}
+
+.new-builder-tutorial-pulse {
+  animation: new-builder-tutorial-pulse 2s ease-in-out infinite;
+}
+
+@keyframes new-builder-tutorial-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 4px white,
+      0 0 0 6px #7c3aed,
+      0 0 30px 8px rgba(124, 58, 237, 0.4);
+  }
+  50% {
+    box-shadow:
+      0 0 0 4px white,
+      0 0 0 8px #8b5cf6,
+      0 0 40px 12px rgba(124, 58, 237, 0.55);
+  }
+}
+
+.shepherd-element.new-builder-tour {
+  max-width: 420px !important;
+  border-radius: 1rem !important;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.08),
+    0px 4px 6px -1px rgba(0, 0, 0, 0.1),
+    0 20px 25px -5px rgba(0, 0, 0, 0.1) !important;
+  background: white !important;
+  font-family: var(--font-geist-sans), system-ui, sans-serif !important;
+}
+
+.shepherd-element.new-builder-tour .shepherd-header {
+  padding: 1rem 1.25rem 0.5rem !important;
+  border-radius: 1rem 1rem 0 0 !important;
+  background: transparent !important;
+}
+
+.shepherd-element.new-builder-tour .shepherd-title {
+  font-family: var(--font-poppins), system-ui, sans-serif !important;
+  font-size: 1rem !important;
+  font-weight: 600 !important;
+  line-height: 1.5rem !important;
+  color: #18181b !important; /* zinc-900 */
+}
+
+.shepherd-element.new-builder-tour .shepherd-text {
+  padding: 0 1.25rem 1rem !important;
+  color: #52525b !important; /* zinc-600 */
+}
+
+.shepherd-element.new-builder-tour .shepherd-footer {
+  padding: 0.75rem 1.25rem 1rem !important;
+  border-top: 1px solid #e4e4e7 !important; /* zinc-200 */
+  gap: 0.5rem !important;
+  display: flex !important;
+  justify-content: flex-end !important;
+}
+
+.shepherd-element.new-builder-tour .shepherd-button {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  white-space: nowrap !important;
+  font-family: var(--font-geist-sans), system-ui, sans-serif !important;
+  font-weight: 500 !important;
+  font-size: 0.875rem !important;
+  line-height: 1.25rem !important;
+  transition: all 150ms ease !important;
+  border-radius: 9999px !important; /* rounded-full */
+  min-width: 5rem !important;
+  padding: 0.5rem 1rem !important;
+  height: 2.25rem !important;
+  gap: 0.375rem !important;
+  cursor: pointer !important;
+}
+
+.shepherd-element.new-builder-tour
+  .shepherd-button:not(.shepherd-button-secondary) {
+  background-color: #27272a !important; /* zinc-800 */
+  border: 1px solid #27272a !important;
+  color: white !important;
+}
+
+.shepherd-element.new-builder-tour
+  .shepherd-button:not(.shepherd-button-secondary):hover {
+  background-color: #18181b !important; /* zinc-900 */
+  border-color: #18181b !important;
+}
+
+.shepherd-element.new-builder-tour
+  .shepherd-button:not(.shepherd-button-secondary):active {
+  transform: scale(0.98);
+}
+
+.shepherd-element.new-builder-tour .shepherd-button-secondary {
+  background-color: #f4f4f5 !important; /* zinc-100 */
+  border: 1px solid #f4f4f5 !important;
+  color: #52525b !important; /* zinc-600 */
+}
+
+.shepherd-element.new-builder-tour .shepherd-button-secondary:hover {
+  background-color: #e4e4e7 !important; /* zinc-200 */
+  border-color: #e4e4e7 !important;
+  color: #27272a !important; /* zinc-800 */
+}
+
+.shepherd-element.new-builder-tour .shepherd-button-secondary:active {
+  transform: scale(0.98);
+}
+
+.shepherd-element.new-builder-tour .shepherd-cancel-icon {
+  color: #a1a1aa !important; /* zinc-400 */
+  transition: color 150ms ease !important;
+  width: 1.5rem !important;
+  height: 1.5rem !important;
+}
+
+.shepherd-element.new-builder-tour .shepherd-cancel-icon:hover {
+  color: #52525b !important; /* zinc-600 */
+}
+
+.shepherd-element.new-builder-tour .shepherd-arrow {
+  transform: scale(1.2) !important;
+}
+
+.shepherd-element.new-builder-tour .shepherd-arrow:before {
+  background: white !important;
+}
+
+.shepherd-element.new-builder-tour[data-popper-placement^="top"] {
+  margin-bottom: 40px !important;
+}
+
+.shepherd-element.new-builder-tour[data-popper-placement^="bottom"] {
+  margin-top: 40px !important;
+}
+
+.shepherd-element.new-builder-tour[data-popper-placement^="left"] {
+  margin-right: 30px !important;
+}
+
+.shepherd-element.new-builder-tour[data-popper-placement^="right"] {
+  margin-left: 30px !important;
+}

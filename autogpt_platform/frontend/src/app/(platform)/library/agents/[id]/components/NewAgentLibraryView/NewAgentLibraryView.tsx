@@ -1,32 +1,31 @@
 "use client";
 
 import { Button } from "@/components/atoms/Button/Button";
+import { PublishAgentModal } from "@/components/contextual/PublishAgentModal/PublishAgentModal";
 import { Breadcrumbs } from "@/components/molecules/Breadcrumbs/Breadcrumbs";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { cn } from "@/lib/utils";
 import { PlusIcon } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
-import { RunAgentModal } from "./components/modals/RunAgentModal/RunAgentModal";
-import { useMarketplaceUpdate } from "./hooks/useMarketplaceUpdate";
 import { AgentVersionChangelog } from "./components/AgentVersionChangelog";
-import { MarketplaceBanners } from "@/components/contextual/MarketplaceBanners/MarketplaceBanners";
-import { PublishAgentModal } from "@/components/contextual/PublishAgentModal/PublishAgentModal";
-import { AgentSettingsButton } from "./components/other/AgentSettingsButton";
+import { AgentSettingsModal } from "./components/modals/AgentSettingsModal/AgentSettingsModal";
+import { RunAgentModal } from "./components/modals/RunAgentModal/RunAgentModal";
 import { AgentRunsLoading } from "./components/other/AgentRunsLoading";
 import { EmptySchedules } from "./components/other/EmptySchedules";
 import { EmptyTasks } from "./components/other/EmptyTasks";
 import { EmptyTemplates } from "./components/other/EmptyTemplates";
 import { EmptyTriggers } from "./components/other/EmptyTriggers";
+import { MarketplaceBanners } from "./components/other/MarketplaceBanners";
 import { SectionWrap } from "./components/other/SectionWrap";
 import { LoadingSelectedContent } from "./components/selected-views/LoadingSelectedContent";
 import { SelectedRunView } from "./components/selected-views/SelectedRunView/SelectedRunView";
 import { SelectedScheduleView } from "./components/selected-views/SelectedScheduleView/SelectedScheduleView";
-import { SelectedSettingsView } from "./components/selected-views/SelectedSettingsView/SelectedSettingsView";
 import { SelectedTemplateView } from "./components/selected-views/SelectedTemplateView/SelectedTemplateView";
 import { SelectedTriggerView } from "./components/selected-views/SelectedTriggerView/SelectedTriggerView";
 import { SelectedViewLayout } from "./components/selected-views/SelectedViewLayout";
 import { SidebarRunsList } from "./components/sidebar/SidebarRunsList/SidebarRunsList";
 import { AGENT_LIBRARY_SECTION_PADDING_X } from "./helpers";
+import { useMarketplaceUpdate } from "./hooks/useMarketplaceUpdate";
 import { useNewAgentLibraryView } from "./useNewAgentLibraryView";
 
 export function NewAgentLibraryView() {
@@ -45,7 +44,6 @@ export function NewAgentLibraryView() {
     handleSelectRun,
     handleCountsChange,
     handleClearSelectedRun,
-    handleSelectSettings,
     onRunInitiated,
     onTriggerSetup,
     onScheduleCreated,
@@ -137,13 +135,16 @@ export function NewAgentLibraryView() {
     return (
       <>
         <div className="flex h-full flex-col">
-          <div className="mx-6 pt-4">
-            <Breadcrumbs
-              items={[
-                { name: "My Library", link: "/library" },
-                { name: agent.name, link: `/library/agents/${agentId}` },
-              ]}
-            />
+          <div className="mx-6 flex flex-col gap-4 pt-4">
+            <div className="flex items-center justify-between">
+              <Breadcrumbs
+                items={[
+                  { name: "My Library", link: "/library" },
+                  { name: agent.name, link: `/library/agents/${agentId}` },
+                ]}
+              />
+              <AgentSettingsModal agent={agent} />
+            </div>
           </div>
           <div className="flex min-h-0 flex-1">
             <EmptyTasks
@@ -162,7 +163,7 @@ export function NewAgentLibraryView() {
 
   return (
     <>
-      <div className="mx-4 grid h-full grid-cols-1 gap-0 pt-3 md:ml-4 md:mr-0 md:gap-4 lg:grid-cols-[25%_70%]">
+      <div className="mx-4 grid h-full w-full grid-cols-1 gap-0 pt-3 md:ml-4 md:mr-0 md:gap-4 lg:grid-cols-[25%_70%]">
         <SectionWrap className="mb-3 block">
           <div
             className={cn(
@@ -170,31 +171,24 @@ export function NewAgentLibraryView() {
               AGENT_LIBRARY_SECTION_PADDING_X,
             )}
           >
-            <div className="flex items-center gap-2">
-              <RunAgentModal
-                triggerSlot={
-                  <Button
-                    variant="primary"
-                    size="large"
-                    className="flex-1"
-                    disabled={isTemplateLoading && activeTab === "templates"}
-                  >
-                    <PlusIcon size={20} /> New task
-                  </Button>
-                }
-                agent={agent}
-                onRunCreated={onRunInitiated}
-                onScheduleCreated={onScheduleCreated}
-                onTriggerSetup={onTriggerSetup}
-                initialInputValues={activeTemplate?.inputs}
-                initialInputCredentials={activeTemplate?.credentials}
-              />
-              <AgentSettingsButton
-                agent={agent}
-                onSelectSettings={handleSelectSettings}
-                selected={activeItem === "settings"}
-              />
-            </div>
+            <RunAgentModal
+              triggerSlot={
+                <Button
+                  variant="primary"
+                  size="large"
+                  className="w-full"
+                  disabled={isTemplateLoading && activeTab === "templates"}
+                >
+                  <PlusIcon size={20} /> New task
+                </Button>
+              }
+              agent={agent}
+              onRunCreated={onRunInitiated}
+              onScheduleCreated={onScheduleCreated}
+              onTriggerSetup={onTriggerSetup}
+              initialInputValues={activeTemplate?.inputs}
+              initialInputCredentials={activeTemplate?.credentials}
+            />
           </div>
 
           <SidebarRunsList
@@ -208,12 +202,7 @@ export function NewAgentLibraryView() {
         </SectionWrap>
 
         {activeItem ? (
-          activeItem === "settings" ? (
-            <SelectedSettingsView
-              agent={agent}
-              onClearSelectedRun={handleClearSelectedRun}
-            />
-          ) : activeTab === "scheduled" ? (
+          activeTab === "scheduled" ? (
             <SelectedScheduleView
               agent={agent}
               scheduleId={activeItem}
@@ -246,8 +235,6 @@ export function NewAgentLibraryView() {
               onSelectRun={handleSelectRun}
               onClearSelectedRun={handleClearSelectedRun}
               banner={renderMarketplaceUpdateBanner()}
-              onSelectSettings={handleSelectSettings}
-              selectedSettings={activeItem === "settings"}
             />
           )
         ) : sidebarLoading ? (

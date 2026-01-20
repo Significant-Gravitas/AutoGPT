@@ -7,6 +7,11 @@ from backend.api.features.library.db import (
     list_library_agents,
 )
 from backend.api.features.store.db import get_store_agent_details, get_store_agents
+from backend.api.features.store.embeddings import (
+    backfill_missing_embeddings,
+    cleanup_orphaned_embeddings,
+    get_embedding_stats,
+)
 from backend.data import db
 from backend.data.analytics import (
     get_accuracy_trends_and_alerts,
@@ -20,6 +25,7 @@ from backend.data.execution import (
     get_execution_kv_data,
     get_execution_outputs_by_node_exec_id,
     get_frequently_executed_graphs,
+    get_graph_execution,
     get_graph_execution_meta,
     get_graph_executions,
     get_graph_executions_count,
@@ -57,6 +63,7 @@ from backend.data.notifications import (
     get_user_notification_oldest_message_in_batch,
     remove_notifications_from_batch,
 )
+from backend.data.onboarding import increment_onboarding_runs
 from backend.data.user import (
     get_active_user_ids_in_timerange,
     get_user_by_id,
@@ -140,6 +147,7 @@ class DatabaseManager(AppService):
     get_child_graph_executions = _(get_child_graph_executions)
     get_graph_executions = _(get_graph_executions)
     get_graph_executions_count = _(get_graph_executions_count)
+    get_graph_execution = _(get_graph_execution)
     get_graph_execution_meta = _(get_graph_execution_meta)
     create_graph_execution = _(create_graph_execution)
     get_node_execution = _(get_node_execution)
@@ -204,9 +212,17 @@ class DatabaseManager(AppService):
     add_store_agent_to_library = _(add_store_agent_to_library)
     validate_graph_execution_permissions = _(validate_graph_execution_permissions)
 
+    # Onboarding
+    increment_onboarding_runs = _(increment_onboarding_runs)
+
     # Store
     get_store_agents = _(get_store_agents)
     get_store_agent_details = _(get_store_agent_details)
+
+    # Store Embeddings
+    get_embedding_stats = _(get_embedding_stats)
+    backfill_missing_embeddings = _(backfill_missing_embeddings)
+    cleanup_orphaned_embeddings = _(cleanup_orphaned_embeddings)
 
     # Summary data - async
     get_user_execution_summary_data = _(get_user_execution_summary_data)
@@ -259,6 +275,11 @@ class DatabaseManagerClient(AppServiceClient):
     get_store_agents = _(d.get_store_agents)
     get_store_agent_details = _(d.get_store_agent_details)
 
+    # Store Embeddings
+    get_embedding_stats = _(d.get_embedding_stats)
+    backfill_missing_embeddings = _(d.backfill_missing_embeddings)
+    cleanup_orphaned_embeddings = _(d.cleanup_orphaned_embeddings)
+
 
 class DatabaseManagerAsyncClient(AppServiceClient):
     d = DatabaseManager
@@ -274,6 +295,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_graph = d.get_graph
     get_graph_metadata = d.get_graph_metadata
     get_graph_settings = d.get_graph_settings
+    get_graph_execution = d.get_graph_execution
     get_graph_execution_meta = d.get_graph_execution_meta
     get_node = d.get_node
     get_node_execution = d.get_node_execution
@@ -317,6 +339,9 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     list_library_agents = d.list_library_agents
     add_store_agent_to_library = d.add_store_agent_to_library
     validate_graph_execution_permissions = d.validate_graph_execution_permissions
+
+    # Onboarding
+    increment_onboarding_runs = d.increment_onboarding_runs
 
     # Store
     get_store_agents = d.get_store_agents
