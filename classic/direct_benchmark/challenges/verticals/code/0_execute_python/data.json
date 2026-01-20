@@ -1,0 +1,28 @@
+{
+    "category": [
+        "coding"
+    ],
+    "cutoff": 60,
+    "dependencies": [],
+    "eval_id": "execute-python-001",
+    "ground": {
+        "answer": "Hello, World!",
+        "eval": {
+            "type": "file"
+        },
+        "files": [
+            "hello.py"
+        ],
+        "should_contain": [
+            "Hello, World!"
+        ],
+        "should_not_contain": []
+    },
+    "info": {
+        "description": "Tests basic code execution capability",
+        "difficulty": "trivial",
+        "side_effects": []
+    },
+    "name": "ExecutePython",
+    "task": "Write a Python script called 'hello.py' that prints 'Hello, World!' to stdout. Then execute it using the shell to verify it works. The script should be in the workspace."
+}

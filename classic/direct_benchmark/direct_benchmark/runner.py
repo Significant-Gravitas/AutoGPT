@@ -10,6 +10,7 @@ from typing import Callable, Optional
 from autogpt.agent_factory.configurators import create_agent
 from autogpt.agents.agent import Agent
 from autogpt.app.config import AppConfig, ConfigBuilder
+
 from forge.file_storage import FileStorageBackendName, get_storage
 from forge.llm.providers import MultiProvider
 
@@ -181,6 +182,30 @@ class AgentRunner:
             file_storage=file_storage,
             llm_provider=llm_provider,
         )
+
+        # Enable local command execution for benchmarks
+        # Use denylist mode to block dangerous commands while allowing flexibility
+        if hasattr(agent, "code_executor"):
+            agent.code_executor.config.execute_local_commands = True
+            agent.code_executor.config.shell_command_control = "denylist"
+            agent.code_executor.config.shell_denylist = [
+                "rm",  # Block file removal
+                "sudo",  # Block privilege escalation
+                "chmod",  # Block permission changes
+                "chown",  # Block ownership changes
+                "mkfs",  # Block filesystem creation
+                "dd",  # Block disk operations
+                "kill",  # Block process killing
+                "pkill",  # Block process killing
+                "killall",  # Block process killing
+                "reboot",  # Block system reboot
+                "shutdown",  # Block system shutdown
+                "poweroff",  # Block system poweroff
+                "halt",  # Block system halt
+                "init",  # Block init commands
+                "systemctl",  # Block systemd commands
+                "service",  # Block service commands
+            ]
 
         self._agent = agent
         self._llm_provider = llm_provider
