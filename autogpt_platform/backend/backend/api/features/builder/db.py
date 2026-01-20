@@ -38,6 +38,14 @@ MAX_LIBRARY_AGENT_RESULTS = 100
 MAX_MARKETPLACE_AGENT_RESULTS = 100
 MIN_SCORE_FOR_FILTERED_RESULTS = 10.0
 
+# Boost blocks over marketplace agents in search results
+BLOCK_SCORE_BOOST = 50.0
+
+# Block IDs to exclude from search results
+EXCLUDED_BLOCK_IDS = frozenset({
+    "e189baac-8c20-45a1-94a7-55177ea42565",  # AgentExecutorBlock
+})
+
 SearchResultItem = BlockInfo | library_model.LibraryAgent | store_model.StoreAgent
 
 
@@ -264,7 +272,6 @@ async def _build_cached_search_results(
     elif include_blocks or include_integrations:
         # No query - list all blocks using in-memory approach
         block_results, block_total, integration_total = _collect_block_results(
-            normalized_query="",
             include_blocks=include_blocks,
             include_integrations=include_integrations,
         )
@@ -315,10 +322,14 @@ async def _build_cached_search_results(
 
 def _collect_block_results(
     *,
-    normalized_query: str,
     include_blocks: bool,
     include_integrations: bool,
 ) -> tuple[list[_ScoredItem], int, int]:
+    """
+    Collect all blocks for listing (no search query).
+
+    All blocks get BLOCK_SCORE_BOOST to prioritize them over marketplace agents.
+    """
     results: list[_ScoredItem] = []
     block_count = 0
     integration_count = 0
@@ -331,6 +342,10 @@ def _collect_block_results(
         if block.disabled:
             continue
 
+        # Skip excluded blocks
+        if block.id in EXCLUDED_BLOCK_IDS:
+            continue
+
         block_info = block.get_info()
         credentials = list(block.input_schema.get_credentials_fields().values())
         is_integration = len(credentials) > 0
@@ -338,10 +353,6 @@ def _collect_block_results(
         if is_integration and not include_integrations:
             continue
         if not is_integration and not include_blocks:
-            continue
-
-        score = _score_block(block, block_info, normalized_query)
-        if not _should_include_item(score, normalized_query):
             continue
 
         filter_type: FilterType = "integrations" if is_integration else "blocks"
@@ -354,8 +365,8 @@ def _collect_block_results(
             _ScoredItem(
                 item=block_info,
                 filter_type=filter_type,
-                score=score,
-                sort_key=_get_item_name(block_info),
+                score=BLOCK_SCORE_BOOST,
+                sort_key=block_info.name.lower(),
             )
         )
 
@@ -405,6 +416,11 @@ async def _hybrid_search_blocks(
 
     for result in search_results:
         block_id = result["content_id"]
+
+        # Skip excluded blocks
+        if block_id in EXCLUDED_BLOCK_IDS:
+            continue
+
         metadata = result.get("metadata", {})
         hybrid_score = result.get("relevance", 0.0)
 
@@ -431,7 +447,8 @@ async def _hybrid_search_blocks(
 
         # Calculate final score: scale hybrid score and add builder-specific bonuses
         # Hybrid scores are 0-1, builder scores were 0-200+
-        final_score = hybrid_score * 100
+        # Add BLOCK_SCORE_BOOST to prioritize blocks over marketplace agents
+        final_score = hybrid_score * 100 + BLOCK_SCORE_BOOST
 
         # Add LLM model match bonus
         has_llm_field = metadata.get("has_llm_model_field", False)
@@ -615,38 +632,6 @@ def _matches_llm_model(schema_cls: type[BlockSchema], query: str) -> bool:
             if any(query in name for name in llm_models):
                 return True
     return False
-
-
-def _score_block(
-    block: AnyBlockSchema,
-    block_info: BlockInfo,
-    normalized_query: str,
-) -> float:
-    if not normalized_query:
-        return 0.0
-
-    name = block_info.name.lower()
-    description = block_info.description.lower()
-    score = _score_primary_fields(name, description, normalized_query)
-
-    category_text = " ".join(
-        category.get("category", "").lower() for category in block_info.categories
-    )
-    score += _score_additional_field(category_text, normalized_query, 12, 6)
-
-    credentials_info = block.input_schema.get_credentials_fields_info().values()
-    provider_names = [
-        provider.value.lower()
-        for info in credentials_info
-        for provider in info.provider
-    ]
-    provider_text = " ".join(provider_names)
-    score += _score_additional_field(provider_text, normalized_query, 15, 6)
-
-    if _matches_llm_model(block.input_schema, normalized_query):
-        score += 20
-
-    return score
 
 
 def _score_library_agent(
