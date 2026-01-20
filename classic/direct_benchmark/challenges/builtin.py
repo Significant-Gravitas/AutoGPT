@@ -68,9 +68,9 @@ class BuiltinChallengeSpec(BaseModel):
         class Eval(BaseModel):
             type: str
             scoring: Optional[Literal["percentage", "scale", "binary"]] = None
-            template: Optional[
-                Literal["rubric", "reference", "question", "custom"]
-            ] = None
+            template: Optional[Literal["rubric", "reference", "question", "custom"]] = (
+                None
+            )
             examples: Optional[str] = None
 
             @field_validator("scoring", "template")

@@ -182,5 +182,4 @@ class BaseChallenge(ABC):
     @abstractmethod
     async def evaluate_task_state(
         cls, agent: AgentApi, task_id: str
-    ) -> list[EvalResult]:
-        ...
+    ) -> list[EvalResult]: ...

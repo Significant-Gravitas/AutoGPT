@@ -47,9 +47,11 @@ def validate_tool_calls(
             is_valid, validation_errors = function.validate_call(function_call)
             if not is_valid:
                 fmt_errors = [
-                    f"{'.'.join(str(p) for p in f.path)}: {f.message}"
-                    if f.path
-                    else f.message
+                    (
+                        f"{'.'.join(str(p) for p in f.path)}: {f.message}"
+                        if f.path
+                        else f.message
+                    )
                     for f in validation_errors
                 ]
                 errors.append(

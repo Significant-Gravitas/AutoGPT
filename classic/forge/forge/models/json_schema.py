@@ -155,13 +155,11 @@ class JSONSchema(BaseModel):
 
 
 @overload
-def _resolve_type_refs_in_schema(schema: dict, definitions: dict) -> dict:
-    ...
+def _resolve_type_refs_in_schema(schema: dict, definitions: dict) -> dict: ...
 
 
 @overload
-def _resolve_type_refs_in_schema(schema: list, definitions: dict) -> list:
-    ...
+def _resolve_type_refs_in_schema(schema: list, definitions: dict) -> list: ...
 
 
 def _resolve_type_refs_in_schema(schema: dict | list, definitions: dict) -> dict | list:

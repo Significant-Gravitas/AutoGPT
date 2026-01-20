@@ -83,13 +83,11 @@ def resolve_uri(uri: str) -> str:
 
 class Eval(ABC):
     @abstractmethod
-    def evaluate(self, string: str) -> bool:
-        ...
+    def evaluate(self, string: str) -> bool: ...
 
     @property
     @abstractmethod
-    def description(self) -> str:
-        ...
+    def description(self) -> str: ...
 
 
 class BaseStringEval(BaseModel, Eval):

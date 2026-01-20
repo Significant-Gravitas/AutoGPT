@@ -111,7 +111,7 @@ pytest = "^8.0"
 
 [tool.poetry.group.dev.dependencies]
 # Formatting & linting
-black = "^23.12.1"
+black = "^24.10.0"
 flake8 = "^7.0.0"
 isort = "^5.13.1"
 pre-commit = "^3.3.3"

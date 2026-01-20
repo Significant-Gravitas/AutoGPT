@@ -309,20 +309,16 @@ class BaseModelProvider(
     @abc.abstractmethod
     async def get_available_models(
         self,
-    ) -> Sequence["ChatModelInfo[_ModelName] | EmbeddingModelInfo[_ModelName]"]:
-        ...
+    ) -> Sequence["ChatModelInfo[_ModelName] | EmbeddingModelInfo[_ModelName]"]: ...
 
     @abc.abstractmethod
-    def count_tokens(self, text: str, model_name: _ModelName) -> int:
-        ...
+    def count_tokens(self, text: str, model_name: _ModelName) -> int: ...
 
     @abc.abstractmethod
-    def get_tokenizer(self, model_name: _ModelName) -> "ModelTokenizer[Any]":
-        ...
+    def get_tokenizer(self, model_name: _ModelName) -> "ModelTokenizer[Any]": ...
 
     @abc.abstractmethod
-    def get_token_limit(self, model_name: _ModelName) -> int:
-        ...
+    def get_token_limit(self, model_name: _ModelName) -> int: ...
 
     def get_incurred_cost(self) -> float:
         if self._budget:
@@ -339,12 +335,10 @@ class ModelTokenizer(Protocol, Generic[_T]):
     """A ModelTokenizer provides tokenization specific to a model."""
 
     @abc.abstractmethod
-    def encode(self, text: str) -> list[_T]:
-        ...
+    def encode(self, text: str) -> list[_T]: ...
 
     @abc.abstractmethod
-    def decode(self, tokens: list[_T]) -> str:
-        ...
+    def decode(self, tokens: list[_T]) -> str: ...
 
 
 ####################
@@ -371,8 +365,7 @@ class BaseEmbeddingModelProvider(BaseModelProvider[_ModelName, _ModelProviderSet
     @abc.abstractmethod
     async def get_available_embedding_models(
         self,
-    ) -> Sequence[EmbeddingModelInfo[_ModelName]]:
-        ...
+    ) -> Sequence[EmbeddingModelInfo[_ModelName]]: ...
 
     @abc.abstractmethod
     async def create_embedding(
@@ -381,8 +374,7 @@ class BaseEmbeddingModelProvider(BaseModelProvider[_ModelName, _ModelProviderSet
         model_name: _ModelName,
         embedding_parser: Callable[[Embedding], Embedding],
         **kwargs,
-    ) -> EmbeddingModelResponse:
-        ...
+    ) -> EmbeddingModelResponse: ...
 
 
 ###############
@@ -413,16 +405,14 @@ class BaseChatModelProvider(BaseModelProvider[_ModelName, _ModelProviderSettings
     @abc.abstractmethod
     async def get_available_chat_models(
         self,
-    ) -> Sequence[ChatModelInfo[_ModelName]]:
-        ...
+    ) -> Sequence[ChatModelInfo[_ModelName]]: ...
 
     @abc.abstractmethod
     def count_message_tokens(
         self,
         messages: ChatMessage | list[ChatMessage],
         model_name: _ModelName,
-    ) -> int:
-        ...
+    ) -> int: ...
 
     @abc.abstractmethod
     async def create_chat_completion(
@@ -434,5 +424,4 @@ class BaseChatModelProvider(BaseModelProvider[_ModelName, _ModelProviderSettings
         max_output_tokens: Optional[int] = None,
         prefill_response: str = "",
         **kwargs,
-    ) -> ChatModelResponse[_T]:
-        ...
+    ) -> ChatModelResponse[_T]: ...
