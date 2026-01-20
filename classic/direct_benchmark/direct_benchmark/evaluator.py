@@ -16,14 +16,11 @@ class Evaluator:
     def evaluate(
         self, result: ChallengeResult, challenge: Challenge
     ) -> ChallengeResult:
-        """Evaluate a challenge result and update success/score."""
-        # If the challenge timed out or had an error, don't override with evaluation
-        # A timed-out challenge cannot be considered a pass
-        if result.timed_out:
-            result.success = False
-            result.score = 0.0
-            return result
+        """Evaluate a challenge result and update success/score.
 
+        For timed-out challenges, we still run evaluation to populate the score
+        (so we can show "would have passed"), but success remains False.
+        """
         ground = challenge.ground_truth
 
         if not ground:
@@ -63,7 +60,12 @@ class Evaluator:
 
         # Update result
         result.score = score
-        result.success = score >= 0.9  # 90% threshold for success
+        # Timed-out challenges cannot pass, even if evaluation would succeed
+        # (The score is still set so UI can show "would have passed")
+        if result.timed_out:
+            result.success = False
+        else:
+            result.success = score >= 0.9  # 90% threshold for success
 
         return result
 

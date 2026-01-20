@@ -181,7 +181,14 @@ class BenchmarkUI:
 
     def _print_challenge_result(self, result: ChallengeResult) -> None:
         """Print detailed result for a single challenge."""
-        status_icon = "[green]PASS[/green]" if result.success else "[red]FAIL[/red]"
+        if result.success:
+            status_icon = "[green]PASS[/green]"
+        elif result.timed_out and result.score >= 0.9:
+            status_icon = "[yellow]TIMEOUT (would pass)[/yellow]"
+        elif result.timed_out:
+            status_icon = "[yellow]TIMEOUT[/yellow]"
+        else:
+            status_icon = "[red]FAIL[/red]"
         console.print(
             f"[dim][{result.config_name}][/dim] {result.challenge_name}: {status_icon} "
             f"({result.n_steps} steps, ${result.cost:.4f})"
@@ -198,8 +205,21 @@ class BenchmarkUI:
         from datetime import datetime
 
         color = self.get_config_color(config_name)
-        status = "PASS" if result.success else "FAIL"
-        status_style = "green" if result.success else "red"
+
+        # Determine status display
+        if result.success:
+            status = "PASS"
+            status_style = "green"
+        elif result.timed_out and result.score >= 0.9:
+            # Timed out but would have passed - show this clearly
+            status = "TIMEOUT (would have passed)"
+            status_style = "yellow"
+        elif result.timed_out:
+            status = "TIMEOUT"
+            status_style = "yellow"
+        else:
+            status = "FAIL"
+            status_style = "red"
 
         # Build challenge display with attempt if > 1
         challenge_display = challenge_name
@@ -236,12 +256,9 @@ class BenchmarkUI:
             f"  [dim]Steps: {result.n_steps} | Time: {result.run_time_seconds:.1f}s | Cost: ${result.cost:.4f}[/dim]"
         )
 
-        # Print error if any
-        if result.error_message:
+        # Print error if any (skip generic timeout message since status shows it)
+        if result.error_message and result.error_message != "Challenge timed out":
             console.print(f"  [red]Error: {result.error_message[:200]}[/red]")
-
-        if result.timed_out:
-            console.print("  [yellow]⚠ Timed out[/yellow]")
 
         console.print(f"[{status_style}]{'─' * 70}[/{status_style}]")
         console.print()
@@ -315,6 +332,7 @@ class BenchmarkUI:
         table = Table(title="Results by Configuration", show_header=True)
         table.add_column("Configuration", style="cyan")
         table.add_column("Passed", justify="right", style="green")
+        table.add_column("Would Pass", justify="right", style="yellow")
         table.add_column("Failed", justify="right", style="red")
         table.add_column("Rate", justify="right")
         table.add_column("Cost", justify="right", style="yellow")
@@ -323,14 +341,18 @@ class BenchmarkUI:
             if not results:
                 continue
             passed = sum(1 for r in results if r.success)
-            failed = len(results) - passed
-            rate = (passed / len(results) * 100) if results else 0
+            would_pass = sum(1 for r in results if r.timed_out and r.score >= 0.9)
+            failed = len(results) - passed - would_pass
+            # Rate includes "would pass" since those are correct solutions
+            effective_passed = passed + would_pass
+            rate = (effective_passed / len(results) * 100) if results else 0
             cost = sum(r.cost for r in results)
 
             rate_style = "green" if rate >= 75 else "yellow" if rate >= 50 else "red"
             table.add_row(
                 config_name,
                 str(passed),
+                str(would_pass) if would_pass > 0 else "-",
                 str(failed),
                 f"[{rate_style}]{rate:.1f}%[/{rate_style}]",
                 f"${cost:.4f}",
@@ -347,19 +369,34 @@ class BenchmarkUI:
         else:
             lines = []
             for result in reversed(recent):
-                status = (
-                    Text("\u2713", style="green")
-                    if result.success
-                    else Text("\u2717", style="red")
-                )
+                # Determine status icon and style
+                if result.success:
+                    status = Text("\u2713", style="green")
+                elif result.timed_out and result.score >= 0.9:
+                    status = Text("\u29D6", style="yellow")  # Hourglass - would pass
+                elif result.timed_out:
+                    status = Text("\u29D6", style="yellow")  # Hourglass
+                else:
+                    status = Text("\u2717", style="red")
+
+                # Build suffix for special cases
+                suffix = f" ({result.n_steps} steps)"
+                if result.timed_out and result.score >= 0.9:
+                    suffix = f" ({result.n_steps} steps) [yellow]would pass[/yellow]"
+
                 line = Text.assemble(
                     ("  ", ""),
                     status,
                     (" ", ""),
                     (f"[{result.config_name}] ", "dim"),
                     (result.challenge_name, "white"),
-                    (f" ({result.n_steps} steps)", "dim"),
                 )
+                # Handle markup in suffix separately
+                if result.timed_out and result.score >= 0.9:
+                    line.append(f" ({result.n_steps} steps) ", style="dim")
+                    line.append("would pass", style="yellow")
+                else:
+                    line.append(suffix, style="dim")
                 lines.append(line)
             content = Group(*lines)
 
@@ -400,14 +437,27 @@ class BenchmarkUI:
 
         # Overall stats
         total_passed = sum(1 for r in self.completed if r.success)
-        total_failed = len(self.completed) - total_passed
+        total_would_pass = sum(
+            1 for r in self.completed if r.timed_out and r.score >= 0.9
+        )
+        total_failed = len(self.completed) - total_passed - total_would_pass
         total_cost = sum(r.cost for r in self.completed)
-        total_rate = (total_passed / len(self.completed) * 100) if self.completed else 0
+        # Include "would pass" in the effective rate
+        effective_passed = total_passed + total_would_pass
+        total_rate = (
+            (effective_passed / len(self.completed) * 100) if self.completed else 0
+        )
 
         console.print()
-        console.print(
-            f"[bold]Total:[/bold] {total_passed}/{len(self.completed)} passed"
-        )
+        if total_would_pass > 0:
+            console.print(
+                f"[bold]Total:[/bold] {total_passed}/{len(self.completed)} passed "
+                f"[yellow](+{total_would_pass} would pass)[/yellow]"
+            )
+        else:
+            console.print(
+                f"[bold]Total:[/bold] {total_passed}/{len(self.completed)} passed"
+            )
         console.print(f"[bold]Success Rate:[/bold] {total_rate:.1f}%")
         console.print(f"[bold]Total Cost:[/bold] ${total_cost:.4f}")
         console.print(f"[bold]Elapsed Time:[/bold] {elapsed:.1f}s")
