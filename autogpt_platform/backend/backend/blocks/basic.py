@@ -1,4 +1,5 @@
 import enum
+import itertools
 from typing import Any
 
 from backend.data.block import (
@@ -271,12 +272,15 @@ class ConcatenateListsBlock(Block):
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        result = (
-            list(input_data.list1)
-            + list(input_data.list2)
-            + list(input_data.list3)
-            + list(input_data.list4)
-            + list(input_data.list5)
+        # Use itertools.chain for efficient memory usage with large lists
+        result = list(
+            itertools.chain(
+                input_data.list1,
+                input_data.list2,
+                input_data.list3,
+                input_data.list4,
+                input_data.list5,
+            )
         )
         yield "concatenated_list", result
         yield "total_length", len(result)
