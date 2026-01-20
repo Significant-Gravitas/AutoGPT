@@ -36,7 +36,7 @@ jobs:
     defaults:
       run:
         shell: bash
-        working-directory: classic/direct_benchmark
+        working-directory: classic
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -53,7 +53,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/pypoetry
-          key: poetry-${{ runner.os }}-${{ hashFiles('classic/direct_benchmark/poetry.lock') }}
+          key: poetry-${{ runner.os }}-${{ hashFiles('classic/poetry.lock') }}
 
       - name: Install Poetry
         run: |
@@ -65,14 +65,14 @@ jobs:
       - name: Run basic benchmark tests
         run: |
           echo "Testing ReadFile challenge with one_shot strategy..."
-          poetry run python -m direct_benchmark run \
+          poetry run direct-benchmark run \
             --strategies one_shot \
             --models claude \
             --tests ReadFile \
             --json
 
           echo "Testing WriteFile challenge..."
-          poetry run python -m direct_benchmark run \
+          poetry run direct-benchmark run \
             --strategies one_shot \
             --models claude \
             --tests WriteFile \
@@ -86,7 +86,7 @@ jobs:
       - name: Test category filtering
         run: |
           echo "Testing coding category..."
-          poetry run python -m direct_benchmark run \
+          poetry run direct-benchmark run \
             --strategies one_shot \
             --models claude \
             --categories coding \
@@ -101,7 +101,7 @@ jobs:
       - name: Test multiple strategies
         run: |
           echo "Testing multiple strategies..."
-          poetry run python -m direct_benchmark run \
+          poetry run direct-benchmark run \
             --strategies one_shot,plan_execute \
             --models claude \
             --tests ReadFile \
@@ -121,7 +121,7 @@ jobs:
     defaults:
       run:
         shell: bash
-        working-directory: classic/direct_benchmark
+        working-directory: classic
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -144,7 +144,7 @@ jobs:
       - name: Run regression tests
         run: |
           echo "Running regression tests (previously beaten challenges)..."
-          poetry run python -m direct_benchmark run \
+          poetry run direct-benchmark run \
             --strategies one_shot \
             --models claude \
             --maintain \

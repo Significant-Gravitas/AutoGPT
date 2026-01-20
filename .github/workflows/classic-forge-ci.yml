@@ -19,7 +19,7 @@ concurrency:
 defaults:
   run:
     shell: bash
-    working-directory: classic/forge
+    working-directory: classic
 
 jobs:
   test:
@@ -47,7 +47,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/pypoetry
-          key: poetry-${{ runner.os }}-${{ hashFiles('classic/forge/poetry.lock') }}
+          key: poetry-${{ runner.os }}-${{ hashFiles('classic/poetry.lock') }}
 
       - name: Install Poetry
         run: curl -sSL https://install.python-poetry.org | python3 -
@@ -61,7 +61,7 @@ jobs:
             --cov=forge --cov-branch --cov-report term-missing --cov-report xml \
             --durations=10 \
             --junitxml=junit.xml -o junit_family=legacy \
-            forge
+            forge/forge forge/tests
         env:
           CI: true
           PLAIN_OUTPUT: True
@@ -90,4 +90,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: test-logs
-          path: classic/forge/logs/
+          path: classic/logs/

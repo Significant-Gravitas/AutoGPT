@@ -23,7 +23,7 @@ concurrency:
 defaults:
   run:
     shell: bash
-    working-directory: classic/original_autogpt
+    working-directory: classic
 
 jobs:
   test:
@@ -63,16 +63,12 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/pypoetry
-          key: poetry-${{ runner.os }}-${{ hashFiles('classic/original_autogpt/poetry.lock') }}
+          key: poetry-${{ runner.os }}-${{ hashFiles('classic/poetry.lock') }}
 
       - name: Install Poetry
         run: curl -sSL https://install.python-poetry.org | python3 -
 
       - name: Install Python dependencies
-        run: poetry install
-
-      - name: Install direct_benchmark dependencies
-        working-directory: classic/direct_benchmark
         run: poetry install
 
       - name: Run pytest with coverage
@@ -81,7 +77,7 @@ jobs:
             --cov=autogpt --cov-branch --cov-report term-missing --cov-report xml \
             --numprocesses=logical --durations=10 \
             --junitxml=junit.xml -o junit_family=legacy \
-            tests/unit tests/integration
+            original_autogpt/tests/unit original_autogpt/tests/integration
         env:
           CI: true
           PLAIN_OUTPUT: True
@@ -107,4 +103,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: test-logs
-          path: classic/original_autogpt/logs/
+          path: classic/logs/
