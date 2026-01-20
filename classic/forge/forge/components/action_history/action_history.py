@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Callable, Iterator, Optional
 
 from pydantic import BaseModel
@@ -14,6 +15,8 @@ from forge.llm.providers.schema import ToolResultMessage
 
 from .model import ActionResult, AnyProposal, Episode, EpisodicActionHistory
 
+logger = logging.getLogger(__name__)
+
 
 class ActionHistoryConfiguration(BaseModel):
     llm_name: ModelName = OpenAIModelName.GPT3
@@ -24,6 +27,8 @@ class ActionHistoryConfiguration(BaseModel):
     """Language model used for summary chunking using spacy"""
     full_message_count: int = 4
     """Number of latest non-summarized messages to include in the history"""
+    enable_compression: bool = True
+    """Enable LLM-based compression of action history. Disable for ReWOO/benchmarks."""
 
 
 class ActionHistoryComponent(
@@ -105,9 +110,13 @@ class ActionHistoryComponent(
 
     async def after_execute(self, result: ActionResult) -> None:
         self.event_history.register_result(result)
-        await self.event_history.handle_compression(
-            self.llm_provider, self.config.llm_name, self.config.spacy_language_model
-        )
+        if self.config.enable_compression:
+            await self.event_history.handle_compression(
+                self.llm_provider,
+                self.config.llm_name,
+                self.config.spacy_language_model,
+                self.config.full_message_count,
+            )
 
     @staticmethod
     def _make_result_message(episode: Episode, result: ActionResult) -> ChatMessage:

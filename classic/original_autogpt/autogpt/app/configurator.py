@@ -6,8 +6,8 @@ import logging
 from typing import Literal, Optional
 
 import click
-
 from autogpt.app.config import GPT_3_MODEL, AppConfig
+
 from forge.llm.providers import ModelName, MultiProvider
 
 logger = logging.getLogger(__name__)

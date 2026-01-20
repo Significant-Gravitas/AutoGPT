@@ -83,6 +83,10 @@ class AgentRunner:
             return result
 
         except asyncio.TimeoutError:
+            # Get cost even on timeout
+            cost = 0.0
+            if self._llm_provider:
+                cost = self._llm_provider.get_incurred_cost()
             return ChallengeResult(
                 challenge_name=challenge.name,
                 config_name=self.config.config_name,
@@ -92,12 +96,17 @@ class AgentRunner:
                 steps=steps,
                 n_steps=len(steps),
                 run_time_seconds=(datetime.now() - start_time).total_seconds(),
+                cost=cost,
                 timed_out=True,
                 error_message="Challenge timed out",
             )
         except Exception as e:
             import traceback
 
+            # Get cost even on error
+            cost = 0.0
+            if self._llm_provider:
+                cost = self._llm_provider.get_incurred_cost()
             return ChallengeResult(
                 challenge_name=challenge.name,
                 config_name=self.config.config_name,
@@ -107,6 +116,7 @@ class AgentRunner:
                 steps=steps,
                 n_steps=len(steps),
                 run_time_seconds=(datetime.now() - start_time).total_seconds(),
+                cost=cost,
                 error_message=f"{type(e).__name__}: {e}\n{traceback.format_exc()}",
             )
         finally:

@@ -9,12 +9,7 @@ import click
 
 from .challenge_loader import find_challenges_dir
 from .harness import BenchmarkHarness
-from .models import (
-    MODEL_PRESETS,
-    STRATEGIES,
-    BenchmarkConfig,
-    HarnessConfig,
-)
+from .models import MODEL_PRESETS, STRATEGIES, BenchmarkConfig, HarnessConfig
 from .ui import console
 
 

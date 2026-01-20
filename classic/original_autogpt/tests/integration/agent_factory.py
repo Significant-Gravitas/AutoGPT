@@ -1,9 +1,9 @@
 from pathlib import Path
 
 import pytest
-
 from autogpt.agents.agent import Agent, AgentConfiguration, AgentSettings
 from autogpt.app.config import AppConfig
+
 from forge.config.ai_profile import AIProfile
 from forge.file_storage import FileStorageBackendName, get_storage
 from forge.llm.providers import MultiProvider

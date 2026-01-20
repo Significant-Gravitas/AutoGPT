@@ -6,6 +6,10 @@ from io import BytesIO
 from uuid import uuid4
 
 import orjson
+from autogpt.agent_factory.configurators import configure_agent_with_state, create_agent
+from autogpt.agents.agent_manager import AgentManager
+from autogpt.app.config import AppConfig
+from autogpt.app.utils import is_port_free
 from fastapi import APIRouter, FastAPI, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, StreamingResponse
@@ -14,10 +18,6 @@ from hypercorn.asyncio import serve as hypercorn_serve
 from hypercorn.config import Config as HypercornConfig
 from sentry_sdk import set_user
 
-from autogpt.agent_factory.configurators import configure_agent_with_state, create_agent
-from autogpt.agents.agent_manager import AgentManager
-from autogpt.app.config import AppConfig
-from autogpt.app.utils import is_port_free
 from forge.agent_protocol.api_router import base_router
 from forge.agent_protocol.database import AgentDB
 from forge.agent_protocol.middlewares import AgentMiddleware

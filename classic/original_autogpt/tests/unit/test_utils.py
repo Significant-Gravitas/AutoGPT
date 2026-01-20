@@ -3,18 +3,18 @@ import os
 from pathlib import Path
 from unittest.mock import patch
 
+import autogpt.app.utils
 import pytest
 import requests
-from git import InvalidGitRepositoryError
-from tests.utils import skip_in_ci
-
-import autogpt.app.utils
 from autogpt.app.utils import (
     get_bulletin_from_web,
     get_current_git_branch,
     get_latest_bulletin,
     set_env_config_value,
 )
+from git import InvalidGitRepositoryError
+from tests.utils import skip_in_ci
+
 from forge.json.parsing import extract_dict_from_json
 
 

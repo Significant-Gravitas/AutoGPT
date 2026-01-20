@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import TYPE_CHECKING, Generic
 
 from pydantic import BaseModel, Field
@@ -13,6 +14,8 @@ from forge.models.utils import ModelWithSummary
 
 if TYPE_CHECKING:
     from forge.llm.providers import MultiProvider
+
+logger = logging.getLogger(__name__)
 
 
 class Episode(BaseModel, Generic[AnyProposal]):
@@ -134,11 +137,18 @@ class EpisodicActionHistory(BaseModel, Generic[AnyProposal]):
         llm_provider: MultiProvider,
         model_name: ModelName,
         spacy_model: str,
+        full_message_count: int = 4,
     ) -> None:
-        """Compresses each episode in the action history using an LLM.
+        """Compresses older episodes in the action history using an LLM.
 
-        This method iterates over all episodes in the action history without a summary,
-        and generates a summary for them using an LLM.
+        Only episodes older than `full_message_count` are compressed, since recent
+        episodes are shown in full in the prompt anyway.
+
+        Args:
+            llm_provider: LLM provider for summarization
+            model_name: Model to use for summarization
+            spacy_model: Spacy model for text chunking
+            full_message_count: Number of recent episodes to skip (shown in full)
         """
         compress_instruction = (
             "The text represents an action, the reason for its execution, "
@@ -147,8 +157,23 @@ class EpisodicActionHistory(BaseModel, Generic[AnyProposal]):
             "Preserve any specific factual information gathered by the action."
         )
         async with self._lock:
-            # Gather all episodes without a summary
-            episodes_to_summarize = [ep for ep in self.episodes if ep.summary is None]
+            # Only compress episodes older than full_message_count
+            # Recent episodes are shown in full, so no need to summarize them
+            n_episodes = len(self.episodes)
+            if n_episodes <= full_message_count:
+                return  # All episodes are recent, no compression needed
+
+            # Get older episodes that need compression
+            older_episodes = self.episodes[: n_episodes - full_message_count]
+            episodes_to_summarize = [ep for ep in older_episodes if ep.summary is None]
+
+            if not episodes_to_summarize:
+                return  # No episodes need compression
+
+            logger.debug(
+                f"Compressing {len(episodes_to_summarize)} action history episodes "
+                f"(total: {n_episodes}, full_message_count: {full_message_count})"
+            )
 
             # Parallelize summarization calls
             summarize_coroutines = [
@@ -166,6 +191,10 @@ class EpisodicActionHistory(BaseModel, Generic[AnyProposal]):
             # Assign summaries to episodes
             for episode, (summary, _) in zip(episodes_to_summarize, summaries):
                 episode.summary = summary
+
+            logger.debug(
+                f"Compression complete for {len(episodes_to_summarize)} episodes"
+            )
 
     def fmt_list(self) -> str:
         return format_numbered_list(self.episodes)

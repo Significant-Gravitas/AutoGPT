@@ -140,6 +140,7 @@ class TerminalUIProvider(UIProvider):
             speak_mode: Whether to use text-to-speech.
         """
         from autogpt.agents.prompt_strategies.one_shot import AssistantThoughts
+
         from forge.models.utils import ModelWithSummary
 
         thoughts_text = self._remove_ansi_escape(

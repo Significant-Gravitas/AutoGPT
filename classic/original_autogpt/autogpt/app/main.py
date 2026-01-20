@@ -13,8 +13,6 @@ from pathlib import Path
 from types import FrameType
 from typing import TYPE_CHECKING, Optional
 
-from colorama import Fore, Style
-
 from autogpt.agent_factory.configurators import configure_agent_with_state, create_agent
 from autogpt.agents.agent_manager import AgentManager
 from autogpt.agents.prompt_strategies.one_shot import AssistantThoughts
@@ -23,6 +21,8 @@ from autogpt.app.config import (
     ConfigBuilder,
     assert_config_has_required_llm_api_keys,
 )
+from colorama import Fore, Style
+
 from forge.agent_protocol.database import AgentDB
 from forge.components.code_executor.code_executor import (
     is_docker_available,

@@ -9,12 +9,11 @@ from typing import Any
 from unittest import mock
 
 import pytest
+from autogpt.app.config import GPT_3_MODEL, GPT_4_MODEL, AppConfig, ConfigBuilder
+from autogpt.app.configurator import apply_overrides_to_config
 from openai.pagination import AsyncPage
 from openai.types import Model
 from pydantic import SecretStr
-
-from autogpt.app.config import GPT_3_MODEL, GPT_4_MODEL, AppConfig, ConfigBuilder
-from autogpt.app.configurator import apply_overrides_to_config
 
 
 def test_initial_values(config: AppConfig) -> None:

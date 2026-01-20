@@ -1,10 +1,10 @@
 import pytest
-
 from autogpt.app.config import AppConfig
 from autogpt.app.setup import (
     apply_overrides_to_ai_settings,
     interactively_revise_ai_settings,
 )
+
 from forge.config.ai_directives import AIDirectives
 from forge.config.ai_profile import AIProfile
 

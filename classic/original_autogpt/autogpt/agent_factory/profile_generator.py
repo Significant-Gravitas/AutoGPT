@@ -2,6 +2,7 @@ import json
 import logging
 
 from autogpt.app.config import AppConfig
+
 from forge.config.ai_directives import AIDirectives
 from forge.config.ai_profile import AIProfile
 from forge.llm.prompting import ChatPrompt, LanguageModelClassification, PromptStrategy
