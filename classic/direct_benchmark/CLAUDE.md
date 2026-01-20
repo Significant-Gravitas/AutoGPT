@@ -8,33 +8,35 @@ The Direct Benchmark Harness is a high-performance testing framework for AutoGPT
 
 ## Quick Reference
 
+All commands run from the `classic/` directory (parent of this directory):
+
 ```bash
-# Install
-cd classic/direct_benchmark
+# Install (one-time setup)
+cd classic
 poetry install
 
 # Run benchmarks
-poetry run python -m direct_benchmark run
+poetry run direct-benchmark run
 
 # Run specific strategies and models
-poetry run python -m direct_benchmark run \
+poetry run direct-benchmark run \
     --strategies one_shot,rewoo \
     --models claude,openai \
     --parallel 4
 
 # Run a single test
-poetry run python -m direct_benchmark run \
+poetry run direct-benchmark run \
     --strategies one_shot \
     --tests ReadFile
 
 # List available challenges
-poetry run python -m direct_benchmark list-challenges
+poetry run direct-benchmark list-challenges
 
 # List model presets
-poetry run python -m direct_benchmark list-models
+poetry run direct-benchmark list-models
 
 # List strategies
-poetry run python -m direct_benchmark list-strategies
+poetry run direct-benchmark list-strategies
 ```
 
 ## CLI Options
@@ -76,15 +78,15 @@ poetry run python -m direct_benchmark list-strategies
 ### State Management Commands
 ```bash
 # Show current state
-poetry run python -m direct_benchmark state show
+poetry run direct-benchmark state show
 
 # Clear all state
-poetry run python -m direct_benchmark state clear
+poetry run direct-benchmark state clear
 
 # Reset specific strategy/model/challenge
-poetry run python -m direct_benchmark state reset --strategy reflexion
-poetry run python -m direct_benchmark state reset --model claude-thinking-25k
-poetry run python -m direct_benchmark state reset --challenge ThreeSum
+poetry run direct-benchmark state reset --strategy reflexion
+poetry run direct-benchmark state reset --model claude-thinking-25k
+poetry run direct-benchmark state reset --challenge ThreeSum
 ```
 
 ## Available Strategies
@@ -228,7 +230,7 @@ reports/
 
 ### Run Full Benchmark Suite
 ```bash
-poetry run python -m direct_benchmark run \
+poetry run direct-benchmark run \
     --strategies one_shot,rewoo,plan_execute \
     --models claude \
     --parallel 8
@@ -236,7 +238,7 @@ poetry run python -m direct_benchmark run \
 
 ### Compare Strategies
 ```bash
-poetry run python -m direct_benchmark run \
+poetry run direct-benchmark run \
     --strategies one_shot,rewoo,plan_execute,reflexion \
     --models claude \
     --tests ReadFile,WriteFile,ThreeSum
@@ -244,7 +246,7 @@ poetry run python -m direct_benchmark run \
 
 ### Debug a Failing Test
 ```bash
-poetry run python -m direct_benchmark run \
+poetry run direct-benchmark run \
     --strategies one_shot \
     --tests FailingTest \
     --keep-answers \
@@ -257,29 +259,29 @@ State is saved to `.benchmark_state.json` in the reports directory.
 
 ```bash
 # Run benchmarks - will resume from last run automatically
-poetry run python -m direct_benchmark run \
+poetry run direct-benchmark run \
     --strategies one_shot,reflexion \
     --models claude
 
 # Start fresh (clear all saved state)
-poetry run python -m direct_benchmark run --fresh \
+poetry run direct-benchmark run --fresh \
     --strategies one_shot,reflexion \
     --models claude
 
 # Reset specific strategy and re-run
-poetry run python -m direct_benchmark run \
+poetry run direct-benchmark run \
     --reset-strategy reflexion \
     --strategies one_shot,reflexion \
     --models claude
 
 # Reset specific model and re-run
-poetry run python -m direct_benchmark run \
+poetry run direct-benchmark run \
     --reset-model claude-thinking-25k \
     --strategies one_shot \
     --models claude,claude-thinking-25k
 
 # Retry only the failures from the last run
-poetry run python -m direct_benchmark run --retry-failures \
+poetry run direct-benchmark run --retry-failures \
     --strategies one_shot,reflexion \
     --models claude
 ```
@@ -287,9 +289,9 @@ poetry run python -m direct_benchmark run --retry-failures \
 ### CI/Scripting Mode
 ```bash
 # JSON output (parseable)
-poetry run python -m direct_benchmark run --json
+poetry run direct-benchmark run --json
 
 # CI mode - shows completion blocks without Live display
 # Auto-enabled when CI=true env var is set or stdout is not a TTY
-poetry run python -m direct_benchmark run --ci
+poetry run direct-benchmark run --ci
 ```

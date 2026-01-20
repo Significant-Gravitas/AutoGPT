@@ -4,8 +4,11 @@ Core autonomous agent framework for building AI agents.
 
 ## Quick Start
 
+All commands run from the `classic/` directory (parent of this directory):
+
 ```bash
-# Install
+# Install (one-time setup)
+cd classic
 poetry install
 
 # Configure

@@ -4,6 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Quick Reference
 
+All commands run from the `classic/` directory (parent of this directory):
+
 ```bash
 # Run interactive CLI
 poetry run autogpt run
@@ -12,8 +14,8 @@ poetry run autogpt run
 poetry run serve --debug
 
 # Run tests
-poetry run pytest
-poetry run pytest tests/unit/ -v
+poetry run pytest original_autogpt/tests/
+poetry run pytest original_autogpt/tests/unit/ -v
 poetry run pytest -k test_name
 ```
 
@@ -228,13 +230,13 @@ autogpt run [OPTIONS]
 - `llm_provider` - MultiProvider
 - `agent` - Fully initialized Agent
 
-**Running**:
+**Running** (from `classic/` directory):
 ```bash
-poetry run pytest                           # All tests
-poetry run pytest tests/unit/ -v            # Unit tests
-poetry run pytest tests/integration/        # Integration tests
-poetry run pytest -k test_config            # By name
-OPENAI_API_KEY=sk-dummy poetry run pytest   # With dummy key
+poetry run pytest original_autogpt/tests/                    # All tests
+poetry run pytest original_autogpt/tests/unit/ -v            # Unit tests
+poetry run pytest original_autogpt/tests/integration/        # Integration tests
+poetry run pytest -k test_config                             # By name
+OPENAI_API_KEY=sk-dummy poetry run pytest original_autogpt/  # With dummy key
 ```
 
 ## Common Tasks
@@ -275,26 +277,23 @@ TEMPERATURE=0.7
 
 ## Benchmarking
 
-Use `direct_benchmark` (sibling directory) to run performance benchmarks:
+Run performance benchmarks from the `classic/` directory:
 
 ```bash
-# From classic/direct_benchmark/
-cd ../direct_benchmark
-
 # Run a single test
-poetry run python -m direct_benchmark run --tests ReadFile
+poetry run direct-benchmark run --tests ReadFile
 
 # Run with specific strategies and models
-poetry run python -m direct_benchmark run \
+poetry run direct-benchmark run \
     --strategies one_shot,rewoo \
     --models claude \
     --parallel 4
 
 # Run regression tests only
-poetry run python -m direct_benchmark run --maintain
+poetry run direct-benchmark run --maintain
 
 # List available challenges
-poetry run python -m direct_benchmark list-challenges
+poetry run direct-benchmark list-challenges
 ```
 
 See `direct_benchmark/CLAUDE.md` for full documentation on strategies, model presets, and CLI options.

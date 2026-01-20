@@ -4,13 +4,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Quick Reference
 
+All commands run from the `classic/` directory (parent of this directory):
+
 ```bash
 # Run forge agent server (port 8000)
 poetry run python -m forge
 
-# Run tests
-poetry run pytest
-poetry run pytest --cov=forge
+# Run forge tests
+poetry run pytest forge/tests/
+poetry run pytest forge/tests/ --cov=forge
 poetry run pytest -k test_name
 ```
 
@@ -317,9 +319,10 @@ GET  /ap/v1/agent/tasks/{id}/artifacts  # List artifacts
 **Fixtures** (`conftest.py`):
 - `storage` - Temporary LocalFileStorage
 
+Run from the `classic/` directory:
 ```bash
-poetry run pytest                    # All tests
-poetry run pytest --cov=forge        # With coverage
+poetry run pytest forge/tests/                    # All forge tests
+poetry run pytest forge/tests/ --cov=forge        # With coverage
 ```
 
 **Note**: Tests requiring API keys (OPENAI_API_KEY, ANTHROPIC_API_KEY) will be skipped if not set.

@@ -9,41 +9,39 @@ AutoGPT Classic is an experimental, **unsupported** project demonstrating autono
 ## Repository Structure
 
 ```
-/forge            - Core autonomous agent framework (main library)
-/original_autogpt - Original AutoGPT implementation (depends on forge)
-/direct_benchmark - Benchmark harness for testing agent performance
+classic/
+├── pyproject.toml          # Single consolidated Poetry project
+├── poetry.lock             # Single lock file
+├── forge/
+│   └── forge/              # Core agent framework package
+├── original_autogpt/
+│   └── autogpt/            # AutoGPT agent package
+├── direct_benchmark/
+│   └── direct_benchmark/   # Benchmark harness package
+└── benchmark/              # Challenge definitions (data, not code)
 ```
 
-Each Python subproject has its own `pyproject.toml` and uses Poetry for dependency management.
+All packages are managed by a single `pyproject.toml` at the classic/ root.
 
 ## Common Commands
 
 ### Setup & Install
 ```bash
-# Install forge (core library)
-cd forge && poetry install
-
-# Install original_autogpt (includes forge as dependency)
-cd original_autogpt && poetry install
-
-# Install benchmark
-cd benchmark && poetry install
-
-# Install with benchmark support (optional extra)
-cd forge && poetry install --extras benchmark
-cd original_autogpt && poetry install --extras benchmark
+# Install everything from classic/ directory
+cd classic
+poetry install
 ```
 
 ### Running Agents
 ```bash
-# Run forge agent (from forge directory)
-cd forge && poetry run python -m forge
+# Run forge agent
+poetry run python -m forge
 
-# Run original autogpt (from original_autogpt directory)
-cd original_autogpt && poetry run serve --debug
+# Run original autogpt server
+poetry run serve --debug
 
 # Run autogpt CLI
-cd original_autogpt && poetry run autogpt
+poetry run autogpt
 ```
 
 Agents run on `http://localhost:8000` by default.
@@ -51,33 +49,34 @@ Agents run on `http://localhost:8000` by default.
 ### Benchmarking
 ```bash
 # Run benchmarks
-cd direct_benchmark && poetry run python -m direct_benchmark run
+poetry run direct-benchmark run
 
 # Run specific strategies and models
-poetry run python -m direct_benchmark run \
+poetry run direct-benchmark run \
     --strategies one_shot,rewoo \
     --models claude \
     --parallel 4
 
 # Run a single test
-poetry run python -m direct_benchmark run --tests ReadFile
+poetry run direct-benchmark run --tests ReadFile
 
 # List available commands
-poetry run python -m direct_benchmark --help
+poetry run direct-benchmark --help
 ```
 
 ### Testing
 ```bash
-cd forge && poetry run pytest                    # All tests
-cd forge && poetry run pytest tests/             # Tests directory only
-cd forge && poetry run pytest -k test_name       # Single test by name
-cd forge && poetry run pytest path/to/test.py   # Specific test file
-cd forge && poetry run pytest --cov             # With coverage
+poetry run pytest                              # All tests
+poetry run pytest forge/tests/                 # Forge tests only
+poetry run pytest original_autogpt/tests/      # AutoGPT tests only
+poetry run pytest -k test_name                 # Single test by name
+poetry run pytest path/to/test.py              # Specific test file
+poetry run pytest --cov                        # With coverage
 ```
 
 ### Linting & Formatting
 
-Run from forge/ or original_autogpt/ directory:
+Run from the classic/ directory:
 
 ```bash
 # Format everything (recommended to run together)
@@ -106,20 +105,21 @@ The `forge` package is the foundation that other components depend on:
 - `forge/config/` - Configuration management
 
 ### Original AutoGPT
-Depends on forge via local path (`autogpt-forge = { path = "../forge" }`):
-- `autogpt/app/` - CLI application entry points
-- `autogpt/agents/` - Agent implementations
-- `autogpt/agent_factory/` - Agent creation logic
+- `original_autogpt/autogpt/app/` - CLI application entry points
+- `original_autogpt/autogpt/agents/` - Agent implementations
+- `original_autogpt/autogpt/agent_factory/` - Agent creation logic
 
 ### Direct Benchmark
 Benchmark harness for testing agent performance:
-- `direct_benchmark/` - CLI and harness code
+- `direct_benchmark/direct_benchmark/` - CLI and harness code
 - `benchmark/agbenchmark/challenges/` - Test cases organized by category (code, retrieval, data, etc.)
 - Reports generated in `direct_benchmark/reports/`
 
-### Dependency Chain
-`original_autogpt` → `forge`
-`direct_benchmark` → `original_autogpt` → `forge`
+### Package Structure
+All three packages are included in a single Poetry project. Imports are fully qualified:
+- `from forge.agent.base import BaseAgent`
+- `from autogpt.agents.agent import Agent`
+- `from direct_benchmark.harness import BenchmarkHarness`
 
 ## Code Style
 

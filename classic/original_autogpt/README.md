@@ -26,13 +26,16 @@ Demo made by <a href=https://twitter.com/BlakeWerlinger>Blake Werlinger</a>
 ## Setting up AutoGPT
 
 ### Prerequisites
-- Python 3.10+
+- Python 3.12+
 - [Poetry](https://python-poetry.org/docs/#installation)
 - OpenAI [API Key](https://platform.openai.com/account/api-keys)
 
 ### Installation
 
+All commands run from the `classic/` directory (parent of this directory):
+
 ```bash
+cd classic
 poetry install
 cp .env.template .env
 # Edit .env with your OPENAI_API_KEY

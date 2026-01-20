@@ -13,8 +13,10 @@ High-performance benchmark harness for AutoGPT that directly instantiates agents
 
 ## Installation
 
+All commands run from the `classic/` directory (parent of this directory):
+
 ```bash
-cd classic/direct_benchmark
+cd classic
 poetry install
 ```
 
@@ -22,41 +24,41 @@ poetry install
 
 ```bash
 # Run benchmarks with default settings
-poetry run python -m direct_benchmark run
+poetry run direct-benchmark run
 
 # Run specific strategies and models
-poetry run python -m direct_benchmark run \
+poetry run direct-benchmark run \
     --strategies one_shot,rewoo \
     --models claude,openai \
     --parallel 4
 
 # Run a single test
-poetry run python -m direct_benchmark run \
+poetry run direct-benchmark run \
     --strategies one_shot \
     --tests ReadFile
 
 # Run multiple attempts per challenge
-poetry run python -m direct_benchmark run \
+poetry run direct-benchmark run \
     --strategies one_shot \
     --attempts 3
 
 # Run only regression tests (previously beaten)
-poetry run python -m direct_benchmark run --maintain
+poetry run direct-benchmark run --maintain
 
 # Run only non-regression tests (not consistently beaten)
-poetry run python -m direct_benchmark run --improve
+poetry run direct-benchmark run --improve
 
 # Run only never-beaten challenges
-poetry run python -m direct_benchmark run --explore
+poetry run direct-benchmark run --explore
 
 # List available challenges
-poetry run python -m direct_benchmark list-challenges
+poetry run direct-benchmark list-challenges
 
 # List model presets
-poetry run python -m direct_benchmark list-models
+poetry run direct-benchmark list-models
 
 # List strategies
-poetry run python -m direct_benchmark list-strategies
+poetry run direct-benchmark list-strategies
 ```
 
 ## CLI Options

@@ -18,15 +18,21 @@ AutoGPT Classic was one of the first implementations of autonomous AI agents - A
 
 ## Structure
 
-- `/benchmark` - Performance testing tools
-- `/forge` - Core autonomous agent framework
-- `/original_autogpt` - Original implementation
+```
+classic/
+├── pyproject.toml          # Single consolidated Poetry project
+├── poetry.lock             # Single lock file
+├── forge/                  # Core autonomous agent framework
+├── original_autogpt/       # Original implementation
+├── direct_benchmark/       # Benchmark harness
+└── benchmark/              # Challenge definitions (data)
+```
 
 ## Getting Started
 
 ### Prerequisites
 
-- Python 3.10+
+- Python 3.12+
 - [Poetry](https://python-poetry.org/docs/#installation)
 
 ### Installation
@@ -36,14 +42,8 @@ AutoGPT Classic was one of the first implementations of autonomous AI agents - A
 git clone https://github.com/Significant-Gravitas/AutoGPT.git
 cd classic
 
-# Install forge (core library)
-cd forge && poetry install
-
-# Or install original_autogpt (includes forge as dependency)
-cd original_autogpt && poetry install
-
-# Install benchmark (optional)
-cd benchmark && poetry install
+# Install everything
+poetry install
 ```
 
 ### Configuration
@@ -81,15 +81,17 @@ FILE_STORAGE_BACKEND=local          # local, s3, or gcs
 
 ### Running
 
+All commands run from the `classic/` directory:
+
 ```bash
 # Run forge agent
-cd forge && poetry run python -m forge
+poetry run python -m forge
 
 # Run original autogpt server
-cd original_autogpt && poetry run serve --debug
+poetry run serve --debug
 
 # Run autogpt CLI
-cd original_autogpt && poetry run autogpt
+poetry run autogpt
 ```
 
 Agents run on `http://localhost:8000` by default.
@@ -97,14 +99,15 @@ Agents run on `http://localhost:8000` by default.
 ### Benchmarking
 
 ```bash
-cd benchmark && poetry run agbenchmark
+poetry run direct-benchmark run
 ```
 
 ### Testing
 
 ```bash
-cd forge && poetry run pytest
-cd original_autogpt && poetry run pytest
+poetry run pytest                        # All tests
+poetry run pytest forge/tests/           # Forge tests only
+poetry run pytest original_autogpt/tests/ # AutoGPT tests only
 ```
 
 ## Workspaces
