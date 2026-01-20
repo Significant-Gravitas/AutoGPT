@@ -70,15 +70,17 @@ class BenchmarkUI:
         if not debug:
             configure_logging_for_benchmark()
 
-        # Track state
-        self.active_runs: dict[str, str] = {}  # config_name -> challenge_name
-        self.active_steps: dict[str, str] = {}  # config_name -> current step info
+        # Track state - use run_key (config:challenge) for uniqueness
+        self.active_runs: dict[
+            str, tuple[str, str]
+        ] = {}  # run_key -> (config_name, challenge_name)
+        self.active_steps: dict[str, str] = {}  # run_key -> current step info
         self.completed: list[ChallengeResult] = []
         self.results_by_config: dict[str, list[ChallengeResult]] = {}
         self.config_colors: dict[str, str] = {}  # config_name -> color
 
-        # Step history for each config's current challenge
-        # config_name -> list of (step_num, tool_name, result_preview, is_error)
+        # Step history for each active run
+        # run_key -> list of (step_num, tool_name, result_preview, is_error)
         self.step_history: dict[str, list[tuple[int, str, str, bool]]] = defaultdict(
             list
         )
@@ -121,11 +123,13 @@ class BenchmarkUI:
         is_error: bool,
     ) -> None:
         """Log a step execution (called from AgentRunner)."""
-        # Update active step info
-        self.active_steps[config_name] = f"step {step_num}: {tool_name}"
+        run_key = self._run_key(config_name, challenge_name)
 
-        # Store in step history for this config
-        self.step_history[config_name].append(
+        # Update active step info
+        self.active_steps[run_key] = f"step {step_num}: {tool_name}"
+
+        # Store in step history for this run
+        self.step_history[run_key].append(
             (step_num, tool_name, result_preview, is_error)
         )
 
@@ -138,22 +142,28 @@ class BenchmarkUI:
                 f"step {step_num}: {tool_name} {status}"
             )
 
+    def _run_key(self, config_name: str, challenge_name: str) -> str:
+        """Generate unique key for a run."""
+        return f"{config_name}:{challenge_name}"
+
     def update(self, progress: ExecutionProgress) -> None:
         """Update UI with execution progress."""
+        run_key = self._run_key(progress.config_name, progress.challenge_name)
+
         if progress.status == "starting":
-            self.active_runs[progress.config_name] = progress.challenge_name
-            self.active_steps[progress.config_name] = "starting..."
-            # Clear step history for new challenge
-            self.step_history[progress.config_name] = []
+            self.active_runs[run_key] = (progress.config_name, progress.challenge_name)
+            self.active_steps[run_key] = "starting..."
+            # Clear step history for new run
+            self.step_history[run_key] = []
         elif progress.status in ("completed", "failed"):
             # Capture step history before clearing
-            steps = self.step_history.get(progress.config_name, [])
-            challenge_name = self.active_runs.get(progress.config_name, "Unknown")
+            steps = self.step_history.get(run_key, [])
+            challenge_name = progress.challenge_name
 
-            if progress.config_name in self.active_runs:
-                del self.active_runs[progress.config_name]
-            if progress.config_name in self.active_steps:
-                del self.active_steps[progress.config_name]
+            if run_key in self.active_runs:
+                del self.active_runs[run_key]
+            if run_key in self.active_steps:
+                del self.active_steps[run_key]
 
             if progress.result:
                 self.completed.append(progress.result)
@@ -161,14 +171,13 @@ class BenchmarkUI:
                 if self.main_task is not None:
                     self.progress.advance(self.main_task)
 
-                # Print completion block (always for failures, verbose for passes)
-                if not progress.result.success or self.verbose:
-                    self._print_completion_block(
-                        progress.config_name,
-                        challenge_name,
-                        progress.result,
-                        steps,
-                    )
+                # Always print completion block for visibility
+                self._print_completion_block(
+                    progress.config_name,
+                    challenge_name,
+                    progress.result,
+                    steps,
+                )
 
     def _print_challenge_result(self, result: ChallengeResult) -> None:
         """Print detailed result for a single challenge."""
@@ -234,11 +243,11 @@ class BenchmarkUI:
                 border_style="blue",
             )
 
-        # Create a panel for each active config showing its step history
+        # Create a panel for each active run showing its step history
         panels = []
-        for config_name, challenge_name in self.active_runs.items():
+        for run_key, (config_name, challenge_name) in self.active_runs.items():
             color = self.get_config_color(config_name)
-            steps = self.step_history.get(config_name, [])
+            steps = self.step_history.get(run_key, [])
 
             # Build step lines (show last 6 steps)
             lines = [Text(challenge_name, style="bold white")]
@@ -254,7 +263,7 @@ class BenchmarkUI:
                 )
 
             # Add current step indicator
-            current_step = self.active_steps.get(config_name, "")
+            current_step = self.active_steps.get(run_key, "")
             if current_step:
                 lines.append(
                     Text.assemble(("  \u25cf ", "yellow"), (current_step, "dim"))

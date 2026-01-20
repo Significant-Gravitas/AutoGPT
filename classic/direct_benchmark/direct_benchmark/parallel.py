@@ -56,6 +56,9 @@ class ParallelExecutor:
                     )
                     tasks.append(task)
 
+        # Give all tasks a chance to start and acquire semaphore
+        await asyncio.sleep(0)
+
         # Yield results as they complete
         for coro in asyncio.as_completed(tasks):
             result = await coro
@@ -70,6 +73,9 @@ class ParallelExecutor:
     ) -> ChallengeResult:
         """Run a single config/challenge combination with concurrency limit."""
         async with self._semaphore:
+            # Yield to allow other tasks to acquire semaphore
+            await asyncio.sleep(0)
+
             config_name = config.config_name
             challenge_display = (
                 f"{challenge.name}"
@@ -86,6 +92,9 @@ class ParallelExecutor:
                         status="starting",
                     )
                 )
+
+            # Another yield to let UI update
+            await asyncio.sleep(0)
 
             # Run the challenge (with modified timeout if no_cutoff is set)
             runner = AgentRunner(
