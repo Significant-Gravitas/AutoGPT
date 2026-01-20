@@ -4,14 +4,15 @@ This provides CI-friendly integration of the strategy benchmark,
 allowing it to be run as part of the pytest suite.
 
 Usage:
-    # Run quick CLI tests (no agent required)
-    pytest tests/integration/test_strategy_benchmark.py -v -m "not requires_agent"
+    # Run tests that don't need an agent (--help, --compare-only, etc.)
+    poetry run pytest tests/integration/test_strategy_benchmark.py \
+        -v -k "help or invalid or compare"
 
-    # Run full tests (requires API keys and agent)
+    # Run full tests (requires API keys and agent to be configured)
     poetry run pytest tests/integration/test_strategy_benchmark.py -v
 
-    # Run with specific markers
-    poetry run pytest -m slow tests/integration/test_strategy_benchmark.py -v
+    # Run only specific test functions
+    poetry run pytest tests/integration/test_strategy_benchmark.py::test_harness_help -v
 """
 
 import os

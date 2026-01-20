@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Test harness for comparing different prompt strategies.
+"""Test harness for comparing different prompt strategies and LLM models.
 
 This script runs the agbenchmark against the AutoGPT agent with different
-prompt strategies and compares the results.
+prompt strategies and LLM configurations, then compares the results.
 
 Usage:
     # Run all strategies on all tests (takes a long time)
@@ -25,6 +25,15 @@ Usage:
 
     # Run with multiple attempts per test
     python test_prompt_strategies.py --attempts 3
+
+    # Run with specific model configurations
+    python test_prompt_strategies.py --models claude,openai
+
+    # Run with custom smart/fast models
+    python test_prompt_strategies.py --smart-llm gpt-4o --fast-llm gpt-4o-mini
+
+    # Compare Claude vs OpenAI with one_shot strategy
+    python test_prompt_strategies.py --models claude,openai --strategies one_shot
 """
 
 import argparse
@@ -62,10 +71,104 @@ BENCHMARK_TIMEOUT = 3600  # 1 hour
 
 
 @dataclass
-class StrategyResult:
-    """Results for a single strategy run."""
+class ModelConfig:
+    """Configuration for LLM models."""
+
+    name: str  # Display name for the configuration
+    smart_llm: str  # Model for complex reasoning tasks
+    fast_llm: str  # Model for quick operations
+
+    def to_env(self) -> dict[str, str]:
+        """Return environment variables for this config."""
+        return {
+            "SMART_LLM": self.smart_llm,
+            "FAST_LLM": self.fast_llm,
+        }
+
+    def __str__(self) -> str:
+        return f"{self.name} (smart={self.smart_llm}, fast={self.fast_llm})"
+
+
+# Preset model configurations
+MODEL_PRESETS: dict[str, ModelConfig] = {
+    # Claude configurations
+    "claude": ModelConfig(
+        name="claude",
+        smart_llm="claude-sonnet-4-20250514",
+        fast_llm="claude-3-5-haiku-20241022",
+    ),
+    "claude-smart": ModelConfig(
+        name="claude-smart",
+        smart_llm="claude-sonnet-4-20250514",
+        fast_llm="claude-sonnet-4-20250514",
+    ),
+    "claude-fast": ModelConfig(
+        name="claude-fast",
+        smart_llm="claude-3-5-haiku-20241022",
+        fast_llm="claude-3-5-haiku-20241022",
+    ),
+    "claude-opus": ModelConfig(
+        name="claude-opus",
+        smart_llm="claude-opus-4-5-20251101",
+        fast_llm="claude-sonnet-4-20250514",
+    ),
+    "claude-opus-only": ModelConfig(
+        name="claude-opus-only",
+        smart_llm="claude-opus-4-5-20251101",
+        fast_llm="claude-opus-4-5-20251101",
+    ),
+    # OpenAI configurations
+    "openai": ModelConfig(
+        name="openai",
+        smart_llm="gpt-4o",
+        fast_llm="gpt-4o-mini",
+    ),
+    "openai-smart": ModelConfig(
+        name="openai-smart",
+        smart_llm="gpt-4o",
+        fast_llm="gpt-4o",
+    ),
+    "openai-fast": ModelConfig(
+        name="openai-fast",
+        smart_llm="gpt-4o-mini",
+        fast_llm="gpt-4o-mini",
+    ),
+    "gpt5": ModelConfig(
+        name="gpt5",
+        smart_llm="gpt-5",
+        fast_llm="gpt-4o",
+    ),
+    "gpt5-only": ModelConfig(
+        name="gpt5-only",
+        smart_llm="gpt-5",
+        fast_llm="gpt-5",
+    ),
+    "o1": ModelConfig(
+        name="o1",
+        smart_llm="o1",
+        fast_llm="gpt-4o-mini",
+    ),
+    "o1-mini": ModelConfig(
+        name="o1-mini",
+        smart_llm="o1-mini",
+        fast_llm="gpt-4o-mini",
+    ),
+}
+
+# Default model config (uses environment defaults)
+DEFAULT_MODEL_CONFIG = ModelConfig(
+    name="default",
+    smart_llm="",  # Empty means use env default
+    fast_llm="",
+)
+
+
+@dataclass
+class BenchmarkResult:
+    """Results for a single benchmark run (strategy + model combination)."""
 
     strategy: str
+    model_config: ModelConfig
     report_dir: Path
     tests_run: int = 0
     tests_passed: int = 0
@@ -81,23 +184,42 @@ class StrategyResult:
             return 0.0
         return self.tests_passed / self.tests_run * 100
 
+    @property
+    def config_name(self) -> str:
+        """Return a unique name for this strategy+model combination."""
+        if self.model_config.name == "default":
+            return self.strategy
+        return f"{self.strategy}/{self.model_config.name}"
+
+
+# Alias for backwards compatibility
+StrategyResult = BenchmarkResult
+
 
 @dataclass
 class ComparisonReport:
-    """Comparison report across all strategies."""
+    """Comparison report across all configurations."""
 
     timestamp: str
-    strategies: list[str]
-    results: dict[str, StrategyResult]
+    configurations: list[str]  # List of config names (strategy/model combinations)
+    results: dict[str, BenchmarkResult]
     test_names: list[str]
+    # Keep strategies for backwards compatibility
+    strategies: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
             "timestamp": self.timestamp,
+            "configurations": self.configurations,
             "strategies": self.strategies,
             "results": {
                 name: {
                     "strategy": r.strategy,
+                    "model_config": {
+                        "name": r.model_config.name,
+                        "smart_llm": r.model_config.smart_llm,
+                        "fast_llm": r.model_config.fast_llm,
+                    },
                     "report_dir": str(r.report_dir),
                     "tests_run": r.tests_run,
                     "tests_passed": r.tests_passed,
@@ -119,13 +241,40 @@ def find_python() -> str:
     return "poetry"
 
 
-def start_agent(strategy: str, port: int = 8000) -> subprocess.Popen:
-    """Start the AutoGPT agent with a specific strategy."""
+def log(msg: str, level: str = "INFO") -> None:
+    """Print a timestamped log message."""
+    timestamp = datetime.now().strftime("%H:%M:%S")
+    print(f"[{timestamp}] {level}: {msg}", flush=True)
+
+
+def log_progress(msg: str) -> None:
+    """Print a progress message without newline."""
+    timestamp = datetime.now().strftime("%H:%M:%S")
+    print(f"[{timestamp}] {msg}", end="", flush=True)
+
+
+def start_agent(
+    strategy: str,
+    model_config: ModelConfig,
+    port: int = 8000,
+) -> subprocess.Popen:
+    """Start the AutoGPT agent with a specific strategy and model config."""
     env = os.environ.copy()
     env["PROMPT_STRATEGY"] = strategy
     env["AP_SERVER_PORT"] = str(port)
 
-    print(f"  Starting agent with strategy '{strategy}' on port {port}...")
+    # Set model configuration if specified
+    model_env = model_config.to_env()
+    for key, value in model_env.items():
+        if value:  # Only set if not empty
+            env[key] = value
+
+    model_desc = f" with {model_config.name}" if model_config.name != "default" else ""
+    log(f"Starting agent with strategy '{strategy}'{model_desc} on port {port}...")
+    if model_config.smart_llm:
+        log(f"  Smart LLM: {model_config.smart_llm}")
+    if model_config.fast_llm:
+        log(f"  Fast LLM: {model_config.fast_llm}")
 
     # Start the agent server (port is set via AP_SERVER_PORT env var)
     proc = subprocess.Popen(
@@ -136,31 +285,44 @@ def start_agent(strategy: str, port: int = 8000) -> subprocess.Popen:
         cwd=Path(__file__).parent.parent,
     )
 
-    # Wait for agent to be ready
+    # Wait for agent to be ready with progress indicator
+    log_progress("  Waiting for agent to be ready")
     start_time = time.time()
+    check_count = 0
     while time.time() - start_time < AGENT_STARTUP_TIMEOUT:
         try:
             import urllib.request
 
-            urllib.request.urlopen(f"http://localhost:{port}/ap/v1/agent/tasks")
-            print(f"  Agent ready on port {port}")
+            urllib.request.urlopen(
+                f"http://localhost:{port}/ap/v1/agent/tasks", timeout=2
+            )
+            print()  # Newline after dots
+            elapsed = time.time() - start_time
+            log(f"Agent ready on port {port} (took {elapsed:.1f}s)")
             return proc
         except Exception:
+            check_count += 1
+            if check_count % 2 == 0:  # Print dot every second
+                print(".", end="", flush=True)
             time.sleep(0.5)
 
+    print()  # Newline after dots
     proc.kill()
     raise TimeoutError(f"Agent failed to start within {AGENT_STARTUP_TIMEOUT}s")
 
 
 def stop_agent(proc: subprocess.Popen) -> None:
     """Stop the agent process."""
+    log("Stopping agent...")
     if proc.poll() is None:
         proc.send_signal(signal.SIGINT)
         try:
             proc.wait(timeout=10)
         except subprocess.TimeoutExpired:
+            log("Agent didn't stop gracefully, killing...", "WARN")
             proc.kill()
             proc.wait()
+    log("Agent stopped")
 
 
 def run_benchmark(
@@ -170,6 +332,7 @@ def run_benchmark(
     tests: Optional[list[str]] = None,
     attempts: int = 1,
     timeout: int = BENCHMARK_TIMEOUT,
+    verbose: bool = True,
 ) -> Optional[Path]:
     """Run the agbenchmark and return the report directory."""
     cmd = ["poetry", "run", "agbenchmark", "run"]
@@ -188,33 +351,83 @@ def run_benchmark(
     # Set the host to the correct port
     env = os.environ.copy()
     env["AGENT_API_URL"] = f"http://localhost:{port}"
+    # Force unbuffered output for real-time logging
+    env["PYTHONUNBUFFERED"] = "1"
 
-    print(f"  Running benchmark: {' '.join(cmd)}")
+    log(f"Running benchmark: {' '.join(cmd)}")
+    log(f"Timeout: {timeout}s ({timeout // 60} minutes)")
+    benchmark_start = time.time()
 
     try:
-        result = subprocess.run(
+        # Use Popen to stream output in real-time
+        proc = subprocess.Popen(
             cmd,
             env=env,
             cwd=Path(__file__).parent.parent,
-            timeout=timeout,
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
             text=True,
+            bufsize=1,  # Line buffered
         )
 
-        if result.returncode != 0:
-            # Non-zero exit is normal - agbenchmark returns non-zero when tests fail
-            print(f"  Benchmark completed with code {result.returncode}")
-            if result.stderr:
-                print(f"  stderr: {result.stderr[:500]}")
-            # Continue to look for report - tests may have run
+        # Stream output in real-time
+        last_output_time = time.time()
+        output_lines = []
 
-    except subprocess.TimeoutExpired:
-        print(f"  Benchmark timed out after {timeout}s")
+        while True:
+            # Check if process has finished
+            retcode = proc.poll()
+
+            # Try to read a line (non-blocking would be ideal but this works)
+            if proc.stdout:
+                line = proc.stdout.readline()
+                if line:
+                    last_output_time = time.time()
+                    output_lines.append(line)
+                    if verbose:
+                        # Indent benchmark output for clarity
+                        print(f"    | {line.rstrip()}", flush=True)
+
+            # Check for timeout
+            elapsed = time.time() - benchmark_start
+            if elapsed > timeout:
+                log(f"Benchmark timed out after {elapsed:.0f}s", "ERROR")
+                proc.kill()
+                proc.wait()
+                return None
+
+            # Warn if no output for a while
+            silence_duration = time.time() - last_output_time
+            if silence_duration > 60 and int(silence_duration) % 60 == 0:
+                log(
+                    f"No output for {int(silence_duration)}s "
+                    f"(elapsed: {int(elapsed)}s)...",
+                    "WARN",
+                )
+
+            # Process finished
+            if retcode is not None:
+                # Read any remaining output
+                if proc.stdout:
+                    for line in proc.stdout:
+                        output_lines.append(line)
+                        if verbose:
+                            print(f"    | {line.rstrip()}", flush=True)
+                break
+
+            time.sleep(0.1)
+
+        elapsed = time.time() - benchmark_start
+        log(f"Benchmark completed with code {retcode} (took {elapsed:.1f}s)")
+
+    except Exception as e:
+        log(f"Benchmark failed with exception: {e}", "ERROR")
         return None
 
     # Find the most recent report directory
     reports_dir = Path(__file__).parent / "reports"
     if not reports_dir.exists():
+        log("No reports directory found", "WARN")
         return None
 
     report_dirs = sorted(
@@ -228,13 +441,24 @@ def run_benchmark(
     )
 
     if report_dirs:
+        log(f"Found report: {report_dirs[0].name}")
         return report_dirs[0]
+
+    log("No report directory found after benchmark", "WARN")
     return None
 
 
-def parse_report(report_dir: Path, strategy: str) -> StrategyResult:
+def parse_report(
+    report_dir: Path,
+    strategy: str,
+    model_config: Optional[ModelConfig] = None,
+) -> BenchmarkResult:
     """Parse a benchmark report and extract metrics."""
-    result = StrategyResult(strategy=strategy, report_dir=report_dir)
+    if model_config is None:
+        model_config = DEFAULT_MODEL_CONFIG
+    result = BenchmarkResult(
+        strategy=strategy, model_config=model_config, report_dir=report_dir
+    )
 
     report_file = report_dir / "report.json"
     if not report_file.exists():
@@ -260,24 +484,31 @@ def parse_report(report_dir: Path, strategy: str) -> StrategyResult:
                 continue
 
             result.tests_run += 1
-            success = metrics.get("success", False)
+
+            # Get detailed results - success is in results[].success, not metrics
+            test_results = test_data.get("results", [])
+            if test_results:
+                first_result = test_results[0]
+                # Check success from the actual test result
+                success = first_result.get("success", False)
+                run_time_str = first_result.get("run_time", "0")
+                # Handle formats like "5.698s", "5.698 second", "5.698 seconds"
+                run_time_str = run_time_str.split()[0].rstrip("s")
+                result.total_time += float(run_time_str)
+                result.total_cost += first_result.get("cost", 0) or 0
+                n_steps = first_result.get("n_steps", 0)
+            else:
+                # Fallback: check success_percentage in metrics
+                success_pct = metrics.get("success_percentage", 0) or metrics.get(
+                    "success_%", 0
+                )
+                success = success_pct is not None and success_pct > 0
+                n_steps = 0
 
             if success:
                 result.tests_passed += 1
             else:
                 result.tests_failed += 1
-
-            # Get detailed results if available
-            test_results = test_data.get("results", [])
-            if test_results:
-                first_result = test_results[0]
-                result.total_time += float(
-                    first_result.get("run_time", "0").rstrip("s")
-                )
-                result.total_cost += first_result.get("cost", 0) or 0
-                n_steps = first_result.get("n_steps", 0)
-            else:
-                n_steps = 0
 
             result.test_results[full_name] = {
                 "success": success,
@@ -288,7 +519,7 @@ def parse_report(report_dir: Path, strategy: str) -> StrategyResult:
     process_tests(test_tree)
 
     if result.tests_run > 0:
-        total_steps = sum(t.get("n_steps", 0) for t in result.test_results.values())
+        total_steps = sum(t.get("n_steps") or 0 for t in result.test_results.values())
         result.avg_steps = total_steps / result.tests_run
 
     return result
@@ -335,16 +566,19 @@ def find_strategy_reports() -> dict[str, list[Path]]:
 def print_comparison_table(report: ComparisonReport) -> None:
     """Print a comparison table of results."""
     print("\n" + "=" * 80)
-    print("PROMPT STRATEGY COMPARISON REPORT")
+    print("PROMPT STRATEGY & MODEL COMPARISON REPORT")
     print("=" * 80)
     print(f"Timestamp: {report.timestamp}")
     print()
+
+    # Use configurations if available, otherwise fall back to strategies
+    config_list = report.configurations if report.configurations else report.strategies
 
     # Summary table
     print("SUMMARY")
     print("-" * 80)
     headers = [
-        "Strategy",
+        "Configuration",
         "Tests",
         "Passed",
         "Failed",
@@ -354,12 +588,12 @@ def print_comparison_table(report: ComparisonReport) -> None:
     ]
     rows = []
 
-    for strategy in report.strategies:
-        r = report.results.get(strategy)
+    for config_name in config_list:
+        r = report.results.get(config_name)
         if r:
             rows.append(
                 [
-                    strategy,
+                    config_name,
                     r.tests_run,
                     r.tests_passed,
                     r.tests_failed,
@@ -369,7 +603,7 @@ def print_comparison_table(report: ComparisonReport) -> None:
                 ]
             )
         else:
-            rows.append([strategy, "-", "-", "-", "-", "-", "-"])
+            rows.append([config_name, "-", "-", "-", "-", "-", "-"])
 
     # Print table
     col_widths = [
@@ -389,17 +623,18 @@ def print_comparison_table(report: ComparisonReport) -> None:
         print("PER-TEST RESULTS")
         print("-" * 80)
 
-        test_headers = ["Test"] + report.strategies
+        test_headers = ["Test"] + list(config_list)
         test_rows = []
 
         for test_name in sorted(report.test_names):
             row = [test_name[:40]]  # Truncate long names
-            for strategy in report.strategies:
-                r = report.results.get(strategy)
+            for config_name in config_list:
+                r = report.results.get(config_name)
                 if r and test_name in r.test_results:
                     tr = r.test_results[test_name]
                     status = "✅" if tr["success"] else "❌"
-                    row.append(f"{status} ({tr['n_steps']} steps)")
+                    n_steps = tr.get("n_steps") or 0
+                    row.append(f"{status} ({n_steps} steps)")
                 else:
                     row.append("-")
             test_rows.append(row)
@@ -419,22 +654,30 @@ def print_comparison_table(report: ComparisonReport) -> None:
     print("=" * 80)
 
 
-def run_strategy_benchmark(
+def run_benchmark_config(
     strategy: str,
+    model_config: ModelConfig,
     port: int,
     categories: Optional[list[str]],
     tests: Optional[list[str]],
     attempts: int,
-) -> Optional[StrategyResult]:
-    """Run benchmark for a single strategy."""
-    print(f"\n{'='*60}")
-    print(f"Testing strategy: {strategy}")
-    print("=" * 60)
+    verbose: bool = True,
+) -> Optional[BenchmarkResult]:
+    """Run benchmark for a single strategy and model configuration."""
+    config_name = (
+        f"{strategy}/{model_config.name}"
+        if model_config.name != "default"
+        else strategy
+    )
+    print(f"\n{'='*70}", flush=True)
+    log(f"STARTING CONFIGURATION: {config_name}")
+    print("=" * 70, flush=True)
 
+    config_start = time.time()
     agent_proc = None
     try:
         # Start agent
-        agent_proc = start_agent(strategy, port)
+        agent_proc = start_agent(strategy, model_config, port)
 
         # Run benchmark
         report_dir = run_benchmark(
@@ -443,26 +686,36 @@ def run_strategy_benchmark(
             categories=categories,
             tests=tests,
             attempts=attempts,
+            verbose=verbose,
         )
 
         if report_dir:
-            # Rename report directory to include strategy name
-            new_name = f"{report_dir.name}_{strategy}"
+            # Rename report directory to include config name
+            safe_name = config_name.replace("/", "_")
+            new_name = f"{report_dir.name}_{safe_name}"
             new_path = report_dir.parent / new_name
             if not new_path.exists():
                 report_dir.rename(new_path)
                 report_dir = new_path
 
             # Parse results
-            result = parse_report(report_dir, strategy)
-            print(f"  Results: {result.tests_passed}/{result.tests_run} passed")
+            result = parse_report(report_dir, strategy, model_config)
+            elapsed = time.time() - config_start
+            log(
+                f"FINISHED {config_name}: "
+                f"{result.tests_passed}/{result.tests_run} passed "
+                f"(total time: {elapsed:.1f}s)"
+            )
             return result
         else:
-            print("  No report generated")
+            log("No report generated", "WARN")
             return None
 
     except Exception as e:
-        print(f"  Error: {e}")
+        import traceback
+
+        log(f"Error: {e}", "ERROR")
+        traceback.print_exc()
         return None
 
     finally:
@@ -470,15 +723,50 @@ def run_strategy_benchmark(
             stop_agent(agent_proc)
 
 
+# Alias for backwards compatibility
+def run_strategy_benchmark(
+    strategy: str,
+    port: int,
+    categories: Optional[list[str]],
+    tests: Optional[list[str]],
+    attempts: int,
+) -> Optional[BenchmarkResult]:
+    """Run benchmark for a single strategy (backwards compatible)."""
+    return run_benchmark_config(
+        strategy=strategy,
+        model_config=DEFAULT_MODEL_CONFIG,
+        port=port,
+        categories=categories,
+        tests=tests,
+        attempts=attempts,
+    )
+
+
 def main():
     parser = argparse.ArgumentParser(
-        description="Test harness for comparing prompt strategies"
+        description="Test harness for comparing prompt strategies and LLM models"
     )
     parser.add_argument(
         "--strategies",
         type=str,
         help=f"Comma-separated list of strategies to test (default: all). "
         f"Available: {', '.join(STRATEGIES)}",
+    )
+    parser.add_argument(
+        "--models",
+        type=str,
+        help=f"Comma-separated list of model presets to test. "
+        f"Available: {', '.join(MODEL_PRESETS.keys())}",
+    )
+    parser.add_argument(
+        "--smart-llm",
+        type=str,
+        help="Custom smart LLM model name (e.g., gpt-4o, claude-sonnet-4-20250514)",
+    )
+    parser.add_argument(
+        "--fast-llm",
+        type=str,
+        help="Custom fast LLM model name (e.g., gpt-4o-mini, claude-3-5-haiku)",
     )
     parser.add_argument(
         "--categories",
@@ -517,8 +805,30 @@ def main():
         type=str,
         help="Output file for comparison report JSON",
     )
+    parser.add_argument(
+        "--list-models",
+        action="store_true",
+        help="List all available model presets and exit",
+    )
+    parser.add_argument(
+        "--quiet",
+        "-q",
+        action="store_true",
+        help="Suppress benchmark output (only show summary)",
+    )
 
     args = parser.parse_args()
+    verbose = not args.quiet
+
+    # List models if requested
+    if args.list_models:
+        print("Available model presets:")
+        print("-" * 60)
+        for name, config in MODEL_PRESETS.items():
+            print(f"  {name}:")
+            print(f"    smart_llm: {config.smart_llm}")
+            print(f"    fast_llm:  {config.fast_llm}")
+        sys.exit(0)
 
     # Parse strategies
     if args.strategies:
@@ -531,6 +841,31 @@ def main():
     else:
         strategies = STRATEGIES
 
+    # Parse model configurations
+    model_configs: list[ModelConfig] = []
+
+    if args.smart_llm or args.fast_llm:
+        # Custom model configuration
+        custom_config = ModelConfig(
+            name="custom",
+            smart_llm=args.smart_llm or "",
+            fast_llm=args.fast_llm or "",
+        )
+        model_configs.append(custom_config)
+    elif args.models:
+        # Parse model presets
+        model_names = [m.strip() for m in args.models.split(",")]
+        invalid_models = [m for m in model_names if m not in MODEL_PRESETS]
+        if invalid_models:
+            print(f"Invalid model presets: {invalid_models}")
+            print(f"Available: {list(MODEL_PRESETS.keys())}")
+            print("Use --list-models to see all presets with their configurations")
+            sys.exit(1)
+        model_configs = [MODEL_PRESETS[m] for m in model_names]
+    else:
+        # Default: use environment defaults (no model override)
+        model_configs = [DEFAULT_MODEL_CONFIG]
+
     # Parse categories/tests
     categories = (
         [c.strip() for c in args.categories.split(",")] if args.categories else None
@@ -542,53 +877,100 @@ def main():
         categories = QUICK_TEST_CATEGORIES
         args.attempts = 1
 
-    print("=" * 60)
-    print("PROMPT STRATEGY TEST HARNESS")
-    print("=" * 60)
-    print(f"Strategies to test: {strategies}")
-    print(f"Categories: {categories or 'all'}")
-    print(f"Tests: {tests or 'all'}")
-    print(f"Attempts per test: {args.attempts}")
-    print()
+    # Build list of all configurations to test
+    configurations: list[tuple[str, ModelConfig]] = []
+    for strategy in strategies:
+        for model_config in model_configs:
+            configurations.append((strategy, model_config))
 
-    results: dict[str, StrategyResult] = {}
+    print("=" * 70, flush=True)
+    log("PROMPT STRATEGY & MODEL TEST HARNESS")
+    print("=" * 70, flush=True)
+    log(f"Strategies: {strategies}")
+    log(f"Model configs: {[m.name for m in model_configs]}")
+    log(f"Total configurations to test: {len(configurations)}")
+    log(f"Categories: {categories or 'all'}")
+    log(f"Tests: {tests or 'all'}")
+    log(f"Attempts per test: {args.attempts}")
+    log(f"Verbose output: {verbose}")
+    print(flush=True)
+
+    results: dict[str, BenchmarkResult] = {}
     all_test_names: set[str] = set()
+    config_names: list[str] = []
 
     if args.compare_only:
         # Just compare existing reports
         print("Compare-only mode: analyzing existing reports...")
         strategy_reports = find_strategy_reports()
 
-        for strategy in strategies:
+        for strategy, model_config in configurations:
+            config_name = (
+                f"{strategy}/{model_config.name}"
+                if model_config.name != "default"
+                else strategy
+            )
+            config_names.append(config_name)
+
+            # Look for reports matching this config
             reports = strategy_reports.get(strategy, [])
+            # Also check for model-specific reports
+            if model_config.name != "default":
+                model_reports = strategy_reports.get(
+                    f"{strategy}_{model_config.name}", []
+                )
+                reports.extend(model_reports)
+
             if reports:
                 # Use most recent report
                 latest = sorted(reports, key=lambda p: p.name, reverse=True)[0]
-                result = parse_report(latest, strategy)
-                results[strategy] = result
+                result = parse_report(latest, strategy, model_config)
+                results[config_name] = result
                 all_test_names.update(result.test_results.keys())
-                print(f"  {strategy}: {result.tests_passed}/{result.tests_run} passed")
+                print(
+                    f"  {config_name}: {result.tests_passed}/{result.tests_run} passed"
+                )
             else:
-                print(f"  {strategy}: no reports found")
+                print(f"  {config_name}: no reports found")
 
     else:
-        # Run benchmarks for each strategy
-        for strategy in strategies:
-            result = run_strategy_benchmark(
+        # Run benchmarks for each configuration
+        total_configs = len(configurations)
+        harness_start = time.time()
+
+        for idx, (strategy, model_config) in enumerate(configurations, 1):
+            config_name = (
+                f"{strategy}/{model_config.name}"
+                if model_config.name != "default"
+                else strategy
+            )
+            config_names.append(config_name)
+
+            log(f"Progress: {idx}/{total_configs} configurations")
+
+            result = run_benchmark_config(
                 strategy=strategy,
+                model_config=model_config,
                 port=args.port,
                 categories=categories,
                 tests=tests,
                 attempts=args.attempts,
+                verbose=verbose,
             )
             if result:
-                results[strategy] = result
+                results[config_name] = result
                 all_test_names.update(result.test_results.keys())
+
+        # Log total harness time
+        total_elapsed = time.time() - harness_start
+        total_mins = total_elapsed / 60
+        log(f"All benchmarks completed in {total_elapsed:.1f}s ({total_mins:.1f}m)")
 
     # Generate comparison report
     comparison = ComparisonReport(
         timestamp=datetime.now().isoformat(),
-        strategies=strategies,
+        configurations=config_names,
+        strategies=strategies,  # For backwards compatibility
         results=results,
         test_names=sorted(all_test_names),
     )

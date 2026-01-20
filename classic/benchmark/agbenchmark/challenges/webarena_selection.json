@@ -10,8 +10,8 @@
         "geolocation": "NaN",
         "intent_template": "What is the top-{{n}} best-selling product in {{year}}",
         "instantiation_dict": {
-            "n": 1,
-            "year": 2022
+            "n": "1",
+            "year": "2022"
         },
         "intent": "What is the top-1 best-selling product in 2022",
         "require_reset": false,
@@ -42,7 +42,7 @@
         "geolocation": "NaN",
         "intent_template": "What are the top-{{n}} best-selling product in {{period}}",
         "instantiation_dict": {
-            "n": 3,
+            "n": "3",
             "period": "Jan 2023"
         },
         "intent": "What are the top-3 best-selling product in Jan 2023",
@@ -78,8 +78,8 @@
         "geolocation": "NaN",
         "intent_template": "What are the top-{{n}} best-selling product in {{year}}",
         "instantiation_dict": {
-            "n": 5,
-            "year": 2023
+            "n": "5",
+            "year": "2023"
         },
         "intent": "What are the top-5 best-selling product in 2023",
         "require_reset": false,

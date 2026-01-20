@@ -65,11 +65,32 @@ from forge.utils.exceptions import (
 )
 from pydantic import Field
 
-from .prompt_strategies.one_shot import OneShotAgentPromptStrategy
-from .prompt_strategies.plan_execute import PlanExecutePromptStrategy
-from .prompt_strategies.reflexion import ReflexionPromptStrategy
-from .prompt_strategies.rewoo import ReWOOPromptStrategy
-from .prompt_strategies.tree_of_thoughts import TreeOfThoughtsPromptStrategy
+from .prompt_strategies.one_shot import (
+    OneShotAgentActionProposal,
+    OneShotAgentPromptStrategy,
+)
+from .prompt_strategies.plan_execute import (
+    PlanExecuteActionProposal,
+    PlanExecutePromptStrategy,
+)
+from .prompt_strategies.reflexion import (
+    ReflexionActionProposal,
+    ReflexionPromptStrategy,
+)
+from .prompt_strategies.rewoo import ReWOOActionProposal, ReWOOPromptStrategy
+from .prompt_strategies.tree_of_thoughts import (
+    ToTActionProposal,
+    TreeOfThoughtsPromptStrategy,
+)
+
+# Union of all action proposal types from different prompt strategies
+AnyActionProposal = (
+    OneShotAgentActionProposal
+    | PlanExecuteActionProposal
+    | ReWOOActionProposal
+    | ReflexionActionProposal
+    | ToTActionProposal
+)
 
 if TYPE_CHECKING:
     from autogpt.app.config import AppConfig
@@ -86,15 +107,15 @@ class AgentSettings(BaseAgentSettings):
         default_factory=AgentConfiguration
     )
 
-    history: EpisodicActionHistory[ActionProposal] = Field(
-        default_factory=EpisodicActionHistory[ActionProposal]
+    history: EpisodicActionHistory[AnyActionProposal] = Field(
+        default_factory=EpisodicActionHistory[AnyActionProposal]
     )
     """(STATE) The action history of the agent."""
 
     context: AgentContext = Field(default_factory=AgentContext)
 
 
-class Agent(BaseAgent[ActionProposal], Configurable[AgentSettings]):
+class Agent(BaseAgent[AnyActionProposal], Configurable[AgentSettings]):
     default_settings: ClassVar[AgentSettings] = AgentSettings(
         name="Agent",
         description=__doc__ if __doc__ else "",
@@ -162,7 +183,7 @@ class Agent(BaseAgent[ActionProposal], Configurable[AgentSettings]):
         self.event_history = settings.history
         self.app_config = app_config
 
-    async def propose_action(self) -> ActionProposal:
+    async def propose_action(self) -> AnyActionProposal:
         """Proposes the next action to execute, based on the task and current state.
 
         Returns:
@@ -210,11 +231,11 @@ class Agent(BaseAgent[ActionProposal], Configurable[AgentSettings]):
 
     async def complete_and_parse(
         self, prompt: ChatPrompt, exception: Optional[Exception] = None
-    ) -> ActionProposal:
+    ) -> AnyActionProposal:
         if exception:
             prompt.messages.append(ChatMessage.system(f"Error: {exception}"))
 
-        response: ChatModelResponse[ActionProposal] = (
+        response: ChatModelResponse[AnyActionProposal] = (
             await self.llm_provider.create_chat_completion(
                 prompt.messages,
                 model_name=self.llm.name,
