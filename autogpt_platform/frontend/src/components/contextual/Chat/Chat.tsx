@@ -13,11 +13,7 @@ export interface ChatProps {
   initialPrompt?: string;
 }
 
-export function Chat({
-  className,
-  urlSessionId,
-  initialPrompt,
-}: ChatProps) {
+export function Chat({ className, urlSessionId, initialPrompt }: ChatProps) {
   const {
     messages,
     isLoading,

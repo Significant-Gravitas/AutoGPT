@@ -22,14 +22,34 @@ interface Args {
   initialPrompt?: string;
 }
 
-export function useChatContainer({ sessionId, initialMessages, initialPrompt }: Args) {
+export function useChatContainer({
+  sessionId,
+  initialMessages,
+  initialPrompt,
+}: Args) {
   const [messages, setMessages] = useState<ChatMessageData[]>([]);
   const [streamingChunks, setStreamingChunks] = useState<string[]>([]);
   const [hasTextChunks, setHasTextChunks] = useState(false);
   const [isStreamingInitiated, setIsStreamingInitiated] = useState(false);
   const streamingChunksRef = useRef<string[]>([]);
-  const { error, sendMessage: sendStreamMessage, stopStreaming } = useChatStream();
+  const previousSessionIdRef = useRef<string | null>(null);
+  const {
+    error,
+    sendMessage: sendStreamMessage,
+    stopStreaming,
+  } = useChatStream();
   const isStreaming = isStreamingInitiated || hasTextChunks;
+
+  useEffect(() => {
+    if (sessionId !== previousSessionIdRef.current) {
+      previousSessionIdRef.current = sessionId;
+      setMessages([]);
+      setStreamingChunks([]);
+      streamingChunksRef.current = [];
+      setHasTextChunks(false);
+      setIsStreamingInitiated(false);
+    }
+  }, [sessionId]);
 
   const allMessages = useMemo(() => {
     const processedInitialMessages: ChatMessageData[] = [];
@@ -158,7 +178,7 @@ export function useChatContainer({ sessionId, initialMessages, initialPrompt }: 
       streamingChunksRef.current = [];
       setHasTextChunks(false);
       setIsStreamingInitiated(true);
-      
+
       const dispatcher = createStreamEventDispatcher({
         setHasTextChunks,
         setStreamingChunks,
@@ -167,7 +187,7 @@ export function useChatContainer({ sessionId, initialMessages, initialPrompt }: 
         sessionId,
         setIsStreamingInitiated,
       });
-      
+
       try {
         await sendStreamMessage(
           sessionId,
@@ -179,10 +199,10 @@ export function useChatContainer({ sessionId, initialMessages, initialPrompt }: 
       } catch (err) {
         console.error("[useChatContainer] Failed to send message:", err);
         setIsStreamingInitiated(false);
-        
+
         // Don't show error toast for AbortError (expected during cleanup)
         if (err instanceof Error && err.name === "AbortError") return;
-        
+
         const errorMessage =
           err instanceof Error ? err.message : "Failed to send message";
         toast.error("Failed to send message", {
@@ -214,7 +234,13 @@ export function useChatContainer({ sessionId, initialMessages, initialPrompt }: 
       const context = capturePageContext();
       sendMessage(initialPrompt, true, context);
     },
-    [initialPrompt, sessionId, initialMessages.length, sendMessage, capturePageContext],
+    [
+      initialPrompt,
+      sessionId,
+      initialMessages.length,
+      sendMessage,
+      capturePageContext,
+    ],
   );
 
   return {

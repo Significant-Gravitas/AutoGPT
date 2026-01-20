@@ -1,7 +1,4 @@
-import {
-  SessionKey,
-  sessionStorage,
-} from "@/services/storage/session-storage";
+import { SessionKey, sessionStorage } from "@/services/storage/session-storage";
 import type { ToolResult } from "@/types/chat";
 import type { ChatMessageData } from "../ChatMessage/useChatMessage";
 
@@ -22,7 +19,10 @@ export function markInitialPromptSent(sessionId: string): void {
       sessionStorage.get(SessionKey.CHAT_SENT_INITIAL_PROMPTS) || "{}",
     );
     sent[sessionId] = true;
-    sessionStorage.set(SessionKey.CHAT_SENT_INITIAL_PROMPTS, JSON.stringify(sent));
+    sessionStorage.set(
+      SessionKey.CHAT_SENT_INITIAL_PROMPTS,
+      JSON.stringify(sent),
+    );
   } catch {
     // Ignore storage errors
   }
@@ -234,12 +234,22 @@ export function parseToolResponse(
     if (responseType === "setup_requirements") {
       return null;
     }
+    if (responseType === "understanding_updated") {
+      return {
+        type: "tool_response",
+        toolId,
+        toolName,
+        result: (parsedResult || result) as ToolResult,
+        success: true,
+        timestamp: timestamp || new Date(),
+      };
+    }
   }
   return {
     type: "tool_response",
     toolId,
     toolName,
-    result,
+    result: parsedResult ? (parsedResult as ToolResult) : result,
     success: true,
     timestamp: timestamp || new Date(),
   };

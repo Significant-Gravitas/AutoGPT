@@ -81,9 +81,9 @@ export function SessionsDrawer({
                 </Text>
               </div>
             ) : sessions.length === 0 ? (
-              <div className="flex items-center justify-center py-8">
+              <div className="flex h-full items-center justify-center">
                 <Text variant="body" className="text-zinc-500">
-                  No sessions found
+                  You don&apos;t have previously started chats
                 </Text>
               </div>
             ) : (

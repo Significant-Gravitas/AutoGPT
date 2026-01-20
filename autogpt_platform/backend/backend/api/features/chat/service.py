@@ -296,6 +296,7 @@ async def stream_chat_completion(
                 content="",
             )
             accumulated_tool_calls: list[dict[str, Any]] = []
+            has_saved_assistant_message = False
 
             # Wrap main logic in try/finally to ensure Langfuse observations are always ended
             has_yielded_end = False
@@ -390,6 +391,28 @@ async def stream_chat_completion(
                             if has_received_text and not text_streaming_ended:
                                 yield StreamTextEnd(id=text_block_id)
                                 text_streaming_ended = True
+                            
+                            # Save assistant message before yielding finish to ensure it's persisted
+                            # even if client disconnects immediately after receiving StreamFinish
+                            if not has_saved_assistant_message:
+                                messages_to_save_early: list[ChatMessage] = []
+                                if accumulated_tool_calls:
+                                    assistant_response.tool_calls = accumulated_tool_calls
+                                if assistant_response.content or assistant_response.tool_calls:
+                                    messages_to_save_early.append(assistant_response)
+                                messages_to_save_early.extend(tool_response_messages)
+                                
+                                if messages_to_save_early:
+                                    session.messages.extend(messages_to_save_early)
+                                    logger.info(
+                                        f"Saving assistant message before StreamFinish: "
+                                        f"content_len={len(assistant_response.content or '')}, "
+                                        f"tool_calls={len(assistant_response.tool_calls or [])}, "
+                                        f"tool_responses={len(tool_response_messages)}"
+                                    )
+                                    await upsert_chat_session(session)
+                                    has_saved_assistant_message = True
+                            
                             has_yielded_end = True
                             yield chunk
                     elif isinstance(chunk, StreamError):
@@ -472,38 +495,46 @@ async def stream_chat_completion(
                 return  # Exit after retry to avoid double-saving in finally block
 
             # Normal completion path - save session and handle tool call continuation
-            logger.info(
-                f"Normal completion path: session={session.session_id}, "
-                f"current message_count={len(session.messages)}"
-            )
-
-            # Build the messages list in the correct order
-            messages_to_save: list[ChatMessage] = []
-
-            # Add assistant message with tool_calls if any
-            if accumulated_tool_calls:
-                assistant_response.tool_calls = accumulated_tool_calls
+            # Only save if we haven't already saved when StreamFinish was received
+            if not has_saved_assistant_message:
                 logger.info(
-                    f"Added {len(accumulated_tool_calls)} tool calls to assistant message"
-                )
-            if assistant_response.content or assistant_response.tool_calls:
-                messages_to_save.append(assistant_response)
-                logger.info(
-                    f"Saving assistant message with content_len={len(assistant_response.content or '')}, tool_calls={len(assistant_response.tool_calls or [])}"
+                    f"Normal completion path: session={session.session_id}, "
+                    f"current message_count={len(session.messages)}"
                 )
 
-            # Add tool response messages after assistant message
-            messages_to_save.extend(tool_response_messages)
-            logger.info(
-                f"Saving {len(tool_response_messages)} tool response messages, "
-                f"total_to_save={len(messages_to_save)}"
-            )
+                # Build the messages list in the correct order
+                messages_to_save: list[ChatMessage] = []
 
-            session.messages.extend(messages_to_save)
-            logger.info(
-                f"Extended session messages, new message_count={len(session.messages)}"
-            )
-            await upsert_chat_session(session)
+                # Add assistant message with tool_calls if any
+                if accumulated_tool_calls:
+                    assistant_response.tool_calls = accumulated_tool_calls
+                    logger.info(
+                        f"Added {len(accumulated_tool_calls)} tool calls to assistant message"
+                    )
+                if assistant_response.content or assistant_response.tool_calls:
+                    messages_to_save.append(assistant_response)
+                    logger.info(
+                        f"Saving assistant message with content_len={len(assistant_response.content or '')}, tool_calls={len(assistant_response.tool_calls or [])}"
+                    )
+
+                # Add tool response messages after assistant message
+                messages_to_save.extend(tool_response_messages)
+                logger.info(
+                    f"Saving {len(tool_response_messages)} tool response messages, "
+                    f"total_to_save={len(messages_to_save)}"
+                )
+
+                if messages_to_save:
+                    session.messages.extend(messages_to_save)
+                    logger.info(
+                        f"Extended session messages, new message_count={len(session.messages)}"
+                    )
+                    await upsert_chat_session(session)
+            else:
+                logger.info(
+                    f"Assistant message already saved when StreamFinish was received, "
+                    f"skipping duplicate save"
+                )
 
             # If we did a tool call, stream the chat completion again to get the next response
             if has_done_tool_call:

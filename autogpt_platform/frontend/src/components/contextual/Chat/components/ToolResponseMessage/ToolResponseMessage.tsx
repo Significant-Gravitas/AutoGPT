@@ -1,6 +1,7 @@
-import { Text } from "@/components/atoms/Text/Text";
 import type { ToolResult } from "@/types/chat";
 import { AIChatBubble } from "../AIChatBubble/AIChatBubble";
+import { MarkdownContent } from "../MarkdownContent/MarkdownContent";
+import { formatToolResponse } from "./helpers";
 
 export interface ToolResponseMessageProps {
   toolId?: string;
@@ -11,26 +12,17 @@ export interface ToolResponseMessageProps {
 }
 
 export function ToolResponseMessage({
-  toolId,
+  toolId: _toolId,
   toolName,
-  result: _result,
-  success: _success = true,
+  result,
+  success: _success,
   className,
 }: ToolResponseMessageProps) {
-  const displayKey = toolId || toolName;
-  const resultValue =
-    typeof _result === "string"
-      ? _result
-      : _result
-        ? JSON.stringify(_result)
-        : toolName;
-  const displayText = `${displayKey}: ${resultValue}`;
+  const formattedText = formatToolResponse(result, toolName);
 
   return (
     <AIChatBubble className={className}>
-      <Text variant="small" className="text-neutral-500">
-        {displayText}
-      </Text>
+      <MarkdownContent content={formattedText} />
     </AIChatBubble>
   );
 }

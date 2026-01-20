@@ -7,7 +7,6 @@ import {
 import { okData } from "@/app/api/helpers";
 import { useBreakpoint } from "@/lib/hooks/useBreakpoint";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
-import { Key, storage } from "@/services/storage/local-storage";
 import { useQueryClient } from "@tanstack/react-query";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -54,8 +53,7 @@ export function useCopilotShell() {
     enabled: paginationEnabled,
   });
 
-  const storedSessionId = storage.get(Key.CHAT_SESSION_ID) ?? null;
-  const currentSessionId = getCurrentSessionId(searchParams, storedSessionId);
+  const currentSessionId = getCurrentSessionId(searchParams);
 
   const { data: currentSessionData, isLoading: isCurrentSessionLoading } =
     useGetV2GetSession(currentSessionId || "", {
@@ -134,9 +132,9 @@ export function useCopilotShell() {
   }
 
   function handleNewChat() {
-    storage.clean(Key.CHAT_SESSION_ID);
     resetAutoSelect();
-    // Invalidate sessions list to ensure newly created sessions appear
+    resetPagination();
+    // Invalidate and refetch sessions list to ensure newly created sessions appear
     queryClient.invalidateQueries({
       queryKey: getGetV2ListSessionsQueryKey(),
     });

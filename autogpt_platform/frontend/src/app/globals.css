@@ -174,7 +174,7 @@
 .loader {
   width: 80px;
   height: 70px;
-  border: 5px solid rgb(241 245 249);
+  border: 5px solid transparent;
   padding: 0 8px;
   box-sizing: border-box;
   background:

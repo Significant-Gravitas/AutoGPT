@@ -3,10 +3,10 @@
 import { postV2CreateSession } from "@/app/api/__generated__/endpoints/chat/chat";
 import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 import { Button } from "@/components/atoms/Button/Button";
-import { Input } from "@/components/atoms/Input/Input";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Text } from "@/components/atoms/Text/Text";
 import { Chat } from "@/components/contextual/Chat/Chat";
+import { ChatInput } from "@/components/contextual/Chat/components/ChatInput/ChatInput";
 import { getHomepageRoute } from "@/lib/constants";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import {
@@ -14,7 +14,6 @@ import {
   type FlagValues,
   useGetFlag,
 } from "@/services/feature-flags/use-get-flag";
-import { ArrowUpIcon } from "@phosphor-icons/react";
 import { useFlags } from "launchdarkly-react-client-sdk";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -39,7 +38,6 @@ export default function CopilotPage() {
   const isFlagReady =
     !isLaunchDarklyConfigured || flags[Flag.CHAT] !== undefined;
 
-  const [inputValue, setInputValue] = useState("");
   const [pageState, setPageState] = useState<PageState>({ type: "welcome" });
   const initialPromptRef = useRef<Map<string, string>>(new Map());
 
@@ -50,10 +48,7 @@ export default function CopilotPage() {
     function syncSessionFromUrl() {
       if (urlSessionId) {
         // If we're already in chat state with this sessionId, don't overwrite
-        if (
-          pageState.type === "chat" &&
-          pageState.sessionId === urlSessionId
-        ) {
+        if (pageState.type === "chat" && pageState.sessionId === urlSessionId) {
           return;
         }
         // Get initialPrompt from ref or current state
@@ -107,7 +102,6 @@ export default function CopilotPage() {
 
     const trimmedPrompt = prompt.trim();
     setPageState({ type: "creating", prompt: trimmedPrompt });
-    setInputValue("");
 
     try {
       // Create session
@@ -134,44 +128,9 @@ export default function CopilotPage() {
     }
   }
 
-  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!inputValue.trim()) return;
-    startChatWithPrompt(inputValue.trim());
-  }
-
-  function handleKeyDown(
-    event: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>,
-  ) {
-    if (event.key !== "Enter") return;
-    if (event.shiftKey) return;
-    event.preventDefault();
-    if (!inputValue.trim()) return;
-    startChatWithPrompt(inputValue.trim());
-  }
-
   function handleQuickAction(action: string) {
     startChatWithPrompt(action);
   }
-
-  // Auto-grow textarea
-  useEffect(() => {
-    const textarea = document.getElementById(
-      "copilot-prompt",
-    ) as HTMLTextAreaElement;
-    if (!textarea) return;
-    textarea.style.height = "auto";
-    const lineHeight = parseInt(
-      window.getComputedStyle(textarea).lineHeight,
-      10,
-    );
-    const maxRows = 5;
-    const maxHeight = lineHeight * maxRows;
-    const newHeight = Math.min(textarea.scrollHeight, maxHeight);
-    textarea.style.height = `${newHeight}px`;
-    textarea.style.overflowY =
-      textarea.scrollHeight > maxHeight ? "auto" : "hidden";
-  }, [inputValue]);
 
   if (!isFlagReady || isChatEnabled === false || !isLoggedIn) {
     return null;
@@ -235,33 +194,12 @@ export default function CopilotPage() {
                 What do you want to automate?
               </Text>
 
-              <form onSubmit={handleSubmit} className="mb-6">
-                <div className="relative">
-                  <Input
-                    id="copilot-prompt"
-                    label="Copilot prompt"
-                    hideLabel
-                    type="textarea"
-                    value={inputValue}
-                    onChange={(e) => setInputValue(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                    rows={1}
-                    placeholder='You can search or just ask - e.g. "create a blog post outline"'
-                    wrapperClassName="mb-0"
-                    className="!rounded-full border-transparent !py-5 pr-12 !text-[1rem] [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-                  />
-                  <Button
-                    type="submit"
-                    variant="icon"
-                    size="icon"
-                    aria-label="Submit prompt"
-                    className="absolute right-2 top-1/2 -translate-y-1/2 border-zinc-800 bg-zinc-800 text-white hover:border-zinc-900 hover:bg-zinc-900"
-                    disabled={!inputValue.trim()}
-                  >
-                    <ArrowUpIcon className="h-4 w-4" weight="bold" />
-                  </Button>
-                </div>
-              </form>
+              <div className="mb-6">
+                <ChatInput
+                  onSend={startChatWithPrompt}
+                  placeholder='You can search or just ask - e.g. "create a blog post outline"'
+                />
+              </div>
             </div>
             <div className="flex flex-nowrap items-center justify-center gap-3 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {quickActions.map((action) => (

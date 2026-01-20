@@ -24,6 +24,9 @@ import { UserChatBubble } from "../UserChatBubble/UserChatBubble";
 import { useChatMessage, type ChatMessageData } from "./useChatMessage";
 export interface ChatMessageProps {
   message: ChatMessageData;
+  messages?: ChatMessageData[];
+  index?: number;
+  isStreaming?: boolean;
   className?: string;
   onDismissLogin?: () => void;
   onDismissCredentials?: () => void;
@@ -34,6 +37,9 @@ export interface ChatMessageProps {
 
 export function ChatMessage({
   message,
+  messages = [],
+  index = -1,
+  isStreaming = false,
   className,
   onDismissCredentials,
   onSendMessage,
@@ -157,12 +163,44 @@ export function ChatMessage({
 
   // Render tool call messages
   if (isToolCall && message.type === "tool_call") {
+    // Check if this tool call is currently streaming
+    // A tool call is streaming if:
+    // 1. isStreaming is true
+    // 2. This is the last tool_call message
+    // 3. There's no tool_response for this tool call yet
+    const isToolCallStreaming =
+      isStreaming &&
+      index >= 0 &&
+      (() => {
+        // Find the last tool_call index
+        let lastToolCallIndex = -1;
+        for (let i = messages.length - 1; i >= 0; i--) {
+          if (messages[i].type === "tool_call") {
+            lastToolCallIndex = i;
+            break;
+          }
+        }
+        // Check if this is the last tool_call and there's no response yet
+        if (index === lastToolCallIndex) {
+          // Check if there's a tool_response for this tool call
+          const hasResponse = messages
+            .slice(index + 1)
+            .some(
+              (msg) =>
+                msg.type === "tool_response" && msg.toolId === message.toolId,
+            );
+          return !hasResponse;
+        }
+        return false;
+      })();
+
     return (
       <div className={cn("px-4 py-2", className)}>
         <ToolCallMessage
           toolId={message.toolId}
           toolName={message.toolName}
           arguments={message.arguments}
+          isStreaming={isToolCallStreaming}
         />
       </div>
     );

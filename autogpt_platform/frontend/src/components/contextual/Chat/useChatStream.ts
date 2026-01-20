@@ -149,46 +149,103 @@ export function useChatStream() {
   const retryCountRef = useRef<number>(0);
   const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const currentSessionIdRef = useRef<string | null>(null);
+  const requestStartTimeRef = useRef<number | null>(null);
 
-  const stopStreaming = useCallback(() => {
-    console.log("[useChatStream] stopStreaming called", {
-      hasAbortController: !!abortControllerRef.current,
-      isAborted: abortControllerRef.current?.signal.aborted,
-      stack: new Error().stack,
-    });
-    const controller = abortControllerRef.current;
-    if (controller) {
-      try {
-        const signal = controller.signal;
-        
-        if (signal && typeof signal.aborted === "boolean" && !signal.aborted) {
-          console.log("[useChatStream] Aborting stream");
-          controller.abort();
-        } else {
-          console.log("[useChatStream] Stream already aborted or signal invalid");
-        }
-      } catch (error) {
-        if (error instanceof Error && error.name === "AbortError") {
-          console.log("[useChatStream] AbortError caught (expected during cleanup)");
-        } else {
-          console.warn("[useChatStream] Error aborting stream:", error);
-        }
-      } finally {
-        abortControllerRef.current = null;
+  const stopStreaming = useCallback(
+    (sessionId?: string, force: boolean = false) => {
+      console.log("[useChatStream] stopStreaming called", {
+        hasAbortController: !!abortControllerRef.current,
+        isAborted: abortControllerRef.current?.signal.aborted,
+        currentSessionId: currentSessionIdRef.current,
+        requestedSessionId: sessionId,
+        requestStartTime: requestStartTimeRef.current,
+        timeSinceStart: requestStartTimeRef.current
+          ? Date.now() - requestStartTimeRef.current
+          : null,
+        force,
+        stack: new Error().stack,
+      });
+
+      if (
+        sessionId &&
+        currentSessionIdRef.current &&
+        currentSessionIdRef.current !== sessionId
+      ) {
+        console.log(
+          "[useChatStream] Session changed, aborting previous stream",
+          {
+            oldSessionId: currentSessionIdRef.current,
+            newSessionId: sessionId,
+          },
+        );
       }
-    }
-    if (retryTimeoutRef.current) {
-      clearTimeout(retryTimeoutRef.current);
-      retryTimeoutRef.current = null;
-    }
-    setIsStreaming(false);
-  }, []);
+
+      const controller = abortControllerRef.current;
+      if (controller) {
+        const timeSinceStart = requestStartTimeRef.current
+          ? Date.now() - requestStartTimeRef.current
+          : null;
+
+        if (!force && timeSinceStart !== null && timeSinceStart < 100) {
+          console.log(
+            "[useChatStream] Request just started (<100ms), skipping abort to prevent race condition",
+            {
+              timeSinceStart,
+            },
+          );
+          return;
+        }
+
+        try {
+          const signal = controller.signal;
+
+          if (
+            signal &&
+            typeof signal.aborted === "boolean" &&
+            !signal.aborted
+          ) {
+            console.log("[useChatStream] Aborting stream");
+            controller.abort();
+          } else {
+            console.log(
+              "[useChatStream] Stream already aborted or signal invalid",
+            );
+          }
+        } catch (error) {
+          if (error instanceof Error && error.name === "AbortError") {
+            console.log(
+              "[useChatStream] AbortError caught (expected during cleanup)",
+            );
+          } else {
+            console.warn("[useChatStream] Error aborting stream:", error);
+          }
+        } finally {
+          abortControllerRef.current = null;
+          requestStartTimeRef.current = null;
+        }
+      }
+      if (retryTimeoutRef.current) {
+        clearTimeout(retryTimeoutRef.current);
+        retryTimeoutRef.current = null;
+      }
+      setIsStreaming(false);
+    },
+    [],
+  );
 
   useEffect(() => {
     console.log("[useChatStream] Component mounted");
     return () => {
-      console.log("[useChatStream] Component unmounting, calling stopStreaming");
-      stopStreaming();
+      const sessionIdAtUnmount = currentSessionIdRef.current;
+      console.log(
+        "[useChatStream] Component unmounting, calling stopStreaming",
+        {
+          sessionIdAtUnmount,
+        },
+      );
+      stopStreaming(undefined, false);
+      currentSessionIdRef.current = null;
     };
   }, [stopStreaming]);
 
@@ -208,15 +265,25 @@ export function useChatStream() {
         isRetry,
         stack: new Error().stack,
       });
-      stopStreaming();
+
+      const previousSessionId = currentSessionIdRef.current;
+      stopStreaming(sessionId, true);
+      currentSessionIdRef.current = sessionId;
 
       const abortController = new AbortController();
       abortControllerRef.current = abortController;
+      requestStartTimeRef.current = Date.now();
       console.log("[useChatStream] Created new AbortController", {
         sessionId,
+        previousSessionId,
+        requestStartTime: requestStartTimeRef.current,
       });
 
       if (abortController.signal.aborted) {
+        console.warn(
+          "[useChatStream] AbortController was aborted before request started",
+        );
+        requestStartTimeRef.current = null;
         return Promise.reject(new Error("Request aborted"));
       }
 

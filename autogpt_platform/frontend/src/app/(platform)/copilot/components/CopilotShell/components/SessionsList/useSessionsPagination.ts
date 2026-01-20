@@ -37,8 +37,11 @@ export function useSessionsPagination({ enabled }: UseSessionsPaginationArgs) {
       } else {
         setAccumulatedSessions((prev) => [...prev, ...newSessions]);
       }
+    } else if (!enabled) {
+      setAccumulatedSessions([]);
+      setTotalCount(null);
     }
-  }, [data, offset]);
+  }, [data, offset, enabled]);
 
   const hasNextPage = useMemo(() => {
     if (totalCount === null) return false;

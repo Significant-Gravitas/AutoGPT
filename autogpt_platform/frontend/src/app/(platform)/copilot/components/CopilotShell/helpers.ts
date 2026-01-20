@@ -83,12 +83,8 @@ export function mergeCurrentSessionIntoList(
 
 export function getCurrentSessionId(
   searchParams: URLSearchParams,
-  storedSessionId: string | null,
 ): string | null {
-  const paramSessionId = searchParams.get("sessionId");
-  if (paramSessionId) return paramSessionId;
-  if (storedSessionId) return storedSessionId;
-  return null;
+  return searchParams.get("sessionId");
 }
 
 export function shouldAutoSelectSession(
@@ -159,7 +155,9 @@ export function checkReadyToShowContent(
     );
     return (
       sessionFound ||
-      (!isCurrentSessionLoading && currentSessionData !== undefined && currentSessionData !== null)
+      (!isCurrentSessionLoading &&
+        currentSessionData !== undefined &&
+        currentSessionData !== null)
     );
   }
 

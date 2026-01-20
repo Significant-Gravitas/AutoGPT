@@ -7,6 +7,7 @@ export interface MessageItemProps {
   messages: ChatMessageData[];
   index: number;
   lastAssistantMessageIndex: number;
+  isStreaming?: boolean;
   onSendMessage?: (content: string) => void;
 }
 
@@ -15,6 +16,7 @@ export function MessageItem({
   messages,
   index,
   lastAssistantMessageIndex,
+  isStreaming = false,
   onSendMessage,
 }: MessageItemProps) {
   const { messageToRender, agentOutput, isFinalMessage } = useMessageItem({
@@ -27,6 +29,9 @@ export function MessageItem({
   return (
     <ChatMessage
       message={messageToRender}
+      messages={messages}
+      index={index}
+      isStreaming={isStreaming}
       onSendMessage={onSendMessage}
       agentOutput={agentOutput}
       isFinalMessage={isFinalMessage}

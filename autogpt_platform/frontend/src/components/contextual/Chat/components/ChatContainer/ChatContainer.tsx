@@ -71,7 +71,7 @@ export function ChatContainer({
           placeholder={
             isMobile
               ? "You can search or just ask"
-              : "You can search or just ask — e.g. \"create a blog post outline\""
+              : 'You can search or just ask — e.g. "create a blog post outline"'
           }
         />
       </div>

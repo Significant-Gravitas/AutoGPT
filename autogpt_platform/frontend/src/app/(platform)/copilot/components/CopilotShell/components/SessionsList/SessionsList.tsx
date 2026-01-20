@@ -38,9 +38,9 @@ export function SessionsList({
 
   if (sessions.length === 0) {
     return (
-      <div className="flex items-center justify-center py-8">
+      <div className="flex h-full items-center justify-center">
         <Text variant="body" className="text-zinc-500">
-          No sessions found
+          You don&apos;t have previous chats
         </Text>
       </div>
     );
