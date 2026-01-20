@@ -6,7 +6,7 @@ from typing import AsyncIterator, Callable, Optional
 
 from .evaluator import Evaluator
 from .models import BenchmarkConfig, Challenge, ChallengeResult, ExecutionProgress
-from .runner import AgentRunner
+from .runner import AgentRunner, StepCallback
 
 
 class ParallelExecutor:
@@ -16,11 +16,13 @@ class ParallelExecutor:
         self,
         max_parallel: int = 4,
         on_progress: Optional[Callable[[ExecutionProgress], None]] = None,
+        on_step: Optional[StepCallback] = None,
         attempts: int = 1,
         no_cutoff: bool = False,
     ):
         self.max_parallel = max_parallel
         self.on_progress = on_progress
+        self.on_step = on_step
         self.attempts = attempts
         self.no_cutoff = no_cutoff
         self._semaphore = asyncio.Semaphore(max_parallel)
@@ -86,7 +88,12 @@ class ParallelExecutor:
                 )
 
             # Run the challenge (with modified timeout if no_cutoff is set)
-            runner = AgentRunner(config, workspace_root, no_cutoff=self.no_cutoff)
+            runner = AgentRunner(
+                config,
+                workspace_root,
+                no_cutoff=self.no_cutoff,
+                step_callback=self.on_step,
+            )
             result = await runner.run_challenge(challenge, attempt=attempt)
 
             # Evaluate result

@@ -5,16 +5,19 @@ import shutil
 import tempfile
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
-
-from forge.file_storage import FileStorageBackendName, get_storage
-from forge.llm.providers import MultiProvider
+from typing import Callable, Optional
 
 from autogpt.agent_factory.configurators import create_agent
 from autogpt.agents.agent import Agent
 from autogpt.app.config import AppConfig, ConfigBuilder
+from forge.file_storage import FileStorageBackendName, get_storage
+from forge.llm.providers import MultiProvider
 
 from .models import BenchmarkConfig, Challenge, ChallengeResult, StepResult
+
+# Type for step logging callback
+StepCallback = Callable[[str, str, int, str, str, bool], None]
+# Args: config_name, challenge_name, step_num, tool_name, result_preview, is_error
 
 
 class AgentRunner:
@@ -25,10 +28,12 @@ class AgentRunner:
         config: BenchmarkConfig,
         workspace_root: Path,
         no_cutoff: bool = False,
+        step_callback: Optional[StepCallback] = None,
     ):
         self.config = config
         self.workspace_root = workspace_root
         self.no_cutoff = no_cutoff
+        self.step_callback = step_callback
         self._agent: Optional[Agent] = None
         self._workspace: Optional[Path] = None
 
@@ -210,19 +215,41 @@ class AgentRunner:
                 step_cost = 0.0  # TODO: Extract from LLM provider
                 cumulative_cost += step_cost
 
+                # Get result info
+                result_str = str(
+                    result.outputs if hasattr(result, "outputs") else result
+                )
+                is_error = hasattr(result, "status") and result.status == "error"
+
                 # Record step
                 steps.append(
                     StepResult(
                         step_num=step_num + 1,
                         tool_name=proposal.use_tool.name,
                         tool_args=proposal.use_tool.arguments,
-                        result=str(
-                            result.outputs if hasattr(result, "outputs") else result
-                        ),
-                        is_error=hasattr(result, "status") and result.status == "error",
+                        result=result_str,
+                        is_error=is_error,
                         cumulative_cost=cumulative_cost,
                     )
                 )
+
+                # Call step callback if provided
+                if self.step_callback:
+                    # Truncate result for display
+                    result_preview = (
+                        result_str[:100] + "..."
+                        if len(result_str) > 100
+                        else result_str
+                    )
+                    result_preview = result_preview.replace("\n", " ")
+                    self.step_callback(
+                        self.config.config_name,
+                        challenge.name,
+                        step_num + 1,
+                        proposal.use_tool.name,
+                        result_preview,
+                        is_error,
+                    )
 
             return False  # Hit max steps
 

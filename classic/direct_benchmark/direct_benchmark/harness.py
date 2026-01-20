@@ -88,10 +88,16 @@ class BenchmarkHarness:
             if progress.result:
                 all_results[progress.config_name].append(progress.result)
 
+        # Create step callback if UI supports it
+        step_callback = None
+        if hasattr(ui, "log_step"):
+            step_callback = ui.log_step
+
         # Create executor
         executor = ParallelExecutor(
             max_parallel=self.config.max_parallel,
             on_progress=on_progress,
+            on_step=step_callback,
             attempts=self.config.attempts,
             no_cutoff=self.config.no_cutoff,
         )
@@ -101,7 +107,8 @@ class BenchmarkHarness:
 
         # Run with or without live display
         if isinstance(ui, BenchmarkUI) and ui_mode == "default":
-            with Live(ui.render_live_display(), console=console, refresh_per_second=4):
+            # Pass the UI object itself so Live can refresh it
+            with Live(ui, console=console, refresh_per_second=4):
                 async for _ in executor.execute_matrix(
                     self.config.configs,
                     challenges,

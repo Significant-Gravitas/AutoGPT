@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Optional
 
-from rich.console import Console, Group
+from rich.console import Console, Group, RenderableType
 from rich.live import Live
 from rich.panel import Panel
 from rich.progress import (
@@ -22,6 +22,18 @@ from .models import ChallengeResult, ExecutionProgress
 
 console = Console()
 
+# Colors for different configs (cycling through for parallel runs)
+CONFIG_COLORS = [
+    "cyan",
+    "green",
+    "yellow",
+    "magenta",
+    "blue",
+    "red",
+    "bright_cyan",
+    "bright_green",
+]
+
 
 class BenchmarkUI:
     """Rich UI for benchmark progress and results."""
@@ -33,8 +45,11 @@ class BenchmarkUI:
 
         # Track state
         self.active_runs: dict[str, str] = {}  # config_name -> challenge_name
+        self.active_steps: dict[str, str] = {}  # config_name -> current step info
         self.completed: list[ChallengeResult] = []
         self.results_by_config: dict[str, list[ChallengeResult]] = {}
+        self.recent_steps: list[tuple[str, str, int, str, bool]] = []  # Last N steps
+        self.config_colors: dict[str, str] = {}  # config_name -> color
 
         # Progress tracking
         self.progress = Progress(
@@ -53,17 +68,56 @@ class BenchmarkUI:
         self.start_time = datetime.now()
         self.total_challenges = total_challenges
         self.results_by_config = {config: [] for config in configs}
+        # Assign colors to configs
+        for i, config in enumerate(configs):
+            self.config_colors[config] = CONFIG_COLORS[i % len(CONFIG_COLORS)]
         self.main_task = self.progress.add_task(
             "[cyan]Running benchmarks...", total=total_challenges
         )
+
+    def get_config_color(self, config_name: str) -> str:
+        """Get the assigned color for a config."""
+        return self.config_colors.get(config_name, "white")
+
+    def log_step(
+        self,
+        config_name: str,
+        challenge_name: str,
+        step_num: int,
+        tool_name: str,
+        result_preview: str,
+        is_error: bool,
+    ) -> None:
+        """Log a step execution (called from AgentRunner)."""
+        # Update active step info
+        self.active_steps[config_name] = f"step {step_num}: {tool_name}"
+
+        # Add to recent steps (keep last 10)
+        self.recent_steps.append(
+            (config_name, challenge_name, step_num, tool_name, is_error)
+        )
+        if len(self.recent_steps) > 10:
+            self.recent_steps.pop(0)
+
+        # In verbose mode, print immediately
+        if self.verbose:
+            color = self.get_config_color(config_name)
+            status = "[red]ERR[/red]" if is_error else "[green]OK[/green]"
+            console.print(
+                f"[{color}][{config_name}][/{color}] {challenge_name} "
+                f"step {step_num}: {tool_name} {status}"
+            )
 
     def update(self, progress: ExecutionProgress) -> None:
         """Update UI with execution progress."""
         if progress.status == "starting":
             self.active_runs[progress.config_name] = progress.challenge_name
+            self.active_steps[progress.config_name] = "starting..."
         elif progress.status in ("completed", "failed"):
             if progress.config_name in self.active_runs:
                 del self.active_runs[progress.config_name]
+            if progress.config_name in self.active_steps:
+                del self.active_steps[progress.config_name]
             if progress.result:
                 self.completed.append(progress.result)
                 self.results_by_config[progress.config_name].append(progress.result)
@@ -84,17 +138,20 @@ class BenchmarkUI:
     def render_active_runs(self) -> Panel:
         """Render panel showing active runs."""
         if not self.active_runs:
-            content = Text("No active runs", style="dim")
+            content = Text("Waiting for runs to start...", style="dim")
         else:
             lines = []
             for config_name, challenge_name in self.active_runs.items():
+                color = self.get_config_color(config_name)
+                step_info = self.active_steps.get(config_name, "")
                 lines.append(
                     Text.assemble(
                         ("  ", ""),
                         ("\u25cf ", "yellow"),  # Bullet point
-                        (f"{config_name}", "cyan"),
+                        (f"{config_name}", color),
                         (" \u2192 ", "dim"),  # Arrow
                         (challenge_name, "white"),
+                        (f" ({step_info})", "dim") if step_info else ("", ""),
                     )
                 )
             content = Group(*lines)
@@ -164,6 +221,44 @@ class BenchmarkUI:
             border_style="green" if self.completed else "dim",
         )
 
+    def render_recent_steps(self) -> Panel:
+        """Render panel showing recent step executions."""
+        if not self.recent_steps:
+            content = Text("No steps yet", style="dim")
+        else:
+            lines = []
+            for (
+                config_name,
+                challenge,
+                step_num,
+                tool_name,
+                is_error,
+            ) in self.recent_steps[-5:]:
+                color = self.get_config_color(config_name)
+                status = (
+                    Text("\u2717", style="red")
+                    if is_error
+                    else Text("\u2713", style="green")
+                )
+                lines.append(
+                    Text.assemble(
+                        ("  ", ""),
+                        status,
+                        (" ", ""),
+                        (f"[{config_name}]", color),
+                        (" ", ""),
+                        (f"{challenge} #{step_num}: ", "dim"),
+                        (tool_name, "white"),
+                    )
+                )
+            content = Group(*lines)
+
+        return Panel(
+            content,
+            title="[bold]Recent Steps[/bold]",
+            border_style="dim",
+        )
+
     def render_live_display(self) -> Group:
         """Render the full live display."""
         return Group(
@@ -171,8 +266,14 @@ class BenchmarkUI:
             "",
             self.render_active_runs(),
             "",
+            self.render_recent_steps(),
+            "",
             self.render_recent_completions(),
         )
+
+    def __rich_console__(self, console: Console, options) -> RenderableType:
+        """Support for Rich Live display - called on each refresh."""
+        yield self.render_live_display()
 
     def print_final_summary(self) -> None:
         """Print final summary after all benchmarks complete."""

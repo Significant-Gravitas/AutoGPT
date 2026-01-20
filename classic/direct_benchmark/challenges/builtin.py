@@ -10,6 +10,16 @@ from pathlib import Path
 from typing import Annotated, Any, ClassVar, Iterator, Literal, Optional
 
 import pytest
+from agbenchmark.agent_api_interface import download_agent_artifacts_into_folder
+from agbenchmark.agent_interface import copy_challenge_artifacts_into_workspace
+from agbenchmark.config import AgentBenchmarkConfig
+from agbenchmark.utils.data_types import Category, DifficultyLevel, EvalResult
+from agbenchmark.utils.prompts import (
+    END_PROMPT,
+    FEW_SHOT_EXAMPLES,
+    PROMPT_MAP,
+    SCORING_MAP,
+)
 from agent_protocol_client import AgentApi, ApiClient
 from agent_protocol_client import Configuration as ClientConfig
 from agent_protocol_client import Step
@@ -21,17 +31,6 @@ from pydantic import (
     StringConstraints,
     ValidationInfo,
     field_validator,
-)
-
-from agbenchmark.agent_api_interface import download_agent_artifacts_into_folder
-from agbenchmark.agent_interface import copy_challenge_artifacts_into_workspace
-from agbenchmark.config import AgentBenchmarkConfig
-from agbenchmark.utils.data_types import Category, DifficultyLevel, EvalResult
-from agbenchmark.utils.prompts import (
-    END_PROMPT,
-    FEW_SHOT_EXAMPLES,
-    PROMPT_MAP,
-    SCORING_MAP,
 )
 
 from .base import BaseChallenge, ChallengeInfo
@@ -69,9 +68,9 @@ class BuiltinChallengeSpec(BaseModel):
         class Eval(BaseModel):
             type: str
             scoring: Optional[Literal["percentage", "scale", "binary"]] = None
-            template: Optional[Literal["rubric", "reference", "question", "custom"]] = (
-                None
-            )
+            template: Optional[
+                Literal["rubric", "reference", "question", "custom"]
+            ] = None
             examples: Optional[str] = None
 
             @field_validator("scoring", "template")
