@@ -22,6 +22,7 @@ export function useChat({ urlSessionId }: UseChatArgs = {}) {
     isLoading,
     isCreating,
     error,
+    isSessionNotFound,
     createSession,
     claimSession,
     clearSession: clearSessionBase,
@@ -47,9 +48,9 @@ export function useChat({ urlSessionId }: UseChatArgs = {}) {
             sendStreamMessage(
               sessionIdFromHook,
               "User has successfully logged in.",
-              () => {},
+              () => { },
               false,
-            ).catch(() => {});
+            ).catch(() => { });
           })
           .catch(() => {
             hasClaimedSessionRef.current = false;
@@ -110,6 +111,7 @@ export function useChat({ urlSessionId }: UseChatArgs = {}) {
     isLoading,
     isCreating,
     error,
+    isSessionNotFound,
     createSession,
     clearSession,
     loadSession,

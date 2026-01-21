@@ -58,6 +58,8 @@ export function useChatSession({
     query: {
       enabled: !!sessionId,
       select: okData,
+      retry: shouldRetrySessionLoad,
+      retryDelay: getSessionRetryDelay,
     },
   });
 
@@ -141,7 +143,8 @@ export function useChatSession({
       const queryOptions = getGetV2GetSessionQueryOptions(id, {
         query: {
           staleTime: 0, // Force fresh fetch
-          retry: 1,
+          retry: shouldRetrySessionLoad,
+          retryDelay: getSessionRetryDelay,
         },
       });
       const result = await queryClient.fetchQuery(queryOptions);
@@ -223,10 +226,40 @@ export function useChatSession({
     isLoading,
     isCreating,
     error,
+    isSessionNotFound: isNotFoundError(loadError),
     createSession,
     loadSession,
     refreshSession,
     claimSession,
     clearSession,
   };
+}
+
+function isNotFoundError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  if ("status" in error && error.status === 404) return true;
+  if (
+    "response" in error &&
+    typeof error.response === "object" &&
+    error.response !== null &&
+    "status" in error.response &&
+    error.response.status === 404
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function shouldRetrySessionLoad(
+  failureCount: number,
+  error: unknown,
+): boolean {
+  if (!isNotFoundError(error)) return false;
+  return failureCount <= 2;
+}
+
+function getSessionRetryDelay(attemptIndex: number): number {
+  if (attemptIndex === 0) return 3000;
+  if (attemptIndex === 1) return 5000;
+  return 0;
 }

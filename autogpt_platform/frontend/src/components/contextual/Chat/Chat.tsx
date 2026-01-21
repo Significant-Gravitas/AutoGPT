@@ -2,6 +2,7 @@
 
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
+import { useEffect, useRef } from "react";
 import { ChatContainer } from "./components/ChatContainer/ChatContainer";
 import { ChatErrorState } from "./components/ChatErrorState/ChatErrorState";
 import { ChatLoader } from "./components/ChatLoader/ChatLoader";
@@ -11,18 +12,38 @@ export interface ChatProps {
   className?: string;
   urlSessionId?: string | null;
   initialPrompt?: string;
+  onSessionNotFound?: () => void;
 }
 
-export function Chat({ className, urlSessionId, initialPrompt }: ChatProps) {
+export function Chat({
+  className,
+  urlSessionId,
+  initialPrompt,
+  onSessionNotFound,
+}: ChatProps) {
+  const hasHandledNotFoundRef = useRef(false);
   const {
     messages,
     isLoading,
     isCreating,
     error,
+    isSessionNotFound,
     sessionId,
     createSession,
     showLoader,
   } = useChat({ urlSessionId });
+
+  useEffect(
+    function handleMissingSession() {
+      if (!onSessionNotFound) return;
+      if (!urlSessionId) return;
+      if (!isSessionNotFound || isLoading || isCreating) return;
+      if (hasHandledNotFoundRef.current) return;
+      hasHandledNotFoundRef.current = true;
+      onSessionNotFound();
+    },
+    [onSessionNotFound, urlSessionId, isSessionNotFound, isLoading, isCreating],
+  );
 
   return (
     <div className={cn("flex h-full flex-col", className)}>

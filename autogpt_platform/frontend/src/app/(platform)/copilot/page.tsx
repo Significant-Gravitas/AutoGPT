@@ -132,6 +132,10 @@ export default function CopilotPage() {
     startChatWithPrompt(action);
   }
 
+  function handleSessionNotFound() {
+    router.replace("/copilot");
+  }
+
   if (!isFlagReady || isChatEnabled === false || !isLoggedIn) {
     return null;
   }
@@ -145,6 +149,7 @@ export default function CopilotPage() {
           className="flex-1"
           urlSessionId={pageState.sessionId}
           initialPrompt={pageState.initialPrompt}
+          onSessionNotFound={handleSessionNotFound}
         />
       </div>
     );

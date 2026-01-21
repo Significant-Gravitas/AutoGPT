@@ -161,7 +161,7 @@ async def create_session(
 async def get_session(
     session_id: str,
     user_id: Annotated[str | None, Depends(auth.get_user_id)],
-) -> SessionDetailResponse | None:
+) -> SessionDetailResponse:
     """
     Retrieve the details of a specific chat session.
 
@@ -177,7 +177,7 @@ async def get_session(
     """
     session = await get_chat_session(session_id, user_id)
     if not session:
-        return None
+        raise NotFoundError(f"Session {session_id} not found.")
 
     messages = [message.model_dump() for message in session.messages]
     logger.info(
