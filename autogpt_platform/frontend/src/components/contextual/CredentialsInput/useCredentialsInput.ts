@@ -98,33 +98,36 @@ export function useCredentialsInput({
 
   // Auto-select the first available credential on initial mount
   // Once a user has made a selection, we don't override it
-  useEffect(function autoSelectCredential() {
-    if (readOnly) return;
-    if (!credentials || !("savedCredentials" in credentials)) return;
-    if (selectedCredential?.id) return;
+  useEffect(
+    function autoSelectCredential() {
+      if (readOnly) return;
+      if (!credentials || !("savedCredentials" in credentials)) return;
+      if (selectedCredential?.id) return;
 
-    const savedCreds = credentials.savedCredentials;
-    if (savedCreds.length === 0) return;
+      const savedCreds = credentials.savedCredentials;
+      if (savedCreds.length === 0) return;
 
-    if (hasAttemptedAutoSelect.current) return;
-    hasAttemptedAutoSelect.current = true;
+      if (hasAttemptedAutoSelect.current) return;
+      hasAttemptedAutoSelect.current = true;
 
-    if (isOptional) return;
+      if (isOptional) return;
 
-    const cred = savedCreds[0];
-    onSelectCredential({
-      id: cred.id,
-      type: cred.type,
-      provider: credentials.provider,
-      title: (cred as any).title,
-    });
-  }, [
-    credentials,
-    selectedCredential?.id,
-    readOnly,
-    isOptional,
-    onSelectCredential,
-  ]);
+      const cred = savedCreds[0];
+      onSelectCredential({
+        id: cred.id,
+        type: cred.type,
+        provider: credentials.provider,
+        title: (cred as any).title,
+      });
+    },
+    [
+      credentials,
+      selectedCredential?.id,
+      readOnly,
+      isOptional,
+      onSelectCredential,
+    ],
+  );
 
   if (
     !credentials ||
@@ -222,7 +225,7 @@ export function useCredentialsInput({
             );
             setOAuthError(
               "Connection failed: the granted permissions don't match what's required. " +
-              "Please contact the application administrator.",
+                "Please contact the application administrator.",
             );
             return;
           }
@@ -237,7 +240,8 @@ export function useCredentialsInput({
       } catch (error) {
         console.error("Error in OAuth callback:", error);
         setOAuthError(
-          `Error in OAuth callback: ${error instanceof Error ? error.message : String(error)
+          `Error in OAuth callback: ${
+            error instanceof Error ? error.message : String(error)
           }`,
         );
       } finally {

@@ -1,8 +1,5 @@
 import { CredentialsProvidersContextType } from "@/providers/agent-credentials/credentials-provider";
-import {
-  filterSystemCredentials,
-  getSystemCredentials,
-} from "../../helpers";
+import { filterSystemCredentials, getSystemCredentials } from "../../helpers";
 
 export type CredentialField = [string, any];
 

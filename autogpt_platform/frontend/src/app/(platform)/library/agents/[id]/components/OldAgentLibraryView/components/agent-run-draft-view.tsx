@@ -86,19 +86,19 @@ export function AgentRunDraftView({
   onCreateSchedule?: (schedule: Schedule) => void;
   className?: string;
 } & (
-    | {
+  | {
       onCreatePreset?: (preset: LibraryAgentPreset) => void;
       agentPreset?: never;
       onUpdatePreset?: never;
       doDeletePreset?: never;
     }
-    | {
+  | {
       onCreatePreset?: never;
       agentPreset: LibraryAgentPreset;
       onUpdatePreset: (preset: LibraryAgentPreset) => void;
       doDeletePreset: (presetID: LibraryAgentPresetID) => void;
     }
-  )): React.ReactNode {
+)): React.ReactNode {
   const api = useBackendAPI();
   const { toast } = useToast();
   const toastOnFail = useToastOnFail();
@@ -239,18 +239,13 @@ export function AgentRunDraftView({
     },
     [requiredCredentials, inputCredentials],
   );
-  function addChangedCredentials(
-    prev: Set<keyof LibraryAgentPresetUpdatable>,
-  ) {
+  function addChangedCredentials(prev: Set<keyof LibraryAgentPresetUpdatable>) {
     const next = new Set(prev);
     next.add("credentials");
     return next;
   }
 
-  function handleCredentialChange(
-    key: string,
-    value?: CredentialsMetaInput,
-  ) {
+  function handleCredentialChange(key: string, value?: CredentialsMetaInput) {
     setInputCredentials(function updateInputCredentials(currentCreds) {
       const next = { ...currentCreds };
       if (value === undefined) {
@@ -494,110 +489,110 @@ export function AgentRunDraftView({
       // "Regular" agent: [run] + [save as preset] buttons
       ...(!graph.has_external_trigger
         ? ([
-          {
-            label: (
-              <>
-                <CalendarClockIcon className="mr-2 size-4" /> Schedule run
-              </>
-            ),
-            variant: "accent",
-            callback: openScheduleDialog,
-            extraProps: { "data-testid": "agent-schedule-button" },
-          },
-          {
-            label: (
-              <>
-                <IconPlay className="mr-2 size-4" /> Manual run
-              </>
-            ),
-            callback: doRun,
-            extraProps: { "data-testid": "agent-run-button" },
-          },
-          // {
-          //   label: (
-          //     <>
-          //       <IconSave className="mr-2 size-4" /> Save as a preset
-          //     </>
-          //   ),
-          //   callback: doCreatePreset,
-          //   disabled: !(
-          //     presetName &&
-          //     allRequiredInputsAreSet &&
-          //     allCredentialsAreSet
-          //   ),
-          // },
-        ] satisfies ButtonAction[])
+            {
+              label: (
+                <>
+                  <CalendarClockIcon className="mr-2 size-4" /> Schedule run
+                </>
+              ),
+              variant: "accent",
+              callback: openScheduleDialog,
+              extraProps: { "data-testid": "agent-schedule-button" },
+            },
+            {
+              label: (
+                <>
+                  <IconPlay className="mr-2 size-4" /> Manual run
+                </>
+              ),
+              callback: doRun,
+              extraProps: { "data-testid": "agent-run-button" },
+            },
+            // {
+            //   label: (
+            //     <>
+            //       <IconSave className="mr-2 size-4" /> Save as a preset
+            //     </>
+            //   ),
+            //   callback: doCreatePreset,
+            //   disabled: !(
+            //     presetName &&
+            //     allRequiredInputsAreSet &&
+            //     allCredentialsAreSet
+            //   ),
+            // },
+          ] satisfies ButtonAction[])
         : []),
       // Triggered agent: [setup] button
       ...(graph.has_external_trigger && !agentPreset?.webhook_id
         ? ([
-          {
-            label: (
-              <>
-                <IconPlay className="mr-2 size-4" /> Set up trigger
-              </>
-            ),
-            variant: "accent",
-            callback: doSetupTrigger,
-            disabled: !(
-              presetName &&
-              allRequiredInputsAreSet &&
-              allCredentialsAreSet
-            ),
-          },
-        ] satisfies ButtonAction[])
+            {
+              label: (
+                <>
+                  <IconPlay className="mr-2 size-4" /> Set up trigger
+                </>
+              ),
+              variant: "accent",
+              callback: doSetupTrigger,
+              disabled: !(
+                presetName &&
+                allRequiredInputsAreSet &&
+                allCredentialsAreSet
+              ),
+            },
+          ] satisfies ButtonAction[])
         : []),
       // Existing agent trigger: [enable]/[disable] button
       ...(agentPreset?.webhook_id
         ? ([
-          agentPreset.is_active
-            ? {
-              label: (
-                <>
-                  <IconCross className="mr-2.5 size-3.5" /> Disable trigger
-                </>
-              ),
-              variant: "destructive",
-              callback: () => doSetPresetActive(false),
-            }
-            : {
-              label: (
-                <>
-                  <IconPlay className="mr-2 size-4" /> Enable trigger
-                </>
-              ),
-              variant: "accent",
-              callback: () => doSetPresetActive(true),
-            },
-        ] satisfies ButtonAction[])
+            agentPreset.is_active
+              ? {
+                  label: (
+                    <>
+                      <IconCross className="mr-2.5 size-3.5" /> Disable trigger
+                    </>
+                  ),
+                  variant: "destructive",
+                  callback: () => doSetPresetActive(false),
+                }
+              : {
+                  label: (
+                    <>
+                      <IconPlay className="mr-2 size-4" /> Enable trigger
+                    </>
+                  ),
+                  variant: "accent",
+                  callback: () => doSetPresetActive(true),
+                },
+          ] satisfies ButtonAction[])
         : []),
       // Existing agent preset/trigger: [save] and [delete] buttons
       ...(agentPreset
         ? ([
-          {
-            label: (
-              <>
-                <IconSave className="mr-2 size-4" /> Save changes
-              </>
-            ),
-            callback: doUpdatePreset,
-            disabled: !(
-              changedPresetAttributes.size > 0 &&
-              presetName &&
-              allRequiredInputsAreSet &&
-              allCredentialsAreSet
-            ),
-          },
-          {
-            label: (
-              <>
-                <Trash2Icon className="mr-2 size-4" />
-                Delete {graph.has_external_trigger ? "trigger" : "preset"}
-              </>
-            ),
-            callback: () => doDeletePreset(agentPreset.id),
-          },
-        ] satisfies ButtonAction[])
+            {
+              label: (
+                <>
+                  <IconSave className="mr-2 size-4" /> Save changes
+                </>
+              ),
+              callback: doUpdatePreset,
+              disabled: !(
+                changedPresetAttributes.size > 0 &&
+                presetName &&
+                allRequiredInputsAreSet &&
+                allCredentialsAreSet
+              ),
+            },
+            {
+              label: (
+                <>
+                  <Trash2Icon className="mr-2 size-4" />
+                  Delete {graph.has_external_trigger ? "trigger" : "preset"}
+                </>
+              ),
+              callback: () => doDeletePreset(agentPreset.id),
+            },
+          ] satisfies ButtonAction[])
         : []),
     ],
     [

@@ -17,7 +17,7 @@ import {
   CredentialField,
   findSavedCredentialByProviderAndType,
   hasMissingRequiredSystemCredentials,
-  splitCredentialFieldsBySystem
+  splitCredentialFieldsBySystem,
 } from "./helpers";
 
 type Props = {
