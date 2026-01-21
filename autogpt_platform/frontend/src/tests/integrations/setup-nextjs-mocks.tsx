@@ -4,14 +4,15 @@ export const mockNextjsModules = () => {
   vi.mock("next/image", () => ({
     __esModule: true,
     default: ({
-      fill,
-      priority,
-      quality,
-      placeholder,
-      blurDataURL,
-      loader,
+      fill: _fill,
+      priority: _priority,
+      quality: _quality,
+      placeholder: _placeholder,
+      blurDataURL: _blurDataURL,
+      loader: _loader,
       ...props
     }: any) => {
+      // eslint-disable-next-line jsx-a11y/alt-text, @next/next/no-img-element
       return <img {...props} />;
     },
   }));

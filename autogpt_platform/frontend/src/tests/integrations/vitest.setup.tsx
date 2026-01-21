@@ -1,4 +1,4 @@
-import { beforeAll, afterAll, afterEach, vi } from "vitest";
+import { beforeAll, afterAll, afterEach } from "vitest";
 import { server } from "@/mocks/mock-server";
 import { mockNextjsModules } from "./setup-nextjs-mocks";
 import { mockSupabaseRequest } from "./mock-supabase-request";
