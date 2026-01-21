@@ -7930,7 +7930,7 @@
             "title": "Deleted Model Display Name"
           },
           "replacement_model_slug": {
-            "type": "string",
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Replacement Model Slug"
           },
           "nodes_migrated": { "type": "integer", "title": "Nodes Migrated" },
@@ -7940,7 +7940,6 @@
         "required": [
           "deleted_model_slug",
           "deleted_model_display_name",
-          "replacement_model_slug",
           "nodes_migrated",
           "message"
         ],

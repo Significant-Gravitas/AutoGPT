@@ -493,7 +493,9 @@ async def delete_model(
     deleted_display_name = model.displayName
 
     # 2. Count affected nodes first to determine if replacement is needed
-    count_result = await prisma.models.prisma().query_raw(
+    import prisma as prisma_module
+
+    count_result = await prisma_module.get_client().query_raw(
         """
         SELECT COUNT(*) as count
         FROM "AgentNode"

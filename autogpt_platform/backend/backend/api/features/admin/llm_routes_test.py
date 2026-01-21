@@ -439,9 +439,53 @@ def test_delete_llm_model_validation_error(
     assert "Replacement model 'invalid' not found" in response.json()["detail"]
 
 
-def test_delete_llm_model_missing_replacement() -> None:
-    """Test deletion fails when replacement_model_slug is not provided"""
+def test_delete_llm_model_no_replacement_with_usage(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Test deletion fails when nodes exist but no replacement is provided"""
+    mocker.patch(
+        "backend.api.features.admin.llm_routes.llm_db.delete_model",
+        new=AsyncMock(
+            side_effect=ValueError(
+                "Cannot delete model 'test-model': 5 workflow node(s) are using it. "
+                "Please provide a replacement_model_slug to migrate them."
+            )
+        ),
+    )
+
     response = client.delete("/admin/llm/models/model-1")
 
-    # FastAPI will return 422 for missing required query params
-    assert response.status_code == 422
+    assert response.status_code == 400
+    assert "workflow node(s) are using it" in response.json()["detail"]
+
+
+def test_delete_llm_model_no_replacement_no_usage(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Test deletion succeeds when no nodes use the model and no replacement is provided"""
+    mock_response = llm_model.DeleteLlmModelResponse(
+        deleted_model_slug="unused-model",
+        deleted_model_display_name="Unused Model",
+        replacement_model_slug=None,
+        nodes_migrated=0,
+        message="Successfully deleted model 'Unused Model' (unused-model). No workflows were using this model.",
+    )
+
+    mocker.patch(
+        "backend.api.features.admin.llm_routes.llm_db.delete_model",
+        new=AsyncMock(return_value=mock_response),
+    )
+
+    mock_refresh = mocker.patch(
+        "backend.api.features.admin.llm_routes._refresh_runtime_state",
+        new=AsyncMock(),
+    )
+
+    response = client.delete("/admin/llm/models/model-1")
+
+    assert response.status_code == 200
+    response_data = response.json()
+    assert response_data["deleted_model_slug"] == "unused-model"
+    assert response_data["nodes_migrated"] == 0
+    assert response_data["replacement_model_slug"] is None
+    mock_refresh.assert_called_once()

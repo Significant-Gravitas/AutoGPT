@@ -173,7 +173,7 @@ class ToggleLlmModelResponse(pydantic.BaseModel):
 class DeleteLlmModelResponse(pydantic.BaseModel):
     deleted_model_slug: str
     deleted_model_display_name: str
-    replacement_model_slug: str
+    replacement_model_slug: Optional[str] = None
     nodes_migrated: int
     message: str
 
