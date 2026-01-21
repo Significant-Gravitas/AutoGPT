@@ -41,7 +41,9 @@ export type ChatMessageData =
       credentials: Array<{
         provider: string;
         providerName: string;
-        credentialType: "api_key" | "oauth2" | "user_password" | "host_scoped";
+        credentialTypes: Array<
+          "api_key" | "oauth2" | "user_password" | "host_scoped"
+        >;
         title: string;
         scopes?: string[];
       }>;

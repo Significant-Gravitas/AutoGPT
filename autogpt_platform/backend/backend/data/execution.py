@@ -81,7 +81,8 @@ class ExecutionContext(BaseModel):
     This includes information needed by blocks, sub-graphs, and execution management.
     """
 
-    safe_mode: bool = True
+    human_in_the_loop_safe_mode: bool = True
+    sensitive_action_safe_mode: bool = False
     user_timezone: str = "UTC"
     root_execution_id: Optional[str] = None
     parent_execution_id: Optional[str] = None
