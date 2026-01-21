@@ -7,6 +7,7 @@ import prisma.models
 
 from backend.data.db import transaction
 from backend.server.v2.llm import model as llm_model
+from backend.util.models import Pagination
 
 
 def _json_dict(value: Any | None) -> dict[str, Any]:
@@ -151,14 +152,19 @@ async def upsert_provider(
 
 
 async def list_models(
-    provider_id: str | None = None, enabled_only: bool = False
-) -> list[llm_model.LlmModel]:
+    provider_id: str | None = None,
+    enabled_only: bool = False,
+    page: int = 1,
+    page_size: int = 50,
+) -> llm_model.LlmModelsResponse:
     """
-    List LLM models.
+    List LLM models with pagination.
 
     Args:
         provider_id: Optional filter by provider ID
         enabled_only: If True, only return enabled models (for public routes)
+        page: Page number (1-indexed)
+        page_size: Number of models per page
     """
     where: Any = {}
     if provider_id:
@@ -166,11 +172,32 @@ async def list_models(
     if enabled_only:
         where["isEnabled"] = True
 
+    # Get total count for pagination
+    total_items = await prisma.models.LlmModel.prisma().count(
+        where=where if where else None
+    )
+
+    # Calculate pagination
+    skip = (page - 1) * page_size
+    total_pages = (total_items + page_size - 1) // page_size if total_items > 0 else 0
+
     records = await prisma.models.LlmModel.prisma().find_many(
         where=where if where else None,
         include={"Costs": True, "Creator": True},
+        skip=skip,
+        take=page_size,
     )
-    return [_map_model(record) for record in records]
+    models = [_map_model(record) for record in records]
+
+    return llm_model.LlmModelsResponse(
+        models=models,
+        pagination=Pagination(
+            total_items=total_items,
+            total_pages=total_pages,
+            current_page=page,
+            page_size=page_size,
+        ),
+    )
 
 
 def _cost_create_payload(

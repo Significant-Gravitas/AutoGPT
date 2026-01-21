@@ -39,13 +39,16 @@ async def _refresh_runtime_state() -> None:
         except Exception as e:
             logger.warning("Failed to clear /blocks cache: %s", e)
 
-        # Clear the v2 builder providers cache (if it exists)
+        # Clear the v2 builder caches (if they exist)
         try:
             from backend.api.features.builder import db as builder_db
 
             if hasattr(builder_db, "_get_all_providers"):
                 builder_db._get_all_providers.cache_clear()
                 logger.info("Cleared v2 builder providers cache")
+            if hasattr(builder_db, "_build_cached_search_results"):
+                builder_db._build_cached_search_results.cache_clear()
+                logger.info("Cleared v2 builder search results cache")
         except Exception as e:
             logger.debug("Could not clear v2 builder cache: %s", e)
 
@@ -100,9 +103,16 @@ async def update_llm_provider(
     summary="List LLM models",
     response_model=llm_model.LlmModelsResponse,
 )
-async def list_llm_models(provider_id: str | None = fastapi.Query(default=None)):
-    models = await llm_db.list_models(provider_id=provider_id)
-    return llm_model.LlmModelsResponse(models=models)
+async def list_llm_models(
+    provider_id: str | None = fastapi.Query(default=None),
+    page: int = fastapi.Query(default=1, ge=1, description="Page number (1-indexed)"),
+    page_size: int = fastapi.Query(
+        default=50, ge=1, le=100, description="Number of models per page"
+    ),
+):
+    return await llm_db.list_models(
+        provider_id=provider_id, page=page, page_size=page_size
+    )
 
 
 @router.post(
@@ -389,7 +399,6 @@ async def list_llm_creators():
 @router.get(
     "/creators/{creator_id}",
     summary="Get creator details",
-    operation_id="getV2GetLlmCreatorDetails",
     response_model=llm_model.LlmModelCreator,
 )
 async def get_llm_creator(creator_id: str):

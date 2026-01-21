@@ -9,7 +9,7 @@ from typing import Any, Iterable
 
 import prisma.models
 
-from backend.data.llm_registry.model_types import ModelMetadata
+from backend.data.llm_registry.model import ModelMetadata
 
 logger = logging.getLogger(__name__)
 

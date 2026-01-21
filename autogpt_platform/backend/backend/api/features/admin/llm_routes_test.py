@@ -10,6 +10,7 @@ from pytest_snapshot.plugin import Snapshot
 
 import backend.api.features.admin.llm_routes as llm_routes
 from backend.server.v2.llm import model as llm_model
+from backend.util.models import Pagination
 
 app = fastapi.FastAPI()
 app.include_router(llm_routes.router, prefix="/admin/llm")
@@ -81,34 +82,42 @@ def test_list_llm_models_success(
     mocker: pytest_mock.MockFixture,
     configured_snapshot: Snapshot,
 ) -> None:
-    """Test successful listing of LLM models"""
-    # Mock the database function
-    mock_models = [
-        {
-            "id": "model-1",
-            "slug": "gpt-4o",
-            "display_name": "GPT-4o",
-            "description": "GPT-4 Optimized",
-            "provider_id": "provider-1",
-            "context_window": 128000,
-            "max_output_tokens": 16384,
-            "is_enabled": True,
-            "capabilities": {},
-            "metadata": {},
-            "costs": [
-                {
-                    "id": "cost-1",
-                    "credit_cost": 10,
-                    "credential_provider": "openai",
-                    "metadata": {},
-                }
-            ],
-        }
-    ]
+    """Test successful listing of LLM models with pagination"""
+    # Mock the database function - now returns LlmModelsResponse
+    mock_model = llm_model.LlmModel(
+        id="model-1",
+        slug="gpt-4o",
+        display_name="GPT-4o",
+        description="GPT-4 Optimized",
+        provider_id="provider-1",
+        context_window=128000,
+        max_output_tokens=16384,
+        is_enabled=True,
+        capabilities={},
+        metadata={},
+        costs=[
+            llm_model.LlmModelCost(
+                id="cost-1",
+                credit_cost=10,
+                credential_provider="openai",
+                metadata={},
+            )
+        ],
+    )
+
+    mock_response = llm_model.LlmModelsResponse(
+        models=[mock_model],
+        pagination=Pagination(
+            total_items=1,
+            total_pages=1,
+            current_page=1,
+            page_size=50,
+        ),
+    )
 
     mocker.patch(
         "backend.api.features.admin.llm_routes.llm_db.list_models",
-        new=AsyncMock(return_value=mock_models),
+        new=AsyncMock(return_value=mock_response),
     )
 
     response = client.get("/admin/llm/models")
@@ -117,6 +126,8 @@ def test_list_llm_models_success(
     response_data = response.json()
     assert len(response_data["models"]) == 1
     assert response_data["models"][0]["slug"] == "gpt-4o"
+    assert response_data["pagination"]["total_items"] == 1
+    assert response_data["pagination"]["page_size"] == 50
 
     # Snapshot test the response (must be string)
     configured_snapshot.assert_match(

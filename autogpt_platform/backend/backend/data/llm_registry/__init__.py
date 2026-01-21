@@ -5,7 +5,7 @@ This module provides a database-driven registry system for LLM models,
 replacing hardcoded model configurations with a flexible admin-managed system.
 """
 
-from backend.data.llm_registry.model_types import ModelMetadata
+from backend.data.llm_registry.model import ModelMetadata
 
 # Re-export for backwards compatibility
 from backend.data.llm_registry.notifications import (

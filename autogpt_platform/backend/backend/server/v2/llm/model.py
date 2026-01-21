@@ -6,6 +6,8 @@ from typing import Any, Optional
 import prisma.enums
 import pydantic
 
+from backend.util.models import Pagination
+
 # Pattern for valid model slugs: alphanumeric start, then alphanumeric, dots, underscores, slashes, hyphens
 SLUG_PATTERN = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._/-]*$")
 
@@ -72,6 +74,7 @@ class LlmProvidersResponse(pydantic.BaseModel):
 
 class LlmModelsResponse(pydantic.BaseModel):
     models: list[LlmModel]
+    pagination: Optional[Pagination] = None
 
 
 class LlmCreatorsResponse(pydantic.BaseModel):
