@@ -154,16 +154,16 @@ async def store_content_embedding(
 
         # Upsert the embedding
         # WHERE clause in DO UPDATE prevents PostgreSQL 15 bug with NULLS NOT DISTINCT
-        # Use {schema}.vector for explicit pgvector type qualification
+        # Use unqualified ::vector - pgvector is in search_path schema
         await execute_raw_with_schema(
             """
             INSERT INTO {schema_prefix}"UnifiedContentEmbedding" (
                 "id", "contentType", "contentId", "userId", "embedding", "searchableText", "metadata", "createdAt", "updatedAt"
             )
-            VALUES (gen_random_uuid()::text, $1::{schema_prefix}"ContentType", $2, $3, $4::{schema}.vector, $5, $6::jsonb, NOW(), NOW())
+            VALUES (gen_random_uuid()::text, $1::{schema_prefix}"ContentType", $2, $3, $4::vector, $5, $6::jsonb, NOW(), NOW())
             ON CONFLICT ("contentType", "contentId", "userId")
             DO UPDATE SET
-                "embedding" = $4::{schema}.vector,
+                "embedding" = $4::vector,
                 "searchableText" = $5,
                 "metadata" = $6::jsonb,
                 "updatedAt" = NOW()
@@ -870,7 +870,7 @@ async def semantic_search(
         # Add content type parameters and build placeholders dynamically
         content_type_start_idx = len(params) + 1
         content_type_placeholders = ", ".join(
-            '$' + str(content_type_start_idx + i) + '::{schema_prefix}"ContentType"'
+            "$" + str(content_type_start_idx + i) + '::{schema_prefix}"ContentType"'
             for i in range(len(content_types))
         )
         params.extend([ct.value for ct in content_types])
@@ -879,22 +879,33 @@ async def semantic_search(
         min_similarity_idx = len(params) + 1
         params.append(min_similarity)
 
-        # Use regular string (not f-string) for template to preserve {schema_prefix} and {schema} placeholders
-        # Use OPERATOR({schema}.<=>) for explicit operator schema qualification
-        sql = """
+        # Use unqualified ::vector and <=> operator - pgvector is in search_path schema
+        sql = (
+            """
             SELECT
                 "contentId" as content_id,
                 "contentType" as content_type,
                 "searchableText" as searchable_text,
                 metadata,
-                1 - (embedding OPERATOR({schema}.<=>) '""" + embedding_str + """'::{schema}.vector) as similarity
+                1 - (embedding <=> '"""
+            + embedding_str
+            + """'::vector) as similarity
             FROM {schema_prefix}"UnifiedContentEmbedding"
-            WHERE "contentType" IN (""" + content_type_placeholders + """)
-            """ + user_filter + """
-            AND 1 - (embedding OPERATOR({schema}.<=>) '""" + embedding_str + """'::{schema}.vector) >= $""" + str(min_similarity_idx) + """
+            WHERE "contentType" IN ("""
+            + content_type_placeholders
+            + """)
+            """
+            + user_filter
+            + """
+            AND 1 - (embedding <=> '"""
+            + embedding_str
+            + """'::vector) >= $"""
+            + str(min_similarity_idx)
+            + """
             ORDER BY similarity DESC
             LIMIT $1
         """
+        )
 
         try:
             results = await query_raw_with_schema(sql, *params)
@@ -924,7 +935,7 @@ async def semantic_search(
     # Add content type parameters and build placeholders dynamically
     content_type_start_idx = len(params_lexical) + 1
     content_type_placeholders_lexical = ", ".join(
-        '$' + str(content_type_start_idx + i) + '::{schema_prefix}"ContentType"'
+        "$" + str(content_type_start_idx + i) + '::{schema_prefix}"ContentType"'
         for i in range(len(content_types))
     )
     params_lexical.extend([ct.value for ct in content_types])
@@ -934,7 +945,8 @@ async def semantic_search(
     params_lexical.append(f"%{query}%")
 
     # Use regular string (not f-string) for template to preserve {schema_prefix} placeholders
-    sql_lexical = """
+    sql_lexical = (
+        """
         SELECT
             "contentId" as content_id,
             "contentType" as content_type,
@@ -942,12 +954,19 @@ async def semantic_search(
             metadata,
             0.0 as similarity
         FROM {schema_prefix}"UnifiedContentEmbedding"
-        WHERE "contentType" IN (""" + content_type_placeholders_lexical + """)
-        """ + user_filter + """
-        AND "searchableText" ILIKE $""" + str(query_param_idx) + """
+        WHERE "contentType" IN ("""
+        + content_type_placeholders_lexical
+        + """)
+        """
+        + user_filter
+        + """
+        AND "searchableText" ILIKE $"""
+        + str(query_param_idx)
+        + """
         ORDER BY "updatedAt" DESC
         LIMIT $1
     """
+    )
 
     try:
         results = await query_raw_with_schema(sql_lexical, *params_lexical)
