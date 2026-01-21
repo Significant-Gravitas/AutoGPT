@@ -573,6 +573,7 @@ model PendingHumanReview {
   graphExecId   String
   graphId       String
   graphVersion  Int
+  nodeId        String       // The node ID in the graph definition (for auto-approval tracking)
   payload       Json // The actual payload data to be reviewed
   instructions  String? // Instructions/message for the reviewer
   editable      Boolean      @default(true) // Whether the reviewer can edit the data

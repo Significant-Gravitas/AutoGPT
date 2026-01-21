@@ -8,20 +8,10 @@ import { ShieldCheckIcon } from "@phosphor-icons/react";
 import { useCallback, useEffect, useState } from "react";
 
 interface Props {
-  /**
-   * Called when the user acknowledges the popup
-   */
   onAcknowledge: () => void;
-  /**
-   * Whether the popup should be shown (controlled externally)
-   */
   isOpen: boolean;
 }
 
-/**
- * One-time safety popup shown the first time a user runs an AI-generated agent
- * with sensitive actions or human-in-the-loop blocks.
- */
 export function AIAgentSafetyPopup({ onAcknowledge, isOpen }: Props) {
   function handleAcknowledge() {
     // Mark popup as shown so it won't appear again
@@ -75,13 +65,6 @@ export function AIAgentSafetyPopup({ onAcknowledge, isOpen }: Props) {
   );
 }
 
-/**
- * Hook to manage the one-time AI agent safety popup state.
- *
- * @param hasSensitiveAction - Whether the agent has sensitive actions
- * @param hasHumanInTheLoop - Whether the agent has human-in-the-loop blocks
- * @returns Object with shouldShowPopup and dismissPopup function
- */
 export function useAIAgentSafetyPopup(
   hasSensitiveAction: boolean,
   hasHumanInTheLoop: boolean,

@@ -622,6 +622,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         input_data: BlockInput,
         *,
         user_id: str,
+        node_id: str,
         node_exec_id: str,
         graph_exec_id: str,
         graph_id: str,
@@ -648,6 +649,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         decision = await HITLReviewHelper.handle_review_decision(
             input_data=input_data,
             user_id=user_id,
+            node_id=node_id,
             node_exec_id=node_exec_id,
             graph_exec_id=graph_exec_id,
             graph_id=graph_id,

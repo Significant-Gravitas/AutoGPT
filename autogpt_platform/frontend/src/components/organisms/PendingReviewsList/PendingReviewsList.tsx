@@ -94,7 +94,7 @@ export function PendingReviewsList({
 
   function processReviews(
     approved: boolean,
-    disableFutureReviews: boolean = false,
+    autoApproveFutureActions: boolean = false,
   ) {
     if (reviews.length === 0) {
       toast({
@@ -106,7 +106,11 @@ export function PendingReviewsList({
     }
 
     setPendingAction(
-      disableFutureReviews ? "approve-all" : approved ? "approve" : "reject",
+      autoApproveFutureActions
+        ? "approve-all"
+        : approved
+          ? "approve"
+          : "reject",
     );
     const reviewItems = [];
 
@@ -139,10 +143,15 @@ export function PendingReviewsList({
       });
     }
 
+    // Collect unique node_ids if auto-approving future actions
+    const autoApproveNodeIds = autoApproveFutureActions
+      ? [...new Set(reviews.map((r) => r.node_id))]
+      : [];
+
     reviewActionMutation.mutate({
       data: {
         reviews: reviewItems,
-        disable_future_reviews: disableFutureReviews,
+        auto_approve_node_ids: autoApproveNodeIds,
       },
     });
   }

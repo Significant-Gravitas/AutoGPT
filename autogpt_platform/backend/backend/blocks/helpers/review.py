@@ -55,6 +55,7 @@ class HITLReviewHelper:
     async def _handle_review_request(
         input_data: Any,
         user_id: str,
+        node_id: str,
         node_exec_id: str,
         graph_exec_id: str,
         graph_id: str,
@@ -70,6 +71,7 @@ class HITLReviewHelper:
         Args:
             input_data: The input data to be reviewed
             user_id: ID of the user requesting the review
+            node_id: ID of the node in the graph definition
             node_exec_id: ID of the node execution
             graph_exec_id: ID of the graph execution
             graph_id: ID of the graph
@@ -103,12 +105,27 @@ class HITLReviewHelper:
                 node_exec_id=node_exec_id,
             )
 
+        # Skip review if this specific node has been auto-approved by the user
+        if node_id in execution_context.auto_approved_node_ids:
+            logger.info(
+                f"Block {block_name} skipping review for node {node_exec_id} - "
+                f"node {node_id} is auto-approved"
+            )
+            return ReviewResult(
+                data=input_data,
+                status=ReviewStatus.APPROVED,
+                message="Auto-approved (user approved all future actions for this block)",
+                processed=True,
+                node_exec_id=node_exec_id,
+            )
+
         result = await HITLReviewHelper.get_or_create_human_review(
             user_id=user_id,
             node_exec_id=node_exec_id,
             graph_exec_id=graph_exec_id,
             graph_id=graph_id,
             graph_version=graph_version,
+            node_id=node_id,
             input_data=input_data,
             message=f"Review required for {block_name} execution",
             editable=editable,
@@ -136,6 +153,7 @@ class HITLReviewHelper:
     async def handle_review_decision(
         input_data: Any,
         user_id: str,
+        node_id: str,
         node_exec_id: str,
         graph_exec_id: str,
         graph_id: str,
@@ -151,6 +169,7 @@ class HITLReviewHelper:
         Args:
             input_data: The input data to be reviewed
             user_id: ID of the user requesting the review
+            node_id: ID of the node in the graph definition
             node_exec_id: ID of the node execution
             graph_exec_id: ID of the graph execution
             graph_id: ID of the graph
@@ -168,6 +187,7 @@ class HITLReviewHelper:
         review_result = await HITLReviewHelper._handle_review_request(
             input_data=input_data,
             user_id=user_id,
+            node_id=node_id,
             node_exec_id=node_exec_id,
             graph_exec_id=graph_exec_id,
             graph_id=graph_id,

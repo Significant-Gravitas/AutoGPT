@@ -169,16 +169,16 @@ async def process_review_action(
         if not still_has_pending:
             # Resume execution
             try:
-                # If disable_future_reviews is set, create a context with safe modes
-                # disabled so future blocks in this execution won't trigger reviews
+                # If auto_approve_node_ids is set, create a context that will
+                # automatically approve future reviews from these specific nodes
                 execution_context = None
-                if request.disable_future_reviews:
+                if request.auto_approve_node_ids:
                     execution_context = ExecutionContext(
-                        human_in_the_loop_safe_mode=False,
-                        sensitive_action_safe_mode=False,
+                        auto_approved_node_ids=set(request.auto_approve_node_ids),
                     )
                     logger.info(
-                        f"Disabling future reviews for execution {graph_exec_id}"
+                        f"Auto-approving future reviews for nodes "
+                        f"{request.auto_approve_node_ids} in execution {graph_exec_id}"
                     )
 
                 await add_graph_execution(

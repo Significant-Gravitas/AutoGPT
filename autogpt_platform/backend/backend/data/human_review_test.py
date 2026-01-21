@@ -23,6 +23,7 @@ def sample_db_review():
     mock_review.graphExecId = "test_graph_exec_456"
     mock_review.graphId = "test_graph_789"
     mock_review.graphVersion = 1
+    mock_review.nodeId = "node_def_123"
     mock_review.payload = {"data": "test payload"}
     mock_review.instructions = "Please review"
     mock_review.editable = True
@@ -55,6 +56,7 @@ async def test_get_or_create_human_review_new(
         graph_exec_id="test_graph_exec_456",
         graph_id="test_graph_789",
         graph_version=1,
+        node_id="node_def_123",
         input_data={"data": "test payload"},
         message="Please review",
         editable=True,
@@ -84,6 +86,7 @@ async def test_get_or_create_human_review_approved(
         graph_exec_id="test_graph_exec_456",
         graph_id="test_graph_789",
         graph_version=1,
+        node_id="node_def_123",
         input_data={"data": "test payload"},
         message="Please review",
         editable=True,
@@ -183,6 +186,7 @@ async def test_process_all_reviews_for_execution_success(
     updated_review.graphExecId = "test_graph_exec_456"
     updated_review.graphId = "test_graph_789"
     updated_review.graphVersion = 1
+    updated_review.nodeId = "node_def_123"
     updated_review.payload = {"data": "modified"}
     updated_review.instructions = "Please review"
     updated_review.editable = True
@@ -272,6 +276,7 @@ async def test_process_all_reviews_mixed_approval_rejection(
     second_review.graphExecId = "test_graph_exec_456"
     second_review.graphId = "test_graph_789"
     second_review.graphVersion = 1
+    second_review.nodeId = "node_def_456"
     second_review.payload = {"data": "original"}
     second_review.instructions = "Second review"
     second_review.editable = True
@@ -296,6 +301,7 @@ async def test_process_all_reviews_mixed_approval_rejection(
     approved_review.graphExecId = "test_graph_exec_456"
     approved_review.graphId = "test_graph_789"
     approved_review.graphVersion = 1
+    approved_review.nodeId = "node_def_123"
     approved_review.payload = {"data": "modified"}
     approved_review.instructions = "Please review"
     approved_review.editable = True
@@ -313,6 +319,7 @@ async def test_process_all_reviews_mixed_approval_rejection(
     rejected_review.graphExecId = "test_graph_exec_456"
     rejected_review.graphId = "test_graph_789"
     rejected_review.graphVersion = 1
+    rejected_review.nodeId = "node_def_456"
     rejected_review.payload = {"data": "original"}
     rejected_review.instructions = "Please review"
     rejected_review.editable = True

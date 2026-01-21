@@ -12,12 +12,12 @@ import {
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ScheduleAgentModal } from "../ScheduleAgentModal/ScheduleAgentModal";
 import {
   AIAgentSafetyPopup,
   useAIAgentSafetyPopup,
-} from "./components/AIAgentSafetyPopup";
+} from "./components/AIAgentSafetyPopup/AIAgentSafetyPopup";
 import { ModalHeader } from "./components/ModalHeader/ModalHeader";
 import { ModalRunSection } from "./components/ModalRunSection/ModalRunSection";
 import { RunActions } from "./components/RunActions/RunActions";
@@ -178,21 +178,18 @@ export function RunAgentModal({
     onScheduleCreated?.(schedule);
   }
 
-  // Wrapper to show safety popup before first run
-  const handleRunWithSafetyCheck = useCallback(() => {
+  function handleRunWithSafetyCheck() {
     if (shouldShowPopup) {
-      // Store the run action to execute after popup acknowledgement
       setPendingRunAction(() => handleRun);
       setIsSafetyPopupOpen(true);
     } else {
       handleRun();
     }
-  }, [shouldShowPopup, handleRun]);
+  }
 
   function handleSafetyPopupAcknowledge() {
     setIsSafetyPopupOpen(false);
     dismissPopup();
-    // Execute the pending run action
     if (pendingRunAction) {
       pendingRunAction();
       setPendingRunAction(null);
@@ -301,7 +298,6 @@ export function RunAgentModal({
         </Dialog.Content>
       </Dialog>
 
-      {/* One-time safety popup for AI-generated agents */}
       <AIAgentSafetyPopup
         isOpen={isSafetyPopupOpen}
         onAcknowledge={handleSafetyPopupAcknowledge}
