@@ -453,6 +453,14 @@ class CodeExecutorComponent(
                     container: DockerContainer = client.containers.get(
                         container_name
                     )  # type: ignore
+                    # Remove existing container - it may have stale mounts from
+                    # a previous run with a different workspace directory
+                    logger.debug(
+                        f"Removing existing container '{container_name}' "
+                        "to refresh mount bindings"
+                    )
+                    container.remove(force=True)
+                    raise NotFound("Container removed, recreating")
                 except NotFound:
                     try:
                         client.images.get(image_name)
