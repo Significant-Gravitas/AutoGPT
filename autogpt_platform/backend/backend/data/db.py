@@ -120,7 +120,12 @@ async def _raw_with_schema(
 
     Supports placeholders:
         - {schema_prefix}: Table/type prefix (e.g., "platform".)
-        - {schema}: Raw schema name (e.g., platform) for pgvector types and operators
+        - {schema}: Raw schema name for application tables (e.g., platform)
+
+    Note on pgvector types:
+        Use unqualified ::vector and <=> operator in queries. PostgreSQL resolves
+        these via search_path, which includes the schema where pgvector is installed
+        on all environments (local, CI, dev).
 
     Args:
         query_template: SQL query with {schema_prefix} and/or {schema} placeholders
@@ -134,7 +139,7 @@ async def _raw_with_schema(
 
     Example with vector type:
         await execute_raw_with_schema(
-            'INSERT INTO {schema_prefix}"Embedding" (vec) VALUES ($1::{schema}.vector)',
+            'INSERT INTO {schema_prefix}"Embedding" (vec) VALUES ($1::vector)',
             embedding_data
         )
     """

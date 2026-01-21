@@ -1,5 +1,5 @@
 import { CredentialsProvidersContextType } from "@/providers/agent-credentials/credentials-provider";
-import { getSystemCredentials } from "../../../../../../../../../../../components/contextual/CredentialsInput/helpers";
+import { filterSystemCredentials, getSystemCredentials } from "../../helpers";
 
 export type CredentialField = [string, any];
 
@@ -196,6 +196,45 @@ export function findSavedCredentialByProviderAndType(
 
         matchingCredentials.push(credential as SavedCredential);
       }
+    }
+
+    if (matchingCredentials.length === 1) {
+      return matchingCredentials[0];
+    }
+    if (matchingCredentials.length > 1) {
+      return undefined;
+    }
+  }
+
+  return undefined;
+}
+
+export function findSavedUserCredentialByProviderAndType(
+  providerNames: string[],
+  credentialTypes: string[],
+  requiredScopes: string[] | undefined,
+  allProviders: CredentialsProvidersContextType | null,
+): SavedCredential | undefined {
+  for (const providerName of providerNames) {
+    const providerData = allProviders?.[providerName];
+    if (!providerData) continue;
+
+    const userCredentials = filterSystemCredentials(
+      providerData.savedCredentials ?? [],
+    );
+
+    const matchingCredentials: SavedCredential[] = [];
+
+    for (const credential of userCredentials) {
+      const typeMatches =
+        credentialTypes.length === 0 ||
+        credentialTypes.includes(credential.type);
+      const scopesMatch = hasRequiredScopes(credential, requiredScopes);
+
+      if (!typeMatches) continue;
+      if (!scopesMatch) continue;
+
+      matchingCredentials.push(credential as SavedCredential);
     }
 
     if (matchingCredentials.length === 1) {

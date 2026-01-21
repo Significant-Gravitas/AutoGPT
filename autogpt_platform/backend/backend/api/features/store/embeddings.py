@@ -154,7 +154,7 @@ async def store_content_embedding(
 
         # Upsert the embedding
         # WHERE clause in DO UPDATE prevents PostgreSQL 15 bug with NULLS NOT DISTINCT
-        # Use unqualified ::vector - pgvector is in search_path schema
+        # Use unqualified ::vector - pgvector is in search_path on all environments
         await execute_raw_with_schema(
             """
             INSERT INTO {schema_prefix}"UnifiedContentEmbedding" (
@@ -879,7 +879,7 @@ async def semantic_search(
         min_similarity_idx = len(params) + 1
         params.append(min_similarity)
 
-        # Use unqualified ::vector and <=> operator - pgvector is in search_path schema
+        # Use unqualified ::vector and <=> operator - pgvector is in search_path on all environments
         sql = (
             """
             SELECT
