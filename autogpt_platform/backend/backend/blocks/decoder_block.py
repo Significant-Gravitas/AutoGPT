@@ -84,7 +84,9 @@ This is a "quoted" string."""
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         try:
-            encoded_text = codecs.encode(input_data.text, "unicode_escape").decode("ascii")
+            encoded_text = codecs.encode(input_data.text, "unicode_escape").decode(
+                "ascii"
+            )
             yield "encoded_text", encoded_text
         except Exception as e:
             yield "error", f"Encoding error: {str(e)}"
