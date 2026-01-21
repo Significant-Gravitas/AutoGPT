@@ -98,24 +98,20 @@ export function useCredentialsInput({
 
   // Auto-select the first available credential on initial mount
   // Once a user has made a selection, we don't override it
-  useEffect(() => {
-    if (readOnly) return;
-    if (!credentials || !("savedCredentials" in credentials)) return;
+  useEffect(
+    function autoSelectCredential() {
+      if (readOnly) return;
+      if (!credentials || !("savedCredentials" in credentials)) return;
+      if (selectedCredential?.id) return;
 
-    // If already selected, don't auto-select
-    if (selectedCredential?.id) return;
+      const savedCreds = credentials.savedCredentials;
+      if (savedCreds.length === 0) return;
 
-    // Only attempt auto-selection once
-    if (hasAttemptedAutoSelect.current) return;
-    hasAttemptedAutoSelect.current = true;
+      if (hasAttemptedAutoSelect.current) return;
+      hasAttemptedAutoSelect.current = true;
 
-    // If optional, don't auto-select (user can choose "None")
-    if (isOptional) return;
+      if (isOptional) return;
 
-    const savedCreds = credentials.savedCredentials;
-
-    // Auto-select the first credential if any are available
-    if (savedCreds.length > 0) {
       const cred = savedCreds[0];
       onSelectCredential({
         id: cred.id,
@@ -123,14 +119,15 @@ export function useCredentialsInput({
         provider: credentials.provider,
         title: (cred as any).title,
       });
-    }
-  }, [
-    credentials,
-    selectedCredential?.id,
-    readOnly,
-    isOptional,
-    onSelectCredential,
-  ]);
+    },
+    [
+      credentials,
+      selectedCredential?.id,
+      readOnly,
+      isOptional,
+      onSelectCredential,
+    ],
+  );
 
   if (
     !credentials ||
