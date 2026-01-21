@@ -474,6 +474,7 @@ async def stream_chat_completion(
                     retry_count=retry_count + 1,
                     session=session,
                     context=context,
+                    tags=tags,
                 ):
                     yield chunk
                 return  # Exit after retry to avoid double-saving in finally block
