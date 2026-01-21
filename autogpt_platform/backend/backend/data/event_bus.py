@@ -103,23 +103,44 @@ class RedisEventBus(BaseRedisEventBus[M], ABC):
         return redis.get_redis()
 
     def publish_event(self, event: M, channel_key: str):
-        message, full_channel_name = self._serialize_message(event, channel_key)
-        self.connection.publish(full_channel_name, message)
+        """
+        Publish an event to Redis. Gracefully handles connection failures
+        by logging the error instead of raising exceptions.
+        """
+        try:
+            message, full_channel_name = self._serialize_message(event, channel_key)
+            self.connection.publish(full_channel_name, message)
+        except Exception:
+            logger.exception(
+                f"Failed to publish event to Redis channel {channel_key}. "
+                "Event bus operation will continue without Redis connectivity."
+            )
 
     def listen_events(self, channel_key: str) -> Generator[M, None, None]:
-        pubsub, full_channel_name = self._get_pubsub_channel(
-            self.connection, channel_key
-        )
-        assert isinstance(pubsub, PubSub)
+        """
+        Listen for events from Redis. Gracefully handles connection failures
+        by logging the error and returning without yielding events.
+        """
+        try:
+            pubsub, full_channel_name = self._get_pubsub_channel(
+                self.connection, channel_key
+            )
+            assert isinstance(pubsub, PubSub)
 
-        if "*" in channel_key:
-            pubsub.psubscribe(full_channel_name)
-        else:
-            pubsub.subscribe(full_channel_name)
+            if "*" in channel_key:
+                pubsub.psubscribe(full_channel_name)
+            else:
+                pubsub.subscribe(full_channel_name)
 
-        for message in pubsub.listen():
-            if event := self._deserialize_message(message, channel_key):
-                yield event
+            for message in pubsub.listen():
+                if event := self._deserialize_message(message, channel_key):
+                    yield event
+        except Exception:
+            logger.exception(
+                f"Failed to listen for events on Redis channel {channel_key}. "
+                "Event bus will not receive events without Redis connectivity."
+            )
+            return
 
 
 class AsyncRedisEventBus(BaseRedisEventBus[M], ABC):
@@ -128,31 +149,57 @@ class AsyncRedisEventBus(BaseRedisEventBus[M], ABC):
         return await redis.get_redis_async()
 
     async def publish_event(self, event: M, channel_key: str):
-        message, full_channel_name = self._serialize_message(event, channel_key)
-        connection = await self.connection
-        await connection.publish(full_channel_name, message)
+        """
+        Publish an event to Redis. Gracefully handles connection failures
+        by logging the error instead of raising exceptions.
+        """
+        try:
+            message, full_channel_name = self._serialize_message(event, channel_key)
+            connection = await self.connection
+            await connection.publish(full_channel_name, message)
+        except Exception:
+            logger.exception(
+                f"Failed to publish event to Redis channel {channel_key}. "
+                "Event bus operation will continue without Redis connectivity."
+            )
 
     async def listen_events(self, channel_key: str) -> AsyncGenerator[M, None]:
-        pubsub, full_channel_name = self._get_pubsub_channel(
-            await self.connection, channel_key
-        )
-        assert isinstance(pubsub, AsyncPubSub)
+        """
+        Listen for events from Redis. Gracefully handles connection failures
+        by logging the error and returning without yielding events.
+        """
+        try:
+            pubsub, full_channel_name = self._get_pubsub_channel(
+                await self.connection, channel_key
+            )
+            assert isinstance(pubsub, AsyncPubSub)
 
-        if "*" in channel_key:
-            await pubsub.psubscribe(full_channel_name)
-        else:
-            await pubsub.subscribe(full_channel_name)
+            if "*" in channel_key:
+                await pubsub.psubscribe(full_channel_name)
+            else:
+                await pubsub.subscribe(full_channel_name)
 
-        async for message in pubsub.listen():
-            if event := self._deserialize_message(message, channel_key):
-                yield event
+            async for message in pubsub.listen():
+                if event := self._deserialize_message(message, channel_key):
+                    yield event
+        except Exception:
+            logger.exception(
+                f"Failed to listen for events on Redis channel {channel_key}. "
+                "Event bus will not receive events without Redis connectivity."
+            )
+            return
 
     async def wait_for_event(
         self, channel_key: str, timeout: Optional[float] = None
     ) -> M | None:
+        """
+        Wait for a single event from Redis with optional timeout.
+        Returns None if timeout expires or Redis is unavailable.
+        """
         try:
             return await asyncio.wait_for(
                 anext(aiter(self.listen_events(channel_key))), timeout
             )
-        except TimeoutError:
+        except (TimeoutError, StopAsyncIteration):
+            # StopAsyncIteration occurs when listen_events returns early due to connection failure
             return None
