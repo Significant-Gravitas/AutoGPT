@@ -64,6 +64,8 @@ logger = logging.getLogger(__name__)
 class GraphSettings(BaseModel):
     # Use Annotated with BeforeValidator to coerce None to default values.
     # This handles cases where the database has null values for these fields.
+    model_config = {"extra": "ignore"}
+
     human_in_the_loop_safe_mode: Annotated[
         bool, BeforeValidator(lambda v: v if v is not None else True)
     ] = True

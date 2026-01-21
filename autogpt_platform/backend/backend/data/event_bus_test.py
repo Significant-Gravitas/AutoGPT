@@ -28,7 +28,7 @@ class TestNotificationBus(AsyncRedisEventBus[TestEvent]):
 
 @pytest.mark.asyncio
 async def test_publish_event_handles_connection_failure_gracefully():
-    """Test that publish_event logs warning instead of raising when Redis is unavailable."""
+    """Test that publish_event logs exception instead of raising when Redis is unavailable."""
     bus = TestNotificationBus()
     event = TestEvent(message="test message")
 
@@ -39,38 +39,6 @@ async def test_publish_event_handles_connection_failure_gracefully():
     ):
         # Should not raise exception
         await bus.publish_event(event, "test_channel")
-
-
-@pytest.mark.asyncio
-async def test_listen_events_handles_connection_failure_gracefully():
-    """Test that listen_events returns gracefully when Redis is unavailable."""
-    bus = TestNotificationBus()
-
-    # Mock get_redis_async to raise connection error
-    with patch(
-        "backend.data.event_bus.redis.get_redis_async",
-        side_effect=ConnectionError("Authentication required."),
-    ):
-        # Should not raise exception, just return empty
-        events = []
-        async for event in bus.listen_events("test_channel"):
-            events.append(event)
-
-        assert len(events) == 0
-
-
-@pytest.mark.asyncio
-async def test_wait_for_event_returns_none_on_connection_failure():
-    """Test that wait_for_event returns None when Redis is unavailable."""
-    bus = TestNotificationBus()
-
-    # Mock get_redis_async to raise connection error
-    with patch(
-        "backend.data.event_bus.redis.get_redis_async",
-        side_effect=ConnectionError("Authentication required."),
-    ):
-        result = await bus.wait_for_event("test_channel", timeout=1.0)
-        assert result is None
 
 
 @pytest.mark.asyncio
