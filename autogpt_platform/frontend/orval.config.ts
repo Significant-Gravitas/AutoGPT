@@ -16,7 +16,12 @@ export default defineConfig({
       client: "react-query",
       httpClient: "fetch",
       indexFiles: false,
-      mock: true,
+      mock: {
+        type: "msw",
+        baseUrl: "http://localhost:3000/api/proxy",
+        generateEachHttpStatus: true,
+        delay: 0,
+      },
       override: {
         mutator: {
           path: "./mutators/custom-mutator.ts",

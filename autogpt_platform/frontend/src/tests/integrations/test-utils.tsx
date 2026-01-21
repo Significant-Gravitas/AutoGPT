@@ -1,3 +1,5 @@
+import { BackendAPIProvider } from "@/lib/autogpt-server-api/context";
+import OnboardingProvider from "@/providers/onboarding/onboarding-provider";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, RenderOptions } from "@testing-library/react";
 import { ReactElement, ReactNode } from "react";
@@ -15,7 +17,11 @@ function createTestQueryClient() {
 function TestProviders({ children }: { children: ReactNode }) {
   const queryClient = createTestQueryClient();
   return (
-    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    <QueryClientProvider client={queryClient}>
+      <BackendAPIProvider>
+        <OnboardingProvider>{children}</OnboardingProvider>
+      </BackendAPIProvider>
+    </QueryClientProvider>
   );
 }
 
