@@ -104,7 +104,7 @@ class HumanInTheLoopBlock(Block):
         execution_context: ExecutionContext,
         **_kwargs,
     ) -> BlockOutput:
-        if not execution_context.safe_mode:
+        if not execution_context.human_in_the_loop_safe_mode:
             logger.info(
                 f"HITL block skipping review for node {node_exec_id} - safe mode disabled"
             )

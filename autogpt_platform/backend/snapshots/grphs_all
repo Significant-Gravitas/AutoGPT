@@ -11,6 +11,7 @@
     "forked_from_version": null,
     "has_external_trigger": false,
     "has_human_in_the_loop": false,
+    "has_sensitive_action": false,
     "id": "graph-123",
     "input_schema": {
       "properties": {},
