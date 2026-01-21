@@ -12,7 +12,7 @@ const mockSupabaseClient = {
     }),
     signOut: vi.fn().mockResolvedValue({ error: null }),
     refreshSession: vi.fn().mockResolvedValue({
-      data: { user: null },
+      data: { session: null, user: null },
       error: null,
     }),
   },
