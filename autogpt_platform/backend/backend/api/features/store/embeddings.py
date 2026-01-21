@@ -154,16 +154,15 @@ async def store_content_embedding(
 
         # Upsert the embedding
         # WHERE clause in DO UPDATE prevents PostgreSQL 15 bug with NULLS NOT DISTINCT
-        # Use {pgvector_schema}.vector for explicit pgvector type qualification
         await execute_raw_with_schema(
             """
             INSERT INTO {schema_prefix}"UnifiedContentEmbedding" (
                 "id", "contentType", "contentId", "userId", "embedding", "searchableText", "metadata", "createdAt", "updatedAt"
             )
-            VALUES (gen_random_uuid()::text, $1::{schema_prefix}"ContentType", $2, $3, $4::{pgvector_schema}.vector, $5, $6::jsonb, NOW(), NOW())
+            VALUES (gen_random_uuid()::text, $1::{schema_prefix}"ContentType", $2, $3, $4::{schema}.vector, $5, $6::jsonb, NOW(), NOW())
             ON CONFLICT ("contentType", "contentId", "userId")
             DO UPDATE SET
-                "embedding" = $4::{pgvector_schema}.vector,
+                "embedding" = $4::{schema}.vector,
                 "searchableText" = $5,
                 "metadata" = $6::jsonb,
                 "updatedAt" = NOW()
@@ -879,8 +878,6 @@ async def semantic_search(
         min_similarity_idx = len(params) + 1
         params.append(min_similarity)
 
-        # Use regular string (not f-string) for template to preserve {schema_prefix} and {schema} placeholders
-        # Use OPERATOR({pgvector_schema}.<=>) for explicit operator schema qualification
         sql = (
             """
             SELECT
@@ -888,9 +885,9 @@ async def semantic_search(
                 "contentType" as content_type,
                 "searchableText" as searchable_text,
                 metadata,
-                1 - (embedding OPERATOR({pgvector_schema}.<=>) '"""
+                1 - (embedding <=> '"""
             + embedding_str
-            + """'::{pgvector_schema}.vector) as similarity
+            + """'::{schema}.vector) as similarity
             FROM {schema_prefix}"UnifiedContentEmbedding"
             WHERE "contentType" IN ("""
             + content_type_placeholders
@@ -898,9 +895,9 @@ async def semantic_search(
             """
             + user_filter
             + """
-            AND 1 - (embedding OPERATOR({pgvector_schema}.<=>) '"""
+            AND 1 - (embedding <=> '"""
             + embedding_str
-            + """'::{pgvector_schema}.vector) >= $"""
+            + """'::{schema}.vector) >= $"""
             + str(min_similarity_idx)
             + """
             ORDER BY similarity DESC
