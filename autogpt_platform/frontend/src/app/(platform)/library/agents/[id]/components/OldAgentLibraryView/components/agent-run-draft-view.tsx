@@ -181,6 +181,7 @@ export function AgentRunDraftView({
             requiredScopes,
             allProviders,
           );
+
           const savedCredential =
             userCredential ||
             findSavedCredentialByProviderAndType(
