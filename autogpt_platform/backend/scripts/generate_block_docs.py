@@ -366,12 +366,12 @@ def generate_block_markdown(
     lines.append("")
 
     # What it is (full description)
-    lines.append(f"### What it is")
+    lines.append("### What it is")
     lines.append(block.description or "No description available.")
     lines.append("")
 
     # How it works (manual section)
-    lines.append(f"### How it works")
+    lines.append("### How it works")
     how_it_works = manual_content.get(
         "how_it_works", "_Add technical explanation here._"
     )
@@ -383,7 +383,7 @@ def generate_block_markdown(
     # Inputs table (auto-generated)
     visible_inputs = [f for f in block.inputs if not f.hidden]
     if visible_inputs:
-        lines.append(f"### Inputs")
+        lines.append("### Inputs")
         lines.append("")
         lines.append("| Input | Description | Type | Required |")
         lines.append("|-------|-------------|------|----------|")
@@ -400,7 +400,7 @@ def generate_block_markdown(
     # Outputs table (auto-generated)
     visible_outputs = [f for f in block.outputs if not f.hidden]
     if visible_outputs:
-        lines.append(f"### Outputs")
+        lines.append("### Outputs")
         lines.append("")
         lines.append("| Output | Description | Type |")
         lines.append("|--------|-------------|------|")
@@ -414,7 +414,7 @@ def generate_block_markdown(
         lines.append("")
 
     # Possible use case (manual section)
-    lines.append(f"### Possible use case")
+    lines.append("### Possible use case")
     use_case = manual_content.get("use_case", "_Add practical use case examples here._")
     lines.append("<!-- MANUAL: use_case -->")
     lines.append(use_case)
