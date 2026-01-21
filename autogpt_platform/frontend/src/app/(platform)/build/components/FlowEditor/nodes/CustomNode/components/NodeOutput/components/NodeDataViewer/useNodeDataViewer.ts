@@ -1,6 +1,6 @@
-import type { OutputMetadata } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/selected-views/OutputRenderers";
-import { globalRegistry } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/selected-views/OutputRenderers";
-import { downloadOutputs } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/selected-views/OutputRenderers/utils/download";
+import type { OutputMetadata } from "@/components/contextual/OutputRenderers";
+import { globalRegistry } from "@/components/contextual/OutputRenderers";
+import { downloadOutputs } from "@/components/contextual/OutputRenderers/utils/download";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { beautifyString } from "@/lib/utils";
 import React, { useMemo, useState } from "react";

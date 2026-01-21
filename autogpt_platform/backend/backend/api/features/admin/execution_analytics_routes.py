@@ -28,6 +28,7 @@ from backend.executor.manager import get_db_async_client
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
+settings = Settings()
 
 
 class ExecutionAnalyticsRequest(BaseModel):
@@ -63,6 +64,8 @@ class ExecutionAnalyticsResult(BaseModel):
     score: Optional[float]
     status: str  # "success", "failed", "skipped"
     error_message: Optional[str] = None
+    started_at: Optional[datetime] = None
+    ended_at: Optional[datetime] = None
 
 
 class ExecutionAnalyticsResponse(BaseModel):
@@ -258,11 +261,6 @@ async def generate_execution_analytics(
     )
 
     try:
-        # Validate model configuration
-        settings = Settings()
-        if not settings.secrets.openai_internal_api_key:
-            raise HTTPException(status_code=500, detail="OpenAI API key not configured")
-
         # Get database client
         db_client = get_db_async_client()
 
@@ -354,6 +352,8 @@ async def generate_execution_analytics(
                     ),
                     status="skipped",
                     error_message=None,  # Not an error - just already processed
+                    started_at=execution.started_at,
+                    ended_at=execution.ended_at,
                 )
             )
 
@@ -382,6 +382,9 @@ async def _process_batch(
     executions, request: ExecutionAnalyticsRequest, db_client
 ) -> list[ExecutionAnalyticsResult]:
     """Process a batch of executions concurrently."""
+
+    if not settings.secrets.openai_internal_api_key:
+        raise HTTPException(status_code=500, detail="OpenAI API key not configured")
 
     async def process_single_execution(execution) -> ExecutionAnalyticsResult:
         try:
@@ -421,6 +424,8 @@ async def _process_batch(
                     score=None,
                     status="skipped",
                     error_message="Activity generation returned None",
+                    started_at=execution.started_at,
+                    ended_at=execution.ended_at,
                 )
 
             # Update the execution stats
@@ -450,6 +455,8 @@ async def _process_batch(
                 summary_text=activity_response["activity_status"],
                 score=activity_response["correctness_score"],
                 status="success",
+                started_at=execution.started_at,
+                ended_at=execution.ended_at,
             )
 
         except Exception as e:
@@ -463,6 +470,8 @@ async def _process_batch(
                 score=None,
                 status="failed",
                 error_message=str(e),
+                started_at=execution.started_at,
+                ended_at=execution.ended_at,
             )
 
     # Process all executions in the batch concurrently

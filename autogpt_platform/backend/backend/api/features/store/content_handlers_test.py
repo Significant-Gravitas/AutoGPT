@@ -164,20 +164,20 @@ async def test_documentation_handler_get_missing_items(tmp_path, mocker):
 
             assert len(items) == 2
 
-            # Check guide.md
+            # Check guide.md (content_id format: doc_path::section_index)
             guide_item = next(
-                (item for item in items if item.content_id == "guide.md"), None
+                (item for item in items if item.content_id == "guide.md::0"), None
             )
             assert guide_item is not None
             assert guide_item.content_type == ContentType.DOCUMENTATION
             assert "Getting Started" in guide_item.searchable_text
             assert "This is a guide" in guide_item.searchable_text
-            assert guide_item.metadata["title"] == "Getting Started"
+            assert guide_item.metadata["doc_title"] == "Getting Started"
             assert guide_item.user_id is None
 
-            # Check api.mdx
+            # Check api.mdx (content_id format: doc_path::section_index)
             api_item = next(
-                (item for item in items if item.content_id == "api.mdx"), None
+                (item for item in items if item.content_id == "api.mdx::0"), None
             )
             assert api_item is not None
             assert "API Reference" in api_item.searchable_text
@@ -218,17 +218,74 @@ async def test_documentation_handler_title_extraction(tmp_path):
     # Test with heading
     doc_with_heading = tmp_path / "with_heading.md"
     doc_with_heading.write_text("# My Title\n\nContent here")
-    title, content = handler._extract_title_and_content(doc_with_heading)
+    title = handler._extract_doc_title(doc_with_heading)
     assert title == "My Title"
-    assert "# My Title" not in content
-    assert "Content here" in content
 
     # Test without heading
     doc_without_heading = tmp_path / "no-heading.md"
     doc_without_heading.write_text("Just content, no heading")
-    title, content = handler._extract_title_and_content(doc_without_heading)
+    title = handler._extract_doc_title(doc_without_heading)
     assert title == "No Heading"  # Uses filename
-    assert "Just content" in content
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_documentation_handler_markdown_chunking(tmp_path):
+    """Test DocumentationHandler chunks markdown by headings."""
+    handler = DocumentationHandler()
+
+    # Test document with multiple sections
+    doc_with_sections = tmp_path / "sections.md"
+    doc_with_sections.write_text(
+        "# Document Title\n\n"
+        "Intro paragraph.\n\n"
+        "## Section One\n\n"
+        "Content for section one.\n\n"
+        "## Section Two\n\n"
+        "Content for section two.\n"
+    )
+    sections = handler._chunk_markdown_by_headings(doc_with_sections)
+
+    # Should have 3 sections: intro (with doc title), section one, section two
+    assert len(sections) == 3
+    assert sections[0].title == "Document Title"
+    assert sections[0].index == 0
+    assert "Intro paragraph" in sections[0].content
+
+    assert sections[1].title == "Section One"
+    assert sections[1].index == 1
+    assert "Content for section one" in sections[1].content
+
+    assert sections[2].title == "Section Two"
+    assert sections[2].index == 2
+    assert "Content for section two" in sections[2].content
+
+    # Test document without headings
+    doc_no_sections = tmp_path / "no-sections.md"
+    doc_no_sections.write_text("Just plain content without any headings.")
+    sections = handler._chunk_markdown_by_headings(doc_no_sections)
+    assert len(sections) == 1
+    assert sections[0].index == 0
+    assert "Just plain content" in sections[0].content
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_documentation_handler_section_content_ids():
+    """Test DocumentationHandler creates and parses section content IDs."""
+    handler = DocumentationHandler()
+
+    # Test making content ID
+    content_id = handler._make_section_content_id("docs/guide.md", 2)
+    assert content_id == "docs/guide.md::2"
+
+    # Test parsing content ID
+    doc_path, section_index = handler._parse_section_content_id("docs/guide.md::2")
+    assert doc_path == "docs/guide.md"
+    assert section_index == 2
+
+    # Test parsing legacy format (no section index)
+    doc_path, section_index = handler._parse_section_content_id("docs/old-format.md")
+    assert doc_path == "docs/old-format.md"
+    assert section_index == 0
 
 
 @pytest.mark.asyncio(loop_scope="session")

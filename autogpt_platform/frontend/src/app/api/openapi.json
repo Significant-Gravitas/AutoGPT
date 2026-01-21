@@ -7262,6 +7262,11 @@
             "title": "Has Human In The Loop",
             "readOnly": true
           },
+          "has_sensitive_action": {
+            "type": "boolean",
+            "title": "Has Sensitive Action",
+            "readOnly": true
+          },
           "trigger_setup_info": {
             "anyOf": [
               { "$ref": "#/components/schemas/GraphTriggerInfo" },
@@ -7278,6 +7283,7 @@
           "output_schema",
           "has_external_trigger",
           "has_human_in_the_loop",
+          "has_sensitive_action",
           "trigger_setup_info"
         ],
         "title": "BaseGraph"
@@ -8102,6 +8108,20 @@
           "error_message": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Error Message"
+          },
+          "started_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Started At"
+          },
+          "ended_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Ended At"
           }
         },
         "type": "object",
@@ -8208,14 +8228,20 @@
           },
           "status": { "$ref": "#/components/schemas/AgentExecutionStatus" },
           "started_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Started At"
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Started At",
+            "description": "When execution started running. Null if not yet started (QUEUED)."
           },
           "ended_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Ended At"
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Ended At",
+            "description": "When execution finished. Null if not yet completed (QUEUED, RUNNING, INCOMPLETE, REVIEW)."
           },
           "is_shared": {
             "type": "boolean",
@@ -8249,8 +8275,6 @@
           "nodes_input_masks",
           "preset_id",
           "status",
-          "started_at",
-          "ended_at",
           "stats",
           "outputs"
         ],
@@ -8349,14 +8373,20 @@
           },
           "status": { "$ref": "#/components/schemas/AgentExecutionStatus" },
           "started_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Started At"
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Started At",
+            "description": "When execution started running. Null if not yet started (QUEUED)."
           },
           "ended_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Ended At"
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Ended At",
+            "description": "When execution finished. Null if not yet completed (QUEUED, RUNNING, INCOMPLETE, REVIEW)."
           },
           "is_shared": {
             "type": "boolean",
@@ -8385,8 +8415,6 @@
           "nodes_input_masks",
           "preset_id",
           "status",
-          "started_at",
-          "ended_at",
           "stats"
         ],
         "title": "GraphExecutionMeta"
@@ -8433,14 +8461,20 @@
           },
           "status": { "$ref": "#/components/schemas/AgentExecutionStatus" },
           "started_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Started At"
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Started At",
+            "description": "When execution started running. Null if not yet started (QUEUED)."
           },
           "ended_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Ended At"
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Ended At",
+            "description": "When execution finished. Null if not yet completed (QUEUED, RUNNING, INCOMPLETE, REVIEW)."
           },
           "is_shared": {
             "type": "boolean",
@@ -8479,8 +8513,6 @@
           "nodes_input_masks",
           "preset_id",
           "status",
-          "started_at",
-          "ended_at",
           "stats",
           "outputs",
           "node_executions"
@@ -8557,6 +8589,11 @@
             "title": "Has Human In The Loop",
             "readOnly": true
           },
+          "has_sensitive_action": {
+            "type": "boolean",
+            "title": "Has Sensitive Action",
+            "readOnly": true
+          },
           "trigger_setup_info": {
             "anyOf": [
               { "$ref": "#/components/schemas/GraphTriggerInfo" },
@@ -8580,6 +8617,7 @@
           "output_schema",
           "has_external_trigger",
           "has_human_in_the_loop",
+          "has_sensitive_action",
           "trigger_setup_info",
           "credentials_input_schema"
         ],
@@ -8658,6 +8696,11 @@
             "title": "Has Human In The Loop",
             "readOnly": true
           },
+          "has_sensitive_action": {
+            "type": "boolean",
+            "title": "Has Sensitive Action",
+            "readOnly": true
+          },
           "trigger_setup_info": {
             "anyOf": [
               { "$ref": "#/components/schemas/GraphTriggerInfo" },
@@ -8682,6 +8725,7 @@
           "output_schema",
           "has_external_trigger",
           "has_human_in_the_loop",
+          "has_sensitive_action",
           "trigger_setup_info",
           "credentials_input_schema"
         ],
@@ -8690,8 +8734,14 @@
       "GraphSettings": {
         "properties": {
           "human_in_the_loop_safe_mode": {
-            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
-            "title": "Human In The Loop Safe Mode"
+            "type": "boolean",
+            "title": "Human In The Loop Safe Mode",
+            "default": true
+          },
+          "sensitive_action_safe_mode": {
+            "type": "boolean",
+            "title": "Sensitive Action Safe Mode",
+            "default": false
           }
         },
         "type": "object",
@@ -8849,6 +8899,16 @@
             "title": "Has External Trigger",
             "description": "Whether the agent has an external trigger (e.g. webhook) node"
           },
+          "has_human_in_the_loop": {
+            "type": "boolean",
+            "title": "Has Human In The Loop",
+            "description": "Whether the agent has human-in-the-loop blocks"
+          },
+          "has_sensitive_action": {
+            "type": "boolean",
+            "title": "Has Sensitive Action",
+            "description": "Whether the agent has sensitive action blocks"
+          },
           "trigger_setup_info": {
             "anyOf": [
               { "$ref": "#/components/schemas/GraphTriggerInfo" },
@@ -8895,6 +8955,8 @@
           "output_schema",
           "credentials_input_schema",
           "has_external_trigger",
+          "has_human_in_the_loop",
+          "has_sensitive_action",
           "new_output",
           "can_access_graph",
           "is_latest_version",

@@ -172,6 +172,26 @@ class LlmModel(str, metaclass=LlmModelMeta):
             slug = "gpt-4o"
         return cls(slug)
 
+    @classmethod
+    def __get_pydantic_json_schema__(cls, schema, handler):
+        json_schema = handler(schema)
+        llm_model_metadata = {}
+        for model in cls:
+            model_name = model.value
+            metadata = model.metadata
+            llm_model_metadata[model_name] = {
+                "creator": metadata.creator_name,
+                "creator_name": metadata.creator_name,
+                "title": metadata.display_name,
+                "provider": metadata.provider,
+                "provider_name": metadata.provider_name,
+                "name": model_name,
+                "price_tier": metadata.price_tier,
+            }
+        json_schema["llm_model"] = True
+        json_schema["llm_model_metadata"] = llm_model_metadata
+        return json_schema
+
     @property
     def metadata(self) -> ModelMetadata:
         metadata = llm_registry.get_llm_model_metadata(self.value)
@@ -819,7 +839,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
     def __init__(self):
         super().__init__(
             id="ed55ac19-356e-4243-a6cb-bc599e9b716f",
-            description="Call a Large Language Model (LLM) to generate formatted object based on the given prompt.",
+            description="A block that generates structured JSON responses using a Large Language Model (LLM), with schema validation and format enforcement.",
             categories={BlockCategory.AI},
             input_schema=AIStructuredResponseGeneratorBlock.Input,
             output_schema=AIStructuredResponseGeneratorBlock.Output,
@@ -1231,7 +1251,7 @@ class AITextGeneratorBlock(AIBlockBase):
     def __init__(self):
         super().__init__(
             id="1f292d4a-41a4-4977-9684-7c8d560b9f91",
-            description="Call a Large Language Model (LLM) to generate a string based on the given prompt.",
+            description="A block that produces text responses using a Large Language Model (LLM) based on customizable prompts and system instructions.",
             categories={BlockCategory.AI},
             input_schema=AITextGeneratorBlock.Input,
             output_schema=AITextGeneratorBlock.Output,
@@ -1328,7 +1348,7 @@ class AITextSummarizerBlock(AIBlockBase):
     def __init__(self):
         super().__init__(
             id="a0a69be1-4528-491c-a85a-a4ab6873e3f0",
-            description="Utilize a Large Language Model (LLM) to summarize a long text.",
+            description="A block that summarizes long texts using a Large Language Model (LLM), with configurable focus topics and summary styles.",
             categories={BlockCategory.AI, BlockCategory.TEXT},
             input_schema=AITextSummarizerBlock.Input,
             output_schema=AITextSummarizerBlock.Output,
@@ -1530,7 +1550,7 @@ class AIConversationBlock(AIBlockBase):
     def __init__(self):
         super().__init__(
             id="32a87eab-381e-4dd4-bdb8-4c47151be35a",
-            description="Advanced LLM call that takes a list of messages and sends them to the language model.",
+            description="A block that facilitates multi-turn conversations with a Large Language Model (LLM), maintaining context across message exchanges.",
             categories={BlockCategory.AI},
             input_schema=AIConversationBlock.Input,
             output_schema=AIConversationBlock.Output,
@@ -1651,7 +1671,7 @@ class AIListGeneratorBlock(AIBlockBase):
     def __init__(self):
         super().__init__(
             id="9c0b0450-d199-458b-a731-072189dd6593",
-            description="Generate a list of values based on the given prompt using a Large Language Model (LLM).",
+            description="A block that creates lists of items based on prompts using a Large Language Model (LLM), with optional source data for context.",
             categories={BlockCategory.AI, BlockCategory.TEXT},
             input_schema=AIListGeneratorBlock.Input,
             output_schema=AIListGeneratorBlock.Output,

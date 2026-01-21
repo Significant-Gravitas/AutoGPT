@@ -81,7 +81,10 @@ class ExecutionContext(BaseModel):
     This includes information needed by blocks, sub-graphs, and execution management.
     """
 
-    safe_mode: bool = True
+    model_config = {"extra": "ignore"}
+
+    human_in_the_loop_safe_mode: bool = True
+    sensitive_action_safe_mode: bool = False
     user_timezone: str = "UTC"
     root_execution_id: Optional[str] = None
     parent_execution_id: Optional[str] = None
@@ -153,8 +156,14 @@ class GraphExecutionMeta(BaseDbModel):
     nodes_input_masks: Optional[dict[str, BlockInput]]
     preset_id: Optional[str]
     status: ExecutionStatus
-    started_at: datetime
-    ended_at: datetime
+    started_at: Optional[datetime] = Field(
+        None,
+        description="When execution started running. Null if not yet started (QUEUED).",
+    )
+    ended_at: Optional[datetime] = Field(
+        None,
+        description="When execution finished. Null if not yet completed (QUEUED, RUNNING, INCOMPLETE, REVIEW).",
+    )
     is_shared: bool = False
     share_token: Optional[str] = None
 
@@ -229,10 +238,8 @@ class GraphExecutionMeta(BaseDbModel):
 
     @staticmethod
     def from_db(_graph_exec: AgentGraphExecution):
-        now = datetime.now(timezone.utc)
-        # TODO: make started_at and ended_at optional
-        start_time = _graph_exec.startedAt or _graph_exec.createdAt
-        end_time = _graph_exec.updatedAt or now
+        start_time = _graph_exec.startedAt
+        end_time = _graph_exec.endedAt
 
         try:
             stats = GraphExecutionStats.model_validate(_graph_exec.stats)
@@ -902,6 +909,14 @@ async def update_graph_execution_stats(
 
     if status:
         update_data["executionStatus"] = status
+        # Set endedAt when execution reaches a terminal status
+        terminal_statuses = [
+            ExecutionStatus.COMPLETED,
+            ExecutionStatus.FAILED,
+            ExecutionStatus.TERMINATED,
+        ]
+        if status in terminal_statuses:
+            update_data["endedAt"] = datetime.now(tz=timezone.utc)
 
     where_clause: AgentGraphExecutionWhereInput = {"id": graph_exec_id}
 

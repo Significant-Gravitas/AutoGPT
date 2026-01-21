@@ -328,8 +328,8 @@ export type GraphExecutionMeta = {
     | "FAILED"
     | "INCOMPLETE"
     | "REVIEW";
-  started_at: Date;
-  ended_at: Date;
+  started_at: Date | null;
+  ended_at: Date | null;
   stats: {
     error: string | null;
     cost: number;
