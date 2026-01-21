@@ -1,6 +1,5 @@
 import { vi } from "vitest";
 
-
 export const mockNextjsModules = () => {
   vi.mock("next/image", () => ({
     __esModule: true,

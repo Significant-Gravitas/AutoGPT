@@ -200,7 +200,7 @@ import { getDeleteV2DeleteStoreSubmissionMockHandler422 } from "@/app/api/__gene
 
 test("shows error when deletion fails", async () => {
   server.use(getDeleteV2DeleteStoreSubmissionMockHandler422());
-  
+
   render(<MyComponent />);
   // ... assert error UI
 });
