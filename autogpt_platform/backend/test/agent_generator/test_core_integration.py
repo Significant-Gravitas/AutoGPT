@@ -1,12 +1,11 @@
 """
-Tests for the Agent Generator core module's external service integration.
+Tests for the Agent Generator core module.
 
 This test suite verifies that the core functions correctly delegate to
-the external service when configured, and fall back to built-in
-implementation when not configured.
+the external Agent Generator service.
 """
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -17,97 +16,74 @@ class TestDecomposeGoal:
     """Test decompose_goal function service delegation."""
 
     @pytest.mark.asyncio
-    async def test_uses_external_service_when_configured(self):
-        """Test that decompose_goal uses external service when configured."""
+    async def test_calls_external_service(self):
+        """Test that decompose_goal calls the external service."""
         expected_result = {"type": "instructions", "steps": ["Step 1"]}
 
         with patch.object(
-            core, "is_external_service_configured", return_value=True
-        ) as mock_is_configured:
-            with patch.object(
-                core, "decompose_goal_external", new_callable=AsyncMock
-            ) as mock_external:
-                mock_external.return_value = expected_result
+            core, "decompose_goal_external", new_callable=AsyncMock
+        ) as mock_external:
+            mock_external.return_value = expected_result
 
-                result = await core.decompose_goal("Build a chatbot")
+            result = await core.decompose_goal("Build a chatbot")
 
-                mock_is_configured.assert_called_once()
-                mock_external.assert_called_once_with("Build a chatbot", "")
-                assert result == expected_result
+            mock_external.assert_called_once_with("Build a chatbot", "")
+            assert result == expected_result
 
     @pytest.mark.asyncio
-    async def test_uses_external_service_with_context(self):
+    async def test_passes_context_to_external_service(self):
         """Test that decompose_goal passes context to external service."""
         expected_result = {"type": "instructions", "steps": ["Step 1"]}
 
-        with patch.object(core, "is_external_service_configured", return_value=True):
-            with patch.object(
-                core, "decompose_goal_external", new_callable=AsyncMock
-            ) as mock_external:
-                mock_external.return_value = expected_result
+        with patch.object(
+            core, "decompose_goal_external", new_callable=AsyncMock
+        ) as mock_external:
+            mock_external.return_value = expected_result
 
-                await core.decompose_goal("Build a chatbot", "Use Python")
+            await core.decompose_goal("Build a chatbot", "Use Python")
 
-                mock_external.assert_called_once_with("Build a chatbot", "Use Python")
+            mock_external.assert_called_once_with("Build a chatbot", "Use Python")
 
     @pytest.mark.asyncio
-    async def test_falls_back_to_builtin_when_not_configured(self):
-        """Test that decompose_goal uses built-in when external not configured."""
-        mock_client = MagicMock()
-        mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
-        mock_response.choices[0].message.content = (
-            '{"type": "instructions", "steps": ["Step 1"]}'
-        )
-        mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
+    async def test_returns_none_on_service_failure(self):
+        """Test that decompose_goal returns None when external service fails."""
+        with patch.object(
+            core, "decompose_goal_external", new_callable=AsyncMock
+        ) as mock_external:
+            mock_external.return_value = None
 
-        with patch.object(core, "is_external_service_configured", return_value=False):
-            with patch.object(
-                core, "_get_builtin_client", return_value=(mock_client, "test-model")
-            ):
-                with patch.object(
-                    core,
-                    "_get_builtin_prompts",
-                    return_value=("prompt1", "prompt2", "prompt3"),
-                ):
-                    with patch.object(
-                        core, "get_block_summaries", return_value="block summaries"
-                    ):
-                        result = await core.decompose_goal("Build a chatbot")
+            result = await core.decompose_goal("Build a chatbot")
 
-                        # Verify built-in client was used
-                        mock_client.chat.completions.create.assert_called_once()
-                        assert result == {"type": "instructions", "steps": ["Step 1"]}
+            assert result is None
 
 
 class TestGenerateAgent:
     """Test generate_agent function service delegation."""
 
     @pytest.mark.asyncio
-    async def test_uses_external_service_when_configured(self):
-        """Test that generate_agent uses external service when configured."""
+    async def test_calls_external_service(self):
+        """Test that generate_agent calls the external service."""
         expected_result = {"name": "Test Agent", "nodes": [], "links": []}
 
-        with patch.object(core, "is_external_service_configured", return_value=True):
-            with patch.object(
-                core, "generate_agent_external", new_callable=AsyncMock
-            ) as mock_external:
-                mock_external.return_value = expected_result
+        with patch.object(
+            core, "generate_agent_external", new_callable=AsyncMock
+        ) as mock_external:
+            mock_external.return_value = expected_result
 
-                instructions = {"type": "instructions", "steps": ["Step 1"]}
-                result = await core.generate_agent(instructions)
+            instructions = {"type": "instructions", "steps": ["Step 1"]}
+            result = await core.generate_agent(instructions)
 
-                mock_external.assert_called_once_with(instructions)
-                # Result should have id, version, is_active added if not present
-                assert result is not None
-                assert result["name"] == "Test Agent"
-                assert "id" in result
-                assert result["version"] == 1
-                assert result["is_active"] is True
+            mock_external.assert_called_once_with(instructions)
+            # Result should have id, version, is_active added if not present
+            assert result is not None
+            assert result["name"] == "Test Agent"
+            assert "id" in result
+            assert result["version"] == 1
+            assert result["is_active"] is True
 
     @pytest.mark.asyncio
-    async def test_external_result_preserves_existing_id(self):
-        """Test that external service result preserves existing id."""
+    async def test_preserves_existing_id_and_version(self):
+        """Test that external service result preserves existing id and version."""
         expected_result = {
             "id": "existing-id",
             "version": 3,
@@ -115,182 +91,78 @@ class TestGenerateAgent:
             "name": "Test Agent",
         }
 
-        with patch.object(core, "is_external_service_configured", return_value=True):
-            with patch.object(
-                core, "generate_agent_external", new_callable=AsyncMock
-            ) as mock_external:
-                mock_external.return_value = expected_result.copy()
+        with patch.object(
+            core, "generate_agent_external", new_callable=AsyncMock
+        ) as mock_external:
+            mock_external.return_value = expected_result.copy()
 
-                result = await core.generate_agent({"steps": []})
+            result = await core.generate_agent({"steps": []})
 
-                assert result is not None
-                assert result["id"] == "existing-id"
-                assert result["version"] == 3
-                assert result["is_active"] is False
-
-    @pytest.mark.asyncio
-    async def test_falls_back_to_builtin_when_not_configured(self):
-        """Test that generate_agent uses built-in when external not configured."""
-        mock_client = MagicMock()
-        mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
-        mock_response.choices[0].message.content = (
-            '{"name": "Generated Agent", "nodes": [], "links": []}'
-        )
-        mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
-
-        with patch.object(core, "is_external_service_configured", return_value=False):
-            with patch.object(
-                core, "_get_builtin_client", return_value=(mock_client, "test-model")
-            ):
-                with patch.object(
-                    core,
-                    "_get_builtin_prompts",
-                    return_value=("prompt1", "prompt2", "prompt3"),
-                ):
-                    with patch.object(
-                        core, "get_block_summaries", return_value="block summaries"
-                    ):
-                        result = await core.generate_agent({"steps": []})
-
-                        mock_client.chat.completions.create.assert_called_once()
-                        assert result is not None
-                        assert result["name"] == "Generated Agent"
-                        assert "id" in result
+            assert result is not None
+            assert result["id"] == "existing-id"
+            assert result["version"] == 3
+            assert result["is_active"] is False
 
     @pytest.mark.asyncio
     async def test_returns_none_when_external_service_fails(self):
         """Test that generate_agent returns None when external service fails."""
-        with patch.object(core, "is_external_service_configured", return_value=True):
-            with patch.object(
-                core, "generate_agent_external", new_callable=AsyncMock
-            ) as mock_external:
-                mock_external.return_value = None
+        with patch.object(
+            core, "generate_agent_external", new_callable=AsyncMock
+        ) as mock_external:
+            mock_external.return_value = None
 
-                result = await core.generate_agent({"steps": []})
+            result = await core.generate_agent({"steps": []})
 
-                assert result is None
+            assert result is None
 
 
 class TestGenerateAgentPatch:
     """Test generate_agent_patch function service delegation."""
 
     @pytest.mark.asyncio
-    async def test_uses_external_service_when_configured(self):
-        """Test that generate_agent_patch uses external service when configured."""
-        expected_result = {"patches": [{"type": "modify", "node_id": "1"}]}
+    async def test_calls_external_service(self):
+        """Test that generate_agent_patch calls the external service."""
+        expected_result = {"name": "Updated Agent", "nodes": [], "links": []}
 
-        with patch.object(core, "is_external_service_configured", return_value=True):
-            with patch.object(
-                core, "generate_agent_patch_external", new_callable=AsyncMock
-            ) as mock_external:
-                mock_external.return_value = expected_result
+        with patch.object(
+            core, "generate_agent_patch_external", new_callable=AsyncMock
+        ) as mock_external:
+            mock_external.return_value = expected_result
 
-                current_agent = {"nodes": [], "links": []}
-                result = await core.generate_agent_patch("Add a node", current_agent)
+            current_agent = {"nodes": [], "links": []}
+            result = await core.generate_agent_patch("Add a node", current_agent)
 
-                mock_external.assert_called_once_with("Add a node", current_agent)
-                assert result == expected_result
+            mock_external.assert_called_once_with("Add a node", current_agent)
+            assert result == expected_result
 
     @pytest.mark.asyncio
-    async def test_falls_back_to_builtin_when_not_configured(self):
-        """Test that generate_agent_patch uses built-in when not configured."""
-        mock_client = MagicMock()
-        mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
-        mock_response.choices[0].message.content = '{"patches": []}'
-        mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
-
-        with patch.object(core, "is_external_service_configured", return_value=False):
-            with patch.object(
-                core, "_get_builtin_client", return_value=(mock_client, "test-model")
-            ):
-                with patch.object(
-                    core,
-                    "_get_builtin_prompts",
-                    return_value=("prompt1", "prompt2", "prompt3"),
-                ):
-                    with patch.object(
-                        core, "get_block_summaries", return_value="block summaries"
-                    ):
-                        current_agent = {"nodes": [], "links": []}
-                        result = await core.generate_agent_patch(
-                            "Add a node", current_agent
-                        )
-
-                        mock_client.chat.completions.create.assert_called_once()
-                        assert result == {"patches": []}
-
-
-class TestApplyAgentPatch:
-    """Test apply_agent_patch function."""
-
-    def test_modify_patch(self):
-        """Test applying a modify patch."""
-        current_agent = {
-            "nodes": [{"id": "1", "input_default": {"key": "old_value"}}],
-            "links": [],
-        }
-        patch = {
-            "patches": [
-                {
-                    "type": "modify",
-                    "node_id": "1",
-                    "changes": {"input_default": {"key": "new_value"}},
-                }
-            ]
+    async def test_returns_clarifying_questions(self):
+        """Test that generate_agent_patch returns clarifying questions."""
+        expected_result = {
+            "type": "clarifying_questions",
+            "questions": [{"question": "What type of node?"}],
         }
 
-        result = core.apply_agent_patch(current_agent, patch)
+        with patch.object(
+            core, "generate_agent_patch_external", new_callable=AsyncMock
+        ) as mock_external:
+            mock_external.return_value = expected_result
 
-        assert result["nodes"][0]["input_default"]["key"] == "new_value"
-        # Original should not be modified
-        assert current_agent["nodes"][0]["input_default"]["key"] == "old_value"
+            result = await core.generate_agent_patch("Add a node", {"nodes": []})
 
-    def test_add_patch(self):
-        """Test applying an add patch."""
-        current_agent = {"nodes": [], "links": []}
-        patch = {
-            "patches": [
-                {
-                    "type": "add",
-                    "new_nodes": [{"id": "new1", "block_id": "test"}],
-                    "new_links": [
-                        {"id": "link1", "source_id": "new1", "sink_id": "out"}
-                    ],
-                }
-            ]
-        }
+            assert result == expected_result
 
-        result = core.apply_agent_patch(current_agent, patch)
+    @pytest.mark.asyncio
+    async def test_returns_none_when_external_service_fails(self):
+        """Test that generate_agent_patch returns None when service fails."""
+        with patch.object(
+            core, "generate_agent_patch_external", new_callable=AsyncMock
+        ) as mock_external:
+            mock_external.return_value = None
 
-        assert len(result["nodes"]) == 1
-        assert result["nodes"][0]["id"] == "new1"
-        assert len(result["links"]) == 1
-        assert result["links"][0]["id"] == "link1"
+            result = await core.generate_agent_patch("Add a node", {"nodes": []})
 
-    def test_remove_patch(self):
-        """Test applying a remove patch."""
-        current_agent = {
-            "nodes": [
-                {"id": "1", "block_id": "test1"},
-                {"id": "2", "block_id": "test2"},
-            ],
-            "links": [
-                {"id": "link1", "source_id": "1", "sink_id": "2"},
-                {"id": "link2", "source_id": "2", "sink_id": "out"},
-            ],
-        }
-        patch = {"patches": [{"type": "remove", "node_ids": ["1"], "link_ids": []}]}
-
-        result = core.apply_agent_patch(current_agent, patch)
-
-        # Node 1 should be removed
-        assert len(result["nodes"]) == 1
-        assert result["nodes"][0]["id"] == "2"
-        # Link referencing node 1 should also be removed
-        assert len(result["links"]) == 1
-        assert result["links"][0]["id"] == "link2"
+            assert result is None
 
 
 class TestJsonToGraph:
