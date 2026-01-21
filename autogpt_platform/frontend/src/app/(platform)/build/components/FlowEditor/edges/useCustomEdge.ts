@@ -8,6 +8,7 @@ import { useCallback } from "react";
 import { useNodeStore } from "../../../stores/nodeStore";
 import { useHistoryStore } from "../../../stores/historyStore";
 import { CustomEdge } from "./CustomEdge";
+import { getEdgeColorFromOutputType } from "../nodes/helpers";
 
 export const useCustomEdge = () => {
   const edges = useEdgeStore((s) => s.edges);
@@ -34,8 +35,13 @@ export const useCustomEdge = () => {
       if (exists) return;
 
       const nodes = useNodeStore.getState().nodes;
-      const isStatic = nodes.find((n) => n.id === conn.source)?.data
-        ?.staticOutput;
+      const sourceNode = nodes.find((n) => n.id === conn.source);
+      const isStatic = sourceNode?.data?.staticOutput;
+
+      const { colorClass, hexColor } = getEdgeColorFromOutputType(
+        sourceNode?.data?.outputSchema,
+        conn.sourceHandle,
+      );
 
       addEdge({
         source: conn.source,
@@ -44,6 +50,8 @@ export const useCustomEdge = () => {
         targetHandle: conn.targetHandle,
         data: {
           isStatic,
+          edgeColorClass: colorClass,
+          edgeHexColor: hexColor,
         },
       });
     },

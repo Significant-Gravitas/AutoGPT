@@ -53,14 +53,14 @@ export const CustomControls = memo(
     const controls = [
       {
         id: "zoom-in-button",
-        icon: <PlusIcon className="size-4" />,
+        icon: <PlusIcon className="size-3.5 text-zinc-600" />,
         label: "Zoom In",
         onClick: () => zoomIn(),
         className: "h-10 w-10 border-none",
       },
       {
         id: "zoom-out-button",
-        icon: <MinusIcon className="size-4" />,
+        icon: <MinusIcon className="size-3.5 text-zinc-600" />,
         label: "Zoom Out",
         onClick: () => zoomOut(),
         className: "h-10 w-10 border-none",
@@ -68,9 +68,9 @@ export const CustomControls = memo(
       {
         id: "tutorial-button",
         icon: isTutorialLoading ? (
-          <CircleNotchIcon className="size-4 animate-spin" />
+          <CircleNotchIcon className="size-3.5 animate-spin text-zinc-600" />
         ) : (
-          <ChalkboardIcon className="size-4" />
+          <ChalkboardIcon className="size-3.5 text-zinc-600" />
         ),
         label: isTutorialLoading ? "Loading Tutorial..." : "Start Tutorial",
         onClick: handleTutorialClick,
@@ -79,7 +79,7 @@ export const CustomControls = memo(
       },
       {
         id: "fit-view-button",
-        icon: <FrameCornersIcon className="size-4" />,
+        icon: <FrameCornersIcon className="size-3.5 text-zinc-600" />,
         label: "Fit View",
         onClick: () => fitView({ padding: 0.2, duration: 800, maxZoom: 1 }),
         className: "h-10 w-10 border-none",
@@ -87,9 +87,9 @@ export const CustomControls = memo(
       {
         id: "lock-button",
         icon: !isLocked ? (
-          <LockOpenIcon className="size-4" />
+          <LockOpenIcon className="size-3.5 text-zinc-600" />
         ) : (
-          <LockIcon className="size-4" />
+          <LockIcon className="size-3.5 text-zinc-600" />
         ),
         label: "Toggle Lock",
         onClick: () => setIsLocked(!isLocked),

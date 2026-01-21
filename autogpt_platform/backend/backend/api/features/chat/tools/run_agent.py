@@ -3,6 +3,7 @@
 import logging
 from typing import Any
 
+from langfuse import observe
 from pydantic import BaseModel, Field, field_validator
 
 from backend.api.features.chat.config import ChatConfig
@@ -32,7 +33,7 @@ from .models import (
     UserReadiness,
 )
 from .utils import (
-    check_user_has_required_credentials,
+    build_missing_credentials_from_graph,
     extract_credentials_from_schema,
     fetch_graph_from_store_slug,
     get_or_create_library_agent,
@@ -154,6 +155,7 @@ class RunAgentTool(BaseTool):
         """All operations require authentication."""
         return True
 
+    @observe(as_type="tool", name="run_agent")
     async def _execute(
         self,
         user_id: str | None,
@@ -235,15 +237,13 @@ class RunAgentTool(BaseTool):
                 # Return credentials needed response with input data info
                 # The UI handles credential setup automatically, so the message
                 # focuses on asking about input data
-                credentials = extract_credentials_from_schema(
-                    graph.credentials_input_schema
+                requirements_creds_dict = build_missing_credentials_from_graph(
+                    graph, None
                 )
-                missing_creds_check = await check_user_has_required_credentials(
-                    user_id, credentials
+                missing_credentials_dict = build_missing_credentials_from_graph(
+                    graph, graph_credentials
                 )
-                missing_credentials_dict = {
-                    c.id: c.model_dump() for c in missing_creds_check
-                }
+                requirements_creds_list = list(requirements_creds_dict.values())
 
                 return SetupRequirementsResponse(
                     message=self._build_inputs_message(graph, MSG_WHAT_VALUES_TO_USE),
@@ -257,7 +257,7 @@ class RunAgentTool(BaseTool):
                             ready_to_run=False,
                         ),
                         requirements={
-                            "credentials": [c.model_dump() for c in credentials],
+                            "credentials": requirements_creds_list,
                             "inputs": self._get_inputs_list(graph.input_schema),
                             "execution_modes": self._get_execution_modes(graph),
                         },

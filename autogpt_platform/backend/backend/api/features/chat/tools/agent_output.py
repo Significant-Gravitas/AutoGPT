@@ -5,6 +5,7 @@ import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from langfuse import observe
 from pydantic import BaseModel, field_validator
 
 from backend.api.features.chat.model import ChatSession
@@ -103,7 +104,7 @@ class AgentOutputTool(BaseTool):
 
     @property
     def name(self) -> str:
-        return "agent_output"
+        return "view_agent_output"
 
     @property
     def description(self) -> str:
@@ -328,6 +329,7 @@ class AgentOutputTool(BaseTool):
             total_executions=len(available_executions) if available_executions else 1,
         )
 
+    @observe(as_type="tool", name="view_agent_output")
     async def _execute(
         self,
         user_id: str | None,

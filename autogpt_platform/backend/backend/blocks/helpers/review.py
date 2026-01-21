@@ -84,7 +84,7 @@ class HITLReviewHelper:
             Exception: If review creation or status update fails
         """
         # Skip review if safe mode is disabled - return auto-approved result
-        if not execution_context.safe_mode:
+        if not execution_context.human_in_the_loop_safe_mode:
             logger.info(
                 f"Block {block_name} skipping review for node {node_exec_id} - safe mode disabled"
             )
