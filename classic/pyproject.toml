@@ -142,6 +142,19 @@ optional = true
 cx-freeze = { git = "https://github.com/ntindle/cx_Freeze.git", rev = "main" }
 
 
+[tool.poetry.group.benchmarks]
+optional = true
+
+[tool.poetry.group.benchmarks.dependencies]
+# External benchmark adapters
+datasets = "^2.14"
+huggingface-hub = "^0.20"
+# SWE-bench evaluation (optional - requires Docker)
+# swebench = "^2.0"  # Install separately if needed
+# Modal for cloud evaluation (optional)
+# modal = "^0.70"  # Install separately if needed
+
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"

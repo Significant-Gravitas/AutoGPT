@@ -205,7 +205,7 @@ class BenchmarkConfig(BaseModel):
     strategy: StrategyName
     model: ModelConfig
     max_steps: int = 50
-    timeout_seconds: int = 300
+    timeout_seconds: int = 900
 
     @property
     def config_name(self) -> str:
@@ -245,6 +245,13 @@ class HarnessConfig(BaseModel):
     reset_strategies: Optional[list[str]] = None  # Reset specific strategies
     reset_models: Optional[list[str]] = None  # Reset specific models
     reset_challenges: Optional[list[str]] = None  # Reset specific challenges
+
+    # External benchmark options
+    external_benchmark: Optional[str] = None  # gaia, swe-bench, agent-bench
+    benchmark_split: str = "validation"  # train, validation, test
+    benchmark_subset: Optional[str] = None  # Difficulty level, repo name, etc.
+    benchmark_limit: Optional[int] = None  # Max challenges to load
+    benchmark_cache_dir: Optional[Path] = None  # Cache directory for downloads
 
     model_config = {"arbitrary_types_allowed": True}
 

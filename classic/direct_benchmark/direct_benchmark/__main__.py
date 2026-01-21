@@ -201,6 +201,35 @@ def cli():
     is_flag=True,
     help="Enable debug output.",
 )
+@click.option(
+    "--benchmark",
+    "-b",
+    "external_benchmark",
+    default=None,
+    help="Run external benchmark (gaia, swe-bench, agent-bench).",
+)
+@click.option(
+    "--benchmark-split",
+    default="validation",
+    help="Benchmark split (train, validation, test). Default: validation.",
+)
+@click.option(
+    "--benchmark-subset",
+    default=None,
+    help="Benchmark subset (difficulty level '1', repo name, environment).",
+)
+@click.option(
+    "--benchmark-limit",
+    type=int,
+    default=None,
+    help="Maximum number of benchmark challenges to load.",
+)
+@click.option(
+    "--benchmark-cache-dir",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Cache directory for benchmark datasets.",
+)
 def run(
     strategies: str,
     models: str,
@@ -231,6 +260,11 @@ def run(
     reset_models: tuple[str, ...],
     reset_challenges: tuple[str, ...],
     debug: bool,
+    external_benchmark: Optional[str],
+    benchmark_split: str,
+    benchmark_subset: Optional[str],
+    benchmark_limit: Optional[int],
+    benchmark_cache_dir: Optional[Path],
 ):
     """Run benchmarks with specified configurations."""
     # Handle timeout/cutoff options
@@ -254,15 +288,18 @@ def run(
         console.print(f"Available: {list(MODEL_PRESETS.keys())}")
         sys.exit(1)
 
-    # Find challenges directory
-    if challenges_dir is None:
+    # Find challenges directory (not required for external benchmarks)
+    if challenges_dir is None and not external_benchmark:
         challenges_dir = find_challenges_dir()
         if challenges_dir is None:
             console.print(
                 "[red]Could not find challenges directory. "
-                "Please specify with --challenges-dir[/red]"
+                "Please specify with --challenges-dir or use --benchmark[/red]"
             )
             sys.exit(1)
+    elif challenges_dir is None:
+        # External benchmark - use a placeholder path
+        challenges_dir = Path(".")
 
     # Set up paths
     if workspace is None:
@@ -308,6 +345,11 @@ def run(
         reset_strategies=list(reset_strategies) if reset_strategies else None,
         reset_models=list(reset_models) if reset_models else None,
         reset_challenges=list(reset_challenges) if reset_challenges else None,
+        external_benchmark=external_benchmark,
+        benchmark_split=benchmark_split,
+        benchmark_subset=benchmark_subset,
+        benchmark_limit=benchmark_limit,
+        benchmark_cache_dir=benchmark_cache_dir,
     )
 
     # Determine UI mode
@@ -331,7 +373,15 @@ def run(
         console.print(f"Strategies: {strategy_list}")
         console.print(f"Models: {model_list}")
         console.print(f"Parallel: {parallel}")
-        console.print(f"Challenges: {challenges_dir}")
+        if external_benchmark:
+            console.print(f"Benchmark: [cyan]{external_benchmark}[/cyan]")
+            console.print(f"  Split: {benchmark_split}")
+            if benchmark_subset:
+                console.print(f"  Subset: {benchmark_subset}")
+            if benchmark_limit:
+                console.print(f"  Limit: {benchmark_limit}")
+        else:
+            console.print(f"Challenges: {challenges_dir}")
         if categories:
             console.print(f"Categories: {categories}")
         if skip_categories:
@@ -439,6 +489,56 @@ def list_strategies():
     console.print("\n[bold]Available Strategies[/bold]\n")
     for s in STRATEGIES:
         console.print(f"  - {s}")
+
+
+@cli.command()
+def list_benchmarks():
+    """List available external benchmarks."""
+    from .adapters import list_adapters
+
+    console.print("\n[bold]Available External Benchmarks[/bold]\n")
+
+    benchmarks = list_adapters()
+    if not benchmarks:
+        console.print("[dim]No benchmarks registered.[/dim]")
+        return
+
+    benchmark_info = {
+        "gaia": {
+            "name": "GAIA",
+            "description": "General AI Assistant Benchmark - reasoning tasks",
+            "splits": "validation, test",
+            "subsets": "1 (easy), 2 (medium), 3 (hard)",
+            "requires": "HF token (gated dataset)",
+        },
+        "swe-bench": {
+            "name": "SWE-bench",
+            "description": "Software Engineering Benchmark - GitHub issues",
+            "splits": "dev, test",
+            "subsets": "full, lite, verified, or repo name",
+            "requires": "Docker, swebench package",
+        },
+        "agent-bench": {
+            "name": "AgentBench",
+            "description": "Multi-environment agent benchmark",
+            "splits": "dev, test",
+            "subsets": "os, db, kg, card_game, ltp, web_shopping, ...",
+            "requires": "Varies by environment (Docker for os)",
+        },
+    }
+
+    for name in sorted(benchmarks):
+        info = benchmark_info.get(name, {})
+        console.print(f"[cyan]{name}[/cyan]:")
+        if info.get("description"):
+            console.print(f"  {info['description']}")
+        if info.get("splits"):
+            console.print(f"  Splits: {info['splits']}")
+        if info.get("subsets"):
+            console.print(f"  Subsets: {info['subsets']}")
+        if info.get("requires"):
+            console.print(f"  Requires: {info['requires']}")
+        console.print()
 
 
 @cli.group()

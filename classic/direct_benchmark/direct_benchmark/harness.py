@@ -3,7 +3,8 @@
 import asyncio
 import re
 from datetime import datetime
-from typing import Union
+from pathlib import Path
+from typing import TYPE_CHECKING, Optional, Union
 
 from rich.live import Live
 
@@ -14,15 +15,54 @@ from .report import ReportGenerator
 from .state import StateManager
 from .ui import BenchmarkUI, JsonUI, QuietUI, console
 
+if TYPE_CHECKING:
+    from .adapters.base import BenchmarkAdapter
+
 
 class BenchmarkHarness:
     """Main benchmark harness orchestrator."""
 
     def __init__(self, config: HarnessConfig):
         self.config = config
-        self.loader = ChallengeLoader(config.challenges_dir)
         self.reporter = ReportGenerator(config.reports_dir)
         self.state_manager = StateManager(config.reports_dir)
+
+        # Initialize challenge source (adapter or loader)
+        self.adapter: Optional["BenchmarkAdapter"] = None
+        self.loader: Optional[ChallengeLoader] = None
+
+        if config.external_benchmark:
+            self._init_adapter()
+        else:
+            self.loader = ChallengeLoader(config.challenges_dir)
+
+    def _init_adapter(self) -> None:
+        """Initialize external benchmark adapter."""
+        from .adapters import get_adapter
+
+        assert self.config.external_benchmark is not None
+        adapter_cls = get_adapter(self.config.external_benchmark)
+        if adapter_cls is None:
+            from .adapters import list_adapters
+
+            available = list_adapters()
+            raise ValueError(
+                f"Unknown benchmark: {self.config.external_benchmark}. "
+                f"Available: {available}"
+            )
+
+        # Determine cache directory
+        cache_dir = self.config.benchmark_cache_dir
+        if cache_dir is None:
+            cache_dir = Path.home() / ".cache" / "autogpt_benchmarks"
+
+        # Create adapter instance
+        self.adapter = adapter_cls(
+            cache_dir=cache_dir,
+            split=self.config.benchmark_split,
+            subset=self.config.benchmark_subset,
+            limit=self.config.benchmark_limit,
+        )
 
     async def run(
         self,
@@ -115,17 +155,40 @@ class BenchmarkHarness:
             strategy_names, model_names, self.config.attempts
         )
 
-        # Load challenges
-        challenges = list(
-            self.loader.load_all(
-                categories=self.config.categories,
-                skip_categories=self.config.skip_categories,
-                names=self.config.test_names,
-                maintain=self.config.maintain,
-                improve=self.config.improve,
-                explore=self.config.explore,
+        # Load challenges (from adapter or local loader)
+        if self.adapter:
+            # External benchmark - load via adapter
+            if ui_mode != "json":
+                subset_str = (
+                    f", subset={self.config.benchmark_subset}"
+                    if self.config.benchmark_subset
+                    else ""
+                )
+                limit_str = (
+                    f", limit={self.config.benchmark_limit}"
+                    if self.config.benchmark_limit
+                    else ""
+                )
+                console.print(
+                    f"[cyan]Loading {self.config.external_benchmark} benchmark "
+                    f"(split={self.config.benchmark_split}{subset_str}{limit_str})"
+                    f"...[/cyan]"
+                )
+            assert self.adapter is not None
+            challenges = list(self.adapter.load_challenges())
+        else:
+            # Local challenges - load via ChallengeLoader
+            assert self.loader is not None
+            challenges = list(
+                self.loader.load_all(
+                    categories=self.config.categories,
+                    skip_categories=self.config.skip_categories,
+                    names=self.config.test_names,
+                    maintain=self.config.maintain,
+                    improve=self.config.improve,
+                    explore=self.config.explore,
+                )
             )
-        )
 
         if not challenges:
             console.print("[red]No challenges found matching filters[/red]")
@@ -194,6 +257,7 @@ class BenchmarkHarness:
             attempts=self.config.attempts,
             no_cutoff=self.config.no_cutoff,
             skip_fn=should_skip,
+            adapter=self.adapter,
         )
 
         # Ensure workspace exists

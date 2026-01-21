@@ -2,11 +2,14 @@
 
 import asyncio
 from pathlib import Path
-from typing import AsyncIterator, Callable, Optional
+from typing import TYPE_CHECKING, AsyncIterator, Callable, Optional
 
 from .evaluator import Evaluator
 from .models import BenchmarkConfig, Challenge, ChallengeResult, ExecutionProgress
 from .runner import AgentRunner, StepCallback
+
+if TYPE_CHECKING:
+    from .adapters.base import BenchmarkAdapter
 
 # Type for skip predicate: (config_name, challenge_name, attempt) -> bool
 SkipPredicate = Callable[[str, str, int], bool]
@@ -23,6 +26,7 @@ class ParallelExecutor:
         attempts: int = 1,
         no_cutoff: bool = False,
         skip_fn: Optional[SkipPredicate] = None,
+        adapter: Optional["BenchmarkAdapter"] = None,
     ):
         self.max_parallel = max_parallel
         self.on_progress = on_progress
@@ -30,6 +34,7 @@ class ParallelExecutor:
         self.attempts = attempts
         self.no_cutoff = no_cutoff
         self.skip_fn = skip_fn
+        self.adapter = adapter
         self._semaphore = asyncio.Semaphore(max_parallel)
         self._evaluator = Evaluator()
 
@@ -121,8 +126,11 @@ class ParallelExecutor:
             )
             result = await runner.run_challenge(challenge, attempt=attempt)
 
-            # Evaluate result
-            result = self._evaluator.evaluate(result, challenge)
+            # Evaluate result - use adapter if available, otherwise standard evaluator
+            if self.adapter is not None:
+                result = self.adapter.evaluate(result, challenge, workspace_root)
+            else:
+                result = self._evaluator.evaluate(result, challenge)
 
             # Notify completion
             if self.on_progress:

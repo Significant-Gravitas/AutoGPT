@@ -220,6 +220,14 @@ class AgentRunner:
                 "service",  # Block service commands
             ]
 
+        # Disable clipboard commands for benchmarks - they add overhead without value
+        app_config.disabled_commands = [
+            "clipboard_copy",
+            "clipboard_paste",
+            "clipboard_list",
+            "clipboard_clear",
+        ]
+
         self._agent = agent
         self._llm_provider = llm_provider
         return agent
@@ -244,14 +252,28 @@ class AgentRunner:
                 # Propose next action
                 proposal = await agent.propose_action()
 
-                # Check for finish command
+                # Get cumulative cost from LLM provider
+                if self._llm_provider:
+                    cumulative_cost = self._llm_provider.get_incurred_cost()
+
+                # Check for finish command - record it and return
                 if proposal.use_tool.name == "finish":
+                    steps.append(
+                        StepResult(
+                            step_num=step_num + 1,
+                            tool_name=proposal.use_tool.name,
+                            tool_args=proposal.use_tool.arguments,
+                            result="Agent finished",
+                            is_error=False,
+                            cumulative_cost=cumulative_cost,
+                        )
+                    )
                     return True
 
                 # Execute the action
                 result = await agent.execute(proposal)
 
-                # Get cumulative cost from LLM provider
+                # Update cost after execution
                 if self._llm_provider:
                     cumulative_cost = self._llm_provider.get_incurred_cost()
 
