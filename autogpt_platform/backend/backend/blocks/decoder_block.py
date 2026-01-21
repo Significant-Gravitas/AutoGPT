@@ -64,7 +64,7 @@ class TextEncoderBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="f8e7d6c5-4b3a-2190-8765-4321fedcba98",
+            id="59c54df9-0e3b-44b5-a1ef-c0b8bf8d9ab9",
             description="Encodes a string by adding escape sequences for special characters",
             categories={BlockCategory.TEXT},
             input_schema=TextEncoderBlock.Input,
@@ -83,5 +83,8 @@ This is a "quoted" string."""
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        encoded_text = codecs.encode(input_data.text, "unicode_escape").decode("ascii")
-        yield "encoded_text", encoded_text
+        try:
+            encoded_text = codecs.encode(input_data.text, "unicode_escape").decode("ascii")
+            yield "encoded_text", encoded_text
+        except Exception as e:
+            yield "error", f"Encoding error: {str(e)}"
