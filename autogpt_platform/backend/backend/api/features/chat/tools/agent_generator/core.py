@@ -9,11 +9,29 @@ from typing import Any
 from backend.api.features.library import db as library_db
 from backend.data.graph import Graph, Link, Node, create_graph
 
-from .client import AGENT_GENERATOR_MODEL, get_client
-from .prompts import DECOMPOSITION_PROMPT, GENERATION_PROMPT, PATCH_PROMPT
+from .service import (
+    decompose_goal_external,
+    generate_agent_external,
+    generate_agent_patch_external,
+    is_external_service_configured,
+)
 from .utils import get_block_summaries, parse_json_from_llm
 
 logger = logging.getLogger(__name__)
+
+
+def _get_builtin_client():
+    """Get the built-in LLM client (lazy import to avoid issues when using external service)."""
+    from .client import AGENT_GENERATOR_MODEL, get_client
+
+    return get_client(), AGENT_GENERATOR_MODEL
+
+
+def _get_builtin_prompts():
+    """Get the built-in prompts (lazy import)."""
+    from .prompts import DECOMPOSITION_PROMPT, GENERATION_PROMPT, PATCH_PROMPT
+
+    return DECOMPOSITION_PROMPT, GENERATION_PROMPT, PATCH_PROMPT
 
 
 async def decompose_goal(description: str, context: str = "") -> dict[str, Any] | None:
@@ -29,7 +47,15 @@ async def decompose_goal(description: str, context: str = "") -> dict[str, Any] 
         - {"type": "instructions", "steps": [...]}
         Or None on error
     """
-    client = get_client()
+    # Use external service if configured
+    if is_external_service_configured():
+        logger.info("Using external Agent Generator service for decompose_goal")
+        return await decompose_goal_external(description, context)
+
+    # Fall back to built-in implementation
+    logger.info("Using built-in Agent Generator for decompose_goal")
+    client, model = _get_builtin_client()
+    DECOMPOSITION_PROMPT, _, _ = _get_builtin_prompts()
     prompt = DECOMPOSITION_PROMPT.format(block_summaries=get_block_summaries())
 
     full_description = description
@@ -38,7 +64,7 @@ async def decompose_goal(description: str, context: str = "") -> dict[str, Any] 
 
     try:
         response = await client.chat.completions.create(
-            model=AGENT_GENERATOR_MODEL,
+            model=model,
             messages=[
                 {"role": "system", "content": prompt},
                 {"role": "user", "content": full_description},
@@ -73,12 +99,29 @@ async def generate_agent(instructions: dict[str, Any]) -> dict[str, Any] | None:
     Returns:
         Agent JSON dict or None on error
     """
-    client = get_client()
+    # Use external service if configured
+    if is_external_service_configured():
+        logger.info("Using external Agent Generator service for generate_agent")
+        result = await generate_agent_external(instructions)
+        if result:
+            # Ensure required fields
+            if "id" not in result:
+                result["id"] = str(uuid.uuid4())
+            if "version" not in result:
+                result["version"] = 1
+            if "is_active" not in result:
+                result["is_active"] = True
+        return result
+
+    # Fall back to built-in implementation
+    logger.info("Using built-in Agent Generator for generate_agent")
+    client, model = _get_builtin_client()
+    _, GENERATION_PROMPT, _ = _get_builtin_prompts()
     prompt = GENERATION_PROMPT.format(block_summaries=get_block_summaries())
 
     try:
         response = await client.chat.completions.create(
-            model=AGENT_GENERATOR_MODEL,
+            model=model,
             messages=[
                 {"role": "system", "content": prompt},
                 {"role": "user", "content": json.dumps(instructions, indent=2)},
@@ -293,7 +336,15 @@ async def generate_agent_patch(
     Returns:
         Patch dict or clarifying questions, or None on error
     """
-    client = get_client()
+    # Use external service if configured
+    if is_external_service_configured():
+        logger.info("Using external Agent Generator service for generate_agent_patch")
+        return await generate_agent_patch_external(update_request, current_agent)
+
+    # Fall back to built-in implementation
+    logger.info("Using built-in Agent Generator for generate_agent_patch")
+    client, model = _get_builtin_client()
+    _, _, PATCH_PROMPT = _get_builtin_prompts()
     prompt = PATCH_PROMPT.format(
         current_agent=json.dumps(current_agent, indent=2),
         block_summaries=get_block_summaries(),
@@ -301,7 +352,7 @@ async def generate_agent_patch(
 
     try:
         response = await client.chat.completions.create(
-            model=AGENT_GENERATOR_MODEL,
+            model=model,
             messages=[
                 {"role": "system", "content": prompt},
                 {"role": "user", "content": update_request},
