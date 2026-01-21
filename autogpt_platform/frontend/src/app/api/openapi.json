@@ -8829,6 +8829,11 @@
             "title": "Graph Version",
             "description": "Graph version"
           },
+          "node_id": {
+            "type": "string",
+            "title": "Node Id",
+            "description": "Node ID in the graph definition"
+          },
           "payload": {
             "anyOf": [
               { "additionalProperties": true, "type": "object" },
@@ -8902,6 +8907,7 @@
           "graph_exec_id",
           "graph_id",
           "graph_version",
+          "node_id",
           "payload",
           "editable",
           "status",
@@ -9425,6 +9431,12 @@
             "type": "array",
             "title": "Reviews",
             "description": "All reviews with their approval status, data, and messages"
+          },
+          "auto_approve_node_ids": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Auto Approve Node Ids",
+            "description": "List of node IDs (from the graph definition) to auto-approve for the remainder of this execution. Future reviews from these specific nodes will be automatically approved. This only affects the current execution run."
           }
         },
         "type": "object",
