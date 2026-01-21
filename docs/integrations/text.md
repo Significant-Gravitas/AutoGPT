@@ -383,7 +383,7 @@ This is useful when working with data from APIs or files where escape sequences 
 ## Text Encoder
 
 ### What it is
-Encodes text with escape sequences.
+Encodes a string by adding escape sequences for special characters
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -394,7 +394,7 @@ This block takes a string of text and escapes special characters (like newlines 
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| text | The text you want to encode, which may contain newlines or special characters | str | Yes |
+| text | A string to be encoded with escape sequences | str | Yes |
 
 ### Outputs
 
@@ -409,7 +409,6 @@ This block takes a string of text and escapes special characters (like newlines 
 <!-- END MANUAL -->
 
 ---
-
 
 ## Text Replace
 
