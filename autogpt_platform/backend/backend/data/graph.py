@@ -3,7 +3,7 @@ import logging
 import uuid
 from collections import defaultdict
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any, Literal, Optional, cast
+from typing import TYPE_CHECKING, Annotated, Any, Literal, Optional, cast
 
 from prisma.enums import SubmissionStatus
 from prisma.models import (
@@ -20,7 +20,7 @@ from prisma.types import (
     AgentNodeLinkCreateInput,
     StoreListingVersionWhereInput,
 )
-from pydantic import BaseModel, Field, create_model
+from pydantic import BaseModel, BeforeValidator, Field, create_model
 from pydantic.fields import computed_field
 
 from backend.blocks.agent import AgentExecutorBlock
@@ -62,8 +62,14 @@ logger = logging.getLogger(__name__)
 
 
 class GraphSettings(BaseModel):
-    human_in_the_loop_safe_mode: bool = True
-    sensitive_action_safe_mode: bool = False
+    # Use Annotated with BeforeValidator to coerce None to default values.
+    # This handles cases where the database has null values for these fields.
+    human_in_the_loop_safe_mode: Annotated[
+        bool, BeforeValidator(lambda v: v if v is not None else True)
+    ] = True
+    sensitive_action_safe_mode: Annotated[
+        bool, BeforeValidator(lambda v: v if v is not None else False)
+    ] = False
 
     @classmethod
     def from_graph(
