@@ -80,7 +80,6 @@
     "flatbush": "4.5.0",
     "framer-motion": "12.23.24",
     "geist": "1.5.1",
-    "happy-dom": "20.3.4",
     "highlight.js": "11.11.1",
     "jaro-winkler": "0.2.8",
     "katex": "0.16.25",
@@ -121,6 +120,7 @@
   },
   "devDependencies": {
     "@chromatic-com/storybook": "4.1.2",
+    "happy-dom": "20.3.4",
     "@opentelemetry/instrumentation": "0.209.0",
     "@playwright/test": "1.56.1",
     "@storybook/addon-a11y": "9.1.5",
