@@ -116,6 +116,10 @@ function areFeatureFlagsEnabled() {
   return process.env.NEXT_PUBLIC_LAUNCHDARKLY_ENABLED === "enabled";
 }
 
+function isTestingEnvironment() {
+  return process.env.NEXT_PUBLIC_IS_TESTING_ENVIRONMENT === "true";
+}
+
 export const environment = {
   // Generic
   getEnvironmentStr,
@@ -139,4 +143,5 @@ export const environment = {
   isLocal,
   isVercelPreview,
   areFeatureFlagsEnabled,
+  isTestingEnvironment,
 };

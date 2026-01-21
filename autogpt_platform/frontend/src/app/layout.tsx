@@ -37,6 +37,11 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  if (environment.isTestingEnvironment()) {
+    const { initMocks } = await import("@/mocks");
+    await initMocks();
+  }
+
   const headersList = await headers();
   const host = headersList.get("host") || "";
 
