@@ -4085,6 +4085,48 @@
         }
       }
     },
+    "/api/local-media/users/{user_id}/{media_type}/{filename}": {
+      "get": {
+        "tags": ["media", "media"],
+        "summary": "Serve local media file",
+        "description": "Serve a media file from local storage.\nOnly available when GCS is not configured.",
+        "operationId": "getMediaServe local media file",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "User Id" }
+          },
+          {
+            "name": "media_type",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Media Type" }
+          },
+          {
+            "name": "filename",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Filename" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/oauth/app/{client_id}": {
       "get": {
         "tags": ["oauth"],
@@ -10151,6 +10193,13 @@
               { "type": "null" }
             ],
             "title": "Context"
+          },
+          "tags": {
+            "anyOf": [
+              { "items": { "type": "string" }, "type": "array" },
+              { "type": "null" }
+            ],
+            "title": "Tags"
           }
         },
         "type": "object",
