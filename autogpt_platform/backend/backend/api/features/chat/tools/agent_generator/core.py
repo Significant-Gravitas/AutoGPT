@@ -218,6 +218,7 @@ async def save_agent_to_library(
     library_agents = await library_db.create_library_agent(
         graph=created_graph,
         user_id=user_id,
+        sensitive_action_safe_mode=True,
         create_library_agents_for_sub_graphs=False,
     )
 

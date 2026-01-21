@@ -309,7 +309,7 @@ def ensure_embeddings_coverage():
 
         # Process in batches until no more missing embeddings
         while True:
-            result = db_client.backfill_missing_embeddings(batch_size=10)
+            result = db_client.backfill_missing_embeddings(batch_size=100)
 
             total_processed += result["processed"]
             total_success += result["success"]
