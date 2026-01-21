@@ -168,7 +168,17 @@ class CreateAgentTool(BaseTool):
             )
 
         # Step 2: Generate agent JSON (external service handles fixing and validation)
-        agent_json = await generate_agent(decomposition_result)
+        try:
+            agent_json = await generate_agent(decomposition_result)
+        except AgentGeneratorNotConfiguredError:
+            return ErrorResponse(
+                message=(
+                    "Agent generation is not available. "
+                    "The Agent Generator service is not configured."
+                ),
+                error="service_not_configured",
+                session_id=session_id,
+            )
 
         if agent_json is None:
             return ErrorResponse(
