@@ -7,17 +7,17 @@ const INITIAL_RETRY_DELAY = 1000;
 
 export interface StreamChunk {
   type:
-  | "text_chunk"
-  | "text_ended"
-  | "tool_call"
-  | "tool_call_start"
-  | "tool_response"
-  | "login_needed"
-  | "need_login"
-  | "credentials_needed"
-  | "error"
-  | "usage"
-  | "stream_end";
+    | "text_chunk"
+    | "text_ended"
+    | "tool_call"
+    | "tool_call_start"
+    | "tool_response"
+    | "login_needed"
+    | "need_login"
+    | "credentials_needed"
+    | "error"
+    | "usage"
+    | "stream_end";
   timestamp?: string;
   content?: string;
   message?: string;
@@ -51,30 +51,30 @@ type VercelStreamChunk =
   | { type: "text-end"; id: string }
   | { type: "tool-input-start"; toolCallId: string; toolName: string }
   | {
-    type: "tool-input-available";
-    toolCallId: string;
-    toolName: string;
-    input: ToolArguments;
-  }
+      type: "tool-input-available";
+      toolCallId: string;
+      toolName: string;
+      input: ToolArguments;
+    }
   | {
-    type: "tool-output-available";
-    toolCallId: string;
-    toolName?: string;
-    output: ToolResult;
-    success?: boolean;
-  }
+      type: "tool-output-available";
+      toolCallId: string;
+      toolName?: string;
+      output: ToolResult;
+      success?: boolean;
+    }
   | {
-    type: "usage";
-    promptTokens: number;
-    completionTokens: number;
-    totalTokens: number;
-  }
+      type: "usage";
+      promptTokens: number;
+      completionTokens: number;
+      totalTokens: number;
+    }
   | {
-    type: "error";
-    errorText: string;
-    code?: string;
-    details?: Record<string, unknown>;
-  };
+      type: "error";
+      errorText: string;
+      code?: string;
+      details?: Record<string, unknown>;
+    };
 
 const LEGACY_STREAM_TYPES = new Set<StreamChunk["type"]>([
   "text_chunk",
@@ -398,7 +398,8 @@ export function useChatStream() {
                     if (loggedLineCount < 3) {
                       console.info("[useChatStream] Raw stream line", {
                         sessionId,
-                        data: data.length > 300 ? `${data.slice(0, 300)}...` : data,
+                        data:
+                          data.length > 300 ? `${data.slice(0, 300)}...` : data,
                       });
                       loggedLineCount += 1;
                     }

@@ -203,9 +203,9 @@ export function formatToolResponse(result: unknown, toolName: string): string {
       const outputAgentName = (response.agent_name as string) || "Agent";
       const execution = response.execution as
         | {
-          status?: string;
-          outputs?: Record<string, unknown>;
-        }
+            status?: string;
+            outputs?: Record<string, unknown>;
+          }
         | undefined;
       if (execution) {
         const status = execution.status || "completed";

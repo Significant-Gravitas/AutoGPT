@@ -75,11 +75,9 @@ export function handleToolCallStart(
   };
 
   function updateToolCallMessages(prev: ChatMessageData[]) {
-    const existingIndex = prev.findIndex(
-      function findToolCallIndex(msg) {
-        return isToolCallMessage(msg) && msg.toolId === toolCallMessage.toolId;
-      },
-    );
+    const existingIndex = prev.findIndex(function findToolCallIndex(msg) {
+      return isToolCallMessage(msg) && msg.toolId === toolCallMessage.toolId;
+    });
     if (existingIndex === -1) {
       return [...prev, toolCallMessage];
     }
@@ -88,7 +86,7 @@ export function handleToolCallStart(
     if (!isToolCallMessage(existing)) return prev;
     const nextArguments =
       toolCallMessage.arguments &&
-        Object.keys(toolCallMessage.arguments).length > 0
+      Object.keys(toolCallMessage.arguments).length > 0
         ? toolCallMessage.arguments
         : existing.arguments;
     nextMessages[existingIndex] = {

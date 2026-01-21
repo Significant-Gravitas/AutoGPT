@@ -97,18 +97,21 @@ export function ChatMessage({
     }
   }
 
-  const handleCopy = useCallback(async function handleCopy() {
-    if (message.type !== "message") return;
-    if (!displayContent) return;
+  const handleCopy = useCallback(
+    async function handleCopy() {
+      if (message.type !== "message") return;
+      if (!displayContent) return;
 
-    try {
-      await navigator.clipboard.writeText(displayContent);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch (error) {
-      console.error("Failed to copy:", error);
-    }
-  }, [displayContent, message]);
+      try {
+        await navigator.clipboard.writeText(displayContent);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      } catch (error) {
+        console.error("Failed to copy:", error);
+      }
+    },
+    [displayContent, message],
+  );
 
   function isLongResponse(content: string): boolean {
     return content.split("\n").length > 5;
@@ -331,22 +334,20 @@ export function ChatMessage({
                   <ArrowsClockwiseIcon className="size-4 text-zinc-600" />
                 </Button>
               )}
-              {!isUser &&
-                isFinalMessage &&
-                isLongResponse(displayContent) && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={handleCopy}
-                    aria-label="Copy message"
-                  >
-                    {copied ? (
-                      <CheckIcon className="size-4 text-green-600" />
-                    ) : (
-                      <CopyIcon className="size-4 text-zinc-600" />
-                    )}
-                  </Button>
-                )}
+              {!isUser && isFinalMessage && isLongResponse(displayContent) && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={handleCopy}
+                  aria-label="Copy message"
+                >
+                  {copied ? (
+                    <CheckIcon className="size-4 text-green-600" />
+                  ) : (
+                    <CopyIcon className="size-4 text-zinc-600" />
+                  )}
+                </Button>
+              )}
             </div>
           </div>
         </div>
