@@ -524,6 +524,7 @@ async def stream_chat_completion(
                     session=session,  # Pass session object to avoid Redis refetch
                     context=context,
                     tool_call_response=str(tool_response_messages),
+                    tags=tags,
                 ):
                     yield chunk
 
