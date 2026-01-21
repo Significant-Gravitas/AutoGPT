@@ -5,7 +5,7 @@ import autogpt_libs.auth as autogpt_auth_lib
 from fastapi import APIRouter, HTTPException, Query, Security, status
 from prisma.enums import ReviewStatus
 
-from backend.data.execution import get_graph_execution_meta
+from backend.data.execution import ExecutionContext, get_graph_execution_meta
 from backend.data.human_review import (
     get_pending_reviews_for_execution,
     get_pending_reviews_for_user,
@@ -169,10 +169,23 @@ async def process_review_action(
         if not still_has_pending:
             # Resume execution
             try:
+                # If disable_future_reviews is set, create a context with safe modes
+                # disabled so future blocks in this execution won't trigger reviews
+                execution_context = None
+                if request.disable_future_reviews:
+                    execution_context = ExecutionContext(
+                        human_in_the_loop_safe_mode=False,
+                        sensitive_action_safe_mode=False,
+                    )
+                    logger.info(
+                        f"Disabling future reviews for execution {graph_exec_id}"
+                    )
+
                 await add_graph_execution(
                     graph_id=first_review.graph_id,
                     user_id=user_id,
                     graph_exec_id=graph_exec_id,
+                    execution_context=execution_context,
                 )
                 logger.info(f"Resumed execution {graph_exec_id}")
             except Exception as e:

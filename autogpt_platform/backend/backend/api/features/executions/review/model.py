@@ -179,6 +179,14 @@ class ReviewRequest(BaseModel):
     reviews: List[ReviewItem] = Field(
         description="All reviews with their approval status, data, and messages"
     )
+    disable_future_reviews: bool = Field(
+        default=False,
+        description=(
+            "If True, disables safe mode for the remainder of this execution, "
+            "auto-approving all future human-in-the-loop and sensitive action blocks. "
+            "This only affects the current execution run."
+        ),
+    )
 
     @model_validator(mode="after")
     def validate_review_completeness(self):

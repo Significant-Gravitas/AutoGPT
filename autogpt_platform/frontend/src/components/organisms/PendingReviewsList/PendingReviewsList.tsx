@@ -37,7 +37,7 @@ export function PendingReviewsList({
   >({});
 
   const [pendingAction, setPendingAction] = useState<
-    "approve" | "reject" | null
+    "approve" | "approve-all" | "reject" | null
   >(null);
 
   const { toast } = useToast();
@@ -92,7 +92,10 @@ export function PendingReviewsList({
     setReviewMessageMap((prev) => ({ ...prev, [nodeExecId]: message }));
   }
 
-  function processReviews(approved: boolean) {
+  function processReviews(
+    approved: boolean,
+    disableFutureReviews: boolean = false,
+  ) {
     if (reviews.length === 0) {
       toast({
         title: "No reviews to process",
@@ -102,7 +105,9 @@ export function PendingReviewsList({
       return;
     }
 
-    setPendingAction(approved ? "approve" : "reject");
+    setPendingAction(
+      disableFutureReviews ? "approve-all" : approved ? "approve" : "reject",
+    );
     const reviewItems = [];
 
     for (const review of reviews) {
@@ -137,6 +142,7 @@ export function PendingReviewsList({
     reviewActionMutation.mutate({
       data: {
         reviews: reviewItems,
+        disable_future_reviews: disableFutureReviews,
       },
     });
   }
@@ -191,12 +197,8 @@ export function PendingReviewsList({
         ))}
       </div>
 
-      <div className="space-y-7">
-        <Text variant="body" className="text-textGrey">
-          Note: Changes you make here apply only to this task
-        </Text>
-
-        <div className="flex gap-2">
+      <div className="space-y-4">
+        <div className="flex flex-wrap gap-2">
           <Button
             onClick={() => processReviews(true)}
             disabled={reviewActionMutation.isPending || reviews.length === 0}
@@ -207,6 +209,17 @@ export function PendingReviewsList({
             }
           >
             Approve
+          </Button>
+          <Button
+            onClick={() => processReviews(true, true)}
+            disabled={reviewActionMutation.isPending || reviews.length === 0}
+            variant="secondary"
+            className="flex items-center justify-center gap-2 rounded-full px-4 py-3"
+            loading={
+              pendingAction === "approve-all" && reviewActionMutation.isPending
+            }
+          >
+            Approve all future actions
           </Button>
           <Button
             onClick={() => processReviews(false)}
@@ -220,6 +233,11 @@ export function PendingReviewsList({
             Reject
           </Button>
         </div>
+
+        <Text variant="small" className="text-textGrey">
+          You can turn auto-approval on or off anytime in this agent&apos;s
+          settings.
+        </Text>
       </div>
     </div>
   );
