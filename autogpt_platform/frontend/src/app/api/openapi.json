@@ -1039,11 +1039,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "anyOf": [
-                    { "$ref": "#/components/schemas/SessionDetailResponse" },
-                    { "type": "null" }
-                  ],
-                  "title": "Response Getv2Getsession"
+                  "$ref": "#/components/schemas/SessionDetailResponse"
                 }
               }
             }

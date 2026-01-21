@@ -250,10 +250,7 @@ function isNotFoundError(error: unknown): boolean {
   return false;
 }
 
-function shouldRetrySessionLoad(
-  failureCount: number,
-  error: unknown,
-): boolean {
+function shouldRetrySessionLoad(failureCount: number, error: unknown): boolean {
   if (!isNotFoundError(error)) return false;
   return failureCount <= 2;
 }
