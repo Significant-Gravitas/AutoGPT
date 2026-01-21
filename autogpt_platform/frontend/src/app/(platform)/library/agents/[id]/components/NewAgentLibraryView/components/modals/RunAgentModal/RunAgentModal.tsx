@@ -303,8 +303,6 @@ export function RunAgentModal({
 
       {/* One-time safety popup for AI-generated agents */}
       <AIAgentSafetyPopup
-        hasSensitiveAction={agent.has_sensitive_action}
-        hasHumanInTheLoop={agent.has_human_in_the_loop}
         isOpen={isSafetyPopupOpen}
         onAcknowledge={handleSafetyPopupAcknowledge}
       />

@@ -9,14 +9,6 @@ import { useCallback, useEffect, useState } from "react";
 
 interface Props {
   /**
-   * Whether the agent has sensitive actions that require approval
-   */
-  hasSensitiveAction: boolean;
-  /**
-   * Whether the agent has human-in-the-loop blocks
-   */
-  hasHumanInTheLoop: boolean;
-  /**
    * Called when the user acknowledges the popup
    */
   onAcknowledge: () => void;
@@ -30,12 +22,7 @@ interface Props {
  * One-time safety popup shown the first time a user runs an AI-generated agent
  * with sensitive actions or human-in-the-loop blocks.
  */
-export function AIAgentSafetyPopup({
-  hasSensitiveAction,
-  hasHumanInTheLoop,
-  onAcknowledge,
-  isOpen,
-}: Props) {
+export function AIAgentSafetyPopup({ onAcknowledge, isOpen }: Props) {
   function handleAcknowledge() {
     // Mark popup as shown so it won't appear again
     storage.set(Key.AI_AGENT_SAFETY_POPUP_SHOWN, "true");
@@ -106,7 +93,8 @@ export function useAIAgentSafetyPopup(
     // Only check once after mount (to avoid SSR issues)
     if (hasChecked) return;
 
-    const hasSeenPopup = storage.get(Key.AI_AGENT_SAFETY_POPUP_SHOWN) === "true";
+    const hasSeenPopup =
+      storage.get(Key.AI_AGENT_SAFETY_POPUP_SHOWN) === "true";
     const isRelevantAgent = hasSensitiveAction || hasHumanInTheLoop;
 
     setShouldShowPopup(!hasSeenPopup && isRelevantAgent);
