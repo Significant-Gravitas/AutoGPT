@@ -4,6 +4,7 @@ import { LoginPage } from "./pages/login.page";
 import { MarketplacePage } from "./pages/marketplace.page";
 import { hasMinCount, hasUrl, isVisible, matchesUrl } from "./utils/assertion";
 
+// Marketplace tests for store agent search functionality
 test.describe("Marketplace – Basic Functionality", () => {
   test("User can access marketplace page when logged out", async ({ page }) => {
     const marketplacePage = new MarketplacePage(page);
