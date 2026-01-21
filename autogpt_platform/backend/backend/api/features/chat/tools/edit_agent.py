@@ -8,6 +8,7 @@ from langfuse import observe
 from backend.api.features.chat.model import ChatSession
 
 from .agent_generator import (
+    AgentGeneratorNotConfiguredError,
     generate_agent_patch,
     get_agent_as_json,
     save_agent_to_library,
@@ -130,7 +131,17 @@ class EditAgentTool(BaseTool):
             update_request = f"{changes}\n\nAdditional context:\n{context}"
 
         # Step 2: Generate updated agent (external service handles fixing and validation)
-        result = await generate_agent_patch(update_request, current_agent)
+        try:
+            result = await generate_agent_patch(update_request, current_agent)
+        except AgentGeneratorNotConfiguredError:
+            return ErrorResponse(
+                message=(
+                    "Agent editing is not available. "
+                    "The Agent Generator service is not configured."
+                ),
+                error="service_not_configured",
+                session_id=session_id,
+            )
 
         if result is None:
             return ErrorResponse(

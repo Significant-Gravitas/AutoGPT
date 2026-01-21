@@ -1,6 +1,7 @@
 """Agent generator package - Creates agents from natural language."""
 
 from .core import (
+    AgentGeneratorNotConfiguredError,
     decompose_goal,
     generate_agent,
     generate_agent_patch,
@@ -19,6 +20,8 @@ __all__ = [
     "save_agent_to_library",
     "get_agent_as_json",
     "json_to_graph",
+    # Exceptions
+    "AgentGeneratorNotConfiguredError",
     # Service
     "is_external_service_configured",
     "check_external_service_health",

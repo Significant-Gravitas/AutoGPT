@@ -7,7 +7,12 @@ from langfuse import observe
 
 from backend.api.features.chat.model import ChatSession
 
-from .agent_generator import decompose_goal, generate_agent, save_agent_to_library
+from .agent_generator import (
+    AgentGeneratorNotConfiguredError,
+    decompose_goal,
+    generate_agent,
+    save_agent_to_library,
+)
 from .base import BaseTool
 from .models import (
     AgentPreviewResponse,
@@ -97,7 +102,17 @@ class CreateAgentTool(BaseTool):
             )
 
         # Step 1: Decompose goal into steps
-        decomposition_result = await decompose_goal(description, context)
+        try:
+            decomposition_result = await decompose_goal(description, context)
+        except AgentGeneratorNotConfiguredError:
+            return ErrorResponse(
+                message=(
+                    "Agent generation is not available. "
+                    "The Agent Generator service is not configured."
+                ),
+                error="service_not_configured",
+                session_id=session_id,
+            )
 
         if decomposition_result is None:
             return ErrorResponse(

@@ -10,6 +10,34 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from backend.api.features.chat.tools.agent_generator import core
+from backend.api.features.chat.tools.agent_generator.core import (
+    AgentGeneratorNotConfiguredError,
+)
+
+
+class TestServiceNotConfigured:
+    """Test that functions raise AgentGeneratorNotConfiguredError when service is not configured."""
+
+    @pytest.mark.asyncio
+    async def test_decompose_goal_raises_when_not_configured(self):
+        """Test that decompose_goal raises error when service not configured."""
+        with patch.object(core, "is_external_service_configured", return_value=False):
+            with pytest.raises(AgentGeneratorNotConfiguredError):
+                await core.decompose_goal("Build a chatbot")
+
+    @pytest.mark.asyncio
+    async def test_generate_agent_raises_when_not_configured(self):
+        """Test that generate_agent raises error when service not configured."""
+        with patch.object(core, "is_external_service_configured", return_value=False):
+            with pytest.raises(AgentGeneratorNotConfiguredError):
+                await core.generate_agent({"steps": []})
+
+    @pytest.mark.asyncio
+    async def test_generate_agent_patch_raises_when_not_configured(self):
+        """Test that generate_agent_patch raises error when service not configured."""
+        with patch.object(core, "is_external_service_configured", return_value=False):
+            with pytest.raises(AgentGeneratorNotConfiguredError):
+                await core.generate_agent_patch("Add a node", {"nodes": []})
 
 
 class TestDecomposeGoal:
@@ -21,6 +49,8 @@ class TestDecomposeGoal:
         expected_result = {"type": "instructions", "steps": ["Step 1"]}
 
         with patch.object(
+            core, "is_external_service_configured", return_value=True
+        ), patch.object(
             core, "decompose_goal_external", new_callable=AsyncMock
         ) as mock_external:
             mock_external.return_value = expected_result
@@ -36,6 +66,8 @@ class TestDecomposeGoal:
         expected_result = {"type": "instructions", "steps": ["Step 1"]}
 
         with patch.object(
+            core, "is_external_service_configured", return_value=True
+        ), patch.object(
             core, "decompose_goal_external", new_callable=AsyncMock
         ) as mock_external:
             mock_external.return_value = expected_result
@@ -48,6 +80,8 @@ class TestDecomposeGoal:
     async def test_returns_none_on_service_failure(self):
         """Test that decompose_goal returns None when external service fails."""
         with patch.object(
+            core, "is_external_service_configured", return_value=True
+        ), patch.object(
             core, "decompose_goal_external", new_callable=AsyncMock
         ) as mock_external:
             mock_external.return_value = None
@@ -66,6 +100,8 @@ class TestGenerateAgent:
         expected_result = {"name": "Test Agent", "nodes": [], "links": []}
 
         with patch.object(
+            core, "is_external_service_configured", return_value=True
+        ), patch.object(
             core, "generate_agent_external", new_callable=AsyncMock
         ) as mock_external:
             mock_external.return_value = expected_result
@@ -92,6 +128,8 @@ class TestGenerateAgent:
         }
 
         with patch.object(
+            core, "is_external_service_configured", return_value=True
+        ), patch.object(
             core, "generate_agent_external", new_callable=AsyncMock
         ) as mock_external:
             mock_external.return_value = expected_result.copy()
@@ -107,6 +145,8 @@ class TestGenerateAgent:
     async def test_returns_none_when_external_service_fails(self):
         """Test that generate_agent returns None when external service fails."""
         with patch.object(
+            core, "is_external_service_configured", return_value=True
+        ), patch.object(
             core, "generate_agent_external", new_callable=AsyncMock
         ) as mock_external:
             mock_external.return_value = None
@@ -125,6 +165,8 @@ class TestGenerateAgentPatch:
         expected_result = {"name": "Updated Agent", "nodes": [], "links": []}
 
         with patch.object(
+            core, "is_external_service_configured", return_value=True
+        ), patch.object(
             core, "generate_agent_patch_external", new_callable=AsyncMock
         ) as mock_external:
             mock_external.return_value = expected_result
@@ -144,6 +186,8 @@ class TestGenerateAgentPatch:
         }
 
         with patch.object(
+            core, "is_external_service_configured", return_value=True
+        ), patch.object(
             core, "generate_agent_patch_external", new_callable=AsyncMock
         ) as mock_external:
             mock_external.return_value = expected_result
@@ -156,6 +200,8 @@ class TestGenerateAgentPatch:
     async def test_returns_none_when_external_service_fails(self):
         """Test that generate_agent_patch returns None when service fails."""
         with patch.object(
+            core, "is_external_service_configured", return_value=True
+        ), patch.object(
             core, "generate_agent_patch_external", new_callable=AsyncMock
         ) as mock_external:
             mock_external.return_value = None

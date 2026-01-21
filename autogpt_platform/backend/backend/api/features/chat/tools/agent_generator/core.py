@@ -11,9 +11,29 @@ from .service import (
     decompose_goal_external,
     generate_agent_external,
     generate_agent_patch_external,
+    is_external_service_configured,
 )
 
 logger = logging.getLogger(__name__)
+
+
+class AgentGeneratorNotConfiguredError(Exception):
+    """Raised when the external Agent Generator service is not configured."""
+
+    pass
+
+
+def _check_service_configured() -> None:
+    """Check if the external Agent Generator service is configured.
+
+    Raises:
+        AgentGeneratorNotConfiguredError: If the service is not configured.
+    """
+    if not is_external_service_configured():
+        raise AgentGeneratorNotConfiguredError(
+            "Agent Generator service is not configured. "
+            "Set AGENTGENERATOR_HOST environment variable to enable agent generation."
+        )
 
 
 async def decompose_goal(description: str, context: str = "") -> dict[str, Any] | None:
@@ -28,7 +48,11 @@ async def decompose_goal(description: str, context: str = "") -> dict[str, Any] 
         - {"type": "clarifying_questions", "questions": [...]}
         - {"type": "instructions", "steps": [...]}
         Or None on error
+
+    Raises:
+        AgentGeneratorNotConfiguredError: If the external service is not configured.
     """
+    _check_service_configured()
     logger.info("Calling external Agent Generator service for decompose_goal")
     return await decompose_goal_external(description, context)
 
@@ -41,7 +65,11 @@ async def generate_agent(instructions: dict[str, Any]) -> dict[str, Any] | None:
 
     Returns:
         Agent JSON dict or None on error
+
+    Raises:
+        AgentGeneratorNotConfiguredError: If the external service is not configured.
     """
+    _check_service_configured()
     logger.info("Calling external Agent Generator service for generate_agent")
     result = await generate_agent_external(instructions)
     if result:
@@ -240,6 +268,10 @@ async def generate_agent_patch(
 
     Returns:
         Updated agent JSON, clarifying questions dict, or None on error
+
+    Raises:
+        AgentGeneratorNotConfiguredError: If the external service is not configured.
     """
+    _check_service_configured()
     logger.info("Calling external Agent Generator service for generate_agent_patch")
     return await generate_agent_patch_external(update_request, current_agent)
