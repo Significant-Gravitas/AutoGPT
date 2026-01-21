@@ -28,6 +28,9 @@ export function DeleteModelModal({
     (m) => m.id !== model.id && m.is_enabled,
   );
 
+  // Check if migration is required (has blocks using this model)
+  const requiresMigration = usageCount !== null && usageCount > 0;
+
   async function fetchUsage() {
     setUsageLoading(true);
     setUsageError(null);
@@ -56,6 +59,15 @@ export function DeleteModelModal({
       setIsDeleting(false);
     }
   }
+
+  // Determine if delete button should be enabled
+  const canDelete =
+    !isDeleting &&
+    !usageLoading &&
+    usageCount !== null &&
+    (requiresMigration
+      ? selectedReplacement && replacementOptions.length > 0
+      : true);
 
   return (
     <Dialog
@@ -87,8 +99,9 @@ export function DeleteModelModal({
       </Dialog.Trigger>
       <Dialog.Content>
         <div className="mb-4 text-sm text-muted-foreground">
-          This action cannot be undone. All workflows using this model will be
-          migrated to the replacement model you select.
+          {requiresMigration
+            ? "This action cannot be undone. All workflows using this model will be migrated to the replacement model you select."
+            : "This action cannot be undone."}
         </div>
 
         <div className="space-y-4">
@@ -117,10 +130,18 @@ export function DeleteModelModal({
                     currently use this model
                   </p>
                 )}
-                <p className="mt-2 text-muted-foreground">
-                  All workflows currently using this model will be automatically
-                  updated to use the replacement model you choose below.
-                </p>
+                {requiresMigration && (
+                  <p className="mt-2 text-muted-foreground">
+                    All workflows currently using this model will be
+                    automatically updated to use the replacement model you
+                    choose below.
+                  </p>
+                )}
+                {!usageLoading && usageCount === 0 && (
+                  <p className="mt-2 text-muted-foreground">
+                    No workflows are using this model. It can be safely deleted.
+                  </p>
+                )}
               </div>
             </div>
           </div>
@@ -133,31 +154,33 @@ export function DeleteModelModal({
               value={selectedReplacement}
             />
 
-            <label className="text-sm font-medium">
-              <span className="mb-2 block">
-                Select Replacement Model{" "}
-                <span className="text-destructive">*</span>
-              </span>
-              <select
-                required
-                value={selectedReplacement}
-                onChange={(e) => setSelectedReplacement(e.target.value)}
-                className="w-full rounded border border-input bg-background p-2 text-sm"
-              >
-                <option value="">-- Choose a replacement model --</option>
-                {replacementOptions.map((m) => (
-                  <option key={m.id} value={m.slug}>
-                    {m.display_name} ({m.slug})
-                  </option>
-                ))}
-              </select>
-              {replacementOptions.length === 0 && (
-                <p className="mt-2 text-xs text-destructive">
-                  No replacement models available. You must have at least one
-                  other enabled model before deleting this one.
-                </p>
-              )}
-            </label>
+            {requiresMigration && (
+              <label className="text-sm font-medium">
+                <span className="mb-2 block">
+                  Select Replacement Model{" "}
+                  <span className="text-destructive">*</span>
+                </span>
+                <select
+                  required
+                  value={selectedReplacement}
+                  onChange={(e) => setSelectedReplacement(e.target.value)}
+                  className="w-full rounded border border-input bg-background p-2 text-sm"
+                >
+                  <option value="">-- Choose a replacement model --</option>
+                  {replacementOptions.map((m) => (
+                    <option key={m.id} value={m.slug}>
+                      {m.display_name} ({m.slug})
+                    </option>
+                  ))}
+                </select>
+                {replacementOptions.length === 0 && (
+                  <p className="mt-2 text-xs text-destructive">
+                    No replacement models available. You must have at least one
+                    other enabled model before deleting this one.
+                  </p>
+                )}
+              </label>
+            )}
 
             {error && (
               <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
@@ -183,14 +206,14 @@ export function DeleteModelModal({
                 type="submit"
                 variant="primary"
                 size="small"
-                disabled={
-                  !selectedReplacement ||
-                  isDeleting ||
-                  replacementOptions.length === 0
-                }
+                disabled={!canDelete}
                 className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               >
-                {isDeleting ? "Deleting..." : "Delete and Migrate"}
+                {isDeleting
+                  ? "Deleting..."
+                  : requiresMigration
+                    ? "Delete and Migrate"
+                    : "Delete"}
               </Button>
             </Dialog.Footer>
           </form>

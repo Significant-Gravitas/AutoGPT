@@ -215,11 +215,10 @@ export async function toggleLlmModelAction(formData: FormData): Promise<void> {
 export async function deleteLlmModelAction(formData: FormData): Promise<void> {
   const modelId = String(formData.get("model_id"));
   const rawReplacement = formData.get("replacement_model_slug");
-
-  if (rawReplacement == null || String(rawReplacement).trim() === "") {
-    throw new Error("Replacement model is required");
-  }
-  const replacementModelSlug = String(rawReplacement).trim();
+  const replacementModelSlug =
+    rawReplacement && String(rawReplacement).trim()
+      ? String(rawReplacement).trim()
+      : undefined;
 
   const response = await deleteV2DeleteLlmModelAndMigrateWorkflows(modelId, {
     replacement_model_slug: replacementModelSlug,

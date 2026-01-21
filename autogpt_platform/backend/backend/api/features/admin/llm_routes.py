@@ -216,21 +216,25 @@ async def get_llm_model_usage(model_id: str):
 )
 async def delete_llm_model(
     model_id: str,
-    replacement_model_slug: str = fastapi.Query(
-        ..., description="Slug of the model to migrate existing workflows to"
+    replacement_model_slug: str | None = fastapi.Query(
+        default=None,
+        description="Slug of the model to migrate existing workflows to (required only if workflows use this model)",
     ),
 ):
     """
-    Delete a model and automatically migrate all workflows using it to a replacement model.
+    Delete a model and optionally migrate workflows using it to a replacement model.
+
+    If no workflows are using this model, it can be deleted without providing a
+    replacement. If workflows exist, replacement_model_slug is required.
 
     This endpoint:
-    1. Validates the replacement model exists and is enabled
-    2. Counts how many workflow nodes use the model being deleted
-    3. Updates all AgentNode.constantInput->model fields to the replacement
-    4. Deletes the model record
-    5. Refreshes all caches and notifies executors
+    1. Counts how many workflow nodes use the model being deleted
+    2. If nodes exist, validates the replacement model and migrates them
+    3. Deletes the model record
+    4. Refreshes all caches and notifies executors
 
     Example: DELETE /admin/llm/models/{id}?replacement_model_slug=gpt-4o
+    Example (no usage): DELETE /admin/llm/models/{id}
     """
     try:
         result = await llm_db.delete_model(

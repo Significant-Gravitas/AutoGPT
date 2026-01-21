@@ -4190,7 +4190,7 @@
         "tags": ["v2", "admin", "llm", "llm", "admin"],
         "summary": "Get creator details",
         "description": "Get details of a specific model creator.",
-        "operationId": "getV2GetLlmCreatorDetails",
+        "operationId": "getV2Get creator details",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
@@ -4421,6 +4421,33 @@
               "anyOf": [{ "type": "string" }, { "type": "null" }],
               "title": "Provider Id"
             }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Page number (1-indexed)",
+              "default": 1,
+              "title": "Page"
+            },
+            "description": "Page number (1-indexed)"
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "Number of models per page",
+              "default": 50,
+              "title": "Page Size"
+            },
+            "description": "Number of models per page"
           }
         ],
         "responses": {
@@ -4485,7 +4512,7 @@
       "delete": {
         "tags": ["v2", "admin", "llm", "llm", "admin"],
         "summary": "Delete LLM model and migrate workflows",
-        "description": "Delete a model and automatically migrate all workflows using it to a replacement model.\n\nThis endpoint:\n1. Validates the replacement model exists and is enabled\n2. Counts how many workflow nodes use the model being deleted\n3. Updates all AgentNode.constantInput->model fields to the replacement\n4. Deletes the model record\n5. Refreshes all caches and notifies executors\n\nExample: DELETE /admin/llm/models/{id}?replacement_model_slug=gpt-4o",
+        "description": "Delete a model and optionally migrate workflows using it to a replacement model.\n\nIf no workflows are using this model, it can be deleted without providing a\nreplacement. If workflows exist, replacement_model_slug is required.\n\nThis endpoint:\n1. Counts how many workflow nodes use the model being deleted\n2. If nodes exist, validates the replacement model and migrates them\n3. Deletes the model record\n4. Refreshes all caches and notifies executors\n\nExample: DELETE /admin/llm/models/{id}?replacement_model_slug=gpt-4o\nExample (no usage): DELETE /admin/llm/models/{id}",
         "operationId": "deleteV2Delete llm model and migrate workflows",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -4498,13 +4525,13 @@
           {
             "name": "replacement_model_slug",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
-              "type": "string",
-              "description": "Slug of the model to migrate existing workflows to",
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Slug of the model to migrate existing workflows to (required only if workflows use this model)",
               "title": "Replacement Model Slug"
             },
-            "description": "Slug of the model to migrate existing workflows to"
+            "description": "Slug of the model to migrate existing workflows to (required only if workflows use this model)"
           }
         ],
         "responses": {
@@ -4579,7 +4606,7 @@
       "patch": {
         "tags": ["v2", "admin", "llm", "llm", "admin"],
         "summary": "Toggle LLM model availability",
-        "description": "Toggle a model's enabled status, optionally migrating workflows when disabling.\n\nIf disabling a model and `migrate_to_slug` is provided, all workflows using\nthis model will be migrated to the specified replacement model before disabling.\nA migration record is created which can be reverted later using the revert endpoint.\n\nOptional fields:\n- `migration_reason`: Reason for the migration (e.g., \"Provider outage\")\n- `custom_credit_cost`: Custom pricing during the migration period",
+        "description": "Toggle a model's enabled status, optionally migrating workflows when disabling.\n\nIf disabling a model and `migrate_to_slug` is provided, all workflows using\nthis model will be migrated to the specified replacement model before disabling.\nA migration record is created which can be reverted later using the revert endpoint.\n\nOptional fields:\n- `migration_reason`: Reason for the migration (e.g., \"Provider outage\")\n- `custom_credit_cost`: Custom pricing override for billing during migration",
         "operationId": "patchV2Toggle llm model availability",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -4860,6 +4887,36 @@
         "summary": "List Models",
         "description": "List all enabled LLM models available to users.",
         "operationId": "getV2ListModels",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Page number (1-indexed)",
+              "default": 1,
+              "title": "Page"
+            },
+            "description": "Page number (1-indexed)"
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "Number of models per page",
+              "default": 50,
+              "title": "Page Size"
+            },
+            "description": "Number of models per page"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -4871,9 +4928,16 @@
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
           }
-        },
-        "security": [{ "HTTPBearerJWT": [] }]
+        }
       }
     },
     "/api/llm/providers": {
@@ -9090,6 +9154,20 @@
         "required": ["source_id", "sink_id", "source_name", "sink_name"],
         "title": "Link"
       },
+      "ListSessionsResponse": {
+        "properties": {
+          "sessions": {
+            "items": { "$ref": "#/components/schemas/SessionSummaryResponse" },
+            "type": "array",
+            "title": "Sessions"
+          },
+          "total": { "type": "integer", "title": "Total" }
+        },
+        "type": "object",
+        "required": ["sessions", "total"],
+        "title": "ListSessionsResponse",
+        "description": "Response model for listing chat sessions."
+      },
       "LlmCostUnit": {
         "type": "string",
         "enum": ["RUN", "TOKENS"],
@@ -9332,6 +9410,12 @@
             "items": { "$ref": "#/components/schemas/LlmModel" },
             "type": "array",
             "title": "Models"
+          },
+          "pagination": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/Pagination" },
+              { "type": "null" }
+            ]
           }
         },
         "type": "object",
@@ -9405,20 +9489,6 @@
         "type": "object",
         "required": ["providers"],
         "title": "LlmProvidersResponse"
-      },
-      "ListSessionsResponse": {
-        "properties": {
-          "sessions": {
-            "items": { "$ref": "#/components/schemas/SessionSummaryResponse" },
-            "type": "array",
-            "title": "Sessions"
-          },
-          "total": { "type": "integer", "title": "Total" }
-        },
-        "type": "object",
-        "required": ["sessions", "total"],
-        "title": "ListSessionsResponse",
-        "description": "Response model for listing chat sessions."
       },
       "LogRawMetricRequest": {
         "properties": {
