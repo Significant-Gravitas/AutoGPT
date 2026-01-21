@@ -921,7 +921,7 @@
       "get": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Health Check",
-        "description": "Health check endpoint for the chat service.\n\nPerforms a full cycle test of session creation, assignment, and retrieval. Should always return healthy\nif the service and data layer are operational.\n\nReturns:\n    dict: A status dictionary indicating health, service name, and API version.",
+        "description": "Health check endpoint for the chat service.\n\nPerforms a full cycle test of session creation and retrieval. Should always return healthy\nif the service and data layer are operational.\n\nReturns:\n    dict: A status dictionary indicating health, service name, and API version.",
         "operationId": "getV2HealthCheck",
         "responses": {
           "200": {
@@ -940,11 +940,67 @@
       }
     },
     "/api/chat/sessions": {
+      "get": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "List Sessions",
+        "description": "List chat sessions for the authenticated user.\n\nReturns a paginated list of chat sessions belonging to the current user,\nordered by most recently updated.\n\nArgs:\n    user_id: The authenticated user's ID.\n    limit: Maximum number of sessions to return (1-100).\n    offset: Number of sessions to skip for pagination.\n\nReturns:\n    ListSessionsResponse: List of session summaries and total count.",
+        "operationId": "getV2ListSessions",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListSessionsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
       "post": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Create Session",
-        "description": "Create a new chat session.\n\nInitiates a new chat session for either an authenticated or anonymous user.\n\nArgs:\n    user_id: The optional authenticated user ID parsed from the JWT. If missing, creates an anonymous session.\n\nReturns:\n    CreateSessionResponse: Details of the created session.",
+        "description": "Create a new chat session.\n\nInitiates a new chat session for the authenticated user.\n\nArgs:\n    user_id: The authenticated user ID parsed from the JWT (required).\n\nReturns:\n    CreateSessionResponse: Details of the created session.",
         "operationId": "postV2CreateSession",
+        "security": [{ "HTTPBearerJWT": [] }],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -959,8 +1015,7 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        },
-        "security": [{ "HTTPBearerJWT": [] }]
+        }
       }
     },
     "/api/chat/sessions/{session_id}": {
@@ -1048,9 +1103,9 @@
     "/api/chat/sessions/{session_id}/stream": {
       "get": {
         "tags": ["v2", "chat", "chat"],
-        "summary": "Stream Chat",
-        "description": "Stream chat responses for a session.\n\nStreams the AI/completion responses in real time over Server-Sent Events (SSE), including:\n  - Text fragments as they are generated\n  - Tool call UI elements (if invoked)\n  - Tool execution results\n\nArgs:\n    session_id: The chat session identifier to associate with the streamed messages.\n    message: The user's new message to process.\n    user_id: Optional authenticated user ID.\n    is_user_message: Whether the message is a user message.\nReturns:\n    StreamingResponse: SSE-formatted response chunks.",
-        "operationId": "getV2StreamChat",
+        "summary": "Stream Chat Get",
+        "description": "Stream chat responses for a session (GET - legacy endpoint).\n\nStreams the AI/completion responses in real time over Server-Sent Events (SSE), including:\n  - Text fragments as they are generated\n  - Tool call UI elements (if invoked)\n  - Tool execution results\n\nArgs:\n    session_id: The chat session identifier to associate with the streamed messages.\n    message: The user's new message to process.\n    user_id: Optional authenticated user ID.\n    is_user_message: Whether the message is a user message.\nReturns:\n    StreamingResponse: SSE-formatted response chunks.",
+        "operationId": "getV2StreamChatGet",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
@@ -1081,6 +1136,46 @@
             }
           }
         ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Stream Chat Post",
+        "description": "Stream chat responses for a session (POST with context support).\n\nStreams the AI/completion responses in real time over Server-Sent Events (SSE), including:\n  - Text fragments as they are generated\n  - Tool call UI elements (if invoked)\n  - Tool execution results\n\nArgs:\n    session_id: The chat session identifier to associate with the streamed messages.\n    request: Request body containing message, is_user_message, and optional context.\n    user_id: Optional authenticated user ID.\nReturns:\n    StreamingResponse: SSE-formatted response chunks.",
+        "operationId": "postV2StreamChatPost",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/StreamChatRequest" }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -2768,6 +2863,28 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProviderNamesResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/integrations/providers/system": {
+      "get": {
+        "tags": ["v1", "integrations"],
+        "summary": "List System Providers",
+        "description": "Get a list of providers that have platform credits (system credentials) available.\n\nThese providers can be used without the user providing their own API keys.",
+        "operationId": "getV1ListSystemProviders",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": { "type": "string" },
+                  "type": "array",
+                  "title": "Response Getv1Listsystemproviders"
                 }
               }
             }
@@ -5504,6 +5621,69 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/store/search": {
+      "get": {
+        "tags": ["v2", "store", "public"],
+        "summary": "Unified search across all content types",
+        "description": "Search across all content types (store agents, blocks, documentation) using hybrid search.\n\nCombines semantic (embedding-based) and lexical (text-based) search for best results.\n\nArgs:\n    query: The search query string\n    content_types: Optional list of content types to filter by (STORE_AGENT, BLOCK, DOCUMENTATION)\n    page: Page number for pagination (default 1)\n    page_size: Number of results per page (default 20)\n    user_id: Optional authenticated user ID (for user-scoped content in future)\n\nReturns:\n    UnifiedSearchResponse: Paginated list of search results with relevance scores",
+        "operationId": "getV2Unified search across all content types",
+        "security": [{ "HTTPBearer": [] }],
+        "parameters": [
+          {
+            "name": "query",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string", "title": "Query" }
+          },
+          {
+            "name": "content_types",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "array", "items": { "type": "string" } },
+                { "type": "null" }
+              ],
+              "description": "Content types to search: STORE_AGENT, BLOCK, DOCUMENTATION. If not specified, searches all.",
+              "title": "Content Types"
+            },
+            "description": "Content types to search: STORE_AGENT, BLOCK, DOCUMENTATION. If not specified, searches all."
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "default": 1, "title": "Page" }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "default": 20, "title": "Page Size" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnifiedSearchResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/store/submissions": {
       "get": {
         "tags": ["v2", "store", "private"],
@@ -6203,6 +6383,11 @@
             "title": "Has Human In The Loop",
             "readOnly": true
           },
+          "has_sensitive_action": {
+            "type": "boolean",
+            "title": "Has Sensitive Action",
+            "readOnly": true
+          },
           "trigger_setup_info": {
             "anyOf": [
               { "$ref": "#/components/schemas/GraphTriggerInfo" },
@@ -6219,6 +6404,7 @@
           "output_schema",
           "has_external_trigger",
           "has_human_in_the_loop",
+          "has_sensitive_action",
           "trigger_setup_info"
         ],
         "title": "BaseGraph"
@@ -6968,6 +7154,20 @@
           "error_message": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Error Message"
+          },
+          "started_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Started At"
+          },
+          "ended_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Ended At"
           }
         },
         "type": "object",
@@ -7074,14 +7274,20 @@
           },
           "status": { "$ref": "#/components/schemas/AgentExecutionStatus" },
           "started_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Started At"
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Started At",
+            "description": "When execution started running. Null if not yet started (QUEUED)."
           },
           "ended_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Ended At"
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Ended At",
+            "description": "When execution finished. Null if not yet completed (QUEUED, RUNNING, INCOMPLETE, REVIEW)."
           },
           "is_shared": {
             "type": "boolean",
@@ -7115,8 +7321,6 @@
           "nodes_input_masks",
           "preset_id",
           "status",
-          "started_at",
-          "ended_at",
           "stats",
           "outputs"
         ],
@@ -7215,14 +7419,20 @@
           },
           "status": { "$ref": "#/components/schemas/AgentExecutionStatus" },
           "started_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Started At"
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Started At",
+            "description": "When execution started running. Null if not yet started (QUEUED)."
           },
           "ended_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Ended At"
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Ended At",
+            "description": "When execution finished. Null if not yet completed (QUEUED, RUNNING, INCOMPLETE, REVIEW)."
           },
           "is_shared": {
             "type": "boolean",
@@ -7251,8 +7461,6 @@
           "nodes_input_masks",
           "preset_id",
           "status",
-          "started_at",
-          "ended_at",
           "stats"
         ],
         "title": "GraphExecutionMeta"
@@ -7299,14 +7507,20 @@
           },
           "status": { "$ref": "#/components/schemas/AgentExecutionStatus" },
           "started_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Started At"
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Started At",
+            "description": "When execution started running. Null if not yet started (QUEUED)."
           },
           "ended_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Ended At"
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Ended At",
+            "description": "When execution finished. Null if not yet completed (QUEUED, RUNNING, INCOMPLETE, REVIEW)."
           },
           "is_shared": {
             "type": "boolean",
@@ -7345,8 +7559,6 @@
           "nodes_input_masks",
           "preset_id",
           "status",
-          "started_at",
-          "ended_at",
           "stats",
           "outputs",
           "node_executions"
@@ -7423,6 +7635,11 @@
             "title": "Has Human In The Loop",
             "readOnly": true
           },
+          "has_sensitive_action": {
+            "type": "boolean",
+            "title": "Has Sensitive Action",
+            "readOnly": true
+          },
           "trigger_setup_info": {
             "anyOf": [
               { "$ref": "#/components/schemas/GraphTriggerInfo" },
@@ -7446,6 +7663,7 @@
           "output_schema",
           "has_external_trigger",
           "has_human_in_the_loop",
+          "has_sensitive_action",
           "trigger_setup_info",
           "credentials_input_schema"
         ],
@@ -7524,6 +7742,11 @@
             "title": "Has Human In The Loop",
             "readOnly": true
           },
+          "has_sensitive_action": {
+            "type": "boolean",
+            "title": "Has Sensitive Action",
+            "readOnly": true
+          },
           "trigger_setup_info": {
             "anyOf": [
               { "$ref": "#/components/schemas/GraphTriggerInfo" },
@@ -7548,6 +7771,7 @@
           "output_schema",
           "has_external_trigger",
           "has_human_in_the_loop",
+          "has_sensitive_action",
           "trigger_setup_info",
           "credentials_input_schema"
         ],
@@ -7556,8 +7780,14 @@
       "GraphSettings": {
         "properties": {
           "human_in_the_loop_safe_mode": {
-            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
-            "title": "Human In The Loop Safe Mode"
+            "type": "boolean",
+            "title": "Human In The Loop Safe Mode",
+            "default": true
+          },
+          "sensitive_action_safe_mode": {
+            "type": "boolean",
+            "title": "Sensitive Action Safe Mode",
+            "default": false
           }
         },
         "type": "object",
@@ -7715,6 +7945,16 @@
             "title": "Has External Trigger",
             "description": "Whether the agent has an external trigger (e.g. webhook) node"
           },
+          "has_human_in_the_loop": {
+            "type": "boolean",
+            "title": "Has Human In The Loop",
+            "description": "Whether the agent has human-in-the-loop blocks"
+          },
+          "has_sensitive_action": {
+            "type": "boolean",
+            "title": "Has Sensitive Action",
+            "description": "Whether the agent has sensitive action blocks"
+          },
           "trigger_setup_info": {
             "anyOf": [
               { "$ref": "#/components/schemas/GraphTriggerInfo" },
@@ -7761,6 +8001,8 @@
           "output_schema",
           "credentials_input_schema",
           "has_external_trigger",
+          "has_human_in_the_loop",
+          "has_sensitive_action",
           "new_output",
           "can_access_graph",
           "is_latest_version",
@@ -8018,6 +8260,20 @@
         "type": "object",
         "required": ["source_id", "sink_id", "source_name", "sink_name"],
         "title": "Link"
+      },
+      "ListSessionsResponse": {
+        "properties": {
+          "sessions": {
+            "items": { "$ref": "#/components/schemas/SessionSummaryResponse" },
+            "type": "array",
+            "title": "Sessions"
+          },
+          "total": { "type": "integer", "title": "Total" }
+        },
+        "type": "object",
+        "required": ["sessions", "total"],
+        "title": "ListSessionsResponse",
+        "description": "Response model for listing chat sessions."
       },
       "LogRawMetricRequest": {
         "properties": {
@@ -9348,6 +9604,21 @@
         "title": "SessionDetailResponse",
         "description": "Response model providing complete details for a chat session, including messages."
       },
+      "SessionSummaryResponse": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "created_at": { "type": "string", "title": "Created At" },
+          "updated_at": { "type": "string", "title": "Updated At" },
+          "title": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Title"
+          }
+        },
+        "type": "object",
+        "required": ["id", "created_at", "updated_at"],
+        "title": "SessionSummaryResponse",
+        "description": "Response model for a session summary (without messages)."
+      },
       "SetGraphActiveVersion": {
         "properties": {
           "active_graph_version": {
@@ -9898,6 +10169,30 @@
         "type": "object",
         "required": ["submissions", "pagination"],
         "title": "StoreSubmissionsResponse"
+      },
+      "StreamChatRequest": {
+        "properties": {
+          "message": { "type": "string", "title": "Message" },
+          "is_user_message": {
+            "type": "boolean",
+            "title": "Is User Message",
+            "default": true
+          },
+          "context": {
+            "anyOf": [
+              {
+                "additionalProperties": { "type": "string" },
+                "type": "object"
+              },
+              { "type": "null" }
+            ],
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": ["message"],
+        "title": "StreamChatRequest",
+        "description": "Request model for streaming chat with optional context."
       },
       "SubmissionStatus": {
         "type": "string",
@@ -10728,6 +11023,57 @@
         "type": "object",
         "required": ["name", "graph_id", "graph_version", "trigger_config"],
         "title": "TriggeredPresetSetupRequest"
+      },
+      "UnifiedSearchResponse": {
+        "properties": {
+          "results": {
+            "items": { "$ref": "#/components/schemas/UnifiedSearchResult" },
+            "type": "array",
+            "title": "Results"
+          },
+          "pagination": { "$ref": "#/components/schemas/Pagination" }
+        },
+        "type": "object",
+        "required": ["results", "pagination"],
+        "title": "UnifiedSearchResponse",
+        "description": "Response model for unified search across all content types."
+      },
+      "UnifiedSearchResult": {
+        "properties": {
+          "content_type": { "type": "string", "title": "Content Type" },
+          "content_id": { "type": "string", "title": "Content Id" },
+          "searchable_text": { "type": "string", "title": "Searchable Text" },
+          "metadata": {
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "null" }
+            ],
+            "title": "Metadata"
+          },
+          "updated_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Updated At"
+          },
+          "combined_score": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Combined Score"
+          },
+          "semantic_score": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Semantic Score"
+          },
+          "lexical_score": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Lexical Score"
+          }
+        },
+        "type": "object",
+        "required": ["content_type", "content_id", "searchable_text"],
+        "title": "UnifiedSearchResult",
+        "description": "A single result from unified hybrid search across all content types."
       },
       "UpdateAppLogoRequest": {
         "properties": {
@@ -11693,6 +12039,7 @@
         "in": "header",
         "name": "X-Postmark-Webhook-Token"
       },
+      "HTTPBearer": { "type": "http", "scheme": "bearer" },
       "HTTPBearerJWT": {
         "type": "http",
         "scheme": "bearer",

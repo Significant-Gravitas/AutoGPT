@@ -18,69 +18,118 @@ interface Props {
   fullWidth?: boolean;
 }
 
+interface SafeModeButtonProps {
+  isEnabled: boolean;
+  label: string;
+  tooltipEnabled: string;
+  tooltipDisabled: string;
+  onToggle: () => void;
+  isPending: boolean;
+  fullWidth?: boolean;
+}
+
+function SafeModeButton({
+  isEnabled,
+  label,
+  tooltipEnabled,
+  tooltipDisabled,
+  onToggle,
+  isPending,
+  fullWidth = false,
+}: SafeModeButtonProps) {
+  return (
+    <Tooltip delayDuration={100}>
+      <TooltipTrigger asChild>
+        <Button
+          variant={isEnabled ? "primary" : "outline"}
+          size="small"
+          onClick={onToggle}
+          disabled={isPending}
+          className={cn("justify-start", fullWidth ? "w-full" : "")}
+        >
+          {isEnabled ? (
+            <>
+              <ShieldCheckIcon weight="bold" size={16} />
+              <Text variant="body" className="text-zinc-200">
+                {label}: ON
+              </Text>
+            </>
+          ) : (
+            <>
+              <ShieldIcon weight="bold" size={16} />
+              <Text variant="body" className="text-zinc-600">
+                {label}: OFF
+              </Text>
+            </>
+          )}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>
+        <div className="text-center">
+          <div className="font-medium">
+            {label}: {isEnabled ? "ON" : "OFF"}
+          </div>
+          <div className="mt-1 text-xs text-muted-foreground">
+            {isEnabled ? tooltipEnabled : tooltipDisabled}
+          </div>
+        </div>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
 export function FloatingSafeModeToggle({
   graph,
   className,
   fullWidth = false,
 }: Props) {
   const {
-    currentSafeMode,
+    currentHITLSafeMode,
+    showHITLToggle,
+    isHITLStateUndetermined,
+    handleHITLToggle,
+    currentSensitiveActionSafeMode,
+    showSensitiveActionToggle,
+    handleSensitiveActionToggle,
     isPending,
     shouldShowToggle,
-    isStateUndetermined,
-    handleToggle,
   } = useAgentSafeMode(graph);
 
-  if (!shouldShowToggle || isStateUndetermined || isPending) {
+  if (!shouldShowToggle || isPending) {
+    return null;
+  }
+
+  const showHITL = showHITLToggle && !isHITLStateUndetermined;
+  const showSensitive = showSensitiveActionToggle;
+
+  if (!showHITL && !showSensitive) {
     return null;
   }
 
   return (
-    <div className={cn("fixed z-50", className)}>
-      <Tooltip delayDuration={100}>
-        <TooltipTrigger asChild>
-          <Button
-            variant={currentSafeMode! ? "primary" : "outline"}
-            key={graph.id}
-            size="small"
-            title={
-              currentSafeMode!
-                ? "Safe Mode: ON. Human in the loop blocks require manual review"
-                : "Safe Mode: OFF. Human in the loop blocks proceed automatically"
-            }
-            onClick={handleToggle}
-            className={cn(fullWidth ? "w-full" : "")}
-          >
-            {currentSafeMode! ? (
-              <>
-                <ShieldCheckIcon weight="bold" size={16} />
-                <Text variant="body" className="text-zinc-200">
-                  Safe Mode: ON
-                </Text>
-              </>
-            ) : (
-              <>
-                <ShieldIcon weight="bold" size={16} />
-                <Text variant="body" className="text-zinc-600">
-                  Safe Mode: OFF
-                </Text>
-              </>
-            )}
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>
-          <div className="text-center">
-            <div className="font-medium">
-              Safe Mode: {currentSafeMode! ? "ON" : "OFF"}
-            </div>
-            <div className="mt-1 text-xs text-muted-foreground">
-              {currentSafeMode!
-                ? "Human in the loop blocks require manual review"
-                : "Human in the loop blocks proceed automatically"}
-            </div>
-          </div>
-        </TooltipContent>
-      </Tooltip>
+    <div className={cn("fixed z-50 flex flex-col gap-2", className)}>
+      {showHITL && (
+        <SafeModeButton
+          isEnabled={currentHITLSafeMode}
+          label="Human in the loop block approval"
+          tooltipEnabled="The agent will pause at human-in-the-loop blocks and wait for your approval"
+          tooltipDisabled="Human in the loop blocks will proceed automatically"
+          onToggle={handleHITLToggle}
+          isPending={isPending}
+          fullWidth={fullWidth}
+        />
+      )}
+      {showSensitive && (
+        <SafeModeButton
+          isEnabled={currentSensitiveActionSafeMode}
+          label="Sensitive actions blocks approval"
+          tooltipEnabled="The agent will pause at sensitive action blocks and wait for your approval"
+          tooltipDisabled="Sensitive action blocks will proceed automatically"
+          onToggle={handleSensitiveActionToggle}
+          isPending={isPending}
+          fullWidth={fullWidth}
+        />
+      )}
     </div>
   );
 }

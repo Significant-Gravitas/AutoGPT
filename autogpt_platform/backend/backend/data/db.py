@@ -108,19 +108,103 @@ def get_database_schema() -> str:
     return query_params.get("schema", "public")
 
 
-async def query_raw_with_schema(query_template: str, *args) -> list[dict]:
-    """Execute raw SQL query with proper schema handling."""
+async def _raw_with_schema(
+    query_template: str,
+    *args,
+    execute: bool = False,
+    client: Prisma | None = None,
+) -> list[dict] | int:
+    """Internal: Execute raw SQL with proper schema handling.
+
+    Use query_raw_with_schema() or execute_raw_with_schema() instead.
+
+    Supports placeholders:
+        - {schema_prefix}: Table/type prefix (e.g., "platform".)
+        - {schema}: Raw schema name for application tables (e.g., platform)
+        - {pgvector_schema}: Schema where pgvector is installed (defaults to "public")
+
+    Args:
+        query_template: SQL query with {schema_prefix}, {schema}, and/or {pgvector_schema} placeholders
+        *args: Query parameters
+        execute: If False, executes SELECT query. If True, executes INSERT/UPDATE/DELETE.
+        client: Optional Prisma client for transactions (only used when execute=True).
+
+    Returns:
+        - list[dict] if execute=False (query results)
+        - int if execute=True (number of affected rows)
+
+    Example with vector type:
+        await execute_raw_with_schema(
+            'INSERT INTO {schema_prefix}"Embedding" (vec) VALUES ($1::{pgvector_schema}.vector)',
+            embedding_data
+        )
+    """
     schema = get_database_schema()
     schema_prefix = f'"{schema}".' if schema != "public" else ""
-    formatted_query = query_template.format(schema_prefix=schema_prefix)
+    # pgvector extension is typically installed in "public" schema
+    # On Supabase it may be in "extensions" but "public" is the common default
+    pgvector_schema = "public"
+
+    formatted_query = query_template.format(
+        schema_prefix=schema_prefix,
+        schema=schema,
+        pgvector_schema=pgvector_schema,
+    )
 
     import prisma as prisma_module
 
-    result = await prisma_module.get_client().query_raw(
-        formatted_query, *args  # type: ignore
-    )
+    db_client = client if client else prisma_module.get_client()
+
+    if execute:
+        result = await db_client.execute_raw(formatted_query, *args)  # type: ignore
+    else:
+        result = await db_client.query_raw(formatted_query, *args)  # type: ignore
 
     return result
+
+
+async def query_raw_with_schema(query_template: str, *args) -> list[dict]:
+    """Execute raw SQL SELECT query with proper schema handling.
+
+    Args:
+        query_template: SQL query with {schema_prefix} and/or {schema} placeholders
+        *args: Query parameters
+
+    Returns:
+        List of result rows as dictionaries
+
+    Example:
+        results = await query_raw_with_schema(
+            'SELECT * FROM {schema_prefix}"User" WHERE id = $1',
+            user_id
+        )
+    """
+    return await _raw_with_schema(query_template, *args, execute=False)  # type: ignore
+
+
+async def execute_raw_with_schema(
+    query_template: str,
+    *args,
+    client: Prisma | None = None,
+) -> int:
+    """Execute raw SQL command (INSERT/UPDATE/DELETE) with proper schema handling.
+
+    Args:
+        query_template: SQL query with {schema_prefix} and/or {schema} placeholders
+        *args: Query parameters
+        client: Optional Prisma client for transactions
+
+    Returns:
+        Number of affected rows
+
+    Example:
+        await execute_raw_with_schema(
+            'INSERT INTO {schema_prefix}"User" (id, name) VALUES ($1, $2)',
+            user_id, name,
+            client=tx  # Optional transaction client
+        )
+    """
+    return await _raw_with_schema(query_template, *args, execute=True, client=client)  # type: ignore
 
 
 class BaseDbModel(BaseModel):

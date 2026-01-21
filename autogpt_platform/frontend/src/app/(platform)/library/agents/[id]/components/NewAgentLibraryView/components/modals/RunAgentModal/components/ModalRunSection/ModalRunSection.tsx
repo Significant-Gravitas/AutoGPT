@@ -1,6 +1,7 @@
-import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/modals/CredentialsInputs/CredentialsInputs";
 import { Input } from "@/components/atoms/Input/Input";
+import { CredentialsGroupedView } from "@/components/contextual/CredentialsInput/components/CredentialsGroupedView/CredentialsGroupedView";
 import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
+import { useMemo } from "react";
 import { RunAgentInputs } from "../../../RunAgentInputs/RunAgentInputs";
 import { useRunAgentModalContext } from "../../context";
 import { ModalSection } from "../ModalSection/ModalSection";
@@ -17,15 +18,18 @@ export function ModalRunSection() {
     inputValues,
     setInputValue,
     agentInputFields,
+    agentCredentialsInputFields,
     inputCredentials,
     setInputCredentialsValue,
-    agentCredentialsInputFields,
   } = useRunAgentModalContext();
 
   const inputFields = Object.entries(agentInputFields || {});
-  const credentialFields = Object.entries(agentCredentialsInputFields || {});
 
-  // Get the list of required credentials from the schema
+  const credentialFields = useMemo(() => {
+    if (!agentCredentialsInputFields) return [];
+    return Object.entries(agentCredentialsInputFields);
+  }, [agentCredentialsInputFields]);
+
   const requiredCredentials = new Set(
     (agent.credentials_input_schema?.required as string[]) || [],
   );
@@ -97,24 +101,13 @@ export function ModalRunSection() {
           title="Task Credentials"
           subtitle="These are the credentials the agent will use to perform this task"
         >
-          <div className="space-y-6">
-            {Object.entries(agentCredentialsInputFields || {}).map(
-              ([key, inputSubSchema]) => (
-                <CredentialsInput
-                  key={key}
-                  schema={
-                    { ...inputSubSchema, discriminator: undefined } as any
-                  }
-                  selectedCredentials={inputCredentials?.[key]}
-                  onSelectCredentials={(value) =>
-                    setInputCredentialsValue(key, value)
-                  }
-                  siblingInputs={inputValues}
-                  isOptional={!requiredCredentials.has(key)}
-                />
-              ),
-            )}
-          </div>
+          <CredentialsGroupedView
+            credentialFields={credentialFields}
+            requiredCredentials={requiredCredentials}
+            inputCredentials={inputCredentials}
+            inputValues={inputValues}
+            onCredentialChange={setInputCredentialsValue}
+          />
         </ModalSection>
       ) : null}
     </div>

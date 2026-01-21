@@ -334,7 +334,7 @@ async def _get_user_timezone(user_id: str) -> str:
     return get_user_timezone_or_utc(user.timezone if user else None)
 
 
-async def increment_runs(user_id: str):
+async def increment_onboarding_runs(user_id: str):
     """
     Increment a user's run counters and trigger any onboarding milestones.
     """
