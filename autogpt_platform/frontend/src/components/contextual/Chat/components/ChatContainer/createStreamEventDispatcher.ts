@@ -1,6 +1,6 @@
 import { toast } from "sonner";
 import { StreamChunk } from "../../useChatStream";
-import type { HandlerDependencies } from "./useChatContainer.handlers";
+import type { HandlerDependencies } from "./handlers";
 import {
   handleError,
   handleLoginNeeded,
@@ -9,12 +9,30 @@ import {
   handleTextEnded,
   handleToolCallStart,
   handleToolResponse,
-} from "./useChatContainer.handlers";
+  isRegionBlockedError,
+} from "./handlers";
 
 export function createStreamEventDispatcher(
   deps: HandlerDependencies,
 ): (chunk: StreamChunk) => void {
   return function dispatchStreamEvent(chunk: StreamChunk): void {
+    if (
+      chunk.type === "text_chunk" ||
+      chunk.type === "tool_call_start" ||
+      chunk.type === "tool_response" ||
+      chunk.type === "login_needed" ||
+      chunk.type === "need_login" ||
+      chunk.type === "error"
+    ) {
+      if (!deps.hasResponseRef.current) {
+        console.info("[ChatStream] First response chunk:", {
+          type: chunk.type,
+          sessionId: deps.sessionId,
+        });
+      }
+      deps.hasResponseRef.current = true;
+    }
+
     switch (chunk.type) {
       case "text_chunk":
         handleTextChunk(chunk, deps);
@@ -38,15 +56,23 @@ export function createStreamEventDispatcher(
         break;
 
       case "stream_end":
+        console.info("[ChatStream] Stream ended:", {
+          sessionId: deps.sessionId,
+          hasResponse: deps.hasResponseRef.current,
+          chunkCount: deps.streamingChunksRef.current.length,
+        });
         handleStreamEnd(chunk, deps);
         break;
 
       case "error":
+        const isRegionBlocked = isRegionBlockedError(chunk);
         handleError(chunk, deps);
         // Show toast at dispatcher level to avoid circular dependencies
-        toast.error("Chat Error", {
-          description: chunk.message || chunk.content || "An error occurred",
-        });
+        if (!isRegionBlocked) {
+          toast.error("Chat Error", {
+            description: chunk.message || chunk.content || "An error occurred",
+          });
+        }
         break;
 
       case "usage":

@@ -7,20 +7,22 @@ const INITIAL_RETRY_DELAY = 1000;
 
 export interface StreamChunk {
   type:
-    | "text_chunk"
-    | "text_ended"
-    | "tool_call"
-    | "tool_call_start"
-    | "tool_response"
-    | "login_needed"
-    | "need_login"
-    | "credentials_needed"
-    | "error"
-    | "usage"
-    | "stream_end";
+  | "text_chunk"
+  | "text_ended"
+  | "tool_call"
+  | "tool_call_start"
+  | "tool_response"
+  | "login_needed"
+  | "need_login"
+  | "credentials_needed"
+  | "error"
+  | "usage"
+  | "stream_end";
   timestamp?: string;
   content?: string;
   message?: string;
+  code?: string;
+  details?: Record<string, unknown>;
   tool_id?: string;
   tool_name?: string;
   arguments?: ToolArguments;
@@ -49,30 +51,30 @@ type VercelStreamChunk =
   | { type: "text-end"; id: string }
   | { type: "tool-input-start"; toolCallId: string; toolName: string }
   | {
-      type: "tool-input-available";
-      toolCallId: string;
-      toolName: string;
-      input: ToolArguments;
-    }
+    type: "tool-input-available";
+    toolCallId: string;
+    toolName: string;
+    input: ToolArguments;
+  }
   | {
-      type: "tool-output-available";
-      toolCallId: string;
-      toolName?: string;
-      output: ToolResult;
-      success?: boolean;
-    }
+    type: "tool-output-available";
+    toolCallId: string;
+    toolName?: string;
+    output: ToolResult;
+    success?: boolean;
+  }
   | {
-      type: "usage";
-      promptTokens: number;
-      completionTokens: number;
-      totalTokens: number;
-    }
+    type: "usage";
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+  }
   | {
-      type: "error";
-      errorText: string;
-      code?: string;
-      details?: Record<string, unknown>;
-    };
+    type: "error";
+    errorText: string;
+    code?: string;
+    details?: Record<string, unknown>;
+  };
 
 const LEGACY_STREAM_TYPES = new Set<StreamChunk["type"]>([
   "text_chunk",
@@ -138,8 +140,18 @@ function normalizeStreamChunk(
       return { type: "stream_end" };
     case "start":
     case "text-start":
-    case "tool-input-start":
       return null;
+    case "tool-input-start":
+      const toolInputStart = chunk as Extract<
+        VercelStreamChunk,
+        { type: "tool-input-start" }
+      >;
+      return {
+        type: "tool_call_start",
+        tool_id: toolInputStart.toolCallId,
+        tool_name: toolInputStart.toolName,
+        arguments: {},
+      };
   }
 }
 
@@ -311,18 +323,34 @@ export function useChatStream() {
           signal: abortController.signal,
         });
 
+        console.info("[useChatStream] Stream response", {
+          sessionId,
+          status: response.status,
+          ok: response.ok,
+          contentType: response.headers.get("content-type"),
+        });
+
         if (!response.ok) {
           const errorText = await response.text();
+          console.warn("[useChatStream] Stream response error", {
+            sessionId,
+            status: response.status,
+            errorText,
+          });
           throw new Error(errorText || `HTTP ${response.status}`);
         }
 
         if (!response.body) {
+          console.warn("[useChatStream] Response body is null", { sessionId });
           throw new Error("Response body is null");
         }
 
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = "";
+        let receivedChunkCount = 0;
+        let firstChunkAt: number | null = null;
+        let loggedLineCount = 0;
 
         return new Promise<void>((resolve, reject) => {
           let didDispatchStreamEnd = false;
@@ -346,6 +374,13 @@ export function useChatStream() {
 
                 if (done) {
                   cleanup();
+                  console.info("[useChatStream] Stream closed", {
+                    sessionId,
+                    receivedChunkCount,
+                    timeSinceStart: requestStartTimeRef.current
+                      ? Date.now() - requestStartTimeRef.current
+                      : null,
+                  });
                   dispatchStreamEnd();
                   retryCountRef.current = 0;
                   stopStreaming();
@@ -360,8 +395,22 @@ export function useChatStream() {
                 for (const line of lines) {
                   if (line.startsWith("data: ")) {
                     const data = line.slice(6);
+                    if (loggedLineCount < 3) {
+                      console.info("[useChatStream] Raw stream line", {
+                        sessionId,
+                        data: data.length > 300 ? `${data.slice(0, 300)}...` : data,
+                      });
+                      loggedLineCount += 1;
+                    }
                     if (data === "[DONE]") {
                       cleanup();
+                      console.info("[useChatStream] Stream done marker", {
+                        sessionId,
+                        receivedChunkCount,
+                        timeSinceStart: requestStartTimeRef.current
+                          ? Date.now() - requestStartTimeRef.current
+                          : null,
+                      });
                       dispatchStreamEnd();
                       retryCountRef.current = 0;
                       stopStreaming();
@@ -378,6 +427,18 @@ export function useChatStream() {
                         continue;
                       }
 
+                      if (!firstChunkAt) {
+                        firstChunkAt = Date.now();
+                        console.info("[useChatStream] First stream chunk", {
+                          sessionId,
+                          chunkType: chunk.type,
+                          timeSinceStart: requestStartTimeRef.current
+                            ? firstChunkAt - requestStartTimeRef.current
+                            : null,
+                        });
+                      }
+                      receivedChunkCount += 1;
+
                       // Call the chunk handler
                       onChunk(chunk);
 
@@ -385,6 +446,13 @@ export function useChatStream() {
                       if (chunk.type === "stream_end") {
                         didDispatchStreamEnd = true;
                         cleanup();
+                        console.info("[useChatStream] Stream end chunk", {
+                          sessionId,
+                          receivedChunkCount,
+                          timeSinceStart: requestStartTimeRef.current
+                            ? Date.now() - requestStartTimeRef.current
+                            : null,
+                        });
                         retryCountRef.current = 0;
                         stopStreaming();
                         resolve();

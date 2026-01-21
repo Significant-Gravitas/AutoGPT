@@ -1,8 +1,9 @@
 import type { SessionDetailResponse } from "@/app/api/__generated__/models/sessionDetailResponse";
+import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
+import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { useBreakpoint } from "@/lib/hooks/useBreakpoint";
 import { cn } from "@/lib/utils";
-import { useCallback } from "react";
-import { usePageContext } from "../../usePageContext";
 import { ChatInput } from "../ChatInput/ChatInput";
 import { MessageList } from "../MessageList/MessageList";
 import { useChatContainer } from "./useChatContainer";
@@ -20,25 +21,24 @@ export function ChatContainer({
   initialPrompt,
   className,
 }: ChatContainerProps) {
-  const { messages, streamingChunks, isStreaming, sendMessage, stopStreaming } =
-    useChatContainer({
-      sessionId,
-      initialMessages,
-      initialPrompt,
-    });
+  const {
+    messages,
+    streamingChunks,
+    isStreaming,
+    stopStreaming,
+    isRegionBlockedModalOpen,
+    sendMessageWithContext,
+    handleRegionModalOpenChange,
+    handleRegionModalClose,
+  } = useChatContainer({
+    sessionId,
+    initialMessages,
+    initialPrompt,
+  });
 
-  const { capturePageContext } = usePageContext();
   const breakpoint = useBreakpoint();
   const isMobile =
     breakpoint === "base" || breakpoint === "sm" || breakpoint === "md";
-
-  const sendMessageWithContext = useCallback(
-    async (content: string, isUserMessage: boolean = true) => {
-      const context = capturePageContext();
-      await sendMessage(content, isUserMessage, context);
-    },
-    [sendMessage, capturePageContext],
-  );
 
   return (
     <div
@@ -47,6 +47,32 @@ export function ChatContainer({
         className,
       )}
     >
+      <Dialog
+        title="Service unavailable"
+        controlled={{
+          isOpen: isRegionBlockedModalOpen,
+          set: handleRegionModalOpenChange,
+        }}
+        onClose={handleRegionModalClose}
+      >
+        <Dialog.Content>
+          <div className="flex flex-col gap-4">
+            <Text variant="body">
+              This model is not available in your region. Please connect via VPN
+              and try again.
+            </Text>
+            <div className="flex justify-end">
+              <Button
+                type="button"
+                variant="primary"
+                onClick={handleRegionModalClose}
+              >
+                Got it
+              </Button>
+            </div>
+          </div>
+        </Dialog.Content>
+      </Dialog>
       {/* Messages - Scrollable */}
       <div className="relative flex min-h-0 flex-1 flex-col">
         <div className="flex min-h-full flex-col justify-end">

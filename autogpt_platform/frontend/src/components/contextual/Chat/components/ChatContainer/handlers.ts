@@ -7,13 +7,28 @@ import {
   parseToolResponse,
 } from "./helpers";
 
+function isToolCallMessage(
+  message: ChatMessageData,
+): message is Extract<ChatMessageData, { type: "tool_call" }> {
+  return message.type === "tool_call";
+}
+
 export interface HandlerDependencies {
   setHasTextChunks: Dispatch<SetStateAction<boolean>>;
   setStreamingChunks: Dispatch<SetStateAction<string[]>>;
   streamingChunksRef: MutableRefObject<string[]>;
+  hasResponseRef: MutableRefObject<boolean>;
   setMessages: Dispatch<SetStateAction<ChatMessageData[]>>;
   setIsStreamingInitiated: Dispatch<SetStateAction<boolean>>;
+  setIsRegionBlockedModalOpen: Dispatch<SetStateAction<boolean>>;
   sessionId: string;
+}
+
+export function isRegionBlockedError(chunk: StreamChunk): boolean {
+  if (chunk.code === "MODEL_NOT_AVAILABLE_REGION") return true;
+  const message = chunk.message || chunk.content;
+  if (typeof message !== "string") return false;
+  return message.toLowerCase().includes("not available in your region");
 }
 
 export function handleTextChunk(chunk: StreamChunk, deps: HandlerDependencies) {
@@ -51,14 +66,41 @@ export function handleToolCallStart(
   chunk: StreamChunk,
   deps: HandlerDependencies,
 ) {
-  const toolCallMessage: ChatMessageData = {
+  const toolCallMessage: Extract<ChatMessageData, { type: "tool_call" }> = {
     type: "tool_call",
     toolId: chunk.tool_id || `tool-${Date.now()}-${chunk.idx || 0}`,
-    toolName: chunk.tool_name || "Executing...",
+    toolName: chunk.tool_name || "Executing",
     arguments: chunk.arguments || {},
     timestamp: new Date(),
   };
-  deps.setMessages((prev) => [...prev, toolCallMessage]);
+
+  function updateToolCallMessages(prev: ChatMessageData[]) {
+    const existingIndex = prev.findIndex(
+      function findToolCallIndex(msg) {
+        return isToolCallMessage(msg) && msg.toolId === toolCallMessage.toolId;
+      },
+    );
+    if (existingIndex === -1) {
+      return [...prev, toolCallMessage];
+    }
+    const nextMessages = [...prev];
+    const existing = nextMessages[existingIndex];
+    if (!isToolCallMessage(existing)) return prev;
+    const nextArguments =
+      toolCallMessage.arguments &&
+        Object.keys(toolCallMessage.arguments).length > 0
+        ? toolCallMessage.arguments
+        : existing.arguments;
+    nextMessages[existingIndex] = {
+      ...existing,
+      toolName: toolCallMessage.toolName || existing.toolName,
+      arguments: nextArguments,
+      timestamp: toolCallMessage.timestamp,
+    };
+    return nextMessages;
+  }
+
+  deps.setMessages(updateToolCallMessages);
 }
 
 export function handleToolResponse(
@@ -118,9 +160,13 @@ export function handleToolResponse(
     const toolCallIndex = prev.findIndex(
       (msg) => msg.type === "tool_call" && msg.toolId === chunk.tool_id,
     );
+    const hasResponse = prev.some(
+      (msg) => msg.type === "tool_response" && msg.toolId === chunk.tool_id,
+    );
+    if (hasResponse) return prev;
     if (toolCallIndex !== -1) {
       const newMessages = [...prev];
-      newMessages[toolCallIndex] = responseMessage;
+      newMessages.splice(toolCallIndex + 1, 0, responseMessage);
       return newMessages;
     }
     return [...prev, responseMessage];
@@ -147,6 +193,17 @@ export function handleStreamEnd(
   deps: HandlerDependencies,
 ) {
   const completedContent = deps.streamingChunksRef.current.join("");
+  if (!completedContent.trim() && !deps.hasResponseRef.current) {
+    deps.setMessages((prev) => [
+      ...prev,
+      {
+        type: "message",
+        role: "assistant",
+        content: "No response received. Please try again.",
+        timestamp: new Date(),
+      },
+    ]);
+  }
   if (completedContent.trim()) {
     const assistantMessage: ChatMessageData = {
       type: "message",
@@ -165,6 +222,9 @@ export function handleStreamEnd(
 export function handleError(chunk: StreamChunk, deps: HandlerDependencies) {
   const errorMessage = chunk.message || chunk.content || "An error occurred";
   console.error("Stream error:", errorMessage);
+  if (isRegionBlockedError(chunk)) {
+    deps.setIsRegionBlockedModalOpen(true);
+  }
   deps.setIsStreamingInitiated(false);
   deps.setHasTextChunks(false);
   deps.setStreamingChunks([]);

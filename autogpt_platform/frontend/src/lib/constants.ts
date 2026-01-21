@@ -15,5 +15,6 @@ export const NAVBAR_HEIGHT_PX = 60;
 // Routes
 export function getHomepageRoute(isChatEnabled?: boolean | null): string {
   if (isChatEnabled === true) return "/copilot";
-  return "/library";
+  if (isChatEnabled === false) return "/library";
+  return "/";
 }

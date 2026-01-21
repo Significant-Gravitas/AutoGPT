@@ -31,6 +31,9 @@ export function useChatContainer({
   const [streamingChunks, setStreamingChunks] = useState<string[]>([]);
   const [hasTextChunks, setHasTextChunks] = useState(false);
   const [isStreamingInitiated, setIsStreamingInitiated] = useState(false);
+  const [isRegionBlockedModalOpen, setIsRegionBlockedModalOpen] =
+    useState(false);
+  const hasResponseRef = useRef(false);
   const streamingChunksRef = useRef<string[]>([]);
   const previousSessionIdRef = useRef<string | null>(null);
   const {
@@ -42,14 +45,16 @@ export function useChatContainer({
 
   useEffect(() => {
     if (sessionId !== previousSessionIdRef.current) {
+      stopStreaming(previousSessionIdRef.current ?? undefined, true);
       previousSessionIdRef.current = sessionId;
       setMessages([]);
       setStreamingChunks([]);
       streamingChunksRef.current = [];
       setHasTextChunks(false);
       setIsStreamingInitiated(false);
+      hasResponseRef.current = false;
     }
-  }, [sessionId]);
+  }, [sessionId, stopStreaming]);
 
   const allMessages = useMemo(() => {
     const processedInitialMessages: ChatMessageData[] = [];
@@ -168,6 +173,7 @@ export function useChatContainer({
         console.error("[useChatContainer] Cannot send message: no session ID");
         return;
       }
+      setIsRegionBlockedModalOpen(false);
       if (isUserMessage) {
         const userMessage = createUserMessage(content);
         setMessages((prev) => [...filterAuthMessages(prev), userMessage]);
@@ -178,12 +184,15 @@ export function useChatContainer({
       streamingChunksRef.current = [];
       setHasTextChunks(false);
       setIsStreamingInitiated(true);
+      hasResponseRef.current = false;
 
       const dispatcher = createStreamEventDispatcher({
         setHasTextChunks,
         setStreamingChunks,
         streamingChunksRef,
+        hasResponseRef,
         setMessages,
+        setIsRegionBlockedModalOpen,
         sessionId,
         setIsStreamingInitiated,
       });
@@ -243,11 +252,32 @@ export function useChatContainer({
     ],
   );
 
+  async function sendMessageWithContext(
+    content: string,
+    isUserMessage: boolean = true,
+  ) {
+    const context = capturePageContext();
+    await sendMessage(content, isUserMessage, context);
+  }
+
+  function handleRegionModalOpenChange(open: boolean) {
+    setIsRegionBlockedModalOpen(open);
+  }
+
+  function handleRegionModalClose() {
+    setIsRegionBlockedModalOpen(false);
+  }
+
   return {
     messages: allMessages,
     streamingChunks,
     isStreaming,
     error,
+    isRegionBlockedModalOpen,
+    setIsRegionBlockedModalOpen,
+    sendMessageWithContext,
+    handleRegionModalOpenChange,
+    handleRegionModalClose,
     sendMessage,
     stopStreaming: handleStopStreaming,
   };

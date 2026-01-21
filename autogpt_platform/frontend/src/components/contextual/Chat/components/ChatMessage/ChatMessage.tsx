@@ -22,6 +22,21 @@ import { ToolCallMessage } from "../ToolCallMessage/ToolCallMessage";
 import { ToolResponseMessage } from "../ToolResponseMessage/ToolResponseMessage";
 import { UserChatBubble } from "../UserChatBubble/UserChatBubble";
 import { useChatMessage, type ChatMessageData } from "./useChatMessage";
+
+function stripInternalReasoning(content: string): string {
+  const cleaned = content.replace(
+    /<internal_reasoning>[\s\S]*?<\/internal_reasoning>/gi,
+    "",
+  );
+  return cleaned.replace(/\n{3,}/g, "\n\n").trim();
+}
+
+function getDisplayContent(message: ChatMessageData, isUser: boolean): string {
+  if (message.type !== "message") return "";
+  if (isUser) return message.content;
+  return stripInternalReasoning(message.content);
+}
+
 export interface ChatMessageProps {
   message: ChatMessageData;
   messages?: ChatMessageData[];
@@ -56,6 +71,7 @@ export function ChatMessage({
     isLoginNeeded,
     isCredentialsNeeded,
   } = useChatMessage(message);
+  const displayContent = getDisplayContent(message, isUser);
 
   const handleAllCredentialsComplete = useCallback(
     function handleAllCredentialsComplete() {
@@ -81,17 +97,22 @@ export function ChatMessage({
     }
   }
 
-  const handleCopy = useCallback(async () => {
+  const handleCopy = useCallback(async function handleCopy() {
     if (message.type !== "message") return;
+    if (!displayContent) return;
 
     try {
-      await navigator.clipboard.writeText(message.content);
+      await navigator.clipboard.writeText(displayContent);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (error) {
       console.error("Failed to copy:", error);
     }
-  }, [message]);
+  }, [displayContent, message]);
+
+  function isLongResponse(content: string): boolean {
+    return content.split("\n").length > 5;
+  }
 
   const handleTryAgain = useCallback(() => {
     if (message.type !== "message" || !onSendMessage) return;
@@ -278,11 +299,11 @@ export function ChatMessage({
           >
             {isUser ? (
               <UserChatBubble>
-                <MarkdownContent content={message.content} />
+                <MarkdownContent content={displayContent} />
               </UserChatBubble>
             ) : (
               <AIChatBubble>
-                <MarkdownContent content={message.content} />
+                <MarkdownContent content={displayContent} />
                 {agentOutput && agentOutput.type === "tool_response" && (
                   <div className="mt-4">
                     <ToolResponseMessage
@@ -310,20 +331,22 @@ export function ChatMessage({
                   <ArrowsClockwiseIcon className="size-4 text-zinc-600" />
                 </Button>
               )}
-              {(isUser || isFinalMessage) && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={handleCopy}
-                  aria-label="Copy message"
-                >
-                  {copied ? (
-                    <CheckIcon className="size-4 text-green-600" />
-                  ) : (
-                    <CopyIcon className="size-4 text-zinc-600" />
-                  )}
-                </Button>
-              )}
+              {!isUser &&
+                isFinalMessage &&
+                isLongResponse(displayContent) && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={handleCopy}
+                    aria-label="Copy message"
+                  >
+                    {copied ? (
+                      <CheckIcon className="size-4 text-green-600" />
+                    ) : (
+                      <CopyIcon className="size-4 text-zinc-600" />
+                    )}
+                  </Button>
+                )}
             </div>
           </div>
         </div>

@@ -1,5 +1,12 @@
-import styles from "./ChatLoader.module.css";
+import { Text } from "@/components/atoms/Text/Text";
 
 export function ChatLoader() {
-  return <div className={styles.loader} />;
+  return (
+    <Text
+      variant="small"
+      className="text-xs bg-gradient-to-r from-neutral-600 via-neutral-500 to-neutral-600 bg-[length:200%_100%] bg-clip-text text-transparent [animation:shimmer_2s_ease-in-out_infinite]"
+    >
+      Taking a bit more time...
+    </Text>
+  );
 }

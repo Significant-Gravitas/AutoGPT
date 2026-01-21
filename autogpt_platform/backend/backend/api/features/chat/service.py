@@ -6,7 +6,13 @@ from typing import Any
 import orjson
 from langfuse import get_client, propagate_attributes
 from langfuse.openai import openai  # type: ignore
-from openai import APIConnectionError, APIError, APIStatusError, RateLimitError
+from openai import (
+    APIConnectionError,
+    APIError,
+    APIStatusError,
+    PermissionDeniedError,
+    RateLimitError,
+)
 from openai.types.chat import ChatCompletionChunk, ChatCompletionToolParam
 
 from backend.data.understanding import (
@@ -417,6 +423,7 @@ async def stream_chat_completion(
                             yield chunk
                     elif isinstance(chunk, StreamError):
                         has_yielded_error = True
+                        yield chunk
                     elif isinstance(chunk, StreamUsage):
                         session.usage.append(
                             Usage(
@@ -463,8 +470,9 @@ async def stream_chat_completion(
                     # Add tool response messages after assistant message
                     messages_to_save.extend(tool_response_messages)
 
-                    session.messages.extend(messages_to_save)
-                    await upsert_chat_session(session)
+                    if not has_saved_assistant_message:
+                        session.messages.extend(messages_to_save)
+                        await upsert_chat_session(session)
 
                     if not has_yielded_error:
                         error_message = str(e)
@@ -574,6 +582,12 @@ def _is_retryable_error(error: Exception) -> bool:
         if "overloaded" in error_message or "internal server error" in error_message:
             return True
     return False
+
+
+def _is_region_blocked_error(error: Exception) -> bool:
+    if isinstance(error, PermissionDeniedError):
+        return "not available in your region" in str(error).lower()
+    return "not available in your region" in str(error).lower()
 
 
 async def _stream_chat_chunks(
@@ -768,7 +782,18 @@ async def _stream_chat_chunks(
                         f"Error in stream (not retrying): {e!s}",
                         exc_info=True,
                     )
-                    error_response = StreamError(errorText=str(e))
+                    error_code = None
+                    error_text = str(e)
+                    if _is_region_blocked_error(e):
+                        error_code = "MODEL_NOT_AVAILABLE_REGION"
+                        error_text = (
+                            "This model is not available in your region. "
+                            "Please connect via VPN and try again."
+                        )
+                    error_response = StreamError(
+                        errorText=error_text,
+                        code=error_code,
+                    )
                     yield error_response
                     yield StreamFinish()
                     return

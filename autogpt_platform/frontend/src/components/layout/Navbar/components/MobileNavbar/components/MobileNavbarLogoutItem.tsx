@@ -17,7 +17,7 @@ export function MobileNavbarLogoutItem({ icon, text }: Props) {
   }
 
   return (
-    <div className="w-full" onClick={handleLogout}>
+    <button className="w-full" onClick={handleLogout} type="button">
       <div className="inline-flex w-full items-center justify-start gap-4 py-2 hover:rounded hover:bg-[#e0e0e0]">
         {getAccountMenuOptionIcon(icon)}
         <div className="relative">
@@ -26,6 +26,6 @@ export function MobileNavbarLogoutItem({ icon, text }: Props) {
           </div>
         </div>
       </div>
-    </div>
+    </button>
   );
 }

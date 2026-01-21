@@ -1,6 +1,7 @@
 import { cn } from "@/lib/utils";
 import { useEffect, useRef, useState } from "react";
 import { AIChatBubble } from "../AIChatBubble/AIChatBubble";
+import { ChatLoader } from "../ChatLoader/ChatLoader";
 
 export interface ThinkingMessageProps {
   className?: string;
@@ -37,12 +38,7 @@ export function ThinkingMessage({ className }: ThinkingMessageProps) {
           <AIChatBubble>
             <div className="transition-all duration-500 ease-in-out">
               {showSlowLoader ? (
-                <div className="flex flex-col items-center gap-3 py-2">
-                  <div className="loader" style={{ flexShrink: 0 }} />
-                  <p className="text-sm text-slate-700">
-                    Taking a bit longer to think, wait a moment please
-                  </p>
-                </div>
+                <ChatLoader />
               ) : (
                 <span
                   className="inline-block bg-gradient-to-r from-neutral-400 via-neutral-600 to-neutral-400 bg-clip-text text-transparent"

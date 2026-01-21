@@ -21,6 +21,12 @@ import {
  * @returns A human-friendly action phrase in present continuous tense
  */
 export function getToolActionPhrase(toolName: string): string {
+  const normalizedName = toolName.trim();
+  if (!normalizedName) return "Executing";
+  if (normalizedName.toLowerCase().startsWith("executing")) {
+    return normalizedName;
+  }
+  if (normalizedName.toLowerCase() === "unknown") return "Executing";
   const toolActionPhrases: Record<string, string> = {
     add_understanding: "Updating your business information",
     create_agent: "Creating a new agent",

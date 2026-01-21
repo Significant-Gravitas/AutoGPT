@@ -53,7 +53,10 @@ export function formatToolResponse(result: unknown, toolName: string): string {
   switch (responseType) {
     case "agents_found":
       const agents = (response.agents as Array<{ name: string }>) || [];
-      const count = (response.count as number) || 0;
+      const count =
+        typeof response.count === "number" && !isNaN(response.count)
+          ? response.count
+          : agents.length;
       if (count === 0) {
         return "No agents found matching your search.";
       }
@@ -71,7 +74,10 @@ export function formatToolResponse(result: unknown, toolName: string): string {
 
     case "block_list":
       const blocks = (response.blocks as Array<{ name: string }>) || [];
-      const blockCount = (response.count as number) || 0;
+      const blockCount =
+        typeof response.count === "number" && !isNaN(response.count)
+          ? response.count
+          : blocks.length;
       if (blockCount === 0) {
         return "No blocks found matching your search.";
       }
@@ -91,7 +97,10 @@ export function formatToolResponse(result: unknown, toolName: string): string {
 
     case "doc_search_results":
       const docResults = (response.results as Array<{ title: string }>) || [];
-      const docCount = (response.count as number) || 0;
+      const docCount =
+        typeof response.count === "number" && !isNaN(response.count)
+          ? response.count
+          : docResults.length;
       if (docCount === 0) {
         return "No documentation found matching your search.";
       }
@@ -194,9 +203,9 @@ export function formatToolResponse(result: unknown, toolName: string): string {
       const outputAgentName = (response.agent_name as string) || "Agent";
       const execution = response.execution as
         | {
-            status?: string;
-            outputs?: Record<string, unknown>;
-          }
+          status?: string;
+          outputs?: Record<string, unknown>;
+        }
         | undefined;
       if (execution) {
         const status = execution.status || "completed";

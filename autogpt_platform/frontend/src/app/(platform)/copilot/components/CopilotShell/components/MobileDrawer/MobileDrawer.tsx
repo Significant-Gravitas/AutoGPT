@@ -43,7 +43,7 @@ export function MobileDrawer({
           <div className="shrink-0 border-b border-zinc-200 p-4">
             <div className="flex items-center justify-between">
               <Drawer.Title className="text-lg font-semibold text-zinc-800">
-                Your tasks
+                Your chats
               </Drawer.Title>
               <Button
                 variant="icon"
