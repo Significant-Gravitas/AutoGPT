@@ -1,8 +1,15 @@
 "use client";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, {
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
 import {
   CredentialsMetaInput,
+  CredentialsType,
   GraphExecutionID,
   GraphMeta,
   LibraryAgentPreset,
@@ -29,7 +36,11 @@ import {
 } from "@/components/__legacy__/ui/icons";
 import { Input } from "@/components/__legacy__/ui/input";
 import { Button } from "@/components/atoms/Button/Button";
-import { CredentialsInput } from "@/components/contextual/CredentialsInput/CredentialsInput";
+import { CredentialsGroupedView } from "@/components/contextual/CredentialsInput/components/CredentialsGroupedView/CredentialsGroupedView";
+import {
+  findSavedCredentialByProviderAndType,
+  findSavedUserCredentialByProviderAndType,
+} from "@/components/contextual/CredentialsInput/components/CredentialsGroupedView/helpers";
 import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
 import {
   useToast,
@@ -37,6 +48,7 @@ import {
 } from "@/components/molecules/Toast/use-toast";
 import { humanizeCronExpression } from "@/lib/cron-expression-utils";
 import { cn, isEmpty } from "@/lib/utils";
+import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
 import { ClockIcon, CopyIcon, InfoIcon } from "@phosphor-icons/react";
 import { CalendarClockIcon, Trash2Icon } from "lucide-react";
 
@@ -74,22 +86,23 @@ export function AgentRunDraftView({
   onCreateSchedule?: (schedule: Schedule) => void;
   className?: string;
 } & (
-  | {
+    | {
       onCreatePreset?: (preset: LibraryAgentPreset) => void;
       agentPreset?: never;
       onUpdatePreset?: never;
       doDeletePreset?: never;
     }
-  | {
+    | {
       onCreatePreset?: never;
       agentPreset: LibraryAgentPreset;
       onUpdatePreset: (preset: LibraryAgentPreset) => void;
       doDeletePreset: (presetID: LibraryAgentPresetID) => void;
     }
-)): React.ReactNode {
+  )): React.ReactNode {
   const api = useBackendAPI();
   const { toast } = useToast();
   const toastOnFail = useToastOnFail();
+  const allProviders = useContext(CredentialsProvidersContext);
 
   const [inputValues, setInputValues] = useState<Record<string, any>>({});
   const [inputCredentials, setInputCredentials] = useState<
@@ -128,6 +141,76 @@ export function AgentRunDraftView({
     () => graph.credentials_input_schema.properties,
     [graph],
   );
+  const credentialFields = useMemo(
+    function getCredentialFields() {
+      return Object.entries(agentCredentialsInputFields);
+    },
+    [agentCredentialsInputFields],
+  );
+  const requiredCredentials = useMemo(
+    function getRequiredCredentials() {
+      return new Set(
+        (graph.credentials_input_schema?.required as string[]) || [],
+      );
+    },
+    [graph.credentials_input_schema?.required],
+  );
+
+  useEffect(
+    function initializeDefaultCredentials() {
+      if (!allProviders) return;
+      if (!graph.credentials_input_schema?.properties) return;
+      if (requiredCredentials.size === 0) return;
+
+      setInputCredentials(function updateCredentials(currentCreds) {
+        const next = { ...currentCreds };
+        let didAdd = false;
+
+        for (const key of requiredCredentials) {
+          if (next[key]) continue;
+          const schema = graph.credentials_input_schema.properties[key];
+          if (!schema) continue;
+
+          const providerNames = schema.credentials_provider || [];
+          const credentialTypes = schema.credentials_types || [];
+          const requiredScopes = schema.credentials_scopes;
+
+          const userCredential = findSavedUserCredentialByProviderAndType(
+            providerNames,
+            credentialTypes,
+            requiredScopes,
+            allProviders,
+          );
+          const savedCredential =
+            userCredential ||
+            findSavedCredentialByProviderAndType(
+              providerNames,
+              credentialTypes,
+              requiredScopes,
+              allProviders,
+            );
+
+          if (!savedCredential) continue;
+
+          next[key] = {
+            id: savedCredential.id,
+            provider: savedCredential.provider,
+            type: savedCredential.type as CredentialsType,
+            title: savedCredential.title,
+          };
+          didAdd = true;
+        }
+
+        if (!didAdd) return currentCreds;
+        return next;
+      });
+    },
+    [
+      allProviders,
+      graph.credentials_input_schema?.properties,
+      requiredCredentials,
+    ],
+  );
 
   const [allRequiredInputsAreSet, missingInputs] = useMemo(() => {
     const nonEmptyInputs = new Set(
@@ -145,18 +228,40 @@ export function AgentRunDraftView({
     );
     return [isSuperset, difference];
   }, [agentInputSchema.required, inputValues]);
-  const [allCredentialsAreSet, missingCredentials] = useMemo(() => {
-    const availableCredentials = new Set(Object.keys(inputCredentials));
-    const allCredentials = new Set(Object.keys(agentCredentialsInputFields));
-    // Backwards-compatible implementation of isSupersetOf and difference
-    const isSuperset = Array.from(allCredentials).every((item) =>
-      availableCredentials.has(item),
-    );
-    const difference = Array.from(allCredentials).filter(
-      (item) => !availableCredentials.has(item),
-    );
-    return [isSuperset, difference];
-  }, [agentCredentialsInputFields, inputCredentials]);
+  const [allCredentialsAreSet, missingCredentials] = useMemo(
+    function getCredentialStatus() {
+      const missing = Array.from(requiredCredentials).filter((key) => {
+        const cred = inputCredentials[key];
+        return !cred || !cred.id;
+      });
+      return [missing.length === 0, missing];
+    },
+    [requiredCredentials, inputCredentials],
+  );
+  function addChangedCredentials(
+    prev: Set<keyof LibraryAgentPresetUpdatable>,
+  ) {
+    const next = new Set(prev);
+    next.add("credentials");
+    return next;
+  }
+
+  function handleCredentialChange(
+    key: string,
+    value?: CredentialsMetaInput,
+  ) {
+    setInputCredentials(function updateInputCredentials(currentCreds) {
+      const next = { ...currentCreds };
+      if (value === undefined) {
+        delete next[key];
+        return next;
+      }
+      next[key] = value;
+      return next;
+    });
+    setChangedPresetAttributes(addChangedCredentials);
+  }
+
   const notifyMissingInputs = useCallback(
     (needPresetName: boolean = true) => {
       const allMissingFields = (
@@ -388,110 +493,110 @@ export function AgentRunDraftView({
       // "Regular" agent: [run] + [save as preset] buttons
       ...(!graph.has_external_trigger
         ? ([
-            {
-              label: (
-                <>
-                  <CalendarClockIcon className="mr-2 size-4" /> Schedule run
-                </>
-              ),
-              variant: "accent",
-              callback: openScheduleDialog,
-              extraProps: { "data-testid": "agent-schedule-button" },
-            },
-            {
-              label: (
-                <>
-                  <IconPlay className="mr-2 size-4" /> Manual run
-                </>
-              ),
-              callback: doRun,
-              extraProps: { "data-testid": "agent-run-button" },
-            },
-            // {
-            //   label: (
-            //     <>
-            //       <IconSave className="mr-2 size-4" /> Save as a preset
-            //     </>
-            //   ),
-            //   callback: doCreatePreset,
-            //   disabled: !(
-            //     presetName &&
-            //     allRequiredInputsAreSet &&
-            //     allCredentialsAreSet
-            //   ),
-            // },
-          ] satisfies ButtonAction[])
+          {
+            label: (
+              <>
+                <CalendarClockIcon className="mr-2 size-4" /> Schedule run
+              </>
+            ),
+            variant: "accent",
+            callback: openScheduleDialog,
+            extraProps: { "data-testid": "agent-schedule-button" },
+          },
+          {
+            label: (
+              <>
+                <IconPlay className="mr-2 size-4" /> Manual run
+              </>
+            ),
+            callback: doRun,
+            extraProps: { "data-testid": "agent-run-button" },
+          },
+          // {
+          //   label: (
+          //     <>
+          //       <IconSave className="mr-2 size-4" /> Save as a preset
+          //     </>
+          //   ),
+          //   callback: doCreatePreset,
+          //   disabled: !(
+          //     presetName &&
+          //     allRequiredInputsAreSet &&
+          //     allCredentialsAreSet
+          //   ),
+          // },
+        ] satisfies ButtonAction[])
         : []),
       // Triggered agent: [setup] button
       ...(graph.has_external_trigger && !agentPreset?.webhook_id
         ? ([
-            {
-              label: (
-                <>
-                  <IconPlay className="mr-2 size-4" /> Set up trigger
-                </>
-              ),
-              variant: "accent",
-              callback: doSetupTrigger,
-              disabled: !(
-                presetName &&
-                allRequiredInputsAreSet &&
-                allCredentialsAreSet
-              ),
-            },
-          ] satisfies ButtonAction[])
+          {
+            label: (
+              <>
+                <IconPlay className="mr-2 size-4" /> Set up trigger
+              </>
+            ),
+            variant: "accent",
+            callback: doSetupTrigger,
+            disabled: !(
+              presetName &&
+              allRequiredInputsAreSet &&
+              allCredentialsAreSet
+            ),
+          },
+        ] satisfies ButtonAction[])
         : []),
       // Existing agent trigger: [enable]/[disable] button
       ...(agentPreset?.webhook_id
         ? ([
-            agentPreset.is_active
-              ? {
-                  label: (
-                    <>
-                      <IconCross className="mr-2.5 size-3.5" /> Disable trigger
-                    </>
-                  ),
-                  variant: "destructive",
-                  callback: () => doSetPresetActive(false),
-                }
-              : {
-                  label: (
-                    <>
-                      <IconPlay className="mr-2 size-4" /> Enable trigger
-                    </>
-                  ),
-                  variant: "accent",
-                  callback: () => doSetPresetActive(true),
-                },
-          ] satisfies ButtonAction[])
+          agentPreset.is_active
+            ? {
+              label: (
+                <>
+                  <IconCross className="mr-2.5 size-3.5" /> Disable trigger
+                </>
+              ),
+              variant: "destructive",
+              callback: () => doSetPresetActive(false),
+            }
+            : {
+              label: (
+                <>
+                  <IconPlay className="mr-2 size-4" /> Enable trigger
+                </>
+              ),
+              variant: "accent",
+              callback: () => doSetPresetActive(true),
+            },
+        ] satisfies ButtonAction[])
         : []),
       // Existing agent preset/trigger: [save] and [delete] buttons
       ...(agentPreset
         ? ([
-            {
-              label: (
-                <>
-                  <IconSave className="mr-2 size-4" /> Save changes
-                </>
-              ),
-              callback: doUpdatePreset,
-              disabled: !(
-                changedPresetAttributes.size > 0 &&
-                presetName &&
-                allRequiredInputsAreSet &&
-                allCredentialsAreSet
-              ),
-            },
-            {
-              label: (
-                <>
-                  <Trash2Icon className="mr-2 size-4" />
-                  Delete {graph.has_external_trigger ? "trigger" : "preset"}
-                </>
-              ),
-              callback: () => doDeletePreset(agentPreset.id),
-            },
-          ] satisfies ButtonAction[])
+          {
+            label: (
+              <>
+                <IconSave className="mr-2 size-4" /> Save changes
+              </>
+            ),
+            callback: doUpdatePreset,
+            disabled: !(
+              changedPresetAttributes.size > 0 &&
+              presetName &&
+              allRequiredInputsAreSet &&
+              allCredentialsAreSet
+            ),
+          },
+          {
+            label: (
+              <>
+                <Trash2Icon className="mr-2 size-4" />
+                Delete {graph.has_external_trigger ? "trigger" : "preset"}
+              </>
+            ),
+            callback: () => doDeletePreset(agentPreset.id),
+          },
+        ] satisfies ButtonAction[])
         : []),
     ],
     [
@@ -649,35 +754,6 @@ export function AgentRunDraftView({
               </>
             )}
 
-            {/* Credentials inputs */}
-            {Object.entries(agentCredentialsInputFields).map(
-              ([key, inputSubSchema]) => (
-                <CredentialsInput
-                  key={key}
-                  schema={{ ...inputSubSchema, discriminator: undefined }}
-                  selectedCredentials={
-                    inputCredentials[key] ?? inputSubSchema.default
-                  }
-                  onSelectCredentials={(value) => {
-                    setInputCredentials((obj) => {
-                      const newObj = { ...obj };
-                      if (value === undefined) {
-                        delete newObj[key];
-                        return newObj;
-                      }
-                      return {
-                        ...obj,
-                        [key]: value,
-                      };
-                    });
-                    setChangedPresetAttributes((prev) =>
-                      prev.add("credentials"),
-                    );
-                  }}
-                />
-              ),
-            )}
-
             {/* Regular inputs */}
             {Object.entries(agentInputFields).map(([key, inputSubSchema]) => (
               <RunAgentInputs
@@ -695,6 +771,17 @@ export function AgentRunDraftView({
                 data-testid={`agent-input-${key}`}
               />
             ))}
+
+            {/* Credentials inputs */}
+            {credentialFields.length > 0 && (
+              <CredentialsGroupedView
+                credentialFields={credentialFields}
+                requiredCredentials={requiredCredentials}
+                inputCredentials={inputCredentials}
+                inputValues={inputValues}
+                onCredentialChange={handleCredentialChange}
+              />
+            )}
           </CardContent>
         </Card>
       </div>

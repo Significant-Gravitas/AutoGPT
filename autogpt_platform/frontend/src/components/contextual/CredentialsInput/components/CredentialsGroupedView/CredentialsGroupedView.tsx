@@ -16,6 +16,7 @@ import {
   areSystemCredentialProvidersLoading,
   CredentialField,
   findSavedCredentialByProviderAndType,
+  findSavedUserCredentialByProviderAndType,
   hasMissingRequiredSystemCredentials,
   splitCredentialFieldsBySystem,
 } from "./helpers";
@@ -50,6 +51,7 @@ export function CredentialsGroupedView({
   const hasSystemCredentials = systemCredentialFields.length > 0;
   const hasUserCredentials = userCredentialFields.length > 0;
   const hasAttemptedAutoSelect = useRef(false);
+  const hasAttemptedUserAutoSelect = useRef(false);
 
   const isLoadingProviders = useMemo(
     () =>
@@ -113,6 +115,54 @@ export function CredentialsGroupedView({
     onCredentialChange,
     isLoadingProviders,
   ]);
+
+  useEffect(
+    function autoSelectUserCredentials() {
+      if (hasAttemptedUserAutoSelect.current) return;
+      if (!hasUserCredentials) return;
+      if (!allProviders) return;
+
+      let didSelect = false;
+
+      for (const [key, schema] of userCredentialFields) {
+        const alreadySelected = inputCredentials?.[key];
+        const isRequired = requiredCredentials.has(key);
+        if (alreadySelected || !isRequired) continue;
+
+        const providerNames = schema.credentials_provider || [];
+        const credentialTypes = schema.credentials_types || [];
+        const requiredScopes = schema.credentials_scopes;
+        const savedCredential = findSavedUserCredentialByProviderAndType(
+          providerNames,
+          credentialTypes,
+          requiredScopes,
+          allProviders,
+        );
+
+        if (savedCredential) {
+          didSelect = true;
+          onCredentialChange(key, {
+            id: savedCredential.id,
+            provider: savedCredential.provider,
+            type: savedCredential.type as CredentialsType,
+            title: savedCredential.title,
+          });
+        }
+      }
+
+      if (didSelect || userCredentialFields.length > 0) {
+        hasAttemptedUserAutoSelect.current = true;
+      }
+    },
+    [
+      allProviders,
+      hasUserCredentials,
+      userCredentialFields,
+      requiredCredentials,
+      inputCredentials,
+      onCredentialChange,
+    ],
+  );
 
   return (
     <div className="space-y-6">
