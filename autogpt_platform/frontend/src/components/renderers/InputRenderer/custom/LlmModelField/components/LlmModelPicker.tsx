@@ -2,7 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CaretDownIcon } from "@phosphor-icons/react";
-import { Popover, PopoverContent, PopoverTrigger } from "./Popover";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/molecules/Popover/Popover";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import {
