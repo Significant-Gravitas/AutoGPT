@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import time
+from asyncio import CancelledError
 from collections.abc import AsyncGenerator
 from typing import Any
 
@@ -428,12 +429,9 @@ async def stream_chat_completion(
                                     assistant_response.tool_calls = (
                                         accumulated_tool_calls
                                     )
-                                if (
-                                    not has_appended_streaming_message
-                                    and (
-                                        assistant_response.content
-                                        or assistant_response.tool_calls
-                                    )
+                                if not has_appended_streaming_message and (
+                                    assistant_response.content
+                                    or assistant_response.tool_calls
                                 ):
                                     messages_to_save_early.append(assistant_response)
                                 messages_to_save_early.extend(tool_response_messages)
@@ -446,7 +444,10 @@ async def stream_chat_completion(
                                         f"tool_calls={len(assistant_response.tool_calls or [])}, "
                                         f"tool_responses={len(tool_response_messages)}"
                                     )
-                                if messages_to_save_early or has_appended_streaming_message:
+                                if (
+                                    messages_to_save_early
+                                    or has_appended_streaming_message
+                                ):
                                     await upsert_chat_session(session)
                                     has_saved_assistant_message = True
 
@@ -474,7 +475,7 @@ async def stream_chat_completion(
                     langfuse.update_current_trace(output=str(tool_response_messages))
                     langfuse.update_current_span(output=str(tool_response_messages))
 
-            except asyncio.CancelledError:
+            except CancelledError:
                 if not has_saved_assistant_message:
                     if accumulated_tool_calls:
                         assistant_response.tool_calls = accumulated_tool_calls
@@ -516,9 +517,8 @@ async def stream_chat_completion(
                     # Add assistant message if it has content or tool calls
                     if accumulated_tool_calls:
                         assistant_response.tool_calls = accumulated_tool_calls
-                    if (
-                        not has_appended_streaming_message
-                        and (assistant_response.content or assistant_response.tool_calls)
+                    if not has_appended_streaming_message and (
+                        assistant_response.content or assistant_response.tool_calls
                     ):
                         messages_to_save.append(assistant_response)
 
@@ -576,9 +576,8 @@ async def stream_chat_completion(
                     logger.info(
                         f"Added {len(accumulated_tool_calls)} tool calls to assistant message"
                     )
-                if (
-                    not has_appended_streaming_message
-                    and (assistant_response.content or assistant_response.tool_calls)
+                if not has_appended_streaming_message and (
+                    assistant_response.content or assistant_response.tool_calls
                 ):
                     messages_to_save.append(assistant_response)
                     logger.info(
@@ -601,8 +600,8 @@ async def stream_chat_completion(
                     await upsert_chat_session(session)
             else:
                 logger.info(
-                    f"Assistant message already saved when StreamFinish was received, "
-                    f"skipping duplicate save"
+                    "Assistant message already saved when StreamFinish was received, "
+                    "skipping duplicate save"
                 )
 
             # If we did a tool call, stream the chat completion again to get the next response
