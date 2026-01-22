@@ -1,11 +1,11 @@
 "use client";
 
-import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/modals/CredentialsInputs/CredentialsInput";
 import { useGetOauthGetOauthAppInfo } from "@/app/api/__generated__/endpoints/oauth/oauth";
 import { okData } from "@/app/api/helpers";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { AuthCard } from "@/components/auth/AuthCard";
+import { CredentialsInput } from "@/components/contextual/CredentialsInput/CredentialsInput";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import type {
   BlockIOCredentialsSubSchema,

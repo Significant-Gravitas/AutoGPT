@@ -31,8 +31,6 @@ export const OutputHandler = ({
   const [isOutputVisible, setIsOutputVisible] = useState(true);
   const brokenOutputs = useBrokenOutputs(nodeId);
 
-  console.log("brokenOutputs", brokenOutputs);
-
   const showHandles = uiType !== BlockUIType.OUTPUT;
 
   const renderOutputHandles = (

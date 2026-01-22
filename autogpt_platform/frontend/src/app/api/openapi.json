@@ -1022,7 +1022,7 @@
       "get": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Get Session",
-        "description": "Retrieve the details of a specific chat session.\n\nLooks up a chat session by ID for the given user (if authenticated) and returns all session data including messages.\n\nArgs:\n    session_id: The unique identifier for the desired chat session.\n    user_id: The optional authenticated user ID, or None for anonymous access.\n\nReturns:\n    SessionDetailResponse: Details for the requested session; raises NotFoundError if not found.",
+        "description": "Retrieve the details of a specific chat session.\n\nLooks up a chat session by ID for the given user (if authenticated) and returns all session data including messages.\n\nArgs:\n    session_id: The unique identifier for the desired chat session.\n    user_id: The optional authenticated user ID, or None for anonymous access.\n\nReturns:\n    SessionDetailResponse: Details for the requested session, or None if not found.",
         "operationId": "getV2GetSession",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -5621,6 +5621,69 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/store/search": {
+      "get": {
+        "tags": ["v2", "store", "public"],
+        "summary": "Unified search across all content types",
+        "description": "Search across all content types (store agents, blocks, documentation) using hybrid search.\n\nCombines semantic (embedding-based) and lexical (text-based) search for best results.\n\nArgs:\n    query: The search query string\n    content_types: Optional list of content types to filter by (STORE_AGENT, BLOCK, DOCUMENTATION)\n    page: Page number for pagination (default 1)\n    page_size: Number of results per page (default 20)\n    user_id: Optional authenticated user ID (for user-scoped content in future)\n\nReturns:\n    UnifiedSearchResponse: Paginated list of search results with relevance scores",
+        "operationId": "getV2Unified search across all content types",
+        "security": [{ "HTTPBearer": [] }],
+        "parameters": [
+          {
+            "name": "query",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string", "title": "Query" }
+          },
+          {
+            "name": "content_types",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "array", "items": { "type": "string" } },
+                { "type": "null" }
+              ],
+              "description": "Content types to search: STORE_AGENT, BLOCK, DOCUMENTATION. If not specified, searches all.",
+              "title": "Content Types"
+            },
+            "description": "Content types to search: STORE_AGENT, BLOCK, DOCUMENTATION. If not specified, searches all."
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "default": 1, "title": "Page" }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "default": 20, "title": "Page Size" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnifiedSearchResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/store/submissions": {
       "get": {
         "tags": ["v2", "store", "private"],
@@ -6320,6 +6383,11 @@
             "title": "Has Human In The Loop",
             "readOnly": true
           },
+          "has_sensitive_action": {
+            "type": "boolean",
+            "title": "Has Sensitive Action",
+            "readOnly": true
+          },
           "trigger_setup_info": {
             "anyOf": [
               { "$ref": "#/components/schemas/GraphTriggerInfo" },
@@ -6336,6 +6404,7 @@
           "output_schema",
           "has_external_trigger",
           "has_human_in_the_loop",
+          "has_sensitive_action",
           "trigger_setup_info"
         ],
         "title": "BaseGraph"
@@ -7085,6 +7154,20 @@
           "error_message": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Error Message"
+          },
+          "started_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Started At"
+          },
+          "ended_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Ended At"
           }
         },
         "type": "object",
@@ -7191,14 +7274,20 @@
           },
           "status": { "$ref": "#/components/schemas/AgentExecutionStatus" },
           "started_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Started At"
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Started At",
+            "description": "When execution started running. Null if not yet started (QUEUED)."
           },
           "ended_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Ended At"
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Ended At",
+            "description": "When execution finished. Null if not yet completed (QUEUED, RUNNING, INCOMPLETE, REVIEW)."
           },
           "is_shared": {
             "type": "boolean",
@@ -7232,8 +7321,6 @@
           "nodes_input_masks",
           "preset_id",
           "status",
-          "started_at",
-          "ended_at",
           "stats",
           "outputs"
         ],
@@ -7332,14 +7419,20 @@
           },
           "status": { "$ref": "#/components/schemas/AgentExecutionStatus" },
           "started_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Started At"
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Started At",
+            "description": "When execution started running. Null if not yet started (QUEUED)."
           },
           "ended_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Ended At"
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Ended At",
+            "description": "When execution finished. Null if not yet completed (QUEUED, RUNNING, INCOMPLETE, REVIEW)."
           },
           "is_shared": {
             "type": "boolean",
@@ -7368,8 +7461,6 @@
           "nodes_input_masks",
           "preset_id",
           "status",
-          "started_at",
-          "ended_at",
           "stats"
         ],
         "title": "GraphExecutionMeta"
@@ -7416,14 +7507,20 @@
           },
           "status": { "$ref": "#/components/schemas/AgentExecutionStatus" },
           "started_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Started At"
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Started At",
+            "description": "When execution started running. Null if not yet started (QUEUED)."
           },
           "ended_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Ended At"
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Ended At",
+            "description": "When execution finished. Null if not yet completed (QUEUED, RUNNING, INCOMPLETE, REVIEW)."
           },
           "is_shared": {
             "type": "boolean",
@@ -7462,8 +7559,6 @@
           "nodes_input_masks",
           "preset_id",
           "status",
-          "started_at",
-          "ended_at",
           "stats",
           "outputs",
           "node_executions"
@@ -7540,6 +7635,11 @@
             "title": "Has Human In The Loop",
             "readOnly": true
           },
+          "has_sensitive_action": {
+            "type": "boolean",
+            "title": "Has Sensitive Action",
+            "readOnly": true
+          },
           "trigger_setup_info": {
             "anyOf": [
               { "$ref": "#/components/schemas/GraphTriggerInfo" },
@@ -7563,6 +7663,7 @@
           "output_schema",
           "has_external_trigger",
           "has_human_in_the_loop",
+          "has_sensitive_action",
           "trigger_setup_info",
           "credentials_input_schema"
         ],
@@ -7641,6 +7742,11 @@
             "title": "Has Human In The Loop",
             "readOnly": true
           },
+          "has_sensitive_action": {
+            "type": "boolean",
+            "title": "Has Sensitive Action",
+            "readOnly": true
+          },
           "trigger_setup_info": {
             "anyOf": [
               { "$ref": "#/components/schemas/GraphTriggerInfo" },
@@ -7665,6 +7771,7 @@
           "output_schema",
           "has_external_trigger",
           "has_human_in_the_loop",
+          "has_sensitive_action",
           "trigger_setup_info",
           "credentials_input_schema"
         ],
@@ -7673,8 +7780,14 @@
       "GraphSettings": {
         "properties": {
           "human_in_the_loop_safe_mode": {
-            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
-            "title": "Human In The Loop Safe Mode"
+            "type": "boolean",
+            "title": "Human In The Loop Safe Mode",
+            "default": true
+          },
+          "sensitive_action_safe_mode": {
+            "type": "boolean",
+            "title": "Sensitive Action Safe Mode",
+            "default": false
           }
         },
         "type": "object",
@@ -7832,6 +7945,16 @@
             "title": "Has External Trigger",
             "description": "Whether the agent has an external trigger (e.g. webhook) node"
           },
+          "has_human_in_the_loop": {
+            "type": "boolean",
+            "title": "Has Human In The Loop",
+            "description": "Whether the agent has human-in-the-loop blocks"
+          },
+          "has_sensitive_action": {
+            "type": "boolean",
+            "title": "Has Sensitive Action",
+            "description": "Whether the agent has sensitive action blocks"
+          },
           "trigger_setup_info": {
             "anyOf": [
               { "$ref": "#/components/schemas/GraphTriggerInfo" },
@@ -7878,6 +8001,8 @@
           "output_schema",
           "credentials_input_schema",
           "has_external_trigger",
+          "has_human_in_the_loop",
+          "has_sensitive_action",
           "new_output",
           "can_access_graph",
           "is_latest_version",
@@ -10899,6 +11024,57 @@
         "required": ["name", "graph_id", "graph_version", "trigger_config"],
         "title": "TriggeredPresetSetupRequest"
       },
+      "UnifiedSearchResponse": {
+        "properties": {
+          "results": {
+            "items": { "$ref": "#/components/schemas/UnifiedSearchResult" },
+            "type": "array",
+            "title": "Results"
+          },
+          "pagination": { "$ref": "#/components/schemas/Pagination" }
+        },
+        "type": "object",
+        "required": ["results", "pagination"],
+        "title": "UnifiedSearchResponse",
+        "description": "Response model for unified search across all content types."
+      },
+      "UnifiedSearchResult": {
+        "properties": {
+          "content_type": { "type": "string", "title": "Content Type" },
+          "content_id": { "type": "string", "title": "Content Id" },
+          "searchable_text": { "type": "string", "title": "Searchable Text" },
+          "metadata": {
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "null" }
+            ],
+            "title": "Metadata"
+          },
+          "updated_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Updated At"
+          },
+          "combined_score": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Combined Score"
+          },
+          "semantic_score": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Semantic Score"
+          },
+          "lexical_score": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Lexical Score"
+          }
+        },
+        "type": "object",
+        "required": ["content_type", "content_id", "searchable_text"],
+        "title": "UnifiedSearchResult",
+        "description": "A single result from unified hybrid search across all content types."
+      },
       "UpdateAppLogoRequest": {
         "properties": {
           "logo_url": {
@@ -11863,6 +12039,7 @@
         "in": "header",
         "name": "X-Postmark-Webhook-Token"
       },
+      "HTTPBearer": { "type": "http", "scheme": "bearer" },
       "HTTPBearerJWT": {
         "type": "http",
         "scheme": "bearer",

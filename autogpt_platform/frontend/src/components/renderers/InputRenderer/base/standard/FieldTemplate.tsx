@@ -17,6 +17,7 @@ import {
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
 import { useEdgeStore } from "@/app/(platform)/build/stores/edgeStore";
 import { FieldError } from "./FieldError";
+import { BlockUIType } from "@/app/(platform)/build/components/types";
 
 export default function FieldTemplate(props: FieldTemplateProps) {
   const {
@@ -39,7 +40,7 @@ export default function FieldTemplate(props: FieldTemplateProps) {
     onRemoveProperty,
     readonly,
   } = props;
-  const { nodeId } = registry.formContext;
+  const { nodeId, uiType } = registry.formContext;
 
   const { isInputConnected } = useEdgeStore();
   const showAdvanced = useNodeStore(
@@ -48,6 +49,10 @@ export default function FieldTemplate(props: FieldTemplateProps) {
 
   if (hidden) {
     return <div className="hidden">{children}</div>;
+  }
+
+  if (uiType === BlockUIType.NOTE) {
+    return children;
   }
 
   const uiOptions = getUiOptions(uiSchema);
