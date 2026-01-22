@@ -355,3 +355,30 @@ async def update_review_processed_status(node_exec_id: str, processed: bool) -> 
     await PendingHumanReview.prisma().update(
         where={"nodeExecId": node_exec_id}, data={"processed": processed}
     )
+
+
+async def cancel_pending_reviews_for_execution(graph_exec_id: str) -> int:
+    """
+    Cancel all pending reviews for a graph execution (e.g., when execution is stopped).
+
+    Marks all WAITING reviews as REJECTED with a message indicating the execution was stopped.
+
+    Args:
+        graph_exec_id: The graph execution ID
+
+    Returns:
+        Number of reviews cancelled
+    """
+    result = await PendingHumanReview.prisma().update_many(
+        where={
+            "graphExecId": graph_exec_id,
+            "status": ReviewStatus.WAITING,
+        },
+        data={
+            "status": ReviewStatus.REJECTED,
+            "reviewMessage": "Execution was stopped by user",
+            "processed": True,
+            "reviewedAt": datetime.now(timezone.utc),
+        },
+    )
+    return result

@@ -4,13 +4,13 @@ import threading
 import time
 from collections import defaultdict
 from concurrent.futures import Future
-from datetime import datetime, timezone
 from typing import Mapping, Optional, cast
 
 from pydantic import BaseModel, JsonValue, ValidationError
 
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
+from backend.data import human_review as human_review_db
 from backend.data import onboarding as onboarding_db
 from backend.data import user as user_db
 from backend.data.block import (
@@ -757,24 +757,18 @@ async def stop_graph_execution(
 
             # If graph is in REVIEW status, clean up pending reviews before terminating
             if graph_exec.status == ExecutionStatus.REVIEW:
-                from prisma.enums import ReviewStatus
-                from prisma.models import PendingHumanReview
-
+                # Use human_review_db if Prisma connected, else database manager
+                review_db = (
+                    human_review_db
+                    if prisma.is_connected()
+                    else get_database_manager_async_client()
+                )
                 # Mark all pending reviews as rejected/cancelled
-                await PendingHumanReview.prisma().update_many(
-                    where={
-                        "graphExecId": graph_exec_id,
-                        "status": ReviewStatus.WAITING,
-                    },
-                    data={
-                        "status": ReviewStatus.REJECTED,
-                        "reviewMessage": "Execution was stopped by user",
-                        "processed": True,
-                        "reviewedAt": datetime.now(timezone.utc),
-                    },
+                cancelled_count = await review_db.cancel_pending_reviews_for_execution(
+                    graph_exec_id
                 )
                 logger.info(
-                    f"Cleaned up pending reviews for stopped execution {graph_exec_id}"
+                    f"Cancelled {cancelled_count} pending review(s) for stopped execution {graph_exec_id}"
                 )
 
             graph_exec.status = ExecutionStatus.TERMINATED
