@@ -94,6 +94,7 @@ export function RunAgentModal({
   const contentRef = useRef<HTMLDivElement>(null);
 
   const { shouldShowPopup, dismissPopup } = useAIAgentSafetyPopup(
+    agent.id,
     agent.has_sensitive_action,
     agent.has_human_in_the_loop,
   );
@@ -299,6 +300,7 @@ export function RunAgentModal({
       </Dialog>
 
       <AIAgentSafetyPopup
+        agentId={agent.id}
         isOpen={isSafetyPopupOpen}
         onAcknowledge={handleSafetyPopupAcknowledge}
       />

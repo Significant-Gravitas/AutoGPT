@@ -8,14 +8,24 @@ import { ShieldCheckIcon } from "@phosphor-icons/react";
 import { useCallback, useEffect, useState } from "react";
 
 interface Props {
+  agentId: string;
   onAcknowledge: () => void;
   isOpen: boolean;
 }
 
-export function AIAgentSafetyPopup({ onAcknowledge, isOpen }: Props) {
+export function AIAgentSafetyPopup({ agentId, onAcknowledge, isOpen }: Props) {
   function handleAcknowledge() {
-    // Mark popup as shown so it won't appear again
-    storage.set(Key.AI_AGENT_SAFETY_POPUP_SHOWN, "true");
+    // Add this agent to the list of agents for which popup has been shown
+    const seenAgentsJson = storage.get(Key.AI_AGENT_SAFETY_POPUP_SHOWN);
+    const seenAgents: string[] = seenAgentsJson
+      ? JSON.parse(seenAgentsJson)
+      : [];
+
+    if (!seenAgents.includes(agentId)) {
+      seenAgents.push(agentId);
+      storage.set(Key.AI_AGENT_SAFETY_POPUP_SHOWN, JSON.stringify(seenAgents));
+    }
+
     onAcknowledge();
   }
 
@@ -66,6 +76,7 @@ export function AIAgentSafetyPopup({ onAcknowledge, isOpen }: Props) {
 }
 
 export function useAIAgentSafetyPopup(
+  agentId: string,
   hasSensitiveAction: boolean,
   hasHumanInTheLoop: boolean,
 ) {
@@ -73,16 +84,18 @@ export function useAIAgentSafetyPopup(
   const [hasChecked, setHasChecked] = useState(false);
 
   useEffect(() => {
-    // Only check once after mount (to avoid SSR issues)
     if (hasChecked) return;
 
-    const hasSeenPopup =
-      storage.get(Key.AI_AGENT_SAFETY_POPUP_SHOWN) === "true";
+    const seenAgentsJson = storage.get(Key.AI_AGENT_SAFETY_POPUP_SHOWN);
+    const seenAgents: string[] = seenAgentsJson
+      ? JSON.parse(seenAgentsJson)
+      : [];
+    const hasSeenPopupForThisAgent = seenAgents.includes(agentId);
     const isRelevantAgent = hasSensitiveAction || hasHumanInTheLoop;
 
-    setShouldShowPopup(!hasSeenPopup && isRelevantAgent);
+    setShouldShowPopup(!hasSeenPopupForThisAgent && isRelevantAgent);
     setHasChecked(true);
-  }, [hasSensitiveAction, hasHumanInTheLoop, hasChecked]);
+  }, [agentId, hasSensitiveAction, hasHumanInTheLoop, hasChecked]);
 
   const dismissPopup = useCallback(() => {
     setShouldShowPopup(false);
