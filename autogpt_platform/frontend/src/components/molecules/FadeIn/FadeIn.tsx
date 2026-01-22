@@ -92,7 +92,9 @@ export function FadeIn({
     },
   };
 
-  const MotionComponent = motion[as as keyof typeof motion] as typeof motion.div;
+  const MotionComponent = motion[
+    as as keyof typeof motion
+  ] as typeof motion.div;
 
   return (
     <MotionComponent

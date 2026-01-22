@@ -121,7 +121,11 @@ export function StaggeredList({
       variants={containerVariants}
     >
       {children.map((child, index) => (
-        <motion.div key={index} className={itemClassName} variants={itemVariants}>
+        <motion.div
+          key={index}
+          className={itemClassName}
+          variants={itemVariants}
+        >
           {child}
         </motion.div>
       ))}

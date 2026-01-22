@@ -76,7 +76,9 @@ export const AgentsSection = ({
                         avatarSrc={agent.creator_avatar}
                         creatorName={agent.creator}
                         hideAvatar={hideAvatars}
-                        onClick={() => handleCardClick(agent.creator, agent.slug)}
+                        onClick={() =>
+                          handleCardClick(agent.creator, agent.slug)
+                        }
                       />
                     </CarouselItem>
                   ))}

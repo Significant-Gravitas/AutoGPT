@@ -118,11 +118,7 @@ export const SingleSelect: Story = {
 };
 
 function DismissibleDemo() {
-  const [filters, setFilters] = useState([
-    "Marketing",
-    "Sales",
-    "Development",
-  ]);
+  const [filters, setFilters] = useState(["Marketing", "Sales", "Development"]);
 
   function handleDismiss(filter: string) {
     setFilters((prev) => prev.filter((f) => f !== filter));

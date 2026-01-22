@@ -36,7 +36,9 @@ export const Default: Story = {
   args: {
     direction: "up",
     className: "space-y-4",
-    children: items.map((item, i) => <DemoCard key={i} title={item} index={i} />),
+    children: items.map((item, i) => (
+      <DemoCard key={i} title={item} index={i} />
+    )),
   },
 };
 
@@ -44,7 +46,9 @@ export const FadeDown: Story = {
   args: {
     direction: "down",
     className: "space-y-4",
-    children: items.map((item, i) => <DemoCard key={i} title={item} index={i} />),
+    children: items.map((item, i) => (
+      <DemoCard key={i} title={item} index={i} />
+    )),
   },
 };
 
@@ -52,7 +56,9 @@ export const FadeLeft: Story = {
   args: {
     direction: "left",
     className: "flex gap-4",
-    children: items.map((item, i) => <DemoCard key={i} title={item} index={i} />),
+    children: items.map((item, i) => (
+      <DemoCard key={i} title={item} index={i} />
+    )),
   },
 };
 
@@ -60,7 +66,9 @@ export const FadeRight: Story = {
   args: {
     direction: "right",
     className: "flex gap-4",
-    children: items.map((item, i) => <DemoCard key={i} title={item} index={i} />),
+    children: items.map((item, i) => (
+      <DemoCard key={i} title={item} index={i} />
+    )),
   },
 };
 
@@ -69,7 +77,9 @@ export const FastStagger: Story = {
     direction: "up",
     staggerDelay: 0.05,
     className: "space-y-4",
-    children: items.map((item, i) => <DemoCard key={i} title={item} index={i} />),
+    children: items.map((item, i) => (
+      <DemoCard key={i} title={item} index={i} />
+    )),
   },
 };
 
@@ -78,7 +88,9 @@ export const SlowStagger: Story = {
     direction: "up",
     staggerDelay: 0.3,
     className: "space-y-4",
-    children: items.map((item, i) => <DemoCard key={i} title={item} index={i} />),
+    children: items.map((item, i) => (
+      <DemoCard key={i} title={item} index={i} />
+    )),
   },
 };
 
@@ -87,7 +99,9 @@ export const WithInitialDelay: Story = {
     direction: "up",
     initialDelay: 0.5,
     className: "space-y-4",
-    children: items.map((item, i) => <DemoCard key={i} title={item} index={i} />),
+    children: items.map((item, i) => (
+      <DemoCard key={i} title={item} index={i} />
+    )),
   },
 };
 
