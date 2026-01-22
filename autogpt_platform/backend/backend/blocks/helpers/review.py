@@ -10,7 +10,7 @@ from prisma.enums import ReviewStatus
 from pydantic import BaseModel
 
 from backend.data.execution import ExecutionContext, ExecutionStatus
-from backend.data.human_review import ReviewResult
+from backend.data.human_review import ReviewResult, check_auto_approval
 from backend.executor.manager import async_update_node_execution_status
 from backend.util.clients import get_database_manager_async_client
 
@@ -85,25 +85,23 @@ class HITLReviewHelper:
         Raises:
             Exception: If review creation or status update fails
         """
-        # Skip review if safe mode is disabled - return auto-approved result
-        if not execution_context.human_in_the_loop_safe_mode:
-            logger.info(
-                f"Block {block_name} skipping review for node {node_exec_id} - safe mode disabled"
-            )
-            return ReviewResult(
-                data=input_data,
-                status=ReviewStatus.APPROVED,
-                message="Auto-approved (safe mode disabled)",
-                processed=True,
-                node_exec_id=node_exec_id,
-            )
+        # Note: Safe mode checks (human_in_the_loop_safe_mode, sensitive_action_safe_mode)
+        # are handled by the caller:
+        # - HITL blocks check human_in_the_loop_safe_mode in their run() method
+        # - Sensitive action blocks check sensitive_action_safe_mode in is_block_exec_need_review()
+        # This function only handles auto-approval for specific nodes.
 
-        # Skip review if this specific node has been auto-approved by the user
-        if node_id in execution_context.auto_approved_node_ids:
+        # Check if this node has been auto-approved in a previous review
+        auto_approval = await check_auto_approval(
+            graph_exec_id=graph_exec_id,
+            node_id=node_id,
+        )
+        if auto_approval:
             logger.info(
                 f"Block {block_name} skipping review for node {node_exec_id} - "
-                f"node {node_id} is auto-approved"
+                f"node {node_id} has auto-approval from previous review"
             )
+            # Return a new ReviewResult with the current node_exec_id but approved status
             return ReviewResult(
                 data=input_data,
                 status=ReviewStatus.APPROVED,

@@ -441,6 +441,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         static_output: bool = False,
         block_type: BlockType = BlockType.STANDARD,
         webhook_config: Optional[BlockWebhookConfig | BlockManualWebhookConfig] = None,
+        is_sensitive_action: bool = False,
     ):
         """
         Initialize the block with the given schema.
@@ -473,8 +474,8 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         self.static_output = static_output
         self.block_type = block_type
         self.webhook_config = webhook_config
+        self.is_sensitive_action = is_sensitive_action
         self.execution_stats: NodeExecutionStats = NodeExecutionStats()
-        self.is_sensitive_action: bool = False
 
         if self.webhook_config:
             if isinstance(self.webhook_config, BlockWebhookConfig):

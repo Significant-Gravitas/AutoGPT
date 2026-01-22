@@ -88,7 +88,6 @@ class ExecutionContext(BaseModel):
     user_timezone: str = "UTC"
     root_execution_id: Optional[str] = None
     parent_execution_id: Optional[str] = None
-    auto_approved_node_ids: set[str] = Field(default_factory=set)
 
 
 # -------------------------- Models -------------------------- #

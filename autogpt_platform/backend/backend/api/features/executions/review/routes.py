@@ -4,10 +4,15 @@ from typing import List
 import autogpt_libs.auth as autogpt_auth_lib
 from fastapi import APIRouter, HTTPException, Query, Security, status
 from prisma.enums import ReviewStatus
-from prisma.models import AgentNodeExecution
 
-from backend.data.execution import ExecutionContext, get_graph_execution_meta
+from backend.data.execution import (
+    ExecutionContext,
+    get_graph_execution_meta,
+    get_node_execution,
+)
+from backend.data.graph import get_graph_settings
 from backend.data.human_review import (
+    create_auto_approval_record,
     get_pending_reviews_for_execution,
     get_pending_reviews_for_user,
     has_pending_reviews_for_graph_exec,
@@ -152,6 +157,22 @@ async def process_review_action(
         review_decisions=review_decisions,
     )
 
+    # Create auto-approval records for approved reviews if requested
+    if request.auto_approve_future_actions:
+        for node_exec_id, review in updated_reviews.items():
+            if review.status == ReviewStatus.APPROVED:
+                # Look up the node_id from the node execution
+                node_exec = await get_node_execution(node_exec_id)
+                if node_exec:
+                    await create_auto_approval_record(
+                        user_id=user_id,
+                        graph_exec_id=review.graph_exec_id,
+                        graph_id=review.graph_id,
+                        graph_version=review.graph_version,
+                        node_id=node_exec.node_id,
+                        payload=review.payload,
+                    )
+
     # Count results
     approved_count = sum(
         1
@@ -176,32 +197,18 @@ async def process_review_action(
         if not still_has_pending:
             # Resume execution
             try:
-                # If auto_approve_future_actions is set, create a context that will
-                # automatically approve future reviews from the approved nodes
-                execution_context = None
-                if request.auto_approve_future_actions:
-                    # Get node_ids for the approved node_exec_ids
-                    approved_node_exec_ids = [
-                        review.node_exec_id
-                        for review in request.reviews
-                        if review.approved
-                    ]
-                    if approved_node_exec_ids:
-                        # Look up the node_ids from the node executions
-                        node_executions = await AgentNodeExecution.prisma().find_many(
-                            where={"id": {"in": approved_node_exec_ids}},
-                        )
-                        auto_approved_node_ids = {
-                            ne.agentNodeId for ne in node_executions
-                        }
-                        if auto_approved_node_ids:
-                            execution_context = ExecutionContext(
-                                auto_approved_node_ids=auto_approved_node_ids,
-                            )
-                            logger.info(
-                                f"Auto-approving future reviews for nodes "
-                                f"{auto_approved_node_ids} in execution {graph_exec_id}"
-                            )
+                # Load graph settings to create proper execution context
+                settings = await get_graph_settings(
+                    user_id=user_id, graph_id=first_review.graph_id
+                )
+
+                # Create execution context with settings
+                # Note: auto-approval is now handled via database lookup in
+                # check_auto_approval(), no need to pass auto_approved_node_ids
+                execution_context = ExecutionContext(
+                    human_in_the_loop_safe_mode=settings.human_in_the_loop_safe_mode,
+                    sensitive_action_safe_mode=settings.sensitive_action_safe_mode,
+                )
 
                 await add_graph_execution(
                     graph_id=first_review.graph_id,

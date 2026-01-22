@@ -32,6 +32,87 @@ class ReviewResult(BaseModel):
     node_exec_id: str
 
 
+def get_auto_approve_key(graph_exec_id: str, node_id: str) -> str:
+    """Generate the special nodeExecId key for auto-approval records."""
+    return f"auto_approve_{graph_exec_id}_{node_id}"
+
+
+async def check_auto_approval(
+    graph_exec_id: str,
+    node_id: str,
+) -> Optional[ReviewResult]:
+    """
+    Check if there's an existing auto-approval record for this node in this execution.
+
+    Auto-approval records are stored as PendingHumanReview entries with a special
+    nodeExecId pattern: "auto_approve_{graph_exec_id}_{node_id}"
+
+    Args:
+        graph_exec_id: ID of the graph execution
+        node_id: ID of the node definition (not execution)
+
+    Returns:
+        ReviewResult if auto-approval found, None otherwise
+    """
+    auto_approve_key = get_auto_approve_key(graph_exec_id, node_id)
+
+    # Look for the auto-approval record by its special key
+    auto_approved_review = await PendingHumanReview.prisma().find_unique(
+        where={"nodeExecId": auto_approve_key},
+    )
+
+    if auto_approved_review and auto_approved_review.status == ReviewStatus.APPROVED:
+        logger.info(
+            f"Found auto-approval for node {node_id} in execution {graph_exec_id}"
+        )
+        return ReviewResult(
+            data=auto_approved_review.payload,
+            status=ReviewStatus.APPROVED,
+            message="Auto-approved (user approved all future actions for this block)",
+            processed=True,
+            node_exec_id=auto_approve_key,
+        )
+
+    return None
+
+
+async def create_auto_approval_record(
+    user_id: str,
+    graph_exec_id: str,
+    graph_id: str,
+    graph_version: int,
+    node_id: str,
+    payload: SafeJsonData,
+) -> None:
+    """
+    Create an auto-approval record for a node in this execution.
+
+    This is stored as a PendingHumanReview with a special nodeExecId pattern
+    and status=APPROVED, so future executions of the same node can skip review.
+    """
+    auto_approve_key = get_auto_approve_key(graph_exec_id, node_id)
+
+    await PendingHumanReview.prisma().upsert(
+        where={"nodeExecId": auto_approve_key},
+        data={
+            "create": {
+                "nodeExecId": auto_approve_key,
+                "userId": user_id,
+                "graphExecId": graph_exec_id,
+                "graphId": graph_id,
+                "graphVersion": graph_version,
+                "payload": SafeJson(payload),
+                "instructions": "Auto-approval record",
+                "editable": False,
+                "status": ReviewStatus.APPROVED,
+                "processed": True,
+                "reviewedAt": datetime.now(timezone.utc),
+            },
+            "update": {},  # Already exists, no update needed
+        },
+    )
+
+
 async def get_or_create_human_review(
     user_id: str,
     node_exec_id: str,

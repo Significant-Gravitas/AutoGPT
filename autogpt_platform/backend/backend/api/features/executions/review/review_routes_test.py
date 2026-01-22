@@ -490,3 +490,321 @@ def test_process_review_action_invalid_node_exec_id(
     # Should be a 400 Bad Request, not 500 Internal Server Error
     assert response.status_code == 400
     assert "Invalid node execution ID format" in response.json()["detail"]
+
+
+def test_process_review_action_auto_approve_creates_auto_approval_records(
+    mocker: pytest_mock.MockerFixture,
+    sample_pending_review: PendingHumanReviewModel,
+    test_user_id: str,
+) -> None:
+    """Test that auto_approve_future_actions flag creates auto-approval records"""
+    from backend.data.execution import ExecutionContext, NodeExecutionResult
+    from backend.data.graph import GraphSettings
+
+    # Mock process_all_reviews
+    mock_process_all_reviews = mocker.patch(
+        "backend.api.features.executions.review.routes.process_all_reviews_for_execution"
+    )
+    approved_review = PendingHumanReviewModel(
+        node_exec_id="test_node_123",
+        user_id=test_user_id,
+        graph_exec_id="test_graph_exec_456",
+        graph_id="test_graph_789",
+        graph_version=1,
+        payload={"data": "test payload"},
+        instructions="Please review",
+        editable=True,
+        status=ReviewStatus.APPROVED,
+        review_message="Approved",
+        was_edited=False,
+        processed=False,
+        created_at=FIXED_NOW,
+        updated_at=FIXED_NOW,
+        reviewed_at=FIXED_NOW,
+    )
+    mock_process_all_reviews.return_value = {"test_node_123": approved_review}
+
+    # Mock get_node_execution to return node_id
+    mock_get_node_execution = mocker.patch(
+        "backend.api.features.executions.review.routes.get_node_execution"
+    )
+    mock_node_exec = mocker.Mock(spec=NodeExecutionResult)
+    mock_node_exec.node_id = "test_node_def_456"
+    mock_get_node_execution.return_value = mock_node_exec
+
+    # Mock create_auto_approval_record
+    mock_create_auto_approval = mocker.patch(
+        "backend.api.features.executions.review.routes.create_auto_approval_record"
+    )
+
+    # Mock has_pending_reviews_for_graph_exec
+    mock_has_pending = mocker.patch(
+        "backend.api.features.executions.review.routes.has_pending_reviews_for_graph_exec"
+    )
+    mock_has_pending.return_value = False
+
+    # Mock get_graph_settings to return custom settings
+    mock_get_settings = mocker.patch(
+        "backend.api.features.executions.review.routes.get_graph_settings"
+    )
+    mock_get_settings.return_value = GraphSettings(
+        human_in_the_loop_safe_mode=True,
+        sensitive_action_safe_mode=True,
+    )
+
+    # Mock add_graph_execution
+    mock_add_execution = mocker.patch(
+        "backend.api.features.executions.review.routes.add_graph_execution"
+    )
+
+    request_data = {
+        "reviews": [
+            {
+                "node_exec_id": "test_node_123",
+                "approved": True,
+                "message": "Approved",
+            }
+        ],
+        "auto_approve_future_actions": True,
+    }
+
+    response = client.post("/api/review/action", json=request_data)
+
+    assert response.status_code == 200
+
+    # Verify process_all_reviews_for_execution was called (without auto_approve param)
+    mock_process_all_reviews.assert_called_once()
+
+    # Verify create_auto_approval_record was called for the approved review
+    mock_create_auto_approval.assert_called_once_with(
+        user_id=test_user_id,
+        graph_exec_id="test_graph_exec_456",
+        graph_id="test_graph_789",
+        graph_version=1,
+        node_id="test_node_def_456",
+        payload={"data": "test payload"},
+    )
+
+    # Verify get_graph_settings was called with correct parameters
+    mock_get_settings.assert_called_once_with(
+        user_id=test_user_id, graph_id="test_graph_789"
+    )
+
+    # Verify add_graph_execution was called with proper ExecutionContext
+    mock_add_execution.assert_called_once()
+    call_kwargs = mock_add_execution.call_args.kwargs
+    execution_context = call_kwargs["execution_context"]
+
+    assert isinstance(execution_context, ExecutionContext)
+    assert execution_context.human_in_the_loop_safe_mode is True
+    assert execution_context.sensitive_action_safe_mode is True
+
+
+def test_process_review_action_without_auto_approve_still_loads_settings(
+    mocker: pytest_mock.MockerFixture,
+    sample_pending_review: PendingHumanReviewModel,
+    test_user_id: str,
+) -> None:
+    """Test that execution context is created with settings even without auto-approve"""
+    from backend.data.execution import ExecutionContext
+    from backend.data.graph import GraphSettings
+
+    # Mock process_all_reviews
+    mock_process_all_reviews = mocker.patch(
+        "backend.api.features.executions.review.routes.process_all_reviews_for_execution"
+    )
+    approved_review = PendingHumanReviewModel(
+        node_exec_id="test_node_123",
+        user_id=test_user_id,
+        graph_exec_id="test_graph_exec_456",
+        graph_id="test_graph_789",
+        graph_version=1,
+        payload={"data": "test payload"},
+        instructions="Please review",
+        editable=True,
+        status=ReviewStatus.APPROVED,
+        review_message="Approved",
+        was_edited=False,
+        processed=False,
+        created_at=FIXED_NOW,
+        updated_at=FIXED_NOW,
+        reviewed_at=FIXED_NOW,
+    )
+    mock_process_all_reviews.return_value = {"test_node_123": approved_review}
+
+    # Mock create_auto_approval_record - should NOT be called when auto_approve is False
+    mock_create_auto_approval = mocker.patch(
+        "backend.api.features.executions.review.routes.create_auto_approval_record"
+    )
+
+    # Mock has_pending_reviews_for_graph_exec
+    mock_has_pending = mocker.patch(
+        "backend.api.features.executions.review.routes.has_pending_reviews_for_graph_exec"
+    )
+    mock_has_pending.return_value = False
+
+    # Mock get_graph_settings with sensitive_action_safe_mode enabled
+    mock_get_settings = mocker.patch(
+        "backend.api.features.executions.review.routes.get_graph_settings"
+    )
+    mock_get_settings.return_value = GraphSettings(
+        human_in_the_loop_safe_mode=False,
+        sensitive_action_safe_mode=True,
+    )
+
+    # Mock add_graph_execution
+    mock_add_execution = mocker.patch(
+        "backend.api.features.executions.review.routes.add_graph_execution"
+    )
+
+    # Request WITHOUT auto_approve_future_actions
+    request_data = {
+        "reviews": [
+            {
+                "node_exec_id": "test_node_123",
+                "approved": True,
+                "message": "Approved",
+            }
+        ],
+        "auto_approve_future_actions": False,
+    }
+
+    response = client.post("/api/review/action", json=request_data)
+
+    assert response.status_code == 200
+
+    # Verify process_all_reviews_for_execution was called
+    mock_process_all_reviews.assert_called_once()
+
+    # Verify create_auto_approval_record was NOT called (auto_approve_future_actions=False)
+    mock_create_auto_approval.assert_not_called()
+
+    # Verify settings were loaded
+    mock_get_settings.assert_called_once()
+
+    # Verify ExecutionContext has proper settings
+    mock_add_execution.assert_called_once()
+    call_kwargs = mock_add_execution.call_args.kwargs
+    execution_context = call_kwargs["execution_context"]
+
+    assert isinstance(execution_context, ExecutionContext)
+    assert execution_context.human_in_the_loop_safe_mode is False
+    assert execution_context.sensitive_action_safe_mode is True
+
+
+def test_process_review_action_auto_approve_only_applies_to_approved_reviews(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    """Test that auto_approve record is created only for approved reviews"""
+    from backend.data.execution import ExecutionContext, NodeExecutionResult
+    from backend.data.graph import GraphSettings
+
+    # Create two reviews - one approved, one rejected
+    approved_review = PendingHumanReviewModel(
+        node_exec_id="node_exec_approved",
+        user_id=test_user_id,
+        graph_exec_id="test_graph_exec_456",
+        graph_id="test_graph_789",
+        graph_version=1,
+        payload={"data": "approved"},
+        instructions="Review",
+        editable=True,
+        status=ReviewStatus.APPROVED,
+        review_message=None,
+        was_edited=False,
+        processed=False,
+        created_at=FIXED_NOW,
+        updated_at=FIXED_NOW,
+        reviewed_at=FIXED_NOW,
+    )
+    rejected_review = PendingHumanReviewModel(
+        node_exec_id="node_exec_rejected",
+        user_id=test_user_id,
+        graph_exec_id="test_graph_exec_456",
+        graph_id="test_graph_789",
+        graph_version=1,
+        payload={"data": "rejected"},
+        instructions="Review",
+        editable=True,
+        status=ReviewStatus.REJECTED,
+        review_message="Rejected",
+        was_edited=False,
+        processed=False,
+        created_at=FIXED_NOW,
+        updated_at=FIXED_NOW,
+        reviewed_at=FIXED_NOW,
+    )
+
+    # Mock process_all_reviews
+    mock_process_all_reviews = mocker.patch(
+        "backend.api.features.executions.review.routes.process_all_reviews_for_execution"
+    )
+    mock_process_all_reviews.return_value = {
+        "node_exec_approved": approved_review,
+        "node_exec_rejected": rejected_review,
+    }
+
+    # Mock get_node_execution to return node_id (only called for approved review)
+    mock_get_node_execution = mocker.patch(
+        "backend.api.features.executions.review.routes.get_node_execution"
+    )
+    mock_node_exec = mocker.Mock(spec=NodeExecutionResult)
+    mock_node_exec.node_id = "test_node_def_approved"
+    mock_get_node_execution.return_value = mock_node_exec
+
+    # Mock create_auto_approval_record
+    mock_create_auto_approval = mocker.patch(
+        "backend.api.features.executions.review.routes.create_auto_approval_record"
+    )
+
+    # Mock has_pending_reviews_for_graph_exec
+    mock_has_pending = mocker.patch(
+        "backend.api.features.executions.review.routes.has_pending_reviews_for_graph_exec"
+    )
+    mock_has_pending.return_value = False
+
+    # Mock get_graph_settings
+    mock_get_settings = mocker.patch(
+        "backend.api.features.executions.review.routes.get_graph_settings"
+    )
+    mock_get_settings.return_value = GraphSettings()
+
+    # Mock add_graph_execution
+    mock_add_execution = mocker.patch(
+        "backend.api.features.executions.review.routes.add_graph_execution"
+    )
+
+    request_data = {
+        "reviews": [
+            {"node_exec_id": "node_exec_approved", "approved": True},
+            {"node_exec_id": "node_exec_rejected", "approved": False},
+        ],
+        "auto_approve_future_actions": True,
+    }
+
+    response = client.post("/api/review/action", json=request_data)
+
+    assert response.status_code == 200
+
+    # Verify process_all_reviews_for_execution was called
+    mock_process_all_reviews.assert_called_once()
+
+    # Verify create_auto_approval_record was called ONLY for the approved review
+    # (not for the rejected one)
+    mock_create_auto_approval.assert_called_once_with(
+        user_id=test_user_id,
+        graph_exec_id="test_graph_exec_456",
+        graph_id="test_graph_789",
+        graph_version=1,
+        node_id="test_node_def_approved",
+        payload={"data": "approved"},
+    )
+
+    # Verify get_node_execution was called only for approved review
+    mock_get_node_execution.assert_called_once_with("node_exec_approved")
+
+    # Verify ExecutionContext was created (auto-approval is now DB-based)
+    call_kwargs = mock_add_execution.call_args.kwargs
+    execution_context = call_kwargs["execution_context"]
+    assert isinstance(execution_context, ExecutionContext)
