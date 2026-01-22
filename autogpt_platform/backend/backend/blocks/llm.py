@@ -439,6 +439,10 @@ async def llm_call(
                     "The registry may need to be refreshed. Please contact support or try again later."
                 )
 
+    # Create effective model for model-specific parameter resolution (e.g., o-series check)
+    # This uses the resolved model_to_use which may differ from llm_model if fallback occurred
+    effective_model = LlmModel(model_to_use)
+
     if compress_prompt_to_fit:
         prompt = compress_prompt(
             messages=prompt,
@@ -459,7 +463,7 @@ async def llm_call(
         response_format = None
 
         parallel_tool_calls = get_parallel_tool_calls_param(
-            llm_model, parallel_tool_calls
+            effective_model, parallel_tool_calls
         )
 
         if force_json_output:
@@ -621,7 +625,7 @@ async def llm_call(
         )
 
         parallel_tool_calls_param = get_parallel_tool_calls_param(
-            llm_model, parallel_tool_calls
+            effective_model, parallel_tool_calls
         )
 
         response = await client.chat.completions.create(
@@ -663,7 +667,7 @@ async def llm_call(
         )
 
         parallel_tool_calls_param = get_parallel_tool_calls_param(
-            llm_model, parallel_tool_calls
+            effective_model, parallel_tool_calls
         )
 
         response = await client.chat.completions.create(
@@ -737,7 +741,7 @@ async def llm_call(
             response_format = {"type": "json_object"}
 
         parallel_tool_calls_param = get_parallel_tool_calls_param(
-            llm_model, parallel_tool_calls
+            effective_model, parallel_tool_calls
         )
 
         response = await client.chat.completions.create(
