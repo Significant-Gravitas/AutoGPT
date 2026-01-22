@@ -24,7 +24,9 @@ export function DeleteProviderModal({ provider }: { provider: LlmProvider }) {
       setOpen(false);
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to delete provider");
+      setError(
+        err instanceof Error ? err.message : "Failed to delete provider",
+      );
     } finally {
       setIsDeleting(false);
     }

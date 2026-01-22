@@ -108,9 +108,13 @@ export async function updateLlmProviderAction(formData: FormData) {
       ? String(formData.get("default_credential_type")).trim()
       : "api_key",
     supports_tools: formData.getAll("supports_tools").includes("on"),
-    supports_json_output: formData.getAll("supports_json_output").includes("on"),
+    supports_json_output: formData
+      .getAll("supports_json_output")
+      .includes("on"),
     supports_reasoning: formData.getAll("supports_reasoning").includes("on"),
-    supports_parallel_tool: formData.getAll("supports_parallel_tool").includes("on"),
+    supports_parallel_tool: formData
+      .getAll("supports_parallel_tool")
+      .includes("on"),
     metadata: {},
   };
 
