@@ -39,6 +39,61 @@ import { LlmCostUnit } from "@/app/api/__generated__/models/llmCostUnit";
 const ADMIN_LLM_PATH = "/admin/llms";
 
 // =============================================================================
+// Utilities
+// =============================================================================
+
+/**
+ * Extracts and validates a required string field from FormData.
+ * Throws an error if the field is missing or empty.
+ */
+function getRequiredFormField(
+  formData: FormData,
+  fieldName: string,
+  displayName?: string,
+): string {
+  const raw = formData.get(fieldName);
+  const value = raw ? String(raw).trim() : "";
+  if (!value) {
+    throw new Error(`${displayName || fieldName} is required`);
+  }
+  return value;
+}
+
+/**
+ * Extracts and validates a required positive number field from FormData.
+ * Throws an error if the field is missing, empty, or not a positive number.
+ */
+function getRequiredPositiveNumber(
+  formData: FormData,
+  fieldName: string,
+  displayName?: string,
+): number {
+  const raw = formData.get(fieldName);
+  const value = Number(raw);
+  if (raw === null || raw === "" || !Number.isFinite(value) || value <= 0) {
+    throw new Error(`${displayName || fieldName} must be a positive number`);
+  }
+  return value;
+}
+
+/**
+ * Extracts and validates a required number field from FormData.
+ * Throws an error if the field is missing, empty, or not a finite number.
+ */
+function getRequiredNumber(
+  formData: FormData,
+  fieldName: string,
+  displayName?: string,
+): number {
+  const raw = formData.get(fieldName);
+  const value = Number(raw);
+  if (raw === null || raw === "" || !Number.isFinite(value)) {
+    throw new Error(`${displayName || fieldName} is required`);
+  }
+  return value;
+}
+
+// =============================================================================
 // Provider Actions
 // =============================================================================
 
@@ -87,11 +142,11 @@ export async function createLlmProviderAction(formData: FormData) {
 export async function deleteLlmProviderAction(
   formData: FormData,
 ): Promise<void> {
-  const rawProviderId = formData.get("provider_id");
-  const providerId = rawProviderId ? String(rawProviderId).trim() : "";
-  if (!providerId) {
-    throw new Error("Provider id is required");
-  }
+  const providerId = getRequiredFormField(
+    formData,
+    "provider_id",
+    "Provider id",
+  );
 
   const response = await deleteV2DeleteLlmProvider(providerId);
   if (response.status !== 200) {
@@ -102,7 +157,11 @@ export async function deleteLlmProviderAction(
 }
 
 export async function updateLlmProviderAction(formData: FormData) {
-  const providerId = String(formData.get("provider_id"));
+  const providerId = getRequiredFormField(
+    formData,
+    "provider_id",
+    "Provider id",
+  );
 
   const payload: UpsertLlmProviderRequest = {
     name: String(formData.get("name") || "").trim(),
@@ -150,33 +209,14 @@ export async function fetchLlmModels(): Promise<LlmModelsResponse> {
 }
 
 export async function createLlmModelAction(formData: FormData) {
-  const rawProviderId = formData.get("provider_id");
-  const providerId = rawProviderId ? String(rawProviderId).trim() : "";
-  if (!providerId) {
-    throw new Error("Provider is required");
-  }
+  const providerId = getRequiredFormField(formData, "provider_id", "Provider");
   const creatorId = formData.get("creator_id");
-
-  const contextWindowRaw = formData.get("context_window");
-  const contextWindow = Number(contextWindowRaw);
-  if (
-    contextWindowRaw === null ||
-    contextWindowRaw === "" ||
-    !Number.isFinite(contextWindow) ||
-    contextWindow <= 0
-  ) {
-    throw new Error("Context window must be a positive number");
-  }
-
-  const creditCostRaw = formData.get("credit_cost");
-  const creditCost = Number(creditCostRaw);
-  if (
-    creditCostRaw === null ||
-    creditCostRaw === "" ||
-    !Number.isFinite(creditCost)
-  ) {
-    throw new Error("Credit cost is required");
-  }
+  const contextWindow = getRequiredPositiveNumber(
+    formData,
+    "context_window",
+    "Context window",
+  );
+  const creditCost = getRequiredNumber(formData, "credit_cost", "Credit cost");
 
   // Fetch provider to get default credentials
   const providersResponse = await getV2ListLlmProviders({
@@ -229,7 +269,7 @@ export async function createLlmModelAction(formData: FormData) {
 }
 
 export async function updateLlmModelAction(formData: FormData) {
-  const modelId = String(formData.get("model_id"));
+  const modelId = getRequiredFormField(formData, "model_id", "Model id");
   const creatorId = formData.get("creator_id");
 
   const payload: UpdateLlmModelRequest = {
@@ -280,7 +320,7 @@ export async function updateLlmModelAction(formData: FormData) {
 }
 
 export async function toggleLlmModelAction(formData: FormData): Promise<void> {
-  const modelId = String(formData.get("model_id"));
+  const modelId = getRequiredFormField(formData, "model_id", "Model id");
   const shouldEnable = formData.get("is_enabled") === "true";
   const migrateToSlug = formData.get("migrate_to_slug");
   const migrationReason = formData.get("migration_reason");
@@ -301,7 +341,7 @@ export async function toggleLlmModelAction(formData: FormData): Promise<void> {
 }
 
 export async function deleteLlmModelAction(formData: FormData): Promise<void> {
-  const modelId = String(formData.get("model_id"));
+  const modelId = getRequiredFormField(formData, "model_id", "Model id");
   const rawReplacement = formData.get("replacement_model_slug");
   const replacementModelSlug =
     rawReplacement && String(rawReplacement).trim()
@@ -346,7 +386,11 @@ export async function fetchLlmMigrations(
 export async function revertLlmMigrationAction(
   formData: FormData,
 ): Promise<void> {
-  const migrationId = String(formData.get("migration_id"));
+  const migrationId = getRequiredFormField(
+    formData,
+    "migration_id",
+    "Migration id",
+  );
 
   const response = await postV2RevertAModelMigration(migrationId, null);
   if (response.status !== 200) {
@@ -395,7 +439,8 @@ export async function createLlmCreatorAction(
 export async function updateLlmCreatorAction(
   formData: FormData,
 ): Promise<void> {
-  const creatorId = String(formData.get("creator_id"));
+  const creatorId = getRequiredFormField(formData, "creator_id", "Creator id");
+
   const payload: UpsertLlmCreatorRequest = {
     name: String(formData.get("name") || "").trim(),
     display_name: String(formData.get("display_name") || "").trim(),
@@ -421,7 +466,7 @@ export async function updateLlmCreatorAction(
 export async function deleteLlmCreatorAction(
   formData: FormData,
 ): Promise<void> {
-  const creatorId = String(formData.get("creator_id"));
+  const creatorId = getRequiredFormField(formData, "creator_id", "Creator id");
 
   const response = await deleteV2DeleteModelCreator(creatorId);
   if (response.status !== 200) {
@@ -437,7 +482,7 @@ export async function deleteLlmCreatorAction(
 export async function setRecommendedModelAction(
   formData: FormData,
 ): Promise<void> {
-  const modelId = String(formData.get("model_id"));
+  const modelId = getRequiredFormField(formData, "model_id", "Model id");
 
   const response = await postV2SetRecommendedModel({ model_id: modelId });
   if (response.status !== 200) {
