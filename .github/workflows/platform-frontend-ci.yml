@@ -128,7 +128,7 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           exitOnceUploaded: true
 
-  test:
+  e2e_test:
     runs-on: big-boi
     needs: setup
     strategy:
@@ -258,3 +258,39 @@ jobs:
       - name: Print Final Docker Compose logs
         if: always()
         run: docker compose -f ../docker-compose.yml logs
+
+  integration_test:
+    runs-on: ubuntu-latest
+    needs: setup
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.18.0"
+
+      - name: Enable corepack
+        run: corepack enable
+
+      - name: Restore dependencies cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.pnpm-store
+          key: ${{ needs.setup.outputs.cache-key }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml') }}
+            ${{ runner.os }}-pnpm-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate API client
+        run: pnpm generate:api
+
+      - name: Run Integration Tests
+        run: pnpm test:unit

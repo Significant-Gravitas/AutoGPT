@@ -4,12 +4,12 @@ import {
   getServerAuthToken,
 } from "@/lib/autogpt-server-api/helpers";
 
-import { transformDates } from "./date-transformer";
-import { environment } from "@/services/environment";
 import {
   IMPERSONATION_HEADER_NAME,
   IMPERSONATION_STORAGE_KEY,
 } from "@/lib/constants";
+import { environment } from "@/services/environment";
+import { transformDates } from "./date-transformer";
 
 const FRONTEND_BASE_URL =
   process.env.NEXT_PUBLIC_FRONTEND_BASE_URL || "http://localhost:3000";
