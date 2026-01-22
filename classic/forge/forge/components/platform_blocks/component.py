@@ -36,24 +36,36 @@ class PlatformBlocksComponent(
     def client(self) -> PlatformClient:
         """Get or create the platform client."""
         if self._client is None:
+            api_key = ""
+            if self.config.api_key:
+                api_key = self.config.api_key.get_secret_value()
             self._client = PlatformClient(
                 base_url=self.config.platform_url,
-                api_key=self.config.api_key,
+                api_key=api_key,
                 timeout=self.config.timeout,
             )
         return self._client
 
+    @property
+    def is_configured(self) -> bool:
+        """Check if the component is properly configured with an API key."""
+        return bool(
+            self.config.enabled
+            and self.config.api_key
+            and self.config.api_key.get_secret_value()
+        )
+
     def get_resources(self) -> Iterator[str]:
         """Describe available resources."""
-        if self.config.enabled:
+        if self.is_configured:
             yield (
                 "Access to platform blocks via search_blocks and execute_block "
                 "commands. Use search_blocks first to discover available blocks."
             )
 
     def get_commands(self) -> Iterator[Command]:
-        """Provide available commands."""
-        if not self.config.enabled:
+        """Provide available commands only if configured with API key."""
+        if not self.is_configured:
             return
         yield self.search_blocks
         yield self.execute_block

@@ -4,6 +4,7 @@ import json
 from unittest.mock import AsyncMock
 
 import pytest
+from pydantic import SecretStr
 
 from forge.components.platform_blocks import (
     PlatformBlocksComponent,
@@ -63,8 +64,10 @@ def mock_blocks_response():
 
 @pytest.fixture
 def component():
-    """Create a PlatformBlocksComponent for testing."""
-    return PlatformBlocksComponent()
+    """Create a PlatformBlocksComponent for testing with API key configured."""
+    return PlatformBlocksComponent(
+        config=PlatformBlocksConfig(api_key=SecretStr("test-api-key"))
+    )
 
 
 class TestSearchBlocks:
@@ -223,7 +226,7 @@ class TestConfiguration:
         config = PlatformBlocksConfig()
         assert config.enabled is True
         assert config.platform_url == "https://platform.agpt.co"
-        assert config.api_key == ""
+        assert config.api_key is None
         assert config.timeout == 60
 
     def test_custom_configuration(self):
@@ -231,12 +234,13 @@ class TestConfiguration:
         config = PlatformBlocksConfig(
             enabled=False,
             platform_url="https://dev-builder.agpt.co",
-            api_key="test-key",
+            api_key=SecretStr("test-key"),
             timeout=120,
         )
         assert config.enabled is False
         assert config.platform_url == "https://dev-builder.agpt.co"
-        assert config.api_key == "test-key"
+        assert config.api_key is not None
+        assert config.api_key.get_secret_value() == "test-key"
         assert config.timeout == 120
 
     def test_component_respects_disabled_config(self):
@@ -244,6 +248,22 @@ class TestConfiguration:
         component = PlatformBlocksComponent(config=PlatformBlocksConfig(enabled=False))
         commands = list(component.get_commands())
         assert len(commands) == 0
+
+    def test_component_disabled_without_api_key(self):
+        """Component should not yield commands when api_key is not set."""
+        component = PlatformBlocksComponent(
+            config=PlatformBlocksConfig(enabled=True, api_key=None)
+        )
+        commands = list(component.get_commands())
+        assert len(commands) == 0
+
+    def test_component_enabled_with_api_key(self):
+        """Component should yield commands when api_key is set."""
+        component = PlatformBlocksComponent(
+            config=PlatformBlocksConfig(enabled=True, api_key=SecretStr("test-key"))
+        )
+        commands = list(component.get_commands())
+        assert len(commands) == 2
 
 
 class TestProtocols:

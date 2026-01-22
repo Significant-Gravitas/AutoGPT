@@ -1,15 +1,24 @@
-from pydantic import BaseModel, Field
+from typing import Optional
+
+from pydantic import BaseModel, SecretStr
+
+from forge.models.config import UserConfigurable
 
 
 class PlatformBlocksConfig(BaseModel):
-    """Configuration for platform blocks integration."""
+    """Configuration for platform blocks integration.
 
-    enabled: bool = Field(
-        default=True, description="Whether platform blocks are enabled"
-    )
-    platform_url: str = Field(
+    Set PLATFORM_API_KEY environment variable to enable platform blocks.
+    """
+
+    enabled: bool = UserConfigurable(default=True, from_env="PLATFORM_BLOCKS_ENABLED")
+    platform_url: str = UserConfigurable(
         default="https://platform.agpt.co",
-        description="Platform API base URL",
+        from_env="PLATFORM_URL",
     )
-    api_key: str = Field(default="", description="Platform API key for authentication")
-    timeout: int = Field(default=60, description="Request timeout in seconds")
+    api_key: Optional[SecretStr] = UserConfigurable(
+        default=None,
+        from_env="PLATFORM_API_KEY",
+        exclude=True,
+    )
+    timeout: int = UserConfigurable(default=60, from_env="PLATFORM_TIMEOUT")

@@ -36,6 +36,7 @@ from forge.components.git_operations import GitOperationsComponent
 from forge.components.http_client import HTTPClientComponent
 from forge.components.image_gen import ImageGeneratorComponent
 from forge.components.math_utils import MathUtilsComponent
+from forge.components.platform_blocks import PlatformBlocksComponent
 from forge.components.system import SystemComponent
 from forge.components.text_utils import TextUtilsComponent
 from forge.components.todo import TodoComponent
@@ -211,6 +212,8 @@ class Agent(BaseAgent[AnyActionProposal], Configurable[AgentSettings]):
         self.watchdog = WatchdogComponent(settings.config, settings.history).run_after(
             ContextComponent
         )
+        # Platform blocks (enabled only if PLATFORM_API_KEY is set)
+        self.platform_blocks = PlatformBlocksComponent()
 
         self.event_history = settings.history
 
