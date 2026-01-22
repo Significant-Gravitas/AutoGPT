@@ -87,10 +87,10 @@ class TaskQueueViewModel extends ChangeNotifier {
                 node.id, skillTreeNodes, skillTreeEdges)
             .where((child) => !visited.contains(child.id));
 
-        children.forEach((child) {
+        for (var child in children) {
           visited.add(child.id);
           stack.push(child);
-        });
+        }
       } else {
         stack
             .pop(); // Remove the node if not all parents are visited, it will be re-added when its parents are visited
@@ -232,7 +232,7 @@ class TaskQueueViewModel extends ChangeNotifier {
         benchmarkStatusMap[node] = successStatus
             ? BenchmarkTaskStatus.success
             : BenchmarkTaskStatus.failure;
-        await Future.delayed(Duration(seconds: 1));
+        await Future.delayed(const Duration(seconds: 1));
         notifyListeners();
 
         testSuite.tests.add(task);

@@ -26,9 +26,9 @@ class _TestSuiteDetailViewState extends State<TestSuiteDetailView> {
       appBar: AppBar(
         backgroundColor: Colors.grey,
         foregroundColor: Colors.black,
-        title: Text("${widget.testSuite.timestamp}"),
+        title: Text(widget.testSuite.timestamp),
         leading: IconButton(
-          icon: Icon(Icons.arrow_back),
+          icon: const Icon(Icons.arrow_back),
           onPressed: () => widget.viewModel.deselectTestSuite(),
         ),
       ),

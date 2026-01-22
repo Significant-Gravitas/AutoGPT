@@ -47,7 +47,9 @@
     }
   ],
   "settings": {
-    "python.analysis.typeCheckingMode": "basic"
+    "python.analysis.typeCheckingMode": "basic",
+    "chat.useAgentSkills": true,
+    "chat.useNestedAgentsMdFiles": true
   },
   "extensions": {
     "recommendations": [

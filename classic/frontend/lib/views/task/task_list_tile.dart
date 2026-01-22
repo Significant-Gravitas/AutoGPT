@@ -15,6 +15,7 @@ class TaskListTile extends StatelessWidget {
     this.selected = false,
   }) : super(key: key);
 
+  @override
   Widget build(BuildContext context) {
     // Determine the width of the TaskView
     double taskViewWidth = MediaQuery.of(context).size.width;
