@@ -1,8 +1,6 @@
 """Platform blocks component for classic agents.
 
-Provides search_blocks and execute_block commands:
-- search_blocks: Uses local block registry (fast, offline)
-- execute_block: Uses platform API (handles credentials)
+Provides search_blocks and execute_block commands that call the platform API.
 """
 
 import json
@@ -14,7 +12,6 @@ from forge.agent.protocols import CommandProvider, DirectiveProvider
 from forge.command import Command, command
 from forge.models.json_schema import JSONSchema
 
-from . import loader
 from .client import PlatformClient, PlatformClientError
 from .config import PlatformBlocksConfig
 
@@ -26,24 +23,14 @@ class PlatformBlocksComponent(
     CommandProvider,
     ConfigurableComponent[PlatformBlocksConfig],
 ):
-    """Provides search_blocks and execute_block commands.
-
-    - search_blocks: Uses local block registry (fast, offline)
-    - execute_block: Uses platform API (handles credentials)
-    """
+    """Provides search_blocks and execute_block commands via platform API."""
 
     config_class = PlatformBlocksConfig
 
     def __init__(self, config: PlatformBlocksConfig | None = None):
         ConfigurableComponent.__init__(self, config)
         self._client: PlatformClient | None = None
-        self._platform_available = loader.is_platform_available()
-
-        if not self._platform_available:
-            logger.warning(
-                "Platform blocks not available - "
-                "install autogpt_platform or add to PYTHONPATH"
-            )
+        self._blocks_cache: list[dict[str, Any]] | None = None
 
     @property
     def client(self) -> PlatformClient:
@@ -58,24 +45,31 @@ class PlatformBlocksComponent(
 
     def get_resources(self) -> Iterator[str]:
         """Describe available resources."""
-        if self.config.enabled and self._platform_available:
-            try:
-                block_count = len(loader.load_blocks())
-                yield (
-                    f"Access to {block_count} platform blocks via search_blocks "
-                    "and execute_block commands."
-                )
-            except Exception as e:
-                logger.warning(f"Could not count blocks: {e}")
+        if self.config.enabled:
+            yield (
+                "Access to platform blocks via search_blocks and execute_block "
+                "commands. Use search_blocks first to discover available blocks."
+            )
 
     def get_commands(self) -> Iterator[Command]:
         """Provide available commands."""
         if not self.config.enabled:
             return
-        if not self._platform_available:
-            return
         yield self.search_blocks
         yield self.execute_block
+
+    async def _get_blocks(self) -> list[dict[str, Any]]:
+        """Get blocks from API, with caching."""
+        if self._blocks_cache is not None:
+            return self._blocks_cache
+
+        try:
+            self._blocks_cache = await self.client.list_blocks()
+            logger.info(f"Loaded {len(self._blocks_cache)} blocks from platform API")
+            return self._blocks_cache
+        except PlatformClientError as e:
+            logger.error(f"Failed to load blocks from API: {e}")
+            return []
 
     @command(
         names=["search_blocks", "find_block"],
@@ -92,8 +86,8 @@ class PlatformBlocksComponent(
             ),
         },
     )
-    def search_blocks(self, query: str) -> str:
-        """Search blocks locally (fast, no network call).
+    async def search_blocks(self, query: str) -> str:
+        """Search blocks via platform API.
 
         Args:
             query: Search query for finding blocks.
@@ -102,7 +96,35 @@ class PlatformBlocksComponent(
             JSON string with search results.
         """
         try:
-            results = loader.search_blocks(query, limit=20)
+            blocks = await self._get_blocks()
+            query_lower = query.lower()
+            results: list[dict[str, Any]] = []
+
+            for block in blocks:
+                name = block.get("name", "")
+                description = block.get("description", "")
+                categories = [
+                    c.get("category", "") for c in block.get("categories", [])
+                ]
+
+                # Check for match
+                name_match = query_lower in name.lower()
+                desc_match = query_lower in description.lower()
+                cat_match = any(query_lower in c.lower() for c in categories)
+
+                if name_match or desc_match or cat_match:
+                    results.append(
+                        {
+                            "id": block.get("id"),
+                            "name": name,
+                            "description": description,
+                            "categories": categories,
+                            "input_schema": block.get("inputSchema", {}),
+                        }
+                    )
+
+                    if len(results) >= 20:
+                        break
 
             return json.dumps(
                 {
@@ -120,8 +142,7 @@ class PlatformBlocksComponent(
         names=["execute_block", "run_block"],
         description=(
             "Execute a platform block by ID with input data. "
-            "IMPORTANT: Use search_blocks FIRST to get the block ID and schema. "
-            "Credentials are automatically resolved via platform API."
+            "IMPORTANT: Use search_blocks FIRST to get the block ID and schema."
         ),
         parameters={
             "block_id": JSONSchema(
@@ -146,43 +167,24 @@ class PlatformBlocksComponent(
         Returns:
             JSON string with execution result.
         """
-        user_id = self.config.user_id or "classic_agent"
-
         try:
-            # Get block info locally for better error messages
-            block = loader.get_block(block_id)
-            block_name = getattr(block, "name", block_id) if block else block_id
-
-            # Check credentials first
-            try:
-                cred_check = await self.client.check_credentials(block_id, user_id)
-                if not cred_check.get("has_required_credentials", True):
-                    missing = cred_check.get("missing_credentials", [])
-                    return json.dumps(
-                        {
-                            "error": "Missing required credentials",
-                            "block": block_name,
-                            "missing_credentials": missing,
-                            "message": (
-                                "Please configure the required credentials at "
-                                f"{self.config.platform_url}/settings/credentials"
-                            ),
-                        },
-                        indent=2,
-                    )
-            except PlatformClientError as e:
-                logger.warning(f"Could not check credentials: {e}")
-                # Continue anyway - execution will fail if creds are missing
+            # Get block name for better error messages
+            blocks = await self._get_blocks()
+            block_name = block_id
+            for block in blocks:
+                if block.get("id") == block_id:
+                    block_name = block.get("name", block_id)
+                    break
 
             # Execute the block
-            result = await self.client.execute_block(block_id, input_data, user_id)
+            result = await self.client.execute_block(block_id, input_data)
 
             return json.dumps(
                 {
                     "success": True,
                     "block": block_name,
                     "block_id": block_id,
-                    "outputs": result.get("outputs", {}),
+                    "outputs": result,
                 },
                 indent=2,
             )

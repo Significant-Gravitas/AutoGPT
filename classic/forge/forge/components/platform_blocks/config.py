@@ -9,8 +9,7 @@ class PlatformBlocksConfig(BaseModel):
     )
     platform_url: str = Field(
         default="https://platform.agpt.co",
-        description="Platform API URL for execution",
+        description="Platform API base URL",
     )
     api_key: str = Field(default="", description="Platform API key for authentication")
-    user_id: str = Field(default="", description="User ID for credential lookup")
-    timeout: int = Field(default=60, description="Execution timeout in seconds")
+    timeout: int = Field(default=60, description="Request timeout in seconds")
