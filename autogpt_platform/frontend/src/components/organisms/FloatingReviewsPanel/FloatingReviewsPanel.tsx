@@ -31,6 +31,29 @@ export function FloatingReviewsPanel({
       query: {
         enabled: !!(graphId && executionId),
         select: okData,
+        // Poll while execution is in progress to detect status changes
+        refetchInterval: (q) => {
+          // Note: refetchInterval callback receives raw data before select transform
+          const rawData = q.state.data as
+            | { status: number; data?: { status?: string } }
+            | undefined;
+          if (rawData?.status !== 200) return false;
+
+          const status = rawData?.data?.status;
+          if (!status) return false;
+
+          // Poll every 2 seconds while running or in review
+          if (
+            status === AgentExecutionStatus.RUNNING ||
+            status === AgentExecutionStatus.QUEUED ||
+            status === AgentExecutionStatus.INCOMPLETE ||
+            status === AgentExecutionStatus.REVIEW
+          ) {
+            return 2000;
+          }
+          return false;
+        },
+        refetchIntervalInBackground: true,
       },
     },
   );
@@ -40,22 +63,26 @@ export function FloatingReviewsPanel({
     useShallow((state) => state.graphExecutionStatus),
   );
 
+  // Determine if we should poll for pending reviews
+  const isInReviewStatus =
+    executionDetails?.status === AgentExecutionStatus.REVIEW ||
+    graphExecutionStatus === AgentExecutionStatus.REVIEW;
+
   const { pendingReviews, isLoading, refetch } = usePendingReviewsForExecution(
     executionId || "",
+    {
+      enabled: !!executionId,
+      // Poll every 2 seconds when in REVIEW status to catch new reviews
+      refetchInterval: isInReviewStatus ? 2000 : false,
+    },
   );
 
+  // Refetch pending reviews when execution status changes
   useEffect(() => {
-    if (executionId) {
+    if (executionId && executionDetails?.status) {
       refetch();
     }
   }, [executionDetails?.status, executionId, refetch]);
-
-  // Refetch when graph execution status changes to REVIEW
-  useEffect(() => {
-    if (graphExecutionStatus === AgentExecutionStatus.REVIEW && executionId) {
-      refetch();
-    }
-  }, [graphExecutionStatus, executionId, refetch]);
 
   if (
     !executionId ||
