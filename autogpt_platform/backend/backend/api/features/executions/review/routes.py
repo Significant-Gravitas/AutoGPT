@@ -202,8 +202,6 @@ async def process_review_action(
         first_review = next(iter(updated_reviews.values()))
         graph_exec_id = first_review.graph_exec_id
 
-        # Check execution status before attempting to resume
-        # This prevents race conditions where user approves while graph is still running
         graph_exec_meta = await get_graph_execution_meta(
             user_id=user_id, execution_id=graph_exec_id
         )
@@ -219,22 +217,33 @@ async def process_review_action(
                 error=None,
             )
 
-        # Only resume if execution is paused for review AND no pending reviews remain
-        if graph_exec_meta.status != ExecutionStatus.REVIEW:
-            logger.info(
-                f"Skipping resume for execution {graph_exec_id} - "
-                f"status is {graph_exec_meta.status}, not REVIEW"
-            )
-            return ReviewResponse(
-                approved_count=approved_count,
-                rejected_count=rejected_count,
-                failed_count=0,
-                error=None,
-            )
-
         still_has_pending = await has_pending_reviews_for_graph_exec(graph_exec_id)
 
         if not still_has_pending:
+            # Don't resume if execution is already completed or failed
+            if graph_exec_meta.status in (
+                ExecutionStatus.COMPLETED,
+                ExecutionStatus.FAILED,
+            ):
+                logger.info(
+                    f"Skipping resume for execution {graph_exec_id} - "
+                    f"status is {graph_exec_meta.status} (already finished)"
+                )
+                return ReviewResponse(
+                    approved_count=approved_count,
+                    rejected_count=rejected_count,
+                    failed_count=0,
+                    error=None,
+                )
+
+            # Resume execution regardless of status to prevent deadlock
+            # (reviews are already processed, user has nothing left to do)
+            if graph_exec_meta.status != ExecutionStatus.REVIEW:
+                logger.warning(
+                    f"Resuming execution {graph_exec_id} despite unexpected status "
+                    f"{graph_exec_meta.status} (expected REVIEW) to prevent deadlock"
+                )
+
             try:
                 settings = await get_graph_settings(
                     user_id=user_id, graph_id=first_review.graph_id
