@@ -136,10 +136,26 @@ async def refresh_llm_registry() -> None:
             provider_name = (
                 record.Provider.name if record.Provider else record.providerId
             )
+            provider_display_name = (
+                record.Provider.displayName if record.Provider else record.providerId
+            )
+            # Creator name: prefer Creator.name, fallback to provider display name
+            creator_name = (
+                record.Creator.name if record.Creator else provider_display_name
+            )
+            # Price tier: default to 1 (cheapest) if not set
+            price_tier = getattr(record, "priceTier", 1) or 1
+            # Clamp to valid range 1-3
+            price_tier = max(1, min(3, price_tier))
+
             metadata = ModelMetadata(
                 provider=provider_name,
                 context_window=record.contextWindow,
                 max_output_tokens=record.maxOutputTokens,
+                display_name=record.displayName,
+                provider_name=provider_display_name,
+                creator_name=creator_name,
+                price_tier=price_tier,  # type: ignore[arg-type]
             )
             costs = tuple(
                 RegistryModelCost(
