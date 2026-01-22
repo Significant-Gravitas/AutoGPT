@@ -215,7 +215,7 @@ export function PendingReviewsList({
       <div className="space-y-7">
         {reviews.map((review) => (
           <PendingReviewCard
-            key={review.node_exec_id}
+            key={`${review.node_exec_id}-${autoApproveFuture}`}
             review={review}
             onReviewDataChange={handleReviewDataChange}
             onReviewMessageChange={handleReviewMessageChange}
