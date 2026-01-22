@@ -81,6 +81,8 @@ class ExecutionContext(BaseModel):
     This includes information needed by blocks, sub-graphs, and execution management.
     """
 
+    model_config = {"extra": "ignore"}
+
     human_in_the_loop_safe_mode: bool = True
     sensitive_action_safe_mode: bool = False
     user_timezone: str = "UTC"
