@@ -6,6 +6,9 @@ This module provides blocks for:
 - Concatenating multiple videos
 - Adding text overlays
 - Adding AI-generated narration
+- Getting media duration
+- Looping videos
+- Adding audio to videos
 
 Dependencies:
 - yt-dlp: For video downloading
@@ -13,13 +16,19 @@ Dependencies:
 - requests: For API calls (narration block)
 """
 
+from backend.blocks.video.add_audio import AddAudioToVideoBlock
 from backend.blocks.video.clip import VideoClipBlock
 from backend.blocks.video.concat import VideoConcatBlock
 from backend.blocks.video.download import VideoDownloadBlock
+from backend.blocks.video.duration import MediaDurationBlock
+from backend.blocks.video.loop import LoopVideoBlock
 from backend.blocks.video.narration import VideoNarrationBlock
 from backend.blocks.video.text_overlay import VideoTextOverlayBlock
 
 __all__ = [
+    "AddAudioToVideoBlock",
+    "LoopVideoBlock",
+    "MediaDurationBlock",
     "VideoClipBlock",
     "VideoConcatBlock",
     "VideoDownloadBlock",
