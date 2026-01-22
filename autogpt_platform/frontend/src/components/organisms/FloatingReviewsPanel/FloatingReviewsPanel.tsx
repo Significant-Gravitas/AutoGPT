@@ -84,11 +84,26 @@ export function FloatingReviewsPanel({
     }
   }, [executionDetails?.status, executionId, refetch]);
 
+  // Hide panel if:
+  // 1. No execution ID
+  // 2. No pending reviews and not in REVIEW status
+  // 3. Execution is RUNNING or QUEUED (hasn't paused for review yet)
+  if (!executionId) {
+    return null;
+  }
+
   if (
-    !executionId ||
-    (!isLoading &&
-      pendingReviews.length === 0 &&
-      executionDetails?.status !== AgentExecutionStatus.REVIEW)
+    !isLoading &&
+    pendingReviews.length === 0 &&
+    executionDetails?.status !== AgentExecutionStatus.REVIEW
+  ) {
+    return null;
+  }
+
+  // Don't show panel while execution is still running/queued (not paused for review)
+  if (
+    executionDetails?.status === AgentExecutionStatus.RUNNING ||
+    executionDetails?.status === AgentExecutionStatus.QUEUED
   ) {
     return null;
   }
