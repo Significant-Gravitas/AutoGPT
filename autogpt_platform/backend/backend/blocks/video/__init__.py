@@ -6,9 +6,6 @@ This module provides blocks for:
 - Concatenating multiple videos
 - Adding text overlays
 - Adding AI-generated narration
-- Getting media duration
-- Looping videos
-- Adding audio to videos
 
 Dependencies:
 - yt-dlp: For video downloading
