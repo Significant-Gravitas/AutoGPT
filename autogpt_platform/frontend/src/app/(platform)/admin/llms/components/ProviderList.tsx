@@ -1,3 +1,5 @@
+"use client";
+
 import {
   Table,
   TableBody,
@@ -7,6 +9,8 @@ import {
   TableRow,
 } from "@/components/atoms/Table/Table";
 import type { LlmProvider } from "@/app/api/__generated__/models/llmProvider";
+import { DeleteProviderModal } from "./DeleteProviderModal";
+import { EditProviderModal } from "./EditProviderModal";
 
 export function ProviderList({ providers }: { providers: LlmProvider[] }) {
   if (!providers.length) {
@@ -26,6 +30,8 @@ export function ProviderList({ providers }: { providers: LlmProvider[] }) {
             <TableHead>Display Name</TableHead>
             <TableHead>Default Credential</TableHead>
             <TableHead>Capabilities</TableHead>
+            <TableHead>Models</TableHead>
+            <TableHead className="w-[100px]">Actions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -60,6 +66,23 @@ export function ProviderList({ providers }: { providers: LlmProvider[] }) {
                       Parallel Tools
                     </span>
                   )}
+                </div>
+              </TableCell>
+              <TableCell className="text-sm">
+                <span
+                  className={
+                    (provider.models?.length ?? 0) > 0
+                      ? "text-foreground"
+                      : "text-muted-foreground"
+                  }
+                >
+                  {provider.models?.length ?? 0}
+                </span>
+              </TableCell>
+              <TableCell>
+                <div className="flex gap-2">
+                  <EditProviderModal provider={provider} />
+                  <DeleteProviderModal provider={provider} />
                 </div>
               </TableCell>
             </TableRow>

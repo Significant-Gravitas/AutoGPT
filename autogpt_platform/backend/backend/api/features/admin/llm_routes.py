@@ -98,6 +98,31 @@ async def update_llm_provider(
     return provider
 
 
+@router.delete(
+    "/providers/{provider_id}",
+    summary="Delete LLM provider",
+    response_model=dict,
+)
+async def delete_llm_provider(provider_id: str):
+    """
+    Delete an LLM provider.
+
+    A provider can only be deleted if it has no associated models.
+    Delete all models from the provider first before deleting the provider.
+    """
+    try:
+        await llm_db.delete_provider(provider_id)
+        await _refresh_runtime_state()
+        logger.info("Deleted LLM provider '%s'", provider_id)
+        return {"success": True, "message": "Provider deleted successfully"}
+    except ValueError as e:
+        logger.warning("Failed to delete provider '%s': %s", provider_id, e)
+        raise fastapi.HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.exception("Failed to delete provider '%s': %s", provider_id, e)
+        raise fastapi.HTTPException(status_code=500, detail=str(e))
+
+
 @router.get(
     "/models",
     summary="List LLM models",

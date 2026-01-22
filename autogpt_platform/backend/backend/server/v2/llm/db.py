@@ -151,6 +151,44 @@ async def upsert_provider(
     return _map_provider(record)
 
 
+async def delete_provider(provider_id: str) -> bool:
+    """
+    Delete an LLM provider.
+
+    A provider can only be deleted if it has no associated models.
+    Due to onDelete: Restrict on LlmModel.Provider, the database will
+    block deletion if models exist.
+
+    Args:
+        provider_id: UUID of the provider to delete
+
+    Returns:
+        True if deleted successfully
+
+    Raises:
+        ValueError: If provider not found or has associated models
+    """
+    # Check if provider exists
+    provider = await prisma.models.LlmProvider.prisma().find_unique(
+        where={"id": provider_id},
+        include={"Models": True},
+    )
+    if not provider:
+        raise ValueError(f"Provider with id '{provider_id}' not found")
+
+    # Check if provider has any models
+    model_count = len(provider.Models) if provider.Models else 0
+    if model_count > 0:
+        raise ValueError(
+            f"Cannot delete provider '{provider.displayName}' because it has "
+            f"{model_count} model(s). Delete all models first."
+        )
+
+    # Safe to delete
+    await prisma.models.LlmProvider.prisma().delete(where={"id": provider_id})
+    return True
+
+
 async def list_models(
     provider_id: str | None = None,
     enabled_only: bool = False,

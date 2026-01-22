@@ -4771,6 +4771,46 @@
       }
     },
     "/api/llm/admin/providers/{provider_id}": {
+      "delete": {
+        "tags": ["v2", "admin", "llm", "llm", "admin"],
+        "summary": "Delete LLM provider",
+        "description": "Delete an LLM provider.\n\nA provider can only be deleted if it has no associated models.\nDelete all models from the provider first before deleting the provider.",
+        "operationId": "deleteV2Delete llm provider",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "provider_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Provider Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Deletev2Delete Llm Provider"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
       "patch": {
         "tags": ["v2", "admin", "llm", "llm", "admin"],
         "summary": "Update LLM provider",
@@ -9440,9 +9480,16 @@
             "title": "Is Reverted",
             "default": false
           },
-          "created_at": { "type": "string", "title": "Created At" },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
           "reverted_at": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
             "title": "Reverted At"
           }
         },

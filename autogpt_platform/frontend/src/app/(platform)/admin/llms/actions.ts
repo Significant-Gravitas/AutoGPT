@@ -6,6 +6,8 @@ import { revalidatePath } from "next/cache";
 import {
   getV2ListLlmProviders,
   postV2CreateLlmProvider,
+  patchV2UpdateLlmProvider,
+  deleteV2DeleteLlmProvider,
   getV2ListLlmModels,
   postV2CreateLlmModel,
   patchV2UpdateLlmModel,
@@ -70,6 +72,51 @@ export async function createLlmProviderAction(formData: FormData) {
   const response = await postV2CreateLlmProvider(payload);
   if (response.status !== 200) {
     throw new Error("Failed to create LLM provider");
+  }
+  revalidatePath(ADMIN_LLM_PATH);
+}
+
+export async function deleteLlmProviderAction(
+  formData: FormData,
+): Promise<void> {
+  const providerId = String(formData.get("provider_id"));
+
+  const response = await deleteV2DeleteLlmProvider(providerId);
+  if (response.status !== 200) {
+    const errorData = response.data as { detail?: string };
+    throw new Error(errorData?.detail || "Failed to delete provider");
+  }
+  revalidatePath(ADMIN_LLM_PATH);
+}
+
+export async function updateLlmProviderAction(formData: FormData) {
+  const providerId = String(formData.get("provider_id"));
+
+  const payload: UpsertLlmProviderRequest = {
+    name: String(formData.get("name") || "").trim(),
+    display_name: String(formData.get("display_name") || "").trim(),
+    description: formData.get("description")
+      ? String(formData.get("description"))
+      : undefined,
+    default_credential_provider: formData.get("default_credential_provider")
+      ? String(formData.get("default_credential_provider")).trim()
+      : undefined,
+    default_credential_id: formData.get("default_credential_id")
+      ? String(formData.get("default_credential_id")).trim()
+      : undefined,
+    default_credential_type: formData.get("default_credential_type")
+      ? String(formData.get("default_credential_type")).trim()
+      : "api_key",
+    supports_tools: formData.getAll("supports_tools").includes("on"),
+    supports_json_output: formData.getAll("supports_json_output").includes("on"),
+    supports_reasoning: formData.getAll("supports_reasoning").includes("on"),
+    supports_parallel_tool: formData.getAll("supports_parallel_tool").includes("on"),
+    metadata: {},
+  };
+
+  const response = await patchV2UpdateLlmProvider(providerId, payload);
+  if (response.status !== 200) {
+    throw new Error("Failed to update LLM provider");
   }
   revalidatePath(ADMIN_LLM_PATH);
 }
