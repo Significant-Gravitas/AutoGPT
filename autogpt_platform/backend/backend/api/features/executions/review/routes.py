@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from typing import List
 
@@ -135,14 +136,12 @@ async def process_review_action(
         )
 
     # Build review decisions map
-    # When auto_approve_future_actions is true, ignore any edited data
-    # (auto-approved reviews should use original data for consistency)
+    # Auto-approved reviews use original data (no modifications allowed)
     review_decisions = {}
     for review in request.reviews:
         review_status = (
             ReviewStatus.APPROVED if review.approved else ReviewStatus.REJECTED
         )
-        # If auto-approving future actions, don't allow data modifications
         reviewed_data = (
             None if request.auto_approve_future_actions else review.reviewed_data
         )
@@ -158,21 +157,32 @@ async def process_review_action(
         review_decisions=review_decisions,
     )
 
-    # Create auto-approval records for approved reviews if requested
+    # Create auto-approval records for approved reviews in parallel
     if request.auto_approve_future_actions:
-        for node_exec_id, review in updated_reviews.items():
-            if review.status == ReviewStatus.APPROVED:
-                # Look up the node_id from the node execution
-                node_exec = await get_node_execution(node_exec_id)
-                if node_exec:
-                    await create_auto_approval_record(
-                        user_id=user_id,
-                        graph_exec_id=review.graph_exec_id,
-                        graph_id=review.graph_id,
-                        graph_version=review.graph_version,
-                        node_id=node_exec.node_id,
-                        payload=review.payload,
-                    )
+        approved_reviews = [
+            (node_exec_id, review)
+            for node_exec_id, review in updated_reviews.items()
+            if review.status == ReviewStatus.APPROVED
+        ]
+
+        async def create_auto_approval_for_review(node_exec_id: str, review):
+            node_exec = await get_node_execution(node_exec_id)
+            if node_exec:
+                await create_auto_approval_record(
+                    user_id=user_id,
+                    graph_exec_id=review.graph_exec_id,
+                    graph_id=review.graph_id,
+                    graph_version=review.graph_version,
+                    node_id=node_exec.node_id,
+                    payload=review.payload,
+                )
+
+        await asyncio.gather(
+            *[
+                create_auto_approval_for_review(node_exec_id, review)
+                for node_exec_id, review in approved_reviews
+            ]
+        )
 
     # Count results
     approved_count = sum(
@@ -222,13 +232,10 @@ async def process_review_action(
                 error=None,
             )
 
-        # Check if any pending reviews remain
         still_has_pending = await has_pending_reviews_for_graph_exec(graph_exec_id)
 
         if not still_has_pending:
-            # Resume execution
             try:
-                # Load graph settings to create proper execution context
                 settings = await get_graph_settings(
                     user_id=user_id, graph_id=first_review.graph_id
                 )

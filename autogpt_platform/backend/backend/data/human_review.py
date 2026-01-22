@@ -41,6 +41,7 @@ async def check_approval(
     node_exec_id: str,
     graph_exec_id: str,
     node_id: str,
+    user_id: str,
 ) -> Optional[ReviewResult]:
     """
     Check if there's an existing approval for this node execution.
@@ -53,6 +54,7 @@ async def check_approval(
         node_exec_id: ID of the node execution
         graph_exec_id: ID of the graph execution
         node_id: ID of the node definition (not execution)
+        user_id: ID of the user (for data isolation)
 
     Returns:
         ReviewResult if approval found (either normal or auto), None otherwise
@@ -67,6 +69,7 @@ async def check_approval(
                 {"nodeExecId": auto_approve_key},
             ],
             "status": ReviewStatus.APPROVED,
+            "userId": user_id,
         },
     )
 
@@ -80,7 +83,7 @@ async def check_approval(
             data=existing_review.payload,
             status=ReviewStatus.APPROVED,
             message=(
-                "Auto-approved (user approved all future actions for this block)"
+                "Auto-approved (user approved all future actions for this node)"
                 if is_auto_approval
                 else existing_review.reviewMessage or ""
             ),

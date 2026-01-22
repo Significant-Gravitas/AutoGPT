@@ -8,6 +8,12 @@ from prisma.enums import ReviewStatus
 from pytest_snapshot.plugin import Snapshot
 
 from backend.api.rest_api import handle_internal_http_error
+from backend.data.execution import (
+    ExecutionContext,
+    ExecutionStatus,
+    NodeExecutionResult,
+)
+from backend.data.graph import GraphSettings
 
 from .model import PendingHumanReviewModel
 from .routes import router
@@ -143,8 +149,6 @@ def test_process_review_action_approve_success(
     test_user_id: str,
 ) -> None:
     """Test successful review approval"""
-    from backend.data.execution import ExecutionStatus
-
     # Mock the route functions
 
     mock_get_reviews_for_execution = mocker.patch(
@@ -277,8 +281,6 @@ def test_process_review_action_mixed_success(
     test_user_id: str,
 ) -> None:
     """Test mixed approve/reject operations"""
-    from backend.data.execution import ExecutionStatus
-
     # Create a second review
     second_review = PendingHumanReviewModel(
         node_exec_id="test_node_456",
@@ -518,9 +520,6 @@ def test_process_review_action_auto_approve_creates_auto_approval_records(
     test_user_id: str,
 ) -> None:
     """Test that auto_approve_future_actions flag creates auto-approval records"""
-    from backend.data.execution import ExecutionContext, NodeExecutionResult
-    from backend.data.graph import GraphSettings
-
     # Mock process_all_reviews
     mock_process_all_reviews = mocker.patch(
         "backend.api.features.executions.review.routes.process_all_reviews_for_execution"
@@ -561,10 +560,8 @@ def test_process_review_action_auto_approve_creates_auto_approval_records(
     mock_get_graph_exec = mocker.patch(
         "backend.api.features.executions.review.routes.get_graph_execution_meta"
     )
-    from backend.data.execution import ExecutionStatus as ExecStatus
-
     mock_graph_exec_meta = mocker.Mock()
-    mock_graph_exec_meta.status = ExecStatus.REVIEW
+    mock_graph_exec_meta.status = ExecutionStatus.REVIEW
     mock_get_graph_exec.return_value = mock_graph_exec_meta
 
     # Mock has_pending_reviews_for_graph_exec
@@ -636,9 +633,6 @@ def test_process_review_action_without_auto_approve_still_loads_settings(
     test_user_id: str,
 ) -> None:
     """Test that execution context is created with settings even without auto-approve"""
-    from backend.data.execution import ExecutionContext
-    from backend.data.graph import GraphSettings
-
     # Mock process_all_reviews
     mock_process_all_reviews = mocker.patch(
         "backend.api.features.executions.review.routes.process_all_reviews_for_execution"
@@ -671,10 +665,8 @@ def test_process_review_action_without_auto_approve_still_loads_settings(
     mock_get_graph_exec = mocker.patch(
         "backend.api.features.executions.review.routes.get_graph_execution_meta"
     )
-    from backend.data.execution import ExecutionStatus as ExecStatusType
-
     mock_graph_exec_meta = mocker.Mock()
-    mock_graph_exec_meta.status = ExecStatusType.REVIEW
+    mock_graph_exec_meta.status = ExecutionStatus.REVIEW
     mock_get_graph_exec.return_value = mock_graph_exec_meta
 
     # Mock has_pending_reviews_for_graph_exec
@@ -737,9 +729,6 @@ def test_process_review_action_auto_approve_only_applies_to_approved_reviews(
     test_user_id: str,
 ) -> None:
     """Test that auto_approve record is created only for approved reviews"""
-    from backend.data.execution import ExecutionContext, NodeExecutionResult
-    from backend.data.graph import GraphSettings
-
     # Create two reviews - one approved, one rejected
     approved_review = PendingHumanReviewModel(
         node_exec_id="node_exec_approved",
@@ -802,10 +791,8 @@ def test_process_review_action_auto_approve_only_applies_to_approved_reviews(
     mock_get_graph_exec = mocker.patch(
         "backend.api.features.executions.review.routes.get_graph_execution_meta"
     )
-    from backend.data.execution import ExecutionStatus as ExecStatusVal
-
     mock_graph_exec_meta = mocker.Mock()
-    mock_graph_exec_meta.status = ExecStatusVal.REVIEW
+    mock_graph_exec_meta.status = ExecutionStatus.REVIEW
     mock_get_graph_exec.return_value = mock_graph_exec_meta
 
     # Mock has_pending_reviews_for_graph_exec

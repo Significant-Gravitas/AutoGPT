@@ -95,12 +95,12 @@ class HITLReviewHelper:
         # This function only handles checking for existing approvals.
 
         # Check if this node has already been approved (normal or auto-approval)
-        approval_result = await HITLReviewHelper.check_approval(
+        if approval_result := await HITLReviewHelper.check_approval(
             node_exec_id=node_exec_id,
             graph_exec_id=graph_exec_id,
             node_id=node_id,
-        )
-        if approval_result:
+            user_id=user_id,
+        ):
             logger.info(
                 f"Block {block_name} skipping review for node {node_exec_id} - "
                 f"found existing approval"
