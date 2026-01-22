@@ -144,7 +144,7 @@ class TerminalUIProvider(UIProvider):
         from forge.models.utils import ModelWithSummary
 
         thoughts_text = self._remove_ansi_escape(
-            thoughts.text
+            thoughts.reasoning
             if isinstance(thoughts, AssistantThoughts)
             else (
                 thoughts.summary()
@@ -157,11 +157,6 @@ class TerminalUIProvider(UIProvider):
         )
 
         if isinstance(thoughts, AssistantThoughts):
-            print_attribute(
-                "REASONING",
-                self._remove_ansi_escape(thoughts.reasoning),
-                title_color=Fore.YELLOW,
-            )
             if assistant_thoughts_plan := self._remove_ansi_escape(
                 "\n".join(f"- {p}" for p in thoughts.plan)
             ):

@@ -31,13 +31,12 @@ class AssistantThoughts(ModelWithSummary):
     observations: str = Field(
         description="Relevant observations from your last action (if any)"
     )
-    text: str = Field(description="Thoughts")
-    reasoning: str = Field(description="Reasoning behind the thoughts")
+    reasoning: str = Field(description="Reasoning behind choosing this action")
     self_criticism: str = Field(description="Constructive self-criticism")
     plan: list[str] = Field(description="Short list that conveys the long-term plan")
 
     def summary(self) -> str:
-        return self.text
+        return self.reasoning
 
 
 class OneShotAgentActionProposal(ActionProposal):
@@ -60,13 +59,34 @@ class OneShotAgentPromptConfiguration(SystemConfiguration):
         "{commands}\n"
         "\n"
         "## Best practices\n"
-        "{best_practices}"
+        "{best_practices}\n"
+        "\n"
+        "## Efficiency Guidelines\n"
+        "You have LIMITED steps. Be efficient:\n\n"
+        "1. UNDERSTAND BEFORE ACTING: Read ALL relevant files before making changes. "
+        "Understand requirements, interfaces, and existing code patterns first.\n\n"
+        "2. PARALLEL EXECUTION: When multiple operations don't depend on each other, "
+        "execute them simultaneously (e.g., read multiple files at once).\n\n"
+        "3. WRITE COMPLETE CODE: Write complete, working implementations. "
+        "No stubs, TODOs, or placeholders.\n\n"
+        "4. VERIFY AFTER CHANGES: After modifying code, verify it works. "
+        "Run available linters/formatters/tests if available.\n\n"
+        "5. FIX ROOT CAUSE: When debugging, fix the underlying issue, not symptoms. "
+        "If a test fails, the bug is in your code, NOT in the test.\n\n"
+        "6. CODE STYLE: Mimic existing code conventions. "
+        "Don't add comments unless the logic is genuinely complex.\n\n"
+        "7. SECURITY: Never expose, log, or commit secrets, API keys, or credentials."
     )
 
     DEFAULT_CHOOSE_ACTION_INSTRUCTION: str = (
         "Determine exactly one command to use next based on the given goals "
         "and the progress you have made so far, "
-        "and respond using the JSON schema specified previously:"
+        "and respond using the JSON schema specified previously.\n\n"
+        "PARALLEL EXECUTION: When multiple operations don't depend on each other, "
+        "you may call multiple independent commands simultaneously. For example:\n"
+        "- Read multiple files at once before making changes\n"
+        "- Execute multiple independent writes\n"
+        "- Run multiple search queries in parallel"
     )
 
     body_template: str = UserConfigurable(default=DEFAULT_BODY_TEMPLATE)
@@ -168,7 +188,9 @@ class OneShotAgentPromptStrategy(PromptStrategy):
                 "## Your Task\n"
                 "The user will specify a task for you to execute, in triple quotes,"
                 " in the next message. Your job is to complete the task while following"
-                " your directives as given above, and terminate when your task is done."
+                " your directives as given above, and terminate when done.\n\n"
+                "For coding tasks: Read ALL files first. Tests define correct "
+                "behavior - follow them exactly, even if it differs from intuition."
             ]
             + ["## RESPONSE FORMAT\n" + response_fmt_instruction]
         )
@@ -211,9 +233,9 @@ class OneShotAgentPromptStrategy(PromptStrategy):
         """
         return [
             f"You are {ai_profile.ai_name}, {ai_profile.ai_role.rstrip('.')}.",
-            "Your decisions must always be made independently without seeking "
-            "user assistance. Play to your strengths as an LLM and pursue "
-            "simple strategies with no legal complications.",
+            "Make decisions independently. Only use ask_user when you truly need "
+            "clarification that cannot be inferred from the task or context. "
+            "Play to your strengths as an LLM and pursue simple strategies.",
         ]
 
     def _generate_os_info(self) -> list[str]:
@@ -272,6 +294,11 @@ class OneShotAgentPromptStrategy(PromptStrategy):
         if not response.tool_calls:
             raise InvalidAgentResponseError("Assistant did not use a tool")
         assistant_reply_dict["use_tool"] = response.tool_calls[0].function
+        # Capture all tool calls for parallel execution
+        if len(response.tool_calls) > 1:
+            assistant_reply_dict["use_tools"] = [
+                tc.function for tc in response.tool_calls
+            ]
 
         parsed_response = OneShotAgentActionProposal.model_validate(
             assistant_reply_dict

@@ -99,11 +99,13 @@ async def run_auto_gpt(
     workspace_settings = WorkspaceSettings.load_or_create(workspace)
 
     # Storage
+    # For CLI mode, root file storage at the workspace root (cwd) so agents can access
+    # project files directly. Agent state is still stored in .autogpt/agents/{id}/.
     local = config.file_storage_backend == FileStorageBackendName.LOCAL
     restrict_to_root = not local or config.restrict_to_workspace
     file_storage = get_storage(
         config.file_storage_backend,
-        root_path=data_dir,
+        root_path=workspace,
         restrict_to_root=restrict_to_root,
     )
     file_storage.initialize()
@@ -245,7 +247,10 @@ async def run_auto_gpt(
             )
 
     # Let user choose an existing agent to run
-    agent_manager = AgentManager(file_storage)
+    # For CLI mode, AgentManager needs to look in .autogpt/agents/, not agents/
+    # Since file_storage is rooted at workspace, we need to clone with .autogpt subroot
+    agent_storage = file_storage.clone_with_subroot(".autogpt")
+    agent_manager = AgentManager(agent_storage)
     existing_agents = agent_manager.list_agents()
     load_existing_agent = ""
     if existing_agents:
@@ -883,7 +888,7 @@ def print_assistant_thoughts(
     logger = logging.getLogger(__name__)
 
     thoughts_text = remove_ansi_escape(
-        thoughts.text
+        thoughts.reasoning
         if isinstance(thoughts, AssistantThoughts)
         else thoughts.summary() if isinstance(thoughts, ModelWithSummary) else thoughts
     )
@@ -892,9 +897,6 @@ def print_assistant_thoughts(
     )
 
     if isinstance(thoughts, AssistantThoughts):
-        print_attribute(
-            "REASONING", remove_ansi_escape(thoughts.reasoning), title_color=Fore.YELLOW
-        )
         if assistant_thoughts_plan := remove_ansi_escape(
             "\n".join(f"- {p}" for p in thoughts.plan)
         ):

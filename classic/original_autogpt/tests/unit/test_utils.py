@@ -22,15 +22,12 @@ from forge.json.parsing import extract_dict_from_json
 def valid_json_response() -> dict:
     return {
         "thoughts": {
-            "text": "My task is complete. I will use the 'task_complete' command "
-            "to shut down.",
+            "observations": "Retrieved Tesla's revenue data successfully.",
             "reasoning": "I will use the 'task_complete' command because it allows me "
             "to shut down and signal that my task is complete.",
-            "plan": "I will use the 'task_complete' command with the reason "
-            "'Task complete: retrieved Tesla's revenue in 2022.' to shut down.",
-            "criticism": "I need to ensure that I have completed all necessary tasks "
-            "before shutting down.",
-            "speak": "All done!",
+            "plan": ["Use task_complete to shut down"],
+            "self_criticism": "I need to ensure that I have completed all "
+            "necessary tasks before shutting down.",
         },
         "command": {
             "name": "task_complete",
@@ -43,15 +40,12 @@ def valid_json_response() -> dict:
 def invalid_json_response() -> dict:
     return {
         "thoughts": {
-            "text": "My task is complete. I will use the 'task_complete' command "
-            "to shut down.",
+            "observations": "Retrieved Tesla's revenue data.",
             "reasoning": "I will use the 'task_complete' command because it allows me "
             "to shut down and signal that my task is complete.",
-            "plan": "I will use the 'task_complete' command with the reason "
-            "'Task complete: retrieved Tesla's revenue in 2022.' to shut down.",
-            "criticism": "I need to ensure that I have completed all necessary tasks "
-            "before shutting down.",
-            "speak": "",
+            "plan": ["Use task_complete to shut down"],
+            "self_criticism": "I need to ensure that I have completed all "
+            "necessary tasks before shutting down.",
         },
         "command": {"name": "", "args": {}},
     }

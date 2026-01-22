@@ -135,6 +135,11 @@ class LATSPromptConfiguration(BasePromptStrategyConfiguration):
         "You are exploring possible actions for a task. "
         "Generate {num_candidates} distinct candidate actions "
         "that could make progress.\n\n"
+        "## Action Prioritization\n"
+        "1. Running tests (pytest) - highest value\n"
+        "2. Writing/modifying code - direct progress\n"
+        "3. Reading files - only when needed\n"
+        "Avoid: excessive todo management, clipboard operations\n\n"
         "Current state: {state}\n"
         "Task: {task}\n\n"
         "For each candidate, provide:\n"
@@ -150,6 +155,12 @@ class LATSPromptConfiguration(BasePromptStrategyConfiguration):
         "Action: {action}\n"
         "Result: {result}\n"
         "Task goal: {task}\n\n"
+        "## Scoring Criteria\n"
+        "- 1.0: All tests pass\n"
+        "- 0.7-0.9: Most tests pass\n"
+        "- 0.4-0.6: Partial implementation\n"
+        "- 0.0-0.3: No progress or regression\n"
+        "Key: Fewer test failures = higher score\n\n"
         "Provide a score from 0.0 to 1.0 indicating progress toward the goal.\n"
         "Also provide a brief reflection on what worked or didn't work.\n\n"
         "Format: {{'score': 0.X, 'reflection': '...'}}"
@@ -252,9 +263,23 @@ class LATSPromptStrategy(BaseMultiStepPromptStrategy):
             "4. Learning from outcomes to improve future decisions\n"
         )
 
+        coding_guidance = (
+            "\n\n## Coding Task Strategy\n"
+            "For coding tasks:\n"
+            "1. Read tests/specs first to understand requirements\n"
+            "2. Write complete initial implementation quickly\n"
+            "3. Run tests frequently (pytest after each change)\n"
+            "4. Fix failures systematically, one by one\n"
+            "5. Minimize overhead - code directly, avoid excessive planning\n"
+            "\n## Shell Command Tips\n"
+            "- For pytest: just use `pytest -v` or `python -m pytest`\n"
+            "- Env vars: use `env VAR=val cmd` instead of `VAR=val cmd`\n"
+            "- Prefer execute_python_code for importing and running modules\n"
+        )
+
         response_format = self._build_response_format()
 
-        parts = intro + [body, lats_intro, response_format]
+        parts = intro + [body, lats_intro, coding_guidance, response_format]
         if include_os_info:
             parts.extend(self.generate_os_info())
 
@@ -289,17 +314,26 @@ class LATSPromptStrategy(BaseMultiStepPromptStrategy):
             return (
                 "Select the next action to execute. Consider the search tree "
                 "state and choose the most promising action based on UCT scores "
-                "and your reasoning."
+                "and your reasoning. "
+                "For coding tasks, prioritize: "
+                "1) Running tests (pytest) to see current state, "
+                "2) Writing/fixing code to make tests pass, "
+                "3) Reading files only when needed. "
+                "Avoid todo commands and clipboard - focus on coding."
             )
         elif self.phase == LATSPhase.EXPANSION:
             return (
                 f"Generate {self.config.num_candidates} candidate actions. "
-                "Each should be a distinct approach to making progress on the task."
+                "Each should be a distinct approach to making progress on the task. "
+                "For coding: prefer write_file or execute_python_code to implement, "
+                "then pytest to test. Minimize planning overhead."
             )
         elif self.phase == LATSPhase.EVALUATION:
             return (
                 "Evaluate the outcome of the last action. "
-                "Score progress from 0.0 to 1.0 and reflect on what worked."
+                "Score progress from 0.0 to 1.0 and reflect on what worked. "
+                "For coding: count passing/failing tests. More passing = higher score. "
+                "Score 1.0 for all tests passing, scale down based on failures."
             )
         else:
             return "Execute the selected action."

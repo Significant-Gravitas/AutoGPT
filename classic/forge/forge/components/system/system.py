@@ -29,6 +29,16 @@ class SystemComponent(DirectiveProvider, MessageProvider, CommandProvider):
             "If the user refuses this, and there is no other way to achieve your "
             "goals, you must terminate to avoid wasting time and energy."
         )
+        # Code-specific constraints
+        yield (
+            "NEVER modify test files to make tests pass. "
+            "If tests fail, the bug is in your implementation, not the test."
+        )
+        yield (
+            "NEVER assume a library is available. Check existing imports and "
+            "dependency files (package.json, requirements.txt, etc.) first."
+        )
+        yield "Never expose, log, or commit secrets, API keys, or credentials."
 
     def get_resources(self) -> Iterator[str]:
         yield (
@@ -38,6 +48,7 @@ class SystemComponent(DirectiveProvider, MessageProvider, CommandProvider):
         )
 
     def get_best_practices(self) -> Iterator[str]:
+        # General best practices
         yield (
             "Continuously review and analyze your actions to ensure "
             "you are performing to the best of your abilities."
@@ -52,6 +63,25 @@ class SystemComponent(DirectiveProvider, MessageProvider, CommandProvider):
             "Only make use of your information gathering abilities to find "
             "information that you don't yet have knowledge of."
         )
+        # Code-specific best practices
+        yield (
+            "Read files before modifying them. Understand existing code patterns, "
+            "conventions, and interfaces first."
+        )
+        yield (
+            "Mimic existing code style, naming conventions, and patterns. "
+            "Don't introduce new patterns unless necessary."
+        )
+        yield (
+            "Execute independent operations in parallel when possible "
+            "(e.g., reading multiple files at once)."
+        )
+        yield (
+            "After making changes, verify your work - run available "
+            "linters, formatters, and tests."
+        )
+        yield "Fix root causes, not symptoms. Debug systematically."
+        yield "Don't add comments unless code is genuinely complex."
 
     def get_messages(self) -> Iterator[ChatMessage]:
         # Clock
