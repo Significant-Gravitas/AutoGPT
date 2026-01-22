@@ -1,5 +1,6 @@
 "use server";
 
+import { getHomepageRoute } from "@/lib/constants";
 import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
 import { signupFormSchema } from "@/types/auth";
 import * as Sentry from "@sentry/nextjs";
@@ -11,6 +12,7 @@ export async function signup(
   password: string,
   confirmPassword: string,
   agreeToTerms: boolean,
+  isChatEnabled: boolean,
 ) {
   try {
     const parsed = signupFormSchema.safeParse({
@@ -58,7 +60,9 @@ export async function signup(
     }
 
     const isOnboardingEnabled = await shouldShowOnboarding();
-    const next = isOnboardingEnabled ? "/onboarding" : "/";
+    const next = isOnboardingEnabled
+      ? "/onboarding"
+      : getHomepageRoute(isChatEnabled);
 
     return { success: true, next };
   } catch (err) {

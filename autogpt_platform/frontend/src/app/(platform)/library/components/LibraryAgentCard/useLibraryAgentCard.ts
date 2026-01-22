@@ -8,6 +8,8 @@ import { useGetV2GetUserProfile } from "@/app/api/__generated__/endpoints/store/
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { okData } from "@/app/api/helpers";
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import { isLogoutInProgress } from "@/lib/autogpt-server-api/helpers";
+import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { updateFavoriteInQueries } from "./helpers";
 
 interface Props {
@@ -23,10 +25,14 @@ export function useLibraryAgentCard({ agent }: Props) {
   const { toast } = useToast();
   const queryClient = getQueryClient();
   const { mutateAsync: updateLibraryAgent } = usePatchV2UpdateLibraryAgent();
+  const { user, isLoggedIn } = useSupabase();
+  const logoutInProgress = isLogoutInProgress();
 
   const { data: profile } = useGetV2GetUserProfile({
     query: {
       select: okData,
+      enabled: isLoggedIn && !!user && !logoutInProgress,
+      queryKey: ["/api/store/profile", user?.id],
     },
   });
 

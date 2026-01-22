@@ -290,6 +290,11 @@ async def _cache_session(session: ChatSession) -> None:
     await async_redis.setex(redis_key, config.session_ttl, session.model_dump_json())
 
 
+async def cache_chat_session(session: ChatSession) -> None:
+    """Cache a chat session without persisting to the database."""
+    await _cache_session(session)
+
+
 async def _get_session_from_db(session_id: str) -> ChatSession | None:
     """Get a chat session from the database."""
     prisma_session = await chat_db.get_chat_session(session_id)

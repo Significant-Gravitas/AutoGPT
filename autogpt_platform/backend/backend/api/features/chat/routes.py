@@ -172,12 +172,12 @@ async def get_session(
         user_id: The optional authenticated user ID, or None for anonymous access.
 
     Returns:
-        SessionDetailResponse: Details for the requested session; raises NotFoundError if not found.
+        SessionDetailResponse: Details for the requested session, or None if not found.
 
     """
     session = await get_chat_session(session_id, user_id)
     if not session:
-        raise NotFoundError(f"Session {session_id} not found")
+        raise NotFoundError(f"Session {session_id} not found.")
 
     messages = [message.model_dump() for message in session.messages]
     logger.info(
@@ -222,6 +222,8 @@ async def stream_chat_post(
     session = await _validate_and_get_session(session_id, user_id)
 
     async def event_generator() -> AsyncGenerator[str, None]:
+        chunk_count = 0
+        first_chunk_type: str | None = None
         async for chunk in chat_service.stream_chat_completion(
             session_id,
             request.message,
@@ -230,7 +232,26 @@ async def stream_chat_post(
             session=session,  # Pass pre-fetched session to avoid double-fetch
             context=request.context,
         ):
+            if chunk_count < 3:
+                logger.info(
+                    "Chat stream chunk",
+                    extra={
+                        "session_id": session_id,
+                        "chunk_type": str(chunk.type),
+                    },
+                )
+            if not first_chunk_type:
+                first_chunk_type = str(chunk.type)
+            chunk_count += 1
             yield chunk.to_sse()
+        logger.info(
+            "Chat stream completed",
+            extra={
+                "session_id": session_id,
+                "chunk_count": chunk_count,
+                "first_chunk_type": first_chunk_type,
+            },
+        )
         # AI SDK protocol termination
         yield "data: [DONE]\n\n"
 
@@ -275,6 +296,8 @@ async def stream_chat_get(
     session = await _validate_and_get_session(session_id, user_id)
 
     async def event_generator() -> AsyncGenerator[str, None]:
+        chunk_count = 0
+        first_chunk_type: str | None = None
         async for chunk in chat_service.stream_chat_completion(
             session_id,
             message,
@@ -282,7 +305,26 @@ async def stream_chat_get(
             user_id=user_id,
             session=session,  # Pass pre-fetched session to avoid double-fetch
         ):
+            if chunk_count < 3:
+                logger.info(
+                    "Chat stream chunk",
+                    extra={
+                        "session_id": session_id,
+                        "chunk_type": str(chunk.type),
+                    },
+                )
+            if not first_chunk_type:
+                first_chunk_type = str(chunk.type)
+            chunk_count += 1
             yield chunk.to_sse()
+        logger.info(
+            "Chat stream completed",
+            extra={
+                "session_id": session_id,
+                "chunk_count": chunk_count,
+                "first_chunk_type": first_chunk_type,
+            },
+        )
         # AI SDK protocol termination
         yield "data: [DONE]\n\n"
 

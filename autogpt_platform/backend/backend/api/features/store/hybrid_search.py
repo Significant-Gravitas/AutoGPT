@@ -295,7 +295,7 @@ async def unified_hybrid_search(
                 FROM {{schema_prefix}}"UnifiedContentEmbedding" uce
                 WHERE uce."contentType" = ANY({content_types_param}::{{schema_prefix}}"ContentType"[])
                 {user_filter}
-                ORDER BY uce.embedding OPERATOR({{pgvector_schema}}.<=>)  {embedding_param}::{{pgvector_schema}}.vector
+                ORDER BY uce.embedding <=> {embedding_param}::vector
                 LIMIT 200
             )
         ),
@@ -307,7 +307,7 @@ async def unified_hybrid_search(
                 uce.metadata,
                 uce."updatedAt" as updated_at,
                 -- Semantic score: cosine similarity (1 - distance)
-                COALESCE(1 - (uce.embedding OPERATOR({{pgvector_schema}}.<=>)  {embedding_param}::{{pgvector_schema}}.vector), 0) as semantic_score,
+                COALESCE(1 - (uce.embedding <=> {embedding_param}::vector), 0) as semantic_score,
                 -- Lexical score: ts_rank_cd
                 COALESCE(ts_rank_cd(uce.search, plainto_tsquery('english', {query_param})), 0) as lexical_raw,
                 -- Category match from metadata
@@ -583,7 +583,7 @@ async def hybrid_search(
                 WHERE uce."contentType" = 'STORE_AGENT'::{{schema_prefix}}"ContentType"
                 AND uce."userId" IS NULL
                 AND {where_clause}
-                ORDER BY uce.embedding OPERATOR({{pgvector_schema}}.<=>)  {embedding_param}::{{pgvector_schema}}.vector
+                ORDER BY uce.embedding <=> {embedding_param}::vector
                 LIMIT 200
             ) uce
         ),
@@ -605,7 +605,7 @@ async def hybrid_search(
                 -- Searchable text for BM25 reranking
                 COALESCE(sa.agent_name, '') || ' ' || COALESCE(sa.sub_heading, '') || ' ' || COALESCE(sa.description, '') as searchable_text,
                 -- Semantic score
-                COALESCE(1 - (uce.embedding OPERATOR({{pgvector_schema}}.<=>)  {embedding_param}::{{pgvector_schema}}.vector), 0) as semantic_score,
+                COALESCE(1 - (uce.embedding <=> {embedding_param}::vector), 0) as semantic_score,
                 -- Lexical score (raw, will normalize)
                 COALESCE(ts_rank_cd(uce.search, plainto_tsquery('english', {query_param})), 0) as lexical_raw,
                 -- Category match
