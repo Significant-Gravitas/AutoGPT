@@ -380,6 +380,36 @@ This is useful when working with data from APIs or files where escape sequences 
 
 ---
 
+## Text Encoder
+
+### What it is
+Encodes a string by adding escape sequences for special characters
+
+### How it works
+<!-- MANUAL: how_it_works -->
+This block takes a string of text and escapes special characters (like newlines `\n`, tabs `\t`, or quotes `\"`) so that it can be safely stored or transmitted. This is the reverse operation of the Text Decoder.
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| text | A string to be encoded with escape sequences | str | Yes |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if the operation failed | str |
+| encoded_text | The encoded text with escape sequences added | str |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+**Data Storage**: If you need to store multiline text in a single line format (like a CSV or JSON string), you can use the Text Encoder to ensure newlines and quotes are preserved as escape sequences.
+<!-- END MANUAL -->
+
+---
+
 ## Text Replace
 
 ### What it is
