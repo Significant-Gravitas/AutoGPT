@@ -4,6 +4,7 @@ import threading
 import time
 from collections import defaultdict
 from concurrent.futures import Future
+from datetime import datetime, timezone
 from typing import Mapping, Optional, cast
 
 from pydantic import BaseModel, JsonValue, ValidationError
@@ -749,9 +750,33 @@ async def stop_graph_execution(
         if graph_exec.status in [
             ExecutionStatus.QUEUED,
             ExecutionStatus.INCOMPLETE,
+            ExecutionStatus.REVIEW,
         ]:
-            # If the graph is still on the queue, we can prevent them from being executed
-            # by setting the status to TERMINATED.
+            # If the graph is queued/incomplete/paused for review, terminate immediately
+            # No need to wait for executor since it's not actively running
+
+            # If graph is in REVIEW status, clean up pending reviews before terminating
+            if graph_exec.status == ExecutionStatus.REVIEW:
+                from prisma.enums import ReviewStatus
+                from prisma.models import PendingHumanReview
+
+                # Mark all pending reviews as rejected/cancelled
+                await PendingHumanReview.prisma().update_many(
+                    where={
+                        "graphExecId": graph_exec_id,
+                        "status": ReviewStatus.WAITING,
+                    },
+                    data={
+                        "status": ReviewStatus.REJECTED,
+                        "reviewMessage": "Execution was stopped by user",
+                        "processed": True,
+                        "reviewedAt": datetime.now(timezone.utc),
+                    },
+                )
+                logger.info(
+                    f"Cleaned up pending reviews for stopped execution {graph_exec_id}"
+                )
+
             graph_exec.status = ExecutionStatus.TERMINATED
 
             await asyncio.gather(
