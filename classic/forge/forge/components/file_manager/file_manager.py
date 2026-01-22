@@ -52,6 +52,7 @@ class FileManagerComponent(
         file_storage: FileStorage,
         agent_state: BaseAgentSettings,
         config: Optional[FileManagerConfiguration] = None,
+        workspace_root: Optional[Path] = None,
     ):
         """Initialise the FileManagerComponent.
         Either `agent_id` or `config` must be provided.
@@ -61,15 +62,26 @@ class FileManagerComponent(
             state (BaseAgentSettings): The agent's state.
             config (FileManagerConfiguration, optional): The configuration for
             the file manager. Defaults to None.
+            workspace_root (Path, optional): When provided (CLI mode), indicates that
+            file_storage is rooted at the workspace directory. Agent files go to
+            .autogpt/agents/{id}/ and the workspace is the current directory.
+            When None (server mode), uses sandboxed paths under agents/{id}/.
         """
         if not agent_state.agent_id:
             raise ValueError("Agent must have an ID.")
 
         self.agent_state = agent_state
+        self._workspace_root = workspace_root
 
         if not config:
-            storage_path = f"agents/{self.agent_state.agent_id}/"
-            workspace_path = f"agents/{self.agent_state.agent_id}/workspace"
+            if workspace_root:
+                # CLI mode: file_storage root = workspace, agent works in cwd
+                storage_path = f".autogpt/agents/{self.agent_state.agent_id}/"
+                workspace_path = "."
+            else:
+                # Server mode: file_storage root = .autogpt, sandboxed workspace
+                storage_path = f"agents/{self.agent_state.agent_id}/"
+                workspace_path = f"agents/{self.agent_state.agent_id}/workspace"
             ConfigurableComponent.__init__(
                 self,
                 FileManagerConfiguration(
@@ -90,17 +102,26 @@ class FileManagerComponent(
     async def save_state(self, save_as_id: Optional[str] = None) -> None:
         """Save the agent's data and state."""
         if save_as_id:
-            self._file_storage.make_dir(f"agents/{save_as_id}")
+            # Determine path prefix based on mode
+            if self._workspace_root:
+                # CLI mode: file storage is rooted at workspace, state goes to .autogpt/
+                agents_prefix = ".autogpt/agents"
+            else:
+                # Server mode: file storage is rooted at .autogpt/
+                agents_prefix = "agents"
+
+            self._file_storage.make_dir(f"{agents_prefix}/{save_as_id}")
             # Save state
             await self._file_storage.write_file(
-                f"agents/{save_as_id}/{self.STATE_FILE}",
+                f"{agents_prefix}/{save_as_id}/{self.STATE_FILE}",
                 self.agent_state.model_dump_json(),
             )
-            # Copy workspace
-            self._file_storage.copy(
-                self.config.workspace_path,
-                f"agents/{save_as_id}/workspace",
-            )
+            # Copy workspace (only in server mode, each agent has its own sandbox)
+            if not self._workspace_root:
+                self._file_storage.copy(
+                    self.config.workspace_path,
+                    f"{agents_prefix}/{save_as_id}/workspace",
+                )
         else:
             await self.storage.write_file(
                 self.storage.root / self.STATE_FILE, self.agent_state.model_dump_json()

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import inspect
 import logging
 from typing import TYPE_CHECKING, Any, ClassVar, Optional
@@ -175,7 +176,14 @@ class Agent(BaseAgent[AnyActionProposal], Configurable[AgentSettings]):
         )
         if not app_config.noninteractive_mode:
             self.user_interaction = UserInteractionComponent()
-        self.file_manager = FileManagerComponent(file_storage, settings)
+        # CLI mode: file storage rooted at workspace (not .autogpt)
+        # Agents work directly in cwd; in server mode, they're sandboxed
+        cli_mode = file_storage.root == app_config.workspace
+        self.file_manager = FileManagerComponent(
+            file_storage,
+            settings,
+            workspace_root=app_config.workspace if cli_mode else None,
+        )
         self.code_executor = CodeExecutorComponent(
             self.file_manager.workspace,
             CodeExecutorConfiguration(
@@ -352,46 +360,54 @@ class Agent(BaseAgent[AnyActionProposal], Configurable[AgentSettings]):
         proposal: ActionProposal,
         user_feedback: str = "",
     ) -> ActionResult:
-        tool = proposal.use_tool
+        # Get all tools to execute (supports parallel execution)
+        tools = proposal.get_tools()
 
         # Get commands
         self.commands = await self.run_pipeline(CommandProvider.get_commands)
         self._remove_disabled_commands()
 
-        # Check permissions before execution
+        # Check permissions for all tools before execution
+        feedback_to_append = None
         if self.permission_manager:
-            perm_result = self.permission_manager.check_command(
-                tool.name, tool.arguments
-            )
-            if not perm_result.allowed:
-                # Permission denied - pass feedback to agent if provided
-                if perm_result.feedback:
-                    return await self.do_not_execute(proposal, perm_result.feedback)
-                return ActionErrorResult(
-                    reason=f"Permission denied for command '{tool.name}'",
+            for tool in tools:
+                perm_result = self.permission_manager.check_command(
+                    tool.name, tool.arguments
                 )
+                if not perm_result.allowed:
+                    # Permission denied - pass feedback to agent if provided
+                    if perm_result.feedback:
+                        return await self.do_not_execute(proposal, perm_result.feedback)
+                    return ActionErrorResult(
+                        reason=f"Permission denied for command '{tool.name}'",
+                    )
+                # Permission granted - save feedback if any
+                if perm_result.feedback:
+                    feedback_to_append = perm_result.feedback
 
-            # Permission granted - execute command, then handle feedback if any
-            feedback_to_append = perm_result.feedback
+        # Execute tool(s)
+        if len(tools) == 1:
+            # Single tool - original behavior
+            tool = tools[0]
+            try:
+                return_value = await self._execute_tool(tool)
+                result = ActionSuccessResult(outputs=return_value)
+            except AgentTerminated:
+                raise
+            except AgentException as e:
+                result = ActionErrorResult.from_exception(e)
+                logger.warning(f"{tool} raised an error: {e}")
+                sentry_sdk.capture_exception(e)
         else:
-            feedback_to_append = None
-
-        try:
-            return_value = await self._execute_tool(tool)
-
-            result = ActionSuccessResult(outputs=return_value)
-        except AgentTerminated:
-            raise
-        except AgentException as e:
-            result = ActionErrorResult.from_exception(e)
-            logger.warning(f"{tool} raised an error: {e}")
-            sentry_sdk.capture_exception(e)
+            # Multiple tools - execute in parallel
+            logger.info(f"Executing {len(tools)} tools in parallel")
+            result = await self._execute_tools_parallel(tools)
 
         result_tlength = self.llm_provider.count_tokens(str(result), self.llm.name)
         if result_tlength > self.send_token_limit // 3:
             result = ActionErrorResult(
-                reason=f"Command {tool.name} returned too much output. "
-                "Do not execute this command again with the same arguments."
+                reason="Command(s) returned too much output. "
+                "Do not execute these commands again with the same arguments."
             )
 
         # Notify ReWOO strategy of execution result for variable tracking
@@ -457,6 +473,66 @@ class Agent(BaseAgent[AnyActionProposal], Configurable[AgentSettings]):
             raise
         except Exception as e:
             raise CommandExecutionError(str(e))
+
+    async def _execute_tools_parallel(
+        self, tools: list[AssistantFunctionCall]
+    ) -> ActionResult:
+        """Execute multiple tools in parallel and combine results.
+
+        Args:
+            tools: List of tool calls to execute in parallel
+
+        Returns:
+            Combined ActionResult with all outputs or errors
+        """
+
+        async def execute_single(tool: AssistantFunctionCall) -> tuple[str, Any, str]:
+            """Execute a single tool and return (name, result, error)."""
+            try:
+                result = await self._execute_tool(tool)
+                return (tool.name, result, "")
+            except AgentTerminated:
+                raise
+            except AgentException as e:
+                logger.warning(f"{tool} raised an error: {e}")
+                sentry_sdk.capture_exception(e)
+                return (tool.name, None, str(e))
+
+        # Execute all tools in parallel
+        results = await asyncio.gather(
+            *[execute_single(tool) for tool in tools],
+            return_exceptions=True,
+        )
+
+        # Process results
+        outputs: dict[str, Any] = {}
+        errors: list[str] = []
+
+        for i, res in enumerate(results):
+            tool = tools[i]
+            if isinstance(res, BaseException):
+                # Unexpected exception from gather
+                errors.append(f"{tool.name}: {res}")
+                logger.warning(f"{tool} raised unexpected error: {res}")
+                sentry_sdk.capture_exception(res)
+            elif isinstance(res, tuple):
+                name, output, error = res
+                if error:
+                    errors.append(f"{name}: {error}")
+                else:
+                    outputs[name] = output
+
+        # Return combined result
+        if errors and not outputs:
+            # All failed
+            return ActionErrorResult(reason="; ".join(errors))
+        elif errors:
+            # Partial success - include errors in output
+            outputs["_errors"] = errors
+            return ActionSuccessResult(outputs=outputs)
+        else:
+            # All succeeded
+            return ActionSuccessResult(outputs=outputs)
 
     def _get_command(self, command_name: str) -> Command:
         for command in reversed(self.commands):
