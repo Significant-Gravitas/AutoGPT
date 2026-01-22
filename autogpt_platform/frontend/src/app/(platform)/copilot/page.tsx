@@ -1,6 +1,5 @@
 "use client";
 
-import { postV2CreateSession } from "@/app/api/__generated__/endpoints/chat/chat";
 import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
@@ -8,205 +7,29 @@ import { Chat } from "@/components/contextual/Chat/Chat";
 import { ChatInput } from "@/components/contextual/Chat/components/ChatInput/ChatInput";
 import { ChatLoader } from "@/components/contextual/Chat/components/ChatLoader/ChatLoader";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import { getHomepageRoute } from "@/lib/constants";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
-import {
-  Flag,
-  type FlagValues,
-  useGetFlag,
-} from "@/services/feature-flags/use-get-flag";
-import { useFlags } from "launchdarkly-react-client-sdk";
-import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { useNewChat } from "./NewChatContext";
-import { getGreetingName, getQuickActions } from "./helpers";
-
-type PageState =
-  | { type: "welcome" }
-  | { type: "newChat" }
-  | { type: "creating"; prompt: string }
-  | { type: "chat"; sessionId: string; initialPrompt?: string };
+import { useCopilotPage } from "./useCopilotPage";
 
 export default function CopilotPage() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const { user, isLoggedIn, isUserLoading } = useSupabase();
+  const { state, handlers } = useCopilotPage();
+  const {
+    greetingName,
+    quickActions,
+    isLoading,
+    pageState,
+    isNewChatModalOpen,
+    isReady,
+  } = state;
+  const {
+    handleQuickAction,
+    startChatWithPrompt,
+    handleSessionNotFound,
+    handleStreamingChange,
+    handleCancelNewChat,
+    proceedWithNewChat,
+    handleNewChatModalOpen,
+  } = handlers;
 
-  const isChatEnabled = useGetFlag(Flag.CHAT);
-  const flags = useFlags<FlagValues>();
-  const homepageRoute = getHomepageRoute(isChatEnabled);
-  const envEnabled = process.env.NEXT_PUBLIC_LAUNCHDARKLY_ENABLED === "true";
-  const clientId = process.env.NEXT_PUBLIC_LAUNCHDARKLY_CLIENT_ID;
-  const isLaunchDarklyConfigured = envEnabled && Boolean(clientId);
-  const isFlagReady =
-    !isLaunchDarklyConfigured || flags[Flag.CHAT] !== undefined;
-
-  const [pageState, setPageState] = useState<PageState>({ type: "welcome" });
-  const [isStreaming, setIsStreaming] = useState(false);
-  const [isNewChatModalOpen, setIsNewChatModalOpen] = useState(false);
-  const initialPromptRef = useRef<Map<string, string>>(new Map());
-  const previousSessionIdRef = useRef<string | null>(null);
-  const newChatContext = useNewChat();
-
-  const urlSessionId = searchParams.get("sessionId");
-
-  // Sync with URL sessionId (preserve initialPrompt from ref)
-  // Use useLayoutEffect for immediate updates before paint
-  useLayoutEffect(
-    function syncSessionFromUrl() {
-      if (urlSessionId) {
-        // If we're already in chat state with this sessionId, don't overwrite
-        if (pageState.type === "chat" && pageState.sessionId === urlSessionId) {
-          previousSessionIdRef.current = urlSessionId;
-          return;
-        }
-        // Get initialPrompt from ref or current state
-        const storedInitialPrompt = initialPromptRef.current.get(urlSessionId);
-        const currentInitialPrompt =
-          storedInitialPrompt ||
-          (pageState.type === "creating"
-            ? pageState.prompt
-            : pageState.type === "chat"
-              ? pageState.initialPrompt
-              : undefined);
-        if (currentInitialPrompt) {
-          initialPromptRef.current.set(urlSessionId, currentInitialPrompt);
-        }
-        setPageState({
-          type: "chat",
-          sessionId: urlSessionId,
-          initialPrompt: currentInitialPrompt,
-        });
-        previousSessionIdRef.current = urlSessionId;
-      } else {
-        const wasInChat =
-          previousSessionIdRef.current !== null && pageState.type === "chat";
-        previousSessionIdRef.current = null;
-        if (wasInChat) {
-          setPageState({ type: "newChat" });
-        } else if (
-          pageState.type !== "newChat" &&
-          pageState.type !== "creating" &&
-          pageState.type !== "welcome"
-        ) {
-          setPageState({ type: "welcome" });
-        }
-      }
-    },
-    [urlSessionId, pageState.type],
-  );
-
-  useEffect(
-    function transitionNewChatToWelcome() {
-      if (pageState.type === "newChat") {
-        const timer = setTimeout(() => {
-          setPageState({ type: "welcome" });
-        }, 300);
-        return () => clearTimeout(timer);
-      }
-    },
-    [pageState.type],
-  );
-
-  useEffect(
-    function ensureAccess() {
-      if (!isFlagReady) return;
-      if (isChatEnabled === false) {
-        router.replace(homepageRoute);
-      }
-    },
-    [homepageRoute, isChatEnabled, isFlagReady, router],
-  );
-
-  const greetingName = useMemo(
-    function getName() {
-      return getGreetingName(user);
-    },
-    [user],
-  );
-
-  const quickActions = useMemo(function getActions() {
-    return getQuickActions();
-  }, []);
-
-  async function startChatWithPrompt(prompt: string) {
-    if (!prompt?.trim()) return;
-    if (pageState.type === "creating") return;
-
-    const trimmedPrompt = prompt.trim();
-    setPageState({ type: "creating", prompt: trimmedPrompt });
-
-    try {
-      // Create session
-      const sessionResponse = await postV2CreateSession({
-        body: JSON.stringify({}),
-      });
-
-      if (sessionResponse.status !== 200 || !sessionResponse.data?.id) {
-        throw new Error("Failed to create session");
-      }
-
-      const sessionId = sessionResponse.data.id;
-
-      // Store initialPrompt in ref so it persists across re-renders
-      initialPromptRef.current.set(sessionId, trimmedPrompt);
-
-      // Update URL and show Chat with initial prompt
-      // Chat will handle sending the message and streaming
-      window.history.replaceState(null, "", `/copilot?sessionId=${sessionId}`);
-      setPageState({ type: "chat", sessionId, initialPrompt: trimmedPrompt });
-    } catch (error) {
-      console.error("[CopilotPage] Failed to start chat:", error);
-      setPageState({ type: "welcome" });
-    }
-  }
-
-  function handleQuickAction(action: string) {
-    startChatWithPrompt(action);
-  }
-
-  function handleSessionNotFound() {
-    router.replace("/copilot");
-  }
-
-  function handleStreamingChange(isStreamingValue: boolean) {
-    setIsStreaming(isStreamingValue);
-  }
-
-  function handleNewChatClick() {
-    if (isStreaming) {
-      setIsNewChatModalOpen(true);
-    } else {
-      proceedWithNewChat();
-    }
-  }
-
-  function proceedWithNewChat() {
-    setIsNewChatModalOpen(false);
-    if (newChatContext?.performNewChat) {
-      newChatContext.performNewChat();
-      return;
-    }
-    window.history.replaceState(null, "", "/copilot");
-    router.replace("/copilot");
-  }
-
-  function handleCancelNewChat() {
-    setIsNewChatModalOpen(false);
-  }
-
-  useEffect(
-    function registerNewChatHandler() {
-      if (!newChatContext) return;
-      newChatContext.setOnNewChatClick(handleNewChatClick);
-      return function cleanup() {
-        newChatContext.setOnNewChatClick(undefined);
-      };
-    },
-    [newChatContext, handleNewChatClick],
-  );
-
-  if (!isFlagReady || isChatEnabled === false || !isLoggedIn) {
+  if (!isReady) {
     return null;
   }
 
@@ -227,7 +50,7 @@ export default function CopilotPage() {
           styling={{ maxWidth: 300, width: "100%" }}
           controlled={{
             isOpen: isNewChatModalOpen,
-            set: setIsNewChatModalOpen,
+            set: handleNewChatModalOpen,
           }}
           onClose={handleCancelNewChat}
         >
@@ -288,8 +111,6 @@ export default function CopilotPage() {
   }
 
   // Show Welcome screen
-  const isLoading = isUserLoading;
-
   return (
     <div className="flex h-full flex-1 items-center justify-center overflow-y-auto bg-[#f8f8f9] px-6 py-10">
       <div className="w-full text-center">
