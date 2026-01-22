@@ -60,12 +60,16 @@ export async function createLlmProviderAction(formData: FormData) {
     default_credential_provider: formData.get("default_credential_provider")
       ? String(formData.get("default_credential_provider")).trim()
       : undefined,
-    default_credential_id: undefined,
-    default_credential_type: "api_key",
-    supports_tools: formData.get("supports_tools") === "on",
-    supports_json_output: formData.get("supports_json_output") === "on",
-    supports_reasoning: formData.get("supports_reasoning") === "on",
-    supports_parallel_tool: formData.get("supports_parallel_tool") === "on",
+    default_credential_id: formData.get("default_credential_id")
+      ? String(formData.get("default_credential_id")).trim()
+      : undefined,
+    default_credential_type: formData.get("default_credential_type")
+      ? String(formData.get("default_credential_type")).trim()
+      : "api_key",
+    supports_tools: formData.getAll("supports_tools").includes("on"),
+    supports_json_output: formData.getAll("supports_json_output").includes("on"),
+    supports_reasoning: formData.getAll("supports_reasoning").includes("on"),
+    supports_parallel_tool: formData.getAll("supports_parallel_tool").includes("on"),
     metadata: {},
   };
 
