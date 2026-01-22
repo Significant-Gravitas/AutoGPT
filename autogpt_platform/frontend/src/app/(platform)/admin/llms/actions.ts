@@ -117,7 +117,7 @@ export async function createLlmModelAction(formData: FormData) {
     max_output_tokens: formData.get("max_output_tokens")
       ? Number(formData.get("max_output_tokens"))
       : undefined,
-    is_enabled: formData.get("is_enabled") === "on",
+    is_enabled: formData.getAll("is_enabled").includes("on"),
     capabilities: {},
     metadata: {},
     costs: [
@@ -161,8 +161,8 @@ export async function updateLlmModelAction(formData: FormData) {
     max_output_tokens: formData.get("max_output_tokens")
       ? Number(formData.get("max_output_tokens"))
       : undefined,
-    is_enabled: formData.get("is_enabled")
-      ? formData.get("is_enabled") === "on"
+    is_enabled: formData.has("is_enabled")
+      ? formData.getAll("is_enabled").includes("on")
       : undefined,
     costs: formData.get("credit_cost")
       ? [

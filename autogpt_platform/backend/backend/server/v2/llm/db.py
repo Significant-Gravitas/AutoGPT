@@ -132,7 +132,7 @@ async def upsert_provider(
         "supportsJsonOutput": request.supports_json_output,
         "supportsReasoning": request.supports_reasoning,
         "supportsParallelTool": request.supports_parallel_tool,
-        "metadata": request.metadata,
+        "metadata": prisma.Json(request.metadata or {}),
     }
     include: Any = {"Models": {"include": {"Costs": True, "Creator": True}}}
     if provider_id:
@@ -232,20 +232,20 @@ async def create_model(
         "slug": request.slug,
         "displayName": request.display_name,
         "description": request.description,
-        "providerId": request.provider_id,
+        "Provider": {"connect": {"id": request.provider_id}},
         "contextWindow": request.context_window,
         "maxOutputTokens": request.max_output_tokens,
         "isEnabled": request.is_enabled,
-        "capabilities": request.capabilities,
-        "metadata": request.metadata,
+        "capabilities": prisma.Json(request.capabilities or {}),
+        "metadata": prisma.Json(request.metadata or {}),
         "Costs": _cost_create_payload(request.costs),
     }
     if request.creator_id:
-        data["creatorId"] = request.creator_id
+        data["Creator"] = {"connect": {"id": request.creator_id}}
 
     record = await prisma.models.LlmModel.prisma().create(
         data=data,
-        include={"Costs": True, "Creator": True},
+        include={"Costs": True, "Creator": True, "Provider": True},
     )
     return _map_model(record)
 
@@ -772,7 +772,7 @@ async def upsert_creator(
         "description": request.description,
         "websiteUrl": request.website_url,
         "logoUrl": request.logo_url,
-        "metadata": request.metadata,
+        "metadata": prisma.Json(request.metadata or {}),
     }
     if creator_id:
         record = await prisma.models.LlmModelCreator.prisma().update(

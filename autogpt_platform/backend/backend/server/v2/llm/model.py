@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime
 from typing import Any, Optional
 
 import prisma.enums
@@ -193,8 +194,8 @@ class LlmModelMigration(pydantic.BaseModel):
     # Custom pricing override - billing should use this instead of target model's cost
     custom_credit_cost: Optional[int] = None
     is_reverted: bool = False
-    created_at: str  # ISO datetime string
-    reverted_at: Optional[str] = None
+    created_at: datetime
+    reverted_at: Optional[datetime] = None
 
 
 class LlmMigrationsResponse(pydantic.BaseModel):

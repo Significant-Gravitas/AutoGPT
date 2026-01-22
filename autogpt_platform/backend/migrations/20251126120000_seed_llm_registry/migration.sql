@@ -42,7 +42,7 @@ FROM (VALUES
     ('gpt-5-mini-2025-08-07', 'GPT 5 Mini', 'openai', 400000, 128000),
     ('gpt-5-nano-2025-08-07', 'GPT 5 Nano', 'openai', 400000, 128000),
     ('gpt-5-chat-latest', 'GPT 5 Chat', 'openai', 400000, 16384),
-    ('gpt-4.1-2025-04-14', 'GPT 4.1', 'openai', 1047576, 32768),
+    ('gpt-4.1-2025-04-14', 'GPT 4.1', 'openai', 1000000, 32768),
     ('gpt-4.1-mini-2025-04-14', 'GPT 4.1 Mini', 'openai', 1047576, 32768),
     ('gpt-4o-mini', 'GPT 4o Mini', 'openai', 128000, 16384),
     ('gpt-4o', 'GPT 4o', 'openai', 128000, 16384),

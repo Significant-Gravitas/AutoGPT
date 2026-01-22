@@ -1,36 +1,13 @@
 -- Add new columns to LlmModel table for extended model metadata
 -- These columns support the LLM Picker UI enhancements
 
--- CreateTable for LlmModelCreator (if not exists)
-CREATE TABLE IF NOT EXISTS "LlmModelCreator" (
-    "id" TEXT NOT NULL,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "name" TEXT NOT NULL,
-    "displayName" TEXT NOT NULL,
-    "description" TEXT,
-    "websiteUrl" TEXT,
-    "logoUrl" TEXT,
-    "metadata" JSONB NOT NULL DEFAULT '{}'::jsonb,
-
-    CONSTRAINT "LlmModelCreator_pkey" PRIMARY KEY ("id")
-);
-
--- Add unique constraint on name if table was just created
-DO $$
-BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'LlmModelCreator_name_key') THEN
-        ALTER TABLE "LlmModelCreator" ADD CONSTRAINT "LlmModelCreator_name_key" UNIQUE ("name");
-    END IF;
-END $$;
-
 -- Add priceTier column: 1=cheapest, 2=medium, 3=expensive
 ALTER TABLE "LlmModel" ADD COLUMN IF NOT EXISTS "priceTier" INTEGER NOT NULL DEFAULT 1;
 
--- Add creatorId column for model creator relationship
+-- Add creatorId column for model creator relationship (if not exists)
 ALTER TABLE "LlmModel" ADD COLUMN IF NOT EXISTS "creatorId" TEXT;
 
--- Add isRecommended column
+-- Add isRecommended column (if not exists)
 ALTER TABLE "LlmModel" ADD COLUMN IF NOT EXISTS "isRecommended" BOOLEAN NOT NULL DEFAULT FALSE;
 
 -- Add index on creatorId if not exists
@@ -40,8 +17,11 @@ CREATE INDEX IF NOT EXISTS "LlmModel_creatorId_idx" ON "LlmModel"("creatorId");
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'LlmModel_creatorId_fkey') THEN
-        ALTER TABLE "LlmModel" ADD CONSTRAINT "LlmModel_creatorId_fkey"
-        FOREIGN KEY ("creatorId") REFERENCES "LlmModelCreator"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+        -- Only add FK if LlmModelCreator table exists
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'LlmModelCreator') THEN
+            ALTER TABLE "LlmModel" ADD CONSTRAINT "LlmModel_creatorId_fkey"
+            FOREIGN KEY ("creatorId") REFERENCES "LlmModelCreator"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+        END IF;
     END IF;
 END $$;
 
