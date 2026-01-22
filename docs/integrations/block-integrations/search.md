@@ -1,137 +1,72 @@
 # Search
+<!-- MANUAL: file_description -->
+Blocks for web searching, content extraction, and information retrieval from various search engines and APIs.
+<!-- END MANUAL -->
 
 ## Get Wikipedia Summary
 
-### What It Is
+### What it is
+This block fetches the summary of a given topic from Wikipedia.
 
-A block that retrieves a summary of a given topic from Wikipedia.
-
-### What It Does
-
-This block takes a topic as input and fetches a concise summary about that topic from Wikipedia's API.
-
-### How It Works
-
+### How it works
+<!-- MANUAL: how_it_works -->
 The block sends a request to Wikipedia's API with the provided topic. It then extracts the summary from the response and returns it. If there's an error during this process, it will return an error message instead.
+<!-- END MANUAL -->
 
 ### Inputs
 
-| Input | Description                                                |
-| ----- | ---------------------------------------------------------- |
-| Topic | The subject you want to get a summary about from Wikipedia |
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| topic | The topic to fetch the summary for | str | Yes |
 
 ### Outputs
 
-| Output  | Description                                            |
-| ------- | ------------------------------------------------------ |
-| Summary | A brief overview of the requested topic from Wikipedia |
-| Error   | An error message if the summary retrieval fails        |
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if the summary cannot be retrieved | str |
+| summary | The summary of the given topic | str |
 
-### Possible Use Case
-
+### Possible use case
+<!-- MANUAL: use_case -->
 A student researching for a project could use this block to quickly get overviews of various topics, helping them decide which areas to focus on for more in-depth study.
+<!-- END MANUAL -->
 
-***
+---
 
-## Search The Web
+## Google Maps Search
 
-### What It Is
+### What it is
+This block searches for local businesses using Google Maps API.
 
-A block that performs web searches and returns the results.
+### How it works
+<!-- MANUAL: how_it_works -->
+This block uses the Google Maps Places API to search for businesses and locations based on a query. Configure radius (up to 50km) to limit the search area and max_results (up to 60) to control how many places are returned.
 
-### What it Does
-
-This block takes a search query and returns a list of relevant web pages, including their titles, URLs, and brief descriptions.
-
-### How It Works
-
-The block sends the search query to a search engine API, processes the results, and returns them in a structured format.
-
-### Inputs
-
-| Input             | Description                                                    |
-| ----------------- | -------------------------------------------------------------- |
-| Query             | The search term or phrase to look up on the web                |
-| Number of Results | How many search results to return (optional, default may vary) |
-
-### Outputs
-
-| Output  | Description                                                             |
-| ------- | ----------------------------------------------------------------------- |
-| Results | A list of search results, each containing a title, URL, and description |
-| Error   | An error message if the search fails                                    |
-
-### Possible Use Case
-
-A content creator could use this block to research trending topics in their field, gathering ideas for new articles or videos.
-
-***
-
-## Extract Website Content
-
-### What It Is
-
-A block that retrieves and extracts content from specified websites.
-
-### What it Does
-
-This block takes a URL as input, visits the webpage, and extracts the main content, removing navigation elements, ads, and other non-essential parts.
-
-### How It Works
-
-The block sends a request to the given URL, downloads the HTML content, and uses content extraction algorithms to identify and extract the main text content of the page.
+Each place result includes name, address, rating, reviews, and geographic coordinates for integration with mapping or navigation workflows.
+<!-- END MANUAL -->
 
 ### Inputs
 
-| Input | Description                                         |
-| ----- | --------------------------------------------------- |
-| URL   | The web address of the page to extract content from |
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| query | Search query for local businesses | str | Yes |
+| radius | Search radius in meters (max 50000) | int | No |
+| max_results | Maximum number of results to return (max 60) | int | No |
 
 ### Outputs
 
-| Output  | Description                                      |
-| ------- | ------------------------------------------------ |
-| Content | The main text content extracted from the webpage |
-| Title   | The title of the webpage                         |
-| Error   | An error message if the content extraction fails |
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if the operation failed | str |
+| place | Place found | Place |
 
-### Possible Use Case
+### Possible use case
+<!-- MANUAL: use_case -->
+**Lead Generation**: Find businesses in a specific area for sales outreach.
 
-A data analyst could use this block to automatically extract article content from news websites for sentiment analysis or topic modeling.
+**Competitive Analysis**: Search for competitors in target locations to analyze their presence and ratings.
 
-***
+**Local SEO**: Gather data on local businesses for market research or directory building.
+<!-- END MANUAL -->
 
-## Get Weather Information
-
-### What It Is
-
-A block that fetches current weather data for a specified location.
-
-### What it Does
-
-This block takes a location name as input and returns current weather information such as temperature, humidity, and weather conditions.
-
-### How It Works
-
-The block sends a request to a weather API (like OpenWeatherMap) with the provided location. It then processes the response to extract relevant weather data.
-
-### Inputs
-
-| Input       | Description                                                                      |
-| ----------- | -------------------------------------------------------------------------------- |
-| Location    | The city or area you want to get weather information for                         |
-| API Key     | Your personal OpenWeatherMap API key (this is kept secret)                       |
-| Use Celsius | An option to choose between Celsius (true) or Fahrenheit (false) for temperature |
-
-### Outputs
-
-| Output      | Description                                                              |
-| ----------- | ------------------------------------------------------------------------ |
-| Temperature | The current temperature in the specified location                        |
-| Humidity    | The current humidity percentage in the specified location                |
-| Condition   | A description of the current weather condition (e.g., "overcast clouds") |
-| Error       | A message explaining what went wrong if the weather data retrieval fails |
-
-### Possible Use Case
-
-A travel planning application could use this block to provide users with current weather information for their destination cities.
+---
