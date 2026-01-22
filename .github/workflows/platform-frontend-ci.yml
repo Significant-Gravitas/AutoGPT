@@ -289,5 +289,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Generate API client
+        run: pnpm generate:api:force
+
       - name: Run Integration Tests
         run: pnpm test:unit
