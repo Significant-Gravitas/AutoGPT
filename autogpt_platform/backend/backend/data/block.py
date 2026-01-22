@@ -655,7 +655,6 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             graph_exec_id=graph_exec_id,
             graph_id=graph_id,
             graph_version=graph_version,
-            execution_context=execution_context,
             block_name=self.name,
             editable=True,
         )

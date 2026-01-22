@@ -9,7 +9,7 @@ from typing import Any, Optional
 from prisma.enums import ReviewStatus
 from pydantic import BaseModel
 
-from backend.data.execution import ExecutionContext, ExecutionStatus
+from backend.data.execution import ExecutionStatus
 from backend.data.human_review import ReviewResult, check_auto_approval
 from backend.executor.manager import async_update_node_execution_status
 from backend.util.clients import get_database_manager_async_client
@@ -60,7 +60,6 @@ class HITLReviewHelper:
         graph_exec_id: str,
         graph_id: str,
         graph_version: int,
-        execution_context: ExecutionContext,
         block_name: str = "Block",
         editable: bool = False,
     ) -> Optional[ReviewResult]:
@@ -75,7 +74,6 @@ class HITLReviewHelper:
             graph_exec_id: ID of the graph execution
             graph_id: ID of the graph
             graph_version: Version of the graph
-            execution_context: Current execution context
             block_name: Name of the block requesting review
             editable: Whether the reviewer can edit the data
 
@@ -92,11 +90,10 @@ class HITLReviewHelper:
         # This function only handles auto-approval for specific nodes.
 
         # Check if this node has been auto-approved in a previous review
-        auto_approval = await check_auto_approval(
+        if await check_auto_approval(
             graph_exec_id=graph_exec_id,
             node_id=node_id,
-        )
-        if auto_approval:
+        ):
             logger.info(
                 f"Block {block_name} skipping review for node {node_exec_id} - "
                 f"node {node_id} has auto-approval from previous review"
@@ -148,7 +145,6 @@ class HITLReviewHelper:
         graph_exec_id: str,
         graph_id: str,
         graph_version: int,
-        execution_context: ExecutionContext,
         block_name: str = "Block",
         editable: bool = False,
     ) -> Optional[ReviewDecision]:
@@ -163,7 +159,6 @@ class HITLReviewHelper:
             graph_exec_id: ID of the graph execution
             graph_id: ID of the graph
             graph_version: Version of the graph
-            execution_context: Current execution context
             block_name: Name of the block requesting review
             editable: Whether the reviewer can edit the data
 
@@ -179,7 +174,6 @@ class HITLReviewHelper:
             graph_exec_id=graph_exec_id,
             graph_id=graph_id,
             graph_version=graph_version,
-            execution_context=execution_context,
             block_name=block_name,
             editable=editable,
         )

@@ -202,9 +202,6 @@ async def process_review_action(
                     user_id=user_id, graph_id=first_review.graph_id
                 )
 
-                # Create execution context with settings
-                # Note: auto-approval is now handled via database lookup in
-                # check_auto_approval(), no need to pass auto_approved_node_ids
                 execution_context = ExecutionContext(
                     human_in_the_loop_safe_mode=settings.human_in_the_loop_safe_mode,
                     sensitive_action_safe_mode=settings.sensitive_action_safe_mode,
