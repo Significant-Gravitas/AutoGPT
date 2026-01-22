@@ -120,9 +120,11 @@ export const AgentFlowList = ({
                   lastRun =
                     runCount == 0
                       ? null
-                      : _flowRuns.reduce((a, c) =>
-                          a.started_at > c.started_at ? a : c,
-                        );
+                      : _flowRuns.reduce((a, c) => {
+                          const aTime = a.started_at?.getTime() ?? 0;
+                          const cTime = c.started_at?.getTime() ?? 0;
+                          return aTime > cTime ? a : c;
+                        });
                 }
                 return { flow, runCount, lastRun };
               })
@@ -130,10 +132,9 @@ export const AgentFlowList = ({
                 if (!a.lastRun && !b.lastRun) return 0;
                 if (!a.lastRun) return 1;
                 if (!b.lastRun) return -1;
-                return (
-                  b.lastRun.started_at.getTime() -
-                  a.lastRun.started_at.getTime()
-                );
+                const bTime = b.lastRun.started_at?.getTime() ?? 0;
+                const aTime = a.lastRun.started_at?.getTime() ?? 0;
+                return bTime - aTime;
               })
               .map(({ flow, runCount, lastRun }) => (
                 <TableRow

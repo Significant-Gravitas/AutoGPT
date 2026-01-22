@@ -1,22 +1,22 @@
 "use client";
 
-import Image from "next/image";
-import Link from "next/link";
-import { useSearchParams } from "next/navigation";
-import { useState, useMemo, useRef } from "react";
-import { AuthCard } from "@/components/auth/AuthCard";
-import { Text } from "@/components/atoms/Text/Text";
+import { useGetOauthGetOauthAppInfo } from "@/app/api/__generated__/endpoints/oauth/oauth";
+import { okData } from "@/app/api/helpers";
 import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
+import { AuthCard } from "@/components/auth/AuthCard";
+import { CredentialsInput } from "@/components/contextual/CredentialsInput/CredentialsInput";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
-import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/modals/CredentialsInputs/CredentialsInputs";
 import type {
   BlockIOCredentialsSubSchema,
   CredentialsMetaInput,
   CredentialsType,
 } from "@/lib/autogpt-server-api";
 import { CheckIcon, CircleIcon } from "@phosphor-icons/react";
-import { useGetOauthGetOauthAppInfo } from "@/app/api/__generated__/endpoints/oauth/oauth";
-import { okData } from "@/app/api/helpers";
+import Image from "next/image";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { useMemo, useRef, useState } from "react";
 
 // All credential types - we accept any type of credential
 const ALL_CREDENTIAL_TYPES: CredentialsType[] = [

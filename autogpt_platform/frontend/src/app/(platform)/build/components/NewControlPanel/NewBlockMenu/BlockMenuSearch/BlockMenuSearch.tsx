@@ -5,7 +5,10 @@ import { BlockMenuSearchContent } from "../BlockMenuSearchContent/BlockMenuSearc
 
 export const BlockMenuSearch = () => {
   return (
-    <div className={blockMenuContainerStyle}>
+    <div
+      className={blockMenuContainerStyle}
+      data-id="blocks-control-search-results"
+    >
       <BlockMenuFilters />
       <Text variant="body-medium">Search results</Text>
       <BlockMenuSearchContent />

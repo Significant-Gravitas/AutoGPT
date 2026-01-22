@@ -3,7 +3,6 @@ import {
   CustomNodeData,
 } from "@/app/(platform)/build/components/legacy-builder/CustomNode/CustomNode";
 import { NodeTableInput } from "@/app/(platform)/build/components/legacy-builder/NodeTableInput";
-import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/modals/CredentialsInputs/CredentialsInputs";
 import { Button } from "@/components/__legacy__/ui/button";
 import { Calendar } from "@/components/__legacy__/ui/calendar";
 import { LocalValuedInput } from "@/components/__legacy__/ui/input";
@@ -28,6 +27,7 @@ import {
   SelectValue,
 } from "@/components/__legacy__/ui/select";
 import { Switch } from "@/components/atoms/Switch/Switch";
+import { CredentialsInput } from "@/components/contextual/CredentialsInput/CredentialsInput";
 import { GoogleDrivePickerInput } from "@/components/contextual/GoogleDrivePicker/GoogleDrivePickerInput";
 import {
   BlockIOArraySubSchema,

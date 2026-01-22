@@ -401,27 +401,11 @@ async def add_generated_agent_image(
     )
 
 
-def _initialize_graph_settings(graph: graph_db.GraphModel) -> GraphSettings:
-    """
-    Initialize GraphSettings based on graph content.
-
-    Args:
-        graph: The graph to analyze
-
-    Returns:
-        GraphSettings with appropriate human_in_the_loop_safe_mode value
-    """
-    if graph.has_human_in_the_loop:
-        # Graph has HITL blocks - set safe mode to True by default
-        return GraphSettings(human_in_the_loop_safe_mode=True)
-    else:
-        # Graph has no HITL blocks - keep None
-        return GraphSettings(human_in_the_loop_safe_mode=None)
-
-
 async def create_library_agent(
     graph: graph_db.GraphModel,
     user_id: str,
+    hitl_safe_mode: bool = True,
+    sensitive_action_safe_mode: bool = False,
     create_library_agents_for_sub_graphs: bool = True,
 ) -> list[library_model.LibraryAgent]:
     """
@@ -430,6 +414,8 @@ async def create_library_agent(
     Args:
         agent: The agent/Graph to add to the library.
         user_id: The user to whom the agent will be added.
+        hitl_safe_mode: Whether HITL blocks require manual review (default True).
+        sensitive_action_safe_mode: Whether sensitive action blocks require review.
         create_library_agents_for_sub_graphs: If True, creates LibraryAgent records for sub-graphs as well.
 
     Returns:
@@ -465,7 +451,11 @@ async def create_library_agent(
                             }
                         },
                         settings=SafeJson(
-                            _initialize_graph_settings(graph_entry).model_dump()
+                            GraphSettings.from_graph(
+                                graph_entry,
+                                hitl_safe_mode=hitl_safe_mode,
+                                sensitive_action_safe_mode=sensitive_action_safe_mode,
+                            ).model_dump()
                         ),
                     ),
                     include=library_agent_include(
@@ -625,33 +615,6 @@ async def update_library_agent(
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error updating library agent: {str(e)}")
         raise DatabaseError("Failed to update library agent") from e
-
-
-async def update_library_agent_settings(
-    user_id: str,
-    agent_id: str,
-    settings: GraphSettings,
-) -> library_model.LibraryAgent:
-    """
-    Updates the settings for a specific LibraryAgent.
-
-    Args:
-        user_id: The owner of the LibraryAgent.
-        agent_id: The ID of the LibraryAgent to update.
-        settings: New GraphSettings to apply.
-
-    Returns:
-        The updated LibraryAgent.
-
-    Raises:
-        NotFoundError: If the specified LibraryAgent does not exist.
-        DatabaseError: If there's an error in the update operation.
-    """
-    return await update_library_agent(
-        library_agent_id=agent_id,
-        user_id=user_id,
-        settings=settings,
-    )
 
 
 async def delete_library_agent(
@@ -838,7 +801,7 @@ async def add_store_agent_to_library(
                 "isCreatedByUser": False,
                 "useGraphIsActiveVersion": False,
                 "settings": SafeJson(
-                    _initialize_graph_settings(graph_model).model_dump()
+                    GraphSettings.from_graph(graph_model).model_dump()
                 ),
             },
             include=library_agent_include(
@@ -1228,8 +1191,15 @@ async def fork_library_agent(
         )
         new_graph = await on_graph_activate(new_graph, user_id=user_id)
 
-        # Create a library agent for the new graph
-        return (await create_library_agent(new_graph, user_id))[0]
+        # Create a library agent for the new graph, preserving safe mode settings
+        return (
+            await create_library_agent(
+                new_graph,
+                user_id,
+                hitl_safe_mode=original_agent.settings.human_in_the_loop_safe_mode,
+                sensitive_action_safe_mode=original_agent.settings.sensitive_action_safe_mode,
+            )
+        )[0]
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error cloning library agent: {e}")
         raise DatabaseError("Failed to fork library agent") from e

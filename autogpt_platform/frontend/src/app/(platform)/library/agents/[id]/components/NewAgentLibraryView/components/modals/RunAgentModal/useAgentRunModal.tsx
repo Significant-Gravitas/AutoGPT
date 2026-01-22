@@ -11,9 +11,18 @@ import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { isEmpty } from "@/lib/utils";
+import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
 import { analytics } from "@/services/analytics";
 import { useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { getSystemCredentials } from "../../../../../../../../../../components/contextual/CredentialsInput/helpers";
 import { showExecutionErrorToast } from "./errorHelpers";
 
 export type RunVariant =
@@ -42,8 +51,10 @@ export function useAgentRunModal(
   const [inputCredentials, setInputCredentials] = useState<Record<string, any>>(
     callbacks?.initialInputCredentials || {},
   );
+
   const [presetName, setPresetName] = useState<string>("");
   const [presetDescription, setPresetDescription] = useState<string>("");
+  const hasInitializedSystemCreds = useRef(false);
 
   // Determine the default run type based on agent capabilities
   const defaultRunType: RunVariant = agent.trigger_setup_info
@@ -58,6 +69,91 @@ export function useAgentRunModal(
     setInputCredentials(callbacks?.initialInputCredentials || {});
   }, [callbacks?.initialInputValues, callbacks?.initialInputCredentials]);
 
+  const allProviders = useContext(CredentialsProvidersContext);
+
+  // Initialize credentials with default system credentials
+  useEffect(() => {
+    if (!allProviders || !agent.credentials_input_schema?.properties) return;
+    if (callbacks?.initialInputCredentials) {
+      hasInitializedSystemCreds.current = true;
+      return;
+    }
+    if (hasInitializedSystemCreds.current) return;
+
+    const properties = agent.credentials_input_schema.properties as Record<
+      string,
+      any
+    >;
+
+    setInputCredentials((currentCreds) => {
+      const credsToAdd: Record<string, any> = {};
+
+      for (const [key, schema] of Object.entries(properties)) {
+        if (currentCreds[key]) continue;
+
+        const providerNames = schema.credentials_provider || [];
+        const supportedTypes = schema.credentials_types || [];
+        const requiredScopes = schema.credentials_scopes;
+
+        for (const providerName of providerNames) {
+          const providerData = allProviders[providerName];
+          if (!providerData) continue;
+
+          const systemCreds = getSystemCredentials(
+            providerData.savedCredentials ?? [],
+          );
+          const matchingSystemCreds = systemCreds.filter((cred) => {
+            if (!supportedTypes.includes(cred.type)) return false;
+
+            if (
+              cred.type === "oauth2" &&
+              requiredScopes &&
+              requiredScopes.length > 0
+            ) {
+              const grantedScopes = new Set(cred.scopes || []);
+              const hasAllRequiredScopes = requiredScopes.every(
+                (scope: string) => grantedScopes.has(scope),
+              );
+              if (!hasAllRequiredScopes) return false;
+            }
+
+            return true;
+          });
+
+          if (matchingSystemCreds.length === 1) {
+            const systemCred = matchingSystemCreds[0];
+            credsToAdd[key] = {
+              id: systemCred.id,
+              type: systemCred.type,
+              provider: providerName,
+              title: systemCred.title,
+            };
+            break;
+          }
+        }
+      }
+
+      if (Object.keys(credsToAdd).length > 0) {
+        hasInitializedSystemCreds.current = true;
+        return {
+          ...currentCreds,
+          ...credsToAdd,
+        };
+      }
+
+      return currentCreds;
+    });
+  }, [
+    allProviders,
+    agent.credentials_input_schema,
+    callbacks?.initialInputCredentials,
+  ]);
+
+  // Reset initialization flag when modal closes/opens or agent changes
+  useEffect(() => {
+    hasInitializedSystemCreds.current = false;
+  }, [isOpen, agent.graph_id]);
+
   // API mutations
   const executeGraphMutation = usePostV1ExecuteGraphAgent({
     mutation: {
@@ -66,7 +162,6 @@ export function useAgentRunModal(
           toast({
             title: "Agent execution started",
           });
-          // Invalidate runs list for this graph
           queryClient.invalidateQueries({
             queryKey: getGetV1ListGraphExecutionsQueryKey(agent.graph_id),
           });
@@ -163,14 +258,10 @@ export function useAgentRunModal(
   }, [agentInputSchema.required, inputValues]);
 
   const [allCredentialsAreSet, missingCredentials] = useMemo(() => {
-    // Only check required credentials from schema, not all properties
-    // Credentials marked as optional in node metadata won't be in the required array
     const requiredCredentials = new Set(
       (agent.credentials_input_schema?.required as string[]) || [],
     );
 
-    // Check if required credentials have valid id (not just key existence)
-    // A credential is valid only if it has an id field set
     const missing = [...requiredCredentials].filter((key) => {
       const cred = inputCredentials[key];
       return !cred || !cred.id;
@@ -184,7 +275,6 @@ export function useAgentRunModal(
     [agentCredentialsInputFields],
   );
 
-  // Final readiness flag combining inputs + credentials when credentials are shown
   const allRequiredInputsAreSet = useMemo(
     () =>
       allRequiredInputsAreSetRaw &&
@@ -223,7 +313,6 @@ export function useAgentRunModal(
       defaultRunType === "automatic-trigger" ||
       defaultRunType === "manual-trigger"
     ) {
-      // Setup trigger
       if (!presetName.trim()) {
         toast({
           title: "⚠️ Trigger name required",
@@ -244,9 +333,6 @@ export function useAgentRunModal(
         },
       });
     } else {
-      // Manual execution
-      // Filter out incomplete credentials (optional ones not selected)
-      // Only send credentials that have a valid id field
       const validCredentials = Object.fromEntries(
         Object.entries(inputCredentials).filter(([_, cred]) => cred && cred.id),
       );
@@ -280,41 +366,24 @@ export function useAgentRunModal(
   }, [agentInputFields]);
 
   return {
-    // UI state
     isOpen,
     setIsOpen,
-
-    // Run mode
     defaultRunType: defaultRunType as RunVariant,
-
-    // Form: regular inputs
     inputValues,
     setInputValues,
-
-    // Form: credentials
     inputCredentials,
     setInputCredentials,
-
-    // Preset/trigger labels
     presetName,
     presetDescription,
     setPresetName,
     setPresetDescription,
-
-    // Validation/readiness
     allRequiredInputsAreSet,
     missingInputs,
-
-    // Schemas for rendering
     agentInputFields,
     agentCredentialsInputFields,
     hasInputFields,
-
-    // Async states
     isExecuting: executeGraphMutation.isPending,
     isSettingUpTrigger: setupTriggerMutation.isPending,
-
-    // Actions
     handleRun,
   };
 }

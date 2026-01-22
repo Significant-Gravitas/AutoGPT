@@ -1,9 +1,10 @@
-import { test, expect } from "@playwright/test";
-import { MarketplacePage } from "./pages/marketplace.page";
+import { expect, test } from "@playwright/test";
+import { getTestUserWithLibraryAgents } from "./credentials";
 import { LoginPage } from "./pages/login.page";
-import { isVisible, hasUrl, hasMinCount, matchesUrl } from "./utils/assertion";
-import { TEST_CREDENTIALS } from "./credentials";
+import { MarketplacePage } from "./pages/marketplace.page";
+import { hasMinCount, hasUrl, isVisible, matchesUrl } from "./utils/assertion";
 
+// Marketplace tests for store agent search functionality
 test.describe("Marketplace – Basic Functionality", () => {
   test("User can access marketplace page when logged out", async ({ page }) => {
     const marketplacePage = new MarketplacePage(page);
@@ -24,7 +25,8 @@ test.describe("Marketplace – Basic Functionality", () => {
     const marketplacePage = new MarketplacePage(page);
 
     await loginPage.goto();
-    await loginPage.login(TEST_CREDENTIALS.email, TEST_CREDENTIALS.password);
+    const richUser = getTestUserWithLibraryAgents();
+    await loginPage.login(richUser.email, richUser.password);
     await hasUrl(page, "/marketplace");
 
     await marketplacePage.goto(page);
