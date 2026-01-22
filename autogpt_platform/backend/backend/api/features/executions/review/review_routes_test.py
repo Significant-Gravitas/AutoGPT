@@ -143,6 +143,8 @@ def test_process_review_action_approve_success(
     test_user_id: str,
 ) -> None:
     """Test successful review approval"""
+    from backend.data.execution import ExecutionStatus
+
     # Mock the route functions
 
     mock_get_reviews_for_execution = mocker.patch(
@@ -172,6 +174,14 @@ def test_process_review_action_approve_success(
         reviewed_at=FIXED_NOW,
     )
     mock_process_all_reviews.return_value = {"test_node_123": approved_review}
+
+    # Mock get_graph_execution_meta to return execution in REVIEW status
+    mock_get_graph_exec = mocker.patch(
+        "backend.api.features.executions.review.routes.get_graph_execution_meta"
+    )
+    mock_graph_exec_meta = mocker.Mock()
+    mock_graph_exec_meta.status = ExecutionStatus.REVIEW
+    mock_get_graph_exec.return_value = mock_graph_exec_meta
 
     mock_has_pending = mocker.patch(
         "backend.api.features.executions.review.routes.has_pending_reviews_for_graph_exec"
@@ -267,6 +277,8 @@ def test_process_review_action_mixed_success(
     test_user_id: str,
 ) -> None:
     """Test mixed approve/reject operations"""
+    from backend.data.execution import ExecutionStatus
+
     # Create a second review
     second_review = PendingHumanReviewModel(
         node_exec_id="test_node_456",
@@ -336,6 +348,14 @@ def test_process_review_action_mixed_success(
         "test_node_123": approved_review,
         "test_node_456": rejected_review,
     }
+
+    # Mock get_graph_execution_meta to return execution in REVIEW status
+    mock_get_graph_exec = mocker.patch(
+        "backend.api.features.executions.review.routes.get_graph_execution_meta"
+    )
+    mock_graph_exec_meta = mocker.Mock()
+    mock_graph_exec_meta.status = ExecutionStatus.REVIEW
+    mock_get_graph_exec.return_value = mock_graph_exec_meta
 
     mock_has_pending = mocker.patch(
         "backend.api.features.executions.review.routes.has_pending_reviews_for_graph_exec"
@@ -537,6 +557,16 @@ def test_process_review_action_auto_approve_creates_auto_approval_records(
         "backend.api.features.executions.review.routes.create_auto_approval_record"
     )
 
+    # Mock get_graph_execution_meta to return execution in REVIEW status
+    mock_get_graph_exec = mocker.patch(
+        "backend.api.features.executions.review.routes.get_graph_execution_meta"
+    )
+    from backend.data.execution import ExecutionStatus as ExecStatus
+
+    mock_graph_exec_meta = mocker.Mock()
+    mock_graph_exec_meta.status = ExecStatus.REVIEW
+    mock_get_graph_exec.return_value = mock_graph_exec_meta
+
     # Mock has_pending_reviews_for_graph_exec
     mock_has_pending = mocker.patch(
         "backend.api.features.executions.review.routes.has_pending_reviews_for_graph_exec"
@@ -636,6 +666,16 @@ def test_process_review_action_without_auto_approve_still_loads_settings(
     mock_create_auto_approval = mocker.patch(
         "backend.api.features.executions.review.routes.create_auto_approval_record"
     )
+
+    # Mock get_graph_execution_meta to return execution in REVIEW status
+    mock_get_graph_exec = mocker.patch(
+        "backend.api.features.executions.review.routes.get_graph_execution_meta"
+    )
+    from backend.data.execution import ExecutionStatus as ExecStatusType
+
+    mock_graph_exec_meta = mocker.Mock()
+    mock_graph_exec_meta.status = ExecStatusType.REVIEW
+    mock_get_graph_exec.return_value = mock_graph_exec_meta
 
     # Mock has_pending_reviews_for_graph_exec
     mock_has_pending = mocker.patch(
@@ -757,6 +797,16 @@ def test_process_review_action_auto_approve_only_applies_to_approved_reviews(
     mock_create_auto_approval = mocker.patch(
         "backend.api.features.executions.review.routes.create_auto_approval_record"
     )
+
+    # Mock get_graph_execution_meta to return execution in REVIEW status
+    mock_get_graph_exec = mocker.patch(
+        "backend.api.features.executions.review.routes.get_graph_execution_meta"
+    )
+    from backend.data.execution import ExecutionStatus as ExecStatusVal
+
+    mock_graph_exec_meta = mocker.Mock()
+    mock_graph_exec_meta.status = ExecStatusVal.REVIEW
+    mock_get_graph_exec.return_value = mock_graph_exec_meta
 
     # Mock has_pending_reviews_for_graph_exec
     mock_has_pending = mocker.patch(

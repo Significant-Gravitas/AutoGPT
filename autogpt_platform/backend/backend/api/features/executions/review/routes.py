@@ -7,6 +7,7 @@ from prisma.enums import ReviewStatus
 
 from backend.data.execution import (
     ExecutionContext,
+    ExecutionStatus,
     get_graph_execution_meta,
     get_node_execution,
 )
@@ -191,7 +192,37 @@ async def process_review_action(
         first_review = next(iter(updated_reviews.values()))
         graph_exec_id = first_review.graph_exec_id
 
-        # Check if any pending reviews remain for this execution
+        # Check execution status before attempting to resume
+        # This prevents race conditions where user approves while graph is still running
+        graph_exec_meta = await get_graph_execution_meta(
+            user_id=user_id, execution_id=graph_exec_id
+        )
+
+        if not graph_exec_meta:
+            logger.error(
+                f"Graph execution {graph_exec_id} not found after processing reviews"
+            )
+            return ReviewResponse(
+                approved_count=approved_count,
+                rejected_count=rejected_count,
+                failed_count=0,
+                error=None,
+            )
+
+        # Only resume if execution is paused for review AND no pending reviews remain
+        if graph_exec_meta.status != ExecutionStatus.REVIEW:
+            logger.info(
+                f"Skipping resume for execution {graph_exec_id} - "
+                f"status is {graph_exec_meta.status}, not REVIEW"
+            )
+            return ReviewResponse(
+                approved_count=approved_count,
+                rejected_count=rejected_count,
+                failed_count=0,
+                error=None,
+            )
+
+        # Check if any pending reviews remain
         still_has_pending = await has_pending_reviews_for_graph_exec(graph_exec_id)
 
         if not still_has_pending:
