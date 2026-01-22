@@ -141,52 +141,6 @@
   }
 }
 
-@keyframes shimmer {
-  0% {
-    background-position: -200% 0;
-  }
-  100% {
-    background-position: 200% 0;
-  }
-}
-
-@keyframes l3 {
-  25% {
-    background-position:
-      0 0,
-      100% 100%,
-      100% calc(100% - 5px);
-  }
-  50% {
-    background-position:
-      0 100%,
-      100% 100%,
-      0 calc(100% - 5px);
-  }
-  75% {
-    background-position:
-      0 100%,
-      100% 0,
-      100% 5px;
-  }
-}
-
-.loader {
-  width: 80px;
-  height: 70px;
-  border: 5px solid rgb(241 245 249);
-  padding: 0 8px;
-  box-sizing: border-box;
-  background:
-    linear-gradient(rgb(15 23 42) 0 0) 0 0/8px 20px,
-    linear-gradient(rgb(15 23 42) 0 0) 100% 0/8px 20px,
-    radial-gradient(farthest-side, rgb(15 23 42) 90%, #0000) 0 5px/8px 8px
-      content-box,
-    transparent;
-  background-repeat: no-repeat;
-  animation: l3 2s infinite linear;
-}
-
 input[type="number"]::-webkit-outer-spin-button,
 input[type="number"]::-webkit-inner-spin-button {
   -webkit-appearance: none;
