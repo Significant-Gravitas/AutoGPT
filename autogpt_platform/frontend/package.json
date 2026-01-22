@@ -82,7 +82,7 @@
     "jaro-winkler": "0.2.8",
     "katex": "0.16.25",
     "launchdarkly-react-client-sdk": "3.9.0",
-    "lodash": "4.17.21",
+    "lodash": "4.17.23",
     "lucide-react": "0.552.0",
     "moment": "2.30.1",
     "next": "15.4.10",
