@@ -3,10 +3,11 @@
 import { postV2CreateSession } from "@/app/api/__generated__/endpoints/chat/chat";
 import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 import { Button } from "@/components/atoms/Button/Button";
-import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Text } from "@/components/atoms/Text/Text";
 import { Chat } from "@/components/contextual/Chat/Chat";
 import { ChatInput } from "@/components/contextual/Chat/components/ChatInput/ChatInput";
+import { ChatLoader } from "@/components/contextual/Chat/components/ChatLoader/ChatLoader";
+import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { getHomepageRoute } from "@/lib/constants";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import {
@@ -16,11 +17,13 @@ import {
 } from "@/services/feature-flags/use-get-flag";
 import { useFlags } from "launchdarkly-react-client-sdk";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useNewChat } from "./NewChatContext";
 import { getGreetingName, getQuickActions } from "./helpers";
 
 type PageState =
   | { type: "welcome" }
+  | { type: "newChat" }
   | { type: "creating"; prompt: string }
   | { type: "chat"; sessionId: string; initialPrompt?: string };
 
@@ -39,16 +42,22 @@ export default function CopilotPage() {
     !isLaunchDarklyConfigured || flags[Flag.CHAT] !== undefined;
 
   const [pageState, setPageState] = useState<PageState>({ type: "welcome" });
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [isNewChatModalOpen, setIsNewChatModalOpen] = useState(false);
   const initialPromptRef = useRef<Map<string, string>>(new Map());
+  const previousSessionIdRef = useRef<string | null>(null);
+  const newChatContext = useNewChat();
 
   const urlSessionId = searchParams.get("sessionId");
 
   // Sync with URL sessionId (preserve initialPrompt from ref)
-  useEffect(
+  // Use useLayoutEffect for immediate updates before paint
+  useLayoutEffect(
     function syncSessionFromUrl() {
       if (urlSessionId) {
         // If we're already in chat state with this sessionId, don't overwrite
         if (pageState.type === "chat" && pageState.sessionId === urlSessionId) {
+          previousSessionIdRef.current = urlSessionId;
           return;
         }
         // Get initialPrompt from ref or current state
@@ -68,11 +77,35 @@ export default function CopilotPage() {
           sessionId: urlSessionId,
           initialPrompt: currentInitialPrompt,
         });
-      } else if (pageState.type === "chat") {
-        setPageState({ type: "welcome" });
+        previousSessionIdRef.current = urlSessionId;
+      } else {
+        const wasInChat =
+          previousSessionIdRef.current !== null && pageState.type === "chat";
+        previousSessionIdRef.current = null;
+        if (wasInChat) {
+          setPageState({ type: "newChat" });
+        } else if (
+          pageState.type !== "newChat" &&
+          pageState.type !== "creating" &&
+          pageState.type !== "welcome"
+        ) {
+          setPageState({ type: "welcome" });
+        }
       }
     },
-    [urlSessionId],
+    [urlSessionId, pageState.type],
+  );
+
+  useEffect(
+    function transitionNewChatToWelcome() {
+      if (pageState.type === "newChat") {
+        const timer = setTimeout(() => {
+          setPageState({ type: "welcome" });
+        }, 300);
+        return () => clearTimeout(timer);
+      }
+    },
+    [pageState.type],
   );
 
   useEffect(
@@ -136,6 +169,43 @@ export default function CopilotPage() {
     router.replace("/copilot");
   }
 
+  function handleStreamingChange(isStreamingValue: boolean) {
+    setIsStreaming(isStreamingValue);
+  }
+
+  function handleNewChatClick() {
+    if (isStreaming) {
+      setIsNewChatModalOpen(true);
+    } else {
+      proceedWithNewChat();
+    }
+  }
+
+  function proceedWithNewChat() {
+    setIsNewChatModalOpen(false);
+    if (newChatContext?.performNewChat) {
+      newChatContext.performNewChat();
+      return;
+    }
+    window.history.replaceState(null, "", "/copilot");
+    router.replace("/copilot");
+  }
+
+  function handleCancelNewChat() {
+    setIsNewChatModalOpen(false);
+  }
+
+  useEffect(
+    function registerNewChatHandler() {
+      if (!newChatContext) return;
+      newChatContext.setOnNewChatClick(handleNewChatClick);
+      return function cleanup() {
+        newChatContext.setOnNewChatClick(undefined);
+      };
+    },
+    [newChatContext, handleNewChatClick],
+  );
+
   if (!isFlagReady || isChatEnabled === false || !isLoggedIn) {
     return null;
   }
@@ -150,7 +220,55 @@ export default function CopilotPage() {
           urlSessionId={pageState.sessionId}
           initialPrompt={pageState.initialPrompt}
           onSessionNotFound={handleSessionNotFound}
+          onStreamingChange={handleStreamingChange}
         />
+        <Dialog
+          title="Interrupt current chat?"
+          styling={{ maxWidth: 300, width: "100%" }}
+          controlled={{
+            isOpen: isNewChatModalOpen,
+            set: setIsNewChatModalOpen,
+          }}
+          onClose={handleCancelNewChat}
+        >
+          <Dialog.Content>
+            <div className="flex flex-col gap-4">
+              <Text variant="body">
+                The current chat response will be interrupted. Are you sure you
+                want to start a new chat?
+              </Text>
+              <Dialog.Footer>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleCancelNewChat}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  variant="primary"
+                  onClick={proceedWithNewChat}
+                >
+                  Start new chat
+                </Button>
+              </Dialog.Footer>
+            </div>
+          </Dialog.Content>
+        </Dialog>
+      </div>
+    );
+  }
+
+  if (pageState.type === "newChat") {
+    return (
+      <div className="flex h-full flex-1 flex-col items-center justify-center bg-[#f8f8f9]">
+        <div className="flex flex-col items-center gap-4">
+          <ChatLoader />
+          <Text variant="body" className="text-zinc-500">
+            Loading your chats...
+          </Text>
+        </div>
       </div>
     );
   }
@@ -158,11 +276,13 @@ export default function CopilotPage() {
   // Show loading state while creating session and sending first message
   if (pageState.type === "creating") {
     return (
-      <div className="flex h-full flex-1 flex-col items-center justify-center bg-[#f8f8f9] px-6 py-10">
-        <LoadingSpinner size="large" />
-        <Text variant="body" className="mt-4 text-zinc-500">
-          Starting your chat...
-        </Text>
+      <div className="flex h-full flex-1 flex-col items-center justify-center bg-[#f8f8f9]">
+        <div className="flex flex-col items-center gap-4">
+          <ChatLoader />
+          <Text variant="body" className="text-zinc-500">
+            Loading your chats...
+          </Text>
+        </div>
       </div>
     );
   }

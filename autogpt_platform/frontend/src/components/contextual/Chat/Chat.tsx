@@ -13,6 +13,7 @@ export interface ChatProps {
   urlSessionId?: string | null;
   initialPrompt?: string;
   onSessionNotFound?: () => void;
+  onStreamingChange?: (isStreaming: boolean) => void;
 }
 
 export function Chat({
@@ -20,6 +21,7 @@ export function Chat({
   urlSessionId,
   initialPrompt,
   onSessionNotFound,
+  onStreamingChange,
 }: ChatProps) {
   const hasHandledNotFoundRef = useRef(false);
   const {
@@ -73,6 +75,7 @@ export function Chat({
             initialMessages={messages}
             initialPrompt={initialPrompt}
             className="flex-1"
+            onStreamingChange={onStreamingChange}
           />
         )}
       </main>
