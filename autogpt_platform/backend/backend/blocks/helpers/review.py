@@ -10,7 +10,7 @@ from prisma.enums import ReviewStatus
 from pydantic import BaseModel
 
 from backend.data.execution import ExecutionStatus
-from backend.data.human_review import ReviewResult, check_approval
+from backend.data.human_review import ReviewResult
 from backend.executor.manager import async_update_node_execution_status
 from backend.util.clients import get_database_manager_async_client
 
@@ -27,6 +27,11 @@ class ReviewDecision(BaseModel):
 
 class HITLReviewHelper:
     """Helper class for Human-In-The-Loop review operations."""
+
+    @staticmethod
+    async def check_approval(**kwargs) -> Optional[ReviewResult]:
+        """Check if there's an existing approval for this node execution."""
+        return await get_database_manager_async_client().check_approval(**kwargs)
 
     @staticmethod
     async def get_or_create_human_review(**kwargs) -> Optional[ReviewResult]:
@@ -90,7 +95,7 @@ class HITLReviewHelper:
         # This function only handles checking for existing approvals.
 
         # Check if this node has already been approved (normal or auto-approval)
-        approval_result = await check_approval(
+        approval_result = await HITLReviewHelper.check_approval(
             node_exec_id=node_exec_id,
             graph_exec_id=graph_exec_id,
             node_id=node_id,
