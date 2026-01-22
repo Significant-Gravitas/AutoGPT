@@ -82,7 +82,7 @@ def refresh_llm_discriminator_mapping(field_schema: dict[str, Any]) -> None:
 
     # Always refresh the mapping to get latest models
     fresh_mapping = get_llm_discriminator_mapping()
-    if fresh_mapping:
+    if fresh_mapping is not None:
         field_schema["discriminator_mapping"] = fresh_mapping
 
 

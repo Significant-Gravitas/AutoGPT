@@ -1161,7 +1161,7 @@ const NodeStringInput: FC<{
                 value={option.value}
                 title={option.description}
               >
-                {option.label}
+                {option.label || beautifyString(option.value)}
               </SelectItem>
             ))}
           </SelectContent>

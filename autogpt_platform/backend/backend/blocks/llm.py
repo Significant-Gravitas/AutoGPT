@@ -114,6 +114,15 @@ class LlmModelMeta(type):
 
         return cls(slug)
 
+    def __iter__(cls):
+        """Iterate over all models from the registry.
+
+        Yields LlmModel instances for each model in the dynamic registry.
+        Used by __get_pydantic_json_schema__ to build model metadata.
+        """
+        for model in llm_registry.iter_dynamic_models():
+            yield cls(model.slug)
+
 
 class LlmModel(str, metaclass=LlmModelMeta):
     """
@@ -178,7 +187,12 @@ class LlmModel(str, metaclass=LlmModelMeta):
         llm_model_metadata = {}
         for model in cls:
             model_name = model.value
-            metadata = model.metadata
+            # Use registry directly with None check to gracefully handle
+            # missing metadata during startup/import before registry is populated
+            metadata = llm_registry.get_llm_model_metadata(model_name)
+            if metadata is None:
+                # Skip models without metadata (registry not yet populated)
+                continue
             llm_model_metadata[model_name] = {
                 "creator": metadata.creator_name,
                 "creator_name": metadata.creator_name,
