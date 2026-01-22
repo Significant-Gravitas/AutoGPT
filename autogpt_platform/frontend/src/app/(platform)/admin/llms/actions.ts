@@ -87,7 +87,11 @@ export async function createLlmProviderAction(formData: FormData) {
 export async function deleteLlmProviderAction(
   formData: FormData,
 ): Promise<void> {
-  const providerId = String(formData.get("provider_id"));
+  const rawProviderId = formData.get("provider_id");
+  const providerId = rawProviderId ? String(rawProviderId).trim() : "";
+  if (!providerId) {
+    throw new Error("Provider id is required");
+  }
 
   const response = await deleteV2DeleteLlmProvider(providerId);
   if (response.status !== 200) {
@@ -146,8 +150,33 @@ export async function fetchLlmModels(): Promise<LlmModelsResponse> {
 }
 
 export async function createLlmModelAction(formData: FormData) {
-  const providerId = String(formData.get("provider_id"));
+  const rawProviderId = formData.get("provider_id");
+  const providerId = rawProviderId ? String(rawProviderId).trim() : "";
+  if (!providerId) {
+    throw new Error("Provider is required");
+  }
   const creatorId = formData.get("creator_id");
+
+  const contextWindowRaw = formData.get("context_window");
+  const contextWindow = Number(contextWindowRaw);
+  if (
+    contextWindowRaw === null ||
+    contextWindowRaw === "" ||
+    !Number.isFinite(contextWindow) ||
+    contextWindow <= 0
+  ) {
+    throw new Error("Context window must be a positive number");
+  }
+
+  const creditCostRaw = formData.get("credit_cost");
+  const creditCost = Number(creditCostRaw);
+  if (
+    creditCostRaw === null ||
+    creditCostRaw === "" ||
+    !Number.isFinite(creditCost)
+  ) {
+    throw new Error("Credit cost is required");
+  }
 
   // Fetch provider to get default credentials
   const providersResponse = await getV2ListLlmProviders({
@@ -172,7 +201,7 @@ export async function createLlmModelAction(formData: FormData) {
       : undefined,
     provider_id: providerId,
     creator_id: creatorId ? String(creatorId) : undefined,
-    context_window: Number(formData.get("context_window") || 0),
+    context_window: contextWindow,
     max_output_tokens: formData.get("max_output_tokens")
       ? Number(formData.get("max_output_tokens"))
       : undefined,
@@ -182,7 +211,7 @@ export async function createLlmModelAction(formData: FormData) {
     costs: [
       {
         unit: (formData.get("unit") as LlmCostUnit) || LlmCostUnit.RUN,
-        credit_cost: Number(formData.get("credit_cost") || 0),
+        credit_cost: creditCost,
         credential_provider:
           provider.default_credential_provider || provider.name,
         credential_id: provider.default_credential_id || undefined,
