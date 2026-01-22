@@ -37,40 +37,55 @@ def get_auto_approve_key(graph_exec_id: str, node_id: str) -> str:
     return f"auto_approve_{graph_exec_id}_{node_id}"
 
 
-async def check_auto_approval(
+async def check_approval(
+    node_exec_id: str,
     graph_exec_id: str,
     node_id: str,
 ) -> Optional[ReviewResult]:
     """
-    Check if there's an existing auto-approval record for this node in this execution.
+    Check if there's an existing approval for this node execution.
 
-    Auto-approval records are stored as PendingHumanReview entries with a special
-    nodeExecId pattern: "auto_approve_{graph_exec_id}_{node_id}"
+    Checks both:
+    1. Normal approval by node_exec_id (previous run of the same node execution)
+    2. Auto-approval by special key pattern "auto_approve_{graph_exec_id}_{node_id}"
 
     Args:
+        node_exec_id: ID of the node execution
         graph_exec_id: ID of the graph execution
         node_id: ID of the node definition (not execution)
 
     Returns:
-        ReviewResult if auto-approval found, None otherwise
+        ReviewResult if approval found (either normal or auto), None otherwise
     """
     auto_approve_key = get_auto_approve_key(graph_exec_id, node_id)
 
-    # Look for the auto-approval record by its special key
-    auto_approved_review = await PendingHumanReview.prisma().find_unique(
-        where={"nodeExecId": auto_approve_key},
+    # Check for either normal approval or auto-approval in a single query
+    existing_review = await PendingHumanReview.prisma().find_first(
+        where={
+            "OR": [
+                {"nodeExecId": node_exec_id},
+                {"nodeExecId": auto_approve_key},
+            ],
+            "status": ReviewStatus.APPROVED,
+        },
     )
 
-    if auto_approved_review and auto_approved_review.status == ReviewStatus.APPROVED:
+    if existing_review:
+        is_auto_approval = existing_review.nodeExecId == auto_approve_key
         logger.info(
-            f"Found auto-approval for node {node_id} in execution {graph_exec_id}"
+            f"Found {'auto-' if is_auto_approval else ''}approval for node {node_id} "
+            f"(exec: {node_exec_id}) in execution {graph_exec_id}"
         )
         return ReviewResult(
-            data=auto_approved_review.payload,
+            data=existing_review.payload,
             status=ReviewStatus.APPROVED,
-            message="Auto-approved (user approved all future actions for this block)",
+            message=(
+                "Auto-approved (user approved all future actions for this block)"
+                if is_auto_approval
+                else existing_review.reviewMessage or ""
+            ),
             processed=True,
-            node_exec_id=auto_approve_key,
+            node_exec_id=existing_review.nodeExecId,
         )
 
     return None

@@ -10,7 +10,7 @@ from prisma.enums import ReviewStatus
 from pydantic import BaseModel
 
 from backend.data.execution import ExecutionStatus
-from backend.data.human_review import ReviewResult, check_auto_approval
+from backend.data.human_review import ReviewResult, check_approval
 from backend.executor.manager import async_update_node_execution_status
 from backend.util.clients import get_database_manager_async_client
 
@@ -87,22 +87,24 @@ class HITLReviewHelper:
         # are handled by the caller:
         # - HITL blocks check human_in_the_loop_safe_mode in their run() method
         # - Sensitive action blocks check sensitive_action_safe_mode in is_block_exec_need_review()
-        # This function only handles auto-approval for specific nodes.
+        # This function only handles checking for existing approvals.
 
-        # Check if this node has been auto-approved in a previous review
-        if await check_auto_approval(
+        # Check if this node has already been approved (normal or auto-approval)
+        approval_result = await check_approval(
+            node_exec_id=node_exec_id,
             graph_exec_id=graph_exec_id,
             node_id=node_id,
-        ):
+        )
+        if approval_result:
             logger.info(
                 f"Block {block_name} skipping review for node {node_exec_id} - "
-                f"node {node_id} has auto-approval from previous review"
+                f"found existing approval"
             )
             # Return a new ReviewResult with the current node_exec_id but approved status
             return ReviewResult(
-                data=input_data,
+                data=approval_result.data if approval_result.data else input_data,
                 status=ReviewStatus.APPROVED,
-                message="Auto-approved (user approved all future actions for this block)",
+                message=approval_result.message,
                 processed=True,
                 node_exec_id=node_exec_id,
             )
