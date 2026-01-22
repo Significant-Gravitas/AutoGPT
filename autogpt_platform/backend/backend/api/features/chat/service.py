@@ -1,12 +1,20 @@
 import asyncio
 import logging
+import time
+from asyncio import CancelledError
 from collections.abc import AsyncGenerator
 from typing import Any
 
 import orjson
 from langfuse import get_client, propagate_attributes
 from langfuse.openai import openai  # type: ignore
-from openai import APIConnectionError, APIError, APIStatusError, RateLimitError
+from openai import (
+    APIConnectionError,
+    APIError,
+    APIStatusError,
+    PermissionDeniedError,
+    RateLimitError,
+)
 from openai.types.chat import ChatCompletionChunk, ChatCompletionToolParam
 
 from backend.data.understanding import (
@@ -21,6 +29,7 @@ from .model import (
     ChatMessage,
     ChatSession,
     Usage,
+    cache_chat_session,
     get_chat_session,
     update_session_title,
     upsert_chat_session,
@@ -296,6 +305,10 @@ async def stream_chat_completion(
                 content="",
             )
             accumulated_tool_calls: list[dict[str, Any]] = []
+            has_saved_assistant_message = False
+            has_appended_streaming_message = False
+            last_cache_time = 0.0
+            last_cache_content_len = 0
 
             # Wrap main logic in try/finally to ensure Langfuse observations are always ended
             has_yielded_end = False
@@ -332,6 +345,23 @@ async def stream_chat_completion(
                         assert assistant_response.content is not None
                         assistant_response.content += delta
                         has_received_text = True
+                        if not has_appended_streaming_message:
+                            session.messages.append(assistant_response)
+                            has_appended_streaming_message = True
+                        current_time = time.monotonic()
+                        content_len = len(assistant_response.content)
+                        if (
+                            current_time - last_cache_time >= 1.0
+                            and content_len > last_cache_content_len
+                        ):
+                            try:
+                                await cache_chat_session(session)
+                            except Exception as e:
+                                logger.warning(
+                                    f"Failed to cache partial session {session.session_id}: {e}"
+                                )
+                            last_cache_time = current_time
+                            last_cache_content_len = content_len
                         yield chunk
                     elif isinstance(chunk, StreamTextEnd):
                         # Emit text-end after text completes
@@ -390,10 +420,42 @@ async def stream_chat_completion(
                             if has_received_text and not text_streaming_ended:
                                 yield StreamTextEnd(id=text_block_id)
                                 text_streaming_ended = True
+
+                            # Save assistant message before yielding finish to ensure it's persisted
+                            # even if client disconnects immediately after receiving StreamFinish
+                            if not has_saved_assistant_message:
+                                messages_to_save_early: list[ChatMessage] = []
+                                if accumulated_tool_calls:
+                                    assistant_response.tool_calls = (
+                                        accumulated_tool_calls
+                                    )
+                                if not has_appended_streaming_message and (
+                                    assistant_response.content
+                                    or assistant_response.tool_calls
+                                ):
+                                    messages_to_save_early.append(assistant_response)
+                                messages_to_save_early.extend(tool_response_messages)
+
+                                if messages_to_save_early:
+                                    session.messages.extend(messages_to_save_early)
+                                    logger.info(
+                                        f"Saving assistant message before StreamFinish: "
+                                        f"content_len={len(assistant_response.content or '')}, "
+                                        f"tool_calls={len(assistant_response.tool_calls or [])}, "
+                                        f"tool_responses={len(tool_response_messages)}"
+                                    )
+                                if (
+                                    messages_to_save_early
+                                    or has_appended_streaming_message
+                                ):
+                                    await upsert_chat_session(session)
+                                    has_saved_assistant_message = True
+
                             has_yielded_end = True
                             yield chunk
                     elif isinstance(chunk, StreamError):
                         has_yielded_error = True
+                        yield chunk
                     elif isinstance(chunk, StreamUsage):
                         session.usage.append(
                             Usage(
@@ -413,6 +475,27 @@ async def stream_chat_completion(
                     langfuse.update_current_trace(output=str(tool_response_messages))
                     langfuse.update_current_span(output=str(tool_response_messages))
 
+            except CancelledError:
+                if not has_saved_assistant_message:
+                    if accumulated_tool_calls:
+                        assistant_response.tool_calls = accumulated_tool_calls
+                    if assistant_response.content:
+                        assistant_response.content = (
+                            f"{assistant_response.content}\n\n[interrupted]"
+                        )
+                    else:
+                        assistant_response.content = "[interrupted]"
+                    if not has_appended_streaming_message:
+                        session.messages.append(assistant_response)
+                    if tool_response_messages:
+                        session.messages.extend(tool_response_messages)
+                    try:
+                        await upsert_chat_session(session)
+                    except Exception as e:
+                        logger.warning(
+                            f"Failed to save interrupted session {session.session_id}: {e}"
+                        )
+                raise
             except Exception as e:
                 logger.error(f"Error during stream: {e!s}", exc_info=True)
 
@@ -434,14 +517,19 @@ async def stream_chat_completion(
                     # Add assistant message if it has content or tool calls
                     if accumulated_tool_calls:
                         assistant_response.tool_calls = accumulated_tool_calls
-                    if assistant_response.content or assistant_response.tool_calls:
+                    if not has_appended_streaming_message and (
+                        assistant_response.content or assistant_response.tool_calls
+                    ):
                         messages_to_save.append(assistant_response)
 
                     # Add tool response messages after assistant message
                     messages_to_save.extend(tool_response_messages)
 
-                    session.messages.extend(messages_to_save)
-                    await upsert_chat_session(session)
+                    if not has_saved_assistant_message:
+                        if messages_to_save:
+                            session.messages.extend(messages_to_save)
+                        if messages_to_save or has_appended_streaming_message:
+                            await upsert_chat_session(session)
 
                     if not has_yielded_error:
                         error_message = str(e)
@@ -472,38 +560,49 @@ async def stream_chat_completion(
                 return  # Exit after retry to avoid double-saving in finally block
 
             # Normal completion path - save session and handle tool call continuation
-            logger.info(
-                f"Normal completion path: session={session.session_id}, "
-                f"current message_count={len(session.messages)}"
-            )
-
-            # Build the messages list in the correct order
-            messages_to_save: list[ChatMessage] = []
-
-            # Add assistant message with tool_calls if any
-            if accumulated_tool_calls:
-                assistant_response.tool_calls = accumulated_tool_calls
+            # Only save if we haven't already saved when StreamFinish was received
+            if not has_saved_assistant_message:
                 logger.info(
-                    f"Added {len(accumulated_tool_calls)} tool calls to assistant message"
-                )
-            if assistant_response.content or assistant_response.tool_calls:
-                messages_to_save.append(assistant_response)
-                logger.info(
-                    f"Saving assistant message with content_len={len(assistant_response.content or '')}, tool_calls={len(assistant_response.tool_calls or [])}"
+                    f"Normal completion path: session={session.session_id}, "
+                    f"current message_count={len(session.messages)}"
                 )
 
-            # Add tool response messages after assistant message
-            messages_to_save.extend(tool_response_messages)
-            logger.info(
-                f"Saving {len(tool_response_messages)} tool response messages, "
-                f"total_to_save={len(messages_to_save)}"
-            )
+                # Build the messages list in the correct order
+                messages_to_save: list[ChatMessage] = []
 
-            session.messages.extend(messages_to_save)
-            logger.info(
-                f"Extended session messages, new message_count={len(session.messages)}"
-            )
-            await upsert_chat_session(session)
+                # Add assistant message with tool_calls if any
+                if accumulated_tool_calls:
+                    assistant_response.tool_calls = accumulated_tool_calls
+                    logger.info(
+                        f"Added {len(accumulated_tool_calls)} tool calls to assistant message"
+                    )
+                if not has_appended_streaming_message and (
+                    assistant_response.content or assistant_response.tool_calls
+                ):
+                    messages_to_save.append(assistant_response)
+                    logger.info(
+                        f"Saving assistant message with content_len={len(assistant_response.content or '')}, tool_calls={len(assistant_response.tool_calls or [])}"
+                    )
+
+                # Add tool response messages after assistant message
+                messages_to_save.extend(tool_response_messages)
+                logger.info(
+                    f"Saving {len(tool_response_messages)} tool response messages, "
+                    f"total_to_save={len(messages_to_save)}"
+                )
+
+                if messages_to_save:
+                    session.messages.extend(messages_to_save)
+                    logger.info(
+                        f"Extended session messages, new message_count={len(session.messages)}"
+                    )
+                if messages_to_save or has_appended_streaming_message:
+                    await upsert_chat_session(session)
+            else:
+                logger.info(
+                    "Assistant message already saved when StreamFinish was received, "
+                    "skipping duplicate save"
+                )
 
             # If we did a tool call, stream the chat completion again to get the next response
             if has_done_tool_call:
@@ -543,6 +642,12 @@ def _is_retryable_error(error: Exception) -> bool:
         if "overloaded" in error_message or "internal server error" in error_message:
             return True
     return False
+
+
+def _is_region_blocked_error(error: Exception) -> bool:
+    if isinstance(error, PermissionDeniedError):
+        return "not available in your region" in str(error).lower()
+    return "not available in your region" in str(error).lower()
 
 
 async def _stream_chat_chunks(
@@ -737,7 +842,18 @@ async def _stream_chat_chunks(
                         f"Error in stream (not retrying): {e!s}",
                         exc_info=True,
                     )
-                    error_response = StreamError(errorText=str(e))
+                    error_code = None
+                    error_text = str(e)
+                    if _is_region_blocked_error(e):
+                        error_code = "MODEL_NOT_AVAILABLE_REGION"
+                        error_text = (
+                            "This model is not available in your region. "
+                            "Please connect via VPN and try again."
+                        )
+                    error_response = StreamError(
+                        errorText=error_text,
+                        code=error_code,
+                    )
                     yield error_response
                     yield StreamFinish()
                     return
