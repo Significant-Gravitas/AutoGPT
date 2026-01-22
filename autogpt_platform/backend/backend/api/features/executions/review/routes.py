@@ -4,6 +4,7 @@ from typing import List
 import autogpt_libs.auth as autogpt_auth_lib
 from fastapi import APIRouter, HTTPException, Query, Security, status
 from prisma.enums import ReviewStatus
+from prisma.models import AgentNodeExecution
 
 from backend.data.execution import ExecutionContext, get_graph_execution_meta
 from backend.data.human_review import (
@@ -128,14 +129,20 @@ async def process_review_action(
         )
 
     # Build review decisions map
+    # When auto_approve_future_actions is true, ignore any edited data
+    # (auto-approved reviews should use original data for consistency)
     review_decisions = {}
     for review in request.reviews:
         review_status = (
             ReviewStatus.APPROVED if review.approved else ReviewStatus.REJECTED
         )
+        # If auto-approving future actions, don't allow data modifications
+        reviewed_data = (
+            None if request.auto_approve_future_actions else review.reviewed_data
+        )
         review_decisions[review.node_exec_id] = (
             review_status,
-            review.reviewed_data,
+            reviewed_data,
             review.message,
         )
 
@@ -169,17 +176,32 @@ async def process_review_action(
         if not still_has_pending:
             # Resume execution
             try:
-                # If auto_approve_node_ids is set, create a context that will
-                # automatically approve future reviews from these specific nodes
+                # If auto_approve_future_actions is set, create a context that will
+                # automatically approve future reviews from the approved nodes
                 execution_context = None
-                if request.auto_approve_node_ids:
-                    execution_context = ExecutionContext(
-                        auto_approved_node_ids=set(request.auto_approve_node_ids),
-                    )
-                    logger.info(
-                        f"Auto-approving future reviews for nodes "
-                        f"{request.auto_approve_node_ids} in execution {graph_exec_id}"
-                    )
+                if request.auto_approve_future_actions:
+                    # Get node_ids for the approved node_exec_ids
+                    approved_node_exec_ids = [
+                        review.node_exec_id
+                        for review in request.reviews
+                        if review.approved
+                    ]
+                    if approved_node_exec_ids:
+                        # Look up the node_ids from the node executions
+                        node_executions = await AgentNodeExecution.prisma().find_many(
+                            where={"id": {"in": approved_node_exec_ids}},
+                        )
+                        auto_approved_node_ids = {
+                            ne.agentNodeId for ne in node_executions
+                        }
+                        if auto_approved_node_ids:
+                            execution_context = ExecutionContext(
+                                auto_approved_node_ids=auto_approved_node_ids,
+                            )
+                            logger.info(
+                                f"Auto-approving future reviews for nodes "
+                                f"{auto_approved_node_ids} in execution {graph_exec_id}"
+                            )
 
                 await add_graph_execution(
                     graph_id=first_review.graph_id,

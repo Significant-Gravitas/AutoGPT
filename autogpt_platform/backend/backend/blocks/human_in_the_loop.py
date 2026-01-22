@@ -105,16 +105,6 @@ class HumanInTheLoopBlock(Block):
         execution_context: ExecutionContext,
         **_kwargs,
     ) -> BlockOutput:
-        # Check if this specific node has been auto-approved by the user
-        if node_id in execution_context.auto_approved_node_ids:
-            logger.info(
-                f"HITL block skipping review for node {node_exec_id} - "
-                f"node {node_id} is auto-approved"
-            )
-            yield "approved_data", input_data.data
-            yield "review_message", "Auto-approved (user approved all future actions for this block)"
-            return
-
         if not execution_context.human_in_the_loop_safe_mode:
             logger.info(
                 f"HITL block skipping review for node {node_exec_id} - safe mode disabled"

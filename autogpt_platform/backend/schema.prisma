@@ -517,8 +517,6 @@ model AgentNodeExecution {
 
   stats Json?
 
-  PendingHumanReview PendingHumanReview?
-
   @@index([agentGraphExecutionId, agentNodeId, executionStatus])
   @@index([agentNodeId, executionStatus])
   @@index([addedTime, queuedTime])
@@ -567,13 +565,13 @@ enum ReviewStatus {
 }
 
 // Pending human reviews for Human-in-the-loop blocks
+// Also stores auto-approval records with special nodeExecId patterns (e.g., "auto_approve_{graph_exec_id}_{node_id}")
 model PendingHumanReview {
   nodeExecId    String       @id
   userId        String
   graphExecId   String
   graphId       String
   graphVersion  Int
-  nodeId        String       // The node ID in the graph definition (for auto-approval tracking)
   payload       Json // The actual payload data to be reviewed
   instructions  String? // Instructions/message for the reviewer
   editable      Boolean      @default(true) // Whether the reviewer can edit the data
@@ -586,7 +584,6 @@ model PendingHumanReview {
   reviewedAt    DateTime?
 
   User           User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  NodeExecution  AgentNodeExecution  @relation(fields: [nodeExecId], references: [id], onDelete: Cascade)
   GraphExecution AgentGraphExecution @relation(fields: [graphExecId], references: [id], onDelete: Cascade)
 
   @@unique([nodeExecId]) // One pending review per node execution

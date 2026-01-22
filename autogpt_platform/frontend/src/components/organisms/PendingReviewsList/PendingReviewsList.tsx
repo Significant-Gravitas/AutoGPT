@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { PendingHumanReviewModel } from "@/app/api/__generated__/models/pendingHumanReviewModel";
 import { PendingReviewCard } from "@/components/organisms/PendingReviewCard/PendingReviewCard";
 import { Text } from "@/components/atoms/Text/Text";
 import { Button } from "@/components/atoms/Button/Button";
+import { Switch } from "@/components/atoms/Switch/Switch";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { ClockIcon, WarningIcon } from "@phosphor-icons/react";
 import { usePostV2ProcessReviewAction } from "@/app/api/__generated__/endpoints/executions/executions";
@@ -37,8 +38,10 @@ export function PendingReviewsList({
   >({});
 
   const [pendingAction, setPendingAction] = useState<
-    "approve" | "approve-all" | "reject" | null
+    "approve" | "reject" | null
   >(null);
+
+  const [autoApproveFuture, setAutoApproveFuture] = useState(false);
 
   const { toast } = useToast();
 
@@ -92,10 +95,27 @@ export function PendingReviewsList({
     setReviewMessageMap((prev) => ({ ...prev, [nodeExecId]: message }));
   }
 
-  function processReviews(
-    approved: boolean,
-    autoApproveFutureActions: boolean = false,
-  ) {
+  // Reset data to original values when toggling auto-approve
+  const handleAutoApproveFutureToggle = useCallback(
+    (enabled: boolean) => {
+      setAutoApproveFuture(enabled);
+      if (enabled) {
+        // Reset all data to original values
+        const originalData: Record<string, string> = {};
+        reviews.forEach((review) => {
+          originalData[review.node_exec_id] = JSON.stringify(
+            review.payload,
+            null,
+            2,
+          );
+        });
+        setReviewDataMap(originalData);
+      }
+    },
+    [reviews],
+  );
+
+  function processReviews(approved: boolean) {
     if (reviews.length === 0) {
       toast({
         title: "No reviews to process",
@@ -105,35 +125,38 @@ export function PendingReviewsList({
       return;
     }
 
-    setPendingAction(
-      autoApproveFutureActions
-        ? "approve-all"
-        : approved
-          ? "approve"
-          : "reject",
-    );
+    setPendingAction(approved ? "approve" : "reject");
     const reviewItems = [];
 
     for (const review of reviews) {
       const reviewData = reviewDataMap[review.node_exec_id];
       const reviewMessage = reviewMessageMap[review.node_exec_id];
 
-      let parsedData: any = review.payload; // Default to original payload
+      // When auto-approving future actions, send undefined (use original data)
+      // Otherwise, parse and send the edited data if available
+      let parsedData: any = undefined;
 
-      // Parse edited data if available and editable
-      if (review.editable && reviewData) {
-        try {
-          parsedData = JSON.parse(reviewData);
-        } catch (error) {
-          toast({
-            title: "Invalid JSON",
-            description: `Please fix the JSON format in review for node ${review.node_exec_id}: ${error instanceof Error ? error.message : "Invalid syntax"}`,
-            variant: "destructive",
-          });
-          setPendingAction(null);
-          return;
+      if (!autoApproveFuture) {
+        // For regular approve/reject, use edited data if available
+        if (review.editable && reviewData) {
+          try {
+            parsedData = JSON.parse(reviewData);
+          } catch (error) {
+            toast({
+              title: "Invalid JSON",
+              description: `Please fix the JSON format in review for node ${review.node_exec_id}: ${error instanceof Error ? error.message : "Invalid syntax"}`,
+              variant: "destructive",
+            });
+            setPendingAction(null);
+            return;
+          }
+        } else {
+          // No edits, use original payload
+          parsedData = review.payload;
         }
       }
+      // When autoApproveFuture is true, parsedData stays undefined
+      // Backend will use the original payload stored in the database
 
       reviewItems.push({
         node_exec_id: review.node_exec_id,
@@ -143,15 +166,10 @@ export function PendingReviewsList({
       });
     }
 
-    // Collect unique node_ids if auto-approving future actions
-    const autoApproveNodeIds = autoApproveFutureActions
-      ? [...new Set(reviews.map((r) => r.node_id))]
-      : [];
-
     reviewActionMutation.mutate({
       data: {
         reviews: reviewItems,
-        auto_approve_node_ids: autoApproveNodeIds,
+        auto_approve_future_actions: autoApproveFuture && approved,
       },
     });
   }
@@ -202,11 +220,31 @@ export function PendingReviewsList({
             onReviewDataChange={handleReviewDataChange}
             onReviewMessageChange={handleReviewMessageChange}
             reviewMessage={reviewMessageMap[review.node_exec_id] || ""}
+            isDisabled={autoApproveFuture}
           />
         ))}
       </div>
 
       <div className="space-y-4">
+        {/* Auto-approve toggle */}
+        <div className="flex items-center gap-3">
+          <Switch
+            checked={autoApproveFuture}
+            onCheckedChange={handleAutoApproveFutureToggle}
+            disabled={reviewActionMutation.isPending}
+          />
+          <Text variant="body" className="text-textBlack">
+            Auto-approve all future actions from these blocks
+          </Text>
+        </div>
+
+        {autoApproveFuture && (
+          <Text variant="small" className="text-amber-600">
+            Editing is disabled. Original data will be used for this and all
+            future reviews from these blocks.
+          </Text>
+        )}
+
         <div className="flex flex-wrap gap-2">
           <Button
             onClick={() => processReviews(true)}
@@ -218,17 +256,6 @@ export function PendingReviewsList({
             }
           >
             Approve
-          </Button>
-          <Button
-            onClick={() => processReviews(true, true)}
-            disabled={reviewActionMutation.isPending || reviews.length === 0}
-            variant="secondary"
-            className="flex items-center justify-center gap-2 rounded-full px-4 py-3"
-            loading={
-              pendingAction === "approve-all" && reviewActionMutation.isPending
-            }
-          >
-            Approve all future actions
           </Button>
           <Button
             onClick={() => processReviews(false)}

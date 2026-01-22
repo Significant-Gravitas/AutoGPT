@@ -63,7 +63,6 @@ class HITLReviewHelper:
         execution_context: ExecutionContext,
         block_name: str = "Block",
         editable: bool = False,
-        skip_safe_mode_check: bool = False,
     ) -> Optional[ReviewResult]:
         """
         Handle a review request for a block that requires human review.
@@ -79,8 +78,6 @@ class HITLReviewHelper:
             execution_context: Current execution context
             block_name: Name of the block requesting review
             editable: Whether the reviewer can edit the data
-            skip_safe_mode_check: If True, skip the safe mode check (caller already
-                verified). Used by sensitive action blocks that check their own flag.
 
         Returns:
             ReviewResult if review is complete, None if waiting for human input
@@ -89,11 +86,7 @@ class HITLReviewHelper:
             Exception: If review creation or status update fails
         """
         # Skip review if safe mode is disabled - return auto-approved result
-        # (unless caller already checked and wants to skip this check)
-        if (
-            not skip_safe_mode_check
-            and not execution_context.human_in_the_loop_safe_mode
-        ):
+        if not execution_context.human_in_the_loop_safe_mode:
             logger.info(
                 f"Block {block_name} skipping review for node {node_exec_id} - safe mode disabled"
             )
@@ -125,7 +118,6 @@ class HITLReviewHelper:
             graph_exec_id=graph_exec_id,
             graph_id=graph_id,
             graph_version=graph_version,
-            node_id=node_id,
             input_data=input_data,
             message=f"Review required for {block_name} execution",
             editable=editable,
@@ -161,7 +153,6 @@ class HITLReviewHelper:
         execution_context: ExecutionContext,
         block_name: str = "Block",
         editable: bool = False,
-        skip_safe_mode_check: bool = False,
     ) -> Optional[ReviewDecision]:
         """
         Handle a review request and return the decision in a single call.
@@ -177,8 +168,6 @@ class HITLReviewHelper:
             execution_context: Current execution context
             block_name: Name of the block requesting review
             editable: Whether the reviewer can edit the data
-            skip_safe_mode_check: If True, skip the safe mode check (caller already
-                verified). Used by sensitive action blocks that check their own flag.
 
         Returns:
             ReviewDecision if review is complete (approved/rejected),
@@ -195,7 +184,6 @@ class HITLReviewHelper:
             execution_context=execution_context,
             block_name=block_name,
             editable=editable,
-            skip_safe_mode_check=skip_safe_mode_check,
         )
 
         if review_result is None:

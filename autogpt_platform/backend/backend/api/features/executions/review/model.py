@@ -41,7 +41,6 @@ class PendingHumanReviewModel(BaseModel):
     graph_exec_id: str = Field(description="Graph execution ID")
     graph_id: str = Field(description="Graph ID")
     graph_version: int = Field(description="Graph version")
-    node_id: str = Field(description="Node ID in the graph definition")
     payload: SafeJsonData = Field(description="The actual data payload awaiting review")
     instructions: str | None = Field(
         description="Instructions or message for the reviewer", default=None
@@ -82,7 +81,6 @@ class PendingHumanReviewModel(BaseModel):
             graph_exec_id=review.graphExecId,
             graph_id=review.graphId,
             graph_version=review.graphVersion,
-            node_id=review.nodeId,
             payload=review.payload,
             instructions=review.instructions,
             editable=review.editable,
@@ -181,13 +179,12 @@ class ReviewRequest(BaseModel):
     reviews: List[ReviewItem] = Field(
         description="All reviews with their approval status, data, and messages"
     )
-    auto_approve_node_ids: List[str] = Field(
-        default_factory=list,
+    auto_approve_future_actions: bool = Field(
+        default=False,
         description=(
-            "List of node IDs (from the graph definition) to auto-approve for "
-            "the remainder of this execution. Future reviews from these specific "
-            "nodes will be automatically approved. This only affects the current "
-            "execution run."
+            "If true, future reviews from the same blocks (nodes) being approved "
+            "will be automatically approved for the remainder of this execution. "
+            "This only affects the current execution run."
         ),
     )
 

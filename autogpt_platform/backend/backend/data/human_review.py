@@ -38,7 +38,6 @@ async def get_or_create_human_review(
     graph_exec_id: str,
     graph_id: str,
     graph_version: int,
-    node_id: str,
     input_data: SafeJsonData,
     message: str,
     editable: bool,
@@ -54,7 +53,6 @@ async def get_or_create_human_review(
         graph_exec_id: ID of the graph execution
         graph_id: ID of the graph template
         graph_version: Version of the graph template
-        node_id: ID of the node in the graph definition
         input_data: The data to be reviewed
         message: Instructions for the reviewer
         editable: Whether the data can be edited
@@ -75,7 +73,6 @@ async def get_or_create_human_review(
                     "graphExecId": graph_exec_id,
                     "graphId": graph_id,
                     "graphVersion": graph_version,
-                    "nodeId": node_id,
                     "payload": SafeJson(input_data),
                     "instructions": message,
                     "editable": editable,
