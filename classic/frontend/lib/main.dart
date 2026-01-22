@@ -69,7 +69,7 @@ void main() async {
               SettingsViewModel(restApiUtility, prefsService),
         ),
       ],
-      child: MyApp(),
+      child: const MyApp(),
     ),
   );
 }
