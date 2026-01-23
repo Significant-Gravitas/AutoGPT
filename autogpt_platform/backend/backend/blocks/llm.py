@@ -334,7 +334,10 @@ def get_parallel_tool_calls_param(
     llm_model: LlmModel, parallel_tool_calls: bool | None
 ):
     """Get the appropriate parallel_tool_calls parameter for OpenAI-compatible APIs."""
-    if llm_model.startswith("o") or parallel_tool_calls is None:
+    # Check for o-series models (o1, o1-mini, o3-mini, etc.) which don't support
+    # parallel tool calls. Use regex to avoid false positives like "openai/gpt-oss".
+    is_o_series = re.match(r"^o\d", llm_model) is not None
+    if is_o_series or parallel_tool_calls is None:
         return openai.NOT_GIVEN
     return parallel_tool_calls
 
