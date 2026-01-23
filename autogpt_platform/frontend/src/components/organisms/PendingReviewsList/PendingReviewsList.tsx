@@ -41,7 +41,10 @@ export function PendingReviewsList({
     "approve" | "reject" | null
   >(null);
 
-  const [autoApproveFuture, setAutoApproveFuture] = useState(false);
+  // Track per-review auto-approval state
+  const [autoApproveFutureMap, setAutoApproveFutureMap] = useState<
+    Record<string, boolean>
+  >({});
 
   const { toast } = useToast();
 
@@ -95,25 +98,24 @@ export function PendingReviewsList({
     setReviewMessageMap((prev) => ({ ...prev, [nodeExecId]: message }));
   }
 
-  // Reset data to original values when toggling auto-approve
-  const handleAutoApproveFutureToggle = useCallback(
-    (enabled: boolean) => {
-      setAutoApproveFuture(enabled);
-      if (enabled) {
-        // Reset all data to original values
-        const originalData: Record<string, string> = {};
-        reviews.forEach((review) => {
-          originalData[review.node_exec_id] = JSON.stringify(
-            review.payload,
-            null,
-            2,
-          );
-        });
-        setReviewDataMap(originalData);
+  // Handle per-review auto-approval toggle
+  function handleAutoApproveFutureToggle(nodeExecId: string, enabled: boolean) {
+    setAutoApproveFutureMap((prev) => ({
+      ...prev,
+      [nodeExecId]: enabled,
+    }));
+
+    if (enabled) {
+      // Reset this review's data to original value
+      const review = reviews.find((r) => r.node_exec_id === nodeExecId);
+      if (review) {
+        setReviewDataMap((prev) => ({
+          ...prev,
+          [nodeExecId]: JSON.stringify(review.payload, null, 2),
+        }));
       }
-    },
-    [reviews],
-  );
+    }
+  }
 
   function processReviews(approved: boolean) {
     if (reviews.length === 0) {
@@ -131,12 +133,13 @@ export function PendingReviewsList({
     for (const review of reviews) {
       const reviewData = reviewDataMap[review.node_exec_id];
       const reviewMessage = reviewMessageMap[review.node_exec_id];
+      const autoApproveThisReview = autoApproveFutureMap[review.node_exec_id];
 
-      // When auto-approving future actions, send undefined (use original data)
+      // When auto-approving future actions for this review, send undefined (use original data)
       // Otherwise, parse and send the edited data if available
       let parsedData: any = undefined;
 
-      if (!autoApproveFuture) {
+      if (!autoApproveThisReview) {
         // For regular approve/reject, use edited data if available
         if (review.editable && reviewData) {
           try {
@@ -155,7 +158,7 @@ export function PendingReviewsList({
           parsedData = review.payload;
         }
       }
-      // When autoApproveFuture is true, parsedData stays undefined
+      // When autoApproveThisReview is true, parsedData stays undefined
       // Backend will use the original payload stored in the database
 
       reviewItems.push({
@@ -163,13 +166,13 @@ export function PendingReviewsList({
         approved,
         reviewed_data: parsedData,
         message: reviewMessage || undefined,
+        auto_approve_future: autoApproveThisReview && approved,
       });
     }
 
     reviewActionMutation.mutate({
       data: {
         reviews: reviewItems,
-        auto_approve_future_actions: autoApproveFuture && approved,
       },
     });
   }
@@ -215,35 +218,19 @@ export function PendingReviewsList({
       <div className="space-y-7">
         {reviews.map((review) => (
           <PendingReviewCard
-            key={`${review.node_exec_id}-${autoApproveFuture}`}
+            key={`${review.node_exec_id}`}
             review={review}
             onReviewDataChange={handleReviewDataChange}
             onReviewMessageChange={handleReviewMessageChange}
             reviewMessage={reviewMessageMap[review.node_exec_id] || ""}
-            isDisabled={autoApproveFuture}
+            isDisabled={autoApproveFutureMap[review.node_exec_id] || false}
+            autoApproveFuture={autoApproveFutureMap[review.node_exec_id] || false}
+            onAutoApproveFutureChange={handleAutoApproveFutureToggle}
           />
         ))}
       </div>
 
       <div className="space-y-4">
-        {/* Auto-approve toggle */}
-        <div className="flex items-center gap-3">
-          <Switch
-            checked={autoApproveFuture}
-            onCheckedChange={handleAutoApproveFutureToggle}
-            disabled={reviewActionMutation.isPending}
-          />
-          <Text variant="body" className="text-textBlack">
-            Auto-approve all future actions from these blocks
-          </Text>
-        </div>
-
-        {autoApproveFuture && (
-          <Text variant="small" className="text-amber-600">
-            Editing is disabled. Original data will be used for this and all
-            future reviews from these blocks.
-          </Text>
-        )}
 
         <div className="flex flex-wrap gap-2">
           <Button

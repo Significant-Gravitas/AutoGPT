@@ -44,6 +44,8 @@ interface PendingReviewCardProps {
   onReviewMessageChange?: (nodeExecId: string, message: string) => void;
   isDisabled?: boolean;
   onToggleDisabled?: (nodeExecId: string) => void;
+  autoApproveFuture?: boolean;
+  onAutoApproveFutureChange?: (nodeExecId: string, enabled: boolean) => void;
 }
 
 export function PendingReviewCard({
@@ -53,6 +55,8 @@ export function PendingReviewCard({
   onReviewMessageChange,
   isDisabled = false,
   onToggleDisabled,
+  autoApproveFuture = false,
+  onAutoApproveFutureChange,
 }: PendingReviewCardProps) {
   const extractedData = extractReviewData(review.payload);
   const isDataEditable = review.editable;
@@ -206,6 +210,29 @@ export function PendingReviewCard({
                 {JSON.stringify(currentData, null, 2)}
               </Text>
             </div>
+          )}
+        </div>
+      )}
+
+      {/* Auto-approve toggle for this review */}
+      {!showSimplified && !isDisabled && onAutoApproveFutureChange && (
+        <div className="space-y-2 rounded-lg border border-blue-200 bg-blue-50 p-3">
+          <div className="flex items-center gap-3">
+            <Switch
+              checked={autoApproveFuture}
+              onCheckedChange={(enabled: boolean) =>
+                onAutoApproveFutureChange(review.node_exec_id, enabled)
+              }
+            />
+            <Text variant="small" className="text-textBlack">
+              Auto-approve future executions of this block
+            </Text>
+          </div>
+          {autoApproveFuture && (
+            <Text variant="small" className="text-amber-600">
+              Editing disabled. Original data will be used for this and all
+              future reviews from this block.
+            </Text>
           )}
         </div>
       )}
