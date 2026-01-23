@@ -1,5 +1,28 @@
 import type { User } from "@supabase/supabase-js";
 
+export type PageState =
+  | { type: "welcome" }
+  | { type: "newChat" }
+  | { type: "creating"; prompt: string }
+  | { type: "chat"; sessionId: string; initialPrompt?: string };
+
+export function getInitialPromptFromState(
+  pageState: PageState,
+  storedInitialPrompt: string | undefined,
+) {
+  if (storedInitialPrompt) return storedInitialPrompt;
+  if (pageState.type === "creating") return pageState.prompt;
+  if (pageState.type === "chat") return pageState.initialPrompt;
+}
+
+export function shouldResetToWelcome(pageState: PageState) {
+  return (
+    pageState.type !== "newChat" &&
+    pageState.type !== "creating" &&
+    pageState.type !== "welcome"
+  );
+}
+
 export function getGreetingName(user?: User | null): string {
   if (!user) return "there";
   const metadata = user.user_metadata as Record<string, unknown> | undefined;
