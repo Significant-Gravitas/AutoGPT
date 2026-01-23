@@ -5,6 +5,7 @@ import { InfiniteScroll } from "@/components/contextual/InfiniteScroll/InfiniteS
 import { LibraryActionSubHeader } from "../LibraryActionSubHeader/LibraryActionSubHeader";
 import { LibraryAgentCard } from "../LibraryAgentCard/LibraryAgentCard";
 import { useLibraryAgentList } from "./useLibraryAgentList";
+import { LibraryFolder } from "../LibraryFolder/LibraryFolder";
 
 interface Props {
   searchTerm: string;
@@ -45,6 +46,11 @@ export function LibraryAgentList({
             loader={<LoadingSpinner size="medium" />}
           >
             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              <LibraryFolder name="Github Agents" agentCount={34} color="blue" icon="🤨"/>
+              <LibraryFolder name="Linear Agents" agentCount={3} color="green" icon="☘️"/>
+              <LibraryFolder name="Discord Agents" agentCount={32} color="red" icon="🚀"/>
+              <LibraryFolder name="Telegram Agents" agentCount={12} color="purple" icon="💬"/>
+              <LibraryFolder name="Email Agents" agentCount={10} color="yellow" icon="👍"/>
               {agents.map((agent) => (
                 <LibraryAgentCard key={agent.id} agent={agent} />
               ))}
