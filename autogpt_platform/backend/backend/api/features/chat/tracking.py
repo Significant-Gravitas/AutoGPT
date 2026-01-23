@@ -1,5 +1,6 @@
 """PostHog analytics tracking for the chat system."""
 
+import atexit
 import logging
 from typing import Any
 
@@ -14,6 +15,16 @@ settings = Settings()
 _posthog_client: Posthog | None = None
 
 
+def _shutdown_posthog() -> None:
+    """Flush and shutdown PostHog client on process exit."""
+    if _posthog_client is not None:
+        _posthog_client.flush()
+        _posthog_client.shutdown()
+
+
+atexit.register(_shutdown_posthog)
+
+
 def _get_posthog_client() -> Posthog | None:
     """Get or create the PostHog client instance."""
     global _posthog_client
@@ -21,12 +32,14 @@ def _get_posthog_client() -> Posthog | None:
         return _posthog_client
 
     if not settings.secrets.posthog_api_key:
+        logger.debug("PostHog API key not configured, analytics disabled")
         return None
 
     _posthog_client = Posthog(
         settings.secrets.posthog_api_key,
         host=settings.secrets.posthog_host,
     )
+    logger.info(f"PostHog client initialized with host: {settings.secrets.posthog_host}")
     return _posthog_client
 
 
@@ -62,7 +75,7 @@ def track_user_message(
         }
         client.capture(
             distinct_id=user_id or f"anonymous_{session_id}",
-            event="chat_message_sent",
+            event="copilot_message_sent",
             properties=properties,
         )
     except Exception as e:
@@ -85,6 +98,7 @@ def track_tool_called(
     """
     client = _get_posthog_client()
     if not client:
+        logger.info("PostHog client not available for tool tracking")
         return
 
     try:
@@ -94,9 +108,14 @@ def track_tool_called(
             "tool_name": tool_name,
             "tool_call_id": tool_call_id,
         }
+        distinct_id = user_id or f"anonymous_{session_id}"
+        logger.info(
+            f"Sending copilot_tool_called event to PostHog: distinct_id={distinct_id}, "
+            f"tool_name={tool_name}"
+        )
         client.capture(
-            distinct_id=user_id or f"anonymous_{session_id}",
-            event="chat_tool_called",
+            distinct_id=distinct_id,
+            event="copilot_tool_called",
             properties=properties,
         )
     except Exception as e:
@@ -136,7 +155,7 @@ def track_agent_run_success(
         }
         client.capture(
             distinct_id=user_id,
-            event="chat_agent_run_success",
+            event="copilot_agent_run_success",
             properties=properties,
         )
     except Exception as e:
@@ -182,7 +201,7 @@ def track_agent_scheduled(
         }
         client.capture(
             distinct_id=user_id,
-            event="chat_agent_scheduled",
+            event="copilot_agent_scheduled",
             properties=properties,
         )
     except Exception as e:
@@ -222,7 +241,7 @@ def track_trigger_setup(
         }
         client.capture(
             distinct_id=user_id,
-            event="chat_trigger_setup",
+            event="copilot_trigger_setup",
             properties=properties,
         )
     except Exception as e:

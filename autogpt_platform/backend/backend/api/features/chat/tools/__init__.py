@@ -1,9 +1,12 @@
+import logging
 from typing import TYPE_CHECKING, Any
 
 from openai.types.chat import ChatCompletionToolParam
 
 from backend.api.features.chat.model import ChatSession
 from backend.api.features.chat.tracking import track_tool_called
+
+logger = logging.getLogger(__name__)
 
 from .add_understanding import AddUnderstandingTool
 from .agent_output import AgentOutputTool
@@ -59,6 +62,10 @@ async def execute_tool(
         raise ValueError(f"Tool {tool_name} not found")
 
     # Track tool call in PostHog
+    logger.info(
+        f"Tracking tool call: tool={tool_name}, user={user_id}, "
+        f"session={session.session_id}, call_id={tool_call_id}"
+    )
     track_tool_called(
         user_id=user_id,
         session_id=session.session_id,
