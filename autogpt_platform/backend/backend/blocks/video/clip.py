@@ -2,13 +2,17 @@
 
 import os
 import tempfile
-import uuid
 from typing import Literal
 
 from moviepy.video.io.VideoFileClip import VideoFileClip
 
-from backend.data.block import Block, BlockCategory, BlockOutput
-from backend.data.block import BlockSchemaInput, BlockSchemaOutput
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import SchemaField
 from backend.util.exceptions import BlockExecutionError
 
@@ -19,39 +23,34 @@ class VideoClipBlock(Block):
     class Input(BlockSchemaInput):
         video_in: str = SchemaField(
             description="Input video (URL, data URI, or file path)",
-            json_schema_extra={"format": "file"}
+            json_schema_extra={"format": "file"},
         )
-        start_time: float = SchemaField(
-            description="Start time in seconds",
-            ge=0.0
-        )
-        end_time: float = SchemaField(
-            description="End time in seconds",
-            ge=0.0
-        )
+        start_time: float = SchemaField(description="Start time in seconds", ge=0.0)
+        end_time: float = SchemaField(description="End time in seconds", ge=0.0)
         output_format: Literal["mp4", "webm", "mkv", "mov"] = SchemaField(
-            description="Output format",
-            default="mp4",
-            advanced=True
+            description="Output format", default="mp4", advanced=True
         )
 
     class Output(BlockSchemaOutput):
         video_out: str = SchemaField(
-            description="Clipped video file",
-            json_schema_extra={"format": "file"}
+            description="Clipped video file", json_schema_extra={"format": "file"}
         )
         duration: float = SchemaField(description="Clip duration in seconds")
 
     def __init__(self):
         super().__init__(
-            id="b2c3d4e5-f6a7-8901-bcde-f23456789012",
+            id="8f539119-e580-4d86-ad41-86fbcb22abb1",
             description="Extract a time segment from a video",
             categories={BlockCategory.MULTIMEDIA},
             input_schema=self.Input,
             output_schema=self.Output,
-            test_input={"video_in": "/tmp/test.mp4", "start_time": 0.0, "end_time": 10.0},
+            test_input={
+                "video_in": "/tmp/test.mp4",
+                "start_time": 0.0,
+                "end_time": 10.0,
+            },
             test_output=[("video_out", str), ("duration", float)],
-            test_mock={"_clip_video": lambda *args: ("/tmp/clip.mp4", 10.0)}
+            test_mock={"_clip_video": lambda *args: ("/tmp/clip.mp4", 10.0)},
         )
 
     def _clip_video(
@@ -66,7 +65,7 @@ class VideoClipBlock(Block):
         subclip = None
         try:
             clip = VideoFileClip(video_in)
-            subclip = clip.subclip(start_time, end_time)
+            subclip = clip.subclipped(start_time, end_time)
 
             fd, output_path = tempfile.mkstemp(suffix=f".{output_format}")
             os.close(fd)
@@ -85,7 +84,7 @@ class VideoClipBlock(Block):
             raise BlockExecutionError(
                 message=f"end_time ({input_data.end_time}) must be greater than start_time ({input_data.start_time})",
                 block_name=self.name,
-                block_id=str(self.id)
+                block_id=str(self.id),
             )
 
         try:
@@ -104,5 +103,5 @@ class VideoClipBlock(Block):
             raise BlockExecutionError(
                 message=f"Failed to clip video: {e}",
                 block_name=self.name,
-                block_id=str(self.id)
+                block_id=str(self.id),
             ) from e

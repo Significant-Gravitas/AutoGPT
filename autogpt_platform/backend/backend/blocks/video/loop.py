@@ -1,7 +1,7 @@
 """LoopVideoBlock - Loop a video to a given duration or number of repeats."""
 
 import os
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 from moviepy.video.fx.Loop import Loop
 from moviepy.video.io.VideoFileClip import VideoFileClip
@@ -71,22 +71,20 @@ class LoopVideoBlock(Block):
         )
         input_abspath = get_exec_file_path(graph_exec_id, local_video_path)
 
-        clip = None
-        looped_clip = None
+        clip: VideoFileClip | None = None
+        looped_clip: Any = None
         try:
             # 2) Load the clip
             clip = VideoFileClip(input_abspath)
 
             # 3) Apply the loop effect
-            looped_clip = clip
+            # Note: Loop effect handles both video and audio looping automatically
             if input_data.duration:
-                looped_clip = looped_clip.with_effects([Loop(duration=input_data.duration)])
+                looped_clip = clip.with_effects([Loop(duration=input_data.duration)])
             elif input_data.n_loops:
-                looped_clip = looped_clip.with_effects([Loop(n=input_data.n_loops)])
+                looped_clip = clip.with_effects([Loop(n=input_data.n_loops)])
             else:
                 raise ValueError("Either 'duration' or 'n_loops' must be provided.")
-
-            assert isinstance(looped_clip, VideoFileClip)
 
             # 4) Save the looped output
             output_filename = MediaFileType(
@@ -94,8 +92,9 @@ class LoopVideoBlock(Block):
             )
             output_abspath = get_exec_file_path(graph_exec_id, output_filename)
 
-            looped_clip = looped_clip.with_audio(clip.audio)
-            looped_clip.write_videofile(output_abspath, codec="libx264", audio_codec="aac")
+            looped_clip.write_videofile(
+                output_abspath, codec="libx264", audio_codec="aac"
+            )
 
             # Return as data URI or path
             video_out = await store_media_file(
@@ -107,7 +106,7 @@ class LoopVideoBlock(Block):
 
             yield "video_out", video_out
         finally:
-            if looped_clip and looped_clip is not clip:
+            if looped_clip is not None:
                 looped_clip.close()
-            if clip:
+            if clip is not None:
                 clip.close()

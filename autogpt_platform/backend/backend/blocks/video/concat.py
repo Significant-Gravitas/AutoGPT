@@ -2,13 +2,19 @@
 
 import os
 import tempfile
-import uuid
 from typing import Literal
 
-from moviepy.editor import VideoFileClip, concatenate_videoclips
+from moviepy import concatenate_videoclips
+from moviepy.video.fx import CrossFadeIn, CrossFadeOut, FadeIn, FadeOut
+from moviepy.video.io.VideoFileClip import VideoFileClip
 
-from backend.data.block import Block, BlockCategory, BlockOutput
-from backend.data.block import BlockSchemaInput, BlockSchemaOutput
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import SchemaField
 from backend.util.exceptions import BlockExecutionError
 
@@ -21,45 +27,41 @@ class VideoConcatBlock(Block):
             description="List of video files to concatenate (in order)"
         )
         transition: Literal["none", "crossfade", "fade_black"] = SchemaField(
-            description="Transition between clips",
-            default="none"
+            description="Transition between clips", default="none"
         )
-        transition_duration: float = SchemaField(
+        transition_duration: int = SchemaField(
             description="Transition duration in seconds",
-            default=0.5,
-            ge=0.0,
-            advanced=True
+            default=1,
+            ge=0,
+            advanced=True,
         )
         output_format: Literal["mp4", "webm", "mkv", "mov"] = SchemaField(
-            description="Output format",
-            default="mp4",
-            advanced=True
+            description="Output format", default="mp4", advanced=True
         )
 
     class Output(BlockSchemaOutput):
         video_out: str = SchemaField(
-            description="Concatenated video file",
-            json_schema_extra={"format": "file"}
+            description="Concatenated video file", json_schema_extra={"format": "file"}
         )
         total_duration: float = SchemaField(description="Total duration in seconds")
 
     def __init__(self):
         super().__init__(
-            id="c3d4e5f6-a7b8-9012-cdef-345678901234",
+            id="9b0f531a-1118-487f-aeec-3fa63ea8900a",
             description="Merge multiple video clips into one continuous video",
             categories={BlockCategory.MULTIMEDIA},
             input_schema=self.Input,
             output_schema=self.Output,
             test_input={"videos": ["/tmp/a.mp4", "/tmp/b.mp4"]},
             test_output=[("video_out", str), ("total_duration", float)],
-            test_mock={"_concat_videos": lambda *args: ("/tmp/concat.mp4", 20.0)}
+            test_mock={"_concat_videos": lambda *args: ("/tmp/concat.mp4", 20.0)},
         )
 
     def _concat_videos(
         self,
         videos: list[str],
         transition: str,
-        transition_duration: float,
+        transition_duration: int,
         output_format: str,
     ) -> tuple[str, float]:
         """Concatenate videos. Extracted for testability."""
@@ -73,20 +75,23 @@ class VideoConcatBlock(Block):
 
             if transition == "crossfade":
                 for i, clip in enumerate(clips):
+                    effects = []
                     if i > 0:
-                        clip = clip.crossfadein(transition_duration)
+                        effects.append(CrossFadeIn(transition_duration))
                     if i < len(clips) - 1:
-                        clip = clip.crossfadeout(transition_duration)
+                        effects.append(CrossFadeOut(transition_duration))
+                    if effects:
+                        clip = clip.with_effects(effects)
                     faded_clips.append(clip)
                 final = concatenate_videoclips(
                     faded_clips,
                     method="compose",
-                    padding=-transition_duration
+                    padding=-transition_duration,
                 )
             elif transition == "fade_black":
                 for clip in clips:
-                    faded = clip.fadein(transition_duration).fadeout(
-                        transition_duration
+                    faded = clip.with_effects(
+                        [FadeIn(transition_duration), FadeOut(transition_duration)]
                     )
                     faded_clips.append(faded)
                 final = concatenate_videoclips(faded_clips)
@@ -112,7 +117,7 @@ class VideoConcatBlock(Block):
             raise BlockExecutionError(
                 message="At least 2 videos are required for concatenation",
                 block_name=self.name,
-                block_id=str(self.id)
+                block_id=str(self.id),
             )
 
         try:
@@ -131,5 +136,5 @@ class VideoConcatBlock(Block):
             raise BlockExecutionError(
                 message=f"Failed to concatenate videos: {e}",
                 block_name=self.name,
-                block_id=str(self.id)
+                block_id=str(self.id),
             ) from e

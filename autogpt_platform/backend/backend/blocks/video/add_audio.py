@@ -1,7 +1,6 @@
 """AddAudioToVideoBlock - Attach an audio track to a video."""
 
 import os
-import tempfile
 from typing import Literal
 
 from moviepy.audio.io.AudioFileClip import AudioFileClip
@@ -74,31 +73,37 @@ class AddAudioToVideoBlock(Block):
             return_content=False,
         )
 
-        abs_temp_dir = os.path.join(tempfile.gettempdir(), "exec_file", graph_exec_id)
-        video_abspath = os.path.join(abs_temp_dir, local_video_path)
-        audio_abspath = os.path.join(abs_temp_dir, local_audio_path)
+        video_abspath = get_exec_file_path(graph_exec_id, local_video_path)
+        audio_abspath = get_exec_file_path(graph_exec_id, local_audio_path)
 
         video_clip = None
-        audio_clip = None
+        audio_clip_original = None
+        audio_clip_scaled = None
         final_clip = None
         try:
             # 2) Load video + audio with moviepy
             video_clip = VideoFileClip(video_abspath)
-            audio_clip = AudioFileClip(audio_abspath)
-            
+            audio_clip_original = AudioFileClip(audio_abspath)
+
             # Optionally scale volume
+            audio_to_use = audio_clip_original
             if input_data.volume != 1.0:
-                audio_clip = audio_clip.with_volume_scaled(input_data.volume)
+                audio_clip_scaled = audio_clip_original.with_volume_scaled(
+                    input_data.volume
+                )
+                audio_to_use = audio_clip_scaled
 
             # 3) Attach the new audio track
-            final_clip = video_clip.with_audio(audio_clip)
+            final_clip = video_clip.with_audio(audio_to_use)
 
             # 4) Write to output file
             output_filename = MediaFileType(
                 f"{node_exec_id}_audio_attached_{os.path.basename(local_video_path)}"
             )
-            output_abspath = os.path.join(abs_temp_dir, output_filename)
-            final_clip.write_videofile(output_abspath, codec="libx264", audio_codec="aac")
+            output_abspath = get_exec_file_path(graph_exec_id, output_filename)
+            final_clip.write_videofile(
+                output_abspath, codec="libx264", audio_codec="aac"
+            )
 
             # 5) Return either path or data URI
             video_out = await store_media_file(
@@ -112,7 +117,9 @@ class AddAudioToVideoBlock(Block):
         finally:
             if final_clip:
                 final_clip.close()
-            if audio_clip:
-                audio_clip.close()
+            if audio_clip_scaled:
+                audio_clip_scaled.close()
+            if audio_clip_original:
+                audio_clip_original.close()
             if video_clip:
                 video_clip.close()
