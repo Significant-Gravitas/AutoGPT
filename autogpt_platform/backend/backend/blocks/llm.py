@@ -187,6 +187,9 @@ class LlmModel(str, metaclass=LlmModelMeta):
         llm_model_metadata = {}
         for model in cls:
             model_name = model.value
+            # Skip disabled models - only show enabled models in the picker
+            if not llm_registry.is_model_enabled(model_name):
+                continue
             # Use registry directly with None check to gracefully handle
             # missing metadata during startup/import before registry is populated
             metadata = llm_registry.get_llm_model_metadata(model_name)

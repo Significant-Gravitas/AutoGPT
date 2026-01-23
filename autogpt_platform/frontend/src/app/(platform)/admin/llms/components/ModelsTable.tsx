@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect, useRef } from "react";
 import type { LlmModel } from "@/app/api/__generated__/models/llmModel";
 import type { LlmModelCreator } from "@/app/api/__generated__/models/llmModelCreator";
 import type { LlmProvider } from "@/app/api/__generated__/models/llmProvider";
@@ -16,10 +17,13 @@ import { toggleLlmModelAction } from "../actions";
 import { DeleteModelModal } from "./DeleteModelModal";
 import { DisableModelModal } from "./DisableModelModal";
 import { EditModelModal } from "./EditModelModal";
-import { Star } from "@phosphor-icons/react";
+import { Star, Spinner } from "@phosphor-icons/react";
+import { getV2ListLlmModels } from "@/app/api/__generated__/endpoints/admin/admin";
+
+const PAGE_SIZE = 50;
 
 export function ModelsTable({
-  models,
+  models: initialModels,
   providers,
   creators,
 }: {
@@ -27,6 +31,75 @@ export function ModelsTable({
   providers: LlmProvider[];
   creators: LlmModelCreator[];
 }) {
+  const [models, setModels] = useState<LlmModel[]>(initialModels);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [hasMore, setHasMore] = useState(initialModels.length === PAGE_SIZE);
+  const [isLoading, setIsLoading] = useState(false);
+  const loadedPagesRef = useRef(1);
+
+  // Sync with parent when initialModels changes (e.g., after enable/disable)
+  // Re-fetch all loaded pages to preserve expanded state
+  useEffect(() => {
+    async function refetchAllPages() {
+      const pagesToLoad = loadedPagesRef.current;
+
+      if (pagesToLoad === 1) {
+        // Only first page loaded, just use initialModels
+        setModels(initialModels);
+        setHasMore(initialModels.length === PAGE_SIZE);
+        return;
+      }
+
+      // Re-fetch all pages we had loaded
+      const allModels: LlmModel[] = [...initialModels];
+      let lastPageHadFullResults = initialModels.length === PAGE_SIZE;
+
+      for (let page = 2; page <= pagesToLoad; page++) {
+        try {
+          const response = await getV2ListLlmModels({
+            page,
+            page_size: PAGE_SIZE,
+          });
+          if (response.status === 200) {
+            allModels.push(...response.data.models);
+            lastPageHadFullResults = response.data.models.length === PAGE_SIZE;
+          }
+        } catch (err) {
+          console.error(`Error refetching page ${page}:`, err);
+          break;
+        }
+      }
+
+      setModels(allModels);
+      setHasMore(lastPageHadFullResults);
+    }
+
+    refetchAllPages();
+  }, [initialModels]);
+
+  async function loadMore() {
+    if (isLoading) return;
+    setIsLoading(true);
+
+    try {
+      const nextPage = currentPage + 1;
+      const response = await getV2ListLlmModels({
+        page: nextPage,
+        page_size: PAGE_SIZE,
+      });
+
+      if (response.status === 200) {
+        setModels((prev) => [...prev, ...response.data.models]);
+        setCurrentPage(nextPage);
+        loadedPagesRef.current = nextPage;
+        setHasMore(response.data.models.length === PAGE_SIZE);
+      }
+    } catch (err) {
+      console.error("Error loading more models:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  }
   if (!models.length) {
     return (
       <div className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
@@ -40,8 +113,9 @@ export function ModelsTable({
   );
 
   return (
-    <div className="rounded-lg border">
-      <Table>
+    <div>
+      <div className="rounded-lg border">
+        <Table>
         <TableHeader>
           <TableRow>
             <TableHead>Model</TableHead>
@@ -154,7 +228,23 @@ export function ModelsTable({
             );
           })}
         </TableBody>
-      </Table>
+        </Table>
+      </div>
+
+      {hasMore && (
+        <div className="mt-4 flex justify-center">
+          <Button onClick={loadMore} disabled={isLoading} variant="outline">
+            {isLoading ? (
+              <>
+                <Spinner className="mr-2 h-4 w-4 animate-spin" />
+                Loading...
+              </>
+            ) : (
+              "Load More"
+            )}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
