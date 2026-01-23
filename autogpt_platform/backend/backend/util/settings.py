@@ -666,6 +666,12 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
         default="https://cloud.langfuse.com", description="Langfuse host URL"
     )
 
+    # PostHog analytics
+    posthog_api_key: str = Field(default="", description="PostHog API key")
+    posthog_host: str = Field(
+        default="https://us.i.posthog.com", description="PostHog host URL"
+    )
+
     # Add more secret fields as needed
     model_config = SettingsConfigDict(
         env_file=".env",

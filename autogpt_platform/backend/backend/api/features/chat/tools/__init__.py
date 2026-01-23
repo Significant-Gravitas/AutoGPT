@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING, Any
 from openai.types.chat import ChatCompletionToolParam
 
 from backend.api.features.chat.model import ChatSession
+from backend.api.features.chat.tracking import track_tool_called
 
 from .add_understanding import AddUnderstandingTool
 from .agent_output import AgentOutputTool
@@ -56,4 +57,13 @@ async def execute_tool(
     tool = TOOL_REGISTRY.get(tool_name)
     if not tool:
         raise ValueError(f"Tool {tool_name} not found")
+
+    # Track tool call in PostHog
+    track_tool_called(
+        user_id=user_id,
+        session_id=session.session_id,
+        tool_name=tool_name,
+        tool_call_id=tool_call_id,
+    )
+
     return await tool.execute(user_id, session, tool_call_id, **parameters)
