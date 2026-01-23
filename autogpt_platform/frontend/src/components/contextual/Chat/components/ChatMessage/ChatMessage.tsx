@@ -7,7 +7,6 @@ import {
   ArrowsClockwiseIcon,
   CheckCircleIcon,
   CheckIcon,
-  CopyIcon,
 } from "@phosphor-icons/react";
 import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
@@ -340,11 +339,26 @@ export function ChatMessage({
                   size="icon"
                   onClick={handleCopy}
                   aria-label="Copy message"
+                  className="p-1"
                 >
                   {copied ? (
                     <CheckIcon className="size-4 text-green-600" />
                   ) : (
-                    <CopyIcon className="size-4 text-zinc-600" />
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="24"
+                      height="24"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="size-3 text-zinc-600"
+                    >
+                      <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
+                      <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+                    </svg>
                   )}
                 </Button>
               )}

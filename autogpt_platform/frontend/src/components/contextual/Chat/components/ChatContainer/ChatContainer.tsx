@@ -4,6 +4,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { useBreakpoint } from "@/lib/hooks/useBreakpoint";
 import { cn } from "@/lib/utils";
+import { useEffect } from "react";
 import { ChatInput } from "../ChatInput/ChatInput";
 import { MessageList } from "../MessageList/MessageList";
 import { useChatContainer } from "./useChatContainer";
@@ -13,6 +14,7 @@ export interface ChatContainerProps {
   initialMessages: SessionDetailResponse["messages"];
   initialPrompt?: string;
   className?: string;
+  onStreamingChange?: (isStreaming: boolean) => void;
 }
 
 export function ChatContainer({
@@ -20,6 +22,7 @@ export function ChatContainer({
   initialMessages,
   initialPrompt,
   className,
+  onStreamingChange,
 }: ChatContainerProps) {
   const {
     messages,
@@ -35,6 +38,10 @@ export function ChatContainer({
     initialMessages,
     initialPrompt,
   });
+
+  useEffect(() => {
+    onStreamingChange?.(isStreaming);
+  }, [isStreaming, onStreamingChange]);
 
   const breakpoint = useBreakpoint();
   const isMobile =
