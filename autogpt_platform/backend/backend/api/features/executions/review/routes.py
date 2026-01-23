@@ -161,6 +161,13 @@ async def process_review_action(
             detail="All reviews in a single request must belong to the same execution.",
         )
 
+    # Safety check (matching_review should never be None here due to validation above)
+    if matching_review is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal error: No matching review found despite validation",
+        )
+
     graph_exec_id = matching_review.graph_exec_id
 
     # Validate execution status before processing reviews
