@@ -137,19 +137,28 @@ async def process_review_action(
             detail="At least one review must be provided",
         )
 
-    # Get graph execution ID by directly looking up one of the requested reviews
+    # Get graph execution ID by looking up all requested reviews
     # Use direct lookup to avoid pagination issues (can't miss reviews beyond first page)
+    # Also validate that all reviews belong to the same execution
     matching_review = None
+    graph_exec_ids: set[str] = set()
+
     for node_exec_id in all_request_node_ids:
         review = await get_pending_review_by_node_exec_id(node_exec_id, user_id)
-        if review:
+        if not review:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No pending review found for node execution {node_exec_id}",
+            )
+        if matching_review is None:
             matching_review = review
-            break
+        graph_exec_ids.add(review.graph_exec_id)
 
-    if not matching_review:
+    # Ensure all reviews belong to the same execution
+    if len(graph_exec_ids) > 1:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No pending reviews found for the requested node executions",
+            status_code=status.HTTP_409_CONFLICT,
+            detail="All reviews in a single request must belong to the same execution.",
         )
 
     graph_exec_id = matching_review.graph_exec_id

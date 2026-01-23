@@ -100,6 +100,7 @@ class HITLReviewHelper:
             graph_exec_id=graph_exec_id,
             node_id=node_id,
             user_id=user_id,
+            input_data=input_data,
         ):
             logger.info(
                 f"Block {block_name} skipping review for node {node_exec_id} - "

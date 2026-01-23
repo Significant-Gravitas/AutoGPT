@@ -43,6 +43,7 @@ async def check_approval(
     graph_exec_id: str,
     node_id: str,
     user_id: str,
+    input_data: SafeJsonData | None = None,
 ) -> Optional[ReviewResult]:
     """
     Check if there's an existing approval for this node execution.
@@ -56,6 +57,7 @@ async def check_approval(
         graph_exec_id: ID of the graph execution
         node_id: ID of the node definition (not execution)
         user_id: ID of the user (for data isolation)
+        input_data: Current input data (used for auto-approvals to avoid stale data)
 
     Returns:
         ReviewResult if approval found (either normal or auto), None otherwise
@@ -80,8 +82,14 @@ async def check_approval(
             f"Found {'auto-' if is_auto_approval else ''}approval for node {node_id} "
             f"(exec: {node_exec_id}) in execution {graph_exec_id}"
         )
+        # For auto-approvals, use current input_data to avoid replaying stale payload
+        # For normal approvals, use the stored payload (which may have been edited)
         return ReviewResult(
-            data=existing_review.payload,
+            data=(
+                input_data
+                if is_auto_approval and input_data is not None
+                else existing_review.payload
+            ),
             status=ReviewStatus.APPROVED,
             message=(
                 "Auto-approved (user approved all future actions for this node)"
@@ -233,11 +241,15 @@ async def get_pending_review_by_node_exec_id(
     Returns:
         The pending review if found and belongs to user, None otherwise
     """
-    review = await PendingHumanReview.prisma().find_unique(
-        where={"nodeExecId": node_exec_id}
+    review = await PendingHumanReview.prisma().find_first(
+        where={
+            "nodeExecId": node_exec_id,
+            "userId": user_id,
+            "status": ReviewStatus.WAITING,
+        }
     )
 
-    if not review or review.userId != user_id or review.status != ReviewStatus.WAITING:
+    if not review:
         return None
 
     return PendingHumanReviewModel.from_db(review)
