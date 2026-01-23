@@ -218,3 +218,61 @@ test("shows error when deletion fails", async () => {
 4. **Co-locate integration tests** - Keep `__tests__/` folder next to the component
 5. **E2E is expensive** - Only for critical happy paths; prefer integration tests
 6. **AI agents are good at writing integration tests** - Start with these when adding test coverage
+
+---
+
+## Testing 500 Server Errors
+
+Orval auto-generates 422 validation error handlers, but 500 errors must be created manually. Use the helper:
+
+```tsx
+import { create500Handler } from "@/tests/integrations/helpers/create-500-handler";
+
+test("handles server error", async () => {
+  server.use(create500Handler("get", "*/api/store/agents"));
+  render(<Component />);
+  expect(await screen.findByText("Failed to load")).toBeInTheDocument();
+});
+```
+
+Options:
+
+- `delayMs`: Add delay before response (for testing loading states)
+- `body`: Custom error response body
+
+---
+
+## Testing Auth-Dependent Components
+
+For components that behave differently based on login state:
+
+```tsx
+import {
+  mockAuthenticatedUser,
+  mockUnauthenticatedUser,
+  resetAuthState,
+} from "@/tests/integrations/helpers/mock-supabase-auth";
+
+describe("MyComponent", () => {
+  afterEach(() => {
+    resetAuthState();
+  });
+
+  test("shows feature when logged in", async () => {
+    mockAuthenticatedUser();
+    render(<MyComponent />);
+    expect(await screen.findByText("Premium Feature")).toBeInTheDocument();
+  });
+
+  test("hides feature when logged out", async () => {
+    mockUnauthenticatedUser();
+    render(<MyComponent />);
+    expect(screen.queryByText("Premium Feature")).not.toBeInTheDocument();
+  });
+
+  test("with custom user data", async () => {
+    mockAuthenticatedUser({ email: "custom@test.com" });
+    // ...
+  });
+});
+```

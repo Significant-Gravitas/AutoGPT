@@ -2,12 +2,17 @@ import { beforeAll, afterAll, afterEach } from "vitest";
 import { server } from "@/mocks/mock-server";
 import { mockNextjsModules } from "./setup-nextjs-mocks";
 import { mockSupabaseRequest } from "./mock-supabase-request";
-import '@testing-library/jest-dom';
+import "@testing-library/jest-dom";
+import { suppressReactQueryUpdateWarning } from "./helpers/supress-react-query-update-warning";
 
 beforeAll(() => {
   mockNextjsModules();
-  mockSupabaseRequest(); // If you need user's data - please mock supabase actions in your specific test - it sends null user [It's only to avoid cookies() call]
+  mockSupabaseRequest();
+  const restoreConsoleError = suppressReactQueryUpdateWarning();
+  afterAll(() => {
+    restoreConsoleError();
+  });
   return server.listen({ onUnhandledRequest: "error" });
 });
-afterEach(() => server.resetHandlers());
+afterEach(() => {server.resetHandlers()});
 afterAll(() => server.close());

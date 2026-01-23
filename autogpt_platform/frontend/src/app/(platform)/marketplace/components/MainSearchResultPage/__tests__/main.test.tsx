@@ -1,6 +1,6 @@
 import { describe, expect, test, afterEach } from "vitest";
 import { render, screen, waitFor } from "@/tests/integrations/test-utils";
-import { MainMarkeplacePage } from "../MainMarketplacePage";
+import { MainSearchResultPage } from "../MainSearchResultPage";
 import { server } from "@/mocks/mock-server";
 import {
   getGetV2ListStoreAgentsMockHandler422,
@@ -13,78 +13,60 @@ import {
   resetAuthState,
 } from "@/tests/integrations/helpers/mock-supabase-auth";
 
-describe("MainMarketplacePage", () => {
+const defaultProps = {
+  searchTerm: "test-search",
+  sort: undefined as undefined,
+};
+
+describe("MainSearchResultPage", () => {
   afterEach(() => {
     resetAuthState();
   });
 
   describe("rendering", () => {
-    test("renders hero section with search bar", async () => {
-      render(<MainMarkeplacePage />);
+    test("renders search results header with search term", async () => {
+      render(<MainSearchResultPage {...defaultProps} />);
 
-      expect(
-        await screen.findByText("Featured agents", { exact: false }),
-      ).toBeInTheDocument();
-      
-      expect(screen.getByPlaceholderText(/search/i)).toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.getByText("Results for:")).toBeInTheDocument();
+      });
+      expect(screen.getByText("test-search")).toBeInTheDocument();
     });
 
-    test("renders featured agents section", async () => {
-      render(<MainMarkeplacePage />);
+    test("renders search bar", async () => {
+      render(<MainSearchResultPage {...defaultProps} />);
 
-      expect(
-        await screen.findByText("Featured agents", { exact: false }),
-      ).toBeInTheDocument();
-    });
-
-    test("renders top agents section", async () => {
-      render(<MainMarkeplacePage />);
-
-      expect(
-        await screen.findByText("Top Agents", { exact: false }),
-      ).toBeInTheDocument();
-    });
-
-    test("renders featured creators section", async () => {
-      render(<MainMarkeplacePage />);
-
-      expect(
-        await screen.findByText("Featured creators", { exact: false }),
-      ).toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.getByPlaceholderText(/search/i)).toBeInTheDocument();
+      });
     });
   });
 
   describe("auth state", () => {
     test("renders page correctly when logged out", async () => {
       mockUnauthenticatedUser();
-      render(<MainMarkeplacePage />);
+      render(<MainSearchResultPage {...defaultProps} />);
 
-      expect(
-        await screen.findByText("Featured agents", { exact: false }),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByText("Top Agents", { exact: false }),
-      ).toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.getByText("Results for:")).toBeInTheDocument();
+      });
     });
 
     test("renders page correctly when logged in", async () => {
       mockAuthenticatedUser();
-      render(<MainMarkeplacePage />);
+      render(<MainSearchResultPage {...defaultProps} />);
 
-      expect(
-        await screen.findByText("Featured agents", { exact: false }),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByText("Top Agents", { exact: false }),
-      ).toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.getByText("Results for:")).toBeInTheDocument();
+      });
     });
   });
 
   describe("error handling", () => {
-    test("displays error when featured agents API returns 422", async () => {
+    test("displays error when agents API returns 422", async () => {
       server.use(getGetV2ListStoreAgentsMockHandler422());
 
-      render(<MainMarkeplacePage />);
+      render(<MainSearchResultPage {...defaultProps} />);
 
       await waitFor(() => {
         expect(
@@ -96,7 +78,7 @@ describe("MainMarketplacePage", () => {
     test("displays error when creators API returns 422", async () => {
       server.use(getGetV2ListStoreCreatorsMockHandler422());
 
-      render(<MainMarkeplacePage />);
+      render(<MainSearchResultPage {...defaultProps} />);
 
       await waitFor(() => {
         expect(
@@ -108,7 +90,7 @@ describe("MainMarketplacePage", () => {
     test("displays error when API returns 500", async () => {
       server.use(create500Handler("get", "*/api/store/agents*"));
 
-      render(<MainMarkeplacePage />);
+      render(<MainSearchResultPage {...defaultProps} />);
 
       await waitFor(() => {
         expect(
@@ -120,7 +102,7 @@ describe("MainMarketplacePage", () => {
     test("retry button is visible on error", async () => {
       server.use(getGetV2ListStoreAgentsMockHandler422());
 
-      render(<MainMarkeplacePage />);
+      render(<MainSearchResultPage {...defaultProps} />);
 
       await waitFor(() => {
         expect(
