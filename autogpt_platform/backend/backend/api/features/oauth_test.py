@@ -165,7 +165,7 @@ async def client(server, test_user: str) -> AsyncGenerator[httpx.AsyncClient, No
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_authorize_creates_code_in_database(
+async def test_authorize_creates_code_in_database_test(
     client: httpx.AsyncClient,
     test_user: str,
     test_oauth_app: dict,
