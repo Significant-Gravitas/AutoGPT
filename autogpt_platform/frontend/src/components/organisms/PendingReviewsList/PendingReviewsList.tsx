@@ -223,14 +223,15 @@ export function PendingReviewsList({
             onReviewMessageChange={handleReviewMessageChange}
             reviewMessage={reviewMessageMap[review.node_exec_id] || ""}
             isDisabled={autoApproveFutureMap[review.node_exec_id] || false}
-            autoApproveFuture={autoApproveFutureMap[review.node_exec_id] || false}
+            autoApproveFuture={
+              autoApproveFutureMap[review.node_exec_id] || false
+            }
             onAutoApproveFutureChange={handleAutoApproveFutureToggle}
           />
         ))}
       </div>
 
       <div className="space-y-4">
-
         <div className="flex flex-wrap gap-2">
           <Button
             onClick={() => processReviews(true)}
