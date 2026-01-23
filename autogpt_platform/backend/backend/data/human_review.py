@@ -17,6 +17,7 @@ from backend.api.features.executions.review.model import (
     PendingHumanReviewModel,
     SafeJsonData,
 )
+from backend.data.execution import get_graph_execution_meta
 from backend.util.json import SafeJson
 
 logger = logging.getLogger(__name__)
@@ -107,7 +108,19 @@ async def create_auto_approval_record(
 
     This is stored as a PendingHumanReview with a special nodeExecId pattern
     and status=APPROVED, so future executions of the same node can skip review.
+
+    Raises:
+        ValueError: If the graph execution doesn't belong to the user
     """
+    # Validate that the graph execution belongs to this user (defense in depth)
+    graph_exec = await get_graph_execution_meta(
+        user_id=user_id, execution_id=graph_exec_id
+    )
+    if not graph_exec:
+        raise ValueError(
+            f"Graph execution {graph_exec_id} not found or doesn't belong to user {user_id}"
+        )
+
     auto_approve_key = get_auto_approve_key(graph_exec_id, node_id)
 
     await PendingHumanReview.prisma().upsert(

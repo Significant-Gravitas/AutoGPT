@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 # Context variable to track errors logged in the current task/operation
 # This prevents spamming the same error multiple times when processing batches
 _logged_errors: contextvars.ContextVar[set[str]] = contextvars.ContextVar(
-    "_logged_errors", default=set()
+    "_logged_errors"
 )
 
 # OpenAI embedding model configuration
@@ -56,7 +56,12 @@ def log_once_per_task(error_key: str, log_fn, message: str, **kwargs) -> bool:
     Example:
         log_once_per_task("missing_api_key", logger.error, "API key not set")
     """
-    logged = _logged_errors.get()
+    # Get current logged errors, or create a new set if this is the first call in this context
+    logged = _logged_errors.get(None)
+    if logged is None:
+        logged = set()
+        _logged_errors.set(logged)
+
     if error_key in logged:
         return False
 
@@ -65,7 +70,6 @@ def log_once_per_task(error_key: str, log_fn, message: str, **kwargs) -> bool:
 
     # Mark as logged
     logged.add(error_key)
-    _logged_errors.set(logged)
     return True
 
 
