@@ -3,7 +3,6 @@
 import logging
 from typing import Any
 
-from langfuse import observe
 from pydantic import BaseModel, Field, field_validator
 
 from backend.api.features.chat.config import ChatConfig
@@ -155,7 +154,6 @@ class RunAgentTool(BaseTool):
         """All operations require authentication."""
         return True
 
-    @observe(as_type="tool", name="run_agent")
     async def _execute(
         self,
         user_id: str | None,
