@@ -41,6 +41,15 @@ class VideoNarrationBlock(Block):
         voice_id: str = SchemaField(
             description="ElevenLabs voice ID", default="21m00Tcm4TlvDq8ikWAM"  # Rachel
         )
+        model_id: Literal[
+            "eleven_multilingual_v2",
+            "eleven_flash_v2_5",
+            "eleven_turbo_v2_5",
+            "eleven_turbo_v2",
+        ] = SchemaField(
+            description="ElevenLabs TTS model",
+            default="eleven_multilingual_v2",
+        )
         mix_mode: Literal["replace", "mix", "ducking"] = SchemaField(
             description="How to combine with original audio. 'ducking' applies stronger attenuation than 'mix'.",
             default="ducking",
@@ -121,14 +130,14 @@ class VideoNarrationBlock(Block):
         )
 
     def _generate_narration_audio(
-        self, api_key: str, script: str, voice_id: str
+        self, api_key: str, script: str, voice_id: str, model_id: str
     ) -> bytes:
         """Generate narration audio via ElevenLabs API."""
         client = ElevenLabs(api_key=api_key)
         audio_generator = client.text_to_speech.convert(
             voice_id=voice_id,
             text=script,
-            model_id="eleven_monolingual_v1",
+            model_id=model_id,
         )
         # The SDK returns a generator, collect all chunks
         return b"".join(audio_generator)
@@ -212,6 +221,7 @@ class VideoNarrationBlock(Block):
                 credentials.api_key.get_secret_value(),
                 input_data.script,
                 input_data.voice_id,
+                input_data.model_id,
             )
 
             # Save audio to exec file path
