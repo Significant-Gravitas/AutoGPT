@@ -21,6 +21,19 @@ from backend.data.model import (
 )
 from backend.integrations.providers import ProviderName
 
+
+class ClaudeCodeExecutionError(Exception):
+    """Exception raised when Claude Code execution fails.
+
+    Carries the sandbox_id so it can be returned to the user for cleanup
+    when dispose_sandbox=False.
+    """
+
+    def __init__(self, message: str, sandbox_id: str = ""):
+        super().__init__(message)
+        self.sandbox_id = sandbox_id
+
+
 # Test credentials for E2B
 TEST_E2B_CREDENTIALS = APIKeyCredentials(
     id="01234567-89ab-cdef-0123-456789abcdef",
@@ -299,6 +312,7 @@ class ClaudeCodeBlock(Block):
             )
 
         sandbox = None
+        sandbox_id = ""
 
         try:
             # Either reconnect to existing sandbox or create a new one
@@ -337,6 +351,10 @@ class ClaudeCodeBlock(Block):
                             f"Stdout: {setup_result.stdout}\n"
                             f"Stderr: {setup_result.stderr}"
                         )
+
+            # Capture sandbox_id immediately after creation/connection
+            # so it's available for error recovery if dispose_sandbox=False
+            sandbox_id = sandbox.sandbox_id
 
             # Generate or use provided session ID
             current_session_id = session_id if session_id else str(uuid.uuid4())
@@ -401,7 +419,6 @@ class ClaudeCodeBlock(Block):
                 )
 
             raw_output = result.stdout or ""
-            sandbox_id = sandbox.sandbox_id
 
             # Parse JSON output to extract response and build conversation history
             response = ""
@@ -444,6 +461,11 @@ class ClaudeCodeBlock(Block):
                 current_session_id,
                 sandbox_id,
             )
+
+        except Exception as e:
+            # Wrap exception with sandbox_id so caller can access/cleanup
+            # the preserved sandbox when dispose_sandbox=False
+            raise ClaudeCodeExecutionError(str(e), sandbox_id) from e
 
         finally:
             if dispose_sandbox and sandbox:
@@ -627,5 +649,11 @@ class ClaudeCodeBlock(Block):
             # Always yield sandbox_id (None if disposed) to match Output schema
             yield "sandbox_id", sandbox_id if not input_data.dispose_sandbox else None
 
+        except ClaudeCodeExecutionError as e:
+            yield "error", str(e)
+            # If sandbox was preserved (dispose_sandbox=False), yield sandbox_id
+            # so user can reconnect to or clean up the orphaned sandbox
+            if not input_data.dispose_sandbox and e.sandbox_id:
+                yield "sandbox_id", e.sandbox_id
         except Exception as e:
             yield "error", str(e)
