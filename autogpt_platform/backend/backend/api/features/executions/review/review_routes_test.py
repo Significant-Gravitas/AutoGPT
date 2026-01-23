@@ -708,6 +708,14 @@ def test_process_review_action_auto_approve_creates_auto_approval_records(
         sensitive_action_safe_mode=True,
     )
 
+    # Mock get_user_by_id to prevent database access
+    mock_get_user = mocker.patch(
+        "backend.api.features.executions.review.routes.get_user_by_id"
+    )
+    mock_user = mocker.Mock()
+    mock_user.timezone = "UTC"
+    mock_get_user.return_value = mock_user
+
     # Mock add_graph_execution
     mock_add_execution = mocker.patch(
         "backend.api.features.executions.review.routes.add_graph_execution"
@@ -819,6 +827,14 @@ def test_process_review_action_without_auto_approve_still_loads_settings(
         human_in_the_loop_safe_mode=False,
         sensitive_action_safe_mode=True,
     )
+
+    # Mock get_user_by_id to prevent database access
+    mock_get_user = mocker.patch(
+        "backend.api.features.executions.review.routes.get_user_by_id"
+    )
+    mock_user = mocker.Mock()
+    mock_user.timezone = "UTC"
+    mock_get_user.return_value = mock_user
 
     # Mock add_graph_execution
     mock_add_execution = mocker.patch(
@@ -949,6 +965,14 @@ def test_process_review_action_auto_approve_only_applies_to_approved_reviews(
         "backend.api.features.executions.review.routes.get_graph_settings"
     )
     mock_get_settings.return_value = GraphSettings()
+
+    # Mock get_user_by_id to prevent database access
+    mock_get_user = mocker.patch(
+        "backend.api.features.executions.review.routes.get_user_by_id"
+    )
+    mock_user = mocker.Mock()
+    mock_user.timezone = "UTC"
+    mock_get_user.return_value = mock_user
 
     # Mock add_graph_execution
     mock_add_execution = mocker.patch(
