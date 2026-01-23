@@ -115,13 +115,13 @@ export function useCopilotShell() {
   const isReadyToShowContent = isOnHomepage
     ? true
     : checkReadyToShowContent(
-      areAllSessionsLoaded,
-      paramSessionId,
-      accumulatedSessions,
-      isCurrentSessionLoading,
-      currentSessionData,
-      hasAutoSelectedSession,
-    );
+        areAllSessionsLoaded,
+        paramSessionId,
+        accumulatedSessions,
+        isCurrentSessionLoading,
+        currentSessionData,
+        hasAutoSelectedSession,
+      );
 
   function handleSelectSession(sessionId: string) {
     // Navigate using replaceState to avoid full page reload

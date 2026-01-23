@@ -49,15 +49,15 @@ export function ThinkingMessage({ className }: ThinkingMessageProps) {
           <AIChatBubble>
             <div className="transition-all duration-500 ease-in-out">
               {showCoffeeMessage ? (
-                <span className="inline-block bg-gradient-to-r from-neutral-400 via-neutral-600 to-neutral-400 bg-[length:200%_100%] bg-clip-text text-transparent animate-shimmer">
+                <span className="inline-block animate-shimmer bg-gradient-to-r from-neutral-400 via-neutral-600 to-neutral-400 bg-[length:200%_100%] bg-clip-text text-transparent">
                   This could take a few minutes, grab a coffee ☕️
                 </span>
               ) : showSlowLoader ? (
-                <span className="inline-block bg-gradient-to-r from-neutral-400 via-neutral-600 to-neutral-400 bg-[length:200%_100%] bg-clip-text text-transparent animate-shimmer">
+                <span className="inline-block animate-shimmer bg-gradient-to-r from-neutral-400 via-neutral-600 to-neutral-400 bg-[length:200%_100%] bg-clip-text text-transparent">
                   Taking a bit more time...
                 </span>
               ) : (
-                <span className="inline-block bg-gradient-to-r from-neutral-400 via-neutral-600 to-neutral-400 bg-[length:200%_100%] bg-clip-text text-transparent animate-shimmer">
+                <span className="inline-block animate-shimmer bg-gradient-to-r from-neutral-400 via-neutral-600 to-neutral-400 bg-[length:200%_100%] bg-clip-text text-transparent">
                   Thinking...
                 </span>
               )}

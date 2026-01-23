@@ -10,11 +10,7 @@ import { useFlags } from "launchdarkly-react-client-sdk";
 import { useRouter } from "next/navigation";
 import { useEffect, useReducer } from "react";
 import { useNewChat } from "./NewChatContext";
-import {
-  getGreetingName,
-  getQuickActions,
-  type PageState,
-} from "./helpers";
+import { getGreetingName, getQuickActions, type PageState } from "./helpers";
 import { useCopilotURLState } from "./useCopilotURLState";
 
 type CopilotState = {
@@ -46,7 +42,10 @@ function isSamePageState(next: PageState, current: PageState) {
   return true;
 }
 
-function copilotReducer(state: CopilotState, action: CopilotAction): CopilotState {
+function copilotReducer(
+  state: CopilotState,
+  action: CopilotAction,
+): CopilotState {
   if (action.type === "setPageState") {
     if (isSamePageState(action.pageState, state.pageState)) return state;
     return { ...state, pageState: action.pageState };
