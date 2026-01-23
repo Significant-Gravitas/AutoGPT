@@ -6,6 +6,7 @@ from typing import Literal
 from moviepy import CompositeVideoClip, TextClip
 from moviepy.video.io.VideoFileClip import VideoFileClip
 
+from backend.blocks.video._utils import get_video_codecs
 from backend.data.block import (
     Block,
     BlockCategory,
@@ -154,7 +155,10 @@ class VideoTextOverlayBlock(Block):
             txt_clip = txt_clip.with_start(start).with_end(end).with_duration(duration)
 
             final = CompositeVideoClip([video, txt_clip])
-            final.write_videofile(output_abspath, codec="libx264", audio_codec="aac")
+            video_codec, audio_codec = get_video_codecs(output_abspath)
+            final.write_videofile(
+                output_abspath, codec=video_codec, audio_codec=audio_codec
+            )
 
         finally:
             if txt_clip:

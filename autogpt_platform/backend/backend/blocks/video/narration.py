@@ -14,6 +14,7 @@ from backend.blocks.elevenlabs._auth import (
     ElevenLabsCredentials,
     ElevenLabsCredentialsInput,
 )
+from backend.blocks.video._utils import get_video_codecs
 from backend.data.block import (
     Block,
     BlockCategory,
@@ -172,7 +173,10 @@ class VideoNarrationBlock(Block):
                     final_audio = narration
 
             final = video.with_audio(final_audio)
-            final.write_videofile(output_abspath, codec="libx264", audio_codec="aac")
+            video_codec, audio_codec = get_video_codecs(output_abspath)
+            final.write_videofile(
+                output_abspath, codec=video_codec, audio_codec=audio_codec
+            )
 
         finally:
             if original:

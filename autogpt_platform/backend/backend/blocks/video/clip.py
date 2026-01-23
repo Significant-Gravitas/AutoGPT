@@ -5,6 +5,7 @@ from typing import Literal
 
 from moviepy.video.io.VideoFileClip import VideoFileClip
 
+from backend.blocks.video._utils import get_video_codecs
 from backend.data.block import (
     Block,
     BlockCategory,
@@ -99,7 +100,10 @@ class VideoClipBlock(Block):
         try:
             clip = VideoFileClip(video_abspath)
             subclip = clip.subclipped(start_time, end_time)
-            subclip.write_videofile(output_abspath, codec="libx264", audio_codec="aac")
+            video_codec, audio_codec = get_video_codecs(output_abspath)
+            subclip.write_videofile(
+                output_abspath, codec=video_codec, audio_codec=audio_codec
+            )
             return subclip.duration
         finally:
             if subclip:

@@ -6,6 +6,7 @@ from typing import Literal, Optional
 from moviepy.video.fx.Loop import Loop
 from moviepy.video.io.VideoFileClip import VideoFileClip
 
+from backend.blocks.video._utils import get_video_codecs
 from backend.data.block import (
     Block,
     BlockCategory,
@@ -94,8 +95,9 @@ class LoopVideoBlock(Block):
 
             assert looped_clip is not None
 
+            video_codec, audio_codec = get_video_codecs(output_abspath)
             looped_clip.write_videofile(
-                output_abspath, codec="libx264", audio_codec="aac"
+                output_abspath, codec=video_codec, audio_codec=audio_codec
             )
 
             # Return as data URI or path

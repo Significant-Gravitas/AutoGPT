@@ -6,6 +6,7 @@ from moviepy import concatenate_videoclips
 from moviepy.video.fx import CrossFadeIn, CrossFadeOut, FadeIn, FadeOut
 from moviepy.video.io.VideoFileClip import VideoFileClip
 
+from backend.blocks.video._utils import get_video_codecs
 from backend.data.block import (
     Block,
     BlockCategory,
@@ -131,7 +132,10 @@ class VideoConcatBlock(Block):
             else:
                 final = concatenate_videoclips(clips)
 
-            final.write_videofile(output_abspath, codec="libx264", audio_codec="aac")
+            video_codec, audio_codec = get_video_codecs(output_abspath)
+            final.write_videofile(
+                output_abspath, codec=video_codec, audio_codec=audio_codec
+            )
 
             return final.duration
         finally:
