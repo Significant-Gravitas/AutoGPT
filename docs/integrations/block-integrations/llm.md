@@ -523,6 +523,47 @@ Summarizing lengthy research papers or articles to quickly grasp the main points
 
 ---
 
+## Claude Code
+
+### What it is
+Execute tasks using Claude Code in an E2B sandbox. Claude Code can create files, install tools, run commands, and perform complex coding tasks autonomously.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+_Add technical explanation here._
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| prompt | The task or instruction for Claude Code to execute. Claude Code can create files, install packages, run commands, and perform complex coding tasks. | str | No |
+| timeout | Sandbox timeout in seconds. Claude Code tasks can take a while, so set this appropriately for your task complexity. Note: This only applies when creating a new sandbox. When reconnecting to an existing sandbox via sandbox_id, the original timeout is retained. | int | No |
+| setup_commands | Optional shell commands to run before executing Claude Code. Useful for installing dependencies or setting up the environment. | List[str] | No |
+| working_directory | Working directory for Claude Code to operate in. | str | No |
+| session_id | Session ID to resume a previous conversation. Leave empty for a new conversation. Use the session_id from a previous run to continue that conversation. | str | No |
+| sandbox_id | Sandbox ID to reconnect to an existing sandbox. Required when resuming a session (along with session_id). Use the sandbox_id from a previous run where dispose_sandbox was False. | str | No |
+| conversation_history | Previous conversation history to continue from. Use this to restore context on a fresh sandbox if the previous one timed out. Pass the conversation_history output from a previous run. | str | No |
+| dispose_sandbox | Whether to dispose of the sandbox immediately after execution. Set to False if you want to continue the conversation later (you'll need both sandbox_id and session_id from the output). | bool | No |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if execution failed | str |
+| response | The output/response from Claude Code execution | str |
+| files | List of text files created/modified by Claude Code during this execution. Each file has 'path', 'relative_path', 'name', and 'content' fields. | List[FileOutput] |
+| conversation_history | Full conversation history including this turn. Pass this to conversation_history input to continue on a fresh sandbox if the previous sandbox timed out. | str |
+| session_id | Session ID for this conversation. Pass this back along with sandbox_id to continue the conversation. | str |
+| sandbox_id | ID of the sandbox instance. Pass this back along with session_id to continue the conversation. This is None if dispose_sandbox was True (sandbox was disposed). | str |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+_Add practical use case examples here._
+<!-- END MANUAL -->
+
+---
+
 ## Code Generation
 
 ### What it is
