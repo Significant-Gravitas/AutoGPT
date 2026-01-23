@@ -201,7 +201,7 @@ If you get any pushback or hit complex block conditions check the new_blocks gui
 3. Write tests alongside the route file
 4. Run `poetry run test` to verify
 
-**Frontend feature development:**
+### Frontend guidelines:
 
 See `/frontend/CONTRIBUTING.md` for complete patterns. Quick reference:
 
@@ -217,6 +217,14 @@ See `/frontend/CONTRIBUTING.md` for complete patterns. Quick reference:
 4. **Styling**: Tailwind CSS only, use design tokens, Phosphor Icons only
 5. **Testing**: Add Storybook stories for new components, Playwright for E2E
 6. **Code conventions**: Function declarations (not arrow functions) for components/handlers
+- Component props should be `interface Props { ... }` (not exported) unless the interface needs to be used outside the component
+- Separate render logic from business logic (component.tsx + useComponent.ts + helpers.ts)
+- Colocate state when possible and avoid creating large components, use sub-components ( local `/components` folder next to the parent component ) when sensible
+- Avoid large hooks, abstract logic into `helpers.ts` files when sensible
+- Use function declarations for components, arrow functions only for callbacks
+- No barrel files or `index.ts` re-exports
+- Do not use `useCallback` or `useMemo` unless strictly needed
+- Avoid comments at all times unless the code is very complex
 
 ### Security Implementation
 

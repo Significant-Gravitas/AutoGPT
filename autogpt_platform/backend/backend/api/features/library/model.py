@@ -73,6 +73,12 @@ class LibraryAgent(pydantic.BaseModel):
     has_external_trigger: bool = pydantic.Field(
         description="Whether the agent has an external trigger (e.g. webhook) node"
     )
+    has_human_in_the_loop: bool = pydantic.Field(
+        description="Whether the agent has human-in-the-loop blocks"
+    )
+    has_sensitive_action: bool = pydantic.Field(
+        description="Whether the agent has sensitive action blocks"
+    )
     trigger_setup_info: Optional[GraphTriggerInfo] = None
 
     # Indicates whether there's a new output (based on recent runs)
@@ -180,6 +186,8 @@ class LibraryAgent(pydantic.BaseModel):
                 graph.credentials_input_schema if sub_graphs is not None else None
             ),
             has_external_trigger=graph.has_external_trigger,
+            has_human_in_the_loop=graph.has_human_in_the_loop,
+            has_sensitive_action=graph.has_sensitive_action,
             trigger_setup_info=graph.trigger_setup_info,
             new_output=new_output,
             can_access_graph=can_access_graph,

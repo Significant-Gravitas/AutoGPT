@@ -155,18 +155,14 @@ async def test_store_embedding_success(mocker):
     )
 
     assert result is True
-    # execute_raw is called twice: once for SET search_path, once for INSERT
-    assert mock_client.execute_raw.call_count == 2
+    # execute_raw is called once for INSERT (no separate SET search_path needed)
+    assert mock_client.execute_raw.call_count == 1
 
-    # First call: SET search_path
-    first_call_args = mock_client.execute_raw.call_args_list[0][0]
-    assert "SET search_path" in first_call_args[0]
-
-    # Second call: INSERT query with the actual data
-    second_call_args = mock_client.execute_raw.call_args_list[1][0]
-    assert "test-version-id" in second_call_args
-    assert "[0.1,0.2,0.3]" in second_call_args
-    assert None in second_call_args  # userId should be None for store agents
+    # Verify the INSERT query with the actual data
+    call_args = mock_client.execute_raw.call_args_list[0][0]
+    assert "test-version-id" in call_args
+    assert "[0.1,0.2,0.3]" in call_args
+    assert None in call_args  # userId should be None for store agents
 
 
 @pytest.mark.asyncio(loop_scope="session")

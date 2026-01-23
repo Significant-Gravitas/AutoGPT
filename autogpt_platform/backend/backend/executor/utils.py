@@ -873,11 +873,8 @@ async def add_graph_execution(
         settings = await gdb.get_graph_settings(user_id=user_id, graph_id=graph_id)
 
         execution_context = ExecutionContext(
-            safe_mode=(
-                settings.human_in_the_loop_safe_mode
-                if settings.human_in_the_loop_safe_mode is not None
-                else True
-            ),
+            human_in_the_loop_safe_mode=settings.human_in_the_loop_safe_mode,
+            sensitive_action_safe_mode=settings.sensitive_action_safe_mode,
             user_timezone=(
                 user.timezone if user.timezone != USER_TIMEZONE_NOT_SET else "UTC"
             ),

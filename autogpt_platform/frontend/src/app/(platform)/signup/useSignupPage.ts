@@ -1,6 +1,8 @@
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import { getHomepageRoute } from "@/lib/constants";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { environment } from "@/services/environment";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { LoginProvider, signupFormSchema } from "@/types/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -20,15 +22,17 @@ export function useSignupPage() {
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [showNotAllowedModal, setShowNotAllowedModal] = useState(false);
   const isCloudEnv = environment.isCloud();
+  const isChatEnabled = useGetFlag(Flag.CHAT);
+  const homepageRoute = getHomepageRoute(isChatEnabled);
 
   // Get redirect destination from 'next' query parameter
   const nextUrl = searchParams.get("next");
 
   useEffect(() => {
     if (isLoggedIn && !isSigningUp) {
-      router.push(nextUrl || "/marketplace");
+      router.push(nextUrl || homepageRoute);
     }
-  }, [isLoggedIn, isSigningUp, nextUrl, router]);
+  }, [homepageRoute, isLoggedIn, isSigningUp, nextUrl, router]);
 
   const form = useForm<z.infer<typeof signupFormSchema>>({
     resolver: zodResolver(signupFormSchema),
@@ -104,6 +108,7 @@ export function useSignupPage() {
         data.password,
         data.confirmPassword,
         data.agreeToTerms,
+        isChatEnabled === true,
       );
 
       setIsLoading(false);
@@ -129,7 +134,7 @@ export function useSignupPage() {
       }
 
       // Prefer the URL's next parameter, then result.next (for onboarding), then default
-      const redirectTo = nextUrl || result.next || "/";
+      const redirectTo = nextUrl || result.next || homepageRoute;
       router.replace(redirectTo);
     } catch (error) {
       setIsLoading(false);
