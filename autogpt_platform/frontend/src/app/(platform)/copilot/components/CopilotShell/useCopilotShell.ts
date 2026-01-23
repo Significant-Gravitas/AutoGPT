@@ -148,13 +148,15 @@ export function useCopilotShell() {
     setHasAutoSelectedSession(false);
   }
 
+  const isLoading = isSessionsLoading && accumulatedSessions.length === 0;
+
   return {
     isMobile,
     isDrawerOpen,
     isLoggedIn,
     hasActiveSession:
       Boolean(currentSessionId) && (!isOnHomepage || Boolean(paramSessionId)),
-    isLoading: isSessionsLoading || !areAllSessionsLoaded,
+    isLoading,
     sessions: visibleSessions,
     currentSessionId: sidebarSelectedSessionId,
     handleSelectSession,
