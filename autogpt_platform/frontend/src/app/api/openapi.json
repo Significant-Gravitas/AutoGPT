@@ -9411,6 +9411,12 @@
             ],
             "title": "Reviewed Data",
             "description": "Optional edited data (ignored if approved=False)"
+          },
+          "auto_approve_future": {
+            "type": "boolean",
+            "title": "Auto Approve Future",
+            "description": "If true and this review is approved, future executions of this same block (node) will be automatically approved. This only affects approved reviews.",
+            "default": false
           }
         },
         "type": "object",
@@ -9425,18 +9431,12 @@
             "type": "array",
             "title": "Reviews",
             "description": "All reviews with their approval status, data, and messages"
-          },
-          "auto_approve_future_actions": {
-            "type": "boolean",
-            "title": "Auto Approve Future Actions",
-            "description": "If true, future reviews from the same blocks (nodes) being approved will be automatically approved for the remainder of this execution. This only affects the current execution run.",
-            "default": false
           }
         },
         "type": "object",
         "required": ["reviews"],
         "title": "ReviewRequest",
-        "description": "Request model for processing ALL pending reviews for an execution.\n\nThis request must include ALL pending reviews for a graph execution.\nEach review will be either approved (with optional data modifications)\nor rejected (data ignored). The execution will resume only after ALL reviews are processed."
+        "description": "Request model for processing ALL pending reviews for an execution.\n\nThis request must include ALL pending reviews for a graph execution.\nEach review will be either approved (with optional data modifications)\nor rejected (data ignored). The execution will resume only after ALL reviews are processed.\n\nEach review item can individually specify whether to auto-approve future executions\nof the same block via the `auto_approve_future` field on ReviewItem."
       },
       "ReviewResponse": {
         "properties": {

@@ -107,6 +107,13 @@ class ReviewItem(BaseModel):
     reviewed_data: SafeJsonData | None = Field(
         None, description="Optional edited data (ignored if approved=False)"
     )
+    auto_approve_future: bool = Field(
+        default=False,
+        description=(
+            "If true and this review is approved, future executions of this same "
+            "block (node) will be automatically approved. This only affects approved reviews."
+        ),
+    )
 
     @field_validator("reviewed_data")
     @classmethod
@@ -174,18 +181,13 @@ class ReviewRequest(BaseModel):
     This request must include ALL pending reviews for a graph execution.
     Each review will be either approved (with optional data modifications)
     or rejected (data ignored). The execution will resume only after ALL reviews are processed.
+
+    Each review item can individually specify whether to auto-approve future executions
+    of the same block via the `auto_approve_future` field on ReviewItem.
     """
 
     reviews: List[ReviewItem] = Field(
         description="All reviews with their approval status, data, and messages"
-    )
-    auto_approve_future_actions: bool = Field(
-        default=False,
-        description=(
-            "If true, future reviews from the same blocks (nodes) being approved "
-            "will be automatically approved for the remainder of this execution. "
-            "This only affects the current execution run."
-        ),
     )
 
     @model_validator(mode="after")

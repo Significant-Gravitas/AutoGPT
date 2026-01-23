@@ -175,21 +175,23 @@ async def process_review_action(
             f"Current status: {graph_exec_meta.status}",
         )
 
-    # Build review decisions map
+    # Build review decisions map and track which reviews requested auto-approval
     # Auto-approved reviews use original data (no modifications allowed)
     review_decisions = {}
+    auto_approve_requests = {}  # Map node_exec_id -> auto_approve_future flag
+
     for review in request.reviews:
         review_status = (
             ReviewStatus.APPROVED if review.approved else ReviewStatus.REJECTED
         )
-        reviewed_data = (
-            None if request.auto_approve_future_actions else review.reviewed_data
-        )
+        # If this review requested auto-approval, don't allow data modifications
+        reviewed_data = None if review.auto_approve_future else review.reviewed_data
         review_decisions[review.node_exec_id] = (
             review_status,
             reviewed_data,
             review.message,
         )
+        auto_approve_requests[review.node_exec_id] = review.auto_approve_future
 
     # Process all reviews
     updated_reviews = await process_all_reviews_for_execution(
@@ -197,27 +199,32 @@ async def process_review_action(
         review_decisions=review_decisions,
     )
 
-    # Create auto-approval records for approved reviews
+    # Create auto-approval records for approved reviews that requested it
     # Note: Processing sequentially to avoid event loop issues in tests
-    if request.auto_approve_future_actions:
-        for node_exec_id, review in updated_reviews.items():
-            if review.status == ReviewStatus.APPROVED:
-                try:
-                    node_exec = await get_node_execution(node_exec_id)
-                    if node_exec:
-                        await create_auto_approval_record(
-                            user_id=user_id,
-                            graph_exec_id=review.graph_exec_id,
-                            graph_id=review.graph_id,
-                            graph_version=review.graph_version,
-                            node_id=node_exec.node_id,
-                            payload=review.payload,
-                        )
-                except Exception as e:
-                    logger.error(
-                        f"Failed to create auto-approval record for {node_exec_id}",
-                        exc_info=e,
+    for node_exec_id, review_result in updated_reviews.items():
+        # Only create auto-approval if:
+        # 1. This review was approved
+        # 2. The review requested auto-approval
+        if (
+            review_result.status == ReviewStatus.APPROVED
+            and auto_approve_requests.get(node_exec_id, False)
+        ):
+            try:
+                node_exec = await get_node_execution(node_exec_id)
+                if node_exec:
+                    await create_auto_approval_record(
+                        user_id=user_id,
+                        graph_exec_id=review_result.graph_exec_id,
+                        graph_id=review_result.graph_id,
+                        graph_version=review_result.graph_version,
+                        node_id=node_exec.node_id,
+                        payload=review_result.payload,
                     )
+            except Exception as e:
+                logger.error(
+                    f"Failed to create auto-approval record for {node_exec_id}",
+                    exc_info=e,
+                )
 
     # Count results
     approved_count = sum(
