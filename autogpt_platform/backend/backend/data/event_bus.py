@@ -103,8 +103,18 @@ class RedisEventBus(BaseRedisEventBus[M], ABC):
         return redis.get_redis()
 
     def publish_event(self, event: M, channel_key: str):
-        message, full_channel_name = self._serialize_message(event, channel_key)
-        self.connection.publish(full_channel_name, message)
+        """
+        Publish an event to Redis. Gracefully handles connection failures
+        by logging the error instead of raising exceptions.
+        """
+        try:
+            message, full_channel_name = self._serialize_message(event, channel_key)
+            self.connection.publish(full_channel_name, message)
+        except Exception:
+            logger.exception(
+                f"Failed to publish event to Redis channel {channel_key}. "
+                "Event bus operation will continue without Redis connectivity."
+            )
 
     def listen_events(self, channel_key: str) -> Generator[M, None, None]:
         pubsub, full_channel_name = self._get_pubsub_channel(
@@ -128,9 +138,19 @@ class AsyncRedisEventBus(BaseRedisEventBus[M], ABC):
         return await redis.get_redis_async()
 
     async def publish_event(self, event: M, channel_key: str):
-        message, full_channel_name = self._serialize_message(event, channel_key)
-        connection = await self.connection
-        await connection.publish(full_channel_name, message)
+        """
+        Publish an event to Redis. Gracefully handles connection failures
+        by logging the error instead of raising exceptions.
+        """
+        try:
+            message, full_channel_name = self._serialize_message(event, channel_key)
+            connection = await self.connection
+            await connection.publish(full_channel_name, message)
+        except Exception:
+            logger.exception(
+                f"Failed to publish event to Redis channel {channel_key}. "
+                "Event bus operation will continue without Redis connectivity."
+            )
 
     async def listen_events(self, channel_key: str) -> AsyncGenerator[M, None]:
         pubsub, full_channel_name = self._get_pubsub_channel(
