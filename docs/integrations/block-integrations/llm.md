@@ -548,8 +548,6 @@ The block supports conversation continuation through three mechanisms:
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| e2b_credentials | API key for the E2B platform to create the sandbox. Get one at [e2b.dev](https://e2b.dev/docs) | CredentialsMetaInput | Yes |
-| anthropic_credentials | API key for Anthropic to power Claude Code. Get one at [Anthropic's website](https://console.anthropic.com) | CredentialsMetaInput | Yes |
 | prompt | The task or instruction for Claude Code to execute. Claude Code can create files, install packages, run commands, and perform complex coding tasks. | str | No |
 | timeout | Sandbox timeout in seconds. Claude Code tasks can take a while, so set this appropriately for your task complexity. Note: This only applies when creating a new sandbox. When reconnecting to an existing sandbox via sandbox_id, the original timeout is retained. | int | No |
 | setup_commands | Optional shell commands to run before executing Claude Code. Useful for installing dependencies or setting up the environment. | List[str] | No |
@@ -563,12 +561,12 @@ The block supports conversation continuation through three mechanisms:
 
 | Output | Description | Type |
 |--------|-------------|------|
+| error | Error message if execution failed | str |
 | response | The output/response from Claude Code execution | str |
 | files | List of text files created/modified by Claude Code during this execution. Each file has 'path', 'relative_path', 'name', and 'content' fields. | List[FileOutput] |
 | conversation_history | Full conversation history including this turn. Pass this to conversation_history input to continue on a fresh sandbox if the previous sandbox timed out. | str |
 | session_id | Session ID for this conversation. Pass this back along with sandbox_id to continue the conversation. | str |
 | sandbox_id | ID of the sandbox instance. Pass this back along with session_id to continue the conversation. This is None if dispose_sandbox was True (sandbox was disposed). | str |
-| error | Error message if execution failed | str |
 
 ### Possible use case
 <!-- MANUAL: use_case -->
