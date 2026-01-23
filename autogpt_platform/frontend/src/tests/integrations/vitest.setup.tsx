@@ -2,6 +2,7 @@ import { beforeAll, afterAll, afterEach } from "vitest";
 import { server } from "@/mocks/mock-server";
 import { mockNextjsModules } from "./setup-nextjs-mocks";
 import { mockSupabaseRequest } from "./mock-supabase-request";
+import '@testing-library/jest-dom';
 
 beforeAll(() => {
   mockNextjsModules();

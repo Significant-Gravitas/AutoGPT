@@ -120,7 +120,6 @@
   },
   "devDependencies": {
     "@chromatic-com/storybook": "4.1.2",
-    "happy-dom": "20.3.4",
     "@opentelemetry/instrumentation": "0.209.0",
     "@playwright/test": "1.56.1",
     "@storybook/addon-a11y": "9.1.5",
@@ -131,6 +130,7 @@
     "@tanstack/eslint-plugin-query": "5.91.2",
     "@tanstack/react-query-devtools": "5.90.2",
     "@testing-library/dom": "10.4.1",
+    "@testing-library/jest-dom": "6.9.1",
     "@testing-library/react": "16.3.2",
     "@types/canvas-confetti": "1.9.0",
     "@types/lodash": "4.17.20",
@@ -148,6 +148,7 @@
     "eslint": "8.57.1",
     "eslint-config-next": "15.5.7",
     "eslint-plugin-storybook": "9.1.5",
+    "happy-dom": "20.3.4",
     "import-in-the-middle": "2.0.2",
     "msw": "2.11.6",
     "msw-storybook-addon": "2.0.6",
