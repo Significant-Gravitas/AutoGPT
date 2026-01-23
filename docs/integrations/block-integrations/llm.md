@@ -530,13 +530,26 @@ Execute tasks using Claude Code in an E2B sandbox. Claude Code can create files,
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+When activated, the block:
+1. Creates or connects to an E2B sandbox (a secure, isolated Linux environment)
+2. Installs the latest version of Claude Code in the sandbox
+3. Optionally runs setup commands to prepare the environment
+4. Executes your prompt using Claude Code, which can create/edit files, install dependencies, run terminal commands, and build applications
+5. Extracts all text files created/modified during execution
+6. Returns the response and files, optionally keeping the sandbox alive for follow-up tasks
+
+The block supports conversation continuation through three mechanisms:
+- **Same sandbox continuation** (via `session_id` + `sandbox_id`): Resume on the same live sandbox
+- **Fresh sandbox continuation** (via `conversation_history`): Restore context on a new sandbox if the previous one timed out
+- **Dispose control** (`dispose_sandbox` flag): Keep sandbox alive for multi-turn conversations
 <!-- END MANUAL -->
 
 ### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
+| e2b_credentials | API key for the E2B platform to create the sandbox. Get one at [e2b.dev](https://e2b.dev/docs) | CredentialsMetaInput | Yes |
+| anthropic_credentials | API key for Anthropic to power Claude Code. Get one at [Anthropic's website](https://console.anthropic.com) | CredentialsMetaInput | Yes |
 | prompt | The task or instruction for Claude Code to execute. Claude Code can create files, install packages, run commands, and perform complex coding tasks. | str | No |
 | timeout | Sandbox timeout in seconds. Claude Code tasks can take a while, so set this appropriately for your task complexity. Note: This only applies when creating a new sandbox. When reconnecting to an existing sandbox via sandbox_id, the original timeout is retained. | int | No |
 | setup_commands | Optional shell commands to run before executing Claude Code. Useful for installing dependencies or setting up the environment. | List[str] | No |
@@ -550,16 +563,20 @@ _Add technical explanation here._
 
 | Output | Description | Type |
 |--------|-------------|------|
-| error | Error message if execution failed | str |
 | response | The output/response from Claude Code execution | str |
 | files | List of text files created/modified by Claude Code during this execution. Each file has 'path', 'relative_path', 'name', and 'content' fields. | List[FileOutput] |
 | conversation_history | Full conversation history including this turn. Pass this to conversation_history input to continue on a fresh sandbox if the previous sandbox timed out. | str |
 | session_id | Session ID for this conversation. Pass this back along with sandbox_id to continue the conversation. | str |
 | sandbox_id | ID of the sandbox instance. Pass this back along with session_id to continue the conversation. This is None if dispose_sandbox was True (sandbox was disposed). | str |
+| error | Error message if execution failed | str |
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**API Documentation to Full Application**: A product team wants to quickly prototype applications based on API documentation. They fetch API docs with Firecrawl, pass them to Claude Code with a prompt like "Create a web app that demonstrates all the key features of this API", and Claude Code builds a complete application with HTML/CSS/JS frontend, proper error handling, and example API calls. The Files output can then be pushed to GitHub.
+
+**Multi-turn Development**: A developer uses Claude Code to scaffold a new project iteratively - Turn 1: "Create a Python FastAPI project with user authentication" (dispose_sandbox=false), Turn 2: Uses the returned session_id + sandbox_id to ask "Add rate limiting middleware", Turn 3: Continues with "Add comprehensive tests". Each turn builds on the previous work in the same sandbox environment.
+
+**Automated Code Review and Fixes**: An agent receives code from a PR, sends it to Claude Code with "Review this code for bugs and security issues, then fix any problems you find", and Claude Code analyzes the code, makes fixes, and returns the corrected files ready to commit.
 <!-- END MANUAL -->
 
 ---
