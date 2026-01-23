@@ -88,7 +88,35 @@ class VideoNarrationBlock(Block):
             test_mock={
                 "_generate_narration_audio": lambda *args: b"mock audio content",
                 "_add_narration_to_video": lambda *args: None,
+                "_store_input_video": lambda *args, **kwargs: "test.mp4",
+                "_store_output_video": lambda *args, **kwargs: "narrated_test.mp4",
             },
+        )
+
+    async def _store_input_video(
+        self, graph_exec_id: str, file: MediaFileType, user_id: str
+    ) -> MediaFileType:
+        """Store input video. Extracted for testability."""
+        return await store_media_file(
+            graph_exec_id=graph_exec_id,
+            file=file,
+            user_id=user_id,
+            return_content=False,
+        )
+
+    async def _store_output_video(
+        self,
+        graph_exec_id: str,
+        file: MediaFileType,
+        user_id: str,
+        return_content: bool,
+    ) -> MediaFileType:
+        """Store output video. Extracted for testability."""
+        return await store_media_file(
+            graph_exec_id=graph_exec_id,
+            file=file,
+            user_id=user_id,
+            return_content=return_content,
         )
 
     def _generate_narration_audio(
@@ -170,11 +198,8 @@ class VideoNarrationBlock(Block):
     ) -> BlockOutput:
         try:
             # Store the input video locally
-            local_video_path = await store_media_file(
-                graph_exec_id=graph_exec_id,
-                file=input_data.video_in,
-                user_id=user_id,
-                return_content=False,
+            local_video_path = await self._store_input_video(
+                graph_exec_id, input_data.video_in, user_id
             )
             video_abspath = get_exec_file_path(graph_exec_id, local_video_path)
 
@@ -210,18 +235,12 @@ class VideoNarrationBlock(Block):
             # Return as data URI or path
             return_as_data_uri = input_data.output_return_type == "data_uri"
 
-            video_out = await store_media_file(
-                graph_exec_id=graph_exec_id,
-                file=output_filename,
-                user_id=user_id,
-                return_content=return_as_data_uri,
+            video_out = await self._store_output_video(
+                graph_exec_id, output_filename, user_id, return_as_data_uri
             )
 
-            audio_out = await store_media_file(
-                graph_exec_id=graph_exec_id,
-                file=audio_filename,
-                user_id=user_id,
-                return_content=return_as_data_uri,
+            audio_out = await self._store_output_video(
+                graph_exec_id, audio_filename, user_id, return_as_data_uri
             )
 
             yield "video_out", video_out

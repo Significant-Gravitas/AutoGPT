@@ -53,7 +53,37 @@ class VideoClipBlock(Block):
                 "end_time": 10.0,
             },
             test_output=[("video_out", str), ("duration", float)],
-            test_mock={"_clip_video": lambda *args: 10.0},
+            test_mock={
+                "_clip_video": lambda *args: 10.0,
+                "_store_input_video": lambda *args, **kwargs: "test.mp4",
+                "_store_output_video": lambda *args, **kwargs: "clip_test.mp4",
+            },
+        )
+
+    async def _store_input_video(
+        self, graph_exec_id: str, file: MediaFileType, user_id: str
+    ) -> MediaFileType:
+        """Store input video. Extracted for testability."""
+        return await store_media_file(
+            graph_exec_id=graph_exec_id,
+            file=file,
+            user_id=user_id,
+            return_content=False,
+        )
+
+    async def _store_output_video(
+        self,
+        graph_exec_id: str,
+        file: MediaFileType,
+        user_id: str,
+        return_content: bool,
+    ) -> MediaFileType:
+        """Store output video. Extracted for testability."""
+        return await store_media_file(
+            graph_exec_id=graph_exec_id,
+            file=file,
+            user_id=user_id,
+            return_content=return_content,
         )
 
     def _clip_video(
@@ -96,11 +126,8 @@ class VideoClipBlock(Block):
 
         try:
             # Store the input video locally
-            local_video_path = await store_media_file(
-                graph_exec_id=graph_exec_id,
-                file=input_data.video_in,
-                user_id=user_id,
-                return_content=False,
+            local_video_path = await self._store_input_video(
+                graph_exec_id, input_data.video_in, user_id
             )
             video_abspath = get_exec_file_path(graph_exec_id, local_video_path)
 
@@ -121,11 +148,11 @@ class VideoClipBlock(Block):
             )
 
             # Return as data URI or path
-            video_out = await store_media_file(
-                graph_exec_id=graph_exec_id,
-                file=output_filename,
-                user_id=user_id,
-                return_content=input_data.output_return_type == "data_uri",
+            video_out = await self._store_output_video(
+                graph_exec_id,
+                output_filename,
+                user_id,
+                input_data.output_return_type == "data_uri",
             )
 
             yield "video_out", video_out

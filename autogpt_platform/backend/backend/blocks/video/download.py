@@ -66,8 +66,24 @@ class VideoDownloadBlock(Block):
                 ("source_url", str),
             ],
             test_mock={
-                "_download_video": lambda *args: ("video.mp4", 212.0, "Test Video")
+                "_download_video": lambda *args: ("video.mp4", 212.0, "Test Video"),
+                "_store_output_video": lambda *args, **kwargs: "video.mp4",
             },
+        )
+
+    async def _store_output_video(
+        self,
+        graph_exec_id: str,
+        file: MediaFileType,
+        user_id: str,
+        return_content: bool,
+    ) -> MediaFileType:
+        """Store output video. Extracted for testability."""
+        return await store_media_file(
+            graph_exec_id=graph_exec_id,
+            file=file,
+            user_id=user_id,
+            return_content=return_content,
         )
 
     def _get_format_string(self, quality: str) -> str:
@@ -141,11 +157,11 @@ class VideoDownloadBlock(Block):
             )
 
             # Return as data URI or path
-            video_out = await store_media_file(
-                graph_exec_id=graph_exec_id,
-                file=MediaFileType(filename),
-                user_id=user_id,
-                return_content=input_data.output_return_type == "data_uri",
+            video_out = await self._store_output_video(
+                graph_exec_id,
+                MediaFileType(filename),
+                user_id,
+                input_data.output_return_type == "data_uri",
             )
 
             yield "video_file", video_out

@@ -57,7 +57,37 @@ class VideoConcatBlock(Block):
             output_schema=self.Output,
             test_input={"videos": ["/tmp/a.mp4", "/tmp/b.mp4"]},
             test_output=[("video_out", str), ("total_duration", float)],
-            test_mock={"_concat_videos": lambda *args: 20.0},
+            test_mock={
+                "_concat_videos": lambda *args: 20.0,
+                "_store_input_video": lambda *args, **kwargs: "test.mp4",
+                "_store_output_video": lambda *args, **kwargs: "concat_test.mp4",
+            },
+        )
+
+    async def _store_input_video(
+        self, graph_exec_id: str, file: MediaFileType, user_id: str
+    ) -> MediaFileType:
+        """Store input video. Extracted for testability."""
+        return await store_media_file(
+            graph_exec_id=graph_exec_id,
+            file=file,
+            user_id=user_id,
+            return_content=False,
+        )
+
+    async def _store_output_video(
+        self,
+        graph_exec_id: str,
+        file: MediaFileType,
+        user_id: str,
+        return_content: bool,
+    ) -> MediaFileType:
+        """Store output video. Extracted for testability."""
+        return await store_media_file(
+            graph_exec_id=graph_exec_id,
+            file=file,
+            user_id=user_id,
+            return_content=return_content,
         )
 
     def _concat_videos(
@@ -133,11 +163,8 @@ class VideoConcatBlock(Block):
             # Store all input videos locally
             video_abspaths = []
             for video in input_data.videos:
-                local_path = await store_media_file(
-                    graph_exec_id=graph_exec_id,
-                    file=video,
-                    user_id=user_id,
-                    return_content=False,
+                local_path = await self._store_input_video(
+                    graph_exec_id, video, user_id
                 )
                 video_abspaths.append(get_exec_file_path(graph_exec_id, local_path))
 
@@ -155,11 +182,11 @@ class VideoConcatBlock(Block):
             )
 
             # Return as data URI or path
-            video_out = await store_media_file(
-                graph_exec_id=graph_exec_id,
-                file=output_filename,
-                user_id=user_id,
-                return_content=input_data.output_return_type == "data_uri",
+            video_out = await self._store_output_video(
+                graph_exec_id,
+                output_filename,
+                user_id,
+                input_data.output_return_type == "data_uri",
             )
 
             yield "video_out", video_out
