@@ -19,6 +19,8 @@ from backend.data.human_review import (
     has_pending_reviews_for_graph_exec,
     process_all_reviews_for_execution,
 )
+from backend.data.model import USER_TIMEZONE_NOT_SET
+from backend.data.user import get_user_by_id
 from backend.executor.utils import add_graph_execution
 
 from .model import PendingHumanReviewModel, ReviewRequest, ReviewResponse
@@ -238,13 +240,21 @@ async def process_review_action(
             first_review = next(iter(updated_reviews.values()))
 
             try:
+                # Fetch user and settings to build complete execution context
+                user = await get_user_by_id(user_id)
                 settings = await get_graph_settings(
                     user_id=user_id, graph_id=first_review.graph_id
+                )
+
+                # Preserve user's timezone preference when resuming execution
+                user_timezone = (
+                    user.timezone if user.timezone != USER_TIMEZONE_NOT_SET else "UTC"
                 )
 
                 execution_context = ExecutionContext(
                     human_in_the_loop_safe_mode=settings.human_in_the_loop_safe_mode,
                     sensitive_action_safe_mode=settings.sensitive_action_safe_mode,
+                    user_timezone=user_timezone,
                 )
 
                 await add_graph_execution(
