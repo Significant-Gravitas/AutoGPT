@@ -45,6 +45,11 @@ export function PendingReviewsList({
     Record<string, boolean>
   >({});
 
+  // Track disabled/excluded reviews
+  const [disabledReviewsMap, setDisabledReviewsMap] = useState<
+    Record<string, boolean>
+  >({});
+
   const { toast } = useToast();
 
   const reviewActionMutation = usePostV2ProcessReviewAction({
@@ -97,6 +102,14 @@ export function PendingReviewsList({
     setReviewMessageMap((prev) => ({ ...prev, [nodeExecId]: message }));
   }
 
+  // Handle toggling disabled/excluded state
+  function handleToggleDisabled(nodeExecId: string) {
+    setDisabledReviewsMap((prev) => ({
+      ...prev,
+      [nodeExecId]: !prev[nodeExecId],
+    }));
+  }
+
   // Handle per-review auto-approval toggle
   function handleAutoApproveFutureToggle(nodeExecId: string, enabled: boolean) {
     setAutoApproveFutureMap((prev) => ({
@@ -130,6 +143,13 @@ export function PendingReviewsList({
     const reviewItems = [];
 
     for (const review of reviews) {
+      const isDisabled = disabledReviewsMap[review.node_exec_id];
+
+      // Skip disabled/excluded reviews for approve action, include for reject
+      if (approved && isDisabled) {
+        continue;
+      }
+
       const reviewData = reviewDataMap[review.node_exec_id];
       const reviewMessage = reviewMessageMap[review.node_exec_id];
       const autoApproveThisReview = autoApproveFutureMap[review.node_exec_id];
@@ -162,10 +182,10 @@ export function PendingReviewsList({
 
       reviewItems.push({
         node_exec_id: review.node_exec_id,
-        approved,
+        approved: approved && !isDisabled,
         reviewed_data: parsedData,
         message: reviewMessage || undefined,
-        auto_approve_future: autoApproveThisReview && approved,
+        auto_approve_future: autoApproveThisReview && approved && !isDisabled,
       });
     }
 
@@ -222,7 +242,8 @@ export function PendingReviewsList({
             onReviewDataChange={handleReviewDataChange}
             onReviewMessageChange={handleReviewMessageChange}
             reviewMessage={reviewMessageMap[review.node_exec_id] || ""}
-            isDisabled={autoApproveFutureMap[review.node_exec_id] || false}
+            isDisabled={disabledReviewsMap[review.node_exec_id] || false}
+            onToggleDisabled={handleToggleDisabled}
             autoApproveFuture={
               autoApproveFutureMap[review.node_exec_id] || false
             }
