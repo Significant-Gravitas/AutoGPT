@@ -21,6 +21,8 @@ from backend.util.json import dumps
 
 logger = logging.getLogger(__name__)
 
+# Track if we've already logged the missing API key error
+_missing_api_key_logged = False
 
 # OpenAI embedding model configuration
 EMBEDDING_MODEL = "text-embedding-3-small"
@@ -70,10 +72,17 @@ async def generate_embedding(text: str) -> list[float] | None:
     Returns None if embedding generation fails.
     Fail-fast: no retries to maintain consistency with approval flow.
     """
+    global _missing_api_key_logged
+
     try:
         client = get_openai_client()
         if not client:
-            logger.error("openai_internal_api_key not set, cannot generate embedding")
+            if not _missing_api_key_logged:
+                logger.error(
+                    "openai_internal_api_key not set, cannot generate embeddings. "
+                    "This message will only be shown once."
+                )
+                _missing_api_key_logged = True
             return None
 
         # Truncate text to token limit using tiktoken
