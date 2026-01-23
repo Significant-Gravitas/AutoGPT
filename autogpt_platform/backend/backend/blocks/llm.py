@@ -108,11 +108,17 @@ class LlmModelMeta(type):
         # Convert attribute name to slug format:
         # 1. Lowercase: GPT4O -> gpt4o
         # 2. Underscores to hyphens: GPT4O_MINI -> gpt4o-mini
-        # 3. Insert hyphen between letter and digit: gpt4o -> gpt-4o
         slug = name.lower().replace("_", "-")
-        slug = re.sub(r"([a-z])(\d)", r"\1-\2", slug)
 
-        return cls(slug)
+        # Check for exact match in registry first (e.g., "o1" stays "o1")
+        registry_slugs = llm_registry.get_dynamic_model_slugs()
+        if slug in registry_slugs:
+            return cls(slug)
+
+        # If no exact match, try inserting hyphen between letter and digit
+        # e.g., gpt4o -> gpt-4o
+        transformed_slug = re.sub(r"([a-z])(\d)", r"\1-\2", slug)
+        return cls(transformed_slug)
 
     def __iter__(cls):
         """Iterate over all models from the registry.
