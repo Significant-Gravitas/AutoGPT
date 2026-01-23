@@ -393,7 +393,9 @@ async def update_review_processed_status(node_exec_id: str, processed: bool) -> 
     )
 
 
-async def cancel_pending_reviews_for_execution(graph_exec_id: str) -> int:
+async def cancel_pending_reviews_for_execution(
+    graph_exec_id: str, user_id: str
+) -> int:
     """
     Cancel all pending reviews for a graph execution (e.g., when execution is stopped).
 
@@ -401,13 +403,27 @@ async def cancel_pending_reviews_for_execution(graph_exec_id: str) -> int:
 
     Args:
         graph_exec_id: The graph execution ID
+        user_id: User ID who owns the execution (for security validation)
 
     Returns:
         Number of reviews cancelled
+
+    Raises:
+        ValueError: If the graph execution doesn't belong to the user
     """
+    # Validate user ownership before cancelling reviews
+    graph_exec = await get_graph_execution_meta(
+        user_id=user_id, execution_id=graph_exec_id
+    )
+    if not graph_exec:
+        raise ValueError(
+            f"Graph execution {graph_exec_id} not found or doesn't belong to user {user_id}"
+        )
+
     result = await PendingHumanReview.prisma().update_many(
         where={
             "graphExecId": graph_exec_id,
+            "userId": user_id,
             "status": ReviewStatus.WAITING,
         },
         data={

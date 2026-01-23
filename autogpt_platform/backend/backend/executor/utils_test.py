@@ -729,7 +729,7 @@ async def test_stop_graph_execution_in_review_status_cancels_pending_reviews(
 
     # Verify pending reviews were cancelled
     mock_human_review_db.cancel_pending_reviews_for_execution.assert_called_once_with(
-        graph_exec_id
+        graph_exec_id, user_id
     )
 
     # Verify execution status was updated to TERMINATED
@@ -800,7 +800,7 @@ async def test_stop_graph_execution_with_database_manager_when_prisma_disconnect
 
     # Verify database manager was used for cancel_pending_reviews
     mock_db_manager.cancel_pending_reviews_for_execution.assert_called_once_with(
-        graph_exec_id
+        graph_exec_id, user_id
     )
 
     # Verify execution status was updated via database manager
@@ -894,7 +894,7 @@ async def test_stop_graph_execution_cascades_to_child_with_reviews(
 
     # Verify child reviews were cancelled
     mock_human_review_db.cancel_pending_reviews_for_execution.assert_called_once_with(
-        child_exec_id
+        child_exec_id, user_id
     )
 
     # Verify both parent and child status updates

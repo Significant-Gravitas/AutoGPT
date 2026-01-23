@@ -765,7 +765,7 @@ async def stop_graph_execution(
                 )
                 # Mark all pending reviews as rejected/cancelled
                 cancelled_count = await review_db.cancel_pending_reviews_for_execution(
-                    graph_exec_id
+                    graph_exec_id, user_id
                 )
                 logger.info(
                     f"Cancelled {cancelled_count} pending review(s) for stopped execution {graph_exec_id}"
