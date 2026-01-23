@@ -1,4 +1,3 @@
-import asyncio
 import logging
 from typing import List
 
@@ -196,39 +195,27 @@ async def process_review_action(
         review_decisions=review_decisions,
     )
 
-    # Create auto-approval records for approved reviews in parallel
+    # Create auto-approval records for approved reviews
+    # Note: Processing sequentially to avoid event loop issues in tests
     if request.auto_approve_future_actions:
-        approved_reviews = [
-            (node_exec_id, review)
-            for node_exec_id, review in updated_reviews.items()
-            if review.status == ReviewStatus.APPROVED
-        ]
-
-        async def create_auto_approval_for_review(node_exec_id: str, review):
-            node_exec = await get_node_execution(node_exec_id)
-            if node_exec:
-                await create_auto_approval_record(
-                    user_id=user_id,
-                    graph_exec_id=review.graph_exec_id,
-                    graph_id=review.graph_id,
-                    graph_version=review.graph_version,
-                    node_id=node_exec.node_id,
-                    payload=review.payload,
-                )
-
-        results = await asyncio.gather(
-            *[
-                create_auto_approval_for_review(node_exec_id, review)
-                for node_exec_id, review in approved_reviews
-            ],
-            return_exceptions=True,
-        )
-        for result in results:
-            if isinstance(result, Exception):
-                logger.error(
-                    "Failed to create auto-approval record",
-                    exc_info=result,
-                )
+        for node_exec_id, review in updated_reviews.items():
+            if review.status == ReviewStatus.APPROVED:
+                try:
+                    node_exec = await get_node_execution(node_exec_id)
+                    if node_exec:
+                        await create_auto_approval_record(
+                            user_id=user_id,
+                            graph_exec_id=review.graph_exec_id,
+                            graph_id=review.graph_id,
+                            graph_version=review.graph_version,
+                            node_id=node_exec.node_id,
+                            payload=review.payload,
+                        )
+                except Exception as e:
+                    logger.error(
+                        f"Failed to create auto-approval record for {node_exec_id}",
+                        exc_info=e,
+                    )
 
     # Count results
     approved_count = sum(

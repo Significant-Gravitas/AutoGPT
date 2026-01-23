@@ -21,20 +21,24 @@ from .routes import router
 # Using a fixed timestamp for reproducible tests
 FIXED_NOW = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=datetime.timezone.utc)
 
-app = fastapi.FastAPI()
-app.include_router(router, prefix="/api/review")
-app.add_exception_handler(ValueError, handle_internal_http_error(400))
 
-client = fastapi.testclient.TestClient(app)
+@pytest.fixture
+def app():
+    """Create FastAPI app for testing"""
+    test_app = fastapi.FastAPI()
+    test_app.include_router(router, prefix="/api/review")
+    test_app.add_exception_handler(ValueError, handle_internal_http_error(400))
+    return test_app
 
 
-@pytest.fixture(autouse=True)
-def setup_app_auth(mock_jwt_user):
-    """Setup auth overrides for all tests in this module"""
+@pytest.fixture
+def client(app, mock_jwt_user):
+    """Create test client with auth overrides"""
     from autogpt_libs.auth.jwt_utils import get_jwt_payload
 
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
-    yield
+    with fastapi.testclient.TestClient(app) as test_client:
+        yield test_client
     app.dependency_overrides.clear()
 
 
@@ -61,6 +65,7 @@ def sample_pending_review(test_user_id: str) -> PendingHumanReviewModel:
 
 
 def test_get_pending_reviews_empty(
+    client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockerFixture,
     snapshot: Snapshot,
     test_user_id: str,
@@ -79,6 +84,7 @@ def test_get_pending_reviews_empty(
 
 
 def test_get_pending_reviews_with_data(
+    client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockerFixture,
     sample_pending_review: PendingHumanReviewModel,
     snapshot: Snapshot,
@@ -101,6 +107,7 @@ def test_get_pending_reviews_with_data(
 
 
 def test_get_pending_reviews_for_execution_success(
+    client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockerFixture,
     sample_pending_review: PendingHumanReviewModel,
     snapshot: Snapshot,
@@ -129,6 +136,7 @@ def test_get_pending_reviews_for_execution_success(
 
 
 def test_get_pending_reviews_for_execution_not_available(
+    client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockerFixture,
 ) -> None:
     """Test access denied when user doesn't own the execution"""
@@ -144,12 +152,19 @@ def test_get_pending_reviews_for_execution_not_available(
 
 
 def test_process_review_action_approve_success(
+    client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockerFixture,
     sample_pending_review: PendingHumanReviewModel,
     test_user_id: str,
 ) -> None:
     """Test successful review approval"""
     # Mock the route functions
+
+    # Mock get_pending_reviews_for_user (called to find the graph_exec_id)
+    mock_get_reviews_for_user = mocker.patch(
+        "backend.api.features.executions.review.routes.get_pending_reviews_for_user"
+    )
+    mock_get_reviews_for_user.return_value = [sample_pending_review]
 
     mock_get_reviews_for_execution = mocker.patch(
         "backend.api.features.executions.review.routes.get_pending_reviews_for_execution"
@@ -216,12 +231,27 @@ def test_process_review_action_approve_success(
 
 
 def test_process_review_action_reject_success(
+    client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockerFixture,
     sample_pending_review: PendingHumanReviewModel,
     test_user_id: str,
 ) -> None:
     """Test successful review rejection"""
     # Mock the route functions
+
+    # Mock get_pending_reviews_for_user (called to find the graph_exec_id)
+    mock_get_reviews_for_user = mocker.patch(
+        "backend.api.features.executions.review.routes.get_pending_reviews_for_user"
+    )
+    mock_get_reviews_for_user.return_value = [sample_pending_review]
+
+    # Mock get_graph_execution_meta to return execution in REVIEW status
+    mock_get_graph_exec = mocker.patch(
+        "backend.api.features.executions.review.routes.get_graph_execution_meta"
+    )
+    mock_graph_exec_meta = mocker.Mock()
+    mock_graph_exec_meta.status = ExecutionStatus.REVIEW
+    mock_get_graph_exec.return_value = mock_graph_exec_meta
 
     mock_get_reviews_for_execution = mocker.patch(
         "backend.api.features.executions.review.routes.get_pending_reviews_for_execution"
@@ -276,6 +306,7 @@ def test_process_review_action_reject_success(
 
 
 def test_process_review_action_mixed_success(
+    client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockerFixture,
     sample_pending_review: PendingHumanReviewModel,
     test_user_id: str,
@@ -301,6 +332,12 @@ def test_process_review_action_mixed_success(
     )
 
     # Mock the route functions
+
+    # Mock get_pending_reviews_for_user (called to find the graph_exec_id)
+    mock_get_reviews_for_user = mocker.patch(
+        "backend.api.features.executions.review.routes.get_pending_reviews_for_user"
+    )
+    mock_get_reviews_for_user.return_value = [sample_pending_review]
 
     mock_get_reviews_for_execution = mocker.patch(
         "backend.api.features.executions.review.routes.get_pending_reviews_for_execution"
@@ -391,6 +428,7 @@ def test_process_review_action_mixed_success(
 
 
 def test_process_review_action_empty_request(
+    client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockerFixture,
     test_user_id: str,
 ) -> None:
@@ -408,10 +446,45 @@ def test_process_review_action_empty_request(
 
 
 def test_process_review_action_review_not_found(
+    client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockerFixture,
+    sample_pending_review: PendingHumanReviewModel,
     test_user_id: str,
 ) -> None:
     """Test error when review is not found"""
+    # Create a review with the nonexistent_node ID so the route can find the graph_exec_id
+    nonexistent_review = PendingHumanReviewModel(
+        node_exec_id="nonexistent_node",
+        user_id=test_user_id,
+        graph_exec_id="test_graph_exec_456",
+        graph_id="test_graph_789",
+        graph_version=1,
+        payload={"data": "test"},
+        instructions="Review",
+        editable=True,
+        status=ReviewStatus.WAITING,
+        review_message=None,
+        was_edited=None,
+        processed=False,
+        created_at=FIXED_NOW,
+        updated_at=None,
+        reviewed_at=None,
+    )
+
+    # Mock get_pending_reviews_for_user (called to find the graph_exec_id)
+    mock_get_reviews_for_user = mocker.patch(
+        "backend.api.features.executions.review.routes.get_pending_reviews_for_user"
+    )
+    mock_get_reviews_for_user.return_value = [nonexistent_review]
+
+    # Mock get_graph_execution_meta to return execution in REVIEW status
+    mock_get_graph_exec = mocker.patch(
+        "backend.api.features.executions.review.routes.get_graph_execution_meta"
+    )
+    mock_graph_exec_meta = mocker.Mock()
+    mock_graph_exec_meta.status = ExecutionStatus.REVIEW
+    mock_get_graph_exec.return_value = mock_graph_exec_meta
+
     # Mock the functions that extract graph execution ID from the request
     mock_get_reviews_for_execution = mocker.patch(
         "backend.api.features.executions.review.routes.get_pending_reviews_for_execution"
@@ -444,11 +517,26 @@ def test_process_review_action_review_not_found(
 
 
 def test_process_review_action_partial_failure(
+    client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockerFixture,
     sample_pending_review: PendingHumanReviewModel,
     test_user_id: str,
 ) -> None:
     """Test handling of partial failures in review processing"""
+    # Mock get_pending_reviews_for_user (called to find the graph_exec_id)
+    mock_get_reviews_for_user = mocker.patch(
+        "backend.api.features.executions.review.routes.get_pending_reviews_for_user"
+    )
+    mock_get_reviews_for_user.return_value = [sample_pending_review]
+
+    # Mock get_graph_execution_meta to return execution in REVIEW status
+    mock_get_graph_exec = mocker.patch(
+        "backend.api.features.executions.review.routes.get_graph_execution_meta"
+    )
+    mock_graph_exec_meta = mocker.Mock()
+    mock_graph_exec_meta.status = ExecutionStatus.REVIEW
+    mock_get_graph_exec.return_value = mock_graph_exec_meta
+
     # Mock the route functions
     mock_get_reviews_for_execution = mocker.patch(
         "backend.api.features.executions.review.routes.get_pending_reviews_for_execution"
@@ -478,16 +566,50 @@ def test_process_review_action_partial_failure(
 
 
 def test_process_review_action_invalid_node_exec_id(
+    client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockerFixture,
     sample_pending_review: PendingHumanReviewModel,
     test_user_id: str,
 ) -> None:
     """Test failure when trying to process review with invalid node execution ID"""
+    # Create a review with the invalid-node-format ID so the route can find the graph_exec_id
+    invalid_review = PendingHumanReviewModel(
+        node_exec_id="invalid-node-format",
+        user_id=test_user_id,
+        graph_exec_id="test_graph_exec_456",
+        graph_id="test_graph_789",
+        graph_version=1,
+        payload={"data": "test"},
+        instructions="Review",
+        editable=True,
+        status=ReviewStatus.WAITING,
+        review_message=None,
+        was_edited=None,
+        processed=False,
+        created_at=FIXED_NOW,
+        updated_at=None,
+        reviewed_at=None,
+    )
+
+    # Mock get_pending_reviews_for_user (called to find the graph_exec_id)
+    mock_get_reviews_for_user = mocker.patch(
+        "backend.api.features.executions.review.routes.get_pending_reviews_for_user"
+    )
+    mock_get_reviews_for_user.return_value = [invalid_review]
+
+    # Mock get_graph_execution_meta to return execution in REVIEW status
+    mock_get_graph_exec = mocker.patch(
+        "backend.api.features.executions.review.routes.get_graph_execution_meta"
+    )
+    mock_graph_exec_meta = mocker.Mock()
+    mock_graph_exec_meta.status = ExecutionStatus.REVIEW
+    mock_get_graph_exec.return_value = mock_graph_exec_meta
+
     # Mock the route functions
     mock_get_reviews_for_execution = mocker.patch(
         "backend.api.features.executions.review.routes.get_pending_reviews_for_execution"
     )
-    mock_get_reviews_for_execution.return_value = [sample_pending_review]
+    mock_get_reviews_for_execution.return_value = [invalid_review]
 
     # Mock validation failure - this should return 400, not 500
     mock_process_all_reviews = mocker.patch(
@@ -515,11 +637,18 @@ def test_process_review_action_invalid_node_exec_id(
 
 
 def test_process_review_action_auto_approve_creates_auto_approval_records(
+    client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockerFixture,
     sample_pending_review: PendingHumanReviewModel,
     test_user_id: str,
 ) -> None:
     """Test that auto_approve_future_actions flag creates auto-approval records"""
+    # Mock get_pending_reviews_for_user (called to find the graph_exec_id)
+    mock_get_reviews_for_user = mocker.patch(
+        "backend.api.features.executions.review.routes.get_pending_reviews_for_user"
+    )
+    mock_get_reviews_for_user.return_value = [sample_pending_review]
+
     # Mock process_all_reviews
     mock_process_all_reviews = mocker.patch(
         "backend.api.features.executions.review.routes.process_all_reviews_for_execution"
@@ -628,11 +757,18 @@ def test_process_review_action_auto_approve_creates_auto_approval_records(
 
 
 def test_process_review_action_without_auto_approve_still_loads_settings(
+    client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockerFixture,
     sample_pending_review: PendingHumanReviewModel,
     test_user_id: str,
 ) -> None:
     """Test that execution context is created with settings even without auto-approve"""
+    # Mock get_pending_reviews_for_user (called to find the graph_exec_id)
+    mock_get_reviews_for_user = mocker.patch(
+        "backend.api.features.executions.review.routes.get_pending_reviews_for_user"
+    )
+    mock_get_reviews_for_user.return_value = [sample_pending_review]
+
     # Mock process_all_reviews
     mock_process_all_reviews = mocker.patch(
         "backend.api.features.executions.review.routes.process_all_reviews_for_execution"
@@ -725,6 +861,7 @@ def test_process_review_action_without_auto_approve_still_loads_settings(
 
 
 def test_process_review_action_auto_approve_only_applies_to_approved_reviews(
+    client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockerFixture,
     test_user_id: str,
 ) -> None:
@@ -764,6 +901,12 @@ def test_process_review_action_auto_approve_only_applies_to_approved_reviews(
         updated_at=FIXED_NOW,
         reviewed_at=FIXED_NOW,
     )
+
+    # Mock get_pending_reviews_for_user (called to find the graph_exec_id)
+    mock_get_reviews_for_user = mocker.patch(
+        "backend.api.features.executions.review.routes.get_pending_reviews_for_user"
+    )
+    mock_get_reviews_for_user.return_value = [approved_review]
 
     # Mock process_all_reviews
     mock_process_all_reviews = mocker.patch(
