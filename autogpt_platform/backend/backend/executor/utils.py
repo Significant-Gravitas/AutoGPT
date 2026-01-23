@@ -906,9 +906,28 @@ async def add_graph_execution(
             nodes_to_skip=nodes_to_skip,
             execution_context=execution_context,
         )
-        logger.info(f"Publishing execution {graph_exec.id} to execution queue")
+        logger.info(f"Queueing execution {graph_exec.id}")
+
+        # Update execution status to QUEUED BEFORE publishing to prevent race condition
+        # where two concurrent requests could both publish the same execution
+        updated_exec = await edb.update_graph_execution_stats(
+            graph_exec_id=graph_exec.id,
+            status=ExecutionStatus.QUEUED,
+        )
+
+        # Verify the status update succeeded (prevents duplicate queueing in race conditions)
+        # If another request already updated the status, this execution will not be QUEUED
+        if not updated_exec or updated_exec.status != ExecutionStatus.QUEUED:
+            logger.warning(
+                f"Skipping queue publish for execution {graph_exec.id} - "
+                f"status update failed or execution already queued by another request"
+            )
+            return graph_exec
+
+        graph_exec.status = ExecutionStatus.QUEUED
 
         # Publish to execution queue for executor to pick up
+        # This happens AFTER status update to ensure only one request publishes
         exec_queue = await get_async_execution_queue()
         await exec_queue.publish_message(
             routing_key=GRAPH_EXECUTION_ROUTING_KEY,
@@ -916,13 +935,6 @@ async def add_graph_execution(
             exchange=GRAPH_EXECUTION_EXCHANGE,
         )
         logger.info(f"Published execution {graph_exec.id} to RabbitMQ queue")
-
-        # Update execution status to QUEUED
-        graph_exec.status = ExecutionStatus.QUEUED
-        await edb.update_graph_execution_stats(
-            graph_exec_id=graph_exec.id,
-            status=graph_exec.status,
-        )
     except BaseException as e:
         err = str(e) or type(e).__name__
         if not graph_exec:
