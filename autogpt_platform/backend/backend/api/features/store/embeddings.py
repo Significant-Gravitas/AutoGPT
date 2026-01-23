@@ -336,7 +336,12 @@ async def ensure_embedding(
         # Generate new embedding
         embedding = await generate_embedding(searchable_text)
         if embedding is None:
-            logger.warning(f"Could not generate embedding for version {version_id}")
+            log_once_per_task(
+                "embedding_generation_failed",
+                logger.warning,
+                f"Could not generate embeddings (missing API key or service unavailable). "
+                f"Embedding generation is disabled for this task.",
+            )
             return False
 
         # Store the embedding with metadata using new function
@@ -655,8 +660,11 @@ async def ensure_content_embedding(
         # Generate new embedding
         embedding = await generate_embedding(searchable_text)
         if embedding is None:
-            logger.warning(
-                f"Could not generate embedding for {content_type}:{content_id}"
+            log_once_per_task(
+                "embedding_generation_failed",
+                logger.warning,
+                f"Could not generate embeddings (missing API key or service unavailable). "
+                f"Embedding generation is disabled for this task.",
             )
             return False
 
