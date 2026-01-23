@@ -1,4 +1,5 @@
 import { postV2CreateSession } from "@/app/api/__generated__/endpoints/chat/chat";
+import { useToast } from "@/components/molecules/Toast/use-toast";
 import { getHomepageRoute } from "@/lib/constants";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import {
@@ -6,6 +7,7 @@ import {
   type FlagValues,
   useGetFlag,
 } from "@/services/feature-flags/use-get-flag";
+import * as Sentry from "@sentry/nextjs";
 import { useFlags } from "launchdarkly-react-client-sdk";
 import { useRouter } from "next/navigation";
 import { useEffect, useReducer } from "react";
@@ -78,6 +80,7 @@ function copilotReducer(
 export function useCopilotPage() {
   const router = useRouter();
   const { user, isLoggedIn, isUserLoading } = useSupabase();
+  const { toast } = useToast();
 
   const isChatEnabled = useGetFlag(Flag.CHAT);
   const flags = useFlags<FlagValues>();
@@ -193,6 +196,8 @@ export function useCopilotPage() {
       });
     } catch (error) {
       console.error("[CopilotPage] Failed to start chat:", error);
+      toast({ title: "Failed to start chat", variant: "destructive" });
+      Sentry.captureException(error);
       dispatch({ type: "setPageState", pageState: { type: "welcome" } });
     }
   }
@@ -209,13 +214,17 @@ export function useCopilotPage() {
     dispatch({ type: "setStreaming", isStreaming: isStreamingValue });
   }
 
-  function proceedWithNewChat() {
+  async function proceedWithNewChat() {
     dispatch({ type: "setNewChatModalOpen", isOpen: false });
     if (newChatContext?.performNewChat) {
       newChatContext.performNewChat();
       return;
     }
-    setUrlSessionId(null, { shallow: false });
+    try {
+      await setUrlSessionId(null, { shallow: false });
+    } catch (error) {
+      console.error("[CopilotPage] Failed to clear session:", error);
+    }
     router.replace("/copilot");
   }
 
