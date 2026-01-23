@@ -393,9 +393,7 @@ async def update_review_processed_status(node_exec_id: str, processed: bool) -> 
     )
 
 
-async def cancel_pending_reviews_for_execution(
-    graph_exec_id: str, user_id: str
-) -> int:
+async def cancel_pending_reviews_for_execution(graph_exec_id: str, user_id: str) -> int:
     """
     Cancel all pending reviews for a graph execution (e.g., when execution is stopped).
 

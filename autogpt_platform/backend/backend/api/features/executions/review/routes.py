@@ -208,9 +208,8 @@ async def process_review_action(
         # Only create auto-approval if:
         # 1. This review was approved
         # 2. The review requested auto-approval
-        if (
-            review_result.status == ReviewStatus.APPROVED
-            and auto_approve_requests.get(node_exec_id, False)
+        if review_result.status == ReviewStatus.APPROVED and auto_approve_requests.get(
+            node_exec_id, False
         ):
             try:
                 node_exec = await get_node_execution(node_exec_id)

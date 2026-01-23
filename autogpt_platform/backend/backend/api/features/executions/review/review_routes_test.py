@@ -1063,7 +1063,6 @@ def test_process_review_action_per_review_auto_approve_granularity(
         return review_map.get(node_exec_id)
 
     mock_get_reviews_for_user.side_effect = mock_get_review_by_id
-    
 
     # Mock process_all_reviews - return 3 approved reviews
     mock_process_all_reviews = mocker.patch(
