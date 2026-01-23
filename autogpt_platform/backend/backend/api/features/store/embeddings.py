@@ -339,8 +339,8 @@ async def ensure_embedding(
             log_once_per_task(
                 "embedding_generation_failed",
                 logger.warning,
-                f"Could not generate embeddings (missing API key or service unavailable). "
-                f"Embedding generation is disabled for this task.",
+                "Could not generate embeddings (missing API key or service unavailable). "
+                "Embedding generation is disabled for this task.",
             )
             return False
 
@@ -663,8 +663,8 @@ async def ensure_content_embedding(
             log_once_per_task(
                 "embedding_generation_failed",
                 logger.warning,
-                f"Could not generate embeddings (missing API key or service unavailable). "
-                f"Embedding generation is disabled for this task.",
+                "Could not generate embeddings (missing API key or service unavailable). "
+                "Embedding generation is disabled for this task.",
             )
             return False
 
