@@ -32,21 +32,12 @@ export function PendingReviewsList({
     },
   );
 
-  const [reviewMessageMap, setReviewMessageMap] = useState<
-    Record<string, string>
-  >({});
-
   const [pendingAction, setPendingAction] = useState<
     "approve" | "reject" | null
   >(null);
 
   // Track per-review auto-approval state
   const [autoApproveFutureMap, setAutoApproveFutureMap] = useState<
-    Record<string, boolean>
-  >({});
-
-  // Track disabled/excluded reviews
-  const [disabledReviewsMap, setDisabledReviewsMap] = useState<
     Record<string, boolean>
   >({});
 
@@ -98,18 +89,6 @@ export function PendingReviewsList({
     setReviewDataMap((prev) => ({ ...prev, [nodeExecId]: data }));
   }
 
-  function handleReviewMessageChange(nodeExecId: string, message: string) {
-    setReviewMessageMap((prev) => ({ ...prev, [nodeExecId]: message }));
-  }
-
-  // Handle toggling disabled/excluded state
-  function handleToggleDisabled(nodeExecId: string) {
-    setDisabledReviewsMap((prev) => ({
-      ...prev,
-      [nodeExecId]: !prev[nodeExecId],
-    }));
-  }
-
   // Handle per-review auto-approval toggle
   function handleAutoApproveFutureToggle(nodeExecId: string, enabled: boolean) {
     setAutoApproveFutureMap((prev) => ({
@@ -143,15 +122,7 @@ export function PendingReviewsList({
     const reviewItems = [];
 
     for (const review of reviews) {
-      const isDisabled = disabledReviewsMap[review.node_exec_id];
-
-      // Skip disabled/excluded reviews for approve action, include for reject
-      if (approved && isDisabled) {
-        continue;
-      }
-
       const reviewData = reviewDataMap[review.node_exec_id];
-      const reviewMessage = reviewMessageMap[review.node_exec_id];
       const autoApproveThisReview = autoApproveFutureMap[review.node_exec_id];
 
       // When auto-approving future actions for this review, send undefined (use original data)
@@ -182,10 +153,9 @@ export function PendingReviewsList({
 
       reviewItems.push({
         node_exec_id: review.node_exec_id,
-        approved: approved && !isDisabled,
+        approved,
         reviewed_data: parsedData,
-        message: reviewMessage || undefined,
-        auto_approve_future: autoApproveThisReview && approved && !isDisabled,
+        auto_approve_future: autoApproveThisReview && approved,
       });
     }
 
@@ -240,10 +210,6 @@ export function PendingReviewsList({
             key={`${review.node_exec_id}`}
             review={review}
             onReviewDataChange={handleReviewDataChange}
-            onReviewMessageChange={handleReviewMessageChange}
-            reviewMessage={reviewMessageMap[review.node_exec_id] || ""}
-            isDisabled={disabledReviewsMap[review.node_exec_id] || false}
-            onToggleDisabled={handleToggleDisabled}
             autoApproveFuture={
               autoApproveFutureMap[review.node_exec_id] || false
             }
