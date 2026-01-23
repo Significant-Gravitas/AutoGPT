@@ -6,8 +6,6 @@ from openai.types.chat import ChatCompletionToolParam
 from backend.api.features.chat.model import ChatSession
 from backend.api.features.chat.tracking import track_tool_called
 
-logger = logging.getLogger(__name__)
-
 from .add_understanding import AddUnderstandingTool
 from .agent_output import AgentOutputTool
 from .base import BaseTool
@@ -23,6 +21,8 @@ from .search_docs import SearchDocsTool
 
 if TYPE_CHECKING:
     from backend.api.features.chat.response_model import StreamToolOutputAvailable
+
+logger = logging.getLogger(__name__)
 
 # Single source of truth for all tools
 TOOL_REGISTRY: dict[str, BaseTool] = {

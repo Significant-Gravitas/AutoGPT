@@ -39,7 +39,9 @@ def _get_posthog_client() -> Posthog | None:
         settings.secrets.posthog_api_key,
         host=settings.secrets.posthog_host,
     )
-    logger.info(f"PostHog client initialized with host: {settings.secrets.posthog_host}")
+    logger.info(
+        f"PostHog client initialized with host: {settings.secrets.posthog_host}"
+    )
     return _posthog_client
 
 
