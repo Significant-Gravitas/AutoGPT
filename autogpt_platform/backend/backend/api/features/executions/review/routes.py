@@ -216,12 +216,19 @@ async def process_review_action(
                     payload=review.payload,
                 )
 
-        await asyncio.gather(
+        results = await asyncio.gather(
             *[
                 create_auto_approval_for_review(node_exec_id, review)
                 for node_exec_id, review in approved_reviews
-            ]
+            ],
+            return_exceptions=True,
         )
+        for result in results:
+            if isinstance(result, Exception):
+                logger.error(
+                    "Failed to create auto-approval record",
+                    exc_info=result,
+                )
 
     # Count results
     approved_count = sum(

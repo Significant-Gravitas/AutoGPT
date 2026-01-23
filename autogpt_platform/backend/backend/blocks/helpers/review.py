@@ -106,8 +106,20 @@ class HITLReviewHelper:
                 f"found existing approval"
             )
             # Return a new ReviewResult with the current node_exec_id but approved status
+            # For auto-approvals, always use current input_data
+            # For normal approvals, use approval_result.data unless it's None
+            is_auto_approval = approval_result.node_exec_id != node_exec_id
+            approved_data = (
+                input_data
+                if is_auto_approval
+                else (
+                    approval_result.data
+                    if approval_result.data is not None
+                    else input_data
+                )
+            )
             return ReviewResult(
-                data=approval_result.data if approval_result.data else input_data,
+                data=approved_data,
                 status=ReviewStatus.APPROVED,
                 message=approval_result.message,
                 processed=True,
