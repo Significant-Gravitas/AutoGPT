@@ -1,7 +1,6 @@
 """VideoClipBlock - Extract a segment from a video file."""
 
 import os
-import tempfile
 from typing import Literal
 
 from moviepy.video.io.VideoFileClip import VideoFileClip
@@ -15,25 +14,29 @@ from backend.data.block import (
 )
 from backend.data.model import SchemaField
 from backend.util.exceptions import BlockExecutionError
+from backend.util.file import MediaFileType, get_exec_file_path, store_media_file
 
 
 class VideoClipBlock(Block):
     """Extract a time segment from a video."""
 
     class Input(BlockSchemaInput):
-        video_in: str = SchemaField(
-            description="Input video (URL, data URI, or file path)",
-            json_schema_extra={"format": "file"},
+        video_in: MediaFileType = SchemaField(
+            description="Input video (URL, data URI, or local path)"
         )
         start_time: float = SchemaField(description="Start time in seconds", ge=0.0)
         end_time: float = SchemaField(description="End time in seconds", ge=0.0)
         output_format: Literal["mp4", "webm", "mkv", "mov"] = SchemaField(
             description="Output format", default="mp4", advanced=True
         )
+        output_return_type: Literal["file_path", "data_uri"] = SchemaField(
+            description="Return the output as a relative path or base64 data URI.",
+            default="file_path",
+        )
 
     class Output(BlockSchemaOutput):
-        video_out: str = SchemaField(
-            description="Clipped video file", json_schema_extra={"format": "file"}
+        video_out: MediaFileType = SchemaField(
+            description="Clipped video file (path or data URI)"
         )
         duration: float = SchemaField(description="Clip duration in seconds")
 
@@ -50,35 +53,39 @@ class VideoClipBlock(Block):
                 "end_time": 10.0,
             },
             test_output=[("video_out", str), ("duration", float)],
-            test_mock={"_clip_video": lambda *args: ("/tmp/clip.mp4", 10.0)},
+            test_mock={"_clip_video": lambda *args: 10.0},
         )
 
     def _clip_video(
         self,
-        video_in: str,
+        video_abspath: str,
+        output_abspath: str,
         start_time: float,
         end_time: float,
-        output_format: str,
-    ) -> tuple[str, float]:
+    ) -> float:
         """Extract a clip from a video. Extracted for testability."""
         clip = None
         subclip = None
         try:
-            clip = VideoFileClip(video_in)
+            clip = VideoFileClip(video_abspath)
             subclip = clip.subclipped(start_time, end_time)
-
-            fd, output_path = tempfile.mkstemp(suffix=f".{output_format}")
-            os.close(fd)
-            subclip.write_videofile(output_path, logger=None)
-
-            return output_path, subclip.duration
+            subclip.write_videofile(output_abspath, codec="libx264", audio_codec="aac")
+            return subclip.duration
         finally:
             if subclip:
                 subclip.close()
             if clip:
                 clip.close()
 
-    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    async def run(
+        self,
+        input_data: Input,
+        *,
+        node_exec_id: str,
+        graph_exec_id: str,
+        user_id: str,
+        **kwargs,
+    ) -> BlockOutput:
         # Validate time range
         if input_data.end_time <= input_data.start_time:
             raise BlockExecutionError(
@@ -88,13 +95,40 @@ class VideoClipBlock(Block):
             )
 
         try:
-            output_path, duration = self._clip_video(
-                input_data.video_in,
+            # Store the input video locally
+            local_video_path = await store_media_file(
+                graph_exec_id=graph_exec_id,
+                file=input_data.video_in,
+                user_id=user_id,
+                return_content=False,
+            )
+            video_abspath = get_exec_file_path(graph_exec_id, local_video_path)
+
+            # Build output path
+            output_filename = MediaFileType(
+                f"{node_exec_id}_clip_{os.path.basename(local_video_path)}"
+            )
+            # Ensure correct extension
+            base, _ = os.path.splitext(output_filename)
+            output_filename = MediaFileType(f"{base}.{input_data.output_format}")
+            output_abspath = get_exec_file_path(graph_exec_id, output_filename)
+
+            duration = self._clip_video(
+                video_abspath,
+                output_abspath,
                 input_data.start_time,
                 input_data.end_time,
-                input_data.output_format,
             )
-            yield "video_out", output_path
+
+            # Return as data URI or path
+            video_out = await store_media_file(
+                graph_exec_id=graph_exec_id,
+                file=output_filename,
+                user_id=user_id,
+                return_content=input_data.output_return_type == "data_uri",
+            )
+
+            yield "video_out", video_out
             yield "duration", duration
 
         except BlockExecutionError:

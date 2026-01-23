@@ -1,7 +1,6 @@
 """VideoTextOverlayBlock - Add text overlay to video."""
 
 import os
-import tempfile
 from typing import Literal
 
 from moviepy import CompositeVideoClip, TextClip
@@ -16,14 +15,15 @@ from backend.data.block import (
 )
 from backend.data.model import SchemaField
 from backend.util.exceptions import BlockExecutionError
+from backend.util.file import MediaFileType, get_exec_file_path, store_media_file
 
 
 class VideoTextOverlayBlock(Block):
     """Add text overlay/caption to video."""
 
     class Input(BlockSchemaInput):
-        video_in: str = SchemaField(
-            description="Input video file", json_schema_extra={"format": "file"}
+        video_in: MediaFileType = SchemaField(
+            description="Input video (URL, data URI, or local path)"
         )
         text: str = SchemaField(description="Text to overlay on video")
         position: Literal[
@@ -56,10 +56,14 @@ class VideoTextOverlayBlock(Block):
             default=None,
             advanced=True,
         )
+        output_return_type: Literal["file_path", "data_uri"] = SchemaField(
+            description="Return the output as a relative path or base64 data URI.",
+            default="file_path",
+        )
 
     class Output(BlockSchemaOutput):
-        video_out: str = SchemaField(
-            description="Video with text overlay", json_schema_extra={"format": "file"}
+        video_out: MediaFileType = SchemaField(
+            description="Video with text overlay (path or data URI)"
         )
 
     def __init__(self):
@@ -71,12 +75,13 @@ class VideoTextOverlayBlock(Block):
             output_schema=self.Output,
             test_input={"video_in": "/tmp/test.mp4", "text": "Hello World"},
             test_output=[("video_out", str)],
-            test_mock={"_add_text_overlay": lambda *args: "/tmp/overlay.mp4"},
+            test_mock={"_add_text_overlay": lambda *args: None},
         )
 
     def _add_text_overlay(
         self,
-        video_in: str,
+        video_abspath: str,
+        output_abspath: str,
         text: str,
         position: str,
         start_time: float | None,
@@ -84,13 +89,13 @@ class VideoTextOverlayBlock(Block):
         font_size: int,
         font_color: str,
         bg_color: str | None,
-    ) -> str:
+    ) -> None:
         """Add text overlay to video. Extracted for testability."""
         video = None
         final = None
         txt_clip = None
         try:
-            video = VideoFileClip(video_in)
+            video = VideoFileClip(video_abspath)
 
             txt_clip = TextClip(
                 text=text,
@@ -119,12 +124,8 @@ class VideoTextOverlayBlock(Block):
             txt_clip = txt_clip.with_start(start).with_end(end).with_duration(duration)
 
             final = CompositeVideoClip([video, txt_clip])
+            final.write_videofile(output_abspath, codec="libx264", audio_codec="aac")
 
-            fd, output_path = tempfile.mkstemp(suffix=".mp4")
-            os.close(fd)
-            final.write_videofile(output_path, logger=None)
-
-            return output_path
         finally:
             if txt_clip:
                 txt_clip.close()
@@ -133,7 +134,15 @@ class VideoTextOverlayBlock(Block):
             if video:
                 video.close()
 
-    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    async def run(
+        self,
+        input_data: Input,
+        *,
+        node_exec_id: str,
+        graph_exec_id: str,
+        user_id: str,
+        **kwargs,
+    ) -> BlockOutput:
         # Validate time range if both are provided
         if (
             input_data.start_time is not None
@@ -147,8 +156,24 @@ class VideoTextOverlayBlock(Block):
             )
 
         try:
-            output_path = self._add_text_overlay(
-                input_data.video_in,
+            # Store the input video locally
+            local_video_path = await store_media_file(
+                graph_exec_id=graph_exec_id,
+                file=input_data.video_in,
+                user_id=user_id,
+                return_content=False,
+            )
+            video_abspath = get_exec_file_path(graph_exec_id, local_video_path)
+
+            # Build output path
+            output_filename = MediaFileType(
+                f"{node_exec_id}_overlay_{os.path.basename(local_video_path)}"
+            )
+            output_abspath = get_exec_file_path(graph_exec_id, output_filename)
+
+            self._add_text_overlay(
+                video_abspath,
+                output_abspath,
                 input_data.text,
                 input_data.position,
                 input_data.start_time,
@@ -157,7 +182,16 @@ class VideoTextOverlayBlock(Block):
                 input_data.font_color,
                 input_data.bg_color,
             )
-            yield "video_out", output_path
+
+            # Return as data URI or path
+            video_out = await store_media_file(
+                graph_exec_id=graph_exec_id,
+                file=output_filename,
+                user_id=user_id,
+                return_content=input_data.output_return_type == "data_uri",
+            )
+
+            yield "video_out", video_out
 
         except BlockExecutionError:
             raise

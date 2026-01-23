@@ -1,7 +1,7 @@
 """LoopVideoBlock - Loop a video to a given duration or number of repeats."""
 
 import os
-from typing import Any, Literal, Optional
+from typing import Literal, Optional
 
 from moviepy.video.fx.Loop import Loop
 from moviepy.video.io.VideoFileClip import VideoFileClip
@@ -72,7 +72,7 @@ class LoopVideoBlock(Block):
         input_abspath = get_exec_file_path(graph_exec_id, local_video_path)
 
         clip: VideoFileClip | None = None
-        looped_clip: Any = None
+        looped_clip: VideoFileClip | None = None
         try:
             # 2) Load the clip
             clip = VideoFileClip(input_abspath)
@@ -80,9 +80,9 @@ class LoopVideoBlock(Block):
             # 3) Apply the loop effect
             # Note: Loop effect handles both video and audio looping automatically
             if input_data.duration:
-                looped_clip = clip.with_effects([Loop(duration=input_data.duration)])
+                looped_clip = clip.with_effects([Loop(duration=input_data.duration)])  # type: ignore[arg-type] Clip implements shallow copy that loses type info
             elif input_data.n_loops:
-                looped_clip = clip.with_effects([Loop(n=input_data.n_loops)])
+                looped_clip = clip.with_effects([Loop(n=input_data.n_loops)])  # type: ignore[arg-type] Clip implements shallow copy that loses type info
             else:
                 raise ValueError("Either 'duration' or 'n_loops' must be provided.")
 
@@ -91,6 +91,8 @@ class LoopVideoBlock(Block):
                 f"{node_exec_id}_looped_{os.path.basename(local_video_path)}"
             )
             output_abspath = get_exec_file_path(graph_exec_id, output_filename)
+
+            assert looped_clip is not None
 
             looped_clip.write_videofile(
                 output_abspath, codec="libx264", audio_codec="aac"

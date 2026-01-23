@@ -1,7 +1,6 @@
 """VideoNarrationBlock - Generate AI voice narration and add to video."""
 
 import os
-import tempfile
 from typing import Literal
 
 from elevenlabs import ElevenLabs
@@ -9,6 +8,12 @@ from moviepy import CompositeAudioClip
 from moviepy.audio.io.AudioFileClip import AudioFileClip
 from moviepy.video.io.VideoFileClip import VideoFileClip
 
+from backend.blocks.elevenlabs._auth import (
+    TEST_CREDENTIALS,
+    TEST_CREDENTIALS_INPUT,
+    ElevenLabsCredentials,
+    ElevenLabsCredentialsInput,
+)
 from backend.data.block import (
     Block,
     BlockCategory,
@@ -16,21 +21,20 @@ from backend.data.block import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
-from backend.data.model import APIKeyCredentials, CredentialsMetaInput, SchemaField
-from backend.integrations.providers import ProviderName
+from backend.data.model import CredentialsField, SchemaField
 from backend.util.exceptions import BlockExecutionError
+from backend.util.file import MediaFileType, get_exec_file_path, store_media_file
 
 
 class VideoNarrationBlock(Block):
     """Generate AI narration and add to video."""
 
     class Input(BlockSchemaInput):
-        credentials: CredentialsMetaInput[
-            Literal[ProviderName.ELEVENLABS],
-            Literal["api_key"],
-        ] = SchemaField(description="ElevenLabs API key for voice synthesis")
-        video_in: str = SchemaField(
-            description="Input video file", json_schema_extra={"format": "file"}
+        credentials: ElevenLabsCredentialsInput = CredentialsField(
+            description="ElevenLabs API key for voice synthesis"
+        )
+        video_in: MediaFileType = SchemaField(
+            description="Input video (URL, data URI, or local path)"
         )
         script: str = SchemaField(description="Narration script text")
         voice_id: str = SchemaField(
@@ -54,13 +58,17 @@ class VideoNarrationBlock(Block):
             le=1.0,
             advanced=True,
         )
+        output_return_type: Literal["file_path", "data_uri"] = SchemaField(
+            description="Return the output as a relative path or base64 data URI.",
+            default="file_path",
+        )
 
     class Output(BlockSchemaOutput):
-        video_out: str = SchemaField(
-            description="Video with narration", json_schema_extra={"format": "file"}
+        video_out: MediaFileType = SchemaField(
+            description="Video with narration (path or data URI)"
         )
-        audio_file: str = SchemaField(
-            description="Generated audio file", json_schema_extra={"format": "file"}
+        audio_file: MediaFileType = SchemaField(
+            description="Generated audio file (path or data URI)"
         )
 
     def __init__(self):
@@ -73,16 +81,13 @@ class VideoNarrationBlock(Block):
             test_input={
                 "video_in": "/tmp/test.mp4",
                 "script": "Hello world",
-                "credentials": {
-                    "provider": "elevenlabs",
-                    "id": "test",
-                    "type": "api_key",
-                },
+                "credentials": TEST_CREDENTIALS_INPUT,
             },
+            test_credentials=TEST_CREDENTIALS,
             test_output=[("video_out", str), ("audio_file", str)],
             test_mock={
                 "_generate_narration_audio": lambda *args: b"mock audio content",
-                "_add_narration_to_video": lambda *args: "/tmp/narrated.mp4",
+                "_add_narration_to_video": lambda *args: None,
             },
         )
 
@@ -101,12 +106,13 @@ class VideoNarrationBlock(Block):
 
     def _add_narration_to_video(
         self,
-        video_in: str,
-        audio_path: str,
+        video_abspath: str,
+        audio_abspath: str,
+        output_abspath: str,
         mix_mode: str,
         narration_volume: float,
         original_volume: float,
-    ) -> str:
+    ) -> None:
         """Add narration audio to video. Extracted for testability."""
         video = None
         final = None
@@ -115,8 +121,8 @@ class VideoNarrationBlock(Block):
         original = None
 
         try:
-            video = VideoFileClip(video_in)
-            narration_original = AudioFileClip(audio_path)
+            video = VideoFileClip(video_abspath)
+            narration_original = AudioFileClip(audio_abspath)
             narration_scaled = narration_original.with_volume_scaled(narration_volume)
             narration = narration_scaled
 
@@ -138,12 +144,7 @@ class VideoNarrationBlock(Block):
                     final_audio = narration
 
             final = video.with_audio(final_audio)
-
-            fd, output_path = tempfile.mkstemp(suffix=".mp4")
-            os.close(fd)
-            final.write_videofile(output_path, logger=None)
-
-            return output_path
+            final.write_videofile(output_abspath, codec="libx264", audio_codec="aac")
 
         finally:
             if original:
@@ -158,9 +159,25 @@ class VideoNarrationBlock(Block):
                 video.close()
 
     async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+        self,
+        input_data: Input,
+        *,
+        credentials: ElevenLabsCredentials,
+        node_exec_id: str,
+        graph_exec_id: str,
+        user_id: str,
+        **kwargs,
     ) -> BlockOutput:
         try:
+            # Store the input video locally
+            local_video_path = await store_media_file(
+                graph_exec_id=graph_exec_id,
+                file=input_data.video_in,
+                user_id=user_id,
+                return_content=False,
+            )
+            video_abspath = get_exec_file_path(graph_exec_id, local_video_path)
+
             # Generate narration audio via ElevenLabs
             audio_content = self._generate_narration_audio(
                 credentials.api_key.get_secret_value(),
@@ -168,22 +185,47 @@ class VideoNarrationBlock(Block):
                 input_data.voice_id,
             )
 
-            # Save audio to temp file
-            fd, audio_path = tempfile.mkstemp(suffix=".mp3")
-            with os.fdopen(fd, "wb") as f:
+            # Save audio to exec file path
+            audio_filename = MediaFileType(f"{node_exec_id}_narration.mp3")
+            audio_abspath = get_exec_file_path(graph_exec_id, audio_filename)
+            os.makedirs(os.path.dirname(audio_abspath), exist_ok=True)
+            with open(audio_abspath, "wb") as f:
                 f.write(audio_content)
 
             # Add narration to video
-            output_path = self._add_narration_to_video(
-                input_data.video_in,
-                audio_path,
+            output_filename = MediaFileType(
+                f"{node_exec_id}_narrated_{os.path.basename(local_video_path)}"
+            )
+            output_abspath = get_exec_file_path(graph_exec_id, output_filename)
+
+            self._add_narration_to_video(
+                video_abspath,
+                audio_abspath,
+                output_abspath,
                 input_data.mix_mode,
                 input_data.narration_volume,
                 input_data.original_volume,
             )
 
-            yield "video_out", output_path
-            yield "audio_file", audio_path
+            # Return as data URI or path
+            return_as_data_uri = input_data.output_return_type == "data_uri"
+
+            video_out = await store_media_file(
+                graph_exec_id=graph_exec_id,
+                file=output_filename,
+                user_id=user_id,
+                return_content=return_as_data_uri,
+            )
+
+            audio_out = await store_media_file(
+                graph_exec_id=graph_exec_id,
+                file=audio_filename,
+                user_id=user_id,
+                return_content=return_as_data_uri,
+            )
+
+            yield "video_out", video_out
+            yield "audio_file", audio_out
 
         except Exception as e:
             raise BlockExecutionError(

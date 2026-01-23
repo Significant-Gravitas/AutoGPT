@@ -1,12 +1,13 @@
 """VideoDownloadBlock - Download video from URL (YouTube, Vimeo, news sites, direct links)."""
 
 import os
-import tempfile
-import uuid
+import typing
 from typing import Literal
 
 import yt_dlp
-from yt_dlp import _Params
+
+if typing.TYPE_CHECKING:
+    from yt_dlp import _Params
 
 from backend.data.block import (
     Block,
@@ -17,6 +18,7 @@ from backend.data.block import (
 )
 from backend.data.model import SchemaField
 from backend.util.exceptions import BlockExecutionError
+from backend.util.file import MediaFileType, get_exec_file_path, store_media_file
 
 
 class VideoDownloadBlock(Block):
@@ -33,11 +35,14 @@ class VideoDownloadBlock(Block):
         output_format: Literal["mp4", "webm", "mkv"] = SchemaField(
             description="Output video format", default="mp4", advanced=True
         )
+        output_return_type: Literal["file_path", "data_uri"] = SchemaField(
+            description="Return the output as a relative path or base64 data URI.",
+            default="file_path",
+        )
 
     class Output(BlockSchemaOutput):
-        video_file: str = SchemaField(
-            description="Path or data URI of downloaded video",
-            json_schema_extra={"format": "file"},
+        video_file: MediaFileType = SchemaField(
+            description="Downloaded video (path or data URI)"
         )
         duration: float = SchemaField(description="Video duration in seconds")
         title: str = SchemaField(description="Video title from source")
@@ -61,7 +66,7 @@ class VideoDownloadBlock(Block):
                 ("source_url", str),
             ],
             test_mock={
-                "_download_video": lambda *args: ("/tmp/video.mp4", 212.0, "Test Video")
+                "_download_video": lambda *args: ("video.mp4", 212.0, "Test Video")
             },
         )
 
@@ -80,13 +85,15 @@ class VideoDownloadBlock(Block):
         url: str,
         quality: str,
         output_format: str,
+        output_dir: str,
+        node_exec_id: str,
     ) -> tuple[str, float, str]:
         """Download video. Extracted for testability."""
-        video_id = str(uuid.uuid4())[:8]
-        temp_dir = tempfile.gettempdir()
-        output_template = os.path.join(temp_dir, f"{video_id}.%(ext)s")
+        output_template = os.path.join(
+            output_dir, f"{node_exec_id}_%(title).50s.%(ext)s"
+        )
 
-        ydl_opts: _Params = {
+        ydl_opts: "_Params" = {
             "format": self._get_format_string(quality),
             "outtmpl": output_template,
             "merge_output_format": output_format,
@@ -102,20 +109,46 @@ class VideoDownloadBlock(Block):
             if not video_path.endswith(f".{output_format}"):
                 video_path = video_path.rsplit(".", 1)[0] + f".{output_format}"
 
+            # Return just the filename, not the full path
+            filename = os.path.basename(video_path)
+
             return (
-                video_path,
+                filename,
                 info.get("duration") or 0.0,
                 info.get("title") or "Unknown",
             )
 
-    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    async def run(
+        self,
+        input_data: Input,
+        *,
+        node_exec_id: str,
+        graph_exec_id: str,
+        user_id: str,
+        **kwargs,
+    ) -> BlockOutput:
         try:
-            video_path, duration, title = self._download_video(
+            # Get the exec file directory
+            output_dir = get_exec_file_path(graph_exec_id, "")
+            os.makedirs(output_dir, exist_ok=True)
+
+            filename, duration, title = self._download_video(
                 input_data.url,
                 input_data.quality,
                 input_data.output_format,
+                output_dir,
+                node_exec_id,
             )
-            yield "video_file", video_path
+
+            # Return as data URI or path
+            video_out = await store_media_file(
+                graph_exec_id=graph_exec_id,
+                file=MediaFileType(filename),
+                user_id=user_id,
+                return_content=input_data.output_return_type == "data_uri",
+            )
+
+            yield "video_file", video_out
             yield "duration", duration
             yield "title", title
             yield "source_url", input_data.url
