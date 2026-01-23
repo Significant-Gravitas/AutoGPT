@@ -14,6 +14,7 @@ from backend.data.execution import (
 from backend.data.graph import get_graph_settings
 from backend.data.human_review import (
     create_auto_approval_record,
+    get_pending_review_by_node_exec_id,
     get_pending_reviews_for_execution,
     get_pending_reviews_for_user,
     has_pending_reviews_for_graph_exec,
@@ -136,12 +137,14 @@ async def process_review_action(
             detail="At least one review must be provided",
         )
 
-    # Get graph execution ID from pending reviews to validate execution status
-    all_pending = await get_pending_reviews_for_user(user_id)
-    matching_review = next(
-        (r for r in all_pending if r.node_exec_id in all_request_node_ids),
-        None,
-    )
+    # Get graph execution ID by directly looking up one of the requested reviews
+    # Use direct lookup to avoid pagination issues (can't miss reviews beyond first page)
+    matching_review = None
+    for node_exec_id in all_request_node_ids:
+        review = await get_pending_review_by_node_exec_id(node_exec_id, user_id)
+        if review:
+            matching_review = review
+            break
 
     if not matching_review:
         raise HTTPException(

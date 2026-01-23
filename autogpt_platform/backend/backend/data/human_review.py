@@ -220,6 +220,29 @@ async def get_or_create_human_review(
         )
 
 
+async def get_pending_review_by_node_exec_id(
+    node_exec_id: str, user_id: str
+) -> Optional["PendingHumanReviewModel"]:
+    """
+    Get a pending review by its node execution ID.
+
+    Args:
+        node_exec_id: The node execution ID to look up
+        user_id: User ID for authorization (only returns if review belongs to this user)
+
+    Returns:
+        The pending review if found and belongs to user, None otherwise
+    """
+    review = await PendingHumanReview.prisma().find_unique(
+        where={"nodeExecId": node_exec_id}
+    )
+
+    if not review or review.userId != user_id or review.status != ReviewStatus.WAITING:
+        return None
+
+    return PendingHumanReviewModel.from_db(review)
+
+
 async def has_pending_reviews_for_graph_exec(graph_exec_id: str) -> bool:
     """
     Check if a graph execution has any pending reviews.
