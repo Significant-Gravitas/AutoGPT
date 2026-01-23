@@ -55,3 +55,38 @@ export function isMultiSelectSchema(schema: RJSFSchema | undefined): boolean {
     )
   );
 }
+
+const isGoogleDriveFileObject = (obj: RJSFSchema): boolean => {
+  if (obj.type !== "object" || !obj.properties) {
+    return false;
+  }
+  const props = obj.properties;
+  const hasId = "id" in props;
+  const hasMimeType = "mimeType" in props || "mime_type" in props;
+  const hasIconUrl = "iconUrl" in props || "icon_url" in props;
+  const hasIsFolder = "isFolder" in props || "is_folder" in props;
+  return hasId && hasMimeType && (hasIconUrl || hasIsFolder);
+};
+
+export const isGoogleDrivePickerSchema = (
+  schema: RJSFSchema | undefined,
+): boolean => {
+  if (!schema) {
+    return false;
+  }
+
+  // highest priority
+  if (
+    "google_drive_picker_config" in schema ||
+    ("format" in schema && schema.format === "google-drive-picker")
+  ) {
+    return true;
+  }
+
+  // In the Input type block, we do not add the format for the GoogleFile field, so we need to include this extra check.
+  if (isGoogleDriveFileObject(schema)) {
+    return true;
+  }
+
+  return false;
+};

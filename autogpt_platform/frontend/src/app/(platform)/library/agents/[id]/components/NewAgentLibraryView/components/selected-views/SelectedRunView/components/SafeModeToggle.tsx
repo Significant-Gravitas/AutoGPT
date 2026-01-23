@@ -5,48 +5,112 @@ import { Graph } from "@/lib/autogpt-server-api/types";
 import { cn } from "@/lib/utils";
 import { ShieldCheckIcon, ShieldIcon } from "@phosphor-icons/react";
 import { useAgentSafeMode } from "@/hooks/useAgentSafeMode";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/atoms/Tooltip/BaseTooltip";
 
 interface Props {
   graph: GraphModel | LibraryAgent | Graph;
   className?: string;
-  fullWidth?: boolean;
 }
 
-export function SafeModeToggle({ graph }: Props) {
+interface SafeModeIconButtonProps {
+  isEnabled: boolean;
+  label: string;
+  tooltipEnabled: string;
+  tooltipDisabled: string;
+  onToggle: () => void;
+  isPending: boolean;
+}
+
+function SafeModeIconButton({
+  isEnabled,
+  label,
+  tooltipEnabled,
+  tooltipDisabled,
+  onToggle,
+  isPending,
+}: SafeModeIconButtonProps) {
+  return (
+    <Tooltip delayDuration={100}>
+      <TooltipTrigger asChild>
+        <Button
+          variant="icon"
+          size="icon"
+          aria-label={`${label}: ${isEnabled ? "ON" : "OFF"}. ${isEnabled ? tooltipEnabled : tooltipDisabled}`}
+          onClick={onToggle}
+          disabled={isPending}
+          className={cn(isPending ? "opacity-0" : "opacity-100")}
+        >
+          {isEnabled ? (
+            <ShieldCheckIcon weight="bold" size={16} />
+          ) : (
+            <ShieldIcon weight="bold" size={16} />
+          )}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>
+        <div className="text-center">
+          <div className="font-medium">
+            {label}: {isEnabled ? "ON" : "OFF"}
+          </div>
+          <div className="mt-1 text-xs text-muted-foreground">
+            {isEnabled ? tooltipEnabled : tooltipDisabled}
+          </div>
+        </div>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+export function SafeModeToggle({ graph, className }: Props) {
   const {
-    currentSafeMode,
+    currentHITLSafeMode,
+    showHITLToggle,
+    isHITLStateUndetermined,
+    handleHITLToggle,
+    currentSensitiveActionSafeMode,
+    showSensitiveActionToggle,
+    handleSensitiveActionToggle,
     isPending,
     shouldShowToggle,
-    isStateUndetermined,
-    handleToggle,
   } = useAgentSafeMode(graph);
 
-  if (!shouldShowToggle || isStateUndetermined) {
+  if (!shouldShowToggle || isHITLStateUndetermined) {
+    return null;
+  }
+
+  const showHITL = showHITLToggle && !isHITLStateUndetermined;
+  const showSensitive = showSensitiveActionToggle;
+
+  if (!showHITL && !showSensitive) {
     return null;
   }
 
   return (
-    <Button
-      variant="icon"
-      key={graph.id}
-      size="icon"
-      aria-label={
-        currentSafeMode!
-          ? "Safe Mode: ON. Human in the loop blocks require manual review"
-          : "Safe Mode: OFF. Human in the loop blocks proceed automatically"
-      }
-      onClick={handleToggle}
-      className={cn(isPending ? "opacity-0" : "opacity-100")}
-    >
-      {currentSafeMode! ? (
-        <>
-          <ShieldCheckIcon weight="bold" size={16} />
-        </>
-      ) : (
-        <>
-          <ShieldIcon weight="bold" size={16} />
-        </>
+    <div className={cn("flex gap-1", className)}>
+      {showHITL && (
+        <SafeModeIconButton
+          isEnabled={currentHITLSafeMode}
+          label="Human-in-the-loop"
+          tooltipEnabled="The agent will pause at human-in-the-loop blocks and wait for your approval"
+          tooltipDisabled="Human-in-the-loop blocks will proceed automatically"
+          onToggle={handleHITLToggle}
+          isPending={isPending}
+        />
       )}
-    </Button>
+      {showSensitive && (
+        <SafeModeIconButton
+          isEnabled={currentSensitiveActionSafeMode}
+          label="Sensitive actions"
+          tooltipEnabled="The agent will pause at sensitive action blocks and wait for your approval"
+          tooltipDisabled="Sensitive action blocks will proceed automatically"
+          onToggle={handleSensitiveActionToggle}
+          isPending={isPending}
+        />
+      )}
+    </div>
   );
 }

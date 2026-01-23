@@ -386,6 +386,7 @@ async def test_add_graph_execution_is_repeatable(mocker: MockerFixture):
     mock_user.timezone = "UTC"
     mock_settings = mocker.MagicMock()
     mock_settings.human_in_the_loop_safe_mode = True
+    mock_settings.sensitive_action_safe_mode = False
 
     mock_udb.get_user_by_id = mocker.AsyncMock(return_value=mock_user)
     mock_gdb.get_graph_settings = mocker.AsyncMock(return_value=mock_settings)
@@ -651,6 +652,7 @@ async def test_add_graph_execution_with_nodes_to_skip(mocker: MockerFixture):
     mock_user.timezone = "UTC"
     mock_settings = mocker.MagicMock()
     mock_settings.human_in_the_loop_safe_mode = True
+    mock_settings.sensitive_action_safe_mode = False
 
     mock_udb.get_user_by_id = mocker.AsyncMock(return_value=mock_user)
     mock_gdb.get_graph_settings = mocker.AsyncMock(return_value=mock_settings)

@@ -10,6 +10,7 @@ from pydantic import BaseModel, JsonValue, ValidationError
 
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
+from backend.data import onboarding as onboarding_db
 from backend.data import user as user_db
 from backend.data.block import (
     Block,
@@ -31,7 +32,6 @@ from backend.data.execution import (
     GraphExecutionStats,
     GraphExecutionWithNodes,
     NodesInputMasks,
-    get_graph_execution,
 )
 from backend.data.graph import GraphModel, Node
 from backend.data.model import USER_TIMEZONE_NOT_SET, CredentialsMetaInput
@@ -809,13 +809,14 @@ async def add_graph_execution(
         edb = execution_db
         udb = user_db
         gdb = graph_db
+        odb = onboarding_db
     else:
-        edb = udb = gdb = get_database_manager_async_client()
+        edb = udb = gdb = odb = get_database_manager_async_client()
 
     # Get or create the graph execution
     if graph_exec_id:
         # Resume existing execution
-        graph_exec = await get_graph_execution(
+        graph_exec = await edb.get_graph_execution(
             user_id=user_id,
             execution_id=graph_exec_id,
             include_node_executions=True,
@@ -872,11 +873,8 @@ async def add_graph_execution(
         settings = await gdb.get_graph_settings(user_id=user_id, graph_id=graph_id)
 
         execution_context = ExecutionContext(
-            safe_mode=(
-                settings.human_in_the_loop_safe_mode
-                if settings.human_in_the_loop_safe_mode is not None
-                else True
-            ),
+            human_in_the_loop_safe_mode=settings.human_in_the_loop_safe_mode,
+            sensitive_action_safe_mode=settings.sensitive_action_safe_mode,
             user_timezone=(
                 user.timezone if user.timezone != USER_TIMEZONE_NOT_SET else "UTC"
             ),
@@ -891,6 +889,7 @@ async def add_graph_execution(
         )
         logger.info(f"Publishing execution {graph_exec.id} to execution queue")
 
+        # Publish to execution queue for executor to pick up
         exec_queue = await get_async_execution_queue()
         await exec_queue.publish_message(
             routing_key=GRAPH_EXECUTION_ROUTING_KEY,
@@ -899,14 +898,12 @@ async def add_graph_execution(
         )
         logger.info(f"Published execution {graph_exec.id} to RabbitMQ queue")
 
+        # Update execution status to QUEUED
         graph_exec.status = ExecutionStatus.QUEUED
         await edb.update_graph_execution_stats(
             graph_exec_id=graph_exec.id,
             status=graph_exec.status,
         )
-        await get_async_execution_event_bus().publish(graph_exec)
-
-        return graph_exec
     except BaseException as e:
         err = str(e) or type(e).__name__
         if not graph_exec:
@@ -926,6 +923,24 @@ async def add_graph_execution(
             stats=GraphExecutionStats(error=err),
         )
         raise
+
+    try:
+        await get_async_execution_event_bus().publish(graph_exec)
+        logger.info(f"Published update for execution #{graph_exec.id} to event bus")
+    except Exception as e:
+        logger.error(
+            f"Failed to publish execution event for graph exec #{graph_exec.id}: {e}"
+        )
+
+    try:
+        await odb.increment_onboarding_runs(user_id)
+        logger.info(
+            f"Incremented user #{user_id} onboarding runs for exec #{graph_exec.id}"
+        )
+    except Exception as e:
+        logger.error(f"Failed to increment onboarding runs for user #{user_id}: {e}")
+
+    return graph_exec
 
 
 # ============ Execution Output Helpers ============ #

@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 from os import getenv
 
 import pytest
+from prisma.types import ProfileCreateInput
 from pydantic import SecretStr
 
 from backend.api.features.chat.model import ChatSession
@@ -17,7 +18,7 @@ from backend.data.user import get_or_create_user
 from backend.integrations.credentials_store import IntegrationCredentialsStore
 
 
-def make_session(user_id: str | None = None):
+def make_session(user_id: str):
     return ChatSession(
         session_id=str(uuid.uuid4()),
         user_id=user_id,
@@ -49,13 +50,13 @@ async def setup_test_data():
     # 1b. Create a profile with username for the user (required for store agent lookup)
     username = user.email.split("@")[0]
     await prisma.profile.create(
-        data={
-            "userId": user.id,
-            "username": username,
-            "name": f"Test User {username}",
-            "description": "Test user profile",
-            "links": [],  # Required field - empty array for test profiles
-        }
+        data=ProfileCreateInput(
+            userId=user.id,
+            username=username,
+            name=f"Test User {username}",
+            description="Test user profile",
+            links=[],  # Required field - empty array for test profiles
+        )
     )
 
     # 2. Create a test graph with agent input -> agent output
@@ -172,13 +173,13 @@ async def setup_llm_test_data():
     # 1b. Create a profile with username for the user (required for store agent lookup)
     username = user.email.split("@")[0]
     await prisma.profile.create(
-        data={
-            "userId": user.id,
-            "username": username,
-            "name": f"Test User {username}",
-            "description": "Test user profile for LLM tests",
-            "links": [],  # Required field - empty array for test profiles
-        }
+        data=ProfileCreateInput(
+            userId=user.id,
+            username=username,
+            name=f"Test User {username}",
+            description="Test user profile for LLM tests",
+            links=[],  # Required field - empty array for test profiles
+        )
     )
 
     # 2. Create test OpenAI credentials for the user
@@ -332,13 +333,13 @@ async def setup_firecrawl_test_data():
     # 1b. Create a profile with username for the user (required for store agent lookup)
     username = user.email.split("@")[0]
     await prisma.profile.create(
-        data={
-            "userId": user.id,
-            "username": username,
-            "name": f"Test User {username}",
-            "description": "Test user profile for Firecrawl tests",
-            "links": [],  # Required field - empty array for test profiles
-        }
+        data=ProfileCreateInput(
+            userId=user.id,
+            username=username,
+            name=f"Test User {username}",
+            description="Test user profile for Firecrawl tests",
+            links=[],  # Required field - empty array for test profiles
+        )
     )
 
     # NOTE: We deliberately do NOT create Firecrawl credentials for this user

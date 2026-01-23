@@ -26,6 +26,7 @@ export const ScheduleGraph = ({ flowID }: { flowID: string | null }) => {
             <Button
               variant="outline"
               size="icon"
+              data-id="schedule-graph-button"
               onClick={handleScheduleGraph}
               disabled={!flowID}
             >
