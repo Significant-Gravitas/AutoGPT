@@ -521,6 +521,17 @@ async def backfill_all_content_types(batch_size: int = 10) -> dict[str, Any]:
             success = sum(1 for result in results if result is True)
             failed = len(results) - success
 
+            # Log only the first error to avoid Sentry spam
+            if failed > 0:
+                first_error = next(
+                    (r for r in results if isinstance(r, Exception)), None
+                )
+                if first_error:
+                    logger.error(
+                        f"{content_type.value}: {failed}/{len(results)} embeddings failed. "
+                        f"First error: {type(first_error).__name__}: {first_error}"
+                    )
+
             results_by_type[content_type.value] = {
                 "processed": len(missing_items),
                 "success": success,
