@@ -36,7 +36,7 @@ def sample_db_review():
     return mock_review
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="function")
 async def test_get_or_create_human_review_new(
     mocker: pytest_mock.MockFixture,
     sample_db_review,
@@ -64,7 +64,7 @@ async def test_get_or_create_human_review_new(
     assert result is None
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="function")
 async def test_get_or_create_human_review_approved(
     mocker: pytest_mock.MockFixture,
     sample_db_review,
@@ -96,7 +96,7 @@ async def test_get_or_create_human_review_approved(
     assert result.message == "Looks good"
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="function")
 async def test_has_pending_reviews_for_graph_exec_true(
     mocker: pytest_mock.MockFixture,
 ):
@@ -109,7 +109,7 @@ async def test_has_pending_reviews_for_graph_exec_true(
     assert result is True
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="function")
 async def test_has_pending_reviews_for_graph_exec_false(
     mocker: pytest_mock.MockFixture,
 ):
@@ -122,7 +122,7 @@ async def test_has_pending_reviews_for_graph_exec_false(
     assert result is False
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="function")
 async def test_get_pending_reviews_for_user(
     mocker: pytest_mock.MockFixture,
     sample_db_review,
@@ -151,7 +151,7 @@ async def test_get_pending_reviews_for_user(
     assert call_args.kwargs["take"] == 10
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="function")
 async def test_get_pending_reviews_for_execution(
     mocker: pytest_mock.MockFixture,
     sample_db_review,
@@ -184,7 +184,7 @@ async def test_get_pending_reviews_for_execution(
     assert where_clause["status"] == ReviewStatus.WAITING
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="function")
 async def test_process_all_reviews_for_execution_success(
     mocker: pytest_mock.MockFixture,
     sample_db_review,
@@ -240,7 +240,7 @@ async def test_process_all_reviews_for_execution_success(
     assert result["test_node_123"].node_id == "test_node_def_789"
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="function")
 async def test_process_all_reviews_for_execution_validation_errors(
     mocker: pytest_mock.MockFixture,
 ):
@@ -260,7 +260,7 @@ async def test_process_all_reviews_for_execution_validation_errors(
         )
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="function")
 async def test_process_all_reviews_edit_permission_error(
     mocker: pytest_mock.MockFixture,
     sample_db_review,
@@ -286,7 +286,7 @@ async def test_process_all_reviews_edit_permission_error(
         )
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="function")
 async def test_process_all_reviews_mixed_approval_rejection(
     mocker: pytest_mock.MockFixture,
     sample_db_review,
