@@ -636,13 +636,14 @@ async def test_process_review_action_auto_approve_creates_auto_approval_records(
     )
     mock_process_all_reviews.return_value = {"test_node_123": approved_review}
 
-    # Mock get_node_execution to return node_id
-    mock_get_node_execution = mocker.patch(
-        "backend.api.features.executions.review.routes.get_node_execution"
+    # Mock get_node_executions to return node_id mapping
+    mock_get_node_executions = mocker.patch(
+        "backend.data.execution.get_node_executions"
     )
     mock_node_exec = mocker.Mock(spec=NodeExecutionResult)
+    mock_node_exec.node_exec_id = "test_node_123"
     mock_node_exec.node_id = "test_node_def_456"
-    mock_get_node_execution.return_value = mock_node_exec
+    mock_get_node_executions.return_value = [mock_node_exec]
 
     # Mock create_auto_approval_record
     mock_create_auto_approval = mocker.patch(
@@ -933,13 +934,14 @@ async def test_process_review_action_auto_approve_only_applies_to_approved_revie
         "node_exec_rejected": rejected_review,
     }
 
-    # Mock get_node_execution to return node_id (only called for approved review)
-    mock_get_node_execution = mocker.patch(
-        "backend.api.features.executions.review.routes.get_node_execution"
+    # Mock get_node_executions to return node_id mapping
+    mock_get_node_executions = mocker.patch(
+        "backend.data.execution.get_node_executions"
     )
     mock_node_exec = mocker.Mock(spec=NodeExecutionResult)
+    mock_node_exec.node_exec_id = "node_exec_approved"
     mock_node_exec.node_id = "test_node_def_approved"
-    mock_get_node_execution.return_value = mock_node_exec
+    mock_get_node_executions.return_value = [mock_node_exec]
 
     # Mock create_auto_approval_record
     mock_create_auto_approval = mocker.patch(
@@ -1012,8 +1014,8 @@ async def test_process_review_action_auto_approve_only_applies_to_approved_revie
         payload={"data": "approved"},
     )
 
-    # Verify get_node_execution was called only for approved review
-    mock_get_node_execution.assert_called_once_with("node_exec_approved")
+    # Verify get_node_executions was called to batch-fetch node data
+    mock_get_node_executions.assert_called_once()
 
     # Verify ExecutionContext was created (auto-approval is now DB-based)
     call_kwargs = mock_add_execution.call_args.kwargs
@@ -1144,17 +1146,18 @@ async def test_process_review_action_per_review_auto_approve_granularity(
         ),
     }
 
-    # Mock get_node_execution
-    mock_get_node_execution = mocker.patch(
-        "backend.api.features.executions.review.routes.get_node_execution"
+    # Mock get_node_executions to return batch node data
+    mock_get_node_executions = mocker.patch(
+        "backend.data.execution.get_node_executions"
     )
-
-    def mock_get_node(node_exec_id: str):
+    # Create mock node executions for each review
+    mock_node_execs = []
+    for node_exec_id in ["node_1_auto", "node_2_manual", "node_3_auto"]:
         mock_node = mocker.Mock(spec=NodeExecutionResult)
+        mock_node.node_exec_id = node_exec_id
         mock_node.node_id = f"node_def_{node_exec_id}"
-        return mock_node
-
-    mock_get_node_execution.side_effect = mock_get_node
+        mock_node_execs.append(mock_node)
+    mock_get_node_executions.return_value = mock_node_execs
 
     # Mock create_auto_approval_record
     mock_create_auto_approval = mocker.patch(

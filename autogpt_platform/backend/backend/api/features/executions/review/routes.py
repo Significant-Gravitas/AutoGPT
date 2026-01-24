@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import List
+from typing import Any, List
 
 import autogpt_libs.auth as autogpt_auth_lib
 from fastapi import APIRouter, HTTPException, Query, Security, status
@@ -10,7 +10,6 @@ from backend.data.execution import (
     ExecutionContext,
     ExecutionStatus,
     get_graph_execution_meta,
-    get_node_execution,
 )
 from backend.data.graph import get_graph_settings
 from backend.data.human_review import (
@@ -210,48 +209,69 @@ async def process_review_action(
     )
 
     # Create auto-approval records for approved reviews that requested it
-    async def create_auto_approval_if_needed(
-        node_exec_id: str, review_result
+    # Deduplicate by node_id to avoid race conditions when multiple reviews
+    # for the same node are processed in parallel
+    async def create_auto_approval_for_node(
+        node_id: str, review_result
     ) -> tuple[str, bool]:
         """
-        Create auto-approval record if needed.
-        Returns (node_exec_id, success) tuple for tracking failures.
+        Create auto-approval record for a node.
+        Returns (node_id, success) tuple for tracking failures.
         """
-        if review_result.status == ReviewStatus.APPROVED and auto_approve_requests.get(
-            node_exec_id, False
-        ):
-            try:
-                node_exec = await get_node_execution(node_exec_id)
-                if node_exec:
-                    await create_auto_approval_record(
-                        user_id=user_id,
-                        graph_exec_id=review_result.graph_exec_id,
-                        graph_id=review_result.graph_id,
-                        graph_version=review_result.graph_version,
-                        node_id=node_exec.node_id,
-                        payload=review_result.payload,
-                    )
-                    return (node_exec_id, True)
-                else:
-                    logger.error(
-                        f"Failed to create auto-approval record for {node_exec_id}: "
-                        f"Node execution not found. This may indicate a race condition "
-                        f"or data inconsistency."
-                    )
-                    return (node_exec_id, False)
-            except Exception as e:
-                logger.error(
-                    f"Failed to create auto-approval record for {node_exec_id}",
-                    exc_info=e,
-                )
-                return (node_exec_id, False)
-        return (node_exec_id, True)  # No auto-approval needed, consider it success
+        try:
+            await create_auto_approval_record(
+                user_id=user_id,
+                graph_exec_id=review_result.graph_exec_id,
+                graph_id=review_result.graph_id,
+                graph_version=review_result.graph_version,
+                node_id=node_id,
+                payload=review_result.payload,
+            )
+            return (node_id, True)
+        except Exception as e:
+            logger.error(
+                f"Failed to create auto-approval record for node {node_id}",
+                exc_info=e,
+            )
+            return (node_id, False)
 
-    # Execute all auto-approval creations in parallel and track failures
+    # Collect node_exec_ids that need auto-approval
+    node_exec_ids_needing_auto_approval = [
+        node_exec_id
+        for node_exec_id, review_result in updated_reviews.items()
+        if review_result.status == ReviewStatus.APPROVED
+        and auto_approve_requests.get(node_exec_id, False)
+    ]
+
+    # Batch-fetch node executions to get node_ids
+    nodes_needing_auto_approval: dict[str, Any] = {}
+    if node_exec_ids_needing_auto_approval:
+        from backend.data.execution import get_node_executions
+
+        node_execs = await get_node_executions(
+            graph_exec_id=graph_exec_id, include_exec_data=False
+        )
+        node_exec_map = {node_exec.node_exec_id: node_exec for node_exec in node_execs}
+
+        for node_exec_id in node_exec_ids_needing_auto_approval:
+            node_exec = node_exec_map.get(node_exec_id)
+            if node_exec:
+                review_result = updated_reviews[node_exec_id]
+                # Use the first approved review for this node (deduplicate by node_id)
+                if node_exec.node_id not in nodes_needing_auto_approval:
+                    nodes_needing_auto_approval[node_exec.node_id] = review_result
+            else:
+                logger.error(
+                    f"Failed to create auto-approval record for {node_exec_id}: "
+                    f"Node execution not found. This may indicate a race condition "
+                    f"or data inconsistency."
+                )
+
+    # Execute all auto-approval creations in parallel (deduplicated by node_id)
     auto_approval_results = await asyncio.gather(
         *[
-            create_auto_approval_if_needed(node_exec_id, review_result)
-            for node_exec_id, review_result in updated_reviews.items()
+            create_auto_approval_for_node(node_id, review_result)
+            for node_id, review_result in nodes_needing_auto_approval.items()
         ],
         return_exceptions=True,
     )
