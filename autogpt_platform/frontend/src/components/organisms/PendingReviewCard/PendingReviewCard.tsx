@@ -56,6 +56,7 @@ export function PendingReviewCard({
 }: PendingReviewCardProps) {
   const extractedData = extractReviewData(review.payload);
   const isDataEditable = review.editable;
+  const instructions = extractedData.instructions || review.instructions;
   const [currentData, setCurrentData] = useState(extractedData.data);
 
   // Sync with external data value when auto-approve is toggled
@@ -159,6 +160,13 @@ export function PendingReviewCard({
 
       {/* Show data input/display */}
       <div className="space-y-3">
+        {/* Show label for HITL blocks (when instructions exist) */}
+        {instructions && (
+          <Text variant="body" className="font-semibold text-gray-900">
+            {instructions}
+          </Text>
+        )}
+
         {isDataEditable && !autoApproveFuture ? (
           renderDataInput()
         ) : (
