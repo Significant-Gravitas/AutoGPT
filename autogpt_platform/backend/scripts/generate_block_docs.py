@@ -34,7 +34,10 @@ logger = logging.getLogger(__name__)
 
 # Default output directory relative to repo root
 DEFAULT_OUTPUT_DIR = (
-    Path(__file__).parent.parent.parent.parent / "docs" / "integrations"
+    Path(__file__).parent.parent.parent.parent
+    / "docs"
+    / "integrations"
+    / "block-integrations"
 )
 
 
@@ -421,6 +424,14 @@ def generate_block_markdown(
     lines.append("<!-- END MANUAL -->")
     lines.append("")
 
+    # Optional per-block extras (only include if has content)
+    extras = manual_content.get("extras", "")
+    if extras:
+        lines.append("<!-- MANUAL: extras -->")
+        lines.append(extras)
+        lines.append("<!-- END MANUAL -->")
+        lines.append("")
+
     lines.append("---")
     lines.append("")
 
@@ -456,9 +467,33 @@ def get_block_file_mapping(blocks: list[BlockDoc]) -> dict[str, list[BlockDoc]]:
     return dict(file_mapping)
 
 
-def generate_overview_table(blocks: list[BlockDoc]) -> str:
-    """Generate the overview table markdown (blocks.md)."""
+def generate_overview_table(blocks: list[BlockDoc], block_dir_prefix: str = "") -> str:
+    """Generate the overview table markdown (blocks.md).
+
+    Args:
+        blocks: List of block documentation objects
+        block_dir_prefix: Prefix for block file links (e.g., "block-integrations/")
+    """
     lines = []
+
+    # GitBook YAML frontmatter
+    lines.append("---")
+    lines.append("layout:")
+    lines.append("  width: default")
+    lines.append("  title:")
+    lines.append("    visible: true")
+    lines.append("  description:")
+    lines.append("    visible: true")
+    lines.append("  tableOfContents:")
+    lines.append("    visible: false")
+    lines.append("  outline:")
+    lines.append("    visible: true")
+    lines.append("  pagination:")
+    lines.append("    visible: true")
+    lines.append("  metadata:")
+    lines.append("    visible: true")
+    lines.append("---")
+    lines.append("")
 
     lines.append("# AutoGPT Blocks Overview")
     lines.append("")
@@ -466,15 +501,18 @@ def generate_overview_table(blocks: list[BlockDoc]) -> str:
         'AutoGPT uses a modular approach with various "blocks" to handle different tasks. These blocks are the building blocks of AutoGPT workflows, allowing users to create complex automations by combining simple, specialized components.'
     )
     lines.append("")
-    lines.append('!!! info "Creating Your Own Blocks"')
-    lines.append("    Want to create your own custom blocks? Check out our guides:")
-    lines.append("    ")
+    lines.append('{% hint style="info" %}')
+    lines.append("**Creating Your Own Blocks**")
+    lines.append("")
+    lines.append("Want to create your own custom blocks? Check out our guides:")
+    lines.append("")
     lines.append(
-        "    - [Build your own Blocks](https://docs.agpt.co/platform/new_blocks/) - Step-by-step tutorial with examples"
+        "* [Build your own Blocks](https://docs.agpt.co/platform/new_blocks/) - Step-by-step tutorial with examples"
     )
     lines.append(
-        "    - [Block SDK Guide](https://docs.agpt.co/platform/block-sdk-guide/) - Advanced SDK patterns with OAuth, webhooks, and provider configuration"
+        "* [Block SDK Guide](https://docs.agpt.co/platform/block-sdk-guide/) - Advanced SDK patterns with OAuth, webhooks, and provider configuration"
     )
+    lines.append("{% endhint %}")
     lines.append("")
     lines.append(
         "Below is a comprehensive list of all available blocks, categorized by their primary function. Click on any block name to view its detailed documentation."
@@ -537,7 +575,8 @@ def generate_overview_table(blocks: list[BlockDoc]) -> str:
                     else "No description"
                 )
                 short_desc = short_desc.replace("\n", " ").replace("|", "\\|")
-                lines.append(f"| [{block.name}]({file_path}#{anchor}) | {short_desc} |")
+                link_path = f"{block_dir_prefix}{file_path}"
+                lines.append(f"| [{block.name}]({link_path}#{anchor}) | {short_desc} |")
             lines.append("")
             continue
 
@@ -563,9 +602,51 @@ def generate_overview_table(blocks: list[BlockDoc]) -> str:
             )
             short_desc = short_desc.replace("\n", " ").replace("|", "\\|")
 
-            lines.append(f"| [{block.name}]({file_path}#{anchor}) | {short_desc} |")
+            link_path = f"{block_dir_prefix}{file_path}"
+            lines.append(f"| [{block.name}]({link_path}#{anchor}) | {short_desc} |")
 
         lines.append("")
+
+    return "\n".join(lines)
+
+
+def generate_summary_md(
+    blocks: list[BlockDoc], root_dir: Path, block_dir_prefix: str = ""
+) -> str:
+    """Generate SUMMARY.md for GitBook navigation.
+
+    Args:
+        blocks: List of block documentation objects
+        root_dir: The root docs directory (e.g., docs/integrations/)
+        block_dir_prefix: Prefix for block file links (e.g., "block-integrations/")
+    """
+    lines = []
+    lines.append("# Table of contents")
+    lines.append("")
+    lines.append("* [AutoGPT Blocks Overview](README.md)")
+    lines.append("")
+
+    # Check for guides/ directory at the root level (docs/integrations/guides/)
+    guides_dir = root_dir / "guides"
+    if guides_dir.exists():
+        lines.append("## Guides")
+        lines.append("")
+        for guide_file in sorted(guides_dir.glob("*.md")):
+            # Use just the file name for title (replace hyphens/underscores with spaces)
+            title = file_path_to_title(guide_file.stem.replace("-", "_") + ".md")
+            lines.append(f"* [{title}](guides/{guide_file.name})")
+        lines.append("")
+
+    lines.append("## Block Integrations")
+    lines.append("")
+
+    file_mapping = get_block_file_mapping(blocks)
+    for file_path in sorted(file_mapping.keys()):
+        title = file_path_to_title(file_path)
+        link_path = f"{block_dir_prefix}{file_path}"
+        lines.append(f"* [{title}]({link_path})")
+
+    lines.append("")
 
     return "\n".join(lines)
 
@@ -653,6 +734,16 @@ def write_block_docs(
                 )
             )
 
+        # Add file-level additional_content section if present
+        file_additional = extract_manual_content(existing_content).get(
+            "additional_content", ""
+        )
+        if file_additional:
+            content_parts.append("<!-- MANUAL: additional_content -->")
+            content_parts.append(file_additional)
+            content_parts.append("<!-- END MANUAL -->")
+            content_parts.append("")
+
         full_content = file_header + "\n" + "\n".join(content_parts)
         generated_files[str(file_path)] = full_content
 
@@ -661,14 +752,28 @@ def write_block_docs(
 
         full_path.write_text(full_content)
 
-    # Generate overview file
-    overview_content = generate_overview_table(blocks)
-    overview_path = output_dir / "README.md"
+    # Generate overview file at the parent directory (docs/integrations/)
+    # with links prefixed to point into block-integrations/
+    root_dir = output_dir.parent
+    block_dir_name = output_dir.name  # "block-integrations"
+    block_dir_prefix = f"{block_dir_name}/"
+
+    overview_content = generate_overview_table(blocks, block_dir_prefix)
+    overview_path = root_dir / "README.md"
     generated_files["README.md"] = overview_content
     overview_path.write_text(overview_content)
 
     if verbose:
-        print("  Writing README.md (overview)")
+        print("  Writing README.md (overview) to parent directory")
+
+    # Generate SUMMARY.md for GitBook navigation at the parent directory
+    summary_content = generate_summary_md(blocks, root_dir, block_dir_prefix)
+    summary_path = root_dir / "SUMMARY.md"
+    generated_files["SUMMARY.md"] = summary_content
+    summary_path.write_text(summary_content)
+
+    if verbose:
+        print("  Writing SUMMARY.md (navigation) to parent directory")
 
     return generated_files
 
@@ -748,6 +853,16 @@ def check_docs_in_sync(output_dir: Path, blocks: list[BlockDoc]) -> bool:
             elif block_match.group(1).strip() != expected_block_content.strip():
                 mismatched_blocks.append(block.name)
 
+        # Add file-level additional_content to expected content (matches write_block_docs)
+        file_additional = extract_manual_content(existing_content).get(
+            "additional_content", ""
+        )
+        if file_additional:
+            content_parts.append("<!-- MANUAL: additional_content -->")
+            content_parts.append(file_additional)
+            content_parts.append("<!-- END MANUAL -->")
+            content_parts.append("")
+
         expected_content = file_header + "\n" + "\n".join(content_parts)
 
         if existing_content.strip() != expected_content.strip():
@@ -757,11 +872,15 @@ def check_docs_in_sync(output_dir: Path, blocks: list[BlockDoc]) -> bool:
             out_of_sync_details.append((file_path, mismatched_blocks))
             all_match = False
 
-    # Check overview
-    overview_path = output_dir / "README.md"
+    # Check overview at the parent directory (docs/integrations/)
+    root_dir = output_dir.parent
+    block_dir_name = output_dir.name  # "block-integrations"
+    block_dir_prefix = f"{block_dir_name}/"
+
+    overview_path = root_dir / "README.md"
     if overview_path.exists():
         existing_overview = overview_path.read_text()
-        expected_overview = generate_overview_table(blocks)
+        expected_overview = generate_overview_table(blocks, block_dir_prefix)
         if existing_overview.strip() != expected_overview.strip():
             print("OUT OF SYNC: README.md (overview)")
             print("  The blocks overview table needs regeneration")
@@ -770,6 +889,21 @@ def check_docs_in_sync(output_dir: Path, blocks: list[BlockDoc]) -> bool:
     else:
         print("MISSING: README.md (overview)")
         out_of_sync_details.append(("README.md", ["overview table"]))
+        all_match = False
+
+    # Check SUMMARY.md at the parent directory
+    summary_path = root_dir / "SUMMARY.md"
+    if summary_path.exists():
+        existing_summary = summary_path.read_text()
+        expected_summary = generate_summary_md(blocks, root_dir, block_dir_prefix)
+        if existing_summary.strip() != expected_summary.strip():
+            print("OUT OF SYNC: SUMMARY.md (navigation)")
+            print("  The GitBook navigation needs regeneration")
+            out_of_sync_details.append(("SUMMARY.md", ["navigation"]))
+            all_match = False
+    else:
+        print("MISSING: SUMMARY.md (navigation)")
+        out_of_sync_details.append(("SUMMARY.md", ["navigation"]))
         all_match = False
 
     # Check for unfilled manual sections
