@@ -554,11 +554,12 @@ async def backfill_all_content_types(batch_size: int = 10) -> dict[str, Any]:
     }
 
 
-async def embed_query(query: str) -> list[float] | None:
+async def embed_query(query: str) -> list[float]:
     """
     Generate embedding for a search query.
 
     Same as generate_embedding but with clearer intent.
+    Raises exceptions on failure - caller should handle.
     """
     return await generate_embedding(query)
 
@@ -841,9 +842,8 @@ async def semantic_search(
         limit = 100
 
     # Generate query embedding
-    query_embedding = await embed_query(query)
-
-    if query_embedding is not None:
+    try:
+        query_embedding = await embed_query(query)
         # Semantic search with embeddings
         embedding_str = embedding_to_vector_string(query_embedding)
 
@@ -894,24 +894,21 @@ async def semantic_search(
         """
         )
 
-        try:
-            results = await query_raw_with_schema(sql, *params)
-            return [
-                {
-                    "content_id": row["content_id"],
-                    "content_type": row["content_type"],
-                    "searchable_text": row["searchable_text"],
-                    "metadata": row["metadata"],
-                    "similarity": float(row["similarity"]),
-                }
-                for row in results
-            ]
-        except Exception as e:
-            logger.error(f"Semantic search failed: {e}")
-            # Fall through to lexical search below
+        results = await query_raw_with_schema(sql, *params)
+        return [
+            {
+                "content_id": row["content_id"],
+                "content_type": row["content_type"],
+                "searchable_text": row["searchable_text"],
+                "metadata": row["metadata"],
+                "similarity": float(row["similarity"]),
+            }
+            for row in results
+        ]
+    except Exception as e:
+        logger.warning(f"Semantic search failed, falling back to lexical search: {e}")
 
     # Fallback to lexical search if embeddings unavailable
-    logger.warning("Falling back to lexical search (embeddings unavailable)")
 
     params_lexical: list[Any] = [limit]
     user_filter = ""
