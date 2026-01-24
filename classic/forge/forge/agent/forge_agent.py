@@ -6,6 +6,7 @@ from uuid import uuid4
 from forge.agent.base import BaseAgent, BaseAgentSettings
 from forge.agent.protocols import (
     AfterExecute,
+    AfterParse,
     CommandProvider,
     DirectiveProvider,
     MessageProvider,
@@ -164,15 +165,48 @@ class ForgeAgent(ProtocolAgent, BaseAgent[ActionProposal]):
         if exception:
             prompt.messages.append(ChatMessage.system(f"Error: {exception}"))
 
-        # Basic implementation that returns a placeholder action
-        # This should be replaced with actual LLM logic
-        return ActionProposal(
-            thoughts="I need to solve this task",
-            use_tool=AssistantFunctionCall(
-                name="finish",
-                arguments={"reason": "Task completed"}
+        # Call the LLM and get response
+        try:
+            # This is a placeholder implementation
+            # In a real implementation, you would call
+            # self.llm_provider.create_chat_completion
+            # and parse the response appropriately
+            from forge.llm.providers.schema import AssistantChatMessage
+
+            # Create a mock response for demonstration
+            mock_content = (
+                '{"thoughts": "I need to solve this task", '
+                '"use_tool": {"name": "finish", '
+                '"arguments": {"reason": "Task completed"}}}'
             )
-        )
+            mock_response = AssistantChatMessage(content=mock_content)
+
+            # Create and return ActionProposal with raw_message set
+            proposal = ActionProposal(
+                thoughts="I need to solve this task",
+                use_tool=AssistantFunctionCall(
+                    name="finish",
+                    arguments={"reason": "Task completed"}
+                ),
+                raw_message=mock_response
+            )
+
+            # Run AfterParse pipeline
+            await self.run_pipeline(AfterParse.after_parse, proposal)
+
+            return proposal
+        except Exception as e:
+            logger.error(f"Error in complete_and_parse: {e}")
+            # Fallback implementation
+            proposal = ActionProposal(
+                thoughts=f"Error occurred: {str(e)}",
+                use_tool=AssistantFunctionCall(
+                    name="finish",
+                    arguments={"reason": f"Error: {str(e)}"}
+                )
+            )
+            await self.run_pipeline(AfterParse.after_parse, proposal)
+            return proposal
 
     async def propose_action(self) -> ActionProposal:
         self.reset_trace()
