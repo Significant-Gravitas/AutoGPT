@@ -283,7 +283,17 @@ export function PendingReviewsList({
           // Get review title from instructions field
           // Only show if it's a HITL block (has custom instructions)
           const firstReview = nodeReviews[0];
-          const reviewTitle = firstReview?.instructions;
+          let reviewTitle = firstReview?.instructions;
+
+          // Clean up old format if it exists: "Review required for X execution" -> "X"
+          if (reviewTitle) {
+            const match = reviewTitle.match(
+              /^Review required for (.+?) execution$/,
+            );
+            if (match) {
+              reviewTitle = match[1];
+            }
+          }
 
           // Helper to shorten node ID
           const getShortenedNodeId = (id: string) => {
@@ -293,7 +303,6 @@ export function PendingReviewsList({
 
           return (
             <div key={nodeId} className="space-y-4">
-              {/* Group Header - Always show for all groups */}
               <button
                 onClick={() => toggleGroupCollapse(nodeId)}
                 className="flex w-full items-center gap-2 text-left"
@@ -321,7 +330,6 @@ export function PendingReviewsList({
                 </span>
               </button>
 
-              {/* Reviews in this group */}
               {!isCollapsed && (
                 <div className="space-y-4">
                   {nodeReviews.map((review) => (
@@ -335,27 +343,16 @@ export function PendingReviewsList({
                     />
                   ))}
 
-                  {/* Auto-approve toggle for the entire node group */}
-                  <div className="space-y-2 pt-2">
-                    <div className="flex items-center gap-3">
-                      <Switch
-                        checked={autoApproveFutureMap[nodeId] || false}
-                        onCheckedChange={(enabled: boolean) =>
-                          handleAutoApproveFutureToggle(nodeId, enabled)
-                        }
-                      />
-                      <Text variant="small" className="text-gray-700">
-                        Auto-approve future executions of{" "}
-                        {reviewTitle || `Node #${getShortenedNodeId(nodeId)}`}
-                      </Text>
-                    </div>
-                    {autoApproveFutureMap[nodeId] && (
-                      <Text variant="small" className="pl-11 text-gray-500">
-                        Original data will be used for all {reviewCount}{" "}
-                        {reviewCount === 1 ? "review" : "reviews"} in future
-                        executions.
-                      </Text>
-                    )}
+                  <div className="flex items-center gap-3 pt-2">
+                    <Switch
+                      checked={autoApproveFutureMap[nodeId] || false}
+                      onCheckedChange={(enabled: boolean) =>
+                        handleAutoApproveFutureToggle(nodeId, enabled)
+                      }
+                    />
+                    <Text variant="small" className="text-gray-700">
+                      Auto-approve future executions of this node
+                    </Text>
                   </div>
                 </div>
               )}

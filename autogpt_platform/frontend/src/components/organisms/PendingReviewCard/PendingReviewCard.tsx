@@ -56,7 +56,17 @@ export function PendingReviewCard({
 }: PendingReviewCardProps) {
   const extractedData = extractReviewData(review.payload);
   const isDataEditable = review.editable;
-  const instructions = extractedData.instructions || review.instructions;
+
+  // Get instructions - clean up old format if it exists
+  let instructions = extractedData.instructions || review.instructions;
+  if (instructions) {
+    // Remove old wrapper format: "Review required for X execution" -> "X"
+    const match = instructions.match(/^Review required for (.+?) execution$/);
+    if (match) {
+      instructions = match[1];
+    }
+  }
+
   const [currentData, setCurrentData] = useState(extractedData.data);
 
   // Sync with external data value when auto-approve is toggled
@@ -148,19 +158,15 @@ export function PendingReviewCard({
     return `${id.slice(0, 4)}...${id.slice(-4)}`;
   };
 
-  // Use the existing HITL review interface
   return (
     <div className="space-y-4">
-      {/* Show node identifier if provided */}
       {nodeId && (
         <Text variant="small" className="text-gray-500">
           Node #{getShortenedNodeId(nodeId)}
         </Text>
       )}
 
-      {/* Show data input/display */}
       <div className="space-y-3">
-        {/* Show label for HITL blocks (when instructions exist) */}
         {instructions && (
           <Text variant="body" className="font-semibold text-gray-900">
             {instructions}
