@@ -47,6 +47,7 @@ def sample_pending_review(test_user_id: str) -> PendingHumanReviewModel:
     """Create a sample pending review for testing"""
     return PendingHumanReviewModel(
         node_exec_id="test_node_123",
+        node_id="test_node_def_456",
         user_id=test_user_id,
         graph_exec_id="test_graph_exec_456",
         graph_id="test_graph_789",

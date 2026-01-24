@@ -23,6 +23,7 @@ class PendingHumanReviewModel(BaseModel):
         id: Unique identifier for the review record
         user_id: ID of the user who must perform the review
         node_exec_id: ID of the node execution that created this review
+        node_id: ID of the node definition (for grouping reviews from same node)
         graph_exec_id: ID of the graph execution containing the node
         graph_id: ID of the graph template being executed
         graph_version: Version number of the graph template
@@ -37,6 +38,10 @@ class PendingHumanReviewModel(BaseModel):
     """
 
     node_exec_id: str = Field(description="Node execution ID (primary key)")
+    node_id: str = Field(
+        description="Node definition ID (for grouping)",
+        default="",  # Temporary default for test compatibility
+    )
     user_id: str = Field(description="User ID associated with the review")
     graph_exec_id: str = Field(description="Graph execution ID")
     graph_id: str = Field(description="Graph ID")
@@ -66,7 +71,9 @@ class PendingHumanReviewModel(BaseModel):
     )
 
     @classmethod
-    def from_db(cls, review: "PendingHumanReview") -> "PendingHumanReviewModel":
+    def from_db(
+        cls, review: "PendingHumanReview", node_id: str
+    ) -> "PendingHumanReviewModel":
         """
         Convert a database model to a response model.
 
@@ -74,9 +81,14 @@ class PendingHumanReviewModel(BaseModel):
         payload, instructions, and editable flag.
 
         Handles invalid data gracefully by using safe defaults.
+
+        Args:
+            review: Database review object
+            node_id: Node definition ID (fetched from NodeExecution)
         """
         return cls(
             node_exec_id=review.nodeExecId,
+            node_id=node_id,
             user_id=review.userId,
             graph_exec_id=review.graphExecId,
             graph_id=review.graphId,

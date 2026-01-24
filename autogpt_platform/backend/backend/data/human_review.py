@@ -284,8 +284,10 @@ async def get_pending_reviews_for_user(
         page_size: Number of reviews per page
 
     Returns:
-        List of pending review models
+        List of pending review models with node_id included
     """
+    from backend.data.execution import get_node_execution
+
     # Calculate offset for pagination
     offset = (page - 1) * page_size
 
@@ -296,7 +298,14 @@ async def get_pending_reviews_for_user(
         take=page_size,
     )
 
-    return [PendingHumanReviewModel.from_db(review) for review in reviews]
+    # Fetch node_id for each review from NodeExecution
+    result = []
+    for review in reviews:
+        node_exec = await get_node_execution(review.nodeExecId)
+        node_id = node_exec.node_id if node_exec else review.nodeExecId
+        result.append(PendingHumanReviewModel.from_db(review, node_id=node_id))
+
+    return result
 
 
 async def get_pending_reviews_for_execution(
@@ -310,8 +319,10 @@ async def get_pending_reviews_for_execution(
         user_id: User ID for security validation
 
     Returns:
-        List of pending review models
+        List of pending review models with node_id included
     """
+    from backend.data.execution import get_node_execution
+
     reviews = await PendingHumanReview.prisma().find_many(
         where={
             "userId": user_id,
@@ -321,7 +332,14 @@ async def get_pending_reviews_for_execution(
         order={"createdAt": "asc"},
     )
 
-    return [PendingHumanReviewModel.from_db(review) for review in reviews]
+    # Fetch node_id for each review from NodeExecution
+    result = []
+    for review in reviews:
+        node_exec = await get_node_execution(review.nodeExecId)
+        node_id = node_exec.node_id if node_exec else review.nodeExecId
+        result.append(PendingHumanReviewModel.from_db(review, node_id=node_id))
+
+    return result
 
 
 async def process_all_reviews_for_execution(
