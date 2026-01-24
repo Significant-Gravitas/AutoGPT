@@ -212,7 +212,7 @@ export function RunAgentModal({
 
               {/* Content */}
               {hasAnySetupFields ? (
-                <div className="mt-10 pb-32">
+                <div className="mt-4 pb-10">
                   <RunAgentModalContextProvider
                     value={{
                       agent,
