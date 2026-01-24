@@ -70,14 +70,17 @@ export function PendingReviewsList({
     const nodes = graph.data.nodes;
     if (!nodes) return {};
 
-    return nodes.reduce((acc: Record<string, string>, node) => {
-      const displayName =
-        (node.metadata?.customized_name as string | undefined) ||
-        node.block_id ||
-        "Unknown Block";
-      acc[node.id || ""] = displayName;
-      return acc;
-    }, {} as Record<string, string>);
+    return nodes.reduce(
+      (acc: Record<string, string>, node) => {
+        const displayName =
+          (node.metadata?.customized_name as string | undefined) ||
+          node.block_id ||
+          "Unknown Block";
+        acc[node.id || ""] = displayName;
+        return acc;
+      },
+      {} as Record<string, string>,
+    );
   }, [graph]);
 
   // Group reviews by node_id

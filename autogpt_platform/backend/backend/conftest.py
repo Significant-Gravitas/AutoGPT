@@ -2,6 +2,7 @@ import logging
 import os
 
 import pytest
+import pytest_asyncio
 from dotenv import load_dotenv
 
 from backend.util.logging import configure_logging
@@ -19,7 +20,7 @@ if not os.getenv("PRISMA_DEBUG"):
     prisma_logger.setLevel(logging.INFO)
 
 
-@pytest.fixture(scope="session")
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def server():
     from backend.util.test import SpinTestServer
 
