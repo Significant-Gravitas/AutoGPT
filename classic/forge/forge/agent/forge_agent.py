@@ -29,16 +29,15 @@ from forge.llm.providers import (
     ChatMessage,
     MultiProvider,
 )
+from forge.llm.providers.schema import AssistantFunctionCall
 from forge.llm.providers.utils import function_specs_from_commands
 from forge.models.action import (
     ActionErrorResult,
+    ActionProposal,
     ActionResult,
     ActionSuccessResult,
 )
 from forge.utils.exceptions import AgentException, AgentTerminated
-
-from forge.llm.providers.schema import AssistantFunctionCall
-from forge.models.action import ActionProposal
 
 logger = logging.getLogger(__name__)
 
@@ -56,10 +55,7 @@ class ForgeAgent(ProtocolAgent, BaseAgent[ActionProposal]):
     """  # noqa: E501
 
     def __init__(
-        self,
-        database: AgentDB,
-        workspace: FileStorage,
-        llm_provider: MultiProvider
+        self, database: AgentDB, workspace: FileStorage, llm_provider: MultiProvider
     ):
         """
         The database is used to store tasks, steps and artifact metadata.
@@ -185,10 +181,9 @@ class ForgeAgent(ProtocolAgent, BaseAgent[ActionProposal]):
             proposal = ActionProposal(
                 thoughts="I need to solve this task",
                 use_tool=AssistantFunctionCall(
-                    name="finish",
-                    arguments={"reason": "Task completed"}
+                    name="finish", arguments={"reason": "Task completed"}
                 ),
-                raw_message=mock_response
+                raw_message=mock_response,
             )
 
             # Run AfterParse pipeline
@@ -201,9 +196,8 @@ class ForgeAgent(ProtocolAgent, BaseAgent[ActionProposal]):
             proposal = ActionProposal(
                 thoughts=f"Error occurred: {str(e)}",
                 use_tool=AssistantFunctionCall(
-                    name="finish",
-                    arguments={"reason": f"Error: {str(e)}"}
-                )
+                    name="finish", arguments={"reason": f"Error: {str(e)}"}
+                ),
             )
             await self.run_pipeline(AfterParse.after_parse, proposal)
             return proposal
@@ -229,8 +223,7 @@ class ForgeAgent(ProtocolAgent, BaseAgent[ActionProposal]):
 
         # Build prompt
         prompt: ChatPrompt = ChatPrompt(
-            messages=messages,
-            functions=function_specs_from_commands(self.commands)
+            messages=messages, functions=function_specs_from_commands(self.commands)
         )
 
         logger.debug(f"Executing prompt:\n{dump_prompt(prompt)}")
@@ -243,9 +236,7 @@ class ForgeAgent(ProtocolAgent, BaseAgent[ActionProposal]):
         return proposal
 
     async def execute(
-        self,
-        proposal: ActionProposal,
-        user_feedback: str = ""
+        self, proposal: ActionProposal, user_feedback: str = ""
     ) -> ActionResult:
         tool = proposal.use_tool
 
