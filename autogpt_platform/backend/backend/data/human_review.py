@@ -263,6 +263,44 @@ async def get_pending_review_by_node_exec_id(
     return PendingHumanReviewModel.from_db(review, node_id=node_id)
 
 
+async def get_pending_reviews_by_node_exec_ids(
+    node_exec_ids: list[str], user_id: str
+) -> dict[str, "PendingHumanReviewModel"]:
+    """
+    Get multiple pending reviews by their node execution IDs in a single batch query.
+
+    Args:
+        node_exec_ids: List of node execution IDs to look up
+        user_id: User ID for authorization (only returns reviews belonging to this user)
+
+    Returns:
+        Dictionary mapping node_exec_id -> PendingHumanReviewModel for found reviews
+    """
+    if not node_exec_ids:
+        return {}
+
+    reviews = await PendingHumanReview.prisma().find_many(
+        where={
+            "nodeExecId": {"in": node_exec_ids},
+            "userId": user_id,
+            "status": ReviewStatus.WAITING,
+        }
+    )
+
+    # Local import to avoid event loop conflicts in tests
+    from backend.data.execution import get_node_execution
+
+    result = {}
+    for review in reviews:
+        node_exec = await get_node_execution(review.nodeExecId)
+        node_id = node_exec.node_id if node_exec else review.nodeExecId
+        result[review.nodeExecId] = PendingHumanReviewModel.from_db(
+            review, node_id=node_id
+        )
+
+    return result
+
+
 async def has_pending_reviews_for_graph_exec(graph_exec_id: str) -> bool:
     """
     Check if a graph execution has any pending reviews.

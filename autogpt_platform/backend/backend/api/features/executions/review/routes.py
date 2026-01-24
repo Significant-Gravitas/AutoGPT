@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from typing import List
 
@@ -14,7 +15,7 @@ from backend.data.execution import (
 from backend.data.graph import get_graph_settings
 from backend.data.human_review import (
     create_auto_approval_record,
-    get_pending_review_by_node_exec_id,
+    get_pending_reviews_by_node_exec_ids,
     get_pending_reviews_for_execution,
     get_pending_reviews_for_user,
     has_pending_reviews_for_graph_exec,
@@ -137,38 +138,28 @@ async def process_review_action(
             detail="At least one review must be provided",
         )
 
-    # Get graph execution ID by looking up all requested reviews
-    # Use direct lookup to avoid pagination issues (can't miss reviews beyond first page)
-    # Also validate that all reviews belong to the same execution
-    matching_review = None
-    graph_exec_ids: set[str] = set()
+    # Batch fetch all requested reviews
+    reviews_map = await get_pending_reviews_by_node_exec_ids(
+        list(all_request_node_ids), user_id
+    )
 
-    for node_exec_id in all_request_node_ids:
-        review = await get_pending_review_by_node_exec_id(node_exec_id, user_id)
-        if not review:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"No pending review found for node execution {node_exec_id}",
-            )
-        if matching_review is None:
-            matching_review = review
-        graph_exec_ids.add(review.graph_exec_id)
+    # Validate all reviews were found
+    missing_ids = all_request_node_ids - set(reviews_map.keys())
+    if missing_ids:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No pending review found for node execution(s): {', '.join(missing_ids)}",
+        )
 
-    # Ensure all reviews belong to the same execution
+    # Validate all reviews belong to the same execution
+    graph_exec_ids = {review.graph_exec_id for review in reviews_map.values()}
     if len(graph_exec_ids) > 1:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="All reviews in a single request must belong to the same execution.",
         )
 
-    # Safety check (matching_review should never be None here due to validation above)
-    if matching_review is None:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal error: No matching review found despite validation",
-        )
-
-    graph_exec_id = matching_review.graph_exec_id
+    graph_exec_id = next(iter(graph_exec_ids))
 
     # Validate execution status before processing reviews
     graph_exec_meta = await get_graph_execution_meta(
@@ -219,11 +210,7 @@ async def process_review_action(
     )
 
     # Create auto-approval records for approved reviews that requested it
-    # Note: Processing sequentially to avoid event loop issues in tests
-    for node_exec_id, review_result in updated_reviews.items():
-        # Only create auto-approval if:
-        # 1. This review was approved
-        # 2. The review requested auto-approval
+    async def create_auto_approval_if_needed(node_exec_id: str, review_result) -> None:
         if review_result.status == ReviewStatus.APPROVED and auto_approve_requests.get(
             node_exec_id, False
         ):
@@ -243,6 +230,14 @@ async def process_review_action(
                     f"Failed to create auto-approval record for {node_exec_id}",
                     exc_info=e,
                 )
+
+    # Execute all auto-approval creations in parallel
+    await asyncio.gather(
+        *[
+            create_auto_approval_if_needed(node_exec_id, review_result)
+            for node_exec_id, review_result in updated_reviews.items()
+        ]
+    )
 
     # Count results
     approved_count = sum(
