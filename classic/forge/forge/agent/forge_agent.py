@@ -29,7 +29,7 @@ from forge.llm.providers import (
     ChatMessage,
     MultiProvider,
 )
-from forge.llm.providers.schema import AssistantFunctionCall
+from forge.llm.providers.schema import AssistantChatMessage, AssistantFunctionCall
 from forge.llm.providers.utils import function_specs_from_commands
 from forge.models.action import (
     ActionErrorResult,
@@ -167,7 +167,6 @@ class ForgeAgent(ProtocolAgent, BaseAgent[ActionProposal]):
             # In a real implementation, you would call
             # self.llm_provider.create_chat_completion
             # and parse the response appropriately
-            from forge.llm.providers.schema import AssistantChatMessage
 
             # Create a mock response for demonstration
             mock_content = (
