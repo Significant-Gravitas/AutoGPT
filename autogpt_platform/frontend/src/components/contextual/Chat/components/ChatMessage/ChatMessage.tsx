@@ -14,6 +14,7 @@ import { AgentCarouselMessage } from "../AgentCarouselMessage/AgentCarouselMessa
 import { AIChatBubble } from "../AIChatBubble/AIChatBubble";
 import { AuthPromptWidget } from "../AuthPromptWidget/AuthPromptWidget";
 import { ChatCredentialsSetup } from "../ChatCredentialsSetup/ChatCredentialsSetup";
+import { ClarificationQuestionsWidget } from "../ClarificationQuestionsWidget/ClarificationQuestionsWidget";
 import { ExecutionStartedMessage } from "../ExecutionStartedMessage/ExecutionStartedMessage";
 import { MarkdownContent } from "../MarkdownContent/MarkdownContent";
 import { NoResultsMessage } from "../NoResultsMessage/NoResultsMessage";
@@ -69,6 +70,7 @@ export function ChatMessage({
     isToolResponse,
     isLoginNeeded,
     isCredentialsNeeded,
+    isClarificationNeeded,
   } = useChatMessage(message);
   const displayContent = getDisplayContent(message, isUser);
 
@@ -95,6 +97,22 @@ export function ChatMessage({
       onDismissCredentials();
     }
   }
+
+  const handleClarificationAnswers = useCallback(
+    function handleClarificationAnswers(answers: Record<string, string>) {
+      // Format answers as context for the tool to retry
+      if (onSendMessage) {
+        const contextMessage = Object.entries(answers)
+          .map(([keyword, answer]) => `${keyword}: ${answer}`)
+          .join("\n");
+
+        onSendMessage(
+          `I have the answers to your questions:\n\n${contextMessage}\n\nPlease proceed with creating the agent.`,
+        );
+      }
+    },
+    [onSendMessage],
+  );
 
   const handleCopy = useCallback(
     async function handleCopy() {
@@ -136,6 +154,18 @@ export function ChatMessage({
         message={message.message}
         onAllCredentialsComplete={handleAllCredentialsComplete}
         onCancel={handleCancelCredentials}
+        className={className}
+      />
+    );
+  }
+
+  // Render clarification needed messages
+  if (isClarificationNeeded && message.type === "clarification_needed") {
+    return (
+      <ClarificationQuestionsWidget
+        questions={message.questions}
+        message={message.message}
+        onSubmitAnswers={handleClarificationAnswers}
         className={className}
       />
     );
