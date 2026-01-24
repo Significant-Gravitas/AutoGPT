@@ -3,6 +3,7 @@ import { PendingHumanReviewModel } from "@/app/api/__generated__/models/pendingH
 import { PendingReviewCard } from "@/components/organisms/PendingReviewCard/PendingReviewCard";
 import { Text } from "@/components/atoms/Text/Text";
 import { Button } from "@/components/atoms/Button/Button";
+import { Switch } from "@/components/atoms/Switch/Switch";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import {
   ClockIcon,
@@ -42,7 +43,7 @@ export function PendingReviewsList({
     "approve" | "reject" | null
   >(null);
 
-  // Track per-review auto-approval state
+  // Track per-node auto-approval state (by node_id, not node_exec_id)
   const [autoApproveFutureMap, setAutoApproveFutureMap] = useState<
     Record<string, boolean>
   >({});
@@ -144,22 +145,27 @@ export function PendingReviewsList({
     setReviewDataMap((prev) => ({ ...prev, [nodeExecId]: data }));
   }
 
-  // Handle per-review auto-approval toggle
-  function handleAutoApproveFutureToggle(nodeExecId: string, enabled: boolean) {
+  // Handle per-node auto-approval toggle
+  function handleAutoApproveFutureToggle(nodeId: string, enabled: boolean) {
     setAutoApproveFutureMap((prev) => ({
       ...prev,
-      [nodeExecId]: enabled,
+      [nodeId]: enabled,
     }));
 
     if (enabled) {
-      // Reset this review's data to original value
-      const review = reviews.find((r) => r.node_exec_id === nodeExecId);
-      if (review) {
-        setReviewDataMap((prev) => ({
-          ...prev,
-          [nodeExecId]: JSON.stringify(review.payload, null, 2),
-        }));
-      }
+      // Reset ALL reviews in this node group to original values
+      const nodeReviews = groupedReviews[nodeId] || [];
+      setReviewDataMap((prev) => {
+        const updated = { ...prev };
+        nodeReviews.forEach((review) => {
+          updated[review.node_exec_id] = JSON.stringify(
+            review.payload,
+            null,
+            2,
+          );
+        });
+        return updated;
+      });
     }
   }
 
@@ -185,13 +191,13 @@ export function PendingReviewsList({
 
     for (const review of reviews) {
       const reviewData = reviewDataMap[review.node_exec_id];
-      const autoApproveThisReview = autoApproveFutureMap[review.node_exec_id];
+      const autoApproveThisNode = autoApproveFutureMap[review.node_id || ""];
 
-      // When auto-approving future actions for this review, send undefined (use original data)
+      // When auto-approving future actions for this node, send undefined (use original data)
       // Otherwise, parse and send the edited data if available
       let parsedData: any = undefined;
 
-      if (!autoApproveThisReview) {
+      if (!autoApproveThisNode) {
         // For regular approve/reject, use edited data if available
         if (review.editable && reviewData) {
           try {
@@ -210,14 +216,14 @@ export function PendingReviewsList({
           parsedData = review.payload;
         }
       }
-      // When autoApproveThisReview is true, parsedData stays undefined
+      // When autoApproveThisNode is true, parsedData stays undefined
       // Backend will use the original payload stored in the database
 
       reviewItems.push({
         node_exec_id: review.node_exec_id,
         approved,
         reviewed_data: parsedData,
-        auto_approve_future: autoApproveThisReview && approved,
+        auto_approve_future: autoApproveThisNode && approved,
       });
     }
 
@@ -306,13 +312,34 @@ export function PendingReviewsList({
                       key={review.node_exec_id}
                       review={review}
                       onReviewDataChange={handleReviewDataChange}
-                      autoApproveFuture={
-                        autoApproveFutureMap[review.node_exec_id] || false
-                      }
-                      onAutoApproveFutureChange={handleAutoApproveFutureToggle}
+                      autoApproveFuture={autoApproveFutureMap[nodeId] || false}
                       externalDataValue={reviewDataMap[review.node_exec_id]}
+                      showAutoApprove={false}
+                      nodeId={nodeId}
                     />
                   ))}
+
+                  {/* Auto-approve toggle for the entire node group */}
+                  <div className="space-y-2 rounded-lg border border-gray-200 bg-gray-50 p-4">
+                    <div className="flex items-center gap-3">
+                      <Switch
+                        checked={autoApproveFutureMap[nodeId] || false}
+                        onCheckedChange={(enabled: boolean) =>
+                          handleAutoApproveFutureToggle(nodeId, enabled)
+                        }
+                      />
+                      <Text variant="small" className="text-gray-700">
+                        Auto-approve future executions of this block
+                      </Text>
+                    </div>
+                    {autoApproveFutureMap[nodeId] && (
+                      <Text variant="small" className="pl-11 text-gray-500">
+                        Original data will be used for all {reviewCount}{" "}
+                        {reviewCount === 1 ? "review" : "reviews"} from this
+                        block in future executions.
+                      </Text>
+                    )}
+                  </div>
                 </div>
               )}
             </div>

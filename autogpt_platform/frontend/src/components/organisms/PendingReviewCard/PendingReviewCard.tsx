@@ -41,6 +41,8 @@ interface PendingReviewCardProps {
   autoApproveFuture?: boolean;
   onAutoApproveFutureChange?: (nodeExecId: string, enabled: boolean) => void;
   externalDataValue?: string;
+  showAutoApprove?: boolean;
+  nodeId?: string;
 }
 
 export function PendingReviewCard({
@@ -49,6 +51,8 @@ export function PendingReviewCard({
   autoApproveFuture = false,
   onAutoApproveFutureChange,
   externalDataValue,
+  showAutoApprove = true,
+  nodeId,
 }: PendingReviewCardProps) {
   const extractedData = extractReviewData(review.payload);
   const isDataEditable = review.editable;
@@ -145,9 +149,22 @@ export function PendingReviewCard({
     return "Data to Review";
   };
 
+  // Helper function to shorten node ID
+  const getShortenedNodeId = (id: string) => {
+    if (id.length <= 8) return id;
+    return `${id.slice(0, 4)}...${id.slice(-4)}`;
+  };
+
   // Use the existing HITL review interface
   return (
     <div className="space-y-4">
+      {/* Show node identifier if provided */}
+      {nodeId && (
+        <Text variant="small" className="text-gray-500">
+          Node #{getShortenedNodeId(nodeId)}
+        </Text>
+      )}
+
       {/* Show instructions as field label */}
       {instructions && (
         <div className="space-y-3">
@@ -190,7 +207,7 @@ export function PendingReviewCard({
       )}
 
       {/* Auto-approve toggle for this review */}
-      {onAutoApproveFutureChange && (
+      {showAutoApprove && onAutoApproveFutureChange && (
         <div className="space-y-2 pt-2">
           <div className="flex items-center gap-3">
             <Switch
