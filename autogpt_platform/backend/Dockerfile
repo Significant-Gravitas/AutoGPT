@@ -62,10 +62,11 @@ ENV POETRY_HOME=/opt/poetry \
     DEBIAN_FRONTEND=noninteractive
 ENV PATH=/opt/poetry/bin:$PATH
 
-# Install Python without upgrading system-managed packages
+# Install Python and FFmpeg (required for video processing blocks)
 RUN apt-get update && apt-get install -y \
     python3.13 \
     python3-pip \
+    ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy only necessary files from builder

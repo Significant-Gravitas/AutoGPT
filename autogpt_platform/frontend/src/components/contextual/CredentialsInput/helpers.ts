@@ -26,6 +26,7 @@ export const providerIcons: Partial<
   nvidia: fallbackIcon,
   discord: FaDiscord,
   d_id: fallbackIcon,
+  elevenlabs: fallbackIcon,
   google_maps: FaGoogle,
   jina: fallbackIcon,
   ideogram: fallbackIcon,

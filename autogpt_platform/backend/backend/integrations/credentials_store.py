@@ -224,6 +224,14 @@ openweathermap_credentials = APIKeyCredentials(
     expires_at=None,
 )
 
+elevenlabs_credentials = APIKeyCredentials(
+    id="f4a8b6c2-3d1e-4f5a-9b8c-7d6e5f4a3b2c",
+    provider="elevenlabs",
+    api_key=SecretStr(settings.secrets.elevenlabs_api_key),
+    title="Use Credits for ElevenLabs",
+    expires_at=None,
+)
+
 DEFAULT_CREDENTIALS = [
     ollama_credentials,
     revid_credentials,
@@ -252,6 +260,7 @@ DEFAULT_CREDENTIALS = [
     v0_credentials,
     webshare_proxy_credentials,
     openweathermap_credentials,
+    elevenlabs_credentials,
 ]
 
 SYSTEM_CREDENTIAL_IDS = {cred.id for cred in DEFAULT_CREDENTIALS}
@@ -366,6 +375,8 @@ class IntegrationCredentialsStore:
             all_credentials.append(webshare_proxy_credentials)
         if settings.secrets.openweathermap_api_key:
             all_credentials.append(openweathermap_credentials)
+        if settings.secrets.elevenlabs_api_key:
+            all_credentials.append(elevenlabs_credentials)
         return all_credentials
 
     async def get_creds_by_id(
