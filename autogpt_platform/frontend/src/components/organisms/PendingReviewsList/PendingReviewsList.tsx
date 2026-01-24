@@ -278,27 +278,32 @@ export function PendingReviewsList({
           const displayName =
             nodeNameMap[nodeId] || nodeReviews[0]?.node_id || "Unknown Block";
           const reviewCount = nodeReviews.length;
+          const shouldShowCollapseHeader =
+            Object.keys(groupedReviews).length > 1 && reviewCount > 1;
+
+          // Helper to shorten node ID
+          const getShortenedNodeId = (id: string) => {
+            if (id.length <= 8) return id;
+            return `${id.slice(0, 4)}...${id.slice(-4)}`;
+          };
 
           return (
             <div key={nodeId} className="space-y-4">
-              {/* Group Header - Only show if there are multiple groups */}
-              {Object.keys(groupedReviews).length > 1 && (
+              {/* Group Header - Only show if multiple groups AND multiple reviews in this group */}
+              {shouldShowCollapseHeader && (
                 <button
                   onClick={() => toggleGroupCollapse(nodeId)}
-                  className="flex w-full items-center gap-2 rounded-lg bg-white p-3 text-left hover:bg-gray-50"
+                  className="flex w-full items-center gap-2 text-left"
                 >
                   {isCollapsed ? (
                     <CaretRightIcon size={20} className="text-gray-600" />
                   ) : (
                     <CaretDownIcon size={20} className="text-gray-600" />
                   )}
-                  <Text
-                    variant="body"
-                    className="flex-1 font-semibold text-gray-900"
-                  >
-                    {displayName}
+                  <Text variant="body" className="flex-1 text-gray-900">
+                    Node #{getShortenedNodeId(nodeId)}
                   </Text>
-                  <span className="rounded-full bg-gray-100 px-2 py-1 text-xs text-gray-600">
+                  <span className="text-xs text-gray-600">
                     {reviewCount} {reviewCount === 1 ? "review" : "reviews"}
                   </span>
                 </button>
@@ -307,7 +312,7 @@ export function PendingReviewsList({
               {/* Reviews in this group */}
               {!isCollapsed && (
                 <div className="space-y-4">
-                  {nodeReviews.map((review) => (
+                  {nodeReviews.map((review, index) => (
                     <PendingReviewCard
                       key={review.node_exec_id}
                       review={review}
@@ -315,7 +320,7 @@ export function PendingReviewsList({
                       autoApproveFuture={autoApproveFutureMap[nodeId] || false}
                       externalDataValue={reviewDataMap[review.node_exec_id]}
                       showAutoApprove={false}
-                      nodeId={nodeId}
+                      nodeId={shouldShowCollapseHeader ? undefined : nodeId}
                     />
                   ))}
 
@@ -329,14 +334,14 @@ export function PendingReviewsList({
                         }
                       />
                       <Text variant="small" className="text-gray-700">
-                        Auto-approve future executions of this node
+                        Auto-approve future executions of {displayName}
                       </Text>
                     </div>
                     {autoApproveFutureMap[nodeId] && (
                       <Text variant="small" className="pl-11 text-gray-500">
                         Original data will be used for all {reviewCount}{" "}
-                        {reviewCount === 1 ? "review" : "reviews"} from this
-                        node in future executions.
+                        {reviewCount === 1 ? "review" : "reviews"} from{" "}
+                        {displayName} in future executions.
                       </Text>
                     )}
                   </div>
