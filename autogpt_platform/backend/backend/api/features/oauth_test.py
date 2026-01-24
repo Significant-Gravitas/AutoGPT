@@ -45,7 +45,7 @@ def test_user_id() -> str:
     return str(uuid.uuid4())
 
 
-@pytest_asyncio.fixture
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def test_user(server, test_user_id: str):
     """Create a test user in the database."""
     await PrismaUser.prisma().create(

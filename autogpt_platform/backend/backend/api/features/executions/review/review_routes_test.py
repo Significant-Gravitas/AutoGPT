@@ -22,7 +22,7 @@ from .model import PendingHumanReviewModel
 FIXED_NOW = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=datetime.timezone.utc)
 
 
-@pytest_asyncio.fixture
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def client(server, mock_jwt_user) -> AsyncGenerator[httpx.AsyncClient, None]:
     """Create async HTTP client with auth overrides"""
     from autogpt_libs.auth.jwt_utils import get_jwt_payload

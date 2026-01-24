@@ -326,8 +326,8 @@ export function PendingReviewsList({
         </div>
 
         <Text variant="small" className="text-textGrey">
-          You can turn auto-approval on or off anytime in this agent&apos;s
-          settings.
+          You can turn auto-approval on or off using the toggle above for each
+          node.
         </Text>
       </div>
     </div>
