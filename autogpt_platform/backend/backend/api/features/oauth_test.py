@@ -122,7 +122,7 @@ def pkce_credentials() -> tuple[str, str]:
     return generate_pkce()
 
 
-@pytest.fixture
+@pytest.fixture(scope="function")
 async def client(server, test_user: str) -> AsyncGenerator[httpx.AsyncClient, None]:
     """
     Create an async HTTP client that talks directly to the FastAPI app.
@@ -132,6 +132,8 @@ async def client(server, test_user: str) -> AsyncGenerator[httpx.AsyncClient, No
 
     Depends on `server` to ensure the DB is connected and `test_user` to ensure
     the user exists in the database before running tests.
+
+    Scoped to function to avoid event loop conflicts when running full test suite.
     """
     from autogpt_libs.auth import get_user_id
 
@@ -146,9 +148,11 @@ async def client(server, test_user: str) -> AsyncGenerator[httpx.AsyncClient, No
     app.dependency_overrides[get_user_id] = override_get_user_id
 
     try:
+        # Create fresh client for each test to avoid event loop binding issues
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=app),
             base_url="http://test",
+            timeout=30.0,  # Add explicit timeout
         ) as http_client:
             yield http_client
     finally:
