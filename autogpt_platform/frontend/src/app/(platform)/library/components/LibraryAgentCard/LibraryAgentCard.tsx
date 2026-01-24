@@ -4,6 +4,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { CaretCircleRightIcon } from "@phosphor-icons/react";
 import Image from "next/image";
 import NextLink from "next/link";
+import { motion } from "framer-motion";
 
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import Avatar, {
@@ -14,13 +15,24 @@ import { Link } from "@/components/atoms/Link/Link";
 import { AgentCardMenu } from "./components/AgentCardMenu";
 import { FavoriteButton } from "./components/FavoriteButton";
 import { useLibraryAgentCard } from "./useLibraryAgentCard";
+import { useFavoriteAnimation } from "../../context/FavoriteAnimationContext";
 
 interface Props {
   agent: LibraryAgent;
+  draggable?: boolean;
 }
 
-export function LibraryAgentCard({ agent }: Props) {
+export function LibraryAgentCard({
+  agent,
+  draggable = true,
+}: Props) {
   const { id, name, graph_id, can_access_graph, image_url } = agent;
+  const { triggerFavoriteAnimation } = useFavoriteAnimation();
+
+  function handleDragStart(e: React.DragEvent<HTMLDivElement>) {
+    e.dataTransfer.setData("application/agent-id", id);
+    e.dataTransfer.effectAllowed = "move";
+  }
 
   const {
     isFromMarketplace,
@@ -28,14 +40,29 @@ export function LibraryAgentCard({ agent }: Props) {
     profile,
     creator_image_url,
     handleToggleFavorite,
-  } = useLibraryAgentCard({ agent });
+  } = useLibraryAgentCard({
+    agent,
+    onFavoriteAdd: triggerFavoriteAnimation,
+  });
 
   return (
     <div
-      data-testid="library-agent-card"
-      data-agent-id={id}
-      className="group relative inline-flex h-[10.625rem] w-full max-w-[25rem] flex-col items-start justify-start gap-2.5 rounded-medium border border-zinc-100 bg-white transition-all duration-300 hover:shadow-md"
+      draggable={draggable}
+      onDragStart={handleDragStart}
+      className="cursor-grab active:cursor-grabbing"
     >
+      <motion.div
+        layoutId={`agent-card-${id}`}
+        data-testid="library-agent-card"
+        data-agent-id={id}
+        className="group relative inline-flex h-[10.625rem] w-full max-w-[25rem] flex-col items-start justify-start gap-2.5 rounded-medium border border-zinc-100 bg-white hover:shadow-md"
+        transition={{
+          type: "spring",
+          damping: 25,
+          stiffness: 300,
+        }}
+        style={{ willChange: "transform" }}
+      >
       <NextLink href={`/library/agents/${id}`} className="flex-shrink-0">
         <div className="relative flex items-center gap-2 px-4 pt-3">
           <Avatar className="h-4 w-4 rounded-full">
@@ -125,6 +152,7 @@ export function LibraryAgentCard({ agent }: Props) {
           )}
         </div>
       </div>
+      </motion.div>
     </div>
   );
 }

@@ -13,9 +13,14 @@ import { useEffect, useRef } from "react";
 interface Props {
   searchTerm: string;
   librarySort: LibraryAgentSort;
+  folderId?: string | null;
 }
 
-export function useLibraryAgentList({ searchTerm, librarySort }: Props) {
+export function useLibraryAgentList({
+  searchTerm,
+  librarySort,
+  folderId,
+}: Props) {
   const queryClient = getQueryClient();
   const prevSortRef = useRef<LibraryAgentSort | null>(null);
 
@@ -31,6 +36,8 @@ export function useLibraryAgentList({ searchTerm, librarySort }: Props) {
       page_size: 20,
       search_term: searchTerm || undefined,
       sort_by: librarySort,
+      folder_id: folderId ?? undefined,
+      include_root_only: folderId === null ? true : undefined,
     },
     {
       query: {

@@ -4,24 +4,24 @@ import { Text } from "@/components/atoms/Text/Text";
 import { Button } from "@/components/atoms/Button/Button";
 import { FolderIcon, FolderColor } from "./FolderIcon";
 import { useState } from "react";
-import {
-  PencilSimpleIcon,
-  TrashIcon,
-  StarIcon,
-} from "@phosphor-icons/react";
+import { PencilSimpleIcon, TrashIcon, HeartIcon } from "@phosphor-icons/react";
 
 interface Props {
+  id: string;
   name: string;
   agentCount: number;
-  color: FolderColor;
+  color?: FolderColor;
   icon: string;
   onEdit?: () => void;
   onDelete?: () => void;
   onFavorite?: () => void;
+  onAgentDrop?: (agentId: string, folderId: string) => void;
+  onClick?: () => void;
   isFavorite?: boolean;
 }
 
 export function LibraryFolder({
+  id,
   name,
   agentCount,
   color,
@@ -29,16 +29,49 @@ export function LibraryFolder({
   onEdit,
   onDelete,
   onFavorite,
+  onAgentDrop,
+  onClick,
   isFavorite = false,
 }: Props) {
   const [isHovered, setIsHovered] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
+
+  function handleDragOver(e: React.DragEvent<HTMLDivElement>) {
+    if (e.dataTransfer.types.includes("application/agent-id")) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      setIsDragOver(true);
+    }
+  }
+
+  function handleDragLeave() {
+    setIsDragOver(false);
+  }
+
+  function handleDrop(e: React.DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    setIsDragOver(false);
+    const agentId = e.dataTransfer.getData("application/agent-id");
+    if (agentId && onAgentDrop) {
+      onAgentDrop(agentId, id);
+    }
+  }
 
   return (
     <div
       data-testid="library-folder"
-      className="group relative inline-flex h-[10.625rem] w-full max-w-[25rem] cursor-pointer flex-col items-start justify-start gap-2.5 rounded-medium border border-zinc-100 bg-white p-4 transition-all duration-200 hover:shadow-md"
+      data-folder-id={id}
+      className={`group relative inline-flex h-[10.625rem] w-full max-w-[25rem] cursor-pointer flex-col items-start justify-start gap-2.5 rounded-medium border bg-white p-4 transition-all duration-200 hover:shadow-md ${
+        isDragOver
+          ? "border-blue-400 bg-blue-50 ring-2 ring-blue-200"
+          : "border-zinc-100"
+      }`}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+      onClick={onClick}
     >
       <div className="flex w-full items-start justify-between gap-4">
         {/* Left side - Folder name and agent count */}
@@ -67,7 +100,7 @@ export function LibraryFolder({
 
       {/* Action buttons - visible on hover */}
       <div
-       className="flex items-center justify-end gap-2"
+        className="flex items-center justify-end gap-2"
         data-testid="library-folder-actions"
       >
         <Button
@@ -80,7 +113,7 @@ export function LibraryFolder({
           }}
           className="h-8 w-8 p-2"
         >
-          <StarIcon
+          <HeartIcon
             className="h-4 w-4"
             weight={isFavorite ? "fill" : "regular"}
             color={isFavorite ? "#facc15" : "currentColor"}
