@@ -236,17 +236,7 @@ export function PendingReviewsList({
           const reviewCount = nodeReviews.length;
 
           const firstReview = nodeReviews[0];
-          let blockName = firstReview?.instructions;
-
-          if (blockName) {
-            const match = blockName.match(
-              /^Review required for (.+?) execution$/,
-            );
-            if (match) {
-              blockName = match[1];
-            }
-          }
-
+          const blockName = firstReview?.instructions;
           const reviewTitle = `Review required for ${blockName}`;
 
           const getShortenedNodeId = (id: string) => {

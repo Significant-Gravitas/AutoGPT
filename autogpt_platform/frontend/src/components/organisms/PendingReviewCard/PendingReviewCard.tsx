@@ -63,11 +63,6 @@ export function PendingReviewCard({
 
   if (instructions && !isHITLBlock) {
     instructions = undefined;
-  } else if (instructions) {
-    const match = instructions.match(/^Review required for (.+?) execution$/);
-    if (match) {
-      instructions = match[1];
-    }
   }
 
   const [currentData, setCurrentData] = useState(extractedData.data);
