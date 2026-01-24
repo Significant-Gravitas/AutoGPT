@@ -1,8 +1,10 @@
 "use client";
 
-import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
+import { ChatLoader } from "@/components/contextual/Chat/components/ChatLoader/ChatLoader";
 import { NAVBAR_HEIGHT_PX } from "@/lib/constants";
 import type { ReactNode } from "react";
+import { useEffect } from "react";
+import { useNewChat } from "../../NewChatContext";
 import { DesktopSidebar } from "./components/DesktopSidebar/DesktopSidebar";
 import { LoadingState } from "./components/LoadingState/LoadingState";
 import { MobileDrawer } from "./components/MobileDrawer/MobileDrawer";
@@ -33,10 +35,25 @@ export function CopilotShell({ children }: Props) {
     isReadyToShowContent,
   } = useCopilotShell();
 
+  const newChatContext = useNewChat();
+  const handleNewChatClickWrapper =
+    newChatContext?.onNewChatClick || handleNewChat;
+
+  useEffect(
+    function registerNewChatHandler() {
+      if (!newChatContext) return;
+      newChatContext.setPerformNewChat(handleNewChat);
+      return function cleanup() {
+        newChatContext.setPerformNewChat(undefined);
+      };
+    },
+    [newChatContext, handleNewChat],
+  );
+
   if (!isLoggedIn) {
     return (
       <div className="flex h-full items-center justify-center">
-        <LoadingSpinner size="large" />
+        <ChatLoader />
       </div>
     );
   }
@@ -55,7 +72,7 @@ export function CopilotShell({ children }: Props) {
           isFetchingNextPage={isFetchingNextPage}
           onSelectSession={handleSelectSession}
           onFetchNextPage={fetchNextPage}
-          onNewChat={handleNewChat}
+          onNewChat={handleNewChatClickWrapper}
           hasActiveSession={Boolean(hasActiveSession)}
         />
       )}
@@ -77,7 +94,7 @@ export function CopilotShell({ children }: Props) {
           isFetchingNextPage={isFetchingNextPage}
           onSelectSession={handleSelectSession}
           onFetchNextPage={fetchNextPage}
-          onNewChat={handleNewChat}
+          onNewChat={handleNewChatClickWrapper}
           onClose={handleCloseDrawer}
           onOpenChange={handleDrawerOpenChange}
           hasActiveSession={Boolean(hasActiveSession)}
