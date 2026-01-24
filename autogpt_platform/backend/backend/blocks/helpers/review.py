@@ -134,7 +134,7 @@ class HITLReviewHelper:
             graph_id=graph_id,
             graph_version=graph_version,
             input_data=input_data,
-            message=f"Review required for {block_name} execution",
+            message=block_name,  # Use block_name directly as the message
             editable=editable,
         )
 

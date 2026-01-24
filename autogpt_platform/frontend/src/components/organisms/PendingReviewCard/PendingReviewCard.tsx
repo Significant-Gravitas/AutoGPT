@@ -56,7 +56,6 @@ export function PendingReviewCard({
 }: PendingReviewCardProps) {
   const extractedData = extractReviewData(review.payload);
   const isDataEditable = review.editable;
-  const instructions = extractedData.instructions || review.instructions;
   const [currentData, setCurrentData] = useState(extractedData.data);
 
   // Sync with external data value when auto-approve is toggled
@@ -142,13 +141,6 @@ export function PendingReviewCard({
     }
   };
 
-  // Helper function to get proper field label
-  const getFieldLabel = (instructions?: string) => {
-    if (instructions)
-      return instructions.charAt(0).toUpperCase() + instructions.slice(1);
-    return "Data to Review";
-  };
-
   // Helper function to shorten node ID
   const getShortenedNodeId = (id: string) => {
     if (id.length <= 8) return id;
@@ -165,46 +157,18 @@ export function PendingReviewCard({
         </Text>
       )}
 
-      {/* Show instructions as field label */}
-      {instructions && (
-        <div className="space-y-3">
-          <Text variant="body" className="font-semibold text-gray-900">
-            {getFieldLabel(instructions)}
-          </Text>
-          {isDataEditable && !autoApproveFuture ? (
-            renderDataInput()
-          ) : (
-            <div className="rounded-lg border border-gray-200 bg-white p-3">
-              <Text variant="small" className="text-gray-600">
-                {JSON.stringify(currentData, null, 2)}
-              </Text>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* If no instructions, show data directly */}
-      {!instructions && (
-        <div className="space-y-3">
-          <Text variant="body" className="font-semibold text-gray-900">
-            Data to Review
-            {!isDataEditable && (
-              <span className="ml-2 text-xs text-muted-foreground">
-                (Read-only)
-              </span>
-            )}
-          </Text>
-          {isDataEditable && !autoApproveFuture ? (
-            renderDataInput()
-          ) : (
-            <div className="rounded-lg border border-gray-200 bg-white p-3">
-              <Text variant="small" className="text-gray-600">
-                {JSON.stringify(currentData, null, 2)}
-              </Text>
-            </div>
-          )}
-        </div>
-      )}
+      {/* Show data input/display */}
+      <div className="space-y-3">
+        {isDataEditable && !autoApproveFuture ? (
+          renderDataInput()
+        ) : (
+          <div className="rounded-lg border border-gray-200 bg-white p-3">
+            <Text variant="small" className="text-gray-600">
+              {JSON.stringify(currentData, null, 2)}
+            </Text>
+          </div>
+        )}
+      </div>
 
       {/* Auto-approve toggle for this review */}
       {showAutoApprove && onAutoApproveFutureChange && (

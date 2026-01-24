@@ -121,7 +121,7 @@ class HumanInTheLoopBlock(Block):
             graph_exec_id=graph_exec_id,
             graph_id=graph_id,
             graph_version=graph_version,
-            block_name=self.name,
+            block_name=input_data.name,  # Use user-provided name instead of block type
             editable=input_data.editable,
         )
 

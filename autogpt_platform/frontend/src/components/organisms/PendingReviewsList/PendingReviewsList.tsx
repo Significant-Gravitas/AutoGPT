@@ -274,12 +274,16 @@ export function PendingReviewsList({
 
       <div className="space-y-7">
         {Object.entries(groupedReviews).map(([nodeId, nodeReviews]) => {
-          const isCollapsed = collapsedGroups[nodeId];
+          // Default to collapsed for all reviews
+          const isCollapsed = collapsedGroups[nodeId] ?? true;
           const displayName =
             nodeNameMap[nodeId] || nodeReviews[0]?.node_id || "Unknown Block";
           const reviewCount = nodeReviews.length;
-          const shouldShowCollapseHeader =
-            Object.keys(groupedReviews).length > 1 && reviewCount > 1;
+
+          // Get review title from instructions field
+          // Only show if it's a HITL block (has custom instructions)
+          const firstReview = nodeReviews[0];
+          const reviewTitle = firstReview?.instructions;
 
           // Helper to shorten node ID
           const getShortenedNodeId = (id: string) => {
@@ -289,30 +293,38 @@ export function PendingReviewsList({
 
           return (
             <div key={nodeId} className="space-y-4">
-              {/* Group Header - Only show if multiple groups AND multiple reviews in this group */}
-              {shouldShowCollapseHeader && (
-                <button
-                  onClick={() => toggleGroupCollapse(nodeId)}
-                  className="flex w-full items-center gap-2 text-left"
-                >
-                  {isCollapsed ? (
-                    <CaretRightIcon size={20} className="text-gray-600" />
-                  ) : (
-                    <CaretDownIcon size={20} className="text-gray-600" />
+              {/* Group Header - Always show for all groups */}
+              <button
+                onClick={() => toggleGroupCollapse(nodeId)}
+                className="flex w-full items-center gap-2 text-left"
+              >
+                {isCollapsed ? (
+                  <CaretRightIcon size={20} className="text-gray-600" />
+                ) : (
+                  <CaretDownIcon size={20} className="text-gray-600" />
+                )}
+                <div className="flex-1">
+                  {reviewTitle && (
+                    <Text
+                      variant="body"
+                      className="font-semibold text-gray-900"
+                    >
+                      {reviewTitle}
+                    </Text>
                   )}
-                  <Text variant="body" className="flex-1 text-gray-900">
+                  <Text variant="small" className="text-gray-500">
                     Node #{getShortenedNodeId(nodeId)}
                   </Text>
-                  <span className="text-xs text-gray-600">
-                    {reviewCount} {reviewCount === 1 ? "review" : "reviews"}
-                  </span>
-                </button>
-              )}
+                </div>
+                <span className="text-xs text-gray-600">
+                  {reviewCount} {reviewCount === 1 ? "review" : "reviews"}
+                </span>
+              </button>
 
               {/* Reviews in this group */}
               {!isCollapsed && (
                 <div className="space-y-4">
-                  {nodeReviews.map((review, index) => (
+                  {nodeReviews.map((review) => (
                     <PendingReviewCard
                       key={review.node_exec_id}
                       review={review}
@@ -320,7 +332,6 @@ export function PendingReviewsList({
                       autoApproveFuture={autoApproveFutureMap[nodeId] || false}
                       externalDataValue={reviewDataMap[review.node_exec_id]}
                       showAutoApprove={false}
-                      nodeId={shouldShowCollapseHeader ? undefined : nodeId}
                     />
                   ))}
 
@@ -334,14 +345,15 @@ export function PendingReviewsList({
                         }
                       />
                       <Text variant="small" className="text-gray-700">
-                        Auto-approve future executions of {displayName}
+                        Auto-approve future executions of{" "}
+                        {reviewTitle || `Node #${getShortenedNodeId(nodeId)}`}
                       </Text>
                     </div>
                     {autoApproveFutureMap[nodeId] && (
                       <Text variant="small" className="pl-11 text-gray-500">
                         Original data will be used for all {reviewCount}{" "}
-                        {reviewCount === 1 ? "review" : "reviews"} from{" "}
-                        {displayName} in future executions.
+                        {reviewCount === 1 ? "review" : "reviews"} in future
+                        executions.
                       </Text>
                     )}
                   </div>
