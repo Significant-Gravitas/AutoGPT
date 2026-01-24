@@ -57,18 +57,13 @@ export function PendingReviewCard({
   const extractedData = extractReviewData(review.payload);
   const isDataEditable = review.editable;
 
-  // Get instructions from payload (HITL blocks) or review field
-  let instructions = extractedData.instructions || review.instructions;
+  let instructions = review.instructions;
 
-  // Only show as label if it's a HITL block (user-provided meaningful name, not a technical block name)
-  // HITL blocks have names like "User profile data", sensitive blocks have names like "SendEmailBlock"
   const isHITLBlock = instructions && !instructions.includes("Block");
 
   if (instructions && !isHITLBlock) {
-    // For non-HITL blocks, don't show label
     instructions = undefined;
   } else if (instructions) {
-    // Clean up old format for HITL blocks: "Review required for X execution" -> "X"
     const match = instructions.match(/^Review required for (.+?) execution$/);
     if (match) {
       instructions = match[1];
@@ -77,15 +72,12 @@ export function PendingReviewCard({
 
   const [currentData, setCurrentData] = useState(extractedData.data);
 
-  // Sync with external data value when auto-approve is toggled
   useEffect(() => {
     if (externalDataValue !== undefined) {
       try {
         const parsedData = JSON.parse(externalDataValue);
         setCurrentData(parsedData);
-      } catch {
-        // If parsing fails, keep current data
-      }
+      } catch {}
     }
   }, [externalDataValue]);
 
@@ -160,7 +152,6 @@ export function PendingReviewCard({
     }
   };
 
-  // Helper function to shorten node ID
   const getShortenedNodeId = (id: string) => {
     if (id.length <= 8) return id;
     return `${id.slice(0, 4)}...${id.slice(-4)}`;

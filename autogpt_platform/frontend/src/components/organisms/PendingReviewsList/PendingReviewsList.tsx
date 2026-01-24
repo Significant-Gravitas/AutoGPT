@@ -12,7 +12,6 @@ import {
   CaretRightIcon,
 } from "@phosphor-icons/react";
 import { usePostV2ProcessReviewAction } from "@/app/api/__generated__/endpoints/executions/executions";
-import { useGetV1GetSpecificGraph } from "@/app/api/__generated__/endpoints/graphs/graphs";
 
 interface PendingReviewsListProps {
   reviews: PendingHumanReviewModel[];
@@ -43,48 +42,16 @@ export function PendingReviewsList({
     "approve" | "reject" | null
   >(null);
 
-  // Track per-node auto-approval state (by node_id, not node_exec_id)
   const [autoApproveFutureMap, setAutoApproveFutureMap] = useState<
     Record<string, boolean>
   >({});
 
-  // Track collapsed state for each group
   const [collapsedGroups, setCollapsedGroups] = useState<
     Record<string, boolean>
   >({});
 
   const { toast } = useToast();
 
-  // Get the graph_id from the first review (all reviews from same execution)
-  const graphId = reviews[0]?.graph_id;
-
-  // Fetch the graph to get node metadata
-  const { data: graph } = useGetV1GetSpecificGraph(graphId, undefined, {
-    query: {
-      enabled: !!graphId,
-    },
-  });
-
-  // Create a map of node_id -> node display name
-  const nodeNameMap = useMemo(() => {
-    if (graph?.status !== 200) return {};
-    const nodes = graph.data.nodes;
-    if (!nodes) return {};
-
-    return nodes.reduce(
-      (acc: Record<string, string>, node) => {
-        const displayName =
-          (node.metadata?.customized_name as string | undefined) ||
-          node.block_id ||
-          "Unknown Block";
-        acc[node.id || ""] = displayName;
-        return acc;
-      },
-      {} as Record<string, string>,
-    );
-  }, [graph]);
-
-  // Group reviews by node_id
   const groupedReviews = useMemo(() => {
     return reviews.reduce(
       (acc, review) => {
@@ -145,7 +112,6 @@ export function PendingReviewsList({
     setReviewDataMap((prev) => ({ ...prev, [nodeExecId]: data }));
   }
 
-  // Handle per-node auto-approval toggle
   function handleAutoApproveFutureToggle(nodeId: string, enabled: boolean) {
     setAutoApproveFutureMap((prev) => ({
       ...prev,
@@ -153,7 +119,6 @@ export function PendingReviewsList({
     }));
 
     if (enabled) {
-      // Reset ALL reviews in this node group to original values
       const nodeReviews = groupedReviews[nodeId] || [];
       setReviewDataMap((prev) => {
         const updated = { ...prev };
@@ -193,12 +158,9 @@ export function PendingReviewsList({
       const reviewData = reviewDataMap[review.node_exec_id];
       const autoApproveThisNode = autoApproveFutureMap[review.node_id || ""];
 
-      // When auto-approving future actions for this node, send undefined (use original data)
-      // Otherwise, parse and send the edited data if available
       let parsedData: any = undefined;
 
       if (!autoApproveThisNode) {
-        // For regular approve/reject, use edited data if available
         if (review.editable && reviewData) {
           try {
             parsedData = JSON.parse(reviewData);
@@ -212,12 +174,9 @@ export function PendingReviewsList({
             return;
           }
         } else {
-          // No edits, use original payload
           parsedData = review.payload;
         }
       }
-      // When autoApproveThisNode is true, parsedData stays undefined
-      // Backend will use the original payload stored in the database
 
       reviewItems.push({
         node_exec_id: review.node_exec_id,
@@ -251,7 +210,6 @@ export function PendingReviewsList({
 
   return (
     <div className="space-y-7 rounded-xl border border-yellow-150 bg-yellow-25 p-6">
-      {/* Warning Box Header */}
       <div className="space-y-6">
         <div className="flex items-start gap-2">
           <WarningIcon
@@ -274,16 +232,12 @@ export function PendingReviewsList({
 
       <div className="space-y-7">
         {Object.entries(groupedReviews).map(([nodeId, nodeReviews]) => {
-          // Default to expanded for single reviews, collapsed for multiple
           const isCollapsed = collapsedGroups[nodeId] ?? nodeReviews.length > 1;
-          const displayName =
-            nodeNameMap[nodeId] || nodeReviews[0]?.node_id || "Unknown Block";
           const reviewCount = nodeReviews.length;
 
           const firstReview = nodeReviews[0];
           let blockName = firstReview?.instructions;
 
-          // Extract name from old format if exists
           if (blockName) {
             const match = blockName.match(
               /^Review required for (.+?) execution$/,
@@ -293,11 +247,8 @@ export function PendingReviewsList({
             }
           }
 
-          // Build the review title
-          const finalName = blockName || displayName;
-          const reviewTitle = `Review required for ${finalName}`;
+          const reviewTitle = `Review required for ${blockName}`;
 
-          // Helper to shorten node ID
           const getShortenedNodeId = (id: string) => {
             if (id.length <= 8) return id;
             return `${id.slice(0, 4)}...${id.slice(-4)}`;
