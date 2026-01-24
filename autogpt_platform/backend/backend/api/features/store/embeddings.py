@@ -6,7 +6,6 @@ Handles generation and storage of OpenAI embeddings for all content types
 """
 
 import asyncio
-import contextvars
 import logging
 import time
 from typing import Any
@@ -22,12 +21,6 @@ from backend.util.json import dumps
 
 logger = logging.getLogger(__name__)
 
-# Context variable to track errors logged in the current task/operation
-# This prevents spamming the same error multiple times when processing batches
-_logged_errors: contextvars.ContextVar[set[str]] = contextvars.ContextVar(
-    "_logged_errors"
-)
-
 # OpenAI embedding model configuration
 EMBEDDING_MODEL = "text-embedding-3-small"
 # Embedding dimension for the model above
@@ -35,42 +28,6 @@ EMBEDDING_MODEL = "text-embedding-3-small"
 EMBEDDING_DIM = 1536
 # OpenAI embedding token limit (8,191 with 1 token buffer for safety)
 EMBEDDING_MAX_TOKENS = 8191
-
-
-def log_once_per_task(error_key: str, log_fn, message: str, **kwargs) -> bool:
-    """
-    Log an error/warning only once per task/operation to avoid log spam.
-
-    Uses contextvars to track what has been logged in the current async context.
-    Useful when processing batches where the same error might occur for many items.
-
-    Args:
-        error_key: Unique identifier for this error type
-        log_fn: Logger function to call (e.g., logger.error, logger.warning)
-        message: Message to log
-        **kwargs: Additional arguments to pass to log_fn
-
-    Returns:
-        True if the message was logged, False if it was suppressed (already logged)
-
-    Example:
-        log_once_per_task("missing_api_key", logger.error, "API key not set")
-    """
-    # Get current logged errors, or create a new set if this is the first call in this context
-    logged = _logged_errors.get(None)
-    if logged is None:
-        logged = set()
-        _logged_errors.set(logged)
-
-    if error_key in logged:
-        return False
-
-    # Log the message with a note that it will only appear once
-    log_fn(f"{message} (This message will only be shown once per task.)", **kwargs)
-
-    # Mark as logged
-    logged.add(error_key)
-    return True
 
 
 def build_searchable_text(
