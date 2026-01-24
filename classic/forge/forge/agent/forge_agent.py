@@ -6,6 +6,7 @@ from uuid import uuid4
 from forge.agent.base import BaseAgent, BaseAgentSettings
 from forge.agent.protocols import (
     AfterExecute,
+    AfterParse,
     CommandProvider,
     DirectiveProvider,
     MessageProvider,
@@ -24,7 +25,13 @@ from forge.config.ai_profile import AIProfile
 from forge.file_storage.base import FileStorage
 from forge.llm.prompting.schema import ChatPrompt
 from forge.llm.prompting.utils import dump_prompt
-from forge.llm.providers.schema import AssistantChatMessage, AssistantFunctionCall
+from forge.llm.providers import (
+    AssistantFunctionCall,
+    ChatMessage,
+    ChatModelResponse,
+    MultiProvider,
+)
+from forge.llm.providers.schema import AssistantChatMessage
 from forge.llm.providers.utils import function_specs_from_commands
 from forge.models.action import (
     ActionErrorResult,
@@ -34,10 +41,16 @@ from forge.models.action import (
 )
 from forge.utils.exceptions import AgentException, AgentTerminated
 
+# Import from the correct path relative to the project root
+from original_autogpt.autogpt.agents.prompt_strategies.one_shot import (
+    OneShotAgentActionProposal,
+    OneShotAgentPromptStrategy,
+)
+
 logger = logging.getLogger(__name__)
 
 
-class ForgeAgent(ProtocolAgent, BaseAgent):
+class ForgeAgent(ProtocolAgent, BaseAgent[OneShotAgentActionProposal]):
     """
     The goal of the Forge is to take care of the boilerplate code,
     so you can focus on agent design.
@@ -47,13 +60,13 @@ class ForgeAgent(ProtocolAgent, BaseAgent):
 
     ForgeAgent provides component support; https://docs.agpt.co/classic/forge/components/introduction/
     Using Components is a new way of building agents that is more flexible and easier to extend.
-    Components replace some agent's logic and plugins with a more modular and composable system.
     """  # noqa: E501
 
-    def __init__(self, database: AgentDB, workspace: FileStorage):
+    def __init__(self, database: AgentDB, workspace: FileStorage, llm_provider: MultiProvider):
         """
         The database is used to store tasks, steps and artifact metadata.
         The workspace is used to store artifacts (files).
+        The llm_provider is used to interact with language models.
         """
 
         # An example agent information; you can modify this to suit your needs
@@ -71,6 +84,18 @@ class ForgeAgent(ProtocolAgent, BaseAgent):
         ProtocolAgent.__init__(self, database, workspace)
         # BaseAgent provides the component handling functionality
         BaseAgent.__init__(self, state)
+
+        # LLM Provider and Prompt Strategy
+        self.llm_provider = llm_provider
+        prompt_config = OneShotAgentPromptStrategy.default_configuration.model_copy(
+            deep=True
+        )
+        prompt_config.use_functions_api = (
+            state.config.use_functions_api
+            # Anthropic currently doesn't support tools + prefilling :( 
+            and self.llm.provider_name != "anthropic"
+        )
+        self.prompt_strategy = OneShotAgentPromptStrategy(prompt_config, logger)
 
         # AGENT COMPONENTS
         # Components provide additional functionality to the agent
@@ -145,7 +170,28 @@ class ForgeAgent(ProtocolAgent, BaseAgent):
 
         return step
 
-    async def propose_action(self) -> ActionProposal:
+    async def complete_and_parse(
+        self, prompt: ChatPrompt, exception: Optional[Exception] = None
+    ) -> OneShotAgentActionProposal:
+        if exception:
+            prompt.messages.append(ChatMessage.system(f"Error: {exception}"))
+
+        response: ChatModelResponse[
+            OneShotAgentActionProposal
+        ] = await self.llm_provider.create_chat_completion(
+            prompt.messages,
+            model_name=self.llm.name,
+            completion_parser=self.prompt_strategy.parse_response_content,
+            functions=prompt.functions,
+            prefill_response=prompt.prefill_response,
+        )
+        result = response.parsed_result
+
+        await self.run_pipeline(AfterParse.after_parse, result)
+
+        return result
+
+    async def propose_action(self) -> OneShotAgentActionProposal:
         self.reset_trace()
 
         # Get directives
@@ -164,31 +210,26 @@ class ForgeAgent(ProtocolAgent, BaseAgent):
         # Get messages
         messages = await self.run_pipeline(MessageProvider.get_messages)
 
-        prompt: ChatPrompt = ChatPrompt(
-            messages=messages, functions=function_specs_from_commands(self.commands)
+        # Build prompt using the prompt strategy
+        prompt: ChatPrompt = self.prompt_strategy.build_prompt(
+            messages=messages,
+            task=self.state.task,
+            ai_profile=self.state.ai_profile,
+            ai_directives=directives,
+            commands=function_specs_from_commands(self.commands),
+            include_os_info=False,
         )
 
         logger.debug(f"Executing prompt:\n{dump_prompt(prompt)}")
 
         # Call the LLM and parse result
-        # THIS NEEDS TO BE REPLACED WITH YOUR LLM CALL/LOGIC
-        # Have a look at classic/original_autogpt/agents/agent.py
-        # for an example (complete_and_parse)
-        proposal = ActionProposal(
-            thoughts="I cannot solve the task!",
-            use_tool=AssistantFunctionCall(
-                name="finish", arguments={"reason": "Unimplemented logic"}
-            ),
-            raw_message=AssistantChatMessage(
-                content="finish(reason='Unimplemented logic')"
-            ),
-        )
+        proposal = await self.complete_and_parse(prompt)
 
         self.config.cycle_count += 1
 
         return proposal
 
-    async def execute(self, proposal: Any, user_feedback: str = "") -> ActionResult:
+    async def execute(self, proposal: OneShotAgentActionProposal, user_feedback: str = "") -> ActionResult:
         tool = proposal.use_tool
 
         # Get commands
@@ -222,7 +263,7 @@ class ForgeAgent(ProtocolAgent, BaseAgent):
         return result
 
     async def do_not_execute(
-        self, denied_proposal: Any, user_feedback: str
+        self, denied_proposal: OneShotAgentActionProposal, user_feedback: str
     ) -> ActionResult:
         result = ActionErrorResult(reason="Action denied")
 
