@@ -320,7 +320,7 @@ export function PendingReviewsList({
                   ))}
 
                   {/* Auto-approve toggle for the entire node group */}
-                  <div className="space-y-2 rounded-lg border border-gray-200 bg-gray-50 p-4">
+                  <div className="space-y-2 pt-2">
                     <div className="flex items-center gap-3">
                       <Switch
                         checked={autoApproveFutureMap[nodeId] || false}
@@ -329,14 +329,14 @@ export function PendingReviewsList({
                         }
                       />
                       <Text variant="small" className="text-gray-700">
-                        Auto-approve future executions of this block
+                        Auto-approve future executions of this node
                       </Text>
                     </div>
                     {autoApproveFutureMap[nodeId] && (
                       <Text variant="small" className="pl-11 text-gray-500">
                         Original data will be used for all {reviewCount}{" "}
                         {reviewCount === 1 ? "review" : "reviews"} from this
-                        block in future executions.
+                        node in future executions.
                       </Text>
                     )}
                   </div>
