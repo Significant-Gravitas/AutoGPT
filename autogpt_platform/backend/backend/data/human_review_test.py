@@ -131,10 +131,19 @@ async def test_get_pending_reviews_for_user(
     mock_find_many = mocker.patch("backend.data.human_review.PendingHumanReview.prisma")
     mock_find_many.return_value.find_many = AsyncMock(return_value=[sample_db_review])
 
+    # Mock get_node_execution to return node with node_id (async function)
+    mock_node_exec = Mock()
+    mock_node_exec.node_id = "test_node_def_789"
+    mocker.patch(
+        "backend.data.execution.get_node_execution",
+        new=AsyncMock(return_value=mock_node_exec),
+    )
+
     result = await get_pending_reviews_for_user("test_user", page=2, page_size=10)
 
     assert len(result) == 1
     assert result[0].node_exec_id == "test_node_123"
+    assert result[0].node_id == "test_node_def_789"
 
     # Verify pagination parameters
     call_args = mock_find_many.return_value.find_many.call_args
@@ -151,12 +160,21 @@ async def test_get_pending_reviews_for_execution(
     mock_find_many = mocker.patch("backend.data.human_review.PendingHumanReview.prisma")
     mock_find_many.return_value.find_many = AsyncMock(return_value=[sample_db_review])
 
+    # Mock get_node_execution to return node with node_id (async function)
+    mock_node_exec = Mock()
+    mock_node_exec.node_id = "test_node_def_789"
+    mocker.patch(
+        "backend.data.execution.get_node_execution",
+        new=AsyncMock(return_value=mock_node_exec),
+    )
+
     result = await get_pending_reviews_for_execution(
         "test_graph_exec_456", "test-user-123"
     )
 
     assert len(result) == 1
     assert result[0].graph_exec_id == "test_graph_exec_456"
+    assert result[0].node_id == "test_node_def_789"
 
     # Verify it filters by execution and user
     call_args = mock_find_many.return_value.find_many.call_args
@@ -201,6 +219,14 @@ async def test_process_all_reviews_for_execution_success(
         new=AsyncMock(return_value=[updated_review]),
     )
 
+    # Mock get_node_execution to return node with node_id (async function)
+    mock_node_exec = Mock()
+    mock_node_exec.node_id = "test_node_def_789"
+    mocker.patch(
+        "backend.data.execution.get_node_execution",
+        new=AsyncMock(return_value=mock_node_exec),
+    )
+
     result = await process_all_reviews_for_execution(
         user_id="test-user-123",
         review_decisions={
@@ -211,6 +237,7 @@ async def test_process_all_reviews_for_execution_success(
     assert len(result) == 1
     assert "test_node_123" in result
     assert result["test_node_123"].status == ReviewStatus.APPROVED
+    assert result["test_node_123"].node_id == "test_node_def_789"
 
 
 @pytest.mark.asyncio
@@ -329,6 +356,14 @@ async def test_process_all_reviews_mixed_approval_rejection(
         new=AsyncMock(return_value=[approved_review, rejected_review]),
     )
 
+    # Mock get_node_execution to return node with node_id (async function)
+    mock_node_exec = Mock()
+    mock_node_exec.node_id = "test_node_def_789"
+    mocker.patch(
+        "backend.data.execution.get_node_execution",
+        new=AsyncMock(return_value=mock_node_exec),
+    )
+
     result = await process_all_reviews_for_execution(
         user_id="test-user-123",
         review_decisions={
@@ -340,3 +375,5 @@ async def test_process_all_reviews_mixed_approval_rejection(
     assert len(result) == 2
     assert "test_node_123" in result
     assert "test_node_456" in result
+    assert result["test_node_123"].node_id == "test_node_def_789"
+    assert result["test_node_456"].node_id == "test_node_def_789"

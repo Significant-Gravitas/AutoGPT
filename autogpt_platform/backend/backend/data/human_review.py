@@ -6,7 +6,7 @@ Handles all database operations for pending human reviews.
 import asyncio
 import logging
 from datetime import datetime, timezone
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from prisma.enums import ReviewStatus
 from prisma.models import PendingHumanReview
@@ -19,6 +19,9 @@ from backend.api.features.executions.review.model import (
 )
 from backend.data.execution import get_graph_execution_meta
 from backend.util.json import SafeJson
+
+if TYPE_CHECKING:
+    pass
 
 logger = logging.getLogger(__name__)
 
@@ -252,7 +255,12 @@ async def get_pending_review_by_node_exec_id(
     if not review:
         return None
 
-    return PendingHumanReviewModel.from_db(review)
+    # Local import to avoid event loop conflicts in tests
+    from backend.data.execution import get_node_execution
+
+    node_exec = await get_node_execution(review.nodeExecId)
+    node_id = node_exec.node_id if node_exec else review.nodeExecId
+    return PendingHumanReviewModel.from_db(review, node_id=node_id)
 
 
 async def has_pending_reviews_for_graph_exec(graph_exec_id: str) -> bool:
@@ -286,6 +294,7 @@ async def get_pending_reviews_for_user(
     Returns:
         List of pending review models with node_id included
     """
+    # Local import to avoid event loop conflicts in tests
     from backend.data.execution import get_node_execution
 
     # Calculate offset for pagination
@@ -321,6 +330,7 @@ async def get_pending_reviews_for_execution(
     Returns:
         List of pending review models with node_id included
     """
+    # Local import to avoid event loop conflicts in tests
     from backend.data.execution import get_node_execution
 
     reviews = await PendingHumanReview.prisma().find_many(
@@ -409,11 +419,19 @@ async def process_all_reviews_for_execution(
     # Note: Execution resumption is now handled at the API layer after ALL reviews
     # for an execution are processed (both approved and rejected)
 
-    # Return as dict for easy access
-    return {
-        review.nodeExecId: PendingHumanReviewModel.from_db(review)
-        for review in updated_reviews
-    }
+    # Fetch node_id for each review and return as dict for easy access
+    # Local import to avoid event loop conflicts in tests
+    from backend.data.execution import get_node_execution
+
+    result = {}
+    for review in updated_reviews:
+        node_exec = await get_node_execution(review.nodeExecId)
+        node_id = node_exec.node_id if node_exec else review.nodeExecId
+        result[review.nodeExecId] = PendingHumanReviewModel.from_db(
+            review, node_id=node_id
+        )
+
+    return result
 
 
 async def update_review_processed_status(node_exec_id: str, processed: bool) -> None:
