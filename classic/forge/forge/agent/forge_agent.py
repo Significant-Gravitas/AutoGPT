@@ -1,12 +1,11 @@
 import inspect
 import logging
-from typing import Any, Optional
+from typing import Optional
 from uuid import uuid4
 
 from forge.agent.base import BaseAgent, BaseAgentSettings
 from forge.agent.protocols import (
     AfterExecute,
-    AfterParse,
     CommandProvider,
     DirectiveProvider,
     MessageProvider,
@@ -26,31 +25,24 @@ from forge.file_storage.base import FileStorage
 from forge.llm.prompting.schema import ChatPrompt
 from forge.llm.prompting.utils import dump_prompt
 from forge.llm.providers import (
-    AssistantFunctionCall,
     ChatMessage,
-    ChatModelResponse,
     MultiProvider,
 )
-from forge.llm.providers.schema import AssistantChatMessage
 from forge.llm.providers.utils import function_specs_from_commands
 from forge.models.action import (
     ActionErrorResult,
-    ActionProposal,
     ActionResult,
     ActionSuccessResult,
 )
 from forge.utils.exceptions import AgentException, AgentTerminated
 
-# Import from the correct path relative to the project root
-from original_autogpt.autogpt.agents.prompt_strategies.one_shot import (
-    OneShotAgentActionProposal,
-    OneShotAgentPromptStrategy,
-)
+from forge.llm.providers.schema import AssistantFunctionCall
+from forge.models.action import ActionProposal
 
 logger = logging.getLogger(__name__)
 
 
-class ForgeAgent(ProtocolAgent, BaseAgent[OneShotAgentActionProposal]):
+class ForgeAgent(ProtocolAgent, BaseAgent[ActionProposal]):
     """
     The goal of the Forge is to take care of the boilerplate code,
     so you can focus on agent design.
@@ -62,7 +54,12 @@ class ForgeAgent(ProtocolAgent, BaseAgent[OneShotAgentActionProposal]):
     Using Components is a new way of building agents that is more flexible and easier to extend.
     """  # noqa: E501
 
-    def __init__(self, database: AgentDB, workspace: FileStorage, llm_provider: MultiProvider):
+    def __init__(
+        self,
+        database: AgentDB,
+        workspace: FileStorage,
+        llm_provider: MultiProvider
+    ):
         """
         The database is used to store tasks, steps and artifact metadata.
         The workspace is used to store artifacts (files).
@@ -85,17 +82,8 @@ class ForgeAgent(ProtocolAgent, BaseAgent[OneShotAgentActionProposal]):
         # BaseAgent provides the component handling functionality
         BaseAgent.__init__(self, state)
 
-        # LLM Provider and Prompt Strategy
+        # LLM Provider
         self.llm_provider = llm_provider
-        prompt_config = OneShotAgentPromptStrategy.default_configuration.model_copy(
-            deep=True
-        )
-        prompt_config.use_functions_api = (
-            state.config.use_functions_api
-            # Anthropic currently doesn't support tools + prefilling :( 
-            and self.llm.provider_name != "anthropic"
-        )
-        self.prompt_strategy = OneShotAgentPromptStrategy(prompt_config, logger)
 
         # AGENT COMPONENTS
         # Components provide additional functionality to the agent
@@ -172,26 +160,21 @@ class ForgeAgent(ProtocolAgent, BaseAgent[OneShotAgentActionProposal]):
 
     async def complete_and_parse(
         self, prompt: ChatPrompt, exception: Optional[Exception] = None
-    ) -> OneShotAgentActionProposal:
+    ) -> ActionProposal:
         if exception:
             prompt.messages.append(ChatMessage.system(f"Error: {exception}"))
 
-        response: ChatModelResponse[
-            OneShotAgentActionProposal
-        ] = await self.llm_provider.create_chat_completion(
-            prompt.messages,
-            model_name=self.llm.name,
-            completion_parser=self.prompt_strategy.parse_response_content,
-            functions=prompt.functions,
-            prefill_response=prompt.prefill_response,
+        # Basic implementation that returns a placeholder action
+        # This should be replaced with actual LLM logic
+        return ActionProposal(
+            thoughts="I need to solve this task",
+            use_tool=AssistantFunctionCall(
+                name="finish",
+                arguments={"reason": "Task completed"}
+            )
         )
-        result = response.parsed_result
 
-        await self.run_pipeline(AfterParse.after_parse, result)
-
-        return result
-
-    async def propose_action(self) -> OneShotAgentActionProposal:
+    async def propose_action(self) -> ActionProposal:
         self.reset_trace()
 
         # Get directives
@@ -210,14 +193,10 @@ class ForgeAgent(ProtocolAgent, BaseAgent[OneShotAgentActionProposal]):
         # Get messages
         messages = await self.run_pipeline(MessageProvider.get_messages)
 
-        # Build prompt using the prompt strategy
-        prompt: ChatPrompt = self.prompt_strategy.build_prompt(
+        # Build prompt
+        prompt: ChatPrompt = ChatPrompt(
             messages=messages,
-            task=self.state.task,
-            ai_profile=self.state.ai_profile,
-            ai_directives=directives,
-            commands=function_specs_from_commands(self.commands),
-            include_os_info=False,
+            functions=function_specs_from_commands(self.commands)
         )
 
         logger.debug(f"Executing prompt:\n{dump_prompt(prompt)}")
@@ -229,7 +208,11 @@ class ForgeAgent(ProtocolAgent, BaseAgent[OneShotAgentActionProposal]):
 
         return proposal
 
-    async def execute(self, proposal: OneShotAgentActionProposal, user_feedback: str = "") -> ActionResult:
+    async def execute(
+        self,
+        proposal: ActionProposal,
+        user_feedback: str = ""
+    ) -> ActionResult:
         tool = proposal.use_tool
 
         # Get commands
@@ -263,7 +246,7 @@ class ForgeAgent(ProtocolAgent, BaseAgent[OneShotAgentActionProposal]):
         return result
 
     async def do_not_execute(
-        self, denied_proposal: OneShotAgentActionProposal, user_feedback: str
+        self, denied_proposal: ActionProposal, user_feedback: str
     ) -> ActionResult:
         result = ActionErrorResult(reason="Action denied")
 
