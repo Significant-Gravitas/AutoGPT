@@ -2,7 +2,7 @@ import { PendingHumanReviewModel } from "@/app/api/__generated__/models/pendingH
 import { Text } from "@/components/atoms/Text/Text";
 import { Input } from "@/components/atoms/Input/Input";
 import { Switch } from "@/components/atoms/Switch/Switch";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 interface StructuredReviewPayload {
   data: unknown;
@@ -40,6 +40,7 @@ interface PendingReviewCardProps {
   onReviewDataChange: (nodeExecId: string, data: string) => void;
   autoApproveFuture?: boolean;
   onAutoApproveFutureChange?: (nodeExecId: string, enabled: boolean) => void;
+  externalDataValue?: string;
 }
 
 export function PendingReviewCard({
@@ -47,11 +48,24 @@ export function PendingReviewCard({
   onReviewDataChange,
   autoApproveFuture = false,
   onAutoApproveFutureChange,
+  externalDataValue,
 }: PendingReviewCardProps) {
   const extractedData = extractReviewData(review.payload);
   const isDataEditable = review.editable;
   const instructions = extractedData.instructions || review.instructions;
   const [currentData, setCurrentData] = useState(extractedData.data);
+
+  // Sync with external data value when auto-approve is toggled
+  useEffect(() => {
+    if (externalDataValue !== undefined) {
+      try {
+        const parsedData = JSON.parse(externalDataValue);
+        setCurrentData(parsedData);
+      } catch {
+        // If parsing fails, keep current data
+      }
+    }
+  }, [externalDataValue]);
 
   const handleDataChange = (newValue: unknown) => {
     setCurrentData(newValue);

@@ -214,6 +214,7 @@ export function PendingReviewsList({
               autoApproveFutureMap[review.node_exec_id] || false
             }
             onAutoApproveFutureChange={handleAutoApproveFutureToggle}
+            externalDataValue={reviewDataMap[review.node_exec_id]}
           />
         ))}
       </div>
