@@ -7,6 +7,7 @@ import prisma.errors
 import prisma.models
 import prisma.types
 
+from backend.api.features.library.exceptions import FolderValidationError
 import backend.api.features.store.exceptions as store_exceptions
 import backend.api.features.store.image_gen as store_image_gen
 import backend.api.features.store.media as store_media
@@ -42,6 +43,8 @@ async def list_library_agents(
     page: int = 1,
     page_size: int = 50,
     include_executions: bool = False,
+    folder_id: Optional[str] = None,
+    include_root_only: bool = False,
 ) -> library_model.LibraryAgentResponse:
     """
     Retrieves a paginated list of LibraryAgent records for a given user.
@@ -52,6 +55,8 @@ async def list_library_agents(
         sort_by: Sorting field (createdAt, updatedAt, isFavorite, isCreatedByUser).
         page: Current page (1-indexed).
         page_size: Number of items per page.
+        folder_id: Filter by folder ID. If provided, only returns agents in this folder.
+        include_root_only: If True, only returns agents without a folder (root-level).
         include_executions: Whether to include execution data for status calculation.
             Defaults to False for performance (UI fetches status separately).
             Set to True when accurate status/metrics are needed (e.g., agent generator).
@@ -82,6 +87,13 @@ async def list_library_agents(
         "isArchived": False,
     }
 
+    # Apply folder filter
+    if folder_id is not None:
+        where_clause["folderId"] = folder_id
+    elif include_root_only:
+        where_clause["folderId"] = None
+
+    # Build search filter if applicable
     if search_term:
         where_clause["OR"] = [
             {
@@ -634,6 +646,7 @@ async def update_library_agent(
     is_archived: Optional[bool] = None,
     is_deleted: Optional[Literal[False]] = None,
     settings: Optional[GraphSettings] = None,
+    folder_id: Optional[str] = None,
 ) -> library_model.LibraryAgent:
     """
     Updates the specified LibraryAgent record.
@@ -646,6 +659,7 @@ async def update_library_agent(
         is_favorite: Whether this agent is marked as a favorite.
         is_archived: Whether this agent is archived.
         settings: User-specific settings for this library agent.
+        folder_id: Folder ID to move agent to (empty string "" for root, None to skip).
 
     Returns:
         The updated LibraryAgent.
@@ -673,13 +687,7 @@ async def update_library_agent(
             )
         update_fields["isDeleted"] = is_deleted
     if settings is not None:
-        existing_agent = await get_library_agent(id=library_agent_id, user_id=user_id)
-        current_settings_dict = (
-            existing_agent.settings.model_dump() if existing_agent.settings else {}
-        )
-        new_settings = settings.model_dump(exclude_unset=True)
-        merged_settings = {**current_settings_dict, **new_settings}
-        update_fields["settings"] = SafeJson(merged_settings)
+        update_fields["settings"] = SafeJson(settings.model_dump())
 
     try:
         # If graph_version is provided, update to that specific version
@@ -916,6 +924,788 @@ async def add_store_agent_to_library(
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error adding agent to library: {e}")
         raise DatabaseError("Failed to add agent to library") from e
+
+
+##############################################
+############ Folder DB Functions #############
+##############################################
+
+MAX_FOLDER_DEPTH = 5
+
+
+async def list_folders(
+    user_id: str,
+    parent_id: Optional[str] = None,
+    include_counts: bool = True,
+) -> list[library_model.LibraryFolder]:
+    """
+    Lists folders for a user, optionally filtered by parent.
+
+    Args:
+        user_id: The ID of the user.
+        parent_id: If provided, only returns folders with this parent.
+                   If None, returns root-level folders.
+        include_counts: Whether to include agent and subfolder counts.
+
+    Returns:
+        A list of LibraryFolder objects.
+    """
+    logger.debug(f"Listing folders for user #{user_id}, parent_id={parent_id}")
+
+    try:
+        where_clause: prisma.types.LibraryFolderWhereInput = {
+            "userId": user_id,
+            "isDeleted": False,
+            "parentId": parent_id,
+        }
+
+        folders = await prisma.models.LibraryFolder.prisma().find_many(
+            where=where_clause,
+            order={"createdAt": "asc"},
+            include=(
+                {
+                    "LibraryAgents": {"where": {"isDeleted": False}},
+                    "Children": {"where": {"isDeleted": False}},
+                }
+                if include_counts
+                else None
+            ),
+        )
+
+        result = []
+        for folder in folders:
+            agent_count = len(folder.LibraryAgents) if folder.LibraryAgents else 0
+            subfolder_count = len(folder.Children) if folder.Children else 0
+            result.append(
+                library_model.LibraryFolder.from_db(
+                    folder,
+                    agent_count=agent_count,
+                    subfolder_count=subfolder_count,
+                )
+            )
+
+        return result
+
+    except prisma.errors.PrismaError as e:
+        logger.error(f"Database error listing folders: {e}")
+        raise DatabaseError("Failed to list folders") from e
+
+
+async def get_folder_tree(
+    user_id: str,
+) -> list[library_model.LibraryFolderTree]:
+    """
+    Gets the full folder tree for a user.
+
+    Args:
+        user_id: The ID of the user.
+
+    Returns:
+        A list of LibraryFolderTree objects (root folders with nested children).
+    """
+    logger.debug(f"Getting folder tree for user #{user_id}")
+
+    try:
+        # Fetch all folders for the user
+        all_folders = await prisma.models.LibraryFolder.prisma().find_many(
+            where={
+                "userId": user_id,
+                "isDeleted": False,
+            },
+            order={"createdAt": "asc"},
+            include={
+                "LibraryAgents": {"where": {"isDeleted": False}},
+                "Children": {"where": {"isDeleted": False}},
+            },
+        )
+
+        # Build a map of folder ID to folder data
+        folder_map: dict[str, library_model.LibraryFolderTree] = {}
+        for folder in all_folders:
+            agent_count = len(folder.LibraryAgents) if folder.LibraryAgents else 0
+            subfolder_count = len(folder.Children) if folder.Children else 0
+            folder_map[folder.id] = library_model.LibraryFolderTree(
+                **library_model.LibraryFolder.from_db(
+                    folder,
+                    agent_count=agent_count,
+                    subfolder_count=subfolder_count,
+                ).model_dump(),
+                children=[],
+            )
+
+        # Build the tree structure
+        root_folders: list[library_model.LibraryFolderTree] = []
+        for folder in all_folders:
+            tree_folder = folder_map[folder.id]
+            if folder.parentId and folder.parentId in folder_map:
+                folder_map[folder.parentId].children.append(tree_folder)
+            else:
+                root_folders.append(tree_folder)
+
+        return root_folders
+
+    except prisma.errors.PrismaError as e:
+        logger.error(f"Database error getting folder tree: {e}")
+        raise DatabaseError("Failed to get folder tree") from e
+
+
+async def get_folder(
+    folder_id: str,
+    user_id: str,
+) -> library_model.LibraryFolder:
+    """
+    Gets a single folder by ID.
+
+    Args:
+        folder_id: The ID of the folder.
+        user_id: The ID of the user (for ownership verification).
+
+    Returns:
+        The LibraryFolder object.
+
+    Raises:
+        NotFoundError: If the folder doesn't exist or doesn't belong to the user.
+    """
+    try:
+        folder = await prisma.models.LibraryFolder.prisma().find_first(
+            where={
+                "id": folder_id,
+                "userId": user_id,
+                "isDeleted": False,
+            },
+            include={
+                "LibraryAgents": {"where": {"isDeleted": False}},
+                "Children": {"where": {"isDeleted": False}},
+            },
+        )
+
+        if not folder:
+            raise NotFoundError(f"Folder #{folder_id} not found")
+
+        agent_count = len(folder.LibraryAgents) if folder.LibraryAgents else 0
+        subfolder_count = len(folder.Children) if folder.Children else 0
+
+        return library_model.LibraryFolder.from_db(
+            folder,
+            agent_count=agent_count,
+            subfolder_count=subfolder_count,
+        )
+
+    except prisma.errors.PrismaError as e:
+        logger.error(f"Database error getting folder: {e}")
+        raise DatabaseError("Failed to get folder") from e
+
+
+async def get_folder_depth(folder_id: str, user_id: str) -> int:
+    """
+    Calculate the depth of a folder in the hierarchy (root=0).
+
+    Args:
+        folder_id: The ID of the folder.
+        user_id: The ID of the user.
+
+    Returns:
+        The depth of the folder (0 for root-level folders).
+    """
+    depth = 0
+    current_id: str | None = folder_id
+
+    while current_id:
+        folder = await prisma.models.LibraryFolder.prisma().find_first(
+            where={
+                "id": current_id,
+                "userId": user_id,
+                "isDeleted": False,
+            }
+        )
+        if not folder:
+            break
+        if folder.parentId:
+            depth += 1
+            current_id = folder.parentId
+        else:
+            break
+
+    return depth
+
+
+async def is_descendant_of(
+    folder_id: str,
+    potential_ancestor_id: str,
+    user_id: str,
+) -> bool:
+    """
+    Check if folder_id is a descendant of potential_ancestor_id.
+
+    Args:
+        folder_id: The ID of the folder to check.
+        potential_ancestor_id: The ID of the potential ancestor.
+        user_id: The ID of the user.
+
+    Returns:
+        True if folder_id is a descendant of potential_ancestor_id.
+    """
+    current_id: str | None = folder_id
+
+    while current_id:
+        if current_id == potential_ancestor_id:
+            return True
+
+        folder = await prisma.models.LibraryFolder.prisma().find_first(
+            where={
+                "id": current_id,
+                "userId": user_id,
+                "isDeleted": False,
+            }
+        )
+        if not folder or not folder.parentId:
+            break
+        current_id = folder.parentId
+
+    return False
+
+
+async def validate_folder_operation(
+    folder_id: Optional[str],
+    target_parent_id: Optional[str],
+    user_id: str,
+    max_depth: int = MAX_FOLDER_DEPTH,
+) -> None:
+    """
+    Validate that a folder move/create operation is valid.
+
+    Args:
+        folder_id: The ID of the folder being moved (None for create).
+        target_parent_id: The target parent ID (None for root).
+        user_id: The ID of the user.
+        max_depth: Maximum allowed nesting depth.
+
+    Raises:
+        FolderValidationError: If the operation is invalid.
+    """
+    # Cannot move folder into itself
+    if folder_id and folder_id == target_parent_id:
+        raise FolderValidationError("Cannot move folder into itself")
+
+    # Check for circular reference
+    if folder_id and target_parent_id:
+        if await is_descendant_of(target_parent_id, folder_id, user_id):
+            raise FolderValidationError("Cannot move folder into its own descendant")
+
+    # Check depth limit
+    if target_parent_id:
+        parent_depth = await get_folder_depth(target_parent_id, user_id)
+        if parent_depth + 1 >= max_depth:
+            raise FolderValidationError(
+                f"Maximum folder nesting depth of {max_depth} exceeded"
+            )
+
+
+async def create_folder(
+    user_id: str,
+    name: str,
+    parent_id: Optional[str] = None,
+    icon: Optional[str] = None,
+    color: Optional[str] = None,
+) -> library_model.LibraryFolder:
+    """
+    Creates a new folder for the user.
+
+    Args:
+        user_id: The ID of the user.
+        name: The folder name.
+        parent_id: Optional parent folder ID.
+        icon: Optional icon identifier.
+        color: Optional hex color code.
+
+    Returns:
+        The created LibraryFolder.
+
+    Raises:
+        FolderValidationError: If validation fails.
+        DatabaseError: If there's a database error.
+    """
+    logger.debug(f"Creating folder '{name}' for user #{user_id}")
+
+    try:
+        # Validate operation
+        await validate_folder_operation(
+            folder_id=None,
+            target_parent_id=parent_id,
+            user_id=user_id,
+        )
+
+        # Verify parent exists if provided
+        if parent_id:
+            parent = await prisma.models.LibraryFolder.prisma().find_first(
+                where={
+                    "id": parent_id,
+                    "userId": user_id,
+                    "isDeleted": False,
+                }
+            )
+            if not parent:
+                raise NotFoundError(f"Parent folder #{parent_id} not found")
+
+        # Build data dict conditionally - don't include Parent key if no parent_id
+        create_data: dict = {
+            "name": name,
+            "User": {"connect": {"id": user_id}},
+        }
+        if icon is not None:
+            create_data["icon"] = icon
+        if color is not None:
+            create_data["color"] = color
+        if parent_id:
+            create_data["Parent"] = {"connect": {"id": parent_id}}
+
+        folder = await prisma.models.LibraryFolder.prisma().create(data=create_data)
+
+        return library_model.LibraryFolder.from_db(folder)
+
+    except prisma.errors.UniqueViolationError:
+        raise FolderValidationError(
+            "A folder with this name already exists in this location"
+        )
+    except prisma.errors.PrismaError as e:
+        logger.error(f"Database error creating folder: {e}")
+        raise DatabaseError("Failed to create folder") from e
+
+
+async def create_folder_with_unique_name(
+    user_id: str,
+    base_name: str,
+    parent_id: Optional[str] = None,
+    icon: Optional[str] = None,
+    color: Optional[str] = None,
+) -> library_model.LibraryFolder:
+    """
+    Creates a folder, appending (2), (3), etc. if name exists.
+
+    Args:
+        user_id: The ID of the user.
+        base_name: The base folder name.
+        parent_id: Optional parent folder ID.
+        icon: Optional icon identifier.
+        color: Optional hex color code.
+
+    Returns:
+        The created LibraryFolder.
+    """
+    name = base_name
+    suffix = 1
+
+    while True:
+        try:
+            return await create_folder(
+                user_id=user_id,
+                name=name,
+                parent_id=parent_id,
+                icon=icon,
+                color=color,
+            )
+        except FolderValidationError as e:
+            if "already exists" in str(e):
+                suffix += 1
+                name = f"{base_name} ({suffix})"
+            else:
+                raise
+
+
+async def update_folder(
+    folder_id: str,
+    user_id: str,
+    name: Optional[str] = None,
+    icon: Optional[str] = None,
+    color: Optional[str] = None,
+) -> library_model.LibraryFolder:
+    """
+    Updates a folder's properties.
+
+    Args:
+        folder_id: The ID of the folder to update.
+        user_id: The ID of the user.
+        name: New folder name.
+        icon: New icon identifier.
+        color: New hex color code.
+
+    Returns:
+        The updated LibraryFolder.
+
+    Raises:
+        NotFoundError: If the folder doesn't exist.
+        DatabaseError: If there's a database error.
+    """
+    logger.debug(f"Updating folder #{folder_id} for user #{user_id}")
+
+    try:
+        # Verify folder exists and belongs to user
+        existing = await prisma.models.LibraryFolder.prisma().find_first(
+            where={
+                "id": folder_id,
+                "userId": user_id,
+                "isDeleted": False,
+            }
+        )
+        if not existing:
+            raise NotFoundError(f"Folder #{folder_id} not found")
+
+        update_data: prisma.types.LibraryFolderUpdateInput = {}
+        if name is not None:
+            update_data["name"] = name
+        if icon is not None:
+            update_data["icon"] = icon
+        if color is not None:
+            update_data["color"] = color
+
+        if not update_data:
+            return await get_folder(folder_id, user_id)
+
+        folder = await prisma.models.LibraryFolder.prisma().update(
+            where={"id": folder_id},
+            data=update_data,
+            include={
+                "LibraryAgents": {"where": {"isDeleted": False}},
+                "Children": {"where": {"isDeleted": False}},
+            },
+        )
+
+        if not folder:
+            raise NotFoundError(f"Folder #{folder_id} not found")
+
+        agent_count = len(folder.LibraryAgents) if folder.LibraryAgents else 0
+        subfolder_count = len(folder.Children) if folder.Children else 0
+
+        return library_model.LibraryFolder.from_db(
+            folder,
+            agent_count=agent_count,
+            subfolder_count=subfolder_count,
+        )
+
+    except prisma.errors.UniqueViolationError:
+        raise FolderValidationError(
+            "A folder with this name already exists in this location"
+        )
+    except prisma.errors.PrismaError as e:
+        logger.error(f"Database error updating folder: {e}")
+        raise DatabaseError("Failed to update folder") from e
+
+
+async def move_folder(
+    folder_id: str,
+    user_id: str,
+    target_parent_id: Optional[str],
+) -> library_model.LibraryFolder:
+    """
+    Moves a folder to a new parent.
+
+    Args:
+        folder_id: The ID of the folder to move.
+        user_id: The ID of the user.
+        target_parent_id: The target parent ID (None for root).
+
+    Returns:
+        The moved LibraryFolder.
+
+    Raises:
+        FolderValidationError: If the move is invalid.
+        NotFoundError: If the folder doesn't exist.
+        DatabaseError: If there's a database error.
+    """
+    logger.debug(f"Moving folder #{folder_id} to parent #{target_parent_id}")
+
+    try:
+        # Validate operation
+        await validate_folder_operation(
+            folder_id=folder_id,
+            target_parent_id=target_parent_id,
+            user_id=user_id,
+        )
+
+        # Verify folder exists
+        existing = await prisma.models.LibraryFolder.prisma().find_first(
+            where={
+                "id": folder_id,
+                "userId": user_id,
+                "isDeleted": False,
+            }
+        )
+        if not existing:
+            raise NotFoundError(f"Folder #{folder_id} not found")
+
+        # Verify target parent exists if provided
+        if target_parent_id:
+            parent = await prisma.models.LibraryFolder.prisma().find_first(
+                where={
+                    "id": target_parent_id,
+                    "userId": user_id,
+                    "isDeleted": False,
+                }
+            )
+            if not parent:
+                raise NotFoundError(
+                    f"Target parent folder #{target_parent_id} not found"
+                )
+
+        folder = await prisma.models.LibraryFolder.prisma().update(
+            where={"id": folder_id},
+            data={
+                "parentId": target_parent_id,
+            },
+            include={
+                "LibraryAgents": {"where": {"isDeleted": False}},
+                "Children": {"where": {"isDeleted": False}},
+            },
+        )
+
+        if not folder:
+            raise NotFoundError(f"Folder #{folder_id} not found")
+
+        agent_count = len(folder.LibraryAgents) if folder.LibraryAgents else 0
+        subfolder_count = len(folder.Children) if folder.Children else 0
+
+        return library_model.LibraryFolder.from_db(
+            folder,
+            agent_count=agent_count,
+            subfolder_count=subfolder_count,
+        )
+
+    except prisma.errors.UniqueViolationError:
+        raise FolderValidationError(
+            "A folder with this name already exists in this location"
+        )
+    except prisma.errors.PrismaError as e:
+        logger.error(f"Database error moving folder: {e}")
+        raise DatabaseError("Failed to move folder") from e
+
+
+async def delete_folder(
+    folder_id: str,
+    user_id: str,
+    soft_delete: bool = True,
+) -> None:
+    """
+    Deletes a folder and all its contents (cascade).
+
+    Args:
+        folder_id: The ID of the folder to delete.
+        user_id: The ID of the user.
+        soft_delete: If True, soft-deletes; otherwise hard-deletes.
+
+    Raises:
+        NotFoundError: If the folder doesn't exist.
+        DatabaseError: If there's a database error.
+    """
+    logger.debug(f"Deleting folder #{folder_id} for user #{user_id}")
+
+    try:
+        # Verify folder exists
+        existing = await prisma.models.LibraryFolder.prisma().find_first(
+            where={
+                "id": folder_id,
+                "userId": user_id,
+                "isDeleted": False,
+            }
+        )
+        if not existing:
+            raise NotFoundError(f"Folder #{folder_id} not found")
+
+        async with transaction() as tx:
+            # Get all descendant folders recursively
+            descendant_ids = await _get_descendant_folder_ids(folder_id, user_id, tx)
+            all_folder_ids = [folder_id] + descendant_ids
+
+            if soft_delete:
+                # Soft-delete all agents in these folders
+                await prisma.models.LibraryAgent.prisma(tx).update_many(
+                    where={
+                        "folderId": {"in": all_folder_ids},
+                        "userId": user_id,
+                    },
+                    data={"isDeleted": True},
+                )
+
+                # Soft-delete all folders
+                await prisma.models.LibraryFolder.prisma(tx).update_many(
+                    where={
+                        "id": {"in": all_folder_ids},
+                        "userId": user_id,
+                    },
+                    data={"isDeleted": True},
+                )
+            else:
+                # Move agents to root (or could hard-delete them)
+                await prisma.models.LibraryAgent.prisma(tx).update_many(
+                    where={
+                        "folderId": {"in": all_folder_ids},
+                        "userId": user_id,
+                    },
+                    data={"folderId": None},
+                )
+
+                # Hard-delete folders (children first due to FK constraints)
+                for fid in reversed(all_folder_ids):
+                    await prisma.models.LibraryFolder.prisma(tx).delete(
+                        where={"id": fid}
+                    )
+
+    except prisma.errors.PrismaError as e:
+        logger.error(f"Database error deleting folder: {e}")
+        raise DatabaseError("Failed to delete folder") from e
+
+
+async def _get_descendant_folder_ids(
+    folder_id: str,
+    user_id: str,
+    tx: Optional[prisma.Prisma] = None,
+) -> list[str]:
+    """
+    Recursively get all descendant folder IDs.
+
+    Args:
+        folder_id: The ID of the parent folder.
+        user_id: The ID of the user.
+        tx: Optional transaction.
+
+    Returns:
+        A list of descendant folder IDs.
+    """
+    prisma_client = prisma.models.LibraryFolder.prisma(tx)
+    children = await prisma_client.find_many(
+        where={
+            "parentId": folder_id,
+            "userId": user_id,
+            "isDeleted": False,
+        }
+    )
+
+    result: list[str] = []
+    for child in children:
+        result.append(child.id)
+        result.extend(await _get_descendant_folder_ids(child.id, user_id, tx))
+
+    return result
+
+
+async def move_agent_to_folder(
+    library_agent_id: str,
+    folder_id: Optional[str],
+    user_id: str,
+) -> library_model.LibraryAgent:
+    """
+    Moves a library agent to a folder.
+
+    Args:
+        library_agent_id: The ID of the library agent.
+        folder_id: The target folder ID (None for root).
+        user_id: The ID of the user.
+
+    Returns:
+        The updated LibraryAgent.
+
+    Raises:
+        NotFoundError: If the agent or folder doesn't exist.
+        DatabaseError: If there's a database error.
+    """
+    logger.debug(f"Moving agent #{library_agent_id} to folder #{folder_id}")
+
+    try:
+        # Verify agent exists
+        agent = await prisma.models.LibraryAgent.prisma().find_first(
+            where={
+                "id": library_agent_id,
+                "userId": user_id,
+                "isDeleted": False,
+            }
+        )
+        if not agent:
+            raise NotFoundError(f"Library agent #{library_agent_id} not found")
+
+        # Verify folder exists if provided
+        if folder_id:
+            folder = await prisma.models.LibraryFolder.prisma().find_first(
+                where={
+                    "id": folder_id,
+                    "userId": user_id,
+                    "isDeleted": False,
+                }
+            )
+            if not folder:
+                raise NotFoundError(f"Folder #{folder_id} not found")
+
+        await prisma.models.LibraryAgent.prisma().update(
+            where={"id": library_agent_id},
+            data={"folderId": folder_id},
+        )
+
+        return await get_library_agent(library_agent_id, user_id)
+
+    except prisma.errors.PrismaError as e:
+        logger.error(f"Database error moving agent to folder: {e}")
+        raise DatabaseError("Failed to move agent to folder") from e
+
+
+async def bulk_move_agents_to_folder(
+    agent_ids: list[str],
+    folder_id: Optional[str],
+    user_id: str,
+) -> list[library_model.LibraryAgent]:
+    """
+    Moves multiple library agents to a folder.
+
+    Args:
+        agent_ids: The IDs of the library agents.
+        folder_id: The target folder ID (None for root).
+        user_id: The ID of the user.
+
+    Returns:
+        The updated LibraryAgents.
+
+    Raises:
+        NotFoundError: If any agent or the folder doesn't exist.
+        DatabaseError: If there's a database error.
+    """
+    logger.debug(f"Bulk moving {len(agent_ids)} agents to folder #{folder_id}")
+
+    try:
+        # Verify folder exists if provided
+        if folder_id:
+            folder = await prisma.models.LibraryFolder.prisma().find_first(
+                where={
+                    "id": folder_id,
+                    "userId": user_id,
+                    "isDeleted": False,
+                }
+            )
+            if not folder:
+                raise NotFoundError(f"Folder #{folder_id} not found")
+
+        # Update all agents
+        await prisma.models.LibraryAgent.prisma().update_many(
+            where={
+                "id": {"in": agent_ids},
+                "userId": user_id,
+                "isDeleted": False,
+            },
+            data={"folderId": folder_id},
+        )
+
+        # Fetch and return updated agents
+        agents = await prisma.models.LibraryAgent.prisma().find_many(
+            where={
+                "id": {"in": agent_ids},
+                "userId": user_id,
+            },
+            include=library_agent_include(
+                user_id, include_nodes=False, include_executions=False
+            ),
+        )
+
+        return [library_model.LibraryAgent.from_db(agent) for agent in agents]
+
+    except prisma.errors.PrismaError as e:
+        logger.error(f"Database error bulk moving agents to folder: {e}")
+        raise DatabaseError("Failed to bulk move agents to folder") from e
 
 
 ##############################################

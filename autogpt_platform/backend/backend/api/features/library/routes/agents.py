@@ -41,17 +41,34 @@ async def list_library_agents(
         ge=1,
         description="Number of agents per page (must be >= 1)",
     ),
+    folder_id: Optional[str] = Query(
+        None,
+        description="Filter by folder ID",
+    ),
+    include_root_only: bool = Query(
+        False,
+        description="Only return agents without a folder (root-level agents)",
+    ),
 ) -> library_model.LibraryAgentResponse:
     """
     Get all agents in the user's library (both created and saved).
     """
-    return await library_db.list_library_agents(
-        user_id=user_id,
-        search_term=search_term,
-        sort_by=sort_by,
-        page=page,
-        page_size=page_size,
-    )
+    try:
+        return await library_db.list_library_agents(
+            user_id=user_id,
+            search_term=search_term,
+            sort_by=sort_by,
+            page=page,
+            page_size=page_size,
+            folder_id=folder_id,
+            include_root_only=include_root_only,
+        )
+    except Exception as e:
+        logger.error(f"Could not list library agents for user #{user_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e),
+        ) from e
 
 
 @router.get(
@@ -160,15 +177,34 @@ async def update_library_agent(
     """
     Update the library agent with the given fields.
     """
-    return await library_db.update_library_agent(
-        library_agent_id=library_agent_id,
-        user_id=user_id,
-        auto_update_version=payload.auto_update_version,
-        graph_version=payload.graph_version,
-        is_favorite=payload.is_favorite,
-        is_archived=payload.is_archived,
-        settings=payload.settings,
-    )
+    try:
+        return await library_db.update_library_agent(
+            library_agent_id=library_agent_id,
+            user_id=user_id,
+            auto_update_version=payload.auto_update_version,
+            graph_version=payload.graph_version,
+            is_favorite=payload.is_favorite,
+            is_archived=payload.is_archived,
+            settings=payload.settings,
+            folder_id=payload.folder_id,
+        )
+    except NotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e),
+        ) from e
+    except DatabaseError as e:
+        logger.error(f"Database error while updating library agent: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"message": str(e), "hint": "Verify DB connection."},
+        ) from e
+    except Exception as e:
+        logger.error(f"Unexpected error while updating library agent: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"message": str(e), "hint": "Check server logs."},
+        ) from e
 
 
 @router.delete(

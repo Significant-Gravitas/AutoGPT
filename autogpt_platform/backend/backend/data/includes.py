@@ -105,6 +105,7 @@ def library_agent_include(
     """
     result: prisma.types.LibraryAgentInclude = {
         "Creator": True,  # Always needed for creator info
+        "Folder": True,  # Always needed for folder info
     }
 
     # Build AgentGraph include based on requested options
