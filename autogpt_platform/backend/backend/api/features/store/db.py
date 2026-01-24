@@ -1552,21 +1552,14 @@ async def review_store_submission(
 
                 # Generate embedding for approved listing (blocking - admin operation)
                 # Inside transaction: if embedding fails, entire transaction rolls back
-                try:
-                    await ensure_embedding(
-                        version_id=store_listing_version_id,
-                        name=store_listing_version.name,
-                        description=store_listing_version.description,
-                        sub_heading=store_listing_version.subHeading,
-                        categories=store_listing_version.categories or [],
-                        tx=tx,
-                    )
-                except Exception as e:
-                    raise ValueError(
-                        f"Failed to generate embedding for listing {store_listing_version_id}. "
-                        "This is likely due to OpenAI API being unavailable. "
-                        "Please try again later or contact support if the issue persists."
-                    ) from e
+                await ensure_embedding(
+                    version_id=store_listing_version_id,
+                    name=store_listing_version.name,
+                    description=store_listing_version.description,
+                    sub_heading=store_listing_version.subHeading,
+                    categories=store_listing_version.categories or [],
+                    tx=tx,
+                )
 
                 await prisma.models.StoreListing.prisma(tx).update(
                     where={"id": store_listing_version.StoreListing.id},
