@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Optional
 
 from prisma.enums import ReviewStatus
-from prisma.models import PendingHumanReview
+from prisma.models import AgentNodeExecution, PendingHumanReview
 from prisma.types import PendingHumanReviewUpdateInput
 from pydantic import BaseModel
 
@@ -287,13 +287,24 @@ async def get_pending_reviews_by_node_exec_ids(
         }
     )
 
-    # Local import to avoid event loop conflicts in tests
-    from backend.data.execution import get_node_execution
+    if not reviews:
+        return {}
+
+    # Batch fetch all node executions to avoid N+1 queries
+    node_exec_ids_to_fetch = [review.nodeExecId for review in reviews]
+    node_execs = await AgentNodeExecution.prisma().find_many(
+        where={"id": {"in": node_exec_ids_to_fetch}},
+        include={"Node": True},
+    )
+
+    # Create mapping from node_exec_id to node_id
+    node_exec_id_to_node_id = {
+        node_exec.id: node_exec.agentNodeId for node_exec in node_execs
+    }
 
     result = {}
     for review in reviews:
-        node_exec = await get_node_execution(review.nodeExecId)
-        node_id = node_exec.node_id if node_exec else review.nodeExecId
+        node_id = node_exec_id_to_node_id.get(review.nodeExecId, review.nodeExecId)
         result[review.nodeExecId] = PendingHumanReviewModel.from_db(
             review, node_id=node_id
         )

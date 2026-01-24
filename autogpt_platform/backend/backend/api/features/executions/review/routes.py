@@ -210,7 +210,13 @@ async def process_review_action(
     )
 
     # Create auto-approval records for approved reviews that requested it
-    async def create_auto_approval_if_needed(node_exec_id: str, review_result) -> None:
+    async def create_auto_approval_if_needed(
+        node_exec_id: str, review_result
+    ) -> tuple[str, bool]:
+        """
+        Create auto-approval record if needed.
+        Returns (node_exec_id, success) tuple for tracking failures.
+        """
         if review_result.status == ReviewStatus.APPROVED and auto_approve_requests.get(
             node_exec_id, False
         ):
@@ -225,19 +231,43 @@ async def process_review_action(
                         node_id=node_exec.node_id,
                         payload=review_result.payload,
                     )
+                    return (node_exec_id, True)
+                else:
+                    logger.error(
+                        f"Failed to create auto-approval record for {node_exec_id}: "
+                        f"Node execution not found. This may indicate a race condition "
+                        f"or data inconsistency."
+                    )
+                    return (node_exec_id, False)
             except Exception as e:
                 logger.error(
                     f"Failed to create auto-approval record for {node_exec_id}",
                     exc_info=e,
                 )
+                return (node_exec_id, False)
+        return (node_exec_id, True)  # No auto-approval needed, consider it success
 
-    # Execute all auto-approval creations in parallel
-    await asyncio.gather(
+    # Execute all auto-approval creations in parallel and track failures
+    auto_approval_results = await asyncio.gather(
         *[
             create_auto_approval_if_needed(node_exec_id, review_result)
             for node_exec_id, review_result in updated_reviews.items()
-        ]
+        ],
+        return_exceptions=True,
     )
+
+    # Count auto-approval failures
+    auto_approval_failed_count = 0
+    for result in auto_approval_results:
+        if isinstance(result, Exception):
+            # Unexpected exception during auto-approval creation
+            auto_approval_failed_count += 1
+            logger.error(
+                f"Unexpected exception during auto-approval creation: {result}"
+            )
+        elif isinstance(result, tuple) and len(result) == 2 and not result[1]:
+            # Auto-approval creation failed (returned False)
+            auto_approval_failed_count += 1
 
     # Count results
     approved_count = sum(
@@ -287,9 +317,17 @@ async def process_review_action(
             except Exception as e:
                 logger.error(f"Failed to resume execution {graph_exec_id}: {str(e)}")
 
+    # Build error message if auto-approvals failed
+    error_message = None
+    if auto_approval_failed_count > 0:
+        error_message = (
+            f"{auto_approval_failed_count} auto-approval setting(s) could not be saved. "
+            f"You may need to manually approve these reviews in future executions."
+        )
+
     return ReviewResponse(
         approved_count=approved_count,
         rejected_count=rejected_count,
-        failed_count=0,
-        error=None,
+        failed_count=auto_approval_failed_count,
+        error=error_message,
     )
