@@ -57,10 +57,18 @@ export function PendingReviewCard({
   const extractedData = extractReviewData(review.payload);
   const isDataEditable = review.editable;
 
-  // Get instructions - clean up old format if it exists
+  // Get instructions from payload (HITL blocks) or review field
   let instructions = extractedData.instructions || review.instructions;
-  if (instructions) {
-    // Remove old wrapper format: "Review required for X execution" -> "X"
+
+  // Only show as label if it's a HITL block (user-provided meaningful name, not a technical block name)
+  // HITL blocks have names like "User profile data", sensitive blocks have names like "SendEmailBlock"
+  const isHITLBlock = instructions && !instructions.includes("Block");
+
+  if (instructions && !isHITLBlock) {
+    // For non-HITL blocks, don't show label
+    instructions = undefined;
+  } else if (instructions) {
+    // Clean up old format for HITL blocks: "Review required for X execution" -> "X"
     const match = instructions.match(/^Review required for (.+?) execution$/);
     if (match) {
       instructions = match[1];

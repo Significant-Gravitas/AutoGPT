@@ -274,26 +274,28 @@ export function PendingReviewsList({
 
       <div className="space-y-7">
         {Object.entries(groupedReviews).map(([nodeId, nodeReviews]) => {
-          // Default to collapsed for all reviews
-          const isCollapsed = collapsedGroups[nodeId] ?? true;
+          // Default to expanded for single reviews, collapsed for multiple
+          const isCollapsed = collapsedGroups[nodeId] ?? nodeReviews.length > 1;
           const displayName =
             nodeNameMap[nodeId] || nodeReviews[0]?.node_id || "Unknown Block";
           const reviewCount = nodeReviews.length;
 
-          // Get review title from instructions field
-          // Only show if it's a HITL block (has custom instructions)
           const firstReview = nodeReviews[0];
-          let reviewTitle = firstReview?.instructions;
+          let blockName = firstReview?.instructions;
 
-          // Clean up old format if it exists: "Review required for X execution" -> "X"
-          if (reviewTitle) {
-            const match = reviewTitle.match(
+          // Extract name from old format if exists
+          if (blockName) {
+            const match = blockName.match(
               /^Review required for (.+?) execution$/,
             );
             if (match) {
-              reviewTitle = match[1];
+              blockName = match[1];
             }
           }
+
+          // Build the review title
+          const finalName = blockName || displayName;
+          const reviewTitle = `Review required for ${finalName}`;
 
           // Helper to shorten node ID
           const getShortenedNodeId = (id: string) => {
@@ -313,14 +315,9 @@ export function PendingReviewsList({
                   <CaretDownIcon size={20} className="text-gray-600" />
                 )}
                 <div className="flex-1">
-                  {reviewTitle && (
-                    <Text
-                      variant="body"
-                      className="font-semibold text-gray-900"
-                    >
-                      {reviewTitle}
-                    </Text>
-                  )}
+                  <Text variant="body" className="font-semibold text-gray-900">
+                    {reviewTitle}
+                  </Text>
                   <Text variant="small" className="text-gray-500">
                     Node #{getShortenedNodeId(nodeId)}
                   </Text>
