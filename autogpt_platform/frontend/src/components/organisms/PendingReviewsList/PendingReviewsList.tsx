@@ -1,11 +1,17 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { PendingHumanReviewModel } from "@/app/api/__generated__/models/pendingHumanReviewModel";
 import { PendingReviewCard } from "@/components/organisms/PendingReviewCard/PendingReviewCard";
 import { Text } from "@/components/atoms/Text/Text";
 import { Button } from "@/components/atoms/Button/Button";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { ClockIcon, WarningIcon } from "@phosphor-icons/react";
+import {
+  ClockIcon,
+  WarningIcon,
+  CaretDownIcon,
+  CaretRightIcon,
+} from "@phosphor-icons/react";
 import { usePostV2ProcessReviewAction } from "@/app/api/__generated__/endpoints/executions/executions";
+import { useGetV1GetSpecificGraph } from "@/app/api/__generated__/endpoints/graphs/graphs";
 
 interface PendingReviewsListProps {
   reviews: PendingHumanReviewModel[];
@@ -41,7 +47,53 @@ export function PendingReviewsList({
     Record<string, boolean>
   >({});
 
+  // Track collapsed state for each group
+  const [collapsedGroups, setCollapsedGroups] = useState<
+    Record<string, boolean>
+  >({});
+
   const { toast } = useToast();
+
+  // Get the graph_id from the first review (all reviews from same execution)
+  const graphId = reviews[0]?.graph_id;
+
+  // Fetch the graph to get node metadata
+  const { data: graph } = useGetV1GetSpecificGraph(graphId, undefined, {
+    query: {
+      enabled: !!graphId,
+    },
+  });
+
+  // Create a map of node_id -> node display name
+  const nodeNameMap = useMemo(() => {
+    if (graph?.status !== 200) return {};
+    const nodes = graph.data.nodes;
+    if (!nodes) return {};
+
+    return nodes.reduce((acc: Record<string, string>, node) => {
+      const displayName =
+        (node.metadata?.customized_name as string | undefined) ||
+        node.block_id ||
+        "Unknown Block";
+      acc[node.id || ""] = displayName;
+      return acc;
+    }, {} as Record<string, string>);
+  }, [graph]);
+
+  // Group reviews by node_id
+  const groupedReviews = useMemo(() => {
+    return reviews.reduce(
+      (acc, review) => {
+        const nodeId = review.node_id || "unknown";
+        if (!acc[nodeId]) {
+          acc[nodeId] = [];
+        }
+        acc[nodeId].push(review);
+        return acc;
+      },
+      {} as Record<string, PendingHumanReviewModel[]>,
+    );
+  }, [reviews]);
 
   const reviewActionMutation = usePostV2ProcessReviewAction({
     mutation: {
@@ -106,6 +158,13 @@ export function PendingReviewsList({
         }));
       }
     }
+  }
+
+  function toggleGroupCollapse(nodeId: string) {
+    setCollapsedGroups((prev) => ({
+      ...prev,
+      [nodeId]: !prev[nodeId],
+    }));
   }
 
   function processReviews(approved: boolean) {
@@ -205,18 +264,57 @@ export function PendingReviewsList({
       </div>
 
       <div className="space-y-7">
-        {reviews.map((review) => (
-          <PendingReviewCard
-            key={`${review.node_exec_id}`}
-            review={review}
-            onReviewDataChange={handleReviewDataChange}
-            autoApproveFuture={
-              autoApproveFutureMap[review.node_exec_id] || false
-            }
-            onAutoApproveFutureChange={handleAutoApproveFutureToggle}
-            externalDataValue={reviewDataMap[review.node_exec_id]}
-          />
-        ))}
+        {Object.entries(groupedReviews).map(([nodeId, nodeReviews]) => {
+          const isCollapsed = collapsedGroups[nodeId];
+          const displayName =
+            nodeNameMap[nodeId] || nodeReviews[0]?.node_id || "Unknown Block";
+          const reviewCount = nodeReviews.length;
+
+          return (
+            <div key={nodeId} className="space-y-4">
+              {/* Group Header - Only show if there are multiple groups */}
+              {Object.keys(groupedReviews).length > 1 && (
+                <button
+                  onClick={() => toggleGroupCollapse(nodeId)}
+                  className="flex w-full items-center gap-2 rounded-lg bg-white p-3 text-left hover:bg-gray-50"
+                >
+                  {isCollapsed ? (
+                    <CaretRightIcon size={20} className="text-gray-600" />
+                  ) : (
+                    <CaretDownIcon size={20} className="text-gray-600" />
+                  )}
+                  <Text
+                    variant="body"
+                    className="flex-1 font-semibold text-gray-900"
+                  >
+                    {displayName}
+                  </Text>
+                  <span className="rounded-full bg-gray-100 px-2 py-1 text-xs text-gray-600">
+                    {reviewCount} {reviewCount === 1 ? "review" : "reviews"}
+                  </span>
+                </button>
+              )}
+
+              {/* Reviews in this group */}
+              {!isCollapsed && (
+                <div className="space-y-4">
+                  {nodeReviews.map((review) => (
+                    <PendingReviewCard
+                      key={review.node_exec_id}
+                      review={review}
+                      onReviewDataChange={handleReviewDataChange}
+                      autoApproveFuture={
+                        autoApproveFutureMap[review.node_exec_id] || false
+                      }
+                      onAutoApproveFutureChange={handleAutoApproveFutureToggle}
+                      externalDataValue={reviewDataMap[review.node_exec_id]}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
 
       <div className="space-y-4">
