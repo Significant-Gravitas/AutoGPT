@@ -45,6 +45,9 @@ class StreamChatRequest(BaseModel):
     message: str
     is_user_message: bool = True
     context: dict[str, str] | None = None  # {url: str, content: str}
+    tags: list[str] | None = (
+        None  # Custom tags for Langfuse tracing (e.g., experiment names)
+    )
 
 
 class CreateSessionResponse(BaseModel):
@@ -231,6 +234,7 @@ async def stream_chat_post(
             user_id=user_id,
             session=session,  # Pass pre-fetched session to avoid double-fetch
             context=request.context,
+            tags=request.tags,
         ):
             if chunk_count < 3:
                 logger.info(
