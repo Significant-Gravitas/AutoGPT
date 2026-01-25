@@ -29,7 +29,7 @@ def mock_embedding_functions():
         yield
 
 
-@pytest.mark.asyncio(scope="session")
+@pytest.mark.asyncio(loop_scope="session")
 async def test_run_agent(setup_test_data):
     """Test that the run_agent tool successfully executes an approved agent"""
     # Use test data from fixture
@@ -70,7 +70,7 @@ async def test_run_agent(setup_test_data):
     assert result_data["graph_name"] == "Test Agent"
 
 
-@pytest.mark.asyncio(scope="session")
+@pytest.mark.asyncio(loop_scope="session")
 async def test_run_agent_missing_inputs(setup_test_data):
     """Test that the run_agent tool returns error when inputs are missing"""
     # Use test data from fixture
@@ -106,7 +106,7 @@ async def test_run_agent_missing_inputs(setup_test_data):
     assert "message" in result_data
 
 
-@pytest.mark.asyncio(scope="session")
+@pytest.mark.asyncio(loop_scope="session")
 async def test_run_agent_invalid_agent_id(setup_test_data):
     """Test that the run_agent tool returns error for invalid agent ID"""
     # Use test data from fixture
@@ -141,7 +141,7 @@ async def test_run_agent_invalid_agent_id(setup_test_data):
     )
 
 
-@pytest.mark.asyncio(scope="session")
+@pytest.mark.asyncio(loop_scope="session")
 async def test_run_agent_with_llm_credentials(setup_llm_test_data):
     """Test that run_agent works with an agent requiring LLM credentials"""
     # Use test data from fixture
@@ -185,7 +185,7 @@ async def test_run_agent_with_llm_credentials(setup_llm_test_data):
     assert result_data["graph_name"] == "LLM Test Agent"
 
 
-@pytest.mark.asyncio(scope="session")
+@pytest.mark.asyncio(loop_scope="session")
 async def test_run_agent_shows_available_inputs_when_none_provided(setup_test_data):
     """Test that run_agent returns available inputs when called without inputs or use_defaults."""
     user = setup_test_data["user"]
@@ -219,7 +219,7 @@ async def test_run_agent_shows_available_inputs_when_none_provided(setup_test_da
     assert "inputs" in result_data["message"].lower()
 
 
-@pytest.mark.asyncio(scope="session")
+@pytest.mark.asyncio(loop_scope="session")
 async def test_run_agent_with_use_defaults(setup_test_data):
     """Test that run_agent executes successfully with use_defaults=True."""
     user = setup_test_data["user"]
@@ -251,7 +251,7 @@ async def test_run_agent_with_use_defaults(setup_test_data):
     assert result_data["graph_id"] == graph.id
 
 
-@pytest.mark.asyncio(scope="session")
+@pytest.mark.asyncio(loop_scope="session")
 async def test_run_agent_missing_credentials(setup_firecrawl_test_data):
     """Test that run_agent returns setup_requirements when credentials are missing."""
     user = setup_firecrawl_test_data["user"]
@@ -285,7 +285,7 @@ async def test_run_agent_missing_credentials(setup_firecrawl_test_data):
     assert len(setup_info["user_readiness"]["missing_credentials"]) > 0
 
 
-@pytest.mark.asyncio(scope="session")
+@pytest.mark.asyncio(loop_scope="session")
 async def test_run_agent_invalid_slug_format(setup_test_data):
     """Test that run_agent returns error for invalid slug format (no slash)."""
     user = setup_test_data["user"]
@@ -313,7 +313,7 @@ async def test_run_agent_invalid_slug_format(setup_test_data):
     assert "username/agent-name" in result_data["message"]
 
 
-@pytest.mark.asyncio(scope="session")
+@pytest.mark.asyncio(loop_scope="session")
 async def test_run_agent_unauthenticated():
     """Test that run_agent returns need_login for unauthenticated users."""
     tool = RunAgentTool()
@@ -340,7 +340,7 @@ async def test_run_agent_unauthenticated():
     assert "sign in" in result_data["message"].lower()
 
 
-@pytest.mark.asyncio(scope="session")
+@pytest.mark.asyncio(loop_scope="session")
 async def test_run_agent_schedule_without_cron(setup_test_data):
     """Test that run_agent returns error when scheduling without cron expression."""
     user = setup_test_data["user"]
@@ -372,7 +372,7 @@ async def test_run_agent_schedule_without_cron(setup_test_data):
     assert "cron" in result_data["message"].lower()
 
 
-@pytest.mark.asyncio(scope="session")
+@pytest.mark.asyncio(loop_scope="session")
 async def test_run_agent_schedule_without_name(setup_test_data):
     """Test that run_agent returns error when scheduling without schedule_name."""
     user = setup_test_data["user"]

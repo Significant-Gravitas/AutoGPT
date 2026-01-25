@@ -21,7 +21,6 @@ from backend.util.json import dumps
 
 logger = logging.getLogger(__name__)
 
-
 # OpenAI embedding model configuration
 EMBEDDING_MODEL = "text-embedding-3-small"
 # Embedding dimension for the model above
