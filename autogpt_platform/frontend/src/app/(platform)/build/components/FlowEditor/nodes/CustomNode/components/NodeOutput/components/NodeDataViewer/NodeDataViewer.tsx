@@ -13,7 +13,6 @@ import {
 } from "@/components/contextual/OutputRenderers";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { beautifyString } from "@/lib/utils";
-import type { NodeExecutionResult } from "@/app/api/__generated__/models/nodeExecutionResult";
 import {
   ArrowsOutSimpleIcon,
   CheckIcon,
@@ -32,7 +31,6 @@ export interface NodeDataViewerProps {
   nodeId?: string;
   execId?: string;
   isViewMoreData?: boolean;
-  executionResults?: NodeExecutionResult[];
   dataType?: NodeDataType;
 }
 
@@ -42,10 +40,9 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
   nodeId,
   execId = "N/A",
   isViewMoreData = false,
-  executionResults = [],
   dataType = "output",
 }) => {
-  const storeExecutionResults = useNodeStore(
+  const executionResults = useNodeStore(
     useShallow((state) =>
       nodeId ? state.getNodeExecutionResults(nodeId) : [],
     ),
@@ -60,14 +57,13 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
       nodeId ? state.getAccumulatedNodeOutputData(nodeId) : {},
     ),
   );
-  const resolvedExecutionResults =
-    executionResults.length > 0 ? executionResults : storeExecutionResults;
 
   const resolvedData =
     data ??
     (dataType === "input"
       ? (latestInputData ?? {})
       : (accumulatedOutputData[pinName] ?? []));
+
   const {
     outputItems,
     copyExecutionId,
@@ -84,7 +80,7 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
     resolvedData,
     pinName,
     execId,
-    resolvedExecutionResults,
+    executionResults,
     dataType,
   );
 
