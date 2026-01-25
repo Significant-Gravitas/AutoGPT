@@ -1,7 +1,7 @@
 import { downloadOutputs } from "@/components/contextual/OutputRenderers/utils/download";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { beautifyString } from "@/lib/utils";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import type { NodeExecutionResult } from "@/app/api/__generated__/models/nodeExecutionResult";
 import {
   NodeDataType,
@@ -27,41 +27,39 @@ export const useNodeDataViewer = (
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
-  const dataArray = useMemo(() => {
-    return Array.isArray(data) ? data : [data];
-  }, [data]);
+  const dataArray = Array.isArray(data) ? data : [data];
 
-  const outputItems = useMemo(() => {
-    if (!dataArray || dataArray.length === 0) return [];
+  const outputItems =
+    !dataArray || dataArray.length === 0
+      ? []
+      : createOutputItems(dataArray).map((item, index) => ({
+          ...item,
+          label: index === 0 ? beautifyString(pinName) : "",
+        }));
 
-    const items = createOutputItems(dataArray);
-    return items.map((item, index) => ({
-      ...item,
-      label: index === 0 ? beautifyString(pinName) : "",
-    }));
-  }, [dataArray, pinName]);
+  const groupedExecutions =
+    !executionResults || executionResults.length === 0
+      ? []
+      : [...executionResults].reverse().map((result) => {
+          const rawData = getExecutionData(
+            result,
+            dataType || "output",
+            pinName,
+          );
+          let dataArray: unknown[];
+          if (dataType === "input") {
+            dataArray =
+              rawData !== undefined && rawData !== null ? [rawData] : [];
+          } else {
+            dataArray = normalizeToArray(rawData);
+          }
 
-  const groupedExecutions = useMemo(() => {
-    if (!executionResults || executionResults.length === 0) {
-      return [];
-    }
-
-    return [...executionResults].reverse().map((result) => {
-      const rawData = getExecutionData(result, dataType || "output", pinName);
-      let dataArray: unknown[];
-      if (dataType === "input") {
-        dataArray = rawData !== undefined && rawData !== null ? [rawData] : [];
-      } else {
-        dataArray = normalizeToArray(rawData);
-      }
-
-      const outputItems = createOutputItems(dataArray);
-      return {
-        execId: result.node_exec_id,
-        outputItems,
-      };
-    });
-  }, [executionResults, pinName, dataType]);
+          const outputItems = createOutputItems(dataArray);
+          return {
+            execId: result.node_exec_id,
+            outputItems,
+          };
+        });
 
   const totalGroupedItems = groupedExecutions.reduce(
     (total, execution) => total + execution.outputItems.length,
