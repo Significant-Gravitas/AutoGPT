@@ -26,22 +26,23 @@ def add_param(url: str, key: str, value: str) -> str:
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://localhost:5432")
 
-# Ensure search_path includes common extension schemas for pgvector resolution.
-# This fixes random "type 'vector' does not exist" errors when connection pool
-# returns connections that don't have pgvector's schema in their search_path.
-# We extract the app schema and prepend it, then add 'extensions' and 'public'
-# where pgvector is commonly installed (Supabase uses 'extensions', local uses 'public').
+# Extract the application schema from DATABASE_URL for use in queries
 _parsed = urlparse(DATABASE_URL)
 _query_params = dict(parse_qsl(_parsed.query))
 _app_schema = _query_params.get("schema", "public")
-# Build search_path: app_schema first (for tables), then extension schemas
-_search_path = f"{_app_schema},extensions,public" if _app_schema != "public" else "public,extensions"
-# Add search_path via PostgreSQL options parameter
+
+# Build search_path that includes app schema and extension schemas where pgvector may live.
+# This is used both in connection options (may be ignored by PgBouncer) and in SET LOCAL
+# statements before raw queries (guaranteed to work).
+SEARCH_PATH = f"{_app_schema},extensions,public" if _app_schema != "public" else "public,extensions"
+
+# Try to set search_path via PostgreSQL options parameter at connection time.
+# NOTE: This may be ignored by PgBouncer in transaction pooling mode.
+# As a fallback, we also SET LOCAL search_path before raw queries.
 if "options" in _query_params:
-    # Append to existing options
-    _query_params["options"] = _query_params["options"] + f" -c search_path={_search_path}"
+    _query_params["options"] = _query_params["options"] + f" -c search_path={SEARCH_PATH}"
 else:
-    _query_params["options"] = f"-c search_path={_search_path}"
+    _query_params["options"] = f"-c search_path={SEARCH_PATH}"
 DATABASE_URL = urlunparse(_parsed._replace(query=urlencode(_query_params)))
 
 CONN_LIMIT = os.getenv("DB_CONNECTION_LIMIT")
@@ -202,11 +203,27 @@ async def _raw_with_schema(
 
     db_client = client if client else prisma_module.get_client()
 
+    # For queries that might use pgvector types (::vector or <=> operator),
+    # we need to ensure search_path includes the schema where pgvector is installed.
+    # PgBouncer in transaction mode may ignore connection-level options, so we
+    # use SET LOCAL within a transaction to guarantee correct search_path.
+    needs_vector_search_path = "::vector" in formatted_query or "<=>" in formatted_query
+
     try:
-        if execute:
-            result = await db_client.execute_raw(formatted_query, *args)  # type: ignore
+        if needs_vector_search_path and client is None:
+            # Use transaction to set search_path for vector queries
+            async with db_client.tx() as tx:
+                await tx.execute_raw(f"SET LOCAL search_path TO {SEARCH_PATH}")
+                if execute:
+                    result = await tx.execute_raw(formatted_query, *args)  # type: ignore
+                else:
+                    result = await tx.query_raw(formatted_query, *args)  # type: ignore
         else:
-            result = await db_client.query_raw(formatted_query, *args)  # type: ignore
+            # Regular query without vector types, or already in a transaction
+            if execute:
+                result = await db_client.execute_raw(formatted_query, *args)  # type: ignore
+            else:
+                result = await db_client.query_raw(formatted_query, *args)  # type: ignore
         return result
     except Exception as e:
         error_msg = str(e)
