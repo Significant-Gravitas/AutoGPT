@@ -345,30 +345,63 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
         if (n.id !== nodeId) return n;
 
         const existingResults = n.data.nodeExecutionResults || [];
-        const isDuplicate = existingResults.some(
+        const duplicateIndex = existingResults.findIndex(
           (r) => r.node_exec_id === result.node_exec_id,
         );
 
-        latestNodeInputData = {
-          ...latestNodeInputData,
-          [nodeId]: result.input_data,
-        };
-        latestNodeOutputData = {
-          ...latestNodeOutputData,
-          [nodeId]: result.output_data,
-        };
+        if (duplicateIndex !== -1) {
+          const oldResult = existingResults[duplicateIndex];
+          const inputDataChanged =
+            JSON.stringify(oldResult.input_data) !==
+            JSON.stringify(result.input_data);
+          const outputDataChanged =
+            JSON.stringify(oldResult.output_data) !==
+            JSON.stringify(result.output_data);
 
-        if (isDuplicate) {
+          if (!inputDataChanged && !outputDataChanged) {
+            return n;
+          }
+
+          const updatedResults = [...existingResults];
+          updatedResults[duplicateIndex] = result;
+
+          const recomputedAccumulatedInput = updatedResults.reduce(
+            (acc, r) => accumulateExecutionData(acc, r.input_data),
+            {} as Record<string, unknown[]>,
+          );
+          const recomputedAccumulatedOutput = updatedResults.reduce(
+            (acc, r) => accumulateExecutionData(acc, r.output_data),
+            {} as Record<string, unknown[]>,
+          );
+
+          const mostRecentResult = updatedResults[updatedResults.length - 1];
+          latestNodeInputData = {
+            ...latestNodeInputData,
+            [nodeId]: mostRecentResult.input_data,
+          };
+          latestNodeOutputData = {
+            ...latestNodeOutputData,
+            [nodeId]: mostRecentResult.output_data,
+          };
+
+          accumulatedNodeInputData = {
+            ...accumulatedNodeInputData,
+            [nodeId]: recomputedAccumulatedInput,
+          };
+          accumulatedNodeOutputData = {
+            ...accumulatedNodeOutputData,
+            [nodeId]: recomputedAccumulatedOutput,
+          };
+
           return {
             ...n,
             data: {
               ...n.data,
-              nodeExecutionResults: existingResults.map((r) =>
-                r.node_exec_id === result.node_exec_id ? result : r,
-              ),
+              nodeExecutionResults: updatedResults,
             },
           };
         }
+
         accumulatedNodeInputData = {
           ...accumulatedNodeInputData,
           [nodeId]: accumulateExecutionData(
@@ -382,6 +415,15 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
             accumulatedNodeOutputData[nodeId] || {},
             result.output_data,
           ),
+        };
+
+        latestNodeInputData = {
+          ...latestNodeInputData,
+          [nodeId]: result.input_data,
+        };
+        latestNodeOutputData = {
+          ...latestNodeOutputData,
+          [nodeId]: result.output_data,
         };
 
         return {
