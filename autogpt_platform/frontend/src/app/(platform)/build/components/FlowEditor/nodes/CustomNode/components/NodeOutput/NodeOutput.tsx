@@ -12,8 +12,6 @@ import { NodeDataViewer } from "./components/NodeDataViewer/NodeDataViewer";
 import { ContentRenderer } from "./components/ContentRenderer";
 import { useNodeOutput } from "./useNodeOutput";
 import { ViewMoreData } from "./components/ViewMoreData";
-import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
-import { useShallow } from "zustand/react/shallow";
 
 export const NodeDataRenderer = ({ nodeId }: { nodeId: string }) => {
   const {
@@ -23,9 +21,6 @@ export const NodeDataRenderer = ({ nodeId }: { nodeId: string }) => {
     executionResultId,
     latestInputData,
   } = useNodeOutput(nodeId);
-  const accumulatedOutputData = useNodeStore(
-    useShallow((state) => state.getAccumulatedNodeOutputData(nodeId)),
-  );
 
   if (Object.keys(latestOutputData).length === 0) {
     return null;
@@ -81,8 +76,7 @@ export const NodeDataRenderer = ({ nodeId }: { nodeId: string }) => {
 
               {Object.entries(latestOutputData)
                 .slice(0, 2)
-                .map(([key, latestValue]) => {
-                  const allValue = accumulatedOutputData[key] || latestValue;
+                .map(([key, value]) => {
                   return (
                     <div key={key} className="flex flex-col gap-2">
                       <div className="flex items-center gap-2">
@@ -104,7 +98,7 @@ export const NodeDataRenderer = ({ nodeId }: { nodeId: string }) => {
                           Data:
                         </Text>
                         <div className="relative space-y-2">
-                          {latestValue.map((item, index) => (
+                          {value.map((item, index) => (
                             <div key={index}>
                               <ContentRenderer
                                 value={item}
@@ -122,7 +116,7 @@ export const NodeDataRenderer = ({ nodeId }: { nodeId: string }) => {
                             <Button
                               variant="secondary"
                               size="small"
-                              onClick={() => handleCopy(key, allValue)}
+                              onClick={() => handleCopy(key, value)}
                               className={cn(
                                 "h-fit min-w-0 gap-1.5 border border-zinc-200 p-2 text-black hover:text-slate-900",
                                 copiedKey === key &&
