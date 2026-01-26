@@ -1,20 +1,27 @@
 "use client";
 
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { PostHogProvider as PHProvider } from "@posthog/react";
 import { usePathname, useSearchParams } from "next/navigation";
 import posthog from "posthog-js";
 import { useEffect, useRef } from "react";
 
-/**
- * PostHogUserTracker component identifies users in PostHog for analytics.
- * This component should be placed high in the component tree to ensure user
- * identification happens as soon as the user logs in.
- *
- * It automatically:
- * - Identifies the user when they log in (linking anonymous to authenticated)
- * - Resets PostHog when a user logs out
- * - Updates identification when user data changes
- */
+export function PostHogProvider({ children }: { children: React.ReactNode }) {
+  useEffect(() => {
+    if (process.env.NEXT_PUBLIC_POSTHOG_KEY) {
+      posthog.init(process.env.NEXT_PUBLIC_POSTHOG_KEY, {
+        api_host: process.env.NEXT_PUBLIC_POSTHOG_HOST,
+        defaults: "2025-11-30",
+        capture_pageview: false,
+        capture_pageleave: true,
+        autocapture: true,
+      });
+    }
+  }, []);
+
+  return <PHProvider client={posthog}>{children}</PHProvider>;
+}
+
 export function PostHogUserTracker() {
   const { user, isUserLoading } = useSupabase();
   const previousUserIdRef = useRef<string | null>(null);
@@ -23,7 +30,6 @@ export function PostHogUserTracker() {
     if (isUserLoading) return;
 
     if (user) {
-      // Only identify if we haven't already identified this user
       if (previousUserIdRef.current !== user.id) {
         posthog.identify(user.id, {
           email: user.email,
@@ -32,7 +38,6 @@ export function PostHogUserTracker() {
         previousUserIdRef.current = user.id;
       }
     } else if (previousUserIdRef.current !== null) {
-      // User logged out - reset PostHog to generate new anonymous ID
       posthog.reset();
       previousUserIdRef.current = null;
     }
@@ -41,11 +46,6 @@ export function PostHogUserTracker() {
   return null;
 }
 
-/**
- * PostHogPageViewTracker captures page views on route changes in Next.js App Router.
- * The default PostHog capture_pageview only works for initial page loads.
- * This component ensures soft navigations (client-side route changes) are also tracked.
- */
 export function PostHogPageViewTracker() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
