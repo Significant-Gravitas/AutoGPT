@@ -296,14 +296,14 @@ class CommandPermissionManager:
 
         # For web operations
         if command_name == "web_search":
-            return "web_search(*)"
+            return "web_search(**)"
         if command_name == "read_webpage":
             # Extract domain
             match = re.match(r"https?://([^/]+)", args_str)
             if match:
                 domain = match.group(1)
                 return f"read_webpage(*{domain}*)"
-            return "read_webpage(*)"
+            return "read_webpage(**)"
 
-        # Generic: use wildcard
-        return f"{command_name}(*)"
+        # Generic: use ** wildcard to match any arguments including those with /
+        return f"{command_name}(**)"
