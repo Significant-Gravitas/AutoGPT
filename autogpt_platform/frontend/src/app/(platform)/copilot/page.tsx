@@ -83,21 +83,7 @@ export default function CopilotPage() {
     );
   }
 
-  if (pageState.type === "newChat") {
-    return (
-      <div className="flex h-full flex-1 flex-col items-center justify-center bg-[#f8f8f9]">
-        <div className="flex flex-col items-center gap-4">
-          <ChatLoader />
-          <Text variant="body" className="text-zinc-500">
-            Loading your chats...
-          </Text>
-        </div>
-      </div>
-    );
-  }
-
-  // Show loading state while creating session and sending first message
-  if (pageState.type === "creating") {
+  if (pageState.type === "newChat" || pageState.type === "creating") {
     return (
       <div className="flex h-full flex-1 flex-col items-center justify-center bg-[#f8f8f9]">
         <div className="flex flex-col items-center gap-4">

@@ -1,4 +1,11 @@
-import { KeyboardEvent, useCallback, useEffect, useState } from "react";
+import {
+  ChangeEvent,
+  FormEvent,
+  KeyboardEvent,
+  useCallback,
+  useEffect,
+  useState,
+} from "react";
 
 interface UseChatInputArgs {
   onSend: (message: string) => void;
@@ -15,6 +22,11 @@ export function useChatInput({
 }: UseChatInputArgs) {
   const [value, setValue] = useState("");
   const [hasMultipleLines, setHasMultipleLines] = useState(false);
+
+  useEffect(() => {
+    const textarea = document.getElementById(inputId) as HTMLTextAreaElement;
+    if (textarea) textarea.focus();
+  }, [inputId]);
 
   useEffect(() => {
     const textarea = document.getElementById(inputId) as HTMLTextAreaElement;
@@ -105,11 +117,28 @@ export function useChatInput({
     [handleSend],
   );
 
+  const handleSubmit = useCallback(
+    (e: FormEvent<HTMLFormElement>) => {
+      e.preventDefault();
+      handleSend();
+    },
+    [handleSend],
+  );
+
+  const handleChange = useCallback(
+    (e: ChangeEvent<HTMLTextAreaElement>) => {
+      setValue(e.target.value);
+    },
+    [],
+  );
+
   return {
     value,
     setValue,
     handleKeyDown,
     handleSend,
+    handleSubmit,
+    handleChange,
     hasMultipleLines,
   };
 }

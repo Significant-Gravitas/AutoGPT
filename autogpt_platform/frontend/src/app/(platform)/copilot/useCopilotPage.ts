@@ -1,4 +1,7 @@
-import { postV2CreateSession } from "@/app/api/__generated__/endpoints/chat/chat";
+import {
+  getGetV2ListSessionsQueryKey,
+  postV2CreateSession,
+} from "@/app/api/__generated__/endpoints/chat/chat";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { getHomepageRoute } from "@/lib/constants";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
@@ -8,6 +11,7 @@ import {
   useGetFlag,
 } from "@/services/feature-flags/use-get-flag";
 import * as Sentry from "@sentry/nextjs";
+import { useQueryClient } from "@tanstack/react-query";
 import { useFlags } from "launchdarkly-react-client-sdk";
 import { useRouter } from "next/navigation";
 import { useEffect, useReducer } from "react";
@@ -79,6 +83,7 @@ function copilotReducer(
 
 export function useCopilotPage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { user, isLoggedIn, isUserLoading } = useSupabase();
   const { toast } = useToast();
 
@@ -187,6 +192,10 @@ export function useCopilotPage() {
         type: "setInitialPrompt",
         sessionId,
         prompt: trimmedPrompt,
+      });
+
+      await queryClient.invalidateQueries({
+        queryKey: getGetV2ListSessionsQueryKey(),
       });
 
       await setUrlSessionId(sessionId, { shallow: false });

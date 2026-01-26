@@ -1,4 +1,5 @@
 import type { SessionDetailResponse } from "@/app/api/__generated__/models/sessionDetailResponse";
+import { useChatStreamStore } from "@/providers/chat-stream/chat-stream-store";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useChatStream } from "../../useChatStream";
@@ -41,11 +42,17 @@ export function useChatContainer({
     sendMessage: sendStreamMessage,
     stopStreaming,
   } = useChatStream();
+  const streamStore = useChatStreamStore();
   const isStreaming = isStreamingInitiated || hasTextChunks;
 
-  useEffect(() => {
-    if (sessionId !== previousSessionIdRef.current) {
-      stopStreaming(previousSessionIdRef.current ?? undefined, true);
+  useEffect(
+    function handleSessionChange() {
+      if (sessionId === previousSessionIdRef.current) return;
+
+      const prevSession = previousSessionIdRef.current;
+      if (prevSession) {
+        stopStreaming(prevSession);
+      }
       previousSessionIdRef.current = sessionId;
       setMessages([]);
       setStreamingChunks([]);
@@ -53,8 +60,41 @@ export function useChatContainer({
       setHasTextChunks(false);
       setIsStreamingInitiated(false);
       hasResponseRef.current = false;
-    }
-  }, [sessionId, stopStreaming]);
+
+      if (!sessionId) return;
+
+      const completedStream = streamStore.getCompletedStream(sessionId);
+      const activeStream = streamStore.activeStreams.get(sessionId);
+      const chunksToReplay = completedStream?.chunks || activeStream?.chunks;
+
+      if (chunksToReplay && chunksToReplay.length > 0) {
+        const dispatcher = createStreamEventDispatcher({
+          setHasTextChunks,
+          setStreamingChunks,
+          streamingChunksRef,
+          hasResponseRef,
+          setMessages,
+          setIsRegionBlockedModalOpen,
+          sessionId,
+          setIsStreamingInitiated,
+        });
+
+        for (const chunk of chunksToReplay) {
+          dispatcher(chunk);
+        }
+
+        if (activeStream && activeStream.status === "streaming") {
+          setIsStreamingInitiated(true);
+          const unsubscribe = streamStore.subscribeToStream(
+            sessionId,
+            dispatcher,
+          );
+          return unsubscribe;
+        }
+      }
+    },
+    [sessionId, stopStreaming, streamStore],
+  );
 
   const allMessages = useMemo(() => {
     const processedInitialMessages: ChatMessageData[] = [];

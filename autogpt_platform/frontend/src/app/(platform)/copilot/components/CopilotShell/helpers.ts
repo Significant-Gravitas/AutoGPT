@@ -16,9 +16,14 @@ export function convertSessionDetailToSummary(
 export function filterVisibleSessions(
   sessions: SessionSummaryResponse[],
 ): SessionSummaryResponse[] {
-  return sessions.filter(
-    (session) => session.updated_at !== session.created_at,
-  );
+  const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
+  return sessions.filter((session) => {
+    const hasBeenUpdated = session.updated_at !== session.created_at;
+    if (hasBeenUpdated) return true;
+    const isRecentlyCreated =
+      new Date(session.created_at).getTime() > fiveMinutesAgo;
+    return isRecentlyCreated;
+  });
 }
 
 export function getSessionTitle(session: SessionSummaryResponse): string {
@@ -45,8 +50,10 @@ export function mergeCurrentSessionIntoList(
   accumulatedSessions: SessionSummaryResponse[],
   currentSessionId: string | null,
   currentSessionData: SessionDetailResponse | null | undefined,
+  recentlyCreatedSessions?: Map<string, SessionSummaryResponse>,
 ): SessionSummaryResponse[] {
   const filteredSessions: SessionSummaryResponse[] = [];
+  const addedIds = new Set<string>();
 
   if (accumulatedSessions.length > 0) {
     const visibleSessions = filterVisibleSessions(accumulatedSessions);
@@ -61,20 +68,33 @@ export function mergeCurrentSessionIntoList(
         );
         if (!isInVisible) {
           filteredSessions.push(currentInAll);
+          addedIds.add(currentInAll.id);
         }
       }
     }
 
-    filteredSessions.push(...visibleSessions);
+    for (const session of visibleSessions) {
+      if (!addedIds.has(session.id)) {
+        filteredSessions.push(session);
+        addedIds.add(session.id);
+      }
+    }
   }
 
   if (currentSessionId && currentSessionData) {
-    const isCurrentInList = filteredSessions.some(
-      (s) => s.id === currentSessionId,
-    );
-    if (!isCurrentInList) {
+    if (!addedIds.has(currentSessionId)) {
       const summarySession = convertSessionDetailToSummary(currentSessionData);
       filteredSessions.unshift(summarySession);
+      addedIds.add(currentSessionId);
+    }
+  }
+
+  if (recentlyCreatedSessions) {
+    for (const [sessionId, sessionData] of recentlyCreatedSessions) {
+      if (!addedIds.has(sessionId)) {
+        filteredSessions.unshift(sessionData);
+        addedIds.add(sessionId);
+      }
     }
   }
 
