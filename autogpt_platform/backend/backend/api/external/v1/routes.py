@@ -86,6 +86,8 @@ async def execute_graph_block(
     obj = backend.data.block.get_block(block_id)
     if not obj:
         raise HTTPException(status_code=404, detail=f"Block #{block_id} not found.")
+    if obj.disabled:
+        raise HTTPException(status_code=403, detail=f"Block #{block_id} is disabled.")
 
     output = defaultdict(list)
     async for name, data in obj.execute(data):
