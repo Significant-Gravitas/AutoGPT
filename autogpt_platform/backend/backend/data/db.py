@@ -34,13 +34,19 @@ _app_schema = _query_params.get("schema", "public")
 # Build search_path that includes app schema and extension schemas where pgvector may live.
 # This is used both in connection options (may be ignored by PgBouncer) and in SET LOCAL
 # statements before raw queries (guaranteed to work).
-SEARCH_PATH = f"{_app_schema},extensions,public" if _app_schema != "public" else "public,extensions"
+SEARCH_PATH = (
+    f"{_app_schema},extensions,public"
+    if _app_schema != "public"
+    else "public,extensions"
+)
 
 # Try to set search_path via PostgreSQL options parameter at connection time.
 # NOTE: This may be ignored by PgBouncer in transaction pooling mode.
 # As a fallback, we also SET LOCAL search_path before raw queries.
 if "options" in _query_params:
-    _query_params["options"] = _query_params["options"] + f" -c search_path={SEARCH_PATH}"
+    _query_params["options"] = (
+        _query_params["options"] + f" -c search_path={SEARCH_PATH}"
+    )
 else:
     _query_params["options"] = f"-c search_path={SEARCH_PATH}"
 DATABASE_URL = urlunparse(_parsed._replace(query=urlencode(_query_params)))
@@ -127,18 +133,42 @@ def get_database_schema() -> str:
     return query_params.get("schema", "public")
 
 
-async def get_connection_debug_info() -> dict:
-    """Get diagnostic info about the current database connection.
+def get_pod_info() -> dict:
+    """Get information about the current pod/host.
+
+    Returns dict with: hostname, pod_name (from HOSTNAME env var in k8s),
+    pod_namespace, pod_ip if available.
+    """
+    import socket
+
+    return {
+        "hostname": socket.gethostname(),
+        "pod_name": os.getenv("HOSTNAME", "unknown"),
+        "pod_namespace": os.getenv("POD_NAMESPACE", "unknown"),
+        "pod_ip": os.getenv("POD_IP", "unknown"),
+    }
+
+
+async def get_connection_debug_info(tx=None) -> dict:
+    """Get diagnostic info about the current database connection and pod.
 
     Useful for debugging "table does not exist" or "type does not exist" errors
-    that may indicate connections going to different database instances.
+    that may indicate connections going to different database instances or pods.
 
-    Returns dict with: search_path, current_schema, server_version, pg_backend_pid
+    Args:
+        tx: Optional transaction client to use for the query (ensures same connection)
+
+    Returns dict with: search_path, current_schema, server_version, pg_backend_pid,
+    pgvector_installed, pgvector_schema, plus pod info
     """
     import prisma as prisma_module
 
+    pod_info = get_pod_info()
+    db_client = tx if tx else prisma_module.get_client()
+
     try:
-        result = await prisma_module.get_client().query_raw(
+        # Get connection info and check for pgvector in a single query
+        result = await db_client.query_raw(
             """
             SELECT
                 current_setting('search_path') as search_path,
@@ -147,12 +177,24 @@ async def get_connection_debug_info() -> dict:
                 inet_server_addr() as server_addr,
                 inet_server_port() as server_port,
                 pg_backend_pid() as backend_pid,
-                version() as server_version
+                version() as server_version,
+                (SELECT EXISTS(
+                    SELECT 1 FROM pg_extension WHERE extname = 'vector'
+                )) as pgvector_installed,
+                (SELECT nspname FROM pg_extension e
+                 JOIN pg_namespace n ON e.extnamespace = n.oid
+                 WHERE e.extname = 'vector'
+                 LIMIT 1) as pgvector_schema,
+                (SELECT string_agg(extname || ' in ' || nspname, ', ')
+                 FROM pg_extension e
+                 JOIN pg_namespace n ON e.extnamespace = n.oid
+                ) as all_extensions
             """
         )
-        return result[0] if result else {}
+        db_info = result[0] if result else {}
+        return {**pod_info, **db_info}
     except Exception as e:
-        return {"error": str(e)}
+        return {**pod_info, "db_error": str(e)}
 
 
 async def _raw_with_schema(
@@ -213,11 +255,26 @@ async def _raw_with_schema(
         if needs_vector_search_path and client is None:
             # Use transaction to set search_path for vector queries
             async with db_client.tx() as tx:
+                # Log debug info BEFORE the query to capture which backend we're hitting
+                debug_info = await get_connection_debug_info(tx)
+                logger.info(
+                    f"Vector query starting. backend_pid={debug_info.get('backend_pid')}, "
+                    f"server_addr={debug_info.get('server_addr')}, "
+                    f"pgvector_installed={debug_info.get('pgvector_installed')}, "
+                    f"pgvector_schema={debug_info.get('pgvector_schema')}, "
+                    f"search_path={debug_info.get('search_path')}, "
+                    f"pod={debug_info.get('pod_name')}"
+                )
+
                 await tx.execute_raw(f"SET LOCAL search_path TO {SEARCH_PATH}")
                 if execute:
                     result = await tx.execute_raw(formatted_query, *args)  # type: ignore
                 else:
                     result = await tx.query_raw(formatted_query, *args)  # type: ignore
+
+                logger.info(
+                    f"Vector query SUCCESS. backend_pid={debug_info.get('backend_pid')}"
+                )
         else:
             # Regular query without vector types, or already in a transaction
             if execute:
@@ -233,12 +290,12 @@ async def _raw_with_schema(
             try:
                 debug_info = await get_connection_debug_info()
                 logger.error(
-                    f"Database object not found. Connection debug info: {debug_info}. "
+                    f"Vector query FAILED. Connection debug info: {debug_info}. "
                     f"Query template: {query_template[:200]}... Error: {error_msg}"
                 )
             except Exception:
                 logger.error(
-                    f"Database object not found (debug info unavailable). "
+                    f"Vector query FAILED (debug info unavailable). "
                     f"Query template: {query_template[:200]}... Error: {error_msg}"
                 )
         raise
