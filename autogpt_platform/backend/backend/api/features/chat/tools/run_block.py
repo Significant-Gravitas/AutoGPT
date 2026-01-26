@@ -222,6 +222,7 @@ class RunBlockTool(BaseTool):
                 graph_version=None,
             )
 
+        synthetic_exec_id = None
         try:
             # Generate synthetic execution context for standalone block execution
             synthetic_exec_id = f"copilot-{session.session_id}-{uuid.uuid4().hex[:8]}"
@@ -253,6 +254,8 @@ class RunBlockTool(BaseTool):
                 if actual_credentials:
                     exec_kwargs[field_name] = actual_credentials
                 else:
+                    if synthetic_exec_id:
+                        clean_exec_files(synthetic_exec_id)
                     return ErrorResponse(
                         message=f"Failed to retrieve credentials for {field_name}",
                         session_id=session_id,
@@ -281,7 +284,7 @@ class RunBlockTool(BaseTool):
         except BlockError as e:
             logger.warning(f"Block execution failed: {e}")
             # Clean up temporary files even on failure
-            if "synthetic_exec_id" in locals():
+            if synthetic_exec_id:
                 clean_exec_files(synthetic_exec_id)
             return ErrorResponse(
                 message=f"Block execution failed: {e}",
@@ -291,7 +294,7 @@ class RunBlockTool(BaseTool):
         except Exception as e:
             logger.error(f"Unexpected error executing block: {e}", exc_info=True)
             # Clean up temporary files even on failure
-            if "synthetic_exec_id" in locals():
+            if synthetic_exec_id:
                 clean_exec_files(synthetic_exec_id)
             return ErrorResponse(
                 message=f"Failed to execute block: {str(e)}",
