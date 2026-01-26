@@ -6,10 +6,10 @@ Handles all database operations for pending human reviews.
 import asyncio
 import logging
 from datetime import datetime, timezone
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from prisma.enums import ReviewStatus
-from prisma.models import PendingHumanReview
+from prisma.models import AgentNodeExecution, PendingHumanReview
 from prisma.types import PendingHumanReviewUpdateInput
 from pydantic import BaseModel
 
@@ -17,7 +17,11 @@ from backend.api.features.executions.review.model import (
     PendingHumanReviewModel,
     SafeJsonData,
 )
+from backend.data.execution import get_graph_execution_meta
 from backend.util.json import SafeJson
+
+if TYPE_CHECKING:
+    pass
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +34,125 @@ class ReviewResult(BaseModel):
     message: str = ""
     processed: bool
     node_exec_id: str
+
+
+def get_auto_approve_key(graph_exec_id: str, node_id: str) -> str:
+    """Generate the special nodeExecId key for auto-approval records."""
+    return f"auto_approve_{graph_exec_id}_{node_id}"
+
+
+async def check_approval(
+    node_exec_id: str,
+    graph_exec_id: str,
+    node_id: str,
+    user_id: str,
+    input_data: SafeJsonData | None = None,
+) -> Optional[ReviewResult]:
+    """
+    Check if there's an existing approval for this node execution.
+
+    Checks both:
+    1. Normal approval by node_exec_id (previous run of the same node execution)
+    2. Auto-approval by special key pattern "auto_approve_{graph_exec_id}_{node_id}"
+
+    Args:
+        node_exec_id: ID of the node execution
+        graph_exec_id: ID of the graph execution
+        node_id: ID of the node definition (not execution)
+        user_id: ID of the user (for data isolation)
+        input_data: Current input data (used for auto-approvals to avoid stale data)
+
+    Returns:
+        ReviewResult if approval found (either normal or auto), None otherwise
+    """
+    auto_approve_key = get_auto_approve_key(graph_exec_id, node_id)
+
+    # Check for either normal approval or auto-approval in a single query
+    existing_review = await PendingHumanReview.prisma().find_first(
+        where={
+            "OR": [
+                {"nodeExecId": node_exec_id},
+                {"nodeExecId": auto_approve_key},
+            ],
+            "status": ReviewStatus.APPROVED,
+            "userId": user_id,
+        },
+    )
+
+    if existing_review:
+        is_auto_approval = existing_review.nodeExecId == auto_approve_key
+        logger.info(
+            f"Found {'auto-' if is_auto_approval else ''}approval for node {node_id} "
+            f"(exec: {node_exec_id}) in execution {graph_exec_id}"
+        )
+        # For auto-approvals, use current input_data to avoid replaying stale payload
+        # For normal approvals, use the stored payload (which may have been edited)
+        return ReviewResult(
+            data=(
+                input_data
+                if is_auto_approval and input_data is not None
+                else existing_review.payload
+            ),
+            status=ReviewStatus.APPROVED,
+            message=(
+                "Auto-approved (user approved all future actions for this node)"
+                if is_auto_approval
+                else existing_review.reviewMessage or ""
+            ),
+            processed=True,
+            node_exec_id=existing_review.nodeExecId,
+        )
+
+    return None
+
+
+async def create_auto_approval_record(
+    user_id: str,
+    graph_exec_id: str,
+    graph_id: str,
+    graph_version: int,
+    node_id: str,
+    payload: SafeJsonData,
+) -> None:
+    """
+    Create an auto-approval record for a node in this execution.
+
+    This is stored as a PendingHumanReview with a special nodeExecId pattern
+    and status=APPROVED, so future executions of the same node can skip review.
+
+    Raises:
+        ValueError: If the graph execution doesn't belong to the user
+    """
+    # Validate that the graph execution belongs to this user (defense in depth)
+    graph_exec = await get_graph_execution_meta(
+        user_id=user_id, execution_id=graph_exec_id
+    )
+    if not graph_exec:
+        raise ValueError(
+            f"Graph execution {graph_exec_id} not found or doesn't belong to user {user_id}"
+        )
+
+    auto_approve_key = get_auto_approve_key(graph_exec_id, node_id)
+
+    await PendingHumanReview.prisma().upsert(
+        where={"nodeExecId": auto_approve_key},
+        data={
+            "create": {
+                "nodeExecId": auto_approve_key,
+                "userId": user_id,
+                "graphExecId": graph_exec_id,
+                "graphId": graph_id,
+                "graphVersion": graph_version,
+                "payload": SafeJson(payload),
+                "instructions": "Auto-approval record",
+                "editable": False,
+                "status": ReviewStatus.APPROVED,
+                "processed": True,
+                "reviewedAt": datetime.now(timezone.utc),
+            },
+            "update": {},  # Already exists, no update needed
+        },
+    )
 
 
 async def get_or_create_human_review(
@@ -108,6 +231,87 @@ async def get_or_create_human_review(
         )
 
 
+async def get_pending_review_by_node_exec_id(
+    node_exec_id: str, user_id: str
+) -> Optional["PendingHumanReviewModel"]:
+    """
+    Get a pending review by its node execution ID.
+
+    Args:
+        node_exec_id: The node execution ID to look up
+        user_id: User ID for authorization (only returns if review belongs to this user)
+
+    Returns:
+        The pending review if found and belongs to user, None otherwise
+    """
+    review = await PendingHumanReview.prisma().find_first(
+        where={
+            "nodeExecId": node_exec_id,
+            "userId": user_id,
+            "status": ReviewStatus.WAITING,
+        }
+    )
+
+    if not review:
+        return None
+
+    # Local import to avoid event loop conflicts in tests
+    from backend.data.execution import get_node_execution
+
+    node_exec = await get_node_execution(review.nodeExecId)
+    node_id = node_exec.node_id if node_exec else review.nodeExecId
+    return PendingHumanReviewModel.from_db(review, node_id=node_id)
+
+
+async def get_pending_reviews_by_node_exec_ids(
+    node_exec_ids: list[str], user_id: str
+) -> dict[str, "PendingHumanReviewModel"]:
+    """
+    Get multiple pending reviews by their node execution IDs in a single batch query.
+
+    Args:
+        node_exec_ids: List of node execution IDs to look up
+        user_id: User ID for authorization (only returns reviews belonging to this user)
+
+    Returns:
+        Dictionary mapping node_exec_id -> PendingHumanReviewModel for found reviews
+    """
+    if not node_exec_ids:
+        return {}
+
+    reviews = await PendingHumanReview.prisma().find_many(
+        where={
+            "nodeExecId": {"in": node_exec_ids},
+            "userId": user_id,
+            "status": ReviewStatus.WAITING,
+        }
+    )
+
+    if not reviews:
+        return {}
+
+    # Batch fetch all node executions to avoid N+1 queries
+    node_exec_ids_to_fetch = [review.nodeExecId for review in reviews]
+    node_execs = await AgentNodeExecution.prisma().find_many(
+        where={"id": {"in": node_exec_ids_to_fetch}},
+        include={"Node": True},
+    )
+
+    # Create mapping from node_exec_id to node_id
+    node_exec_id_to_node_id = {
+        node_exec.id: node_exec.agentNodeId for node_exec in node_execs
+    }
+
+    result = {}
+    for review in reviews:
+        node_id = node_exec_id_to_node_id.get(review.nodeExecId, review.nodeExecId)
+        result[review.nodeExecId] = PendingHumanReviewModel.from_db(
+            review, node_id=node_id
+        )
+
+    return result
+
+
 async def has_pending_reviews_for_graph_exec(graph_exec_id: str) -> bool:
     """
     Check if a graph execution has any pending reviews.
@@ -137,8 +341,11 @@ async def get_pending_reviews_for_user(
         page_size: Number of reviews per page
 
     Returns:
-        List of pending review models
+        List of pending review models with node_id included
     """
+    # Local import to avoid event loop conflicts in tests
+    from backend.data.execution import get_node_execution
+
     # Calculate offset for pagination
     offset = (page - 1) * page_size
 
@@ -149,7 +356,14 @@ async def get_pending_reviews_for_user(
         take=page_size,
     )
 
-    return [PendingHumanReviewModel.from_db(review) for review in reviews]
+    # Fetch node_id for each review from NodeExecution
+    result = []
+    for review in reviews:
+        node_exec = await get_node_execution(review.nodeExecId)
+        node_id = node_exec.node_id if node_exec else review.nodeExecId
+        result.append(PendingHumanReviewModel.from_db(review, node_id=node_id))
+
+    return result
 
 
 async def get_pending_reviews_for_execution(
@@ -163,8 +377,11 @@ async def get_pending_reviews_for_execution(
         user_id: User ID for security validation
 
     Returns:
-        List of pending review models
+        List of pending review models with node_id included
     """
+    # Local import to avoid event loop conflicts in tests
+    from backend.data.execution import get_node_execution
+
     reviews = await PendingHumanReview.prisma().find_many(
         where={
             "userId": user_id,
@@ -174,7 +391,14 @@ async def get_pending_reviews_for_execution(
         order={"createdAt": "asc"},
     )
 
-    return [PendingHumanReviewModel.from_db(review) for review in reviews]
+    # Fetch node_id for each review from NodeExecution
+    result = []
+    for review in reviews:
+        node_exec = await get_node_execution(review.nodeExecId)
+        node_id = node_exec.node_id if node_exec else review.nodeExecId
+        result.append(PendingHumanReviewModel.from_db(review, node_id=node_id))
+
+    return result
 
 
 async def process_all_reviews_for_execution(
@@ -244,11 +468,19 @@ async def process_all_reviews_for_execution(
     # Note: Execution resumption is now handled at the API layer after ALL reviews
     # for an execution are processed (both approved and rejected)
 
-    # Return as dict for easy access
-    return {
-        review.nodeExecId: PendingHumanReviewModel.from_db(review)
-        for review in updated_reviews
-    }
+    # Fetch node_id for each review and return as dict for easy access
+    # Local import to avoid event loop conflicts in tests
+    from backend.data.execution import get_node_execution
+
+    result = {}
+    for review in updated_reviews:
+        node_exec = await get_node_execution(review.nodeExecId)
+        node_id = node_exec.node_id if node_exec else review.nodeExecId
+        result[review.nodeExecId] = PendingHumanReviewModel.from_db(
+            review, node_id=node_id
+        )
+
+    return result
 
 
 async def update_review_processed_status(node_exec_id: str, processed: bool) -> None:
@@ -256,3 +488,44 @@ async def update_review_processed_status(node_exec_id: str, processed: bool) -> 
     await PendingHumanReview.prisma().update(
         where={"nodeExecId": node_exec_id}, data={"processed": processed}
     )
+
+
+async def cancel_pending_reviews_for_execution(graph_exec_id: str, user_id: str) -> int:
+    """
+    Cancel all pending reviews for a graph execution (e.g., when execution is stopped).
+
+    Marks all WAITING reviews as REJECTED with a message indicating the execution was stopped.
+
+    Args:
+        graph_exec_id: The graph execution ID
+        user_id: User ID who owns the execution (for security validation)
+
+    Returns:
+        Number of reviews cancelled
+
+    Raises:
+        ValueError: If the graph execution doesn't belong to the user
+    """
+    # Validate user ownership before cancelling reviews
+    graph_exec = await get_graph_execution_meta(
+        user_id=user_id, execution_id=graph_exec_id
+    )
+    if not graph_exec:
+        raise ValueError(
+            f"Graph execution {graph_exec_id} not found or doesn't belong to user {user_id}"
+        )
+
+    result = await PendingHumanReview.prisma().update_many(
+        where={
+            "graphExecId": graph_exec_id,
+            "userId": user_id,
+            "status": ReviewStatus.WAITING,
+        },
+        data={
+            "status": ReviewStatus.REJECTED,
+            "reviewMessage": "Execution was stopped by user",
+            "processed": True,
+            "reviewedAt": datetime.now(timezone.utc),
+        },
+    )
+    return result

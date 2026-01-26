@@ -1,3 +1,4 @@
+import asyncio
 import inspect
 import logging
 import time
@@ -57,6 +58,11 @@ class SpinTestServer:
         self.agent_server.__exit__(exc_type, exc_val, exc_tb)
         self.db_api.__exit__(exc_type, exc_val, exc_tb)
         self.notif_manager.__exit__(exc_type, exc_val, exc_tb)
+
+        # Give services time to fully shut down
+        #  This prevents event loop issues where services haven't fully cleaned up
+        # before the next test starts
+        await asyncio.sleep(0.5)
 
     def setup_dependency_overrides(self):
         # Override get_user_id for testing

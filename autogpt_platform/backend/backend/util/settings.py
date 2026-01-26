@@ -350,6 +350,19 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Whether to mark failed scans as clean or not",
     )
 
+    agentgenerator_host: str = Field(
+        default="",
+        description="The host for the Agent Generator service (empty to use built-in)",
+    )
+    agentgenerator_port: int = Field(
+        default=8000,
+        description="The port for the Agent Generator service",
+    )
+    agentgenerator_timeout: int = Field(
+        default=120,
+        description="The timeout in seconds for Agent Generator service requests",
+    )
+
     enable_example_blocks: bool = Field(
         default=False,
         description="Whether to enable example blocks in production",
