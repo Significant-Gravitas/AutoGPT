@@ -1,6 +1,7 @@
 """Tool for executing blocks directly."""
 
 import logging
+import uuid
 from collections import defaultdict
 from typing import Any
 
@@ -12,6 +13,7 @@ from backend.data.execution import ExecutionContext
 from backend.data.model import CredentialsMetaInput
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util.exceptions import BlockError
+from backend.util.file import clean_exec_files
 
 from .base import BaseTool
 from .models import (
@@ -221,10 +223,21 @@ class RunBlockTool(BaseTool):
             )
 
         try:
-            # Fetch actual credentials and prepare kwargs for block execution
-            # Create execution context with defaults (blocks may require it)
+            # Generate synthetic execution context for standalone block execution
+            synthetic_exec_id = f"copilot-{session.session_id}-{uuid.uuid4().hex[:8]}"
+
             exec_kwargs: dict[str, Any] = {
                 "user_id": user_id,
+                # File storage isolation - creates {temp}/exec_file/{graph_exec_id}/
+                "graph_exec_id": synthetic_exec_id,
+                # Unique output filenames (for media blocks like LoopVideoBlock)
+                "node_exec_id": f"{synthetic_exec_id}-{uuid.uuid4().hex[:8]}",
+                # Memory segmentation (for Mem0 blocks) - user-scoped
+                "graph_id": f"copilot-{user_id}",
+                # Standard context
+                "graph_version": 1,
+                "node_id": block_id,
+                # Execution context with defaults (blocks may require it)
                 "execution_context": ExecutionContext(),
             }
 
@@ -253,6 +266,9 @@ class RunBlockTool(BaseTool):
             ):
                 outputs[output_name].append(output_data)
 
+            # Clean up temporary files from this execution
+            clean_exec_files(synthetic_exec_id)
+
             return BlockOutputResponse(
                 message=f"Block '{block.name}' executed successfully",
                 block_id=block_id,
@@ -264,6 +280,9 @@ class RunBlockTool(BaseTool):
 
         except BlockError as e:
             logger.warning(f"Block execution failed: {e}")
+            # Clean up temporary files even on failure
+            if "synthetic_exec_id" in locals():
+                clean_exec_files(synthetic_exec_id)
             return ErrorResponse(
                 message=f"Block execution failed: {e}",
                 error=str(e),
@@ -271,6 +290,9 @@ class RunBlockTool(BaseTool):
             )
         except Exception as e:
             logger.error(f"Unexpected error executing block: {e}", exc_info=True)
+            # Clean up temporary files even on failure
+            if "synthetic_exec_id" in locals():
+                clean_exec_files(synthetic_exec_id)
             return ErrorResponse(
                 message=f"Failed to execute block: {str(e)}",
                 error=str(e),
