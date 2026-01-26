@@ -222,55 +222,43 @@ class RunBlockTool(BaseTool):
                 graph_version=None,
             )
 
-        synthetic_exec_id = None
-        try:
-            # Generate synthetic execution context for standalone block execution
-            synthetic_exec_id = f"copilot-{session.session_id}-{uuid.uuid4().hex[:8]}"
+        # Generate synthetic execution context for standalone block execution
+        # These IDs are used as opaque strings for file paths and external APIs,
+        # not as DB foreign keys (blocks requiring real DB records are excluded via SECRT-1831)
+        synthetic_exec_id = f"copilot-{session.session_id}-{uuid.uuid4().hex[:8]}"
 
-            exec_kwargs: dict[str, Any] = {
-                "user_id": user_id,
-                # File storage isolation - creates {temp}/exec_file/{graph_exec_id}/
-                "graph_exec_id": synthetic_exec_id,
-                # Unique output filenames (for media blocks like LoopVideoBlock)
-                "node_exec_id": f"{synthetic_exec_id}-{uuid.uuid4().hex[:8]}",
-                # Memory segmentation (for Mem0 blocks) - user-scoped
-                "graph_id": f"copilot-{user_id}",
-                # Standard context
-                "graph_version": 1,
-                "node_id": block_id,
-                # Execution context with defaults (blocks may require it)
-                "execution_context": ExecutionContext(),
-            }
+        exec_kwargs: dict[str, Any] = {
+            "user_id": user_id,
+            "graph_exec_id": synthetic_exec_id,
+            "node_exec_id": f"{synthetic_exec_id}-{uuid.uuid4().hex[:8]}",
+            "graph_id": f"copilot-{user_id}",
+            "graph_version": 1,
+            "node_id": block_id,
+            "execution_context": ExecutionContext(),
+        }
 
-            for field_name, cred_meta in matched_credentials.items():
-                # Inject metadata into input_data (for validation)
-                if field_name not in input_data:
-                    input_data[field_name] = cred_meta.model_dump()
+        # Fetch and inject credentials
+        for field_name, cred_meta in matched_credentials.items():
+            if field_name not in input_data:
+                input_data[field_name] = cred_meta.model_dump()
 
-                # Fetch actual credentials and pass as kwargs (for execution)
-                actual_credentials = await creds_manager.get(
-                    user_id, cred_meta.id, lock=False
+            actual_credentials = await creds_manager.get(
+                user_id, cred_meta.id, lock=False
+            )
+            if not actual_credentials:
+                return ErrorResponse(
+                    message=f"Failed to retrieve credentials for {field_name}",
+                    session_id=session_id,
                 )
-                if actual_credentials:
-                    exec_kwargs[field_name] = actual_credentials
-                else:
-                    if synthetic_exec_id:
-                        clean_exec_files(synthetic_exec_id)
-                    return ErrorResponse(
-                        message=f"Failed to retrieve credentials for {field_name}",
-                        session_id=session_id,
-                    )
+            exec_kwargs[field_name] = actual_credentials
 
-            # Execute the block and collect outputs
+        try:
             outputs: dict[str, list[Any]] = defaultdict(list)
             async for output_name, output_data in block.execute(
                 input_data,
                 **exec_kwargs,
             ):
                 outputs[output_name].append(output_data)
-
-            # Clean up temporary files from this execution
-            clean_exec_files(synthetic_exec_id)
 
             return BlockOutputResponse(
                 message=f"Block '{block.name}' executed successfully",
@@ -283,9 +271,6 @@ class RunBlockTool(BaseTool):
 
         except BlockError as e:
             logger.warning(f"Block execution failed: {e}")
-            # Clean up temporary files even on failure
-            if synthetic_exec_id:
-                clean_exec_files(synthetic_exec_id)
             return ErrorResponse(
                 message=f"Block execution failed: {e}",
                 error=str(e),
@@ -293,14 +278,13 @@ class RunBlockTool(BaseTool):
             )
         except Exception as e:
             logger.error(f"Unexpected error executing block: {e}", exc_info=True)
-            # Clean up temporary files even on failure
-            if synthetic_exec_id:
-                clean_exec_files(synthetic_exec_id)
             return ErrorResponse(
                 message=f"Failed to execute block: {str(e)}",
                 error=str(e),
                 session_id=session_id,
             )
+        finally:
+            clean_exec_files(synthetic_exec_id)
 
     def _get_inputs_list(self, block: Any) -> list[dict[str, Any]]:
         """Extract non-credential inputs from block schema."""
