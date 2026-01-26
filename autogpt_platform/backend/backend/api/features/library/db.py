@@ -583,7 +583,13 @@ async def update_library_agent(
             )
         update_fields["isDeleted"] = is_deleted
     if settings is not None:
-        update_fields["settings"] = SafeJson(settings.model_dump())
+        existing_agent = await get_library_agent(id=library_agent_id, user_id=user_id)
+        current_settings_dict = (
+            existing_agent.settings.model_dump() if existing_agent.settings else {}
+        )
+        new_settings = settings.model_dump(exclude_unset=True)
+        merged_settings = {**current_settings_dict, **new_settings}
+        update_fields["settings"] = SafeJson(merged_settings)
 
     try:
         # If graph_version is provided, update to that specific version
