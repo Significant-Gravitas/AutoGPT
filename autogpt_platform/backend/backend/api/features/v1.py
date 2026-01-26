@@ -364,6 +364,8 @@ async def execute_graph_block(
     obj = get_block(block_id)
     if not obj:
         raise HTTPException(status_code=404, detail=f"Block #{block_id} not found.")
+    if obj.disabled:
+        raise HTTPException(status_code=403, detail=f"Block #{block_id} is disabled.")
 
     user = await get_user_by_id(user_id)
     if not user:

@@ -38,8 +38,12 @@ export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
 
     return outputNodes
       .map((node) => {
-        const executionResult = node.data.nodeExecutionResult;
-        const outputData = executionResult?.output_data?.output;
+        const executionResults = node.data.nodeExecutionResults || [];
+        const latestResult =
+          executionResults.length > 0
+            ? executionResults[executionResults.length - 1]
+            : undefined;
+        const outputData = latestResult?.output_data?.output;
 
         const renderer = globalRegistry.getRenderer(outputData);
 

@@ -48,6 +48,7 @@ from .response_model import (
     StreamUsage,
 )
 from .tools import execute_tool, tools
+from .tracking import track_user_message
 
 logger = logging.getLogger(__name__)
 
@@ -103,16 +104,33 @@ async def _build_system_prompt(user_id: str | None) -> tuple[str, Any]:
     return compiled, understanding
 
 
-async def _generate_session_title(message: str) -> str | None:
+async def _generate_session_title(
+    message: str,
+    user_id: str | None = None,
+    session_id: str | None = None,
+) -> str | None:
     """Generate a concise title for a chat session based on the first message.
 
     Args:
         message: The first user message in the session
+        user_id: User ID for OpenRouter tracing (optional)
+        session_id: Session ID for OpenRouter tracing (optional)
 
     Returns:
         A short title (3-6 words) or None if generation fails
     """
     try:
+        # Build extra_body for OpenRouter tracing and PostHog analytics
+        extra_body: dict[str, Any] = {}
+        if user_id:
+            extra_body["user"] = user_id[:128]  # OpenRouter limit
+            extra_body["posthogDistinctId"] = user_id
+        if session_id:
+            extra_body["session_id"] = session_id[:128]  # OpenRouter limit
+        extra_body["posthogProperties"] = {
+            "environment": settings.config.app_env.value,
+        }
+
         response = await client.chat.completions.create(
             model=config.title_model,
             messages=[
@@ -127,6 +145,7 @@ async def _generate_session_title(message: str) -> str | None:
                 {"role": "user", "content": message[:500]},  # Limit input length
             ],
             max_tokens=20,
+            extra_body=extra_body,
         )
         title = response.choices[0].message.content
         if title:
@@ -218,24 +237,23 @@ async def stream_chat_completion(
         )
 
     if message:
-        # Build message content with context if provided
-        message_content = message
-        if context and context.get("url") and context.get("content"):
-            context_text = f"Page URL: {context['url']}\n\nPage Content:\n{context['content']}\n\n---\n\nUser Message: {message}"
-            message_content = context_text
-            logger.info(
-                f"Including page context: URL={context['url']}, content_length={len(context['content'])}"
-            )
-
         session.messages.append(
             ChatMessage(
-                role="user" if is_user_message else "assistant", content=message_content
+                role="user" if is_user_message else "assistant", content=message
             )
         )
         logger.info(
             f"Appended message (role={'user' if is_user_message else 'assistant'}), "
             f"new message_count={len(session.messages)}"
         )
+
+        # Track user message in PostHog
+        if is_user_message:
+            track_user_message(
+                user_id=user_id,
+                session_id=session_id,
+                message_length=len(message),
+            )
 
     logger.info(
         f"Upserting session: {session.session_id} with user id {session.user_id}, "
@@ -256,10 +274,15 @@ async def stream_chat_completion(
             # stale data issues when the main flow modifies the session
             captured_session_id = session_id
             captured_message = message
+            captured_user_id = user_id
 
             async def _update_title():
                 try:
-                    title = await _generate_session_title(captured_message)
+                    title = await _generate_session_title(
+                        captured_message,
+                        user_id=captured_user_id,
+                        session_id=captured_session_id,
+                    )
                     if title:
                         # Use dedicated title update function that doesn't
                         # touch messages, avoiding race conditions
@@ -698,6 +721,20 @@ async def _stream_chat_chunks(
                     f"{f' (retry {retry_count}/{MAX_RETRIES})' if retry_count > 0 else ''}"
                 )
 
+                # Build extra_body for OpenRouter tracing and PostHog analytics
+                extra_body: dict[str, Any] = {
+                    "posthogProperties": {
+                        "environment": settings.config.app_env.value,
+                    },
+                }
+                if session.user_id:
+                    extra_body["user"] = session.user_id[:128]  # OpenRouter limit
+                    extra_body["posthogDistinctId"] = session.user_id
+                if session.session_id:
+                    extra_body["session_id"] = session.session_id[
+                        :128
+                    ]  # OpenRouter limit
+
                 # Create the stream with proper types
                 stream = await client.chat.completions.create(
                     model=model,
@@ -706,6 +743,7 @@ async def _stream_chat_chunks(
                     tool_choice="auto",
                     stream=True,
                     stream_options={"include_usage": True},
+                    extra_body=extra_body,
                 )
 
                 # Variables to accumulate tool calls
