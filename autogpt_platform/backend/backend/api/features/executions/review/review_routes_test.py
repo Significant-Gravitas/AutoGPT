@@ -506,7 +506,7 @@ async def test_process_review_action_review_not_found(
     response = await client.post("/api/review/action", json=request_data)
 
     assert response.status_code == 404
-    assert "No pending review found" in response.json()["detail"]
+    assert "Review(s) not found" in response.json()["detail"]
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -596,7 +596,7 @@ async def test_process_review_action_invalid_node_exec_id(
 
     # Returns 404 when review is not found
     assert response.status_code == 404
-    assert "No pending review found" in response.json()["detail"]
+    assert "Review(s) not found" in response.json()["detail"]
 
 
 @pytest.mark.asyncio(loop_scope="session")
