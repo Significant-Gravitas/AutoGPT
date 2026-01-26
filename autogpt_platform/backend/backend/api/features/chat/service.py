@@ -678,6 +678,7 @@ async def _summarize_messages(
     model: str = "openai/gpt-4o-mini",
     api_key: str | None = None,
     base_url: str | None = None,
+    timeout: float = 30.0,
 ) -> str:
     """Summarize a list of messages into concise context.
 
@@ -686,6 +687,7 @@ async def _summarize_messages(
         model: Model to use for summarization (default: gpt-4o-mini)
         api_key: API key for OpenAI client
         base_url: Base URL for OpenAI client
+        timeout: Request timeout in seconds (default: 30.0)
 
     Returns:
         Summarized text
@@ -700,10 +702,18 @@ async def _summarize_messages(
 
     conversation_text = "\n\n".join(conversation)
 
+    # Truncate conversation to fit within summarization model's context
+    # gpt-4o-mini has 128k context, but we limit to ~25k tokens (~100k chars) for safety
+    MAX_CHARS = 100_000
+    if len(conversation_text) > MAX_CHARS:
+        conversation_text = conversation_text[:MAX_CHARS] + "\n\n[truncated]"
+
     # Call LLM to summarize
     import openai
 
-    summarization_client = openai.AsyncOpenAI(api_key=api_key, base_url=base_url)
+    summarization_client = openai.AsyncOpenAI(
+        api_key=api_key, base_url=base_url, timeout=timeout
+    )
 
     response = await summarization_client.chat.completions.create(
         model=model,
@@ -784,37 +794,62 @@ async def _stream_chat_chunks(
         # If over threshold, summarize old messages
         if token_count > 120_000:
             KEEP_RECENT = 15
+            MIN_MESSAGES_TO_SUMMARIZE = 5  # Don't summarize if too few old messages
+
+            # Check if we have a system prompt at the start
+            has_system_prompt = (
+                len(messages) > 0 and messages[0].get("role") == "system"
+            )
 
             if len(messages) > KEEP_RECENT:
-                # Split messages
+                # Split messages based on whether system prompt exists
                 recent_messages = messages[-KEEP_RECENT:]
-                old_messages_dict = messages_dict[
-                    1:-KEEP_RECENT
-                ]  # Exclude system prompt and recent
 
-                # Summarize old messages
-                summary_text = await _summarize_messages(
-                    old_messages_dict,
-                    model="openai/gpt-4o-mini",
-                    api_key=config.api_key,
-                    base_url=config.base_url,
-                )
+                if has_system_prompt:
+                    # Keep system prompt separate, summarize everything between system and recent
+                    system_msg = messages[0]
+                    old_messages_dict = messages_dict[1:-KEEP_RECENT]
+                else:
+                    # No system prompt, summarize everything except recent
+                    system_msg = None
+                    old_messages_dict = messages_dict[:-KEEP_RECENT]
 
-                # Build new message list
-                from openai.types.chat import ChatCompletionSystemMessageParam
+                # Only summarize if we have enough old messages
+                if len(old_messages_dict) >= MIN_MESSAGES_TO_SUMMARIZE:
+                    # Summarize old messages
+                    summary_text = await _summarize_messages(
+                        old_messages_dict,
+                        model="openai/gpt-4o-mini",
+                        api_key=config.api_key,
+                        base_url=config.base_url,
+                    )
 
-                summary_msg = ChatCompletionSystemMessageParam(
-                    role="system",
-                    content=f"[Previous conversation summary]: {summary_text}",
-                )
+                    # Build new message list
+                    from openai.types.chat import ChatCompletionSystemMessageParam
 
-                # Rebuild: system_prompt + summary + recent_messages
-                messages = [messages[0], summary_msg] + recent_messages
+                    summary_msg = ChatCompletionSystemMessageParam(
+                        role="system",
+                        content=f"[Previous conversation summary]: {summary_text}",
+                    )
 
-                logger.info(
-                    f"Context summarized: {token_count} tokens, "
-                    f"kept last {KEEP_RECENT} messages + summary"
-                )
+                    # Rebuild messages based on whether we have a system prompt
+                    if has_system_prompt:
+                        # system_prompt + summary + recent_messages
+                        messages = [system_msg, summary_msg] + recent_messages
+                    else:
+                        # summary + recent_messages (no original system prompt)
+                        messages = [summary_msg] + recent_messages
+
+                    logger.info(
+                        f"Context summarized: {token_count} tokens, "
+                        f"summarized {len(old_messages_dict)} old messages, "
+                        f"kept last {KEEP_RECENT} messages"
+                    )
+                else:
+                    logger.info(
+                        f"Skipping summarization: only {len(old_messages_dict)} old messages "
+                        f"(minimum {MIN_MESSAGES_TO_SUMMARIZE} required)"
+                    )
 
     except Exception as e:
         logger.error(f"Context summarization failed: {e}", exc_info=True)
