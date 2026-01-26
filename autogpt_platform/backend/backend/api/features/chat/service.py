@@ -673,6 +673,59 @@ def _is_region_blocked_error(error: Exception) -> bool:
     return "not available in your region" in str(error).lower()
 
 
+async def _summarize_messages(
+    messages: list,
+    model: str = "openai/gpt-4o-mini",
+    api_key: str | None = None,
+    base_url: str | None = None,
+) -> str:
+    """Summarize a list of messages into concise context.
+
+    Args:
+        messages: List of message dicts to summarize
+        model: Model to use for summarization (default: gpt-4o-mini)
+        api_key: API key for OpenAI client
+        base_url: Base URL for OpenAI client
+
+    Returns:
+        Summarized text
+    """
+    # Format messages for summarization
+    conversation = []
+    for msg in messages:
+        role = msg.get("role", "")
+        content = msg.get("content", "")
+        if content and role in ("user", "assistant"):
+            conversation.append(f"{role.upper()}: {content}")
+
+    conversation_text = "\n\n".join(conversation)
+
+    # Call LLM to summarize
+    import openai
+
+    summarization_client = openai.AsyncOpenAI(api_key=api_key, base_url=base_url)
+
+    response = await summarization_client.chat.completions.create(
+        model=model,
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "Summarize this conversation history concisely. "
+                    "Preserve key facts, decisions, and context. "
+                    "Format as 2-3 short paragraphs."
+                ),
+            },
+            {"role": "user", "content": f"Summarize:\n\n{conversation_text}"},
+        ],
+        max_tokens=500,
+        temperature=0.3,
+    )
+
+    summary = response.choices[0].message.content
+    return summary or "No summary available."
+
+
 async def _stream_chat_chunks(
     session: ChatSession,
     tools: list[ChatCompletionToolParam],
@@ -708,6 +761,64 @@ async def _stream_chat_chunks(
             content=system_prompt,
         )
         messages = [system_message] + messages
+
+    # Apply context window management
+    try:
+        from backend.util.prompt import estimate_token_count
+
+        # Convert to dict for token counting
+        # OpenAI message types are TypedDicts, so they're already dict-like
+        messages_dict = []
+        for msg in messages:
+            # TypedDict objects are already dicts, just filter None values
+            if isinstance(msg, dict):
+                msg_dict = {k: v for k, v in msg.items() if v is not None}
+            else:
+                # Fallback for unexpected types
+                msg_dict = dict(msg)
+            messages_dict.append(msg_dict)
+
+        # Estimate tokens
+        token_count = estimate_token_count(messages_dict, model="gpt-4o")
+
+        # If over threshold, summarize old messages
+        if token_count > 120_000:
+            KEEP_RECENT = 15
+
+            if len(messages) > KEEP_RECENT:
+                # Split messages
+                recent_messages = messages[-KEEP_RECENT:]
+                old_messages_dict = messages_dict[
+                    1:-KEEP_RECENT
+                ]  # Exclude system prompt and recent
+
+                # Summarize old messages
+                summary_text = await _summarize_messages(
+                    old_messages_dict,
+                    model="openai/gpt-4o-mini",
+                    api_key=config.api_key,
+                    base_url=config.base_url,
+                )
+
+                # Build new message list
+                from openai.types.chat import ChatCompletionSystemMessageParam
+
+                summary_msg = ChatCompletionSystemMessageParam(
+                    role="system",
+                    content=f"[Previous conversation summary]: {summary_text}",
+                )
+
+                # Rebuild: system_prompt + summary + recent_messages
+                messages = [messages[0], summary_msg] + recent_messages
+
+                logger.info(
+                    f"Context summarized: {token_count} tokens, "
+                    f"kept last {KEEP_RECENT} messages + summary"
+                )
+
+    except Exception as e:
+        logger.error(f"Context summarization failed: {e}", exc_info=True)
+        # Continue with original messages (fallback)
 
     # Loop to handle tool calls and continue conversation
     while True:
