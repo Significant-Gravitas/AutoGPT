@@ -788,8 +788,19 @@ async def _stream_chat_chunks(
                 msg_dict = dict(msg)
             messages_dict.append(msg_dict)
 
-        # Estimate tokens
-        token_count = estimate_token_count(messages_dict, model="gpt-4o")
+        # Estimate tokens using appropriate tokenizer
+        # Normalize model name for token counting (tiktoken only supports OpenAI models)
+        token_count_model = model
+        if "/" in model:
+            # Strip provider prefix (e.g., "anthropic/claude-opus-4.5" -> "claude-opus-4.5")
+            token_count_model = model.split("/")[-1]
+
+        # For Claude models, approximate with gpt-4o tokenizer
+        # Claude and GPT-4 have similar tokenization (~1 token per 4 chars)
+        if "claude" in token_count_model.lower():
+            token_count_model = "gpt-4o"
+
+        token_count = estimate_token_count(messages_dict, model=token_count_model)
 
         # If over threshold, summarize old messages
         if token_count > 120_000:
@@ -825,11 +836,16 @@ async def _stream_chat_chunks(
                     )
 
                     # Build new message list
-                    from openai.types.chat import ChatCompletionSystemMessageParam
+                    # Use assistant role (not system) to prevent privilege escalation
+                    # of user-influenced content to instruction-level authority
+                    from openai.types.chat import ChatCompletionAssistantMessageParam
 
-                    summary_msg = ChatCompletionSystemMessageParam(
-                        role="system",
-                        content=f"[Previous conversation summary]: {summary_text}",
+                    summary_msg = ChatCompletionAssistantMessageParam(
+                        role="assistant",
+                        content=(
+                            "[Previous conversation summary — for context only]: "
+                            f"{summary_text}"
+                        ),
                     )
 
                     # Rebuild messages based on whether we have a system prompt
