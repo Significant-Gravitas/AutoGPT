@@ -1,12 +1,15 @@
 "use client";
 
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { environment } from "@/services/environment";
 import { PostHogProvider as PHProvider } from "@posthog/react";
 import { usePathname, useSearchParams } from "next/navigation";
 import posthog from "posthog-js";
 import { ReactNode, useEffect, useRef } from "react";
 
 export function PostHogProvider({ children }: { children: ReactNode }) {
+  const isPostHogEnabled = environment.isPostHogEnabled();
+
   useEffect(() => {
     if (process.env.NEXT_PUBLIC_POSTHOG_KEY) {
       posthog.init(process.env.NEXT_PUBLIC_POSTHOG_KEY, {
@@ -19,15 +22,18 @@ export function PostHogProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  if (!isPostHogEnabled) return <>{children}</>;
+
   return <PHProvider client={posthog}>{children}</PHProvider>;
 }
 
 export function PostHogUserTracker() {
   const { user, isUserLoading } = useSupabase();
   const previousUserIdRef = useRef<string | null>(null);
+  const isPostHogEnabled = environment.isPostHogEnabled();
 
   useEffect(() => {
-    if (isUserLoading) return;
+    if (isUserLoading || !isPostHogEnabled) return;
 
     if (user) {
       if (previousUserIdRef.current !== user.id) {
@@ -41,7 +47,7 @@ export function PostHogUserTracker() {
       posthog.reset();
       previousUserIdRef.current = null;
     }
-  }, [user, isUserLoading]);
+  }, [user, isUserLoading, isPostHogEnabled]);
 
   return null;
 }
@@ -49,16 +55,17 @@ export function PostHogUserTracker() {
 export function PostHogPageViewTracker() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const isPostHogEnabled = environment.isPostHogEnabled();
 
   useEffect(() => {
-    if (pathname) {
+    if (pathname && isPostHogEnabled) {
       let url = window.origin + pathname;
       if (searchParams && searchParams.toString()) {
         url = url + `?${searchParams.toString()}`;
       }
       posthog.capture("$pageview", { $current_url: url });
     }
-  }, [pathname, searchParams]);
+  }, [pathname, searchParams, isPostHogEnabled]);
 
   return null;
 }
