@@ -407,7 +407,10 @@ export function OldAgentLibraryView() {
     api
       .forkLibraryAgent(agentID)
       .then((newAgent) => {
-        router.push(`/library/agents/${newAgent.id}`);
+        // Navigate directly to the builder with the new agent's graph
+        router.push(
+          `/build?flowID=${newAgent.graph_id}&flowVersion=${newAgent.graph_version}`,
+        );
       })
       .catch((error) => {
         console.error("Error copying agent:", error);
@@ -419,28 +422,31 @@ export function OldAgentLibraryView() {
       });
   }, [agentID, api, router, toast]);
 
+  const handleCustomizeAgent = useCallback(() => {
+    if (agent?.can_access_graph) {
+      // User owns this agent, navigate directly to builder
+      router.push(
+        `/build?flowID=${agent.graph_id}&flowVersion=${agent.graph_version}`,
+      );
+    } else {
+      // Marketplace agent - show copy confirmation dialog
+      setCopyAgentDialogOpen(true);
+    }
+  }, [agent, router]);
+
   const agentActions: ButtonAction[] = useMemo(
     () => [
       {
         label: "Customize agent",
-        href: `/build?flowID=${agent?.graph_id}&flowVersion=${agent?.graph_version}`,
-        disabled: !agent?.can_access_graph,
+        callback: handleCustomizeAgent,
       },
       { label: "Export agent to file", callback: downloadGraph },
-      ...(!agent?.can_access_graph
-        ? [
-            {
-              label: "Edit a copy",
-              callback: () => setCopyAgentDialogOpen(true),
-            },
-          ]
-        : []),
       {
         label: "Delete agent",
         callback: () => setAgentDeleteDialogOpen(true),
       },
     ],
-    [agent, downloadGraph],
+    [handleCustomizeAgent, downloadGraph],
   );
 
   const runGraph =
@@ -600,10 +606,9 @@ export function OldAgentLibraryView() {
               <DialogTitle>You&apos;re making an editable copy</DialogTitle>
               <DialogDescription className="pt-2">
                 The original Marketplace agent stays the same and cannot be
-                edited. We&apos;ll save a new version of this agent to your
-                Library. From there, you can customize it however you&apos;d
-                like by clicking &quot;Customize agent&quot; — this will open
-                the builder where you can see and modify the inner workings.
+                edited. We&apos;ll create a copy of this agent in your Library
+                and open it in the builder where you can see and modify its
+                inner workings.
               </DialogDescription>
             </DialogHeader>
             <DialogFooter className="justify-end">
