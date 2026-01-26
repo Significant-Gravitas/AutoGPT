@@ -98,21 +98,17 @@ export function ChatMessage({
     }
   }
 
-  const handleClarificationAnswers = useCallback(
-    function handleClarificationAnswers(answers: Record<string, string>) {
-      // Format answers as context for the tool to retry
-      if (onSendMessage) {
-        const contextMessage = Object.entries(answers)
-          .map(([keyword, answer]) => `${keyword}: ${answer}`)
-          .join("\n");
+  function handleClarificationAnswers(answers: Record<string, string>) {
+    if (onSendMessage) {
+      const contextMessage = Object.entries(answers)
+        .map(([keyword, answer]) => `${keyword}: ${answer}`)
+        .join("\n");
 
-        onSendMessage(
-          `I have the answers to your questions:\n\n${contextMessage}\n\nPlease proceed with creating the agent.`,
-        );
-      }
-    },
-    [onSendMessage],
-  );
+      onSendMessage(
+        `I have the answers to your questions:\n\n${contextMessage}\n\nPlease proceed with creating the agent.`,
+      );
+    }
+  }
 
   const handleCopy = useCallback(
     async function handleCopy() {
@@ -159,7 +155,6 @@ export function ChatMessage({
     );
   }
 
-  // Render clarification needed messages
   if (isClarificationNeeded && message.type === "clarification_needed") {
     return (
       <ClarificationQuestionsWidget

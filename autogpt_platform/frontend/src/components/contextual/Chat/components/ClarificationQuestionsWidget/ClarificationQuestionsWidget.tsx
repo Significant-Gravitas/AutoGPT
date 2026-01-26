@@ -2,6 +2,7 @@
 
 import { Button } from "@/components/atoms/Button/Button";
 import { Card } from "@/components/atoms/Card/Card";
+import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import { CheckCircleIcon, QuestionIcon } from "@phosphor-icons/react";
@@ -111,8 +112,11 @@ export function ClarificationQuestionsWidget({
                             Example: {q.example}
                           </Text>
                         )}
-                        <textarea
-                          className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        <Input
+                          type="textarea"
+                          id={`clarification-${q.keyword}-${index}`}
+                          label={q.question}
+                          hideLabel
                           placeholder="Your answer..."
                           rows={2}
                           value={answers[q.keyword] || ""}
