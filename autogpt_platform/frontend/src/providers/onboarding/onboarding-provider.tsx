@@ -1,4 +1,12 @@
 "use client";
+import {
+  getV1IsOnboardingEnabled,
+  getV1OnboardingState,
+  patchV1UpdateOnboardingState,
+  postV1CompleteOnboardingStep,
+} from "@/app/api/__generated__/endpoints/onboarding/onboarding";
+import { PostV1CompleteOnboardingStepStep } from "@/app/api/__generated__/models/postV1CompleteOnboardingStepStep";
+import { resolveResponse } from "@/app/api/helpers";
 import { Button } from "@/components/__legacy__/ui/button";
 import {
   Dialog,
@@ -15,7 +23,9 @@ import {
   WebSocketNotification,
 } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
+import { getHomepageRoute } from "@/lib/constants";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -28,19 +38,11 @@ import {
   useState,
 } from "react";
 import {
-  updateOnboardingState,
   fromBackendUserOnboarding,
-  shouldRedirectFromOnboarding,
   LocalOnboardingStateUpdate,
+  shouldRedirectFromOnboarding,
+  updateOnboardingState,
 } from "./helpers";
-import { resolveResponse } from "@/app/api/helpers";
-import {
-  getV1IsOnboardingEnabled,
-  getV1OnboardingState,
-  patchV1UpdateOnboardingState,
-  postV1CompleteOnboardingStep,
-} from "@/app/api/__generated__/endpoints/onboarding/onboarding";
-import { PostV1CompleteOnboardingStepStep } from "@/app/api/__generated__/models/postV1CompleteOnboardingStepStep";
 
 type FrontendOnboardingStep = PostV1CompleteOnboardingStepStep;
 
@@ -102,6 +104,8 @@ export default function OnboardingProvider({
   const pathname = usePathname();
   const router = useRouter();
   const { isLoggedIn } = useSupabase();
+  const isChatEnabled = useGetFlag(Flag.CHAT);
+  const homepageRoute = getHomepageRoute(isChatEnabled);
 
   useOnboardingTimezoneDetection();
 
@@ -146,7 +150,7 @@ export default function OnboardingProvider({
         if (isOnOnboardingRoute) {
           const enabled = await resolveResponse(getV1IsOnboardingEnabled());
           if (!enabled) {
-            router.push("/marketplace");
+            router.push(homepageRoute);
             return;
           }
         }
@@ -158,7 +162,7 @@ export default function OnboardingProvider({
           isOnOnboardingRoute &&
           shouldRedirectFromOnboarding(onboarding.completedSteps, pathname)
         ) {
-          router.push("/marketplace");
+          router.push(homepageRoute);
         }
       } catch (error) {
         console.error("Failed to initialize onboarding:", error);
@@ -173,7 +177,7 @@ export default function OnboardingProvider({
     }
 
     initializeOnboarding();
-  }, [api, isOnOnboardingRoute, router, isLoggedIn, pathname]);
+  }, [api, homepageRoute, isOnOnboardingRoute, router, isLoggedIn, pathname]);
 
   const handleOnboardingNotification = useCallback(
     (notification: WebSocketNotification) => {

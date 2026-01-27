@@ -1,15 +1,18 @@
 import asyncio
 import logging
+import time
+from asyncio import CancelledError
 from collections.abc import AsyncGenerator
 from typing import Any
 
 import orjson
-from langfuse import Langfuse
+from langfuse import get_client, propagate_attributes
+from langfuse.openai import openai  # type: ignore
 from openai import (
     APIConnectionError,
     APIError,
     APIStatusError,
-    AsyncOpenAI,
+    PermissionDeniedError,
     RateLimitError,
 )
 from openai.types.chat import ChatCompletionChunk, ChatCompletionToolParam
@@ -21,12 +24,12 @@ from backend.data.understanding import (
 from backend.util.exceptions import NotFoundError
 from backend.util.settings import Settings
 
-from . import db as chat_db
 from .config import ChatConfig
 from .model import (
     ChatMessage,
     ChatSession,
     Usage,
+    cache_chat_session,
     get_chat_session,
     update_session_title,
     upsert_chat_session,
@@ -45,15 +48,16 @@ from .response_model import (
     StreamUsage,
 )
 from .tools import execute_tool, tools
+from .tracking import track_user_message
 
 logger = logging.getLogger(__name__)
 
 config = ChatConfig()
 settings = Settings()
-client = AsyncOpenAI(api_key=config.api_key, base_url=config.base_url)
+client = openai.AsyncOpenAI(api_key=config.api_key, base_url=config.base_url)
 
-# Langfuse client (lazy initialization)
-_langfuse_client: Langfuse | None = None
+
+langfuse = get_client()
 
 
 class LangfuseNotConfiguredError(Exception):
@@ -69,65 +73,6 @@ def _is_langfuse_configured() -> bool:
     )
 
 
-def _get_langfuse_client() -> Langfuse:
-    """Get or create the Langfuse client for prompt management and tracing."""
-    global _langfuse_client
-    if _langfuse_client is None:
-        if not _is_langfuse_configured():
-            raise LangfuseNotConfiguredError(
-                "Langfuse is not configured. The chat feature requires Langfuse for prompt management. "
-                "Please set the LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY environment variables."
-            )
-        _langfuse_client = Langfuse(
-            public_key=settings.secrets.langfuse_public_key,
-            secret_key=settings.secrets.langfuse_secret_key,
-            host=settings.secrets.langfuse_host or "https://cloud.langfuse.com",
-        )
-    return _langfuse_client
-
-
-def _get_environment() -> str:
-    """Get the current environment name for Langfuse tagging."""
-    return settings.config.app_env.value
-
-
-def _get_langfuse_prompt() -> str:
-    """Fetch the latest production prompt from Langfuse.
-
-    Returns:
-        The compiled prompt text from Langfuse.
-
-    Raises:
-        Exception: If Langfuse is unavailable or prompt fetch fails.
-    """
-    try:
-        langfuse = _get_langfuse_client()
-        # cache_ttl_seconds=0 disables SDK caching to always get the latest prompt
-        prompt = langfuse.get_prompt(config.langfuse_prompt_name, cache_ttl_seconds=0)
-        compiled = prompt.compile()
-        logger.info(
-            f"Fetched prompt '{config.langfuse_prompt_name}' from Langfuse "
-            f"(version: {prompt.version})"
-        )
-        return compiled
-    except Exception as e:
-        logger.error(f"Failed to fetch prompt from Langfuse: {e}")
-        raise
-
-
-async def _is_first_session(user_id: str) -> bool:
-    """Check if this is the user's first chat session.
-
-    Returns True if the user has 1 or fewer sessions (meaning this is their first).
-    """
-    try:
-        session_count = await chat_db.get_user_session_count(user_id)
-        return session_count <= 1
-    except Exception as e:
-        logger.warning(f"Failed to check session count for user {user_id}: {e}")
-        return False  # Default to non-onboarding if we can't check
-
-
 async def _build_system_prompt(user_id: str | None) -> tuple[str, Any]:
     """Build the full system prompt including business understanding if available.
 
@@ -138,8 +83,6 @@ async def _build_system_prompt(user_id: str | None) -> tuple[str, Any]:
     Returns:
         Tuple of (compiled prompt string, Langfuse prompt object for tracing)
     """
-
-    langfuse = _get_langfuse_client()
 
     # cache_ttl_seconds=0 disables SDK caching to always get the latest prompt
     prompt = langfuse.get_prompt(config.langfuse_prompt_name, cache_ttl_seconds=0)
@@ -158,19 +101,36 @@ async def _build_system_prompt(user_id: str | None) -> tuple[str, Any]:
         context = "This is the first time you are meeting the user. Greet them and introduce them to the platform"
 
     compiled = prompt.compile(users_information=context)
-    return compiled, prompt
+    return compiled, understanding
 
 
-async def _generate_session_title(message: str) -> str | None:
+async def _generate_session_title(
+    message: str,
+    user_id: str | None = None,
+    session_id: str | None = None,
+) -> str | None:
     """Generate a concise title for a chat session based on the first message.
 
     Args:
         message: The first user message in the session
+        user_id: User ID for OpenRouter tracing (optional)
+        session_id: Session ID for OpenRouter tracing (optional)
 
     Returns:
         A short title (3-6 words) or None if generation fails
     """
     try:
+        # Build extra_body for OpenRouter tracing and PostHog analytics
+        extra_body: dict[str, Any] = {}
+        if user_id:
+            extra_body["user"] = user_id[:128]  # OpenRouter limit
+            extra_body["posthogDistinctId"] = user_id
+        if session_id:
+            extra_body["session_id"] = session_id[:128]  # OpenRouter limit
+        extra_body["posthogProperties"] = {
+            "environment": settings.config.app_env.value,
+        }
+
         response = await client.chat.completions.create(
             model=config.title_model,
             messages=[
@@ -185,6 +145,7 @@ async def _generate_session_title(message: str) -> str | None:
                 {"role": "user", "content": message[:500]},  # Limit input length
             ],
             max_tokens=20,
+            extra_body=extra_body,
         )
         title = response.choices[0].message.content
         if title:
@@ -217,6 +178,7 @@ async def assign_user_to_session(
 async def stream_chat_completion(
     session_id: str,
     message: str | None = None,
+    tool_call_response: str | None = None,
     is_user_message: bool = True,
     user_id: str | None = None,
     retry_count: int = 0,
@@ -256,11 +218,6 @@ async def stream_chat_completion(
         yield StreamFinish()
         return
 
-    # Langfuse observations will be created after session is loaded (need messages for input)
-    # Initialize to None so finally block can safely check and end them
-    trace = None
-    generation = None
-
     # Only fetch from Redis if session not provided (initial call)
     if session is None:
         session = await get_chat_session(session_id, user_id)
@@ -280,24 +237,23 @@ async def stream_chat_completion(
         )
 
     if message:
-        # Build message content with context if provided
-        message_content = message
-        if context and context.get("url") and context.get("content"):
-            context_text = f"Page URL: {context['url']}\n\nPage Content:\n{context['content']}\n\n---\n\nUser Message: {message}"
-            message_content = context_text
-            logger.info(
-                f"Including page context: URL={context['url']}, content_length={len(context['content'])}"
-            )
-
         session.messages.append(
             ChatMessage(
-                role="user" if is_user_message else "assistant", content=message_content
+                role="user" if is_user_message else "assistant", content=message
             )
         )
         logger.info(
             f"Appended message (role={'user' if is_user_message else 'assistant'}), "
             f"new message_count={len(session.messages)}"
         )
+
+        # Track user message in PostHog
+        if is_user_message:
+            track_user_message(
+                user_id=user_id,
+                session_id=session_id,
+                message_length=len(message),
+            )
 
     logger.info(
         f"Upserting session: {session.session_id} with user id {session.user_id}, "
@@ -318,10 +274,15 @@ async def stream_chat_completion(
             # stale data issues when the main flow modifies the session
             captured_session_id = session_id
             captured_message = message
+            captured_user_id = user_id
 
             async def _update_title():
                 try:
-                    title = await _generate_session_title(captured_message)
+                    title = await _generate_session_title(
+                        captured_message,
+                        user_id=captured_user_id,
+                        session_id=captured_session_id,
+                    )
                     if title:
                         # Use dedicated title update function that doesn't
                         # touch messages, avoiding race conditions
@@ -336,297 +297,349 @@ async def stream_chat_completion(
             asyncio.create_task(_update_title())
 
     # Build system prompt with business understanding
-    system_prompt, langfuse_prompt = await _build_system_prompt(user_id)
-
-    # Build input messages including system prompt for complete Langfuse logging
-    trace_input_messages = [{"role": "system", "content": system_prompt}] + [
-        m.model_dump() for m in session.messages
-    ]
+    system_prompt, understanding = await _build_system_prompt(user_id)
 
     # Create Langfuse trace for this LLM call (each call gets its own trace, grouped by session_id)
     # Using v3 SDK: start_observation creates a root span, update_trace sets trace-level attributes
-    try:
-        langfuse = _get_langfuse_client()
-        env = _get_environment()
-        trace = langfuse.start_observation(
-            name="chat_completion",
-            input={"messages": trace_input_messages},
-            metadata={
-                "environment": env,
-                "model": config.model,
-                "message_count": len(session.messages),
-                "prompt_name": langfuse_prompt.name if langfuse_prompt else None,
-                "prompt_version": langfuse_prompt.version if langfuse_prompt else None,
-            },
-        )
-        # Set trace-level attributes (session_id, user_id, tags)
-        trace.update_trace(
+    input = message
+    if not message and tool_call_response:
+        input = tool_call_response
+
+    langfuse = get_client()
+    with langfuse.start_as_current_observation(
+        as_type="span",
+        name="user-copilot-request",
+        input=input,
+    ) as span:
+        with propagate_attributes(
             session_id=session_id,
             user_id=user_id,
-            tags=[env, "copilot"],
-        )
-    except Exception as e:
-        logger.warning(f"Failed to create Langfuse trace: {e}")
+            tags=["copilot"],
+            metadata={
+                "users_information": format_understanding_for_prompt(understanding)[
+                    :200
+                ]  # langfuse only accepts upto to 200 chars
+            },
+        ):
 
-    # Initialize variables that will be used in finally block (must be defined before try)
-    assistant_response = ChatMessage(
-        role="assistant",
-        content="",
-    )
-    accumulated_tool_calls: list[dict[str, Any]] = []
-
-    # Wrap main logic in try/finally to ensure Langfuse observations are always ended
-    try:
-        has_yielded_end = False
-        has_yielded_error = False
-        has_done_tool_call = False
-        has_received_text = False
-        text_streaming_ended = False
-        tool_response_messages: list[ChatMessage] = []
-        should_retry = False
-
-        # Generate unique IDs for AI SDK protocol
-        import uuid as uuid_module
-
-        message_id = str(uuid_module.uuid4())
-        text_block_id = str(uuid_module.uuid4())
-
-        # Yield message start
-        yield StreamStart(messageId=message_id)
-
-        # Create Langfuse generation for each LLM call, linked to the prompt
-        # Using v3 SDK: start_observation with as_type="generation"
-        generation = (
-            trace.start_observation(
-                as_type="generation",
-                name="llm_call",
-                model=config.model,
-                input={"messages": trace_input_messages},
-                prompt=langfuse_prompt,
+            # Initialize variables that will be used in finally block (must be defined before try)
+            assistant_response = ChatMessage(
+                role="assistant",
+                content="",
             )
-            if trace
-            else None
-        )
+            accumulated_tool_calls: list[dict[str, Any]] = []
+            has_saved_assistant_message = False
+            has_appended_streaming_message = False
+            last_cache_time = 0.0
+            last_cache_content_len = 0
 
-        try:
-            async for chunk in _stream_chat_chunks(
-                session=session,
-                tools=tools,
-                system_prompt=system_prompt,
-                text_block_id=text_block_id,
-            ):
+            # Wrap main logic in try/finally to ensure Langfuse observations are always ended
+            has_yielded_end = False
+            has_yielded_error = False
+            has_done_tool_call = False
+            has_received_text = False
+            text_streaming_ended = False
+            tool_response_messages: list[ChatMessage] = []
+            should_retry = False
 
-                if isinstance(chunk, StreamTextStart):
-                    # Emit text-start before first text delta
-                    if not has_received_text:
+            # Generate unique IDs for AI SDK protocol
+            import uuid as uuid_module
+
+            message_id = str(uuid_module.uuid4())
+            text_block_id = str(uuid_module.uuid4())
+
+            # Yield message start
+            yield StreamStart(messageId=message_id)
+
+            try:
+                async for chunk in _stream_chat_chunks(
+                    session=session,
+                    tools=tools,
+                    system_prompt=system_prompt,
+                    text_block_id=text_block_id,
+                ):
+
+                    if isinstance(chunk, StreamTextStart):
+                        # Emit text-start before first text delta
+                        if not has_received_text:
+                            yield chunk
+                    elif isinstance(chunk, StreamTextDelta):
+                        delta = chunk.delta or ""
+                        assert assistant_response.content is not None
+                        assistant_response.content += delta
+                        has_received_text = True
+                        if not has_appended_streaming_message:
+                            session.messages.append(assistant_response)
+                            has_appended_streaming_message = True
+                        current_time = time.monotonic()
+                        content_len = len(assistant_response.content)
+                        if (
+                            current_time - last_cache_time >= 1.0
+                            and content_len > last_cache_content_len
+                        ):
+                            try:
+                                await cache_chat_session(session)
+                            except Exception as e:
+                                logger.warning(
+                                    f"Failed to cache partial session {session.session_id}: {e}"
+                                )
+                            last_cache_time = current_time
+                            last_cache_content_len = content_len
                         yield chunk
-                elif isinstance(chunk, StreamTextDelta):
-                    delta = chunk.delta or ""
-                    assert assistant_response.content is not None
-                    assistant_response.content += delta
-                    has_received_text = True
-                    yield chunk
-                elif isinstance(chunk, StreamTextEnd):
-                    # Emit text-end after text completes
-                    if has_received_text and not text_streaming_ended:
-                        text_streaming_ended = True
-                        yield chunk
-                elif isinstance(chunk, StreamToolInputStart):
-                    # Emit text-end before first tool call, but only if we've received text
-                    if has_received_text and not text_streaming_ended:
-                        yield StreamTextEnd(id=text_block_id)
-                        text_streaming_ended = True
-                    yield chunk
-                elif isinstance(chunk, StreamToolInputAvailable):
-                    # Accumulate tool calls in OpenAI format
-                    accumulated_tool_calls.append(
-                        {
-                            "id": chunk.toolCallId,
-                            "type": "function",
-                            "function": {
-                                "name": chunk.toolName,
-                                "arguments": orjson.dumps(chunk.input).decode("utf-8"),
-                            },
-                        }
-                    )
-                elif isinstance(chunk, StreamToolOutputAvailable):
-                    result_content = (
-                        chunk.output
-                        if isinstance(chunk.output, str)
-                        else orjson.dumps(chunk.output).decode("utf-8")
-                    )
-                    tool_response_messages.append(
-                        ChatMessage(
-                            role="tool",
-                            content=result_content,
-                            tool_call_id=chunk.toolCallId,
-                        )
-                    )
-                    has_done_tool_call = True
-                    # Track if any tool execution failed
-                    if not chunk.success:
-                        logger.warning(
-                            f"Tool {chunk.toolName} (ID: {chunk.toolCallId}) execution failed"
-                        )
-                    yield chunk
-                elif isinstance(chunk, StreamFinish):
-                    if not has_done_tool_call:
-                        # Emit text-end before finish if we received text but haven't closed it
+                    elif isinstance(chunk, StreamTextEnd):
+                        # Emit text-end after text completes
+                        if has_received_text and not text_streaming_ended:
+                            text_streaming_ended = True
+                            if assistant_response.content:
+                                logger.warn(
+                                    f"StreamTextEnd: Attempting to set output {assistant_response.content}"
+                                )
+                                span.update_trace(output=assistant_response.content)
+                                span.update(output=assistant_response.content)
+                            yield chunk
+                    elif isinstance(chunk, StreamToolInputStart):
+                        # Emit text-end before first tool call, but only if we've received text
                         if has_received_text and not text_streaming_ended:
                             yield StreamTextEnd(id=text_block_id)
                             text_streaming_ended = True
-                        has_yielded_end = True
                         yield chunk
-                elif isinstance(chunk, StreamError):
-                    has_yielded_error = True
-                elif isinstance(chunk, StreamUsage):
-                    session.usage.append(
-                        Usage(
-                            prompt_tokens=chunk.promptTokens,
-                            completion_tokens=chunk.completionTokens,
-                            total_tokens=chunk.totalTokens,
+                    elif isinstance(chunk, StreamToolInputAvailable):
+                        # Accumulate tool calls in OpenAI format
+                        accumulated_tool_calls.append(
+                            {
+                                "id": chunk.toolCallId,
+                                "type": "function",
+                                "function": {
+                                    "name": chunk.toolName,
+                                    "arguments": orjson.dumps(chunk.input).decode(
+                                        "utf-8"
+                                    ),
+                                },
+                            }
                         )
-                    )
-                else:
-                    logger.error(f"Unknown chunk type: {type(chunk)}", exc_info=True)
-        except Exception as e:
-            logger.error(f"Error during stream: {e!s}", exc_info=True)
+                    elif isinstance(chunk, StreamToolOutputAvailable):
+                        result_content = (
+                            chunk.output
+                            if isinstance(chunk.output, str)
+                            else orjson.dumps(chunk.output).decode("utf-8")
+                        )
+                        tool_response_messages.append(
+                            ChatMessage(
+                                role="tool",
+                                content=result_content,
+                                tool_call_id=chunk.toolCallId,
+                            )
+                        )
+                        has_done_tool_call = True
+                        # Track if any tool execution failed
+                        if not chunk.success:
+                            logger.warning(
+                                f"Tool {chunk.toolName} (ID: {chunk.toolCallId}) execution failed"
+                            )
+                        yield chunk
+                    elif isinstance(chunk, StreamFinish):
+                        if not has_done_tool_call:
+                            # Emit text-end before finish if we received text but haven't closed it
+                            if has_received_text and not text_streaming_ended:
+                                yield StreamTextEnd(id=text_block_id)
+                                text_streaming_ended = True
 
-            # Check if this is a retryable error (JSON parsing, incomplete tool calls, etc.)
-            is_retryable = isinstance(e, (orjson.JSONDecodeError, KeyError, TypeError))
+                            # Save assistant message before yielding finish to ensure it's persisted
+                            # even if client disconnects immediately after receiving StreamFinish
+                            if not has_saved_assistant_message:
+                                messages_to_save_early: list[ChatMessage] = []
+                                if accumulated_tool_calls:
+                                    assistant_response.tool_calls = (
+                                        accumulated_tool_calls
+                                    )
+                                if not has_appended_streaming_message and (
+                                    assistant_response.content
+                                    or assistant_response.tool_calls
+                                ):
+                                    messages_to_save_early.append(assistant_response)
+                                messages_to_save_early.extend(tool_response_messages)
 
-            if is_retryable and retry_count < config.max_retries:
-                logger.info(
-                    f"Retryable error encountered. Attempt {retry_count + 1}/{config.max_retries}"
+                                if messages_to_save_early:
+                                    session.messages.extend(messages_to_save_early)
+                                    logger.info(
+                                        f"Saving assistant message before StreamFinish: "
+                                        f"content_len={len(assistant_response.content or '')}, "
+                                        f"tool_calls={len(assistant_response.tool_calls or [])}, "
+                                        f"tool_responses={len(tool_response_messages)}"
+                                    )
+                                if (
+                                    messages_to_save_early
+                                    or has_appended_streaming_message
+                                ):
+                                    await upsert_chat_session(session)
+                                    has_saved_assistant_message = True
+
+                            has_yielded_end = True
+                            yield chunk
+                    elif isinstance(chunk, StreamError):
+                        has_yielded_error = True
+                        yield chunk
+                    elif isinstance(chunk, StreamUsage):
+                        session.usage.append(
+                            Usage(
+                                prompt_tokens=chunk.promptTokens,
+                                completion_tokens=chunk.completionTokens,
+                                total_tokens=chunk.totalTokens,
+                            )
+                        )
+                    else:
+                        logger.error(
+                            f"Unknown chunk type: {type(chunk)}", exc_info=True
+                        )
+                if assistant_response.content:
+                    langfuse.update_current_trace(output=assistant_response.content)
+                    langfuse.update_current_span(output=assistant_response.content)
+                elif tool_response_messages:
+                    langfuse.update_current_trace(output=str(tool_response_messages))
+                    langfuse.update_current_span(output=str(tool_response_messages))
+
+            except CancelledError:
+                if not has_saved_assistant_message:
+                    if accumulated_tool_calls:
+                        assistant_response.tool_calls = accumulated_tool_calls
+                    if assistant_response.content:
+                        assistant_response.content = (
+                            f"{assistant_response.content}\n\n[interrupted]"
+                        )
+                    else:
+                        assistant_response.content = "[interrupted]"
+                    if not has_appended_streaming_message:
+                        session.messages.append(assistant_response)
+                    if tool_response_messages:
+                        session.messages.extend(tool_response_messages)
+                    try:
+                        await upsert_chat_session(session)
+                    except Exception as e:
+                        logger.warning(
+                            f"Failed to save interrupted session {session.session_id}: {e}"
+                        )
+                raise
+            except Exception as e:
+                logger.error(f"Error during stream: {e!s}", exc_info=True)
+
+                # Check if this is a retryable error (JSON parsing, incomplete tool calls, etc.)
+                is_retryable = isinstance(
+                    e, (orjson.JSONDecodeError, KeyError, TypeError)
                 )
-                should_retry = True
-            else:
-                # Non-retryable error or max retries exceeded
-                # Save any partial progress before reporting error
+
+                if is_retryable and retry_count < config.max_retries:
+                    logger.info(
+                        f"Retryable error encountered. Attempt {retry_count + 1}/{config.max_retries}"
+                    )
+                    should_retry = True
+                else:
+                    # Non-retryable error or max retries exceeded
+                    # Save any partial progress before reporting error
+                    messages_to_save: list[ChatMessage] = []
+
+                    # Add assistant message if it has content or tool calls
+                    if accumulated_tool_calls:
+                        assistant_response.tool_calls = accumulated_tool_calls
+                    if not has_appended_streaming_message and (
+                        assistant_response.content or assistant_response.tool_calls
+                    ):
+                        messages_to_save.append(assistant_response)
+
+                    # Add tool response messages after assistant message
+                    messages_to_save.extend(tool_response_messages)
+
+                    if not has_saved_assistant_message:
+                        if messages_to_save:
+                            session.messages.extend(messages_to_save)
+                        if messages_to_save or has_appended_streaming_message:
+                            await upsert_chat_session(session)
+
+                    if not has_yielded_error:
+                        error_message = str(e)
+                        if not is_retryable:
+                            error_message = f"Non-retryable error: {error_message}"
+                        elif retry_count >= config.max_retries:
+                            error_message = f"Max retries ({config.max_retries}) exceeded: {error_message}"
+
+                        error_response = StreamError(errorText=error_message)
+                        yield error_response
+                    if not has_yielded_end:
+                        yield StreamFinish()
+                    return
+
+            # Handle retry outside of exception handler to avoid nesting
+            if should_retry and retry_count < config.max_retries:
+                logger.info(
+                    f"Retrying stream_chat_completion for session {session_id}, attempt {retry_count + 1}"
+                )
+                async for chunk in stream_chat_completion(
+                    session_id=session.session_id,
+                    user_id=user_id,
+                    retry_count=retry_count + 1,
+                    session=session,
+                    context=context,
+                ):
+                    yield chunk
+                return  # Exit after retry to avoid double-saving in finally block
+
+            # Normal completion path - save session and handle tool call continuation
+            # Only save if we haven't already saved when StreamFinish was received
+            if not has_saved_assistant_message:
+                logger.info(
+                    f"Normal completion path: session={session.session_id}, "
+                    f"current message_count={len(session.messages)}"
+                )
+
+                # Build the messages list in the correct order
                 messages_to_save: list[ChatMessage] = []
 
-                # Add assistant message if it has content or tool calls
+                # Add assistant message with tool_calls if any
                 if accumulated_tool_calls:
                     assistant_response.tool_calls = accumulated_tool_calls
-                if assistant_response.content or assistant_response.tool_calls:
+                    logger.info(
+                        f"Added {len(accumulated_tool_calls)} tool calls to assistant message"
+                    )
+                if not has_appended_streaming_message and (
+                    assistant_response.content or assistant_response.tool_calls
+                ):
                     messages_to_save.append(assistant_response)
+                    logger.info(
+                        f"Saving assistant message with content_len={len(assistant_response.content or '')}, tool_calls={len(assistant_response.tool_calls or [])}"
+                    )
 
                 # Add tool response messages after assistant message
                 messages_to_save.extend(tool_response_messages)
-
-                session.messages.extend(messages_to_save)
-                await upsert_chat_session(session)
-
-                if not has_yielded_error:
-                    error_message = str(e)
-                    if not is_retryable:
-                        error_message = f"Non-retryable error: {error_message}"
-                    elif retry_count >= config.max_retries:
-                        error_message = f"Max retries ({config.max_retries}) exceeded: {error_message}"
-
-                    error_response = StreamError(errorText=error_message)
-                    yield error_response
-                if not has_yielded_end:
-                    yield StreamFinish()
-                return
-
-        # Handle retry outside of exception handler to avoid nesting
-        if should_retry and retry_count < config.max_retries:
-            logger.info(
-                f"Retrying stream_chat_completion for session {session_id}, attempt {retry_count + 1}"
-            )
-            async for chunk in stream_chat_completion(
-                session_id=session.session_id,
-                user_id=user_id,
-                retry_count=retry_count + 1,
-                session=session,
-                context=context,
-            ):
-                yield chunk
-            return  # Exit after retry to avoid double-saving in finally block
-
-        # Normal completion path - save session and handle tool call continuation
-        logger.info(
-            f"Normal completion path: session={session.session_id}, "
-            f"current message_count={len(session.messages)}"
-        )
-
-        # Build the messages list in the correct order
-        messages_to_save: list[ChatMessage] = []
-
-        # Add assistant message with tool_calls if any
-        if accumulated_tool_calls:
-            assistant_response.tool_calls = accumulated_tool_calls
-            logger.info(
-                f"Added {len(accumulated_tool_calls)} tool calls to assistant message"
-            )
-        if assistant_response.content or assistant_response.tool_calls:
-            messages_to_save.append(assistant_response)
-            logger.info(
-                f"Saving assistant message with content_len={len(assistant_response.content or '')}, tool_calls={len(assistant_response.tool_calls or [])}"
-            )
-
-        # Add tool response messages after assistant message
-        messages_to_save.extend(tool_response_messages)
-        logger.info(
-            f"Saving {len(tool_response_messages)} tool response messages, "
-            f"total_to_save={len(messages_to_save)}"
-        )
-
-        session.messages.extend(messages_to_save)
-        logger.info(
-            f"Extended session messages, new message_count={len(session.messages)}"
-        )
-        await upsert_chat_session(session)
-
-        # If we did a tool call, stream the chat completion again to get the next response
-        if has_done_tool_call:
-            logger.info(
-                "Tool call executed, streaming chat completion again to get assistant response"
-            )
-            async for chunk in stream_chat_completion(
-                session_id=session.session_id,
-                user_id=user_id,
-                session=session,  # Pass session object to avoid Redis refetch
-                context=context,
-            ):
-                yield chunk
-
-    finally:
-        # Always end Langfuse observations to prevent resource leaks
-        # Guard against None and catch errors to avoid masking original exceptions
-        if generation is not None:
-            try:
-                latest_usage = session.usage[-1] if session.usage else None
-                generation.update(
-                    model=config.model,
-                    output={
-                        "content": assistant_response.content,
-                        "tool_calls": accumulated_tool_calls or None,
-                    },
-                    usage_details=(
-                        {
-                            "input": latest_usage.prompt_tokens,
-                            "output": latest_usage.completion_tokens,
-                            "total": latest_usage.total_tokens,
-                        }
-                        if latest_usage
-                        else None
-                    ),
+                logger.info(
+                    f"Saving {len(tool_response_messages)} tool response messages, "
+                    f"total_to_save={len(messages_to_save)}"
                 )
-                generation.end()
-            except Exception as e:
-                logger.warning(f"Failed to end Langfuse generation: {e}")
 
-        if trace is not None:
-            try:
-                if accumulated_tool_calls:
-                    trace.update_trace(output={"tool_calls": accumulated_tool_calls})
-                else:
-                    trace.update_trace(output={"response": assistant_response.content})
-                trace.end()
-            except Exception as e:
-                logger.warning(f"Failed to end Langfuse trace: {e}")
+                if messages_to_save:
+                    session.messages.extend(messages_to_save)
+                    logger.info(
+                        f"Extended session messages, new message_count={len(session.messages)}"
+                    )
+                if messages_to_save or has_appended_streaming_message:
+                    await upsert_chat_session(session)
+            else:
+                logger.info(
+                    "Assistant message already saved when StreamFinish was received, "
+                    "skipping duplicate save"
+                )
+
+            # If we did a tool call, stream the chat completion again to get the next response
+            if has_done_tool_call:
+                logger.info(
+                    "Tool call executed, streaming chat completion again to get assistant response"
+                )
+                async for chunk in stream_chat_completion(
+                    session_id=session.session_id,
+                    user_id=user_id,
+                    session=session,  # Pass session object to avoid Redis refetch
+                    context=context,
+                    tool_call_response=str(tool_response_messages),
+                ):
+                    yield chunk
 
 
 # Retry configuration for OpenAI API calls
@@ -652,6 +665,12 @@ def _is_retryable_error(error: Exception) -> bool:
         if "overloaded" in error_message or "internal server error" in error_message:
             return True
     return False
+
+
+def _is_region_blocked_error(error: Exception) -> bool:
+    if isinstance(error, PermissionDeniedError):
+        return "not available in your region" in str(error).lower()
+    return "not available in your region" in str(error).lower()
 
 
 async def _stream_chat_chunks(
@@ -702,6 +721,20 @@ async def _stream_chat_chunks(
                     f"{f' (retry {retry_count}/{MAX_RETRIES})' if retry_count > 0 else ''}"
                 )
 
+                # Build extra_body for OpenRouter tracing and PostHog analytics
+                extra_body: dict[str, Any] = {
+                    "posthogProperties": {
+                        "environment": settings.config.app_env.value,
+                    },
+                }
+                if session.user_id:
+                    extra_body["user"] = session.user_id[:128]  # OpenRouter limit
+                    extra_body["posthogDistinctId"] = session.user_id
+                if session.session_id:
+                    extra_body["session_id"] = session.session_id[
+                        :128
+                    ]  # OpenRouter limit
+
                 # Create the stream with proper types
                 stream = await client.chat.completions.create(
                     model=model,
@@ -710,6 +743,7 @@ async def _stream_chat_chunks(
                     tool_choice="auto",
                     stream=True,
                     stream_options={"include_usage": True},
+                    extra_body=extra_body,
                 )
 
                 # Variables to accumulate tool calls
@@ -846,7 +880,18 @@ async def _stream_chat_chunks(
                         f"Error in stream (not retrying): {e!s}",
                         exc_info=True,
                     )
-                    error_response = StreamError(errorText=str(e))
+                    error_code = None
+                    error_text = str(e)
+                    if _is_region_blocked_error(e):
+                        error_code = "MODEL_NOT_AVAILABLE_REGION"
+                        error_text = (
+                            "This model is not available in your region. "
+                            "Please connect via VPN and try again."
+                        )
+                    error_response = StreamError(
+                        errorText=error_text,
+                        code=error_code,
+                    )
                     yield error_response
                     yield StreamFinish()
                     return
@@ -900,5 +945,4 @@ async def _yield_tool_call(
         session=session,
     )
 
-    logger.info(f"Yielding Tool execution response: {tool_execution_response}")
     yield tool_execution_response

@@ -139,14 +139,6 @@ export const useFlow = () => {
       useNodeStore.getState().setNodes([]);
       useNodeStore.getState().clearResolutionState();
       addNodes(customNodes);
-
-      // Sync hardcoded values with handle IDs.
-      // If a key–value field has a key without a value, the backend omits it from hardcoded values.
-      // But if a handleId exists for that key, it causes inconsistency.
-      // This ensures hardcoded values stay in sync with handle IDs.
-      customNodes.forEach((node) => {
-        useNodeStore.getState().syncHardcodedValuesWithHandleIds(node.id);
-      });
     }
   }, [customNodes, addNodes]);
 
@@ -157,6 +149,14 @@ export const useFlow = () => {
       addLinks(graph.links);
     }
   }, [graph?.links, addLinks]);
+
+  useEffect(() => {
+    if (customNodes.length > 0 && graph?.links) {
+      customNodes.forEach((node) => {
+        useNodeStore.getState().syncHardcodedValuesWithHandleIds(node.id);
+      });
+    }
+  }, [customNodes, graph?.links]);
 
   // update node execution status in nodes
   useEffect(() => {

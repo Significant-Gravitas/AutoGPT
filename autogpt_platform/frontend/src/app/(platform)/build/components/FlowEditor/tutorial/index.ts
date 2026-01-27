@@ -11,6 +11,7 @@ import {
 } from "./helpers";
 import { useNodeStore } from "../../../stores/nodeStore";
 import { useEdgeStore } from "../../../stores/edgeStore";
+import { useTutorialStore } from "../../../stores/tutorialStore";
 
 let isTutorialLoading = false;
 let tutorialLoadingCallback: ((loading: boolean) => void) | null = null;
@@ -60,12 +61,14 @@ export const startTutorial = async () => {
     handleTutorialComplete();
     removeTutorialStyles();
     clearPrefetchedBlocks();
+    useTutorialStore.getState().setIsTutorialRunning(false);
   });
 
   tour.on("cancel", () => {
     handleTutorialCancel(tour);
     removeTutorialStyles();
     clearPrefetchedBlocks();
+    useTutorialStore.getState().setIsTutorialRunning(false);
   });
 
   for (const step of tour.steps) {

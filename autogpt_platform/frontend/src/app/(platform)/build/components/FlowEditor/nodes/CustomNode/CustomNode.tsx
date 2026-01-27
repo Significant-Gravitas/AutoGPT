@@ -34,7 +34,7 @@ export type CustomNodeData = {
   uiType: BlockUIType;
   block_id: string;
   status?: AgentExecutionStatus;
-  nodeExecutionResult?: NodeExecutionResult;
+  nodeExecutionResults?: NodeExecutionResult[];
   staticOutput?: boolean;
   // TODO : We need better type safety for the following backend fields.
   costs: BlockCost[];
@@ -75,7 +75,11 @@ export const CustomNode: React.FC<NodeProps<CustomNode>> = React.memo(
         (value) => value !== null && value !== undefined && value !== "",
       );
 
-    const outputData = data.nodeExecutionResult?.output_data;
+    const latestResult =
+      data.nodeExecutionResults && data.nodeExecutionResults.length > 0
+        ? data.nodeExecutionResults[data.nodeExecutionResults.length - 1]
+        : undefined;
+    const outputData = latestResult?.output_data;
     const hasOutputError =
       typeof outputData === "object" &&
       outputData !== null &&

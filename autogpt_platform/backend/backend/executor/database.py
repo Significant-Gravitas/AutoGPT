@@ -50,6 +50,8 @@ from backend.data.graph import (
     validate_graph_execution_permissions,
 )
 from backend.data.human_review import (
+    cancel_pending_reviews_for_execution,
+    check_approval,
     get_or_create_human_review,
     has_pending_reviews_for_graph_exec,
     update_review_processed_status,
@@ -190,6 +192,8 @@ class DatabaseManager(AppService):
     get_user_notification_preference = _(get_user_notification_preference)
 
     # Human In The Loop
+    cancel_pending_reviews_for_execution = _(cancel_pending_reviews_for_execution)
+    check_approval = _(check_approval)
     get_or_create_human_review = _(get_or_create_human_review)
     has_pending_reviews_for_graph_exec = _(has_pending_reviews_for_graph_exec)
     update_review_processed_status = _(update_review_processed_status)
@@ -313,6 +317,8 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     set_execution_kv_data = d.set_execution_kv_data
 
     # Human In The Loop
+    cancel_pending_reviews_for_execution = d.cancel_pending_reviews_for_execution
+    check_approval = d.check_approval
     get_or_create_human_review = d.get_or_create_human_review
     update_review_processed_status = d.update_review_processed_status
 

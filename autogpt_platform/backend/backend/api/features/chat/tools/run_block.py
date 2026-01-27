@@ -4,6 +4,8 @@ import logging
 from collections import defaultdict
 from typing import Any
 
+from langfuse import observe
+
 from backend.api.features.chat.model import ChatSession
 from backend.data.block import get_block
 from backend.data.execution import ExecutionContext
@@ -20,6 +22,7 @@ from .models import (
     ToolResponseBase,
     UserReadiness,
 )
+from .utils import build_missing_credentials_from_field_info
 
 logger = logging.getLogger(__name__)
 
@@ -127,6 +130,7 @@ class RunBlockTool(BaseTool):
 
         return matched_credentials, missing_credentials
 
+    @observe(as_type="tool", name="run_block")
     async def _execute(
         self,
         user_id: str | None,
@@ -175,6 +179,11 @@ class RunBlockTool(BaseTool):
                 message=f"Block '{block_id}' not found",
                 session_id=session_id,
             )
+        if block.disabled:
+            return ErrorResponse(
+                message=f"Block '{block_id}' is disabled",
+                session_id=session_id,
+            )
 
         logger.info(f"Executing block {block.name} ({block_id}) for user {user_id}")
 
@@ -186,7 +195,11 @@ class RunBlockTool(BaseTool):
 
         if missing_credentials:
             # Return setup requirements response with missing credentials
-            missing_creds_dict = {c.id: c.model_dump() for c in missing_credentials}
+            credentials_fields_info = block.input_schema.get_credentials_fields_info()
+            missing_creds_dict = build_missing_credentials_from_field_info(
+                credentials_fields_info, set(matched_credentials.keys())
+            )
+            missing_creds_list = list(missing_creds_dict.values())
 
             return SetupRequirementsResponse(
                 message=(
@@ -203,7 +216,7 @@ class RunBlockTool(BaseTool):
                         ready_to_run=False,
                     ),
                     requirements={
-                        "credentials": [c.model_dump() for c in missing_credentials],
+                        "credentials": missing_creds_list,
                         "inputs": self._get_inputs_list(block),
                         "execution_modes": ["immediate"],
                     },

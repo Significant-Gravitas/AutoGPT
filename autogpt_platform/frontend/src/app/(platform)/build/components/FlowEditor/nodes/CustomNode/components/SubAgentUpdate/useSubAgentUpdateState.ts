@@ -1,10 +1,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useGraphStore } from "@/app/(platform)/build/stores/graphStore";
-import {
-  useNodeStore,
-  NodeResolutionData,
-} from "@/app/(platform)/build/stores/nodeStore";
+import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
 import { useEdgeStore } from "@/app/(platform)/build/stores/edgeStore";
 import {
   useSubAgentUpdate,
@@ -13,6 +10,7 @@ import {
 } from "@/app/(platform)/build/hooks/useSubAgentUpdate";
 import { GraphInputSchema, GraphOutputSchema } from "@/lib/autogpt-server-api";
 import { CustomNodeData } from "../../CustomNode";
+import { NodeResolutionData } from "@/app/(platform)/build/stores/types";
 
 // Stable empty set to avoid creating new references in selectors
 const EMPTY_SET: Set<string> = new Set();

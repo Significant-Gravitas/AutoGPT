@@ -76,6 +76,13 @@ function getPreviewStealingDev() {
   return branch;
 }
 
+function getPostHogCredentials() {
+  return {
+    key: process.env.NEXT_PUBLIC_POSTHOG_KEY,
+    host: process.env.NEXT_PUBLIC_POSTHOG_HOST,
+  };
+}
+
 function isProductionBuild() {
   return process.env.NODE_ENV === "production";
 }
@@ -116,6 +123,13 @@ function areFeatureFlagsEnabled() {
   return process.env.NEXT_PUBLIC_LAUNCHDARKLY_ENABLED === "enabled";
 }
 
+function isPostHogEnabled() {
+  const inCloud = isCloud();
+  const key = process.env.NEXT_PUBLIC_POSTHOG_KEY;
+  const host = process.env.NEXT_PUBLIC_POSTHOG_HOST;
+  return inCloud && key && host;
+}
+
 export const environment = {
   // Generic
   getEnvironmentStr,
@@ -128,6 +142,7 @@ export const environment = {
   getSupabaseUrl,
   getSupabaseAnonKey,
   getPreviewStealingDev,
+  getPostHogCredentials,
   // Assertions
   isServerSide,
   isClientSide,
@@ -138,5 +153,6 @@ export const environment = {
   isCloud,
   isLocal,
   isVercelPreview,
+  isPostHogEnabled,
   areFeatureFlagsEnabled,
 };

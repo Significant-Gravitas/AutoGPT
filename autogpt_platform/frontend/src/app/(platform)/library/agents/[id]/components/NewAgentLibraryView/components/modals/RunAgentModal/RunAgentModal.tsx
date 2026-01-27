@@ -14,6 +14,10 @@ import {
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { useEffect, useRef, useState } from "react";
 import { ScheduleAgentModal } from "../ScheduleAgentModal/ScheduleAgentModal";
+import {
+  AIAgentSafetyPopup,
+  useAIAgentSafetyPopup,
+} from "./components/AIAgentSafetyPopup/AIAgentSafetyPopup";
 import { ModalHeader } from "./components/ModalHeader/ModalHeader";
 import { ModalRunSection } from "./components/ModalRunSection/ModalRunSection";
 import { RunActions } from "./components/RunActions/RunActions";
@@ -83,7 +87,17 @@ export function RunAgentModal({
 
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
   const [hasOverflow, setHasOverflow] = useState(false);
+  const [isSafetyPopupOpen, setIsSafetyPopupOpen] = useState(false);
+  const [pendingRunAction, setPendingRunAction] = useState<(() => void) | null>(
+    null,
+  );
   const contentRef = useRef<HTMLDivElement>(null);
+
+  const { shouldShowPopup, dismissPopup } = useAIAgentSafetyPopup(
+    agent.id,
+    agent.has_sensitive_action,
+    agent.has_human_in_the_loop,
+  );
 
   const hasAnySetupFields =
     Object.keys(agentInputFields || {}).length > 0 ||
@@ -165,6 +179,24 @@ export function RunAgentModal({
     onScheduleCreated?.(schedule);
   }
 
+  function handleRunWithSafetyCheck() {
+    if (shouldShowPopup) {
+      setPendingRunAction(() => handleRun);
+      setIsSafetyPopupOpen(true);
+    } else {
+      handleRun();
+    }
+  }
+
+  function handleSafetyPopupAcknowledge() {
+    setIsSafetyPopupOpen(false);
+    dismissPopup();
+    if (pendingRunAction) {
+      pendingRunAction();
+      setPendingRunAction(null);
+    }
+  }
+
   return (
     <>
       <Dialog
@@ -180,7 +212,7 @@ export function RunAgentModal({
 
               {/* Content */}
               {hasAnySetupFields ? (
-                <div className="mt-10 pb-32">
+                <div className="mt-4 pb-10">
                   <RunAgentModalContextProvider
                     value={{
                       agent,
@@ -248,7 +280,7 @@ export function RunAgentModal({
                 )}
                 <RunActions
                   defaultRunType={defaultRunType}
-                  onRun={handleRun}
+                  onRun={handleRunWithSafetyCheck}
                   isExecuting={isExecuting}
                   isSettingUpTrigger={isSettingUpTrigger}
                   isRunReady={allRequiredInputsAreSet}
@@ -266,6 +298,12 @@ export function RunAgentModal({
           </div>
         </Dialog.Content>
       </Dialog>
+
+      <AIAgentSafetyPopup
+        agentId={agent.id}
+        isOpen={isSafetyPopupOpen}
+        onAcknowledge={handleSafetyPopupAcknowledge}
+      />
     </>
   );
 }
