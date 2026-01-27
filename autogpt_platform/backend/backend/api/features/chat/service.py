@@ -427,13 +427,19 @@ async def stream_chat_completion(
                     if isinstance(chunk.output, str)
                     else orjson.dumps(chunk.output).decode("utf-8")
                 )
-                tool_response_messages.append(
-                    ChatMessage(
-                        role="tool",
-                        content=result_content,
-                        tool_call_id=chunk.toolCallId,
-                    )
+                # Skip saving long-running operation responses - pending message already saved
+                is_long_running_response = any(
+                    op_type in result_content
+                    for op_type in ('"operation_started"', '"operation_in_progress"')
                 )
+                if not is_long_running_response:
+                    tool_response_messages.append(
+                        ChatMessage(
+                            role="tool",
+                            content=result_content,
+                            tool_call_id=chunk.toolCallId,
+                        )
+                    )
                 has_done_tool_call = True
                 # Track if any tool execution failed
                 if not chunk.success:
