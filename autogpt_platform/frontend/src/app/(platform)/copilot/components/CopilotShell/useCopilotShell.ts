@@ -1,17 +1,20 @@
 "use client";
 
 import {
+  getGetV2GetSessionQueryKey,
   getGetV2ListSessionsQueryKey,
   useGetV2GetSession,
 } from "@/app/api/__generated__/endpoints/chat/chat";
 import type { SessionSummaryResponse } from "@/app/api/__generated__/models/sessionSummaryResponse";
 import { okData } from "@/app/api/helpers";
+import { useChatStore } from "@/components/contextual/Chat/chat-store";
 import { useBreakpoint } from "@/lib/hooks/useBreakpoint";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { useQueryClient } from "@tanstack/react-query";
 import { parseAsString, useQueryState } from "nuqs";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { useCopilotStore } from "../../copilot-page-store";
 import { useMobileDrawer } from "./components/MobileDrawer/useMobileDrawer";
 import { useSessionsPagination } from "./components/SessionsList/useSessionsPagination";
 import {
@@ -72,6 +75,19 @@ export function useCopilotShell() {
   const recentlyCreatedSessionsRef = useRef<
     Map<string, SessionSummaryResponse>
   >(new Map());
+
+  const [optimisticSessionId, setOptimisticSessionId] = useState<string | null>(
+    null,
+  );
+
+  useEffect(
+    function clearOptimisticWhenUrlMatches() {
+      if (optimisticSessionId && currentSessionId === optimisticSessionId) {
+        setOptimisticSessionId(null);
+      }
+    },
+    [currentSessionId, optimisticSessionId],
+  );
 
   // Mark as auto-selected when sessionId is in URL
   useEffect(() => {
@@ -142,7 +158,9 @@ export function useCopilotShell() {
   const visibleSessions = filterVisibleSessions(sessions);
 
   const sidebarSelectedSessionId =
-    isOnHomepage && !paramSessionId ? null : currentSessionId;
+    isOnHomepage && !paramSessionId && !optimisticSessionId
+      ? null
+      : optimisticSessionId || currentSessionId;
 
   const isReadyToShowContent = isOnHomepage
     ? true
@@ -155,7 +173,44 @@ export function useCopilotShell() {
         hasAutoSelectedSession,
       );
 
+  const stopStream = useChatStore((s) => s.stopStream);
+  const onStreamComplete = useChatStore((s) => s.onStreamComplete);
+  const setIsSwitchingSession = useCopilotStore((s) => s.setIsSwitchingSession);
+
+  async function performSelectSession(sessionId: string) {
+    if (sessionId === currentSessionId) return;
+
+    const sourceSessionId = currentSessionId;
+
+    if (sourceSessionId) {
+      setIsSwitchingSession(true);
+
+      await new Promise<void>(function waitForStreamComplete(resolve) {
+        const timeout = setTimeout(resolve, 3000);
+        const unsubscribe = onStreamComplete(function handleComplete(completedId) {
+          if (completedId === sourceSessionId) {
+            clearTimeout(timeout);
+            unsubscribe();
+            resolve();
+          }
+        });
+        stopStream(sourceSessionId);
+      });
+
+      queryClient.invalidateQueries({
+        queryKey: getGetV2GetSessionQueryKey(sourceSessionId),
+      });
+    }
+
+    setOptimisticSessionId(sessionId);
+    setUrlSessionId(sessionId, { shallow: false });
+    setIsSwitchingSession(false);
+    if (isMobile) handleCloseDrawer();
+  }
+
   function handleSelectSession(sessionId: string) {
+    if (sessionId === currentSessionId) return;
+    setOptimisticSessionId(sessionId);
     setUrlSessionId(sessionId, { shallow: false });
     if (isMobile) handleCloseDrawer();
   }
@@ -167,6 +222,7 @@ export function useCopilotShell() {
       queryKey: getGetV2ListSessionsQueryKey(),
     });
     setUrlSessionId(null, { shallow: false });
+    setOptimisticSessionId(null);
     if (isMobile) handleCloseDrawer();
   }
 
@@ -187,6 +243,7 @@ export function useCopilotShell() {
     sessions: visibleSessions,
     currentSessionId: sidebarSelectedSessionId,
     handleSelectSession,
+    performSelectSession,
     handleOpenDrawer,
     handleCloseDrawer,
     handleDrawerOpenChange,

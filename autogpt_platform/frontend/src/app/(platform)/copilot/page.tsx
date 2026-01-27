@@ -13,13 +13,14 @@ import { useCopilotPage } from "./useCopilotPage";
 
 export default function CopilotPage() {
   const { state, handlers } = useCopilotPage();
-  const confirmNewChat = useCopilotStore((s) => s.confirmNewChat);
+  const isInterruptModalOpen = useCopilotStore((s) => s.isInterruptModalOpen);
+  const confirmInterrupt = useCopilotStore((s) => s.confirmInterrupt);
+  const cancelInterrupt = useCopilotStore((s) => s.cancelInterrupt);
   const {
     greetingName,
     quickActions,
     isLoading,
     pageState,
-    isNewChatModalOpen,
     isReady,
   } = state;
   const {
@@ -27,8 +28,6 @@ export default function CopilotPage() {
     startChatWithPrompt,
     handleSessionNotFound,
     handleStreamingChange,
-    handleCancelNewChat,
-    handleNewChatModalOpen,
   } = handlers;
 
   if (!isReady) return null;
@@ -48,31 +47,31 @@ export default function CopilotPage() {
           title="Interrupt current chat?"
           styling={{ maxWidth: 300, width: "100%" }}
           controlled={{
-            isOpen: isNewChatModalOpen,
-            set: handleNewChatModalOpen,
+            isOpen: isInterruptModalOpen,
+            set: (open) => { if (!open) cancelInterrupt(); },
           }}
-          onClose={handleCancelNewChat}
+          onClose={cancelInterrupt}
         >
           <Dialog.Content>
             <div className="flex flex-col gap-4">
               <Text variant="body">
                 The current chat response will be interrupted. Are you sure you
-                want to start a new chat?
+                want to continue?
               </Text>
               <Dialog.Footer>
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={handleCancelNewChat}
+                  onClick={cancelInterrupt}
                 >
                   Cancel
                 </Button>
                 <Button
                   type="button"
                   variant="primary"
-                  onClick={confirmNewChat}
+                  onClick={confirmInterrupt}
                 >
-                  Start new chat
+                  Continue
                 </Button>
               </Dialog.Footer>
             </div>

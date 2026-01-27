@@ -75,9 +75,7 @@ export function useCopilotPage() {
   const { user, isLoggedIn, isUserLoading } = useSupabase();
   const { toast } = useToast();
 
-  const isNewChatModalOpen = useCopilotStore((s) => s.isNewChatModalOpen);
   const setIsStreaming = useCopilotStore((s) => s.setIsStreaming);
-  const cancelNewChat = useCopilotStore((s) => s.cancelNewChat);
 
   const isChatEnabled = useGetFlag(Flag.CHAT);
   const flags = useFlags<FlagValues>();
@@ -201,21 +199,12 @@ export function useCopilotPage() {
     setIsStreaming(isStreamingValue);
   }
 
-  function handleCancelNewChat() {
-    cancelNewChat();
-  }
-
-  function handleNewChatModalOpen(isOpen: boolean) {
-    if (!isOpen) cancelNewChat();
-  }
-
   return {
     state: {
       greetingName,
       quickActions,
       isLoading: isUserLoading,
       pageState: state.pageState,
-      isNewChatModalOpen,
       isReady: isFlagReady && isChatEnabled !== false && isLoggedIn,
     },
     handlers: {
@@ -223,8 +212,6 @@ export function useCopilotPage() {
       startChatWithPrompt,
       handleSessionNotFound,
       handleStreamingChange,
-      handleCancelNewChat,
-      handleNewChatModalOpen,
     },
   };
 }
