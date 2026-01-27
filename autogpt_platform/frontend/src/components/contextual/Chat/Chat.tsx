@@ -1,5 +1,6 @@
 "use client";
 
+import { useCopilotSessionId } from "@/app/(platform)/copilot/useCopilotSessionId";
 import { useCopilotStore } from "@/app/(platform)/copilot/copilot-page-store";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Text } from "@/components/atoms/Text/Text";
@@ -11,7 +12,6 @@ import { useChat } from "./useChat";
 
 export interface ChatProps {
   className?: string;
-  urlSessionId?: string | null;
   initialPrompt?: string;
   onSessionNotFound?: () => void;
   onStreamingChange?: (isStreaming: boolean) => void;
@@ -19,11 +19,11 @@ export interface ChatProps {
 
 export function Chat({
   className,
-  urlSessionId,
   initialPrompt,
   onSessionNotFound,
   onStreamingChange,
 }: ChatProps) {
+  const { urlSessionId } = useCopilotSessionId();
   const hasHandledNotFoundRef = useRef(false);
   const isSwitchingSession = useCopilotStore((s) => s.isSwitchingSession);
   const {
@@ -37,17 +37,20 @@ export function Chat({
     showLoader,
   } = useChat({ urlSessionId });
 
-  useEffect(
-    function handleMissingSession() {
-      if (!onSessionNotFound) return;
-      if (!urlSessionId) return;
-      if (!isSessionNotFound || isLoading || isCreating) return;
-      if (hasHandledNotFoundRef.current) return;
-      hasHandledNotFoundRef.current = true;
-      onSessionNotFound();
-    },
-    [onSessionNotFound, urlSessionId, isSessionNotFound, isLoading, isCreating],
-  );
+  useEffect(() => {
+    if (!onSessionNotFound) return;
+    if (!urlSessionId) return;
+    if (!isSessionNotFound || isLoading || isCreating) return;
+    if (hasHandledNotFoundRef.current) return;
+    hasHandledNotFoundRef.current = true;
+    onSessionNotFound();
+  }, [
+    onSessionNotFound,
+    urlSessionId,
+    isSessionNotFound,
+    isLoading,
+    isCreating,
+  ]);
 
   const shouldShowLoader =
     (showLoader && (isLoading || isCreating)) || isSwitchingSession;
