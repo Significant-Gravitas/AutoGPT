@@ -35,7 +35,10 @@ export function processInitialMessages(
     }
 
     if (role === "assistant") {
-      content = content.replace(/<thinking>[\s\S]*?<\/thinking>/gi, "").trim();
+      content = content
+        .replace(/<thinking>[\s\S]*?<\/thinking>/gi, "")
+        .replace(/<internal_reasoning>[\s\S]*?<\/internal_reasoning>/gi, "")
+        .trim();
 
       if (toolCalls && isToolCallArray(toolCalls) && toolCalls.length > 0) {
         for (const toolCall of toolCalls) {
