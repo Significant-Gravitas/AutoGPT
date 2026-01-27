@@ -637,10 +637,13 @@ async def stream_chat_completion(
             logger.info(
                 f"Extended session messages, new message_count={len(session.messages)}"
             )
-        # Skip upsert if we only had long-running tool calls - they save their own state
-        # and we don't want to overwrite the cache when the background task updates it
-        if not has_long_running_tool_call and (
-            messages_to_save or has_appended_streaming_message
+        # Save if there are regular (non-long-running) tool responses or streaming message.
+        # Long-running tools save their own state, but we still need to save regular tools
+        # that may be in the same response.
+        has_regular_tool_responses = len(tool_response_messages) > 0
+        if has_regular_tool_responses or (
+            not has_long_running_tool_call
+            and (messages_to_save or has_appended_streaming_message)
         ):
             await upsert_chat_session(session)
     else:
@@ -650,8 +653,9 @@ async def stream_chat_completion(
         )
 
     # If we did a tool call, stream the chat completion again to get the next response
-    # Skip for long-running tools - they handle their own completion via background tasks
-    if has_done_tool_call and not has_long_running_tool_call:
+    # Skip only if ALL tools were long-running (they handle their own completion)
+    has_regular_tools = len(tool_response_messages) > 0
+    if has_done_tool_call and (has_regular_tools or not has_long_running_tool_call):
         logger.info(
             "Tool call executed, streaming chat completion again to get assistant response"
         )
@@ -1585,7 +1589,6 @@ async def _execute_long_running_tool(
                 if isinstance(result.output, str)
                 else orjson.dumps(result.output).decode("utf-8")
             ),
-            success=result.success,
         )
 
         logger.info(f"Background tool {tool_name} completed for session {session_id}")
@@ -1602,7 +1605,6 @@ async def _execute_long_running_tool(
             session_id=session_id,
             tool_call_id=tool_call_id,
             result=error_response.model_dump_json(),
-            success=False,
         )
     finally:
         await _mark_operation_completed(tool_call_id)
@@ -1612,7 +1614,6 @@ async def _update_pending_operation(
     session_id: str,
     tool_call_id: str,
     result: str,
-    success: bool,
 ) -> None:
     """Update the pending tool message with final result.
 
