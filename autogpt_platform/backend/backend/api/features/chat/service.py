@@ -928,10 +928,49 @@ async def _stream_chat_chunks(
                                 f"Final count: {new_token_count} tokens"
                             )
                 else:
+                    # No old messages to summarize - all messages are "recent"
+                    # Apply progressive truncation to reduce token count
                     logger.warning(
                         f"Token count {token_count} exceeds threshold but no old messages to summarize. "
-                        f"This may indicate recent messages are too large."
+                        f"Applying progressive truncation to recent messages."
                     )
+
+                    # Try progressively smaller keep counts
+                    for keep_count in [12, 10, 8, 5]:
+                        if len(messages) <= keep_count:
+                            continue  # Skip if we don't have enough messages
+
+                        recent_messages = messages[-keep_count:]
+
+                        if has_system_prompt:
+                            messages = [messages[0]] + recent_messages
+                        else:
+                            messages = recent_messages
+
+                        new_messages_dict = []
+                        for msg in messages:
+                            if isinstance(msg, dict):
+                                msg_dict = {k: v for k, v in msg.items() if v is not None}
+                            else:
+                                msg_dict = dict(msg)
+                            new_messages_dict.append(msg_dict)
+
+                        new_token_count = estimate_token_count(
+                            new_messages_dict, model=token_count_model
+                        )
+
+                        if new_token_count <= 120_000:
+                            logger.info(
+                                f"Reduced to {keep_count} recent messages, "
+                                f"now {new_token_count} tokens"
+                            )
+                            break
+                    else:
+                        # Even with 5 messages still over limit
+                        logger.error(
+                            f"Unable to reduce token count below threshold even with 5 messages. "
+                            f"Final count: {new_token_count} tokens. Messages may be extremely large."
+                        )
 
     except Exception as e:
         logger.error(f"Context summarization failed: {e}", exc_info=True)
