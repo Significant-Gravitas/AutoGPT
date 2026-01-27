@@ -35,7 +35,7 @@ export function useChatStream() {
     setIsStreaming(false);
   }
 
-  useEffect(function cleanupOnUnmount() {
+  useEffect(() => {
     return function cleanup() {
       const sessionId = currentSessionIdRef.current;
       if (sessionId && !isSessionActive(sessionId)) {
@@ -46,7 +46,7 @@ export function useChatStream() {
     };
   }, []);
 
-  useEffect(function subscribeToStreamComplete() {
+  useEffect(() => {
     const unsubscribe = onStreamComplete(
       function handleStreamComplete(completedSessionId) {
         if (completedSessionId !== currentSessionIdRef.current) return;
@@ -56,6 +56,7 @@ export function useChatStream() {
         if (completed?.error) {
           setError(completed.error);
         }
+        unregisterActiveSession(completedSessionId);
       },
     );
 
@@ -71,7 +72,7 @@ export function useChatStream() {
   ) {
     const previousSessionId = currentSessionIdRef.current;
     if (previousSessionId && previousSessionId !== sessionId) {
-      stopStream(previousSessionId);
+      stopStreaming(previousSessionId);
     }
 
     currentSessionIdRef.current = sessionId;

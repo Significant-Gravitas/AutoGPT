@@ -164,7 +164,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   },
 
   subscribeToStream: function subscribeToStream(sessionId, onChunk) {
-    const { activeStreams, completedStreams } = get();
+    const { activeStreams } = get();
 
     const stream = activeStreams.get(sessionId);
     if (stream) {
@@ -175,13 +175,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       return function unsubscribe() {
         stream.onChunkCallbacks.delete(onChunk);
       };
-    }
-
-    const completed = completedStreams.get(sessionId);
-    if (completed) {
-      for (const chunk of completed.chunks) {
-        onChunk(chunk);
-      }
     }
 
     return function noop() {};
