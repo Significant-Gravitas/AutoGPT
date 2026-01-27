@@ -1084,13 +1084,20 @@ async def _stream_chat_chunks(
                     ]  # OpenRouter limit
 
                 # Create the stream with proper types
+                from typing import cast
+
+                from openai.types.chat import (
+                    ChatCompletionMessageParam,
+                    ChatCompletionStreamOptionsParam,
+                )
+
                 stream = await client.chat.completions.create(
                     model=model,
-                    messages=messages,
+                    messages=cast(list[ChatCompletionMessageParam], messages),
                     tools=tools,
                     tool_choice="auto",
                     stream=True,
-                    stream_options={"include_usage": True},
+                    stream_options=ChatCompletionStreamOptionsParam(include_usage=True),
                     extra_body=extra_body,
                 )
 
