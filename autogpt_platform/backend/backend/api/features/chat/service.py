@@ -79,6 +79,7 @@ async def _mark_operation_started(tool_call_id: str) -> bool:
 
     Returns True if successfully marked (operation was not already running),
     False if operation was already running (lost race condition).
+    Raises exception if Redis is unavailable (fail-closed).
     """
     redis = await get_redis_async()
     key = f"{RUNNING_OPERATION_PREFIX}{tool_call_id}"
