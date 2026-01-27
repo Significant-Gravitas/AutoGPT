@@ -437,9 +437,8 @@ async def stream_chat_completion(
                             await upsert_chat_session(session)
                             has_saved_assistant_message = True
 
-                # Always emit StreamFinish regardless of tool calls
-                has_yielded_end = True
-                yield chunk
+                    has_yielded_end = True
+                    yield chunk
             elif isinstance(chunk, StreamError):
                 has_yielded_error = True
                 yield chunk
