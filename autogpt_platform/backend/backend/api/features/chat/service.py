@@ -805,6 +805,7 @@ async def _stream_chat_chunks(
         messages = [system_message] + messages
 
     # Apply context window management
+    token_count = 0  # Initialize for exception handler
     try:
         from backend.util.prompt import estimate_token_count
 
@@ -986,6 +987,13 @@ async def _stream_chat_chunks(
                                     "CRITICAL: Dropped system prompt as absolute last resort. "
                                     "Behavioral consistency may be affected."
                                 )
+                                # Yield error to user
+                                yield StreamError(
+                                    errorText=(
+                                        "Warning: System prompt dropped due to size constraints. "
+                                        "Assistant behavior may be affected."
+                                    )
+                                )
                 else:
                     # No old messages to summarize - all messages are "recent"
                     # Apply progressive truncation to reduce token count
@@ -1052,10 +1060,28 @@ async def _stream_chat_chunks(
                                 "CRITICAL: Dropped system prompt as absolute last resort. "
                                 "Behavioral consistency may be affected."
                             )
+                            # Yield error to user
+                            yield StreamError(
+                                errorText=(
+                                    "Warning: System prompt dropped due to size constraints. "
+                                    "Assistant behavior may be affected."
+                                )
+                            )
 
     except Exception as e:
         logger.error(f"Context summarization failed: {e}", exc_info=True)
-        # Continue with original messages (fallback)
+        # If we were over the token limit, yield error to user
+        # Don't silently continue with oversized messages that will fail
+        if token_count > 120_000:
+            yield StreamError(
+                errorText=(
+                    f"Unable to manage context window (token limit exceeded: {token_count} tokens). "
+                    "Context summarization failed. Please start a new conversation."
+                )
+            )
+            yield StreamFinish()
+            return
+        # Otherwise, continue with original messages (under limit)
 
     # Loop to handle tool calls and continue conversation
     while True:
