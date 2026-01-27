@@ -4,6 +4,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { useBreakpoint } from "@/lib/hooks/useBreakpoint";
 import { cn } from "@/lib/utils";
+import { GlobeHemisphereEastIcon } from "@phosphor-icons/react";
 import { useEffect } from "react";
 import { ChatInput } from "../ChatInput/ChatInput";
 import { MessageList } from "../MessageList/MessageList";
@@ -55,24 +56,37 @@ export function ChatContainer({
       )}
     >
       <Dialog
-        title="Service unavailable"
+        title={
+          <div className="flex items-center gap-2">
+            <GlobeHemisphereEastIcon className="size-6" />
+            <Text
+              variant="body"
+              className="text-md font-poppins leading-none md:text-lg"
+            >
+              Service unavailable
+            </Text>
+          </div>
+        }
         controlled={{
           isOpen: isRegionBlockedModalOpen,
           set: handleRegionModalOpenChange,
         }}
         onClose={handleRegionModalClose}
+        styling={{ maxWidth: 550, width: "100%", minWidth: "auto" }}
       >
         <Dialog.Content>
-          <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-8">
             <Text variant="body">
-              This model is not available in your region. Please connect via VPN
-              and try again.
+              The Autogpt AI model is not available in your region or your
+              connection is blocking it. Please try again with a different
+              connection.
             </Text>
-            <div className="flex justify-end">
+            <div className="flex justify-center">
               <Button
                 type="button"
                 variant="primary"
                 onClick={handleRegionModalClose}
+                className="w-full"
               >
                 Got it
               </Button>

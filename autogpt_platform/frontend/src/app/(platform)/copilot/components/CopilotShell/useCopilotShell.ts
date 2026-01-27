@@ -4,23 +4,25 @@ import {
   getGetV2ListSessionsQueryKey,
   useGetV2GetSession,
 } from "@/app/api/__generated__/endpoints/chat/chat";
+import type { SessionSummaryResponse } from "@/app/api/__generated__/models/sessionSummaryResponse";
 import { okData } from "@/app/api/helpers";
 import { useBreakpoint } from "@/lib/hooks/useBreakpoint";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { useQueryClient } from "@tanstack/react-query";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { parseAsString, useQueryState } from "nuqs";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useMobileDrawer } from "./components/MobileDrawer/useMobileDrawer";
 import { useSessionsPagination } from "./components/SessionsList/useSessionsPagination";
 import {
   checkReadyToShowContent,
+  convertSessionDetailToSummary,
   filterVisibleSessions,
   getCurrentSessionId,
   mergeCurrentSessionIntoList,
 } from "./helpers";
 
 export function useCopilotShell() {
-  const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
@@ -28,6 +30,8 @@ export function useCopilotShell() {
   const { isLoggedIn } = useSupabase();
   const isMobile =
     breakpoint === "base" || breakpoint === "sm" || breakpoint === "md";
+
+  const [, setUrlSessionId] = useQueryState("sessionId", parseAsString);
 
   const isOnHomepage = pathname === "/copilot";
   const paramSessionId = searchParams.get("sessionId");
@@ -65,6 +69,9 @@ export function useCopilotShell() {
 
   const [hasAutoSelectedSession, setHasAutoSelectedSession] = useState(false);
   const hasAutoSelectedRef = useRef(false);
+  const recentlyCreatedSessionsRef = useRef<
+    Map<string, SessionSummaryResponse>
+  >(new Map());
 
   // Mark as auto-selected when sessionId is in URL
   useEffect(() => {
@@ -91,6 +98,30 @@ export function useCopilotShell() {
     }
   }, [isOnHomepage, paramSessionId, queryClient]);
 
+  // Track newly created sessions to ensure they stay visible even when switching away
+  useEffect(() => {
+    if (currentSessionId && currentSessionData) {
+      const isNewSession =
+        currentSessionData.updated_at === currentSessionData.created_at;
+      const isNotInAccumulated = !accumulatedSessions.some(
+        (s) => s.id === currentSessionId,
+      );
+      if (isNewSession || isNotInAccumulated) {
+        const summary = convertSessionDetailToSummary(currentSessionData);
+        recentlyCreatedSessionsRef.current.set(currentSessionId, summary);
+      }
+    }
+  }, [currentSessionId, currentSessionData, accumulatedSessions]);
+
+  // Clean up recently created sessions that are now in the accumulated list
+  useEffect(() => {
+    for (const sessionId of recentlyCreatedSessionsRef.current.keys()) {
+      if (accumulatedSessions.some((s) => s.id === sessionId)) {
+        recentlyCreatedSessionsRef.current.delete(sessionId);
+      }
+    }
+  }, [accumulatedSessions]);
+
   // Reset pagination when query becomes disabled
   const prevPaginationEnabledRef = useRef(paginationEnabled);
   useEffect(() => {
@@ -105,6 +136,7 @@ export function useCopilotShell() {
     accumulatedSessions,
     currentSessionId,
     currentSessionData,
+    recentlyCreatedSessionsRef.current,
   );
 
   const visibleSessions = filterVisibleSessions(sessions);
@@ -124,22 +156,17 @@ export function useCopilotShell() {
       );
 
   function handleSelectSession(sessionId: string) {
-    // Navigate using replaceState to avoid full page reload
-    window.history.replaceState(null, "", `/copilot?sessionId=${sessionId}`);
-    // Force a re-render by updating the URL through router
-    router.replace(`/copilot?sessionId=${sessionId}`);
+    setUrlSessionId(sessionId, { shallow: false });
     if (isMobile) handleCloseDrawer();
   }
 
   function handleNewChat() {
     resetAutoSelect();
     resetPagination();
-    // Invalidate and refetch sessions list to ensure newly created sessions appear
     queryClient.invalidateQueries({
       queryKey: getGetV2ListSessionsQueryKey(),
     });
-    window.history.replaceState(null, "", "/copilot");
-    router.replace("/copilot");
+    setUrlSessionId(null, { shallow: false });
     if (isMobile) handleCloseDrawer();
   }
 

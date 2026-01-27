@@ -1,6 +1,117 @@
+import type { SessionDetailResponse } from "@/app/api/__generated__/models/sessionDetailResponse";
 import { SessionKey, sessionStorage } from "@/services/storage/session-storage";
 import type { ToolResult } from "@/types/chat";
 import type { ChatMessageData } from "../ChatMessage/useChatMessage";
+
+export function processInitialMessages(
+  initialMessages: SessionDetailResponse["messages"],
+): ChatMessageData[] {
+  const processedMessages: ChatMessageData[] = [];
+  const toolCallMap = new Map<string, string>();
+
+  for (const msg of initialMessages) {
+    if (!isValidMessage(msg)) {
+      console.warn("Invalid message structure from backend:", msg);
+      continue;
+    }
+
+    let content = String(msg.content || "");
+    const role = String(msg.role || "assistant").toLowerCase();
+    const toolCalls = msg.tool_calls;
+    const timestamp = msg.timestamp
+      ? new Date(msg.timestamp as string)
+      : undefined;
+
+    if (role === "user") {
+      content = removePageContext(content);
+      if (!content.trim()) continue;
+      processedMessages.push({
+        type: "message",
+        role: "user",
+        content,
+        timestamp,
+      });
+      continue;
+    }
+
+    if (role === "assistant") {
+      content = content
+        .replace(/<thinking>[\s\S]*?<\/thinking>/gi, "")
+        .replace(/<internal_reasoning>[\s\S]*?<\/internal_reasoning>/gi, "")
+        .trim();
+
+      if (toolCalls && isToolCallArray(toolCalls) && toolCalls.length > 0) {
+        for (const toolCall of toolCalls) {
+          const toolName = toolCall.function.name;
+          const toolId = toolCall.id;
+          toolCallMap.set(toolId, toolName);
+
+          try {
+            const args = JSON.parse(toolCall.function.arguments || "{}");
+            processedMessages.push({
+              type: "tool_call",
+              toolId,
+              toolName,
+              arguments: args,
+              timestamp,
+            });
+          } catch (err) {
+            console.warn("Failed to parse tool call arguments:", err);
+            processedMessages.push({
+              type: "tool_call",
+              toolId,
+              toolName,
+              arguments: {},
+              timestamp,
+            });
+          }
+        }
+        if (content.trim()) {
+          processedMessages.push({
+            type: "message",
+            role: "assistant",
+            content,
+            timestamp,
+          });
+        }
+      } else if (content.trim()) {
+        processedMessages.push({
+          type: "message",
+          role: "assistant",
+          content,
+          timestamp,
+        });
+      }
+      continue;
+    }
+
+    if (role === "tool") {
+      const toolCallId = (msg.tool_call_id as string) || "";
+      const toolName = toolCallMap.get(toolCallId) || "unknown";
+      const toolResponse = parseToolResponse(
+        content,
+        toolCallId,
+        toolName,
+        timestamp,
+      );
+      if (toolResponse) {
+        processedMessages.push(toolResponse);
+      }
+      continue;
+    }
+
+    if (content.trim()) {
+      processedMessages.push({
+        type: "message",
+        role: role as "user" | "assistant" | "system",
+        content,
+        timestamp,
+      });
+    }
+  }
+
+  return processedMessages;
+}
 
 export function hasSentInitialPrompt(sessionId: string): boolean {
   try {

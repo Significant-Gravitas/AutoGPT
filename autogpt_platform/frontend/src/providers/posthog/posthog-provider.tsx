@@ -9,11 +9,12 @@ import { ReactNode, useEffect, useRef } from "react";
 
 export function PostHogProvider({ children }: { children: ReactNode }) {
   const isPostHogEnabled = environment.isPostHogEnabled();
+  const postHogCredentials = environment.getPostHogCredentials();
 
   useEffect(() => {
-    if (process.env.NEXT_PUBLIC_POSTHOG_KEY) {
-      posthog.init(process.env.NEXT_PUBLIC_POSTHOG_KEY, {
-        api_host: process.env.NEXT_PUBLIC_POSTHOG_HOST,
+    if (postHogCredentials.key) {
+      posthog.init(postHogCredentials.key, {
+        api_host: postHogCredentials.host,
         defaults: "2025-11-30",
         capture_pageview: false,
         capture_pageleave: true,
