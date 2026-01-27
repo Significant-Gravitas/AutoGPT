@@ -703,6 +703,10 @@ async def _summarize_messages(
 
     conversation_text = "\n\n".join(conversation)
 
+    # Handle empty conversation
+    if not conversation_text:
+        return "No conversation history available."
+
     # Truncate conversation to fit within summarization model's context
     # gpt-4o-mini has 128k context, but we limit to ~25k tokens (~100k chars) for safety
     MAX_CHARS = 100_000
@@ -901,7 +905,7 @@ async def _stream_chat_chunks(
                             # Slice from ORIGINAL recent_messages to avoid duplicating summary
                             reduced_recent = (
                                 recent_messages[-keep_count:]
-                                if len(recent_messages) > keep_count
+                                if len(recent_messages) >= keep_count
                                 else recent_messages
                             )
                             if has_system_prompt:
@@ -934,6 +938,12 @@ async def _stream_chat_chunks(
                                 f"Unable to reduce token count below threshold even with 5 messages. "
                                 f"Final count: {new_token_count} tokens"
                             )
+                            # Last resort: drop system prompt to reduce tokens
+                            if has_system_prompt and len(messages) > 1:
+                                messages = messages[1:]  # Drop system prompt
+                                logger.warning(
+                                    "Dropped system prompt as last resort to reduce tokens"
+                                )
                 else:
                     # No old messages to summarize - all messages are "recent"
                     # Apply progressive truncation to reduce token count
@@ -945,13 +955,13 @@ async def _stream_chat_chunks(
                     # Try progressively smaller keep counts
                     new_token_count = token_count  # Initialize with current count
                     for keep_count in [12, 10, 8, 5]:
-                        if len(messages) <= keep_count:
+                        if len(messages) < keep_count:
                             continue  # Skip if we don't have enough messages
 
                         recent_messages = messages[-keep_count:]
 
                         if has_system_prompt:
-                            messages = [messages[0]] + recent_messages
+                            messages = [system_msg] + recent_messages
                         else:
                             messages = recent_messages
 
@@ -981,6 +991,12 @@ async def _stream_chat_chunks(
                             f"Unable to reduce token count below threshold even with 5 messages. "
                             f"Final count: {new_token_count} tokens. Messages may be extremely large."
                         )
+                        # Last resort: drop system prompt to reduce tokens
+                        if has_system_prompt and len(messages) > 1:
+                            messages = messages[1:]  # Drop system prompt
+                            logger.warning(
+                                "Dropped system prompt as last resort to reduce tokens"
+                            )
 
     except Exception as e:
         logger.error(f"Context summarization failed: {e}", exc_info=True)
