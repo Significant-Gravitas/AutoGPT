@@ -1222,13 +1222,13 @@ async def _stream_chat_chunks(
                                     tool_calls[idx]["id"] = tc_chunk.id
                                 if tc_chunk.function:
                                     if tc_chunk.function.name:
-                                        tool_calls[idx]["function"]["name"] = (
-                                            tc_chunk.function.name
-                                        )
+                                        tool_calls[idx]["function"][
+                                            "name"
+                                        ] = tc_chunk.function.name
                                     if tc_chunk.function.arguments:
-                                        tool_calls[idx]["function"]["arguments"] += (
-                                            tc_chunk.function.arguments
-                                        )
+                                        tool_calls[idx]["function"][
+                                            "arguments"
+                                        ] += tc_chunk.function.arguments
 
                                 # Emit StreamToolInputStart only after we have the tool call ID
                                 if (
@@ -1412,6 +1412,10 @@ async def _yield_tool_call(
                 "check back in a few minutes."
             )
 
+        # Track appended messages for rollback on failure
+        assistant_message: ChatMessage | None = None
+        pending_message: ChatMessage | None = None
+
         # Wrap session save and task creation in try-except to release lock on failure
         try:
             # Save assistant message with tool_call FIRST (required by LLM)
@@ -1450,6 +1454,20 @@ async def _yield_tool_call(
                 )
             )
         except Exception as e:
+            # Roll back appended messages to prevent data corruption on subsequent saves
+            if (
+                pending_message
+                and session.messages
+                and session.messages[-1] == pending_message
+            ):
+                session.messages.pop()
+            if (
+                assistant_message
+                and session.messages
+                and session.messages[-1] == assistant_message
+            ):
+                session.messages.pop()
+
             # Release the Redis lock since the background task won't be spawned
             await _mark_operation_completed(tool_call_id)
             logger.error(
