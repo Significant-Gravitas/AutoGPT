@@ -19,6 +19,19 @@ interface Props {
   className?: string;
 }
 
+function getOperationTitle(toolName?: string): string {
+  if (!toolName) return "Operation";
+  // Convert tool name to human-readable format
+  // e.g., "create_agent" -> "Creating Agent", "edit_agent" -> "Editing Agent"
+  if (toolName === "create_agent") return "Creating Agent";
+  if (toolName === "edit_agent") return "Editing Agent";
+  // Default: capitalize and format tool name
+  return toolName
+    .split("_")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
 export function PendingOperationWidget({
   status,
   message,
@@ -29,6 +42,8 @@ export function PendingOperationWidget({
     status === "pending" || status === "started" || status === "in_progress";
   const isCompleted = status === "completed";
   const isError = status === "error";
+
+  const operationTitle = getOperationTitle(toolName);
 
   return (
     <div
@@ -66,9 +81,9 @@ export function PendingOperationWidget({
           <Card className="space-y-2 p-4">
             <div>
               <Text variant="h4" className="mb-1 text-slate-900">
-                {isPending && "Creating Agent"}
-                {isCompleted && "Operation Complete"}
-                {isError && "Operation Failed"}
+                {isPending && operationTitle}
+                {isCompleted && `${operationTitle} Complete`}
+                {isError && `${operationTitle} Failed`}
               </Text>
               <Text variant="small" className="text-slate-600">
                 {message}

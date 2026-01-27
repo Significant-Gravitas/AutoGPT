@@ -132,6 +132,9 @@ export function useChatSession({
 
   // Poll for updates when there are pending operations (long poll - 10s intervals with backoff)
   const pollAttemptRef = useRef(0);
+  const hasPendingOperationsRef = useRef(hasPendingOperations);
+  hasPendingOperationsRef.current = hasPendingOperations;
+
   useEffect(
     function pollForPendingOperations() {
       if (!sessionId || !hasPendingOperations) {
@@ -139,27 +142,43 @@ export function useChatSession({
         return;
       }
 
+      let cancelled = false;
+      let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
       // Calculate delay with exponential backoff: 10s, 15s, 20s, 25s, 30s (max)
       const baseDelay = 10000;
       const maxDelay = 30000;
-      const delay = Math.min(
-        baseDelay + pollAttemptRef.current * 5000,
-        maxDelay,
-      );
 
-      const timeoutId = setTimeout(async () => {
-        console.info(
-          `[useChatSession] Polling for pending operation updates (attempt ${pollAttemptRef.current + 1})`,
+      function schedule() {
+        const delay = Math.min(
+          baseDelay + pollAttemptRef.current * 5000,
+          maxDelay,
         );
-        pollAttemptRef.current += 1;
-        try {
-          await refetch();
-        } catch (err) {
-          console.error("[useChatSession] Poll failed:", err);
-        }
-      }, delay);
+        timeoutId = setTimeout(async () => {
+          if (cancelled) return;
+          console.info(
+            `[useChatSession] Polling for pending operation updates (attempt ${pollAttemptRef.current + 1})`,
+          );
+          pollAttemptRef.current += 1;
+          try {
+            await refetch();
+          } catch (err) {
+            console.error("[useChatSession] Poll failed:", err);
+          } finally {
+            // Continue polling if still pending and not cancelled
+            if (!cancelled && hasPendingOperationsRef.current) {
+              schedule();
+            }
+          }
+        }, delay);
+      }
 
-      return () => clearTimeout(timeoutId);
+      schedule();
+
+      return () => {
+        cancelled = true;
+        if (timeoutId) clearTimeout(timeoutId);
+      };
     },
     [sessionId, hasPendingOperations, refetch],
   );

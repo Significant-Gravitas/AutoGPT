@@ -344,7 +344,7 @@ export function parseToolResponse(
     if (responseType === "operation_started") {
       return {
         type: "operation_started",
-        toolName: parsedResult.tool_name as string,
+        toolName: (parsedResult.tool_name as string) || toolName,
         operationId: (parsedResult.operation_id as string) || "",
         message:
           (parsedResult.message as string) ||
@@ -355,7 +355,7 @@ export function parseToolResponse(
     if (responseType === "operation_pending") {
       return {
         type: "operation_pending",
-        toolName: parsedResult.tool_name as string,
+        toolName: (parsedResult.tool_name as string) || toolName,
         operationId: (parsedResult.operation_id as string) || "",
         message:
           (parsedResult.message as string) ||
@@ -366,7 +366,7 @@ export function parseToolResponse(
     if (responseType === "operation_in_progress") {
       return {
         type: "operation_in_progress",
-        toolName: parsedResult.tool_name as string,
+        toolName: (parsedResult.tool_name as string) || toolName,
         toolCallId: (parsedResult.tool_call_id as string) || "",
         message:
           (parsedResult.message as string) ||
