@@ -126,10 +126,6 @@ export function ChatMessage({
     [displayContent, message],
   );
 
-  function isLongResponse(content: string): boolean {
-    return content.split("\n").length > 5;
-  }
-
   const handleTryAgain = useCallback(() => {
     if (message.type !== "message" || !onSendMessage) return;
     onSendMessage(message.content, message.role === "user");
@@ -358,7 +354,7 @@ export function ChatMessage({
                   <ArrowsClockwiseIcon className="size-4 text-zinc-600" />
                 </Button>
               )}
-              {!isUser && isFinalMessage && isLongResponse(displayContent) && (
+              {!isUser && isFinalMessage && !isStreaming && (
                 <Button
                   variant="ghost"
                   size="icon"
