@@ -38,6 +38,7 @@ from .response_model import (
     StreamBaseResponse,
     StreamError,
     StreamFinish,
+    StreamHeartbeat,
     StreamStart,
     StreamTextDelta,
     StreamTextEnd,
@@ -48,6 +49,7 @@ from .response_model import (
     StreamUsage,
 )
 from .tools import execute_tool, tools
+from .tools.models import ErrorResponse
 from .tracking import track_user_message
 
 logger = logging.getLogger(__name__)
@@ -628,6 +630,101 @@ def _is_region_blocked_error(error: Exception) -> bool:
     return "not available in your region" in str(error).lower()
 
 
+async def _summarize_messages(
+    messages: list,
+    model: str,
+    api_key: str | None = None,
+    base_url: str | None = None,
+    timeout: float = 30.0,
+) -> str:
+    """Summarize a list of messages into concise context.
+
+    Uses the same model as the chat for higher quality summaries.
+
+    Args:
+        messages: List of message dicts to summarize
+        model: Model to use for summarization (same as chat model)
+        api_key: API key for OpenAI client
+        base_url: Base URL for OpenAI client
+        timeout: Request timeout in seconds (default: 30.0)
+
+    Returns:
+        Summarized text
+    """
+    # Format messages for summarization
+    conversation = []
+    for msg in messages:
+        role = msg.get("role", "")
+        content = msg.get("content", "")
+        # Include user, assistant, and tool messages (tool outputs are important context)
+        if content and role in ("user", "assistant", "tool"):
+            conversation.append(f"{role.upper()}: {content}")
+
+    conversation_text = "\n\n".join(conversation)
+
+    # Handle empty conversation
+    if not conversation_text:
+        return "No conversation history available."
+
+    # Truncate conversation to fit within summarization model's context
+    # gpt-4o-mini has 128k context, but we limit to ~25k tokens (~100k chars) for safety
+    MAX_CHARS = 100_000
+    if len(conversation_text) > MAX_CHARS:
+        conversation_text = conversation_text[:MAX_CHARS] + "\n\n[truncated]"
+
+    # Call LLM to summarize
+    import openai
+
+    summarization_client = openai.AsyncOpenAI(
+        api_key=api_key, base_url=base_url, timeout=timeout
+    )
+
+    response = await summarization_client.chat.completions.create(
+        model=model,
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "Create a detailed summary of the conversation so far. "
+                    "This summary will be used as context when continuing the conversation.\n\n"
+                    "Before writing the summary, analyze each message chronologically to identify:\n"
+                    "- User requests and their explicit goals\n"
+                    "- Your approach and key decisions made\n"
+                    "- Technical specifics (file names, tool outputs, function signatures)\n"
+                    "- Errors encountered and resolutions applied\n\n"
+                    "You MUST include ALL of the following sections:\n\n"
+                    "## 1. Primary Request and Intent\n"
+                    "The user's explicit goals and what they are trying to accomplish.\n\n"
+                    "## 2. Key Technical Concepts\n"
+                    "Technologies, frameworks, tools, and patterns being used or discussed.\n\n"
+                    "## 3. Files and Resources Involved\n"
+                    "Specific files examined or modified, with relevant snippets and identifiers.\n\n"
+                    "## 4. Errors and Fixes\n"
+                    "Problems encountered, error messages, and their resolutions. "
+                    "Include any user feedback on fixes.\n\n"
+                    "## 5. Problem Solving\n"
+                    "Issues that have been resolved and how they were addressed.\n\n"
+                    "## 6. All User Messages\n"
+                    "A complete list of all user inputs (excluding tool outputs) to preserve their exact requests.\n\n"
+                    "## 7. Pending Tasks\n"
+                    "Work items the user explicitly requested that have not yet been completed.\n\n"
+                    "## 8. Current Work\n"
+                    "Precise description of what was being worked on most recently, including relevant context.\n\n"
+                    "## 9. Next Steps\n"
+                    "What should happen next, aligned with the user's most recent requests. "
+                    "Include verbatim quotes of recent instructions if relevant."
+                ),
+            },
+            {"role": "user", "content": f"Summarize:\n\n{conversation_text}"},
+        ],
+        max_tokens=1500,
+        temperature=0.3,
+    )
+
+    summary = response.choices[0].message.content
+    return summary or "No summary available."
+
+
 async def _stream_chat_chunks(
     session: ChatSession,
     tools: list[ChatCompletionToolParam],
@@ -664,6 +761,292 @@ async def _stream_chat_chunks(
         )
         messages = [system_message] + messages
 
+    # Apply context window management
+    token_count = 0  # Initialize for exception handler
+    try:
+        from backend.util.prompt import estimate_token_count
+
+        # Convert to dict for token counting
+        # OpenAI message types are TypedDicts, so they're already dict-like
+        messages_dict = []
+        for msg in messages:
+            # TypedDict objects are already dicts, just filter None values
+            if isinstance(msg, dict):
+                msg_dict = {k: v for k, v in msg.items() if v is not None}
+            else:
+                # Fallback for unexpected types
+                msg_dict = dict(msg)
+            messages_dict.append(msg_dict)
+
+        # Estimate tokens using appropriate tokenizer
+        # Normalize model name for token counting (tiktoken only supports OpenAI models)
+        token_count_model = model
+        if "/" in model:
+            # Strip provider prefix (e.g., "anthropic/claude-opus-4.5" -> "claude-opus-4.5")
+            token_count_model = model.split("/")[-1]
+
+        # For Claude and other non-OpenAI models, approximate with gpt-4o tokenizer
+        # Most modern LLMs have similar tokenization (~1 token per 4 chars)
+        if "claude" in token_count_model.lower() or not any(
+            known in token_count_model.lower()
+            for known in ["gpt", "o1", "chatgpt", "text-"]
+        ):
+            token_count_model = "gpt-4o"
+
+        # Attempt token counting with error handling
+        try:
+            token_count = estimate_token_count(messages_dict, model=token_count_model)
+        except Exception as token_error:
+            # If token counting fails, use gpt-4o as fallback approximation
+            logger.warning(
+                f"Token counting failed for model {token_count_model}: {token_error}. "
+                "Using gpt-4o approximation."
+            )
+            token_count = estimate_token_count(messages_dict, model="gpt-4o")
+
+        # If over threshold, summarize old messages
+        if token_count > 120_000:
+            KEEP_RECENT = 15
+
+            # Check if we have a system prompt at the start
+            has_system_prompt = (
+                len(messages) > 0 and messages[0].get("role") == "system"
+            )
+
+            # Always attempt mitigation when over limit, even with few messages
+            if messages:
+                # Split messages based on whether system prompt exists
+                recent_messages = messages[-KEEP_RECENT:]
+
+                if has_system_prompt:
+                    # Keep system prompt separate, summarize everything between system and recent
+                    system_msg = messages[0]
+                    old_messages_dict = messages_dict[1:-KEEP_RECENT]
+                else:
+                    # No system prompt, summarize everything except recent
+                    system_msg = None
+                    old_messages_dict = messages_dict[:-KEEP_RECENT]
+
+                # Summarize any non-empty old messages (no minimum threshold)
+                # If we're over the token limit, we need to compress whatever we can
+                if old_messages_dict:
+                    # Summarize old messages using the same model as chat
+                    summary_text = await _summarize_messages(
+                        old_messages_dict,
+                        model=model,
+                        api_key=config.api_key,
+                        base_url=config.base_url,
+                    )
+
+                    # Build new message list
+                    # Use assistant role (not system) to prevent privilege escalation
+                    # of user-influenced content to instruction-level authority
+                    from openai.types.chat import ChatCompletionAssistantMessageParam
+
+                    summary_msg = ChatCompletionAssistantMessageParam(
+                        role="assistant",
+                        content=(
+                            "[Previous conversation summary — for context only]: "
+                            f"{summary_text}"
+                        ),
+                    )
+
+                    # Rebuild messages based on whether we have a system prompt
+                    if has_system_prompt:
+                        # system_prompt + summary + recent_messages
+                        messages = [system_msg, summary_msg] + recent_messages
+                    else:
+                        # summary + recent_messages (no original system prompt)
+                        messages = [summary_msg] + recent_messages
+
+                    logger.info(
+                        f"Context summarized: {token_count} tokens, "
+                        f"summarized {len(old_messages_dict)} old messages, "
+                        f"kept last {KEEP_RECENT} messages"
+                    )
+
+                    # Fallback: If still over limit after summarization, progressively drop recent messages
+                    # This handles edge cases where recent messages are extremely large
+                    new_messages_dict = []
+                    for msg in messages:
+                        if isinstance(msg, dict):
+                            msg_dict = {k: v for k, v in msg.items() if v is not None}
+                        else:
+                            msg_dict = dict(msg)
+                        new_messages_dict.append(msg_dict)
+
+                    new_token_count = estimate_token_count(
+                        new_messages_dict, model=token_count_model
+                    )
+
+                    if new_token_count > 120_000:
+                        # Still over limit - progressively reduce KEEP_RECENT
+                        logger.warning(
+                            f"Still over limit after summarization: {new_token_count} tokens. "
+                            "Reducing number of recent messages kept."
+                        )
+
+                        for keep_count in [12, 10, 8, 5, 3, 2, 1, 0]:
+                            if keep_count == 0:
+                                # Try with just system prompt + summary (no recent messages)
+                                if has_system_prompt:
+                                    messages = [system_msg, summary_msg]
+                                else:
+                                    messages = [summary_msg]
+                                logger.info(
+                                    "Trying with 0 recent messages (system + summary only)"
+                                )
+                            else:
+                                # Slice from ORIGINAL recent_messages to avoid duplicating summary
+                                reduced_recent = (
+                                    recent_messages[-keep_count:]
+                                    if len(recent_messages) >= keep_count
+                                    else recent_messages
+                                )
+                                if has_system_prompt:
+                                    messages = [
+                                        system_msg,
+                                        summary_msg,
+                                    ] + reduced_recent
+                                else:
+                                    messages = [summary_msg] + reduced_recent
+
+                            new_messages_dict = []
+                            for msg in messages:
+                                if isinstance(msg, dict):
+                                    msg_dict = {
+                                        k: v for k, v in msg.items() if v is not None
+                                    }
+                                else:
+                                    msg_dict = dict(msg)
+                                new_messages_dict.append(msg_dict)
+
+                            new_token_count = estimate_token_count(
+                                new_messages_dict, model=token_count_model
+                            )
+
+                            if new_token_count <= 120_000:
+                                logger.info(
+                                    f"Reduced to {keep_count} recent messages, "
+                                    f"now {new_token_count} tokens"
+                                )
+                                break
+                        else:
+                            logger.error(
+                                f"Unable to reduce token count below threshold even with 0 messages. "
+                                f"Final count: {new_token_count} tokens"
+                            )
+                            # ABSOLUTE LAST RESORT: Drop system prompt
+                            # This should only happen if summary itself is massive
+                            if has_system_prompt and len(messages) > 1:
+                                messages = messages[1:]  # Drop system prompt
+                                logger.critical(
+                                    "CRITICAL: Dropped system prompt as absolute last resort. "
+                                    "Behavioral consistency may be affected."
+                                )
+                                # Yield error to user
+                                yield StreamError(
+                                    errorText=(
+                                        "Warning: System prompt dropped due to size constraints. "
+                                        "Assistant behavior may be affected."
+                                    )
+                                )
+                else:
+                    # No old messages to summarize - all messages are "recent"
+                    # Apply progressive truncation to reduce token count
+                    logger.warning(
+                        f"Token count {token_count} exceeds threshold but no old messages to summarize. "
+                        f"Applying progressive truncation to recent messages."
+                    )
+
+                    # Create a base list excluding system prompt to avoid duplication
+                    # This is the pool of messages we'll slice from in the loop
+                    base_msgs = messages[1:] if has_system_prompt else messages
+
+                    # Try progressively smaller keep counts
+                    new_token_count = token_count  # Initialize with current count
+                    for keep_count in [12, 10, 8, 5, 3, 2, 1, 0]:
+                        if keep_count == 0:
+                            # Try with just system prompt (no recent messages)
+                            if has_system_prompt:
+                                messages = [system_msg]
+                                logger.info(
+                                    "Trying with 0 recent messages (system prompt only)"
+                                )
+                            else:
+                                # No system prompt and no recent messages = empty messages list
+                                # This is invalid, skip this iteration
+                                continue
+                        else:
+                            if len(base_msgs) < keep_count:
+                                continue  # Skip if we don't have enough messages
+
+                            # Slice from base_msgs to get recent messages (without system prompt)
+                            recent_messages = base_msgs[-keep_count:]
+
+                            if has_system_prompt:
+                                messages = [system_msg] + recent_messages
+                            else:
+                                messages = recent_messages
+
+                        new_messages_dict = []
+                        for msg in messages:
+                            if msg is None:
+                                continue  # Skip None messages (type safety)
+                            if isinstance(msg, dict):
+                                msg_dict = {
+                                    k: v for k, v in msg.items() if v is not None
+                                }
+                            else:
+                                msg_dict = dict(msg)
+                            new_messages_dict.append(msg_dict)
+
+                        new_token_count = estimate_token_count(
+                            new_messages_dict, model=token_count_model
+                        )
+
+                        if new_token_count <= 120_000:
+                            logger.info(
+                                f"Reduced to {keep_count} recent messages, "
+                                f"now {new_token_count} tokens"
+                            )
+                            break
+                    else:
+                        # Even with 0 messages still over limit
+                        logger.error(
+                            f"Unable to reduce token count below threshold even with 0 messages. "
+                            f"Final count: {new_token_count} tokens. Messages may be extremely large."
+                        )
+                        # ABSOLUTE LAST RESORT: Drop system prompt
+                        if has_system_prompt and len(messages) > 1:
+                            messages = messages[1:]  # Drop system prompt
+                            logger.critical(
+                                "CRITICAL: Dropped system prompt as absolute last resort. "
+                                "Behavioral consistency may be affected."
+                            )
+                            # Yield error to user
+                            yield StreamError(
+                                errorText=(
+                                    "Warning: System prompt dropped due to size constraints. "
+                                    "Assistant behavior may be affected."
+                                )
+                            )
+
+    except Exception as e:
+        logger.error(f"Context summarization failed: {e}", exc_info=True)
+        # If we were over the token limit, yield error to user
+        # Don't silently continue with oversized messages that will fail
+        if token_count > 120_000:
+            yield StreamError(
+                errorText=(
+                    f"Unable to manage context window (token limit exceeded: {token_count} tokens). "
+                    "Context summarization failed. Please start a new conversation."
+                )
+            )
+            yield StreamFinish()
+            return
+        # Otherwise, continue with original messages (under limit)
+
     # Loop to handle tool calls and continue conversation
     while True:
         retry_count = 0
@@ -691,13 +1074,20 @@ async def _stream_chat_chunks(
                     ]  # OpenRouter limit
 
                 # Create the stream with proper types
+                from typing import cast
+
+                from openai.types.chat import (
+                    ChatCompletionMessageParam,
+                    ChatCompletionStreamOptionsParam,
+                )
+
                 stream = await client.chat.completions.create(
                     model=model,
-                    messages=messages,
+                    messages=cast(list[ChatCompletionMessageParam], messages),
                     tools=tools,
                     tool_choice="auto",
                     stream=True,
-                    stream_options={"include_usage": True},
+                    stream_options=ChatCompletionStreamOptionsParam(include_usage=True),
                     extra_body=extra_body,
                 )
 
@@ -870,6 +1260,9 @@ async def _yield_tool_call(
     """
     Yield a tool call and its execution result.
 
+    For long-running tools, yields heartbeat events every 15 seconds to keep
+    the SSE connection alive through proxies and load balancers.
+
     Raises:
         orjson.JSONDecodeError: If tool call arguments cannot be parsed as JSON
         KeyError: If expected tool call fields are missing
@@ -892,12 +1285,53 @@ async def _yield_tool_call(
         input=arguments,
     )
 
-    tool_execution_response: StreamToolOutputAvailable = await execute_tool(
-        tool_name=tool_name,
-        parameters=arguments,
-        tool_call_id=tool_call_id,
-        user_id=session.user_id,
-        session=session,
+    # Run tool execution in background task with heartbeats to keep connection alive
+    tool_task = asyncio.create_task(
+        execute_tool(
+            tool_name=tool_name,
+            parameters=arguments,
+            tool_call_id=tool_call_id,
+            user_id=session.user_id,
+            session=session,
+        )
     )
+
+    # Yield heartbeats every 15 seconds while waiting for tool to complete
+    heartbeat_interval = 15.0  # seconds
+    while not tool_task.done():
+        try:
+            # Wait for either the task to complete or the heartbeat interval
+            await asyncio.wait_for(
+                asyncio.shield(tool_task), timeout=heartbeat_interval
+            )
+        except asyncio.TimeoutError:
+            # Task still running, send heartbeat to keep connection alive
+            logger.debug(f"Sending heartbeat for tool {tool_name} ({tool_call_id})")
+            yield StreamHeartbeat(toolCallId=tool_call_id)
+        except CancelledError:
+            # Task was cancelled, clean up and propagate
+            tool_task.cancel()
+            logger.warning(f"Tool execution cancelled: {tool_name} ({tool_call_id})")
+            raise
+
+    # Get the result - handle any exceptions that occurred during execution
+    try:
+        tool_execution_response: StreamToolOutputAvailable = await tool_task
+    except Exception as e:
+        # Task raised an exception - ensure we send an error response to the frontend
+        logger.error(
+            f"Tool execution failed: {tool_name} ({tool_call_id}): {e}", exc_info=True
+        )
+        error_response = ErrorResponse(
+            message=f"Tool execution failed: {e!s}",
+            error=type(e).__name__,
+            session_id=session.session_id,
+        )
+        tool_execution_response = StreamToolOutputAvailable(
+            toolCallId=tool_call_id,
+            toolName=tool_name,
+            output=error_response.model_dump_json(),
+            success=False,
+        )
 
     yield tool_execution_response
