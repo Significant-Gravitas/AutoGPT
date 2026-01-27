@@ -58,39 +58,17 @@ function notifyStreamComplete(
   }
 }
 
-function cleanupCompletedStreams(completedStreams: Map<string, StreamResult>) {
+function cleanupExpiredStreams(
+  completedStreams: Map<string, StreamResult>,
+): Map<string, StreamResult> {
   const now = Date.now();
-  for (const [sessionId, result] of completedStreams) {
+  const cleaned = new Map(completedStreams);
+  for (const [sessionId, result] of cleaned) {
     if (now - result.completedAt > COMPLETED_STREAM_TTL) {
-      completedStreams.delete(sessionId);
+      cleaned.delete(sessionId);
     }
   }
-}
-
-function moveToCompleted(
-  activeStreams: Map<string, ActiveStream>,
-  completedStreams: Map<string, StreamResult>,
-  streamCompleteCallbacks: Set<StreamCompleteCallback>,
-  sessionId: string,
-) {
-  const stream = activeStreams.get(sessionId);
-  if (!stream) return;
-
-  const result: StreamResult = {
-    sessionId,
-    status: stream.status,
-    chunks: stream.chunks,
-    completedAt: Date.now(),
-    error: stream.error,
-  };
-
-  completedStreams.set(sessionId, result);
-  activeStreams.delete(sessionId);
-  cleanupCompletedStreams(completedStreams);
-
-  if (stream.status === "completed" || stream.status === "error") {
-    notifyStreamComplete(streamCompleteCallbacks, sessionId);
-  }
+  return cleaned;
 }
 
 export const useChatStore = create<ChatStore>((set, get) => ({
@@ -106,17 +84,31 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     context,
     onChunk,
   ) {
-    const { activeStreams, completedStreams, streamCompleteCallbacks } = get();
+    const state = get();
+    const newActiveStreams = new Map(state.activeStreams);
+    let newCompletedStreams = new Map(state.completedStreams);
+    const callbacks = state.streamCompleteCallbacks;
 
-    const existingStream = activeStreams.get(sessionId);
+    const existingStream = newActiveStreams.get(sessionId);
     if (existingStream) {
       existingStream.abortController.abort();
-      moveToCompleted(
-        activeStreams,
-        completedStreams,
-        streamCompleteCallbacks,
+      const normalizedStatus =
+        existingStream.status === "streaming"
+          ? "completed"
+          : existingStream.status;
+      const result: StreamResult = {
         sessionId,
-      );
+        status: normalizedStatus,
+        chunks: existingStream.chunks,
+        completedAt: Date.now(),
+        error: existingStream.error,
+      };
+      newCompletedStreams.set(sessionId, result);
+      newActiveStreams.delete(sessionId);
+      newCompletedStreams = cleanupExpiredStreams(newCompletedStreams);
+      if (normalizedStatus === "completed" || normalizedStatus === "error") {
+        notifyStreamComplete(callbacks, sessionId);
+      }
     }
 
     const abortController = new AbortController();
@@ -132,36 +124,76 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       onChunkCallbacks: initialCallbacks,
     };
 
-    activeStreams.set(sessionId, stream);
+    newActiveStreams.set(sessionId, stream);
+    set({
+      activeStreams: newActiveStreams,
+      completedStreams: newCompletedStreams,
+    });
 
     try {
       await executeStream(stream, message, isUserMessage, context);
     } finally {
       if (onChunk) stream.onChunkCallbacks.delete(onChunk);
       if (stream.status !== "streaming") {
-        moveToCompleted(
-          activeStreams,
-          completedStreams,
-          streamCompleteCallbacks,
-          sessionId,
-        );
+        const currentState = get();
+        const finalActiveStreams = new Map(currentState.activeStreams);
+        let finalCompletedStreams = new Map(currentState.completedStreams);
+
+        const storedStream = finalActiveStreams.get(sessionId);
+        if (storedStream === stream) {
+          const result: StreamResult = {
+            sessionId,
+            status: stream.status,
+            chunks: stream.chunks,
+            completedAt: Date.now(),
+            error: stream.error,
+          };
+          finalCompletedStreams.set(sessionId, result);
+          finalActiveStreams.delete(sessionId);
+          finalCompletedStreams = cleanupExpiredStreams(finalCompletedStreams);
+          set({
+            activeStreams: finalActiveStreams,
+            completedStreams: finalCompletedStreams,
+          });
+          if (stream.status === "completed" || stream.status === "error") {
+            notifyStreamComplete(
+              currentState.streamCompleteCallbacks,
+              sessionId,
+            );
+          }
+        }
       }
     }
   },
 
   stopStream: function stopStream(sessionId) {
-    const { activeStreams, completedStreams, streamCompleteCallbacks } = get();
-    const stream = activeStreams.get(sessionId);
-    if (stream) {
-      stream.abortController.abort();
-      stream.status = "completed";
-      moveToCompleted(
-        activeStreams,
-        completedStreams,
-        streamCompleteCallbacks,
-        sessionId,
-      );
-    }
+    const state = get();
+    const stream = state.activeStreams.get(sessionId);
+    if (!stream) return;
+
+    stream.abortController.abort();
+    stream.status = "completed";
+
+    const newActiveStreams = new Map(state.activeStreams);
+    let newCompletedStreams = new Map(state.completedStreams);
+
+    const result: StreamResult = {
+      sessionId,
+      status: stream.status,
+      chunks: stream.chunks,
+      completedAt: Date.now(),
+      error: stream.error,
+    };
+    newCompletedStreams.set(sessionId, result);
+    newActiveStreams.delete(sessionId);
+    newCompletedStreams = cleanupExpiredStreams(newCompletedStreams);
+
+    set({
+      activeStreams: newActiveStreams,
+      completedStreams: newCompletedStreams,
+    });
+
+    notifyStreamComplete(state.streamCompleteCallbacks, sessionId);
   },
 
   subscribeToStream: function subscribeToStream(
@@ -169,16 +201,18 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     onChunk,
     skipReplay = false,
   ) {
-    const { activeStreams } = get();
+    const state = get();
+    const stream = state.activeStreams.get(sessionId);
 
-    const stream = activeStreams.get(sessionId);
     if (stream) {
       if (!skipReplay) {
         for (const chunk of stream.chunks) {
           onChunk(chunk);
         }
       }
+
       stream.onChunkCallbacks.add(onChunk);
+
       return function unsubscribe() {
         stream.onChunkCallbacks.delete(onChunk);
       };
@@ -204,7 +238,12 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   },
 
   clearCompletedStream: function clearCompletedStream(sessionId) {
-    get().completedStreams.delete(sessionId);
+    const state = get();
+    if (!state.completedStreams.has(sessionId)) return;
+
+    const newCompletedStreams = new Map(state.completedStreams);
+    newCompletedStreams.delete(sessionId);
+    set({ completedStreams: newCompletedStreams });
   },
 
   isStreaming: function isStreaming(sessionId) {
@@ -213,11 +252,21 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   },
 
   registerActiveSession: function registerActiveSession(sessionId) {
-    get().activeSessions.add(sessionId);
+    const state = get();
+    if (state.activeSessions.has(sessionId)) return;
+
+    const newActiveSessions = new Set(state.activeSessions);
+    newActiveSessions.add(sessionId);
+    set({ activeSessions: newActiveSessions });
   },
 
   unregisterActiveSession: function unregisterActiveSession(sessionId) {
-    get().activeSessions.delete(sessionId);
+    const state = get();
+    if (!state.activeSessions.has(sessionId)) return;
+
+    const newActiveSessions = new Set(state.activeSessions);
+    newActiveSessions.delete(sessionId);
+    set({ activeSessions: newActiveSessions });
   },
 
   isSessionActive: function isSessionActive(sessionId) {
@@ -225,10 +274,16 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   },
 
   onStreamComplete: function onStreamComplete(callback) {
-    const { streamCompleteCallbacks } = get();
-    streamCompleteCallbacks.add(callback);
+    const state = get();
+    const newCallbacks = new Set(state.streamCompleteCallbacks);
+    newCallbacks.add(callback);
+    set({ streamCompleteCallbacks: newCallbacks });
+
     return function unsubscribe() {
-      streamCompleteCallbacks.delete(callback);
+      const currentState = get();
+      const cleanedCallbacks = new Set(currentState.streamCompleteCallbacks);
+      cleanedCallbacks.delete(callback);
+      set({ streamCompleteCallbacks: cleanedCallbacks });
     };
   },
 }));

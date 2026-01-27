@@ -3,7 +3,7 @@
 import { ChatLoader } from "@/components/contextual/Chat/components/ChatLoader/ChatLoader";
 import { NAVBAR_HEIGHT_PX } from "@/lib/constants";
 import type { ReactNode } from "react";
-import { useEffect } from "react";
+import { useCallback, useEffect } from "react";
 import { useCopilotStore } from "../../copilot-page-store";
 import { DesktopSidebar } from "./components/DesktopSidebar/DesktopSidebar";
 import { LoadingState } from "./components/LoadingState/LoadingState";
@@ -25,10 +25,12 @@ export function CopilotShell({ children }: Props) {
     sessions,
     currentSessionId,
     handleSelectSession,
+    performSelectSession,
     handleOpenDrawer,
     handleCloseDrawer,
     handleDrawerOpenChange,
     handleNewChat,
+    performNewChat,
     hasNextPage,
     isFetchingNextPage,
     fetchNextPage,
@@ -36,20 +38,69 @@ export function CopilotShell({ children }: Props) {
   } = useCopilotShell();
 
   const setNewChatHandler = useCopilotStore((s) => s.setNewChatHandler);
+  const setNewChatWithInterruptHandler = useCopilotStore(
+    (s) => s.setNewChatWithInterruptHandler,
+  );
+  const setSelectSessionHandler = useCopilotStore(
+    (s) => s.setSelectSessionHandler,
+  );
+  const setSelectSessionWithInterruptHandler = useCopilotStore(
+    (s) => s.setSelectSessionWithInterruptHandler,
+  );
   const requestNewChat = useCopilotStore((s) => s.requestNewChat);
+  const requestSelectSession = useCopilotStore((s) => s.requestSelectSession);
+
+  const stableHandleNewChat = useCallback(handleNewChat, [handleNewChat]);
+  const stablePerformNewChat = useCallback(performNewChat, [performNewChat]);
 
   useEffect(
-    function registerNewChatHandler() {
-      setNewChatHandler(handleNewChat);
+    function registerNewChatHandlers() {
+      setNewChatHandler(stableHandleNewChat);
+      setNewChatWithInterruptHandler(stablePerformNewChat);
       return function cleanup() {
         setNewChatHandler(null);
+        setNewChatWithInterruptHandler(null);
       };
     },
-    [handleNewChat],
+    [
+      stableHandleNewChat,
+      stablePerformNewChat,
+      setNewChatHandler,
+      setNewChatWithInterruptHandler,
+    ],
+  );
+
+  const stableHandleSelectSession = useCallback(handleSelectSession, [
+    handleSelectSession,
+  ]);
+
+  const stablePerformSelectSession = useCallback(performSelectSession, [
+    performSelectSession,
+  ]);
+
+  useEffect(
+    function registerSelectSessionHandlers() {
+      setSelectSessionHandler(stableHandleSelectSession);
+      setSelectSessionWithInterruptHandler(stablePerformSelectSession);
+      return function cleanup() {
+        setSelectSessionHandler(null);
+        setSelectSessionWithInterruptHandler(null);
+      };
+    },
+    [
+      stableHandleSelectSession,
+      stablePerformSelectSession,
+      setSelectSessionHandler,
+      setSelectSessionWithInterruptHandler,
+    ],
   );
 
   function handleNewChatClick() {
     requestNewChat();
+  }
+
+  function handleSessionClick(sessionId: string) {
+    requestSelectSession(sessionId);
   }
 
   if (!isLoggedIn) {
@@ -72,7 +123,7 @@ export function CopilotShell({ children }: Props) {
           isLoading={isLoading}
           hasNextPage={hasNextPage}
           isFetchingNextPage={isFetchingNextPage}
-          onSelectSession={handleSelectSession}
+          onSelectSession={handleSessionClick}
           onFetchNextPage={fetchNextPage}
           onNewChat={handleNewChatClick}
           hasActiveSession={Boolean(hasActiveSession)}
@@ -94,7 +145,7 @@ export function CopilotShell({ children }: Props) {
           isLoading={isLoading}
           hasNextPage={hasNextPage}
           isFetchingNextPage={isFetchingNextPage}
-          onSelectSession={handleSelectSession}
+          onSelectSession={handleSessionClick}
           onFetchNextPage={fetchNextPage}
           onNewChat={handleNewChatClick}
           onClose={handleCloseDrawer}
