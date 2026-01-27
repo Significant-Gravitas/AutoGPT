@@ -10,6 +10,7 @@
 --
 -- For development environments without pg_cron:
 --   The migration will succeed but you must manually refresh views with:
+--   SET search_path TO platform;
 --   SELECT refresh_suggested_blocks_view();
 
 -- Check if pg_cron extension is installed and set a flag
