@@ -304,6 +304,7 @@ export function parseToolResponse(
       if (isAgentArray(agentsData)) {
         return {
           type: "agent_carousel",
+          toolId,
           toolName: "agent_carousel",
           agents: agentsData,
           totalCount: parsedResult.total_count as number | undefined,
@@ -316,6 +317,7 @@ export function parseToolResponse(
     if (responseType === "execution_started") {
       return {
         type: "execution_started",
+        toolId,
         toolName: "execution_started",
         executionId: (parsedResult.execution_id as string) || "",
         agentName: (parsedResult.graph_name as string) || undefined,

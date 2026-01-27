@@ -61,6 +61,7 @@ export type ChatMessageData =
     }
   | {
       type: "agent_carousel";
+      toolId: string;
       toolName: string;
       agents: Array<{
         id: string;
@@ -74,6 +75,7 @@ export type ChatMessageData =
     }
   | {
       type: "execution_started";
+      toolId: string;
       toolName: string;
       executionId: string;
       agentName?: string;
