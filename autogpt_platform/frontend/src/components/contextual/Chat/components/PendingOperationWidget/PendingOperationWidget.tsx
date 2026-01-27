@@ -77,7 +77,7 @@ export function PendingOperationWidget({
 
             {isPending && (
               <Text variant="small" className="italic text-slate-500">
-                You can close this tab. Check your library in a few minutes.
+                Check your library in a few minutes.
               </Text>
             )}
 
