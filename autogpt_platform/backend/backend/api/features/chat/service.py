@@ -1145,7 +1145,9 @@ async def _stream_chat_chunks(
                     # Create a base list excluding system prompt to avoid duplication
                     # This is the pool of messages we'll slice from in the loop
                     # Use messages_dict for type consistency with _ensure_tool_pairs_intact
-                    base_msgs = messages_dict[1:] if has_system_prompt else messages_dict
+                    base_msgs = (
+                        messages_dict[1:] if has_system_prompt else messages_dict
+                    )
 
                     # Try progressively smaller keep counts
                     new_token_count = token_count  # Initialize with current count
