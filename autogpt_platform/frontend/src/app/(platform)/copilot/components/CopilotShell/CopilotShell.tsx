@@ -30,6 +30,7 @@ export function CopilotShell({ children }: Props) {
     handleCloseDrawer,
     handleDrawerOpenChange,
     handleNewChat,
+    performNewChat,
     hasNextPage,
     isFetchingNextPage,
     fetchNextPage,
@@ -37,6 +38,9 @@ export function CopilotShell({ children }: Props) {
   } = useCopilotShell();
 
   const setNewChatHandler = useCopilotStore((s) => s.setNewChatHandler);
+  const setNewChatWithInterruptHandler = useCopilotStore(
+    (s) => s.setNewChatWithInterruptHandler,
+  );
   const setSelectSessionHandler = useCopilotStore(
     (s) => s.setSelectSessionHandler,
   );
@@ -46,14 +50,24 @@ export function CopilotShell({ children }: Props) {
   const requestNewChat = useCopilotStore((s) => s.requestNewChat);
   const requestSelectSession = useCopilotStore((s) => s.requestSelectSession);
 
+  const stableHandleNewChat = useCallback(handleNewChat, [handleNewChat]);
+  const stablePerformNewChat = useCallback(performNewChat, [performNewChat]);
+
   useEffect(
-    function registerNewChatHandler() {
-      setNewChatHandler(handleNewChat);
+    function registerNewChatHandlers() {
+      setNewChatHandler(stableHandleNewChat);
+      setNewChatWithInterruptHandler(stablePerformNewChat);
       return function cleanup() {
         setNewChatHandler(null);
+        setNewChatWithInterruptHandler(null);
       };
     },
-    [handleNewChat, setNewChatHandler],
+    [
+      stableHandleNewChat,
+      stablePerformNewChat,
+      setNewChatHandler,
+      setNewChatWithInterruptHandler,
+    ],
   );
 
   const stableHandleSelectSession = useCallback(handleSelectSession, [

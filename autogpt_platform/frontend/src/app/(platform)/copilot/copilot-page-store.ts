@@ -8,6 +8,7 @@ interface CopilotStoreState {
   isInterruptModalOpen: boolean;
   pendingAction: (() => void) | null;
   newChatHandler: (() => void) | null;
+  newChatWithInterruptHandler: (() => void) | null;
   selectSessionHandler: ((sessionId: string) => void) | null;
   selectSessionWithInterruptHandler: ((sessionId: string) => void) | null;
 }
@@ -16,6 +17,7 @@ interface CopilotStoreActions {
   setIsStreaming: (isStreaming: boolean) => void;
   setIsSwitchingSession: (isSwitchingSession: boolean) => void;
   setNewChatHandler: (handler: (() => void) | null) => void;
+  setNewChatWithInterruptHandler: (handler: (() => void) | null) => void;
   setSelectSessionHandler: (
     handler: ((sessionId: string) => void) | null,
   ) => void;
@@ -36,6 +38,7 @@ export const useCopilotStore = create<CopilotStore>((set, get) => ({
   isInterruptModalOpen: false,
   pendingAction: null,
   newChatHandler: null,
+  newChatWithInterruptHandler: null,
   selectSessionHandler: null,
   selectSessionWithInterruptHandler: null,
 
@@ -51,6 +54,10 @@ export const useCopilotStore = create<CopilotStore>((set, get) => ({
     set({ newChatHandler: handler });
   },
 
+  setNewChatWithInterruptHandler(handler) {
+    set({ newChatWithInterruptHandler: handler });
+  },
+
   setSelectSessionHandler(handler) {
     set({ selectSessionHandler: handler });
   },
@@ -60,9 +67,13 @@ export const useCopilotStore = create<CopilotStore>((set, get) => ({
   },
 
   requestNewChat() {
-    const { isStreaming, newChatHandler } = get();
+    const { isStreaming, newChatHandler, newChatWithInterruptHandler } = get();
     if (isStreaming) {
-      set({ isInterruptModalOpen: true, pendingAction: newChatHandler });
+      if (!newChatWithInterruptHandler) return;
+      set({
+        isInterruptModalOpen: true,
+        pendingAction: newChatWithInterruptHandler,
+      });
     } else if (newChatHandler) {
       newChatHandler();
     }

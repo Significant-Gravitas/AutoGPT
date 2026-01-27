@@ -139,7 +139,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         const finalActiveStreams = new Map(currentState.activeStreams);
         let finalCompletedStreams = new Map(currentState.completedStreams);
 
-        if (finalActiveStreams.has(sessionId)) {
+        const storedStream = finalActiveStreams.get(sessionId);
+        if (storedStream === stream) {
           const result: StreamResult = {
             sessionId,
             status: stream.status,

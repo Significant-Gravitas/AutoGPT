@@ -220,6 +220,45 @@ export function useCopilotShell() {
     if (isMobile) handleCloseDrawer();
   }
 
+  async function performNewChat() {
+    const sourceSessionId = currentSessionId;
+
+    if (sourceSessionId) {
+      setIsSwitchingSession(true);
+
+      await new Promise<void>(function waitForStreamComplete(resolve) {
+        const unsubscribe = onStreamComplete(
+          function handleComplete(completedId) {
+            if (completedId === sourceSessionId) {
+              clearTimeout(timeout);
+              unsubscribe();
+              resolve();
+            }
+          },
+        );
+        const timeout = setTimeout(function handleTimeout() {
+          unsubscribe();
+          resolve();
+        }, 3000);
+        stopStream(sourceSessionId);
+      });
+
+      queryClient.invalidateQueries({
+        queryKey: getGetV2GetSessionQueryKey(sourceSessionId),
+      });
+      setIsSwitchingSession(false);
+    }
+
+    resetAutoSelect();
+    resetPagination();
+    queryClient.invalidateQueries({
+      queryKey: getGetV2ListSessionsQueryKey(),
+    });
+    setUrlSessionId(null, { shallow: false });
+    setOptimisticSessionId(null);
+    if (isMobile) handleCloseDrawer();
+  }
+
   function handleNewChat() {
     resetAutoSelect();
     resetPagination();
@@ -253,6 +292,7 @@ export function useCopilotShell() {
     handleCloseDrawer,
     handleDrawerOpenChange,
     handleNewChat,
+    performNewChat,
     hasNextPage,
     isFetchingNextPage: isSessionsFetching,
     fetchNextPage,
