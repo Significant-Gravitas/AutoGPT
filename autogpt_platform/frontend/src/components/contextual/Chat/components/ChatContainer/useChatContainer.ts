@@ -82,15 +82,11 @@ export function useChatContainer({
     [sessionId, stopStreaming, activeStreams, subscribeToStream],
   );
 
-  // Combine initial messages from backend with local streaming messages,
-  // then deduplicate to prevent duplicates when polling refreshes initialMessages
-  const allMessages = useMemo(() => {
+  // Collect toolIds from completed tool results in initialMessages
+  // Used to filter out operation messages when their results arrive
+  const completedToolIds = useMemo(() => {
     const processedInitial = processInitialMessages(initialMessages);
-
-    // Collect toolIds that have completed (non-operation) results from DB
-    // These indicate operations that finished - we should filter out their
-    // corresponding operation_started/pending messages from local state
-    const completedToolIds = new Set<string>();
+    const ids = new Set<string>();
     for (const msg of processedInitial) {
       if (
         msg.type === "tool_response" ||
@@ -99,10 +95,44 @@ export function useChatContainer({
       ) {
         const toolId = (msg as any).toolId;
         if (toolId) {
-          completedToolIds.add(toolId);
+          ids.add(toolId);
         }
       }
     }
+    return ids;
+  }, [initialMessages]);
+
+  // Clean up local operation messages when their completed results arrive from polling
+  // This effect runs when completedToolIds changes (i.e., when polling brings new results)
+  useEffect(
+    function cleanupCompletedOperations() {
+      if (completedToolIds.size === 0) return;
+
+      setMessages((prev) => {
+        const filtered = prev.filter((msg) => {
+          if (
+            msg.type === "operation_started" ||
+            msg.type === "operation_pending" ||
+            msg.type === "operation_in_progress"
+          ) {
+            const toolId = (msg as any).toolId || (msg as any).toolCallId;
+            if (toolId && completedToolIds.has(toolId)) {
+              return false; // Remove - operation completed
+            }
+          }
+          return true;
+        });
+        // Only update state if something was actually filtered
+        return filtered.length === prev.length ? prev : filtered;
+      });
+    },
+    [completedToolIds],
+  );
+
+  // Combine initial messages from backend with local streaming messages,
+  // then deduplicate to prevent duplicates when polling refreshes initialMessages
+  const allMessages = useMemo(() => {
+    const processedInitial = processInitialMessages(initialMessages);
 
     // Filter local messages to remove operation messages for completed tools
     const filteredLocalMessages = messages.filter((msg) => {
