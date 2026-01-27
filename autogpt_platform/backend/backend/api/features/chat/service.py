@@ -805,7 +805,6 @@ async def _stream_chat_chunks(
         # If over threshold, summarize old messages
         if token_count > 120_000:
             KEEP_RECENT = 15
-            MIN_MESSAGES_TO_SUMMARIZE = 5  # Don't summarize if too few old messages
 
             # Check if we have a system prompt at the start
             has_system_prompt = (
@@ -825,8 +824,9 @@ async def _stream_chat_chunks(
                     system_msg = None
                     old_messages_dict = messages_dict[:-KEEP_RECENT]
 
-                # Only summarize if we have enough old messages
-                if len(old_messages_dict) >= MIN_MESSAGES_TO_SUMMARIZE:
+                # Summarize any non-empty old messages (no minimum threshold)
+                # If we're over the token limit, we need to compress whatever we can
+                if old_messages_dict:
                     # Summarize old messages
                     summary_text = await _summarize_messages(
                         old_messages_dict,
@@ -861,10 +861,64 @@ async def _stream_chat_chunks(
                         f"summarized {len(old_messages_dict)} old messages, "
                         f"kept last {KEEP_RECENT} messages"
                     )
+
+                    # Fallback: If still over limit after summarization, progressively drop recent messages
+                    # This handles edge cases where recent messages are extremely large
+                    new_messages_dict = []
+                    for msg in messages:
+                        if isinstance(msg, dict):
+                            msg_dict = {k: v for k, v in msg.items() if v is not None}
+                        else:
+                            msg_dict = dict(msg)
+                        new_messages_dict.append(msg_dict)
+
+                    new_token_count = estimate_token_count(
+                        new_messages_dict, model=token_count_model
+                    )
+
+                    if new_token_count > 120_000:
+                        # Still over limit - progressively reduce KEEP_RECENT
+                        logger.warning(
+                            f"Still over limit after summarization: {new_token_count} tokens. "
+                            "Reducing number of recent messages kept."
+                        )
+
+                        for keep_count in [12, 10, 8, 5]:
+                            recent_messages = messages[-keep_count:]
+                            if has_system_prompt:
+                                messages = [system_msg, summary_msg] + recent_messages
+                            else:
+                                messages = [summary_msg] + recent_messages
+
+                            new_messages_dict = []
+                            for msg in messages:
+                                if isinstance(msg, dict):
+                                    msg_dict = {
+                                        k: v for k, v in msg.items() if v is not None
+                                    }
+                                else:
+                                    msg_dict = dict(msg)
+                                new_messages_dict.append(msg_dict)
+
+                            new_token_count = estimate_token_count(
+                                new_messages_dict, model=token_count_model
+                            )
+
+                            if new_token_count <= 120_000:
+                                logger.info(
+                                    f"Reduced to {keep_count} recent messages, "
+                                    f"now {new_token_count} tokens"
+                                )
+                                break
+                        else:
+                            logger.error(
+                                f"Unable to reduce token count below threshold even with 5 messages. "
+                                f"Final count: {new_token_count} tokens"
+                            )
                 else:
-                    logger.info(
-                        f"Skipping summarization: only {len(old_messages_dict)} old messages "
-                        f"(minimum {MIN_MESSAGES_TO_SUMMARIZE} required)"
+                    logger.warning(
+                        f"Token count {token_count} exceeds threshold but no old messages to summarize. "
+                        f"This may indicate recent messages are too large."
                     )
 
     except Exception as e:
