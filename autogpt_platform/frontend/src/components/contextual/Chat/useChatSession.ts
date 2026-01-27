@@ -120,7 +120,9 @@ export function useChatSession({
       if (msg.role !== "tool" || !msg.content) return false;
       try {
         const content =
-          typeof msg.content === "string" ? JSON.parse(msg.content) : msg.content;
+          typeof msg.content === "string"
+            ? JSON.parse(msg.content)
+            : msg.content;
         return content?.type === "operation_pending";
       } catch {
         return false;
