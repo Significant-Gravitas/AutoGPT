@@ -1705,15 +1705,24 @@ async def _generate_llm_continuation(
         if response.choices and response.choices[0].message.content:
             assistant_content = response.choices[0].message.content
 
+            # Reload session from DB to avoid race condition with user messages
+            # that may have been sent while we were generating the LLM response
+            fresh_session = await get_chat_session(session_id, user_id)
+            if not fresh_session:
+                logger.error(
+                    f"Session {session_id} disappeared during LLM continuation"
+                )
+                return
+
             # Save assistant message to database
             assistant_message = ChatMessage(
                 role="assistant",
                 content=assistant_content,
             )
-            session.messages.append(assistant_message)
+            fresh_session.messages.append(assistant_message)
 
             # Save to database (not cache) to persist the response
-            await upsert_chat_session(session)
+            await upsert_chat_session(fresh_session)
 
             # Invalidate cache so next poll/refresh gets fresh data
             await invalidate_session_cache(session_id)
