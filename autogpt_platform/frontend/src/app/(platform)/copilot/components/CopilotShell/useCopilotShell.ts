@@ -8,7 +8,7 @@ import type { SessionSummaryResponse } from "@/app/api/__generated__/models/sess
 import { okData } from "@/app/api/helpers";
 import { useBreakpoint } from "@/lib/hooks/useBreakpoint";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
-import { useStreamSessionInvalidation } from "@/providers/chat-stream/useStreamSessionInvalidation";
+import { useStreamSessionInvalidation } from "@/components/contextual/Chat/useStreamSessionInvalidation";
 import { useQueryClient } from "@tanstack/react-query";
 import { parseAsString, useQueryState } from "nuqs";
 import { usePathname, useSearchParams } from "next/navigation";
@@ -72,9 +72,9 @@ export function useCopilotShell() {
 
   const [hasAutoSelectedSession, setHasAutoSelectedSession] = useState(false);
   const hasAutoSelectedRef = useRef(false);
-  const recentlyCreatedSessionsRef = useRef<Map<string, SessionSummaryResponse>>(
-    new Map(),
-  );
+  const recentlyCreatedSessionsRef = useRef<
+    Map<string, SessionSummaryResponse>
+  >(new Map());
 
   // Mark as auto-selected when sessionId is in URL
   useEffect(() => {

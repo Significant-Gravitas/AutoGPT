@@ -109,7 +109,9 @@ export function useChatSession({
           queryKey: getGetV2ListSessionsQueryKey(),
         });
       }
-    }, [sessionId, sessionData, isLoadingSession, queryClient]);
+    },
+    [sessionId, sessionData, isLoadingSession, queryClient],
+  );
 
   async function createSession() {
     try {

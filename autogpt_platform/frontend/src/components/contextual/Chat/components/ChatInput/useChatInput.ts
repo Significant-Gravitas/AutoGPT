@@ -23,10 +23,22 @@ export function useChatInput({
   const [value, setValue] = useState("");
   const [hasMultipleLines, setHasMultipleLines] = useState(false);
 
-  useEffect(() => {
-    const textarea = document.getElementById(inputId) as HTMLTextAreaElement;
-    if (textarea) textarea.focus();
-  }, [inputId]);
+  useEffect(
+    function focusOnMount() {
+      const textarea = document.getElementById(inputId) as HTMLTextAreaElement;
+      if (textarea) textarea.focus();
+    },
+    [inputId],
+  );
+
+  useEffect(
+    function focusWhenEnabled() {
+      if (disabled) return;
+      const textarea = document.getElementById(inputId) as HTMLTextAreaElement;
+      if (textarea) textarea.focus();
+    },
+    [disabled, inputId],
+  );
 
   useEffect(() => {
     const textarea = document.getElementById(inputId) as HTMLTextAreaElement;
@@ -125,12 +137,9 @@ export function useChatInput({
     [handleSend],
   );
 
-  const handleChange = useCallback(
-    (e: ChangeEvent<HTMLTextAreaElement>) => {
-      setValue(e.target.value);
-    },
-    [],
-  );
+  const handleChange = useCallback((e: ChangeEvent<HTMLTextAreaElement>) => {
+    setValue(e.target.value);
+  }, []);
 
   return {
     value,

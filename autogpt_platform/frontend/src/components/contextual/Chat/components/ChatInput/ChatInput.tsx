@@ -21,19 +21,13 @@ export function ChatInput({
   className,
 }: Props) {
   const inputId = "chat-input";
-  const {
-    value,
-    handleKeyDown,
-    handleSend,
-    handleSubmit,
-    handleChange,
-    hasMultipleLines,
-  } = useChatInput({
-    onSend,
-    disabled: disabled || isStreaming,
-    maxRows: 4,
-    inputId,
-  });
+  const { value, handleKeyDown, handleSubmit, handleChange, hasMultipleLines } =
+    useChatInput({
+      onSend,
+      disabled: disabled || isStreaming,
+      maxRows: 4,
+      inputId,
+    });
 
   return (
     <form onSubmit={handleSubmit} className={cn("relative flex-1", className)}>

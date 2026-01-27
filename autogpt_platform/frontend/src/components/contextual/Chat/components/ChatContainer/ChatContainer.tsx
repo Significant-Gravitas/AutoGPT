@@ -40,6 +40,8 @@ export function ChatContainer({
     initialPrompt,
   });
 
+  console.log("initial", initialMessages);
+
   useEffect(() => {
     onStreamingChange?.(isStreaming);
   }, [isStreaming, onStreamingChange]);
@@ -59,7 +61,12 @@ export function ChatContainer({
         title={
           <div className="flex items-center gap-2">
             <GlobeHemisphereEastIcon className="size-6" />
-            <Text variant="body" className="font-poppins text-md md:text-lg leading-none">Service unavailable</Text>
+            <Text
+              variant="body"
+              className="text-md font-poppins leading-none md:text-lg"
+            >
+              Service unavailable
+            </Text>
           </div>
         }
         controlled={{
@@ -72,7 +79,9 @@ export function ChatContainer({
         <Dialog.Content>
           <div className="flex flex-col gap-8">
             <Text variant="body">
-              The Autogpt AI model is not available in your region or your connection is blocking it. Please try again with a different connection.
+              The Autogpt AI model is not available in your region or your
+              connection is blocking it. Please try again with a different
+              connection.
             </Text>
             <div className="flex justify-center">
               <Button

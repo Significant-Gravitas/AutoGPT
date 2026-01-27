@@ -4,7 +4,7 @@ import {
 } from "@/app/api/__generated__/endpoints/chat/chat";
 import type { SessionSummaryResponse } from "@/app/api/__generated__/models/sessionSummaryResponse";
 import { okData } from "@/app/api/helpers";
-import { useChatStreamStore } from "@/providers/chat-stream/chat-stream-store";
+import { useChatStore } from "@/components/contextual/Chat/chat-store";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 
@@ -21,9 +21,7 @@ export function useSessionsPagination({ enabled }: UseSessionsPaginationArgs) {
   >([]);
   const [totalCount, setTotalCount] = useState<number | null>(null);
   const queryClient = useQueryClient();
-  const onStreamComplete = useChatStreamStore(
-    (state) => state.onStreamComplete,
-  );
+  const onStreamComplete = useChatStore((state) => state.onStreamComplete);
 
   const { data, isLoading, isFetching, isError } = useGetV2ListSessions(
     { limit: PAGE_SIZE, offset },

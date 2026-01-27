@@ -1,6 +1,6 @@
 import type { SessionDetailResponse } from "@/app/api/__generated__/models/sessionDetailResponse";
-import { useChatStreamStore } from "@/providers/chat-stream/chat-stream-store";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useChatStore } from "../../chat-store";
 import { toast } from "sonner";
 import { useChatStream } from "../../useChatStream";
 import { usePageContext } from "../../usePageContext";
@@ -10,11 +10,8 @@ import {
   createUserMessage,
   filterAuthMessages,
   hasSentInitialPrompt,
-  isToolCallArray,
-  isValidMessage,
   markInitialPromptSent,
-  parseToolResponse,
-  removePageContext,
+  processInitialMessages,
 } from "./helpers";
 
 interface Args {
@@ -42,7 +39,7 @@ export function useChatContainer({
     sendMessage: sendStreamMessage,
     stopStreaming,
   } = useChatStream();
-  const streamStore = useChatStreamStore();
+  const chatStore = useChatStore();
   const isStreaming = isStreamingInitiated || hasTextChunks;
 
   useEffect(
@@ -63,11 +60,10 @@ export function useChatContainer({
 
       if (!sessionId) return;
 
-      const completedStream = streamStore.getCompletedStream(sessionId);
-      const activeStream = streamStore.activeStreams.get(sessionId);
-      const chunksToReplay = completedStream?.chunks || activeStream?.chunks;
+      const activeStream = chatStore.activeStreams.get(sessionId);
 
-      if (chunksToReplay && chunksToReplay.length > 0) {
+      if (activeStream && activeStream.chunks.length > 0) {
+        const chunksToReplay = activeStream.chunks;
         const dispatcher = createStreamEventDispatcher({
           setHasTextChunks,
           setStreamingChunks,
@@ -83,9 +79,9 @@ export function useChatContainer({
           dispatcher(chunk);
         }
 
-        if (activeStream && activeStream.status === "streaming") {
+        if (activeStream.status === "streaming") {
           setIsStreamingInitiated(true);
-          const unsubscribe = streamStore.subscribeToStream(
+          const unsubscribe = chatStore.subscribeToStream(
             sessionId,
             dispatcher,
           );
@@ -93,186 +89,81 @@ export function useChatContainer({
         }
       }
     },
-    [sessionId, stopStreaming, streamStore],
+    [sessionId, stopStreaming, chatStore],
   );
 
-  const allMessages = useMemo(() => {
-    const processedInitialMessages: ChatMessageData[] = [];
-    const toolCallMap = new Map<string, string>();
+  const allMessages = useMemo(
+    () => [...processInitialMessages(initialMessages), ...messages],
+    [initialMessages, messages],
+  );
 
-    for (const msg of initialMessages) {
-      if (!isValidMessage(msg)) {
-        console.warn("Invalid message structure from backend:", msg);
-        continue;
-      }
-
-      let content = String(msg.content || "");
-      const role = String(msg.role || "assistant").toLowerCase();
-      const toolCalls = msg.tool_calls;
-      const timestamp = msg.timestamp
-        ? new Date(msg.timestamp as string)
-        : undefined;
-
-      if (role === "user") {
-        content = removePageContext(content);
-        if (!content.trim()) continue;
-        processedInitialMessages.push({
-          type: "message",
-          role: "user",
-          content,
-          timestamp,
-        });
-        continue;
-      }
-
-      if (role === "assistant") {
-        content = content
-          .replace(/<thinking>[\s\S]*?<\/thinking>/gi, "")
-          .trim();
-
-        if (toolCalls && isToolCallArray(toolCalls) && toolCalls.length > 0) {
-          for (const toolCall of toolCalls) {
-            const toolName = toolCall.function.name;
-            const toolId = toolCall.id;
-            toolCallMap.set(toolId, toolName);
-
-            try {
-              const args = JSON.parse(toolCall.function.arguments || "{}");
-              processedInitialMessages.push({
-                type: "tool_call",
-                toolId,
-                toolName,
-                arguments: args,
-                timestamp,
-              });
-            } catch (err) {
-              console.warn("Failed to parse tool call arguments:", err);
-              processedInitialMessages.push({
-                type: "tool_call",
-                toolId,
-                toolName,
-                arguments: {},
-                timestamp,
-              });
-            }
-          }
-          if (content.trim()) {
-            processedInitialMessages.push({
-              type: "message",
-              role: "assistant",
-              content,
-              timestamp,
-            });
-          }
-        } else if (content.trim()) {
-          processedInitialMessages.push({
-            type: "message",
-            role: "assistant",
-            content,
-            timestamp,
-          });
-        }
-        continue;
-      }
-
-      if (role === "tool") {
-        const toolCallId = (msg.tool_call_id as string) || "";
-        const toolName = toolCallMap.get(toolCallId) || "unknown";
-        const toolResponse = parseToolResponse(
-          content,
-          toolCallId,
-          toolName,
-          timestamp,
-        );
-        if (toolResponse) {
-          processedInitialMessages.push(toolResponse);
-        }
-        continue;
-      }
-
-      if (content.trim()) {
-        processedInitialMessages.push({
-          type: "message",
-          role: role as "user" | "assistant" | "system",
-          content,
-          timestamp,
-        });
-      }
+  async function sendMessage(
+    content: string,
+    isUserMessage: boolean = true,
+    context?: { url: string; content: string },
+  ) {
+    if (!sessionId) {
+      console.error("[useChatContainer] Cannot send message: no session ID");
+      return;
     }
+    setIsRegionBlockedModalOpen(false);
+    if (isUserMessage) {
+      const userMessage = createUserMessage(content);
+      setMessages((prev) => [...filterAuthMessages(prev), userMessage]);
+    } else {
+      setMessages((prev) => filterAuthMessages(prev));
+    }
+    setStreamingChunks([]);
+    streamingChunksRef.current = [];
+    setHasTextChunks(false);
+    setIsStreamingInitiated(true);
+    hasResponseRef.current = false;
 
-    return [...processedInitialMessages, ...messages];
-  }, [initialMessages, messages]);
+    const dispatcher = createStreamEventDispatcher({
+      setHasTextChunks,
+      setStreamingChunks,
+      streamingChunksRef,
+      hasResponseRef,
+      setMessages,
+      setIsRegionBlockedModalOpen,
+      sessionId,
+      setIsStreamingInitiated,
+    });
 
-  const sendMessage = useCallback(
-    async function sendMessage(
-      content: string,
-      isUserMessage: boolean = true,
-      context?: { url: string; content: string },
-    ) {
-      if (!sessionId) {
-        console.error("[useChatContainer] Cannot send message: no session ID");
-        return;
-      }
-      setIsRegionBlockedModalOpen(false);
-      if (isUserMessage) {
-        const userMessage = createUserMessage(content);
-        setMessages((prev) => [...filterAuthMessages(prev), userMessage]);
-      } else {
-        setMessages((prev) => filterAuthMessages(prev));
-      }
-      setStreamingChunks([]);
-      streamingChunksRef.current = [];
-      setHasTextChunks(false);
-      setIsStreamingInitiated(true);
-      hasResponseRef.current = false;
-
-      const dispatcher = createStreamEventDispatcher({
-        setHasTextChunks,
-        setStreamingChunks,
-        streamingChunksRef,
-        hasResponseRef,
-        setMessages,
-        setIsRegionBlockedModalOpen,
+    try {
+      await sendStreamMessage(
         sessionId,
-        setIsStreamingInitiated,
+        content,
+        dispatcher,
+        isUserMessage,
+        context,
+      );
+    } catch (err) {
+      console.error("[useChatContainer] Failed to send message:", err);
+      setIsStreamingInitiated(false);
+
+      if (err instanceof Error && err.name === "AbortError") return;
+
+      const errorMessage =
+        err instanceof Error ? err.message : "Failed to send message";
+      toast.error("Failed to send message", {
+        description: errorMessage,
       });
+    }
+  }
 
-      try {
-        await sendStreamMessage(
-          sessionId,
-          content,
-          dispatcher,
-          isUserMessage,
-          context,
-        );
-      } catch (err) {
-        console.error("[useChatContainer] Failed to send message:", err);
-        setIsStreamingInitiated(false);
-
-        // Don't show error toast for AbortError (expected during cleanup)
-        if (err instanceof Error && err.name === "AbortError") return;
-
-        const errorMessage =
-          err instanceof Error ? err.message : "Failed to send message";
-        toast.error("Failed to send message", {
-          description: errorMessage,
-        });
-      }
-    },
-    [sessionId, sendStreamMessage],
-  );
-
-  const handleStopStreaming = useCallback(() => {
+  function handleStopStreaming() {
     stopStreaming();
     setStreamingChunks([]);
     streamingChunksRef.current = [];
     setHasTextChunks(false);
     setIsStreamingInitiated(false);
-  }, [stopStreaming]);
+  }
 
   const { capturePageContext } = usePageContext();
+  const sendMessageRef = useRef(sendMessage);
+  sendMessageRef.current = sendMessage;
 
-  // Send initial prompt if provided (for new sessions from homepage)
   useEffect(
     function handleInitialPrompt() {
       if (!initialPrompt || !sessionId) return;
@@ -281,15 +172,9 @@ export function useChatContainer({
 
       markInitialPromptSent(sessionId);
       const context = capturePageContext();
-      sendMessage(initialPrompt, true, context);
+      sendMessageRef.current(initialPrompt, true, context);
     },
-    [
-      initialPrompt,
-      sessionId,
-      initialMessages.length,
-      sendMessage,
-      capturePageContext,
-    ],
+    [initialPrompt, sessionId, initialMessages.length, capturePageContext],
   );
 
   async function sendMessageWithContext(

@@ -1,3 +1,33 @@
+export function isErrorResponse(result: unknown): boolean {
+  if (typeof result === "string") {
+    const lower = result.toLowerCase();
+    return (
+      lower.startsWith("error:") ||
+      lower.includes("not found") ||
+      lower.includes("does not exist") ||
+      lower.includes("failed to") ||
+      lower.includes("unable to")
+    );
+  }
+  if (typeof result === "object" && result !== null) {
+    const response = result as Record<string, unknown>;
+    return response.type === "error" || response.error !== undefined;
+  }
+  return false;
+}
+
+export function getErrorMessage(result: unknown): string {
+  if (typeof result === "string") {
+    return result.replace(/^error:\s*/i, "").trim();
+  }
+  if (typeof result === "object" && result !== null) {
+    const response = result as Record<string, unknown>;
+    if (response.error) return String(response.error);
+    if (response.message) return String(response.message);
+  }
+  return "An error occurred";
+}
+
 function getToolCompletionPhrase(toolName: string): string {
   const toolCompletionPhrases: Record<string, string> = {
     add_understanding: "Updated your business information",

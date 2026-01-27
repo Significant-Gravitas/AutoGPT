@@ -1,11 +1,13 @@
-import type { ActiveStream } from "./types";
+import type {
+  ActiveStream,
+  StreamChunk,
+  VercelStreamChunk,
+} from "./chat-types";
 import {
   INITIAL_RETRY_DELAY,
   MAX_RETRIES,
   normalizeStreamChunk,
   parseSSELine,
-  type StreamChunk,
-  type VercelStreamChunk,
 } from "./stream-utils";
 
 function notifySubscribers(stream: ActiveStream, chunk: StreamChunk) {
@@ -121,7 +123,13 @@ export async function executeStream(
         `[StreamExecutor] Retrying in ${retryDelay}ms (attempt ${retryCount + 1}/${MAX_RETRIES})`,
       );
       await new Promise((resolve) => setTimeout(resolve, retryDelay));
-      return executeStream(stream, message, isUserMessage, context, retryCount + 1);
+      return executeStream(
+        stream,
+        message,
+        isUserMessage,
+        context,
+        retryCount + 1,
+      );
     }
 
     stream.status = "error";

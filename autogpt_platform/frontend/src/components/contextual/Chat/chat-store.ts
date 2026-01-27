@@ -1,23 +1,25 @@
+"use client";
+
 import { create } from "zustand";
-import { executeStream } from "./stream-executor";
-import type { StreamChunk } from "./stream-utils";
 import type {
   ActiveStream,
+  StreamChunk,
   StreamCompleteCallback,
   StreamResult,
   StreamStatus,
-} from "./types";
+} from "./chat-types";
+import { executeStream } from "./stream-executor";
 
 const COMPLETED_STREAM_TTL = 5 * 60 * 1000; // 5 minutes
 
-interface ChatStreamState {
+interface ChatStoreState {
   activeStreams: Map<string, ActiveStream>;
   completedStreams: Map<string, StreamResult>;
   activeSessions: Set<string>;
   streamCompleteCallbacks: Set<StreamCompleteCallback>;
 }
 
-interface ChatStreamActions {
+interface ChatStoreActions {
   startStream: (
     sessionId: string,
     message: string,
@@ -40,7 +42,7 @@ interface ChatStreamActions {
   onStreamComplete: (callback: StreamCompleteCallback) => () => void;
 }
 
-type ChatStreamStore = ChatStreamState & ChatStreamActions;
+type ChatStore = ChatStoreState & ChatStoreActions;
 
 function notifyStreamComplete(
   callbacks: Set<StreamCompleteCallback>,
@@ -50,7 +52,7 @@ function notifyStreamComplete(
     try {
       callback(sessionId);
     } catch (err) {
-      console.warn("[ChatStreamStore] Stream complete callback error:", err);
+      console.warn("[ChatStore] Stream complete callback error:", err);
     }
   }
 }
@@ -64,7 +66,33 @@ function cleanupCompletedStreams(completedStreams: Map<string, StreamResult>) {
   }
 }
 
-export const useChatStreamStore = create<ChatStreamStore>((set, get) => ({
+function moveToCompleted(
+  activeStreams: Map<string, ActiveStream>,
+  completedStreams: Map<string, StreamResult>,
+  streamCompleteCallbacks: Set<StreamCompleteCallback>,
+  sessionId: string,
+) {
+  const stream = activeStreams.get(sessionId);
+  if (!stream) return;
+
+  const result: StreamResult = {
+    sessionId,
+    status: stream.status,
+    chunks: stream.chunks,
+    completedAt: Date.now(),
+    error: stream.error,
+  };
+
+  completedStreams.set(sessionId, result);
+  activeStreams.delete(sessionId);
+  cleanupCompletedStreams(completedStreams);
+
+  if (stream.status === "completed") {
+    notifyStreamComplete(streamCompleteCallbacks, sessionId);
+  }
+}
+
+export const useChatStore = create<ChatStore>((set, get) => ({
   activeStreams: new Map(),
   completedStreams: new Map(),
   activeSessions: new Set(),
@@ -204,37 +232,3 @@ export const useChatStreamStore = create<ChatStreamStore>((set, get) => ({
     };
   },
 }));
-
-function moveToCompleted(
-  activeStreams: Map<string, ActiveStream>,
-  completedStreams: Map<string, StreamResult>,
-  streamCompleteCallbacks: Set<StreamCompleteCallback>,
-  sessionId: string,
-) {
-  const stream = activeStreams.get(sessionId);
-  if (!stream) return;
-
-  const result: StreamResult = {
-    sessionId,
-    status: stream.status,
-    chunks: stream.chunks,
-    completedAt: Date.now(),
-    error: stream.error,
-  };
-
-  completedStreams.set(sessionId, result);
-  activeStreams.delete(sessionId);
-  cleanupCompletedStreams(completedStreams);
-
-  if (stream.status === "completed") {
-    notifyStreamComplete(streamCompleteCallbacks, sessionId);
-  }
-}
-
-export function useChatStreamManager() {
-  return useChatStreamStore();
-}
-
-export function getChatStreamManager() {
-  return useChatStreamStore.getState();
-}
