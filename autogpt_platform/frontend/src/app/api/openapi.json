@@ -4594,6 +4594,7 @@
                 "AGENT_NEW_RUN",
                 "AGENT_INPUT",
                 "CONGRATS",
+                "VISIT_COPILOT",
                 "MARKETPLACE_VISIT",
                 "BUILDER_OPEN"
               ],
@@ -8754,6 +8755,7 @@
           "AGENT_NEW_RUN",
           "AGENT_INPUT",
           "CONGRATS",
+          "VISIT_COPILOT",
           "GET_RESULTS",
           "MARKETPLACE_VISIT",
           "MARKETPLACE_ADD_AGENT",
