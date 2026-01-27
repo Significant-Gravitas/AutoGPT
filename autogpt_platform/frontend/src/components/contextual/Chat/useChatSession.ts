@@ -1,6 +1,7 @@
 import {
   getGetV2GetSessionQueryKey,
   getGetV2GetSessionQueryOptions,
+  getGetV2ListSessionsQueryKey,
   postV2CreateSession,
   useGetV2GetSession,
   usePatchV2SessionAssignUser,
@@ -101,6 +102,100 @@ export function useChatSession({
       setError(null);
     }
   }, [createError, loadError]);
+
+  // Check if there are any pending operations in the messages
+  // Must check all operation types: operation_pending, operation_started, operation_in_progress
+  const hasPendingOperations = useMemo(() => {
+    if (!messages || messages.length === 0) return false;
+    const pendingTypes = new Set([
+      "operation_pending",
+      "operation_in_progress",
+      "operation_started",
+    ]);
+    return messages.some((msg) => {
+      if (msg.role !== "tool" || !msg.content) return false;
+      try {
+        const content =
+          typeof msg.content === "string"
+            ? JSON.parse(msg.content)
+            : msg.content;
+        return pendingTypes.has(content?.type);
+      } catch {
+        return false;
+      }
+    });
+  }, [messages]);
+
+  // Refresh sessions list when a pending operation completes
+  // (hasPendingOperations transitions from true to false)
+  const prevHasPendingOperationsRef = useRef(hasPendingOperations);
+  useEffect(
+    function refreshSessionsListOnOperationComplete() {
+      const wasHasPending = prevHasPendingOperationsRef.current;
+      prevHasPendingOperationsRef.current = hasPendingOperations;
+
+      // Only invalidate when transitioning from pending to not pending
+      if (wasHasPending && !hasPendingOperations && sessionId) {
+        queryClient.invalidateQueries({
+          queryKey: getGetV2ListSessionsQueryKey(),
+        });
+      }
+    },
+    [hasPendingOperations, sessionId, queryClient],
+  );
+
+  // Poll for updates when there are pending operations (long poll - 10s intervals with backoff)
+  const pollAttemptRef = useRef(0);
+  const hasPendingOperationsRef = useRef(hasPendingOperations);
+  hasPendingOperationsRef.current = hasPendingOperations;
+
+  useEffect(
+    function pollForPendingOperations() {
+      if (!sessionId || !hasPendingOperations) {
+        pollAttemptRef.current = 0;
+        return;
+      }
+
+      let cancelled = false;
+      let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+      // Calculate delay with exponential backoff: 10s, 15s, 20s, 25s, 30s (max)
+      const baseDelay = 10000;
+      const maxDelay = 30000;
+
+      function schedule() {
+        const delay = Math.min(
+          baseDelay + pollAttemptRef.current * 5000,
+          maxDelay,
+        );
+        timeoutId = setTimeout(async () => {
+          if (cancelled) return;
+          console.info(
+            `[useChatSession] Polling for pending operation updates (attempt ${pollAttemptRef.current + 1})`,
+          );
+          pollAttemptRef.current += 1;
+          try {
+            await refetch();
+          } catch (err) {
+            console.error("[useChatSession] Poll failed:", err);
+          } finally {
+            // Continue polling if still pending and not cancelled
+            if (!cancelled && hasPendingOperationsRef.current) {
+              schedule();
+            }
+          }
+        }, delay);
+      }
+
+      schedule();
+
+      return () => {
+        cancelled = true;
+        if (timeoutId) clearTimeout(timeoutId);
+      };
+    },
+    [sessionId, hasPendingOperations, refetch],
+  );
 
   async function createSession() {
     try {
@@ -228,6 +323,7 @@ export function useChatSession({
     isCreating,
     error,
     isSessionNotFound: isNotFoundError(loadError),
+    hasPendingOperations,
     createSession,
     loadSession,
     refreshSession,

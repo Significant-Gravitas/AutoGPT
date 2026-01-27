@@ -16,6 +16,7 @@ import { AuthPromptWidget } from "../AuthPromptWidget/AuthPromptWidget";
 import { ChatCredentialsSetup } from "../ChatCredentialsSetup/ChatCredentialsSetup";
 import { ClarificationQuestionsWidget } from "../ClarificationQuestionsWidget/ClarificationQuestionsWidget";
 import { ExecutionStartedMessage } from "../ExecutionStartedMessage/ExecutionStartedMessage";
+import { PendingOperationWidget } from "../PendingOperationWidget/PendingOperationWidget";
 import { MarkdownContent } from "../MarkdownContent/MarkdownContent";
 import { NoResultsMessage } from "../NoResultsMessage/NoResultsMessage";
 import { ToolCallMessage } from "../ToolCallMessage/ToolCallMessage";
@@ -71,6 +72,9 @@ export function ChatMessage({
     isLoginNeeded,
     isCredentialsNeeded,
     isClarificationNeeded,
+    isOperationStarted,
+    isOperationPending,
+    isOperationInProgress,
   } = useChatMessage(message);
   const displayContent = getDisplayContent(message, isUser);
 
@@ -287,6 +291,42 @@ export function ChatMessage({
           }
         />
       </div>
+    );
+  }
+
+  // Render operation_started messages (long-running background operations)
+  if (isOperationStarted && message.type === "operation_started") {
+    return (
+      <PendingOperationWidget
+        status="started"
+        message={message.message}
+        toolName={message.toolName}
+        className={className}
+      />
+    );
+  }
+
+  // Render operation_pending messages (operations in progress when refreshing)
+  if (isOperationPending && message.type === "operation_pending") {
+    return (
+      <PendingOperationWidget
+        status="pending"
+        message={message.message}
+        toolName={message.toolName}
+        className={className}
+      />
+    );
+  }
+
+  // Render operation_in_progress messages (duplicate request while operation running)
+  if (isOperationInProgress && message.type === "operation_in_progress") {
+    return (
+      <PendingOperationWidget
+        status="in_progress"
+        message={message.message}
+        toolName={message.toolName}
+        className={className}
+      />
     );
   }
 
