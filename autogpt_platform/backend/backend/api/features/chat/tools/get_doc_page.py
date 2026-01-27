@@ -4,8 +4,6 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from langfuse import observe
-
 from backend.api.features.chat.model import ChatSession
 from backend.api.features.chat.tools.base import BaseTool
 from backend.api.features.chat.tools.models import (
@@ -73,7 +71,6 @@ class GetDocPageTool(BaseTool):
         url_path = path.rsplit(".", 1)[0] if "." in path else path
         return f"{DOCS_BASE_URL}/{url_path}"
 
-    @observe(as_type="tool", name="get_doc_page")
     async def _execute(
         self,
         user_id: str | None,
