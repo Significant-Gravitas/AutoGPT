@@ -186,7 +186,6 @@ export function useCopilotShell() {
       setIsSwitchingSession(true);
 
       await new Promise<void>(function waitForStreamComplete(resolve) {
-        const timeout = setTimeout(resolve, 3000);
         const unsubscribe = onStreamComplete(
           function handleComplete(completedId) {
             if (completedId === sourceSessionId) {
@@ -196,6 +195,10 @@ export function useCopilotShell() {
             }
           },
         );
+        const timeout = setTimeout(function handleTimeout() {
+          unsubscribe();
+          resolve();
+        }, 3000);
         stopStream(sourceSessionId);
       });
 

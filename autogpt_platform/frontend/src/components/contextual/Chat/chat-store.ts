@@ -92,9 +92,13 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const existingStream = newActiveStreams.get(sessionId);
     if (existingStream) {
       existingStream.abortController.abort();
+      const normalizedStatus =
+        existingStream.status === "streaming"
+          ? "completed"
+          : existingStream.status;
       const result: StreamResult = {
         sessionId,
-        status: existingStream.status,
+        status: normalizedStatus,
         chunks: existingStream.chunks,
         completedAt: Date.now(),
         error: existingStream.error,
@@ -102,10 +106,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       newCompletedStreams.set(sessionId, result);
       newActiveStreams.delete(sessionId);
       newCompletedStreams = cleanupExpiredStreams(newCompletedStreams);
-      if (
-        existingStream.status === "completed" ||
-        existingStream.status === "error"
-      ) {
+      if (normalizedStatus === "completed" || normalizedStatus === "error") {
         notifyStreamComplete(callbacks, sessionId);
       }
     }
