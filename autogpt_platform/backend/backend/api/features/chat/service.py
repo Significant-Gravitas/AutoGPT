@@ -376,7 +376,6 @@ async def stream_chat_completion(
             system_prompt=system_prompt,
             text_block_id=text_block_id,
         ):
-
             if isinstance(chunk, StreamTextStart):
                 # Emit text-start before first text delta
                 if not has_received_text:
@@ -1223,13 +1222,13 @@ async def _stream_chat_chunks(
                                     tool_calls[idx]["id"] = tc_chunk.id
                                 if tc_chunk.function:
                                     if tc_chunk.function.name:
-                                        tool_calls[idx]["function"][
-                                            "name"
-                                        ] = tc_chunk.function.name
+                                        tool_calls[idx]["function"]["name"] = (
+                                            tc_chunk.function.name
+                                        )
                                     if tc_chunk.function.arguments:
-                                        tool_calls[idx]["function"][
-                                            "arguments"
-                                        ] += tc_chunk.function.arguments
+                                        tool_calls[idx]["function"]["arguments"] += (
+                                            tc_chunk.function.arguments
+                                        )
 
                                 # Emit StreamToolInputStart only after we have the tool call ID
                                 if (
@@ -1356,11 +1355,19 @@ async def _yield_tool_call(
             logger.info(
                 f"Tool call {tool_call_id} already in progress, returning status"
             )
+            # Build dynamic message based on tool name
+            if tool_name == "create_agent":
+                in_progress_msg = "Agent creation already in progress. Please wait..."
+            elif tool_name == "edit_agent":
+                in_progress_msg = "Agent edit already in progress. Please wait..."
+            else:
+                in_progress_msg = f"{tool_name} already in progress. Please wait..."
+
             yield StreamToolOutputAvailable(
                 toolCallId=tool_call_id,
                 toolName=tool_name,
                 output=OperationInProgressResponse(
-                    message="Agent creation already in progress. Please wait...",
+                    message=in_progress_msg,
                     tool_call_id=tool_call_id,
                 ).model_dump_json(),
                 success=True,
@@ -1592,7 +1599,13 @@ async def _update_pending_operation(
 
     if updated:
         # Invalidate Redis cache so next load gets fresh data
-        await invalidate_session_cache(session_id)
+        # Wrap in try/except to prevent cache failures from triggering error handling
+        # that would overwrite our successful DB update
+        try:
+            await invalidate_session_cache(session_id)
+        except Exception as e:
+            # Non-critical: cache will eventually be refreshed on next load
+            logger.warning(f"Failed to invalidate cache for session {session_id}: {e}")
         logger.info(
             f"Updated pending operation for tool_call_id {tool_call_id} "
             f"in session {session_id}"
