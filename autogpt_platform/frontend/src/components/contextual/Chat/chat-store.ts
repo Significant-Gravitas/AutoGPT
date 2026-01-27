@@ -87,7 +87,7 @@ function moveToCompleted(
   activeStreams.delete(sessionId);
   cleanupCompletedStreams(completedStreams);
 
-  if (stream.status === "completed") {
+  if (stream.status === "completed" || stream.status === "error") {
     notifyStreamComplete(streamCompleteCallbacks, sessionId);
   }
 }

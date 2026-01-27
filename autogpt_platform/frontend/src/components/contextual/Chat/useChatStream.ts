@@ -11,53 +11,56 @@ export function useChatStream() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const currentSessionIdRef = useRef<string | null>(null);
-  const store = useChatStore();
   const onChunkCallbackRef = useRef<((chunk: StreamChunk) => void) | null>(
     null,
   );
 
+  const stopStream = useChatStore((s) => s.stopStream);
+  const unregisterActiveSession = useChatStore(
+    (s) => s.unregisterActiveSession,
+  );
+  const isSessionActive = useChatStore((s) => s.isSessionActive);
+  const onStreamComplete = useChatStore((s) => s.onStreamComplete);
+  const getCompletedStream = useChatStore((s) => s.getCompletedStream);
+  const registerActiveSession = useChatStore((s) => s.registerActiveSession);
+  const startStream = useChatStore((s) => s.startStream);
+  const getStreamStatus = useChatStore((s) => s.getStreamStatus);
+
   function stopStreaming(sessionId?: string) {
     const targetSession = sessionId || currentSessionIdRef.current;
     if (targetSession) {
-      store.stopStream(targetSession);
-      store.unregisterActiveSession(targetSession);
+      stopStream(targetSession);
+      unregisterActiveSession(targetSession);
     }
     setIsStreaming(false);
   }
 
-  useEffect(
-    function cleanupOnUnmount() {
-      return function cleanup() {
-        const sessionId = currentSessionIdRef.current;
-        if (sessionId) {
-          const isActive = store.isSessionActive(sessionId);
-          if (!isActive) {
-            store.stopStream(sessionId);
-          }
-        }
-        currentSessionIdRef.current = null;
-        onChunkCallbackRef.current = null;
-      };
-    },
-    [store],
-  );
-
-  useEffect(
-    function syncStreamingState() {
+  useEffect(function cleanupOnUnmount() {
+    return function cleanup() {
       const sessionId = currentSessionIdRef.current;
-      if (!sessionId) return;
-
-      const status = store.getStreamStatus(sessionId);
-      const shouldBeStreaming = status === "streaming";
-      if (shouldBeStreaming !== isStreaming) setIsStreaming(shouldBeStreaming);
-
-      if (status === "error") {
-        const completed = store.getCompletedStream(sessionId);
-        if (completed?.error) setError(completed.error);
+      if (sessionId && !isSessionActive(sessionId)) {
+        stopStream(sessionId);
       }
-    },
-    [store, isStreaming],
-  );
+      currentSessionIdRef.current = null;
+      onChunkCallbackRef.current = null;
+    };
+  }, []);
+
+  useEffect(function subscribeToStreamComplete() {
+    const unsubscribe = onStreamComplete(
+      function handleStreamComplete(completedSessionId) {
+        if (completedSessionId !== currentSessionIdRef.current) return;
+
+        setIsStreaming(false);
+        const completed = getCompletedStream(completedSessionId);
+        if (completed?.error) {
+          setError(completed.error);
+        }
+      },
+    );
+
+    return unsubscribe;
+  }, []);
 
   async function sendMessage(
     sessionId: string,
@@ -68,7 +71,7 @@ export function useChatStream() {
   ) {
     const previousSessionId = currentSessionIdRef.current;
     if (previousSessionId && previousSessionId !== sessionId) {
-      store.stopStream(previousSessionId);
+      stopStream(previousSessionId);
     }
 
     currentSessionIdRef.current = sessionId;
@@ -76,20 +79,14 @@ export function useChatStream() {
     setIsStreaming(true);
     setError(null);
 
-    store.registerActiveSession(sessionId);
+    registerActiveSession(sessionId);
 
     try {
-      await store.startStream(
-        sessionId,
-        message,
-        isUserMessage,
-        context,
-        onChunk,
-      );
+      await startStream(sessionId, message, isUserMessage, context, onChunk);
 
-      const status = store.getStreamStatus(sessionId);
+      const status = getStreamStatus(sessionId);
       if (status === "error") {
-        const completed = store.getCompletedStream(sessionId);
+        const completed = getCompletedStream(sessionId);
         if (completed?.error) {
           setError(completed.error);
           toast.error("Connection Failed", {

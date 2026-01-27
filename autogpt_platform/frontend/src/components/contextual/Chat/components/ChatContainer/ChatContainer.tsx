@@ -40,8 +40,6 @@ export function ChatContainer({
     initialPrompt,
   });
 
-  console.log("initial", initialMessages);
-
   useEffect(() => {
     onStreamingChange?.(isStreaming);
   }, [isStreaming, onStreamingChange]);
