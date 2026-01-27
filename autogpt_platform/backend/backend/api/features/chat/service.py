@@ -1002,6 +1002,10 @@ async def _stream_chat_chunks(
                         f"Applying progressive truncation to recent messages."
                     )
 
+                    # Create a base list excluding system prompt to avoid duplication
+                    # This is the pool of messages we'll slice from in the loop
+                    base_msgs = messages[1:] if has_system_prompt else messages
+
                     # Try progressively smaller keep counts
                     new_token_count = token_count  # Initialize with current count
                     for keep_count in [12, 10, 8, 5, 3, 2, 1, 0]:
@@ -1017,10 +1021,11 @@ async def _stream_chat_chunks(
                                 # This is invalid, skip this iteration
                                 continue
                         else:
-                            if len(messages) < keep_count:
+                            if len(base_msgs) < keep_count:
                                 continue  # Skip if we don't have enough messages
 
-                            recent_messages = messages[-keep_count:]
+                            # Slice from base_msgs to get recent messages (without system prompt)
+                            recent_messages = base_msgs[-keep_count:]
 
                             if has_system_prompt:
                                 messages = [system_msg] + recent_messages
@@ -1029,6 +1034,8 @@ async def _stream_chat_chunks(
 
                         new_messages_dict = []
                         for msg in messages:
+                            if msg is None:
+                                continue  # Skip None messages (type safety)
                             if isinstance(msg, dict):
                                 msg_dict = {
                                     k: v for k, v in msg.items() if v is not None
