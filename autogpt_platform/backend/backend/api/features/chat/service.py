@@ -936,6 +936,7 @@ async def _stream_chat_chunks(
                     )
 
                     # Try progressively smaller keep counts
+                    new_token_count = token_count  # Initialize with current count
                     for keep_count in [12, 10, 8, 5]:
                         if len(messages) <= keep_count:
                             continue  # Skip if we don't have enough messages
@@ -950,7 +951,9 @@ async def _stream_chat_chunks(
                         new_messages_dict = []
                         for msg in messages:
                             if isinstance(msg, dict):
-                                msg_dict = {k: v for k, v in msg.items() if v is not None}
+                                msg_dict = {
+                                    k: v for k, v in msg.items() if v is not None
+                                }
                             else:
                                 msg_dict = dict(msg)
                             new_messages_dict.append(msg_dict)
