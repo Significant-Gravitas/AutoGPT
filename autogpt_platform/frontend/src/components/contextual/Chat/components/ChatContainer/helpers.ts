@@ -345,6 +345,7 @@ export function parseToolResponse(
       return {
         type: "operation_started",
         toolName: (parsedResult.tool_name as string) || toolName,
+        toolId,
         operationId: (parsedResult.operation_id as string) || "",
         message:
           (parsedResult.message as string) ||
@@ -356,6 +357,7 @@ export function parseToolResponse(
       return {
         type: "operation_pending",
         toolName: (parsedResult.tool_name as string) || toolName,
+        toolId,
         operationId: (parsedResult.operation_id as string) || "",
         message:
           (parsedResult.message as string) ||

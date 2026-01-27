@@ -107,6 +107,7 @@ export type ChatMessageData =
   | {
       type: "operation_started";
       toolName: string;
+      toolId: string;
       operationId: string;
       message: string;
       timestamp?: string | Date;
@@ -114,6 +115,7 @@ export type ChatMessageData =
   | {
       type: "operation_pending";
       toolName: string;
+      toolId: string;
       operationId: string;
       message: string;
       timestamp?: string | Date;

@@ -85,7 +85,42 @@ export function useChatContainer({
   // Combine initial messages from backend with local streaming messages,
   // then deduplicate to prevent duplicates when polling refreshes initialMessages
   const allMessages = useMemo(() => {
-    const combined = [...processInitialMessages(initialMessages), ...messages];
+    const processedInitial = processInitialMessages(initialMessages);
+
+    // Collect toolIds that have completed (non-operation) results from DB
+    // These indicate operations that finished - we should filter out their
+    // corresponding operation_started/pending messages from local state
+    const completedToolIds = new Set<string>();
+    for (const msg of processedInitial) {
+      if (
+        msg.type === "tool_response" ||
+        msg.type === "agent_carousel" ||
+        msg.type === "execution_started"
+      ) {
+        const toolId = (msg as any).toolId;
+        if (toolId) {
+          completedToolIds.add(toolId);
+        }
+      }
+    }
+
+    // Filter local messages to remove operation messages for completed tools
+    const filteredLocalMessages = messages.filter((msg) => {
+      if (
+        msg.type === "operation_started" ||
+        msg.type === "operation_pending" ||
+        msg.type === "operation_in_progress"
+      ) {
+        const toolId = (msg as any).toolId || (msg as any).toolCallId;
+        if (toolId && completedToolIds.has(toolId)) {
+          return false; // Filter out - operation completed
+        }
+      }
+      return true;
+    });
+
+    const combined = [...processedInitial, ...filteredLocalMessages];
+
     // Deduplicate by content+role. When initialMessages is refreshed via polling,
     // it may contain messages that are also in the local `messages` state.
     const seen = new Set<string>();
@@ -101,8 +136,8 @@ export function useChatContainer({
         msg.type === "operation_pending" ||
         msg.type === "operation_in_progress"
       ) {
-        // Dedupe operation messages by operationId or toolCallId
-        key = `op:${(msg as any).operationId || (msg as any).toolCallId || ""}:${msg.toolName}`;
+        // Dedupe operation messages by toolId or operationId
+        key = `op:${(msg as any).toolId || (msg as any).operationId || (msg as any).toolCallId || ""}:${msg.toolName}`;
       } else {
         // For other types, use a combination of type and first few fields
         key = `${msg.type}:${JSON.stringify(msg).slice(0, 100)}`;
