@@ -1,16 +1,19 @@
 "use client";
 
-import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 import { Button } from "@/components/atoms/Button/Button";
+
+import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { Chat } from "@/components/contextual/Chat/Chat";
 import { ChatInput } from "@/components/contextual/Chat/components/ChatInput/ChatInput";
 import { ChatLoader } from "@/components/contextual/Chat/components/ChatLoader/ChatLoader";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
+import { useCopilotStore } from "./copilot-page-store";
 import { useCopilotPage } from "./useCopilotPage";
 
 export default function CopilotPage() {
   const { state, handlers } = useCopilotPage();
+  const confirmNewChat = useCopilotStore((s) => s.confirmNewChat);
   const {
     greetingName,
     quickActions,
@@ -25,15 +28,11 @@ export default function CopilotPage() {
     handleSessionNotFound,
     handleStreamingChange,
     handleCancelNewChat,
-    proceedWithNewChat,
     handleNewChatModalOpen,
   } = handlers;
 
-  if (!isReady) {
-    return null;
-  }
+  if (!isReady) return null;
 
-  // Show Chat when we have an active session
   if (pageState.type === "chat") {
     return (
       <div className="flex h-full flex-col">
@@ -71,7 +70,7 @@ export default function CopilotPage() {
                 <Button
                   type="button"
                   variant="primary"
-                  onClick={proceedWithNewChat}
+                  onClick={confirmNewChat}
                 >
                   Start new chat
                 </Button>
@@ -83,7 +82,7 @@ export default function CopilotPage() {
     );
   }
 
-  if (pageState.type === "newChat") {
+  if (pageState.type === "newChat" || pageState.type === "creating") {
     return (
       <div className="flex h-full flex-1 flex-col items-center justify-center bg-[#f8f8f9]">
         <div className="flex flex-col items-center gap-4">
@@ -96,21 +95,6 @@ export default function CopilotPage() {
     );
   }
 
-  // Show loading state while creating session and sending first message
-  if (pageState.type === "creating") {
-    return (
-      <div className="flex h-full flex-1 flex-col items-center justify-center bg-[#f8f8f9]">
-        <div className="flex flex-col items-center gap-4">
-          <ChatLoader />
-          <Text variant="body" className="text-zinc-500">
-            Loading your chats...
-          </Text>
-        </div>
-      </div>
-    );
-  }
-
-  // Show Welcome screen
   return (
     <div className="flex h-full flex-1 items-center justify-center overflow-y-auto bg-[#f8f8f9] px-6 py-10">
       <div className="w-full text-center">

@@ -4,7 +4,7 @@ import { ChatLoader } from "@/components/contextual/Chat/components/ChatLoader/C
 import { NAVBAR_HEIGHT_PX } from "@/lib/constants";
 import type { ReactNode } from "react";
 import { useEffect } from "react";
-import { useNewChat } from "../../NewChatContext";
+import { useCopilotStore } from "../../copilot-page-store";
 import { DesktopSidebar } from "./components/DesktopSidebar/DesktopSidebar";
 import { LoadingState } from "./components/LoadingState/LoadingState";
 import { MobileDrawer } from "./components/MobileDrawer/MobileDrawer";
@@ -35,20 +35,22 @@ export function CopilotShell({ children }: Props) {
     isReadyToShowContent,
   } = useCopilotShell();
 
-  const newChatContext = useNewChat();
-  const handleNewChatClickWrapper =
-    newChatContext?.onNewChatClick || handleNewChat;
+  const setNewChatHandler = useCopilotStore((s) => s.setNewChatHandler);
+  const requestNewChat = useCopilotStore((s) => s.requestNewChat);
 
   useEffect(
     function registerNewChatHandler() {
-      if (!newChatContext) return;
-      newChatContext.setPerformNewChat(handleNewChat);
+      setNewChatHandler(handleNewChat);
       return function cleanup() {
-        newChatContext.setPerformNewChat(undefined);
+        setNewChatHandler(null);
       };
     },
-    [newChatContext, handleNewChat],
+    [handleNewChat],
   );
+
+  function handleNewChatClick() {
+    requestNewChat();
+  }
 
   if (!isLoggedIn) {
     return (
@@ -72,7 +74,7 @@ export function CopilotShell({ children }: Props) {
           isFetchingNextPage={isFetchingNextPage}
           onSelectSession={handleSelectSession}
           onFetchNextPage={fetchNextPage}
-          onNewChat={handleNewChatClickWrapper}
+          onNewChat={handleNewChatClick}
           hasActiveSession={Boolean(hasActiveSession)}
         />
       )}
@@ -94,7 +96,7 @@ export function CopilotShell({ children }: Props) {
           isFetchingNextPage={isFetchingNextPage}
           onSelectSession={handleSelectSession}
           onFetchNextPage={fetchNextPage}
-          onNewChat={handleNewChatClickWrapper}
+          onNewChat={handleNewChatClick}
           onClose={handleCloseDrawer}
           onOpenChange={handleDrawerOpenChange}
           hasActiveSession={Boolean(hasActiveSession)}

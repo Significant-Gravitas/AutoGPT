@@ -164,9 +164,9 @@ async def test_process_review_action_approve_success(
     """Test successful review approval"""
     # Mock the route functions
 
-    # Mock get_pending_reviews_by_node_exec_ids (called to find the graph_exec_id)
+    # Mock get_reviews_by_node_exec_ids (called to find the graph_exec_id)
     mock_get_reviews_for_user = mocker.patch(
-        "backend.api.features.executions.review.routes.get_pending_reviews_by_node_exec_ids"
+        "backend.api.features.executions.review.routes.get_reviews_by_node_exec_ids"
     )
     mock_get_reviews_for_user.return_value = {"test_node_123": sample_pending_review}
 
@@ -244,9 +244,9 @@ async def test_process_review_action_reject_success(
     """Test successful review rejection"""
     # Mock the route functions
 
-    # Mock get_pending_reviews_by_node_exec_ids (called to find the graph_exec_id)
+    # Mock get_reviews_by_node_exec_ids (called to find the graph_exec_id)
     mock_get_reviews_for_user = mocker.patch(
-        "backend.api.features.executions.review.routes.get_pending_reviews_by_node_exec_ids"
+        "backend.api.features.executions.review.routes.get_reviews_by_node_exec_ids"
     )
     mock_get_reviews_for_user.return_value = {"test_node_123": sample_pending_review}
 
@@ -339,9 +339,9 @@ async def test_process_review_action_mixed_success(
 
     # Mock the route functions
 
-    # Mock get_pending_reviews_by_node_exec_ids (called to find the graph_exec_id)
+    # Mock get_reviews_by_node_exec_ids (called to find the graph_exec_id)
     mock_get_reviews_for_user = mocker.patch(
-        "backend.api.features.executions.review.routes.get_pending_reviews_by_node_exec_ids"
+        "backend.api.features.executions.review.routes.get_reviews_by_node_exec_ids"
     )
     mock_get_reviews_for_user.return_value = {
         "test_node_123": sample_pending_review,
@@ -463,9 +463,9 @@ async def test_process_review_action_review_not_found(
     test_user_id: str,
 ) -> None:
     """Test error when review is not found"""
-    # Mock get_pending_reviews_by_node_exec_ids (called to find the graph_exec_id)
+    # Mock get_reviews_by_node_exec_ids (called to find the graph_exec_id)
     mock_get_reviews_for_user = mocker.patch(
-        "backend.api.features.executions.review.routes.get_pending_reviews_by_node_exec_ids"
+        "backend.api.features.executions.review.routes.get_reviews_by_node_exec_ids"
     )
     # Return empty dict to simulate review not found
     mock_get_reviews_for_user.return_value = {}
@@ -506,7 +506,7 @@ async def test_process_review_action_review_not_found(
     response = await client.post("/api/review/action", json=request_data)
 
     assert response.status_code == 404
-    assert "No pending review found" in response.json()["detail"]
+    assert "Review(s) not found" in response.json()["detail"]
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -517,9 +517,9 @@ async def test_process_review_action_partial_failure(
     test_user_id: str,
 ) -> None:
     """Test handling of partial failures in review processing"""
-    # Mock get_pending_reviews_by_node_exec_ids (called to find the graph_exec_id)
+    # Mock get_reviews_by_node_exec_ids (called to find the graph_exec_id)
     mock_get_reviews_for_user = mocker.patch(
-        "backend.api.features.executions.review.routes.get_pending_reviews_by_node_exec_ids"
+        "backend.api.features.executions.review.routes.get_reviews_by_node_exec_ids"
     )
     mock_get_reviews_for_user.return_value = {"test_node_123": sample_pending_review}
 
@@ -567,9 +567,9 @@ async def test_process_review_action_invalid_node_exec_id(
     test_user_id: str,
 ) -> None:
     """Test failure when trying to process review with invalid node execution ID"""
-    # Mock get_pending_reviews_by_node_exec_ids (called to find the graph_exec_id)
+    # Mock get_reviews_by_node_exec_ids (called to find the graph_exec_id)
     mock_get_reviews_for_user = mocker.patch(
-        "backend.api.features.executions.review.routes.get_pending_reviews_by_node_exec_ids"
+        "backend.api.features.executions.review.routes.get_reviews_by_node_exec_ids"
     )
     # Return empty dict to simulate review not found
     mock_get_reviews_for_user.return_value = {}
@@ -596,7 +596,7 @@ async def test_process_review_action_invalid_node_exec_id(
 
     # Returns 404 when review is not found
     assert response.status_code == 404
-    assert "No pending review found" in response.json()["detail"]
+    assert "Review(s) not found" in response.json()["detail"]
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -607,9 +607,9 @@ async def test_process_review_action_auto_approve_creates_auto_approval_records(
     test_user_id: str,
 ) -> None:
     """Test that auto_approve_future_actions flag creates auto-approval records"""
-    # Mock get_pending_reviews_by_node_exec_ids (called to find the graph_exec_id)
+    # Mock get_reviews_by_node_exec_ids (called to find the graph_exec_id)
     mock_get_reviews_for_user = mocker.patch(
-        "backend.api.features.executions.review.routes.get_pending_reviews_by_node_exec_ids"
+        "backend.api.features.executions.review.routes.get_reviews_by_node_exec_ids"
     )
     mock_get_reviews_for_user.return_value = {"test_node_123": sample_pending_review}
 
@@ -737,9 +737,9 @@ async def test_process_review_action_without_auto_approve_still_loads_settings(
     test_user_id: str,
 ) -> None:
     """Test that execution context is created with settings even without auto-approve"""
-    # Mock get_pending_reviews_by_node_exec_ids (called to find the graph_exec_id)
+    # Mock get_reviews_by_node_exec_ids (called to find the graph_exec_id)
     mock_get_reviews_for_user = mocker.patch(
-        "backend.api.features.executions.review.routes.get_pending_reviews_by_node_exec_ids"
+        "backend.api.features.executions.review.routes.get_reviews_by_node_exec_ids"
     )
     mock_get_reviews_for_user.return_value = {"test_node_123": sample_pending_review}
 
@@ -885,9 +885,9 @@ async def test_process_review_action_auto_approve_only_applies_to_approved_revie
         reviewed_at=FIXED_NOW,
     )
 
-    # Mock get_pending_reviews_by_node_exec_ids (called to find the graph_exec_id)
+    # Mock get_reviews_by_node_exec_ids (called to find the graph_exec_id)
     mock_get_reviews_for_user = mocker.patch(
-        "backend.api.features.executions.review.routes.get_pending_reviews_by_node_exec_ids"
+        "backend.api.features.executions.review.routes.get_reviews_by_node_exec_ids"
     )
     # Need to return both reviews in WAITING state (before processing)
     approved_review_waiting = PendingHumanReviewModel(
@@ -1031,9 +1031,9 @@ async def test_process_review_action_per_review_auto_approve_granularity(
     test_user_id: str,
 ) -> None:
     """Test that auto-approval can be set per-review (granular control)"""
-    # Mock get_pending_reviews_by_node_exec_ids - return different reviews based on node_exec_id
+    # Mock get_reviews_by_node_exec_ids - return different reviews based on node_exec_id
     mock_get_reviews_for_user = mocker.patch(
-        "backend.api.features.executions.review.routes.get_pending_reviews_by_node_exec_ids"
+        "backend.api.features.executions.review.routes.get_reviews_by_node_exec_ids"
     )
 
     # Create a mapping of node_exec_id to review

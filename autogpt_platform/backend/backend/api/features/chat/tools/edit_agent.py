@@ -3,8 +3,6 @@
 import logging
 from typing import Any
 
-from langfuse import observe
-
 from backend.api.features.chat.model import ChatSession
 
 from .agent_generator import (
@@ -81,7 +79,6 @@ class EditAgentTool(BaseTool):
             "required": ["agent_id", "changes"],
         }
 
-    @observe(as_type="tool", name="edit_agent")
     async def _execute(
         self,
         user_id: str | None,
@@ -145,8 +142,9 @@ class EditAgentTool(BaseTool):
 
         if result is None:
             return ErrorResponse(
-                message="Failed to generate changes. Please try rephrasing.",
-                error="Update generation failed",
+                message="Failed to generate changes. The agent generation service may be unavailable or timed out. Please try again.",
+                error="update_generation_failed",
+                details={"agent_id": agent_id, "changes": changes[:100]},
                 session_id=session_id,
             )
 

@@ -3,8 +3,6 @@
 import logging
 from typing import Any
 
-from langfuse import observe
-
 from backend.api.features.chat.model import ChatSession
 
 from .agent_generator import (
@@ -75,7 +73,6 @@ class CreateAgentTool(BaseTool):
             "required": ["description"],
         }
 
-    @observe(as_type="tool", name="create_agent")
     async def _execute(
         self,
         user_id: str | None,
@@ -116,8 +113,11 @@ class CreateAgentTool(BaseTool):
 
         if decomposition_result is None:
             return ErrorResponse(
-                message="Failed to analyze the goal. Please try rephrasing.",
-                error="Decomposition failed",
+                message="Failed to analyze the goal. The agent generation service may be unavailable or timed out. Please try again.",
+                error="decomposition_failed",
+                details={
+                    "description": description[:100]
+                },  # Include context for debugging
                 session_id=session_id,
             )
 
@@ -182,8 +182,11 @@ class CreateAgentTool(BaseTool):
 
         if agent_json is None:
             return ErrorResponse(
-                message="Failed to generate the agent. Please try again.",
-                error="Generation failed",
+                message="Failed to generate the agent. The agent generation service may be unavailable or timed out. Please try again.",
+                error="generation_failed",
+                details={
+                    "description": description[:100]
+                },  # Include context for debugging
                 session_id=session_id,
             )
 

@@ -1,4 +1,7 @@
-import { postV2CreateSession } from "@/app/api/__generated__/endpoints/chat/chat";
+import {
+  getGetV2ListSessionsQueryKey,
+  postV2CreateSession,
+} from "@/app/api/__generated__/endpoints/chat/chat";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { getHomepageRoute } from "@/lib/constants";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
@@ -8,25 +11,22 @@ import {
   useGetFlag,
 } from "@/services/feature-flags/use-get-flag";
 import * as Sentry from "@sentry/nextjs";
+import { useQueryClient } from "@tanstack/react-query";
 import { useFlags } from "launchdarkly-react-client-sdk";
 import { useRouter } from "next/navigation";
 import { useEffect, useReducer } from "react";
-import { useNewChat } from "./NewChatContext";
+import { useCopilotStore } from "./copilot-page-store";
 import { getGreetingName, getQuickActions, type PageState } from "./helpers";
 import { useCopilotURLState } from "./useCopilotURLState";
 
 type CopilotState = {
   pageState: PageState;
-  isStreaming: boolean;
-  isNewChatModalOpen: boolean;
   initialPrompts: Record<string, string>;
   previousSessionId: string | null;
 };
 
 type CopilotAction =
   | { type: "setPageState"; pageState: PageState }
-  | { type: "setStreaming"; isStreaming: boolean }
-  | { type: "setNewChatModalOpen"; isOpen: boolean }
   | { type: "setInitialPrompt"; sessionId: string; prompt: string }
   | { type: "setPreviousSessionId"; sessionId: string | null };
 
@@ -52,14 +52,6 @@ function copilotReducer(
     if (isSamePageState(action.pageState, state.pageState)) return state;
     return { ...state, pageState: action.pageState };
   }
-  if (action.type === "setStreaming") {
-    if (action.isStreaming === state.isStreaming) return state;
-    return { ...state, isStreaming: action.isStreaming };
-  }
-  if (action.type === "setNewChatModalOpen") {
-    if (action.isOpen === state.isNewChatModalOpen) return state;
-    return { ...state, isNewChatModalOpen: action.isOpen };
-  }
   if (action.type === "setInitialPrompt") {
     if (state.initialPrompts[action.sessionId] === action.prompt) return state;
     return {
@@ -79,8 +71,13 @@ function copilotReducer(
 
 export function useCopilotPage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { user, isLoggedIn, isUserLoading } = useSupabase();
   const { toast } = useToast();
+
+  const isNewChatModalOpen = useCopilotStore((s) => s.isNewChatModalOpen);
+  const setIsStreaming = useCopilotStore((s) => s.setIsStreaming);
+  const cancelNewChat = useCopilotStore((s) => s.cancelNewChat);
 
   const isChatEnabled = useGetFlag(Flag.CHAT);
   const flags = useFlags<FlagValues>();
@@ -93,13 +90,10 @@ export function useCopilotPage() {
 
   const [state, dispatch] = useReducer(copilotReducer, {
     pageState: { type: "welcome" },
-    isStreaming: false,
-    isNewChatModalOpen: false,
     initialPrompts: {},
     previousSessionId: null,
   });
 
-  const newChatContext = useNewChat();
   const greetingName = getGreetingName(user);
   const quickActions = getQuickActions();
 
@@ -123,17 +117,6 @@ export function useCopilotPage() {
     setInitialPrompt,
     setPreviousSessionId,
   });
-
-  useEffect(
-    function registerNewChatHandler() {
-      if (!newChatContext) return;
-      newChatContext.setOnNewChatClick(handleNewChatClick);
-      return function cleanup() {
-        newChatContext.setOnNewChatClick(undefined);
-      };
-    },
-    [newChatContext, handleNewChatClick],
-  );
 
   useEffect(
     function transitionNewChatToWelcome() {
@@ -189,6 +172,10 @@ export function useCopilotPage() {
         prompt: trimmedPrompt,
       });
 
+      await queryClient.invalidateQueries({
+        queryKey: getGetV2ListSessionsQueryKey(),
+      });
+
       await setUrlSessionId(sessionId, { shallow: false });
       dispatch({
         type: "setPageState",
@@ -211,37 +198,15 @@ export function useCopilotPage() {
   }
 
   function handleStreamingChange(isStreamingValue: boolean) {
-    dispatch({ type: "setStreaming", isStreaming: isStreamingValue });
-  }
-
-  async function proceedWithNewChat() {
-    dispatch({ type: "setNewChatModalOpen", isOpen: false });
-    if (newChatContext?.performNewChat) {
-      newChatContext.performNewChat();
-      return;
-    }
-    try {
-      await setUrlSessionId(null, { shallow: false });
-    } catch (error) {
-      console.error("[CopilotPage] Failed to clear session:", error);
-    }
-    router.replace("/copilot");
+    setIsStreaming(isStreamingValue);
   }
 
   function handleCancelNewChat() {
-    dispatch({ type: "setNewChatModalOpen", isOpen: false });
+    cancelNewChat();
   }
 
   function handleNewChatModalOpen(isOpen: boolean) {
-    dispatch({ type: "setNewChatModalOpen", isOpen });
-  }
-
-  function handleNewChatClick() {
-    if (state.isStreaming) {
-      dispatch({ type: "setNewChatModalOpen", isOpen: true });
-    } else {
-      proceedWithNewChat();
-    }
+    if (!isOpen) cancelNewChat();
   }
 
   return {
@@ -250,7 +215,7 @@ export function useCopilotPage() {
       quickActions,
       isLoading: isUserLoading,
       pageState: state.pageState,
-      isNewChatModalOpen: state.isNewChatModalOpen,
+      isNewChatModalOpen,
       isReady: isFlagReady && isChatEnabled !== false && isLoggedIn,
     },
     handlers: {
@@ -259,7 +224,6 @@ export function useCopilotPage() {
       handleSessionNotFound,
       handleStreamingChange,
       handleCancelNewChat,
-      proceedWithNewChat,
       handleNewChatModalOpen,
     },
   };
