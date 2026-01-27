@@ -24,6 +24,7 @@ from backend.data.understanding import (
 from backend.util.exceptions import NotFoundError
 from backend.util.settings import Settings
 
+from . import db as chat_db
 from .config import ChatConfig
 from .model import (
     ChatMessage,
@@ -31,6 +32,7 @@ from .model import (
     Usage,
     cache_chat_session,
     get_chat_session,
+    invalidate_session_cache,
     update_session_title,
     upsert_chat_session,
 )
@@ -48,8 +50,13 @@ from .response_model import (
     StreamToolOutputAvailable,
     StreamUsage,
 )
-from .tools import execute_tool, tools
-from .tools.models import ErrorResponse
+from .tools import execute_tool, get_tool, tools
+from .tools.models import (
+    ErrorResponse,
+    OperationInProgressResponse,
+    OperationPendingResponse,
+    OperationStartedResponse,
+)
 from .tracking import track_user_message
 
 logger = logging.getLogger(__name__)
@@ -60,6 +67,10 @@ client = openai.AsyncOpenAI(api_key=config.api_key, base_url=config.base_url)
 
 
 langfuse = get_client()
+
+# In-memory tracking of running long-running operations (tool_call_id -> asyncio.Task)
+# Used for idempotency - prevents duplicate executions on browser refresh
+_running_operations: dict[str, asyncio.Task] = {}
 
 
 class LangfuseNotConfiguredError(Exception):
@@ -1260,14 +1271,17 @@ async def _yield_tool_call(
     """
     Yield a tool call and its execution result.
 
-    For long-running tools, yields heartbeat events every 15 seconds to keep
-    the SSE connection alive through proxies and load balancers.
+    For tools marked with `is_long_running=True` (like agent generation), spawns a
+    background task so the operation survives SSE disconnections. For other tools,
+    yields heartbeat events every 15 seconds to keep the SSE connection alive.
 
     Raises:
         orjson.JSONDecodeError: If tool call arguments cannot be parsed as JSON
         KeyError: If expected tool call fields are missing
         TypeError: If tool call structure is invalid
     """
+    import uuid as uuid_module
+
     tool_name = tool_calls[yield_idx]["function"]["name"]
     tool_call_id = tool_calls[yield_idx]["id"]
     logger.info(f"Yielding tool call: {tool_calls[yield_idx]}")
@@ -1285,7 +1299,79 @@ async def _yield_tool_call(
         input=arguments,
     )
 
-    # Run tool execution in background task with heartbeats to keep connection alive
+    # Check if this tool is long-running (survives SSE disconnection)
+    tool = get_tool(tool_name)
+    if tool and tool.is_long_running:
+        # Idempotency check - if this tool_call_id is already running, return status
+        if tool_call_id in _running_operations:
+            existing_task = _running_operations[tool_call_id]
+            if not existing_task.done():
+                logger.info(
+                    f"Tool call {tool_call_id} already in progress, returning status"
+                )
+                yield StreamToolOutputAvailable(
+                    toolCallId=tool_call_id,
+                    toolName=tool_name,
+                    output=OperationInProgressResponse(
+                        message="Agent creation already in progress. Please wait...",
+                        tool_call_id=tool_call_id,
+                    ).model_dump_json(),
+                    success=True,
+                )
+                return
+
+        # Generate operation ID
+        operation_id = str(uuid_module.uuid4())
+
+        # Save "pending" tool response to chat history immediately
+        pending_message = ChatMessage(
+            role="tool",
+            content=OperationPendingResponse(
+                message="Creating agent... This may take a few minutes.",
+                operation_id=operation_id,
+                tool_name=tool_name,
+            ).model_dump_json(),
+            tool_call_id=tool_call_id,
+        )
+        session.messages.append(pending_message)
+        await upsert_chat_session(session)
+        logger.info(
+            f"Saved pending operation {operation_id} for tool {tool_name} "
+            f"in session {session.session_id}"
+        )
+
+        # Start background task (NOT tied to SSE)
+        task = asyncio.create_task(
+            _execute_long_running_tool(
+                tool_name=tool_name,
+                parameters=arguments,
+                tool_call_id=tool_call_id,
+                operation_id=operation_id,
+                session_id=session.session_id,
+                user_id=session.user_id,
+            )
+        )
+        # Track for idempotency and cleanup
+        _running_operations[tool_call_id] = task
+        task.add_done_callback(lambda _: _running_operations.pop(tool_call_id, None))
+
+        # Return immediately - don't wait for completion
+        yield StreamToolOutputAvailable(
+            toolCallId=tool_call_id,
+            toolName=tool_name,
+            output=OperationStartedResponse(
+                message=(
+                    "Agent creation started. You can close this tab - "
+                    "check your library in a few minutes."
+                ),
+                operation_id=operation_id,
+                tool_name=tool_name,
+            ).model_dump_json(),
+            success=True,
+        )
+        return
+
+    # Normal flow: Run tool execution in background task with heartbeats
     tool_task = asyncio.create_task(
         execute_tool(
             tool_name=tool_name,
@@ -1335,3 +1421,91 @@ async def _yield_tool_call(
         )
 
     yield tool_execution_response
+
+
+async def _execute_long_running_tool(
+    tool_name: str,
+    parameters: dict[str, Any],
+    tool_call_id: str,
+    operation_id: str,
+    session_id: str,
+    user_id: str | None,
+) -> None:
+    """Execute a long-running tool in background and update chat history with result.
+
+    This function runs independently of the SSE connection, so the operation
+    survives if the user closes their browser tab.
+    """
+    try:
+        # Load fresh session (not stale reference)
+        session = await get_chat_session(session_id, user_id)
+        if not session:
+            logger.error(f"Session {session_id} not found for background tool")
+            return
+
+        # Execute the actual tool
+        result = await execute_tool(
+            tool_name=tool_name,
+            parameters=parameters,
+            tool_call_id=tool_call_id,
+            user_id=user_id,
+            session=session,
+        )
+
+        # Update the pending message with result
+        await _update_pending_operation(
+            session_id=session_id,
+            tool_call_id=tool_call_id,
+            result=(
+                result.output
+                if isinstance(result.output, str)
+                else orjson.dumps(result.output).decode("utf-8")
+            ),
+            success=result.success,
+        )
+
+        logger.info(f"Background tool {tool_name} completed for session {session_id}")
+
+    except Exception as e:
+        logger.error(f"Background tool {tool_name} failed: {e}", exc_info=True)
+        error_response = {
+            "type": "error",
+            "message": f"Agent creation failed: {str(e)}",
+        }
+        await _update_pending_operation(
+            session_id=session_id,
+            tool_call_id=tool_call_id,
+            result=orjson.dumps(error_response).decode("utf-8"),
+            success=False,
+        )
+
+
+async def _update_pending_operation(
+    session_id: str,
+    tool_call_id: str,
+    result: str,
+    success: bool,
+) -> None:
+    """Update the pending tool message with final result.
+
+    This is called by background tasks when long-running operations complete.
+    """
+    # Update the message in database
+    updated = await chat_db.update_tool_message_content(
+        session_id=session_id,
+        tool_call_id=tool_call_id,
+        new_content=result,
+    )
+
+    if updated:
+        # Invalidate Redis cache so next load gets fresh data
+        await invalidate_session_cache(session_id)
+        logger.info(
+            f"Updated pending operation for tool_call_id {tool_call_id} "
+            f"in session {session_id}"
+        )
+    else:
+        logger.warning(
+            f"Failed to update pending operation for tool_call_id {tool_call_id} "
+            f"in session {session_id}"
+        )

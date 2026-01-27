@@ -295,6 +295,16 @@ async def cache_chat_session(session: ChatSession) -> None:
     await _cache_session(session)
 
 
+async def invalidate_session_cache(session_id: str) -> None:
+    """Invalidate a chat session from Redis cache.
+
+    Used by background tasks to ensure fresh data is loaded on next access.
+    """
+    redis_key = _get_session_cache_key(session_id)
+    async_redis = await get_redis_async()
+    await async_redis.delete(redis_key)
+
+
 async def _get_session_from_db(session_id: str) -> ChatSession | None:
     """Get a chat session from the database."""
     prisma_session = await chat_db.get_chat_session(session_id)

@@ -49,6 +49,11 @@ tools: list[ChatCompletionToolParam] = [
 ]
 
 
+def get_tool(tool_name: str) -> BaseTool | None:
+    """Get a tool instance by name."""
+    return TOOL_REGISTRY.get(tool_name)
+
+
 async def execute_tool(
     tool_name: str,
     parameters: dict[str, Any],
@@ -57,7 +62,7 @@ async def execute_tool(
     tool_call_id: str,
 ) -> "StreamToolOutputAvailable":
     """Execute a tool by name."""
-    tool = TOOL_REGISTRY.get(tool_name)
+    tool = get_tool(tool_name)
     if not tool:
         raise ValueError(f"Tool {tool_name} not found")
 

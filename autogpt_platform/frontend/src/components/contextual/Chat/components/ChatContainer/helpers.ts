@@ -341,6 +341,39 @@ export function parseToolResponse(
         timestamp: timestamp || new Date(),
       };
     }
+    if (responseType === "operation_started") {
+      return {
+        type: "operation_started",
+        toolName: parsedResult.tool_name as string,
+        operationId: (parsedResult.operation_id as string) || "",
+        message:
+          (parsedResult.message as string) ||
+          "Operation started. You can close this tab.",
+        timestamp: timestamp || new Date(),
+      };
+    }
+    if (responseType === "operation_pending") {
+      return {
+        type: "operation_pending",
+        toolName: parsedResult.tool_name as string,
+        operationId: (parsedResult.operation_id as string) || "",
+        message:
+          (parsedResult.message as string) ||
+          "Operation in progress. Please wait...",
+        timestamp: timestamp || new Date(),
+      };
+    }
+    if (responseType === "operation_in_progress") {
+      return {
+        type: "operation_in_progress",
+        toolName: parsedResult.tool_name as string,
+        toolCallId: (parsedResult.tool_call_id as string) || "",
+        message:
+          (parsedResult.message as string) ||
+          "Operation already in progress. Please wait...",
+        timestamp: timestamp || new Date(),
+      };
+    }
     if (responseType === "need_login") {
       return {
         type: "login_needed",
