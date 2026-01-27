@@ -697,7 +697,8 @@ async def _summarize_messages(
     for msg in messages:
         role = msg.get("role", "")
         content = msg.get("content", "")
-        if content and role in ("user", "assistant"):
+        # Include user, assistant, and tool messages (tool outputs are important context)
+        if content and role in ("user", "assistant", "tool"):
             conversation.append(f"{role.upper()}: {content}")
 
     conversation_text = "\n\n".join(conversation)
@@ -896,11 +897,16 @@ async def _stream_chat_chunks(
                         )
 
                         for keep_count in [12, 10, 8, 5]:
-                            recent_messages = messages[-keep_count:]
+                            # Slice from ORIGINAL recent_messages to avoid duplicating summary
+                            reduced_recent = (
+                                recent_messages[-keep_count:]
+                                if len(recent_messages) > keep_count
+                                else recent_messages
+                            )
                             if has_system_prompt:
-                                messages = [system_msg, summary_msg] + recent_messages
+                                messages = [system_msg, summary_msg] + reduced_recent
                             else:
-                                messages = [summary_msg] + recent_messages
+                                messages = [summary_msg] + reduced_recent
 
                             new_messages_dict = []
                             for msg in messages:
