@@ -355,6 +355,7 @@ async def stream_chat_completion(
     has_yielded_end = False
     has_yielded_error = False
     has_done_tool_call = False
+    has_long_running_tool_call = False  # Track if we had a long-running tool call
     has_received_text = False
     text_streaming_ended = False
     tool_response_messages: list[ChatMessage] = []
@@ -452,6 +453,7 @@ async def stream_chat_completion(
                         for tc in accumulated_tool_calls
                         if tc["id"] != chunk.toolCallId
                     ]
+                    has_long_running_tool_call = True
                 else:
                     tool_response_messages.append(
                         ChatMessage(
@@ -635,7 +637,11 @@ async def stream_chat_completion(
             logger.info(
                 f"Extended session messages, new message_count={len(session.messages)}"
             )
-        if messages_to_save or has_appended_streaming_message:
+        # Skip upsert if we only had long-running tool calls - they save their own state
+        # and we don't want to overwrite the cache when the background task updates it
+        if not has_long_running_tool_call and (
+            messages_to_save or has_appended_streaming_message
+        ):
             await upsert_chat_session(session)
     else:
         logger.info(
@@ -644,7 +650,8 @@ async def stream_chat_completion(
         )
 
     # If we did a tool call, stream the chat completion again to get the next response
-    if has_done_tool_call:
+    # Skip for long-running tools - they handle their own completion via background tasks
+    if has_done_tool_call and not has_long_running_tool_call:
         logger.info(
             "Tool call executed, streaming chat completion again to get assistant response"
         )
