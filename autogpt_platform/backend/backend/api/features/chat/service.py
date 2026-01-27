@@ -72,7 +72,6 @@ langfuse = get_client()
 # Redis key prefix for tracking running long-running operations
 # Used for idempotency across Kubernetes pods - prevents duplicate executions on browser refresh
 RUNNING_OPERATION_PREFIX = "chat:running_operation:"
-RUNNING_OPERATION_TTL = 600  # 10 minutes - safety net if pod dies during execution
 
 
 async def _mark_operation_started(tool_call_id: str) -> bool:
@@ -84,7 +83,7 @@ async def _mark_operation_started(tool_call_id: str) -> bool:
     redis = await get_redis_async()
     key = f"{RUNNING_OPERATION_PREFIX}{tool_call_id}"
     # SETNX with TTL - atomic "set if not exists"
-    result = await redis.set(key, "1", ex=RUNNING_OPERATION_TTL, nx=True)
+    result = await redis.set(key, "1", ex=config.long_running_operation_ttl, nx=True)
     return result is not None
 
 
