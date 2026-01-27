@@ -2,7 +2,6 @@
 
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { useEffect, useRef, useState } from "react";
-import { toast } from "sonner";
 import { useChatSession } from "./useChatSession";
 import { useChatStream } from "./useChatStream";
 
@@ -67,38 +66,16 @@ export function useChat({ urlSessionId }: UseChatArgs = {}) {
     ],
   );
 
-  useEffect(() => {
-    if (isLoading || isCreating) {
-      const timer = setTimeout(() => {
-        setShowLoader(true);
-      }, 300);
-      return () => clearTimeout(timer);
-    } else {
+  useEffect(
+    function showLoaderWithDelay() {
+      if (isLoading || isCreating) {
+        const timer = setTimeout(() => setShowLoader(true), 300);
+        return () => clearTimeout(timer);
+      }
       setShowLoader(false);
-    }
-  }, [isLoading, isCreating]);
-
-  useEffect(function monitorNetworkStatus() {
-    function handleOnline() {
-      toast.success("Connection restored", {
-        description: "You're back online",
-      });
-    }
-
-    function handleOffline() {
-      toast.error("You're offline", {
-        description: "Check your internet connection",
-      });
-    }
-
-    window.addEventListener("online", handleOnline);
-    window.addEventListener("offline", handleOffline);
-
-    return () => {
-      window.removeEventListener("online", handleOnline);
-      window.removeEventListener("offline", handleOffline);
-    };
-  }, []);
+    },
+    [isLoading, isCreating],
+  );
 
   function clearSession() {
     clearSessionBase();

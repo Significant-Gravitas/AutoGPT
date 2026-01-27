@@ -91,6 +91,18 @@ export type ChatMessageData =
       credentialsSchema?: Record<string, any>;
       message: string;
       timestamp?: string | Date;
+    }
+  | {
+      type: "clarification_needed";
+      toolName: string;
+      questions: Array<{
+        question: string;
+        keyword: string;
+        example?: string;
+      }>;
+      message: string;
+      sessionId: string;
+      timestamp?: string | Date;
     };
 
 export function useChatMessage(message: ChatMessageData) {
@@ -111,5 +123,6 @@ export function useChatMessage(message: ChatMessageData) {
     isAgentCarousel: message.type === "agent_carousel",
     isExecutionStarted: message.type === "execution_started",
     isInputsNeeded: message.type === "inputs_needed",
+    isClarificationNeeded: message.type === "clarification_needed",
   };
 }

@@ -1,6 +1,7 @@
 import {
   getGetV2GetSessionQueryKey,
   getGetV2GetSessionQueryOptions,
+  getGetV2ListSessionsQueryKey,
   postV2CreateSession,
   useGetV2GetSession,
   usePatchV2SessionAssignUser,
@@ -100,6 +101,17 @@ export function useChatSession({
       setError(null);
     }
   }, [createError, loadError]);
+
+  useEffect(
+    function refreshSessionsListOnLoad() {
+      if (sessionId && sessionData && !isLoadingSession) {
+        queryClient.invalidateQueries({
+          queryKey: getGetV2ListSessionsQueryKey(),
+        });
+      }
+    },
+    [sessionId, sessionData, isLoadingSession, queryClient],
+  );
 
   async function createSession() {
     try {

@@ -86,7 +86,6 @@ export function FloatingSafeModeToggle({
   const {
     currentHITLSafeMode,
     showHITLToggle,
-    isHITLStateUndetermined,
     handleHITLToggle,
     currentSensitiveActionSafeMode,
     showSensitiveActionToggle,
@@ -99,16 +98,9 @@ export function FloatingSafeModeToggle({
     return null;
   }
 
-  const showHITL = showHITLToggle && !isHITLStateUndetermined;
-  const showSensitive = showSensitiveActionToggle;
-
-  if (!showHITL && !showSensitive) {
-    return null;
-  }
-
   return (
     <div className={cn("fixed z-50 flex flex-col gap-2", className)}>
-      {showHITL && (
+      {showHITLToggle && (
         <SafeModeButton
           isEnabled={currentHITLSafeMode}
           label="Human in the loop block approval"
@@ -119,7 +111,7 @@ export function FloatingSafeModeToggle({
           fullWidth={fullWidth}
         />
       )}
-      {showSensitive && (
+      {showSensitiveActionToggle && (
         <SafeModeButton
           isEnabled={currentSensitiveActionSafeMode}
           label="Sensitive actions blocks approval"

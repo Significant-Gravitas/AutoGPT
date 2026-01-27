@@ -4,8 +4,6 @@ import logging
 from collections import defaultdict
 from typing import Any
 
-from langfuse import observe
-
 from backend.api.features.chat.model import ChatSession
 from backend.data.block import get_block
 from backend.data.execution import ExecutionContext
@@ -130,7 +128,6 @@ class RunBlockTool(BaseTool):
 
         return matched_credentials, missing_credentials
 
-    @observe(as_type="tool", name="run_block")
     async def _execute(
         self,
         user_id: str | None,
@@ -177,6 +174,11 @@ class RunBlockTool(BaseTool):
         if not block:
             return ErrorResponse(
                 message=f"Block '{block_id}' not found",
+                session_id=session_id,
+            )
+        if block.disabled:
+            return ErrorResponse(
+                message=f"Block '{block_id}' is disabled",
                 session_id=session_id,
             )
 
