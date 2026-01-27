@@ -10,11 +10,12 @@ import {
   type FlagValues,
   useGetFlag,
 } from "@/services/feature-flags/use-get-flag";
+import { SessionKey, sessionStorage } from "@/services/storage/session-storage";
 import * as Sentry from "@sentry/nextjs";
 import { useQueryClient } from "@tanstack/react-query";
 import { useFlags } from "launchdarkly-react-client-sdk";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect } from "react";
 import { useCopilotStore } from "./copilot-page-store";
 import { getGreetingName, getQuickActions } from "./helpers";
 import { useCopilotSessionId } from "./useCopilotSessionId";
@@ -27,6 +28,8 @@ export function useCopilotPage() {
 
   const { urlSessionId, setUrlSessionId } = useCopilotSessionId();
   const setIsStreaming = useCopilotStore((s) => s.setIsStreaming);
+  const isCreating = useCopilotStore((s) => s.isCreatingSession);
+  const setIsCreating = useCopilotStore((s) => s.setIsCreatingSession);
 
   const isChatEnabled = useGetFlag(Flag.CHAT);
   const flags = useFlags<FlagValues>();
@@ -37,15 +40,12 @@ export function useCopilotPage() {
   const isFlagReady =
     !isLaunchDarklyConfigured || flags[Flag.CHAT] !== undefined;
 
-  const [isCreating, setIsCreating] = useState(false);
-  const initialPromptsRef = useRef<Record<string, string>>({});
-
   const greetingName = getGreetingName(user);
   const quickActions = getQuickActions();
 
   const hasSession = Boolean(urlSessionId);
   const initialPrompt = urlSessionId
-    ? initialPromptsRef.current[urlSessionId]
+    ? getInitialPrompt(urlSessionId)
     : undefined;
 
   useEffect(() => {
@@ -72,13 +72,13 @@ export function useCopilotPage() {
       }
 
       const sessionId = sessionResponse.data.id;
-      initialPromptsRef.current[sessionId] = trimmedPrompt;
+      setInitialPrompt(sessionId, trimmedPrompt);
 
       await queryClient.invalidateQueries({
         queryKey: getGetV2ListSessionsQueryKey(),
       });
 
-      await setUrlSessionId(sessionId, { shallow: false });
+      await setUrlSessionId(sessionId, { shallow: true });
     } catch (error) {
       console.error("[CopilotPage] Failed to start chat:", error);
       toast({ title: "Failed to start chat", variant: "destructive" });
@@ -105,7 +105,6 @@ export function useCopilotPage() {
       greetingName,
       quickActions,
       isLoading: isUserLoading,
-      isCreating,
       hasSession,
       initialPrompt,
       isReady: isFlagReady && isChatEnabled !== false && isLoggedIn,
@@ -117,4 +116,30 @@ export function useCopilotPage() {
       handleStreamingChange,
     },
   };
+}
+
+function getInitialPrompt(sessionId: string): string | undefined {
+  try {
+    const prompts = JSON.parse(
+      sessionStorage.get(SessionKey.CHAT_INITIAL_PROMPTS) || "{}",
+    );
+    return prompts[sessionId];
+  } catch {
+    return undefined;
+  }
+}
+
+function setInitialPrompt(sessionId: string, prompt: string): void {
+  try {
+    const prompts = JSON.parse(
+      sessionStorage.get(SessionKey.CHAT_INITIAL_PROMPTS) || "{}",
+    );
+    prompts[sessionId] = prompt;
+    sessionStorage.set(
+      SessionKey.CHAT_INITIAL_PROMPTS,
+      JSON.stringify(prompts),
+    );
+  } catch {
+    // Ignore storage errors
+  }
 }

@@ -58,6 +58,7 @@ export function useChatSession({
     query: {
       enabled: !!sessionId,
       select: okData,
+      staleTime: 0,
       retry: shouldRetrySessionLoad,
       retryDelay: getSessionRetryDelay,
     },

@@ -75,12 +75,10 @@ export function useShellSessionList({
   }, [accumulatedSessions]);
 
   useEffect(() => {
-    const unsubscribe = onStreamComplete((completedSessionId) => {
-      if (recentlyCreatedSessionsRef.current.has(completedSessionId)) {
-        queryClient.invalidateQueries({
-          queryKey: getGetV2ListSessionsQueryKey(),
-        });
-      }
+    const unsubscribe = onStreamComplete(() => {
+      queryClient.invalidateQueries({
+        queryKey: getGetV2ListSessionsQueryKey(),
+      });
     });
     return unsubscribe;
   }, [onStreamComplete, queryClient]);
