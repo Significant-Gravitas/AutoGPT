@@ -151,14 +151,20 @@ export function useChatContainer({
 
     const combined = [...processedInitial, ...filteredLocalMessages];
 
-    // Deduplicate by content+role. When initialMessages is refreshed via polling,
+    // Deduplicate by content+role+timestamp. When initialMessages is refreshed via polling,
     // it may contain messages that are also in the local `messages` state.
+    // Including timestamp prevents dropping legitimate repeated messages (e.g., user sends "yes" twice)
     const seen = new Set<string>();
     return combined.filter((msg) => {
-      // Create a key based on type, role, and content for deduplication
+      // Create a key based on type, role, content, and timestamp for deduplication
       let key: string;
       if (msg.type === "message") {
-        key = `msg:${msg.role}:${msg.content}`;
+        // Use timestamp (rounded to nearest second) to allow slight variations
+        // while still catching true duplicates from SSE/polling overlap
+        const ts = msg.timestamp
+          ? Math.floor(new Date(msg.timestamp).getTime() / 1000)
+          : "";
+        key = `msg:${msg.role}:${ts}:${msg.content}`;
       } else if (msg.type === "tool_call") {
         key = `toolcall:${msg.toolId}`;
       } else if (
