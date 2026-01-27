@@ -800,6 +800,99 @@ async def _summarize_messages(
     return summary or "No summary available."
 
 
+def _ensure_tool_pairs_intact(
+    recent_messages: list[dict],
+    all_messages: list[dict],
+    start_index: int,
+) -> list[dict]:
+    """
+    Ensure tool_call/tool_response pairs stay together after slicing.
+
+    When slicing messages for context compaction, a naive slice can separate
+    an assistant message containing tool_calls from its corresponding tool
+    response messages. This causes API validation errors (e.g., Anthropic's
+    "unexpected tool_use_id found in tool_result blocks").
+
+    This function checks for orphan tool responses in the slice and extends
+    backwards to include their corresponding assistant messages.
+
+    Args:
+        recent_messages: The sliced messages to validate
+        all_messages: The complete message list (for looking up missing assistants)
+        start_index: The index in all_messages where recent_messages begins
+
+    Returns:
+        A potentially extended list of messages with tool pairs intact
+    """
+    if not recent_messages:
+        return recent_messages
+
+    # Collect all tool_call_ids from assistant messages in the slice
+    available_tool_call_ids: set[str] = set()
+    for msg in recent_messages:
+        if msg.get("role") == "assistant" and msg.get("tool_calls"):
+            for tc in msg["tool_calls"]:
+                tc_id = tc.get("id")
+                if tc_id:
+                    available_tool_call_ids.add(tc_id)
+
+    # Find orphan tool responses (tool messages whose tool_call_id is missing)
+    orphan_tool_call_ids: set[str] = set()
+    for msg in recent_messages:
+        if msg.get("role") == "tool":
+            tc_id = msg.get("tool_call_id")
+            if tc_id and tc_id not in available_tool_call_ids:
+                orphan_tool_call_ids.add(tc_id)
+
+    if not orphan_tool_call_ids:
+        # No orphans, slice is valid
+        return recent_messages
+
+    # Find the assistant messages that contain the orphan tool_call_ids
+    # Search backwards from start_index in all_messages
+    messages_to_prepend: list[dict] = []
+    for i in range(start_index - 1, -1, -1):
+        msg = all_messages[i]
+        if msg.get("role") == "assistant" and msg.get("tool_calls"):
+            msg_tool_ids = {tc.get("id") for tc in msg["tool_calls"] if tc.get("id")}
+            if msg_tool_ids & orphan_tool_call_ids:
+                # This assistant message has tool_calls we need
+                messages_to_prepend.insert(0, msg)
+                # Mark these as found
+                orphan_tool_call_ids -= msg_tool_ids
+                # Also add this assistant's tool_call_ids to available set
+                available_tool_call_ids |= msg_tool_ids
+
+        if not orphan_tool_call_ids:
+            # Found all missing assistants
+            break
+
+    if orphan_tool_call_ids:
+        # Some tool_call_ids couldn't be resolved - remove those tool responses
+        # This shouldn't happen in normal operation but handles edge cases
+        logger.warning(
+            f"Could not find assistant messages for tool_call_ids: {orphan_tool_call_ids}. "
+            "Removing orphan tool responses."
+        )
+        recent_messages = [
+            msg
+            for msg in recent_messages
+            if not (
+                msg.get("role") == "tool"
+                and msg.get("tool_call_id") in orphan_tool_call_ids
+            )
+        ]
+
+    if messages_to_prepend:
+        logger.info(
+            f"Extended recent messages by {len(messages_to_prepend)} to preserve "
+            f"tool_call/tool_response pairs"
+        )
+        return messages_to_prepend + recent_messages
+
+    return recent_messages
+
+
 async def _stream_chat_chunks(
     session: ChatSession,
     tools: list[ChatCompletionToolParam],
@@ -891,7 +984,15 @@ async def _stream_chat_chunks(
             # Always attempt mitigation when over limit, even with few messages
             if messages:
                 # Split messages based on whether system prompt exists
+                # Calculate start index for the slice
+                slice_start = max(0, len(messages) - KEEP_RECENT)
                 recent_messages = messages[-KEEP_RECENT:]
+
+                # Ensure tool_call/tool_response pairs stay together
+                # This prevents API errors from orphan tool responses
+                recent_messages = _ensure_tool_pairs_intact(
+                    recent_messages, messages_dict, slice_start
+                )
 
                 if has_system_prompt:
                     # Keep system prompt separate, summarize everything between system and recent
@@ -977,6 +1078,13 @@ async def _stream_chat_chunks(
                                     recent_messages[-keep_count:]
                                     if len(recent_messages) >= keep_count
                                     else recent_messages
+                                )
+                                # Ensure tool pairs stay intact in the reduced slice
+                                reduced_slice_start = max(
+                                    0, len(recent_messages) - keep_count
+                                )
+                                reduced_recent = _ensure_tool_pairs_intact(
+                                    reduced_recent, recent_messages, reduced_slice_start
                                 )
                                 if has_system_prompt:
                                     messages = [
