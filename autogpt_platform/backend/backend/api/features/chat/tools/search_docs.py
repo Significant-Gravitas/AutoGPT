@@ -3,7 +3,6 @@
 import logging
 from typing import Any
 
-from langfuse import observe
 from prisma.enums import ContentType
 
 from backend.api.features.chat.model import ChatSession
@@ -88,7 +87,6 @@ class SearchDocsTool(BaseTool):
         url_path = path.rsplit(".", 1)[0] if "." in path else path
         return f"{DOCS_BASE_URL}/{url_path}"
 
-    @observe(as_type="tool", name="search_docs")
     async def _execute(
         self,
         user_id: str | None,
