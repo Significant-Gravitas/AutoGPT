@@ -1590,6 +1590,9 @@ async def _execute_long_running_tool(
 
         logger.info(f"Background tool {tool_name} completed for session {session_id}")
 
+        # Generate LLM continuation so user sees response when they poll/refresh
+        await _generate_llm_continuation(session_id=session_id, user_id=user_id)
+
     except Exception as e:
         logger.error(f"Background tool {tool_name} failed: {e}", exc_info=True)
         error_response = ErrorResponse(
@@ -1640,3 +1643,86 @@ async def _update_pending_operation(
             f"Failed to update pending operation for tool_call_id {tool_call_id} "
             f"in session {session_id}"
         )
+
+
+async def _generate_llm_continuation(
+    session_id: str,
+    user_id: str | None,
+) -> None:
+    """Generate an LLM response after a long-running tool completes.
+
+    This is called by background tasks to continue the conversation
+    after a tool result is saved. The response is saved to the database
+    so users see it when they refresh or poll.
+    """
+    try:
+        # Load fresh session from DB (bypass cache to get the updated tool result)
+        await invalidate_session_cache(session_id)
+        session = await get_chat_session(session_id, user_id)
+        if not session:
+            logger.error(f"Session {session_id} not found for LLM continuation")
+            return
+
+        # Build system prompt
+        system_prompt, _ = await _build_system_prompt(user_id)
+
+        # Build messages in OpenAI format
+        messages = session.to_openai_messages()
+        if system_prompt:
+            from openai.types.chat import ChatCompletionSystemMessageParam
+
+            system_message = ChatCompletionSystemMessageParam(
+                role="system",
+                content=system_prompt,
+            )
+            messages = [system_message] + messages
+
+        # Build extra_body for tracing
+        extra_body: dict[str, Any] = {
+            "posthogProperties": {
+                "environment": settings.config.app_env.value,
+            },
+        }
+        if user_id:
+            extra_body["user"] = user_id[:128]
+            extra_body["posthogDistinctId"] = user_id
+        if session_id:
+            extra_body["session_id"] = session_id[:128]
+
+        # Make non-streaming LLM call (no tools - just text response)
+        from typing import cast
+
+        from openai.types.chat import ChatCompletionMessageParam
+
+        response = await client.chat.completions.create(
+            model=config.model,
+            messages=cast(list[ChatCompletionMessageParam], messages),
+            tools=None,  # No tools for continuation - just text response
+            extra_body=extra_body,
+        )
+
+        if response.choices and response.choices[0].message.content:
+            assistant_content = response.choices[0].message.content
+
+            # Save assistant message to database
+            assistant_message = ChatMessage(
+                role="assistant",
+                content=assistant_content,
+            )
+            session.messages.append(assistant_message)
+
+            # Save to database (not cache) to persist the response
+            await upsert_chat_session(session)
+
+            # Invalidate cache so next poll/refresh gets fresh data
+            await invalidate_session_cache(session_id)
+
+            logger.info(
+                f"Generated LLM continuation for session {session_id}, "
+                f"response length: {len(assistant_content)}"
+            )
+        else:
+            logger.warning(f"LLM continuation returned empty response for {session_id}")
+
+    except Exception as e:
+        logger.error(f"Failed to generate LLM continuation: {e}", exc_info=True)
