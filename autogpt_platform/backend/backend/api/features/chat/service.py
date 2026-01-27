@@ -675,16 +675,18 @@ def _is_region_blocked_error(error: Exception) -> bool:
 
 async def _summarize_messages(
     messages: list,
-    model: str = "openai/gpt-4o-mini",
+    model: str,
     api_key: str | None = None,
     base_url: str | None = None,
     timeout: float = 30.0,
 ) -> str:
     """Summarize a list of messages into concise context.
 
+    Uses the same model as the chat for higher quality summaries.
+
     Args:
         messages: List of message dicts to summarize
-        model: Model to use for summarization (default: gpt-4o-mini)
+        model: Model to use for summarization (same as chat model)
         api_key: API key for OpenAI client
         base_url: Base URL for OpenAI client
         timeout: Request timeout in seconds (default: 30.0)
@@ -726,14 +728,39 @@ async def _summarize_messages(
             {
                 "role": "system",
                 "content": (
-                    "Summarize this conversation history concisely. "
-                    "Preserve key facts, decisions, and context. "
-                    "Format as 2-3 short paragraphs."
+                    "Create a detailed summary of the conversation so far. "
+                    "This summary will be used as context when continuing the conversation.\n\n"
+                    "Before writing the summary, analyze each message chronologically to identify:\n"
+                    "- User requests and their explicit goals\n"
+                    "- Your approach and key decisions made\n"
+                    "- Technical specifics (file names, tool outputs, function signatures)\n"
+                    "- Errors encountered and resolutions applied\n\n"
+                    "You MUST include ALL of the following sections:\n\n"
+                    "## 1. Primary Request and Intent\n"
+                    "The user's explicit goals and what they are trying to accomplish.\n\n"
+                    "## 2. Key Technical Concepts\n"
+                    "Technologies, frameworks, tools, and patterns being used or discussed.\n\n"
+                    "## 3. Files and Resources Involved\n"
+                    "Specific files examined or modified, with relevant snippets and identifiers.\n\n"
+                    "## 4. Errors and Fixes\n"
+                    "Problems encountered, error messages, and their resolutions. "
+                    "Include any user feedback on fixes.\n\n"
+                    "## 5. Problem Solving\n"
+                    "Issues that have been resolved and how they were addressed.\n\n"
+                    "## 6. All User Messages\n"
+                    "A complete list of all user inputs (excluding tool outputs) to preserve their exact requests.\n\n"
+                    "## 7. Pending Tasks\n"
+                    "Work items the user explicitly requested that have not yet been completed.\n\n"
+                    "## 8. Current Work\n"
+                    "Precise description of what was being worked on most recently, including relevant context.\n\n"
+                    "## 9. Next Steps\n"
+                    "What should happen next, aligned with the user's most recent requests. "
+                    "Include verbatim quotes of recent instructions if relevant."
                 ),
             },
             {"role": "user", "content": f"Summarize:\n\n{conversation_text}"},
         ],
-        max_tokens=500,
+        max_tokens=1500,
         temperature=0.3,
     )
 
@@ -845,10 +872,10 @@ async def _stream_chat_chunks(
                 # Summarize any non-empty old messages (no minimum threshold)
                 # If we're over the token limit, we need to compress whatever we can
                 if old_messages_dict:
-                    # Summarize old messages
+                    # Summarize old messages using the same model as chat
                     summary_text = await _summarize_messages(
                         old_messages_dict,
-                        model="openai/gpt-4o-mini",
+                        model=model,
                         api_key=config.api_key,
                         base_url=config.base_url,
                     )
@@ -901,17 +928,30 @@ async def _stream_chat_chunks(
                             "Reducing number of recent messages kept."
                         )
 
-                        for keep_count in [12, 10, 8, 5]:
-                            # Slice from ORIGINAL recent_messages to avoid duplicating summary
-                            reduced_recent = (
-                                recent_messages[-keep_count:]
-                                if len(recent_messages) >= keep_count
-                                else recent_messages
-                            )
-                            if has_system_prompt:
-                                messages = [system_msg, summary_msg] + reduced_recent
+                        for keep_count in [12, 10, 8, 5, 3, 2, 1, 0]:
+                            if keep_count == 0:
+                                # Try with just system prompt + summary (no recent messages)
+                                if has_system_prompt:
+                                    messages = [system_msg, summary_msg]
+                                else:
+                                    messages = [summary_msg]
+                                logger.info(
+                                    "Trying with 0 recent messages (system + summary only)"
+                                )
                             else:
-                                messages = [summary_msg] + reduced_recent
+                                # Slice from ORIGINAL recent_messages to avoid duplicating summary
+                                reduced_recent = (
+                                    recent_messages[-keep_count:]
+                                    if len(recent_messages) >= keep_count
+                                    else recent_messages
+                                )
+                                if has_system_prompt:
+                                    messages = [
+                                        system_msg,
+                                        summary_msg,
+                                    ] + reduced_recent
+                                else:
+                                    messages = [summary_msg] + reduced_recent
 
                             new_messages_dict = []
                             for msg in messages:
@@ -935,14 +975,16 @@ async def _stream_chat_chunks(
                                 break
                         else:
                             logger.error(
-                                f"Unable to reduce token count below threshold even with 5 messages. "
+                                f"Unable to reduce token count below threshold even with 0 messages. "
                                 f"Final count: {new_token_count} tokens"
                             )
-                            # Last resort: drop system prompt to reduce tokens
+                            # ABSOLUTE LAST RESORT: Drop system prompt
+                            # This should only happen if summary itself is massive
                             if has_system_prompt and len(messages) > 1:
                                 messages = messages[1:]  # Drop system prompt
-                                logger.warning(
-                                    "Dropped system prompt as last resort to reduce tokens"
+                                logger.critical(
+                                    "CRITICAL: Dropped system prompt as absolute last resort. "
+                                    "Behavioral consistency may be affected."
                                 )
                 else:
                     # No old messages to summarize - all messages are "recent"
@@ -954,16 +996,28 @@ async def _stream_chat_chunks(
 
                     # Try progressively smaller keep counts
                     new_token_count = token_count  # Initialize with current count
-                    for keep_count in [12, 10, 8, 5]:
-                        if len(messages) < keep_count:
-                            continue  # Skip if we don't have enough messages
-
-                        recent_messages = messages[-keep_count:]
-
-                        if has_system_prompt:
-                            messages = [system_msg] + recent_messages
+                    for keep_count in [12, 10, 8, 5, 3, 2, 1, 0]:
+                        if keep_count == 0:
+                            # Try with just system prompt (no recent messages)
+                            if has_system_prompt:
+                                messages = [system_msg]
+                                logger.info(
+                                    "Trying with 0 recent messages (system prompt only)"
+                                )
+                            else:
+                                # No system prompt and no recent messages = empty messages list
+                                # This is invalid, skip this iteration
+                                continue
                         else:
-                            messages = recent_messages
+                            if len(messages) < keep_count:
+                                continue  # Skip if we don't have enough messages
+
+                            recent_messages = messages[-keep_count:]
+
+                            if has_system_prompt:
+                                messages = [system_msg] + recent_messages
+                            else:
+                                messages = recent_messages
 
                         new_messages_dict = []
                         for msg in messages:
@@ -986,16 +1040,17 @@ async def _stream_chat_chunks(
                             )
                             break
                     else:
-                        # Even with 5 messages still over limit
+                        # Even with 0 messages still over limit
                         logger.error(
-                            f"Unable to reduce token count below threshold even with 5 messages. "
+                            f"Unable to reduce token count below threshold even with 0 messages. "
                             f"Final count: {new_token_count} tokens. Messages may be extremely large."
                         )
-                        # Last resort: drop system prompt to reduce tokens
+                        # ABSOLUTE LAST RESORT: Drop system prompt
                         if has_system_prompt and len(messages) > 1:
                             messages = messages[1:]  # Drop system prompt
-                            logger.warning(
-                                "Dropped system prompt as last resort to reduce tokens"
+                            logger.critical(
+                                "CRITICAL: Dropped system prompt as absolute last resort. "
+                                "Behavioral consistency may be affected."
                             )
 
     except Exception as e:
