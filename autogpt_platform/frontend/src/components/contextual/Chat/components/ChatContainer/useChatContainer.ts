@@ -104,6 +104,26 @@ export function useChatContainer({
       }
     }
 
+    // Debug: Log operation filtering when relevant
+    const operationMsgs = messages.filter(
+      (m) =>
+        m.type === "operation_started" ||
+        m.type === "operation_pending" ||
+        m.type === "operation_in_progress",
+    );
+    if (operationMsgs.length > 0) {
+      console.info("[useChatContainer] Operation deduplication check:", {
+        completedToolIds: Array.from(completedToolIds),
+        localOperations: operationMsgs.map((m) => ({
+          type: m.type,
+          toolId: (m as any).toolId,
+          toolName: (m as any).toolName,
+        })),
+        initialMessagesCount: initialMessages.length,
+        processedInitialCount: processedInitial.length,
+      });
+    }
+
     // Filter local messages to remove operation messages for completed tools
     const filteredLocalMessages = messages.filter((msg) => {
       if (
