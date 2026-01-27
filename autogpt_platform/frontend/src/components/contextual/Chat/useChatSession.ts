@@ -114,8 +114,14 @@ export function useChatSession({
   );
 
   // Check if there are any pending operations in the messages
+  // Must check all operation types: operation_pending, operation_started, operation_in_progress
   const hasPendingOperations = useMemo(() => {
     if (!messages || messages.length === 0) return false;
+    const pendingTypes = new Set([
+      "operation_pending",
+      "operation_in_progress",
+      "operation_started",
+    ]);
     return messages.some((msg) => {
       if (msg.role !== "tool" || !msg.content) return false;
       try {
@@ -123,7 +129,7 @@ export function useChatSession({
           typeof msg.content === "string"
             ? JSON.parse(msg.content)
             : msg.content;
-        return content?.type === "operation_pending";
+        return pendingTypes.has(content?.type);
       } catch {
         return false;
       }
