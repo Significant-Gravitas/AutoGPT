@@ -1,6 +1,7 @@
 import {
   getGetV2GetSessionQueryKey,
   getGetV2GetSessionQueryOptions,
+  getGetV2ListSessionsQueryKey,
   postV2CreateSession,
   useGetV2GetSession,
   usePatchV2SessionAssignUser,
@@ -100,6 +101,66 @@ export function useChatSession({
       setError(null);
     }
   }, [createError, loadError]);
+
+  useEffect(
+    function refreshSessionsListOnLoad() {
+      if (sessionId && sessionData && !isLoadingSession) {
+        queryClient.invalidateQueries({
+          queryKey: getGetV2ListSessionsQueryKey(),
+        });
+      }
+    },
+    [sessionId, sessionData, isLoadingSession, queryClient],
+  );
+
+  // Check if there are any pending operations in the messages
+  const hasPendingOperations = useMemo(() => {
+    if (!messages || messages.length === 0) return false;
+    return messages.some((msg) => {
+      if (msg.role !== "tool" || !msg.content) return false;
+      try {
+        const content =
+          typeof msg.content === "string" ? JSON.parse(msg.content) : msg.content;
+        return content?.type === "operation_pending";
+      } catch {
+        return false;
+      }
+    });
+  }, [messages]);
+
+  // Poll for updates when there are pending operations (long poll - 10s intervals with backoff)
+  const pollAttemptRef = useRef(0);
+  useEffect(
+    function pollForPendingOperations() {
+      if (!sessionId || !hasPendingOperations) {
+        pollAttemptRef.current = 0;
+        return;
+      }
+
+      // Calculate delay with exponential backoff: 10s, 15s, 20s, 25s, 30s (max)
+      const baseDelay = 10000;
+      const maxDelay = 30000;
+      const delay = Math.min(
+        baseDelay + pollAttemptRef.current * 5000,
+        maxDelay,
+      );
+
+      const timeoutId = setTimeout(async () => {
+        console.info(
+          `[useChatSession] Polling for pending operation updates (attempt ${pollAttemptRef.current + 1})`,
+        );
+        pollAttemptRef.current += 1;
+        try {
+          await refetch();
+        } catch (err) {
+          console.error("[useChatSession] Poll failed:", err);
+        }
+      }, delay);
+
+      return () => clearTimeout(timeoutId);
+    },
+    [sessionId, hasPendingOperations, refetch],
+  );
 
   async function createSession() {
     try {
@@ -227,6 +288,7 @@ export function useChatSession({
     isCreating,
     error,
     isSessionNotFound: isNotFoundError(loadError),
+    hasPendingOperations,
     createSession,
     loadSession,
     refreshSession,
