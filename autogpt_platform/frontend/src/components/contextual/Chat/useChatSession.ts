@@ -103,17 +103,6 @@ export function useChatSession({
     }
   }, [createError, loadError]);
 
-  useEffect(
-    function refreshSessionsListOnLoad() {
-      if (sessionId && sessionData && !isLoadingSession) {
-        queryClient.invalidateQueries({
-          queryKey: getGetV2ListSessionsQueryKey(),
-        });
-      }
-    },
-    [sessionId, sessionData, isLoadingSession, queryClient],
-  );
-
   // Check if there are any pending operations in the messages
   // Must check all operation types: operation_pending, operation_started, operation_in_progress
   const hasPendingOperations = useMemo(() => {
@@ -136,6 +125,24 @@ export function useChatSession({
       }
     });
   }, [messages]);
+
+  // Refresh sessions list when a pending operation completes
+  // (hasPendingOperations transitions from true to false)
+  const prevHasPendingOperationsRef = useRef(hasPendingOperations);
+  useEffect(
+    function refreshSessionsListOnOperationComplete() {
+      const wasHasPending = prevHasPendingOperationsRef.current;
+      prevHasPendingOperationsRef.current = hasPendingOperations;
+
+      // Only invalidate when transitioning from pending to not pending
+      if (wasHasPending && !hasPendingOperations && sessionId) {
+        queryClient.invalidateQueries({
+          queryKey: getGetV2ListSessionsQueryKey(),
+        });
+      }
+    },
+    [hasPendingOperations, sessionId, queryClient],
+  );
 
   // Poll for updates when there are pending operations (long poll - 10s intervals with backoff)
   const pollAttemptRef = useRef(0);
