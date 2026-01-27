@@ -31,6 +31,7 @@ interface ChatStoreActions {
   subscribeToStream: (
     sessionId: string,
     onChunk: (chunk: StreamChunk) => void,
+    skipReplay?: boolean,
   ) => () => void;
   getStreamStatus: (sessionId: string) => StreamStatus;
   getCompletedStream: (sessionId: string) => StreamResult | undefined;
@@ -163,13 +164,19 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }
   },
 
-  subscribeToStream: function subscribeToStream(sessionId, onChunk) {
+  subscribeToStream: function subscribeToStream(
+    sessionId,
+    onChunk,
+    skipReplay = false,
+  ) {
     const { activeStreams } = get();
 
     const stream = activeStreams.get(sessionId);
     if (stream) {
-      for (const chunk of stream.chunks) {
-        onChunk(chunk);
+      if (!skipReplay) {
+        for (const chunk of stream.chunks) {
+          onChunk(chunk);
+        }
       }
       stream.onChunkCallbacks.add(onChunk);
       return function unsubscribe() {

@@ -64,8 +64,6 @@ export function useChatContainer({
       const activeStream = activeStreams.get(sessionId);
       if (!activeStream || activeStream.status !== "streaming") return;
 
-      if (initialMessages.length > 0) return;
-
       const dispatcher = createStreamEventDispatcher({
         setHasTextChunks,
         setStreamingChunks,
@@ -78,7 +76,8 @@ export function useChatContainer({
       });
 
       setIsStreamingInitiated(true);
-      return subscribeToStream(sessionId, dispatcher);
+      const skipReplay = initialMessages.length > 0;
+      return subscribeToStream(sessionId, dispatcher, skipReplay);
     },
     [sessionId, stopStreaming, activeStreams, subscribeToStream],
   );
