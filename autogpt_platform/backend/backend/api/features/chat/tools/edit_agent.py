@@ -142,8 +142,9 @@ class EditAgentTool(BaseTool):
 
         if result is None:
             return ErrorResponse(
-                message="Failed to generate changes. Please try rephrasing.",
-                error="Update generation failed",
+                message="Failed to generate changes. The agent generation service may be unavailable or timed out. Please try again.",
+                error="update_generation_failed",
+                details={"agent_id": agent_id, "changes": changes[:100]},
                 session_id=session_id,
             )
 

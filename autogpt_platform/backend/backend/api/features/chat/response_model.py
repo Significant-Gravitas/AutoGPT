@@ -31,6 +31,7 @@ class ResponseType(str, Enum):
     # Other
     ERROR = "error"
     USAGE = "usage"
+    HEARTBEAT = "heartbeat"
 
 
 class StreamBaseResponse(BaseModel):
@@ -142,3 +143,20 @@ class StreamError(StreamBaseResponse):
     details: dict[str, Any] | None = Field(
         default=None, description="Additional error details"
     )
+
+
+class StreamHeartbeat(StreamBaseResponse):
+    """Heartbeat to keep SSE connection alive during long-running operations.
+
+    Uses SSE comment format (: comment) which is ignored by clients but keeps
+    the connection alive through proxies and load balancers.
+    """
+
+    type: ResponseType = ResponseType.HEARTBEAT
+    toolCallId: str | None = Field(
+        default=None, description="Tool call ID if heartbeat is for a specific tool"
+    )
+
+    def to_sse(self) -> str:
+        """Convert to SSE comment format to keep connection alive."""
+        return ": heartbeat\n\n"

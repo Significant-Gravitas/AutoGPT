@@ -38,6 +38,7 @@ from .response_model import (
     StreamBaseResponse,
     StreamError,
     StreamFinish,
+    StreamHeartbeat,
     StreamStart,
     StreamTextDelta,
     StreamTextEnd,
@@ -48,6 +49,7 @@ from .response_model import (
     StreamUsage,
 )
 from .tools import execute_tool, tools
+from .tools.models import ErrorResponse
 from .tracking import track_user_message
 
 logger = logging.getLogger(__name__)
@@ -1258,6 +1260,9 @@ async def _yield_tool_call(
     """
     Yield a tool call and its execution result.
 
+    For long-running tools, yields heartbeat events every 15 seconds to keep
+    the SSE connection alive through proxies and load balancers.
+
     Raises:
         orjson.JSONDecodeError: If tool call arguments cannot be parsed as JSON
         KeyError: If expected tool call fields are missing
@@ -1280,12 +1285,53 @@ async def _yield_tool_call(
         input=arguments,
     )
 
-    tool_execution_response: StreamToolOutputAvailable = await execute_tool(
-        tool_name=tool_name,
-        parameters=arguments,
-        tool_call_id=tool_call_id,
-        user_id=session.user_id,
-        session=session,
+    # Run tool execution in background task with heartbeats to keep connection alive
+    tool_task = asyncio.create_task(
+        execute_tool(
+            tool_name=tool_name,
+            parameters=arguments,
+            tool_call_id=tool_call_id,
+            user_id=session.user_id,
+            session=session,
+        )
     )
+
+    # Yield heartbeats every 15 seconds while waiting for tool to complete
+    heartbeat_interval = 15.0  # seconds
+    while not tool_task.done():
+        try:
+            # Wait for either the task to complete or the heartbeat interval
+            await asyncio.wait_for(
+                asyncio.shield(tool_task), timeout=heartbeat_interval
+            )
+        except asyncio.TimeoutError:
+            # Task still running, send heartbeat to keep connection alive
+            logger.debug(f"Sending heartbeat for tool {tool_name} ({tool_call_id})")
+            yield StreamHeartbeat(toolCallId=tool_call_id)
+        except CancelledError:
+            # Task was cancelled, clean up and propagate
+            tool_task.cancel()
+            logger.warning(f"Tool execution cancelled: {tool_name} ({tool_call_id})")
+            raise
+
+    # Get the result - handle any exceptions that occurred during execution
+    try:
+        tool_execution_response: StreamToolOutputAvailable = await tool_task
+    except Exception as e:
+        # Task raised an exception - ensure we send an error response to the frontend
+        logger.error(
+            f"Tool execution failed: {tool_name} ({tool_call_id}): {e}", exc_info=True
+        )
+        error_response = ErrorResponse(
+            message=f"Tool execution failed: {e!s}",
+            error=type(e).__name__,
+            session_id=session.session_id,
+        )
+        tool_execution_response = StreamToolOutputAvailable(
+            toolCallId=tool_call_id,
+            toolName=tool_name,
+            output=error_response.model_dump_json(),
+            success=False,
+        )
 
     yield tool_execution_response
