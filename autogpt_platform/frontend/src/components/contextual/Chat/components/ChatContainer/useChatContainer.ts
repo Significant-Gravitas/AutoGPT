@@ -82,10 +82,38 @@ export function useChatContainer({
     [sessionId, stopStreaming, activeStreams, subscribeToStream],
   );
 
-  const allMessages = useMemo(
-    () => [...processInitialMessages(initialMessages), ...messages],
-    [initialMessages, messages],
-  );
+  // Combine initial messages from backend with local streaming messages,
+  // then deduplicate to prevent duplicates when polling refreshes initialMessages
+  const allMessages = useMemo(() => {
+    const combined = [...processInitialMessages(initialMessages), ...messages];
+    // Deduplicate by content+role. When initialMessages is refreshed via polling,
+    // it may contain messages that are also in the local `messages` state.
+    const seen = new Set<string>();
+    return combined.filter((msg) => {
+      // Create a key based on type, role, and content for deduplication
+      let key: string;
+      if (msg.type === "message") {
+        key = `msg:${msg.role}:${msg.content}`;
+      } else if (msg.type === "tool_call") {
+        key = `toolcall:${msg.toolId}`;
+      } else if (
+        msg.type === "operation_started" ||
+        msg.type === "operation_pending" ||
+        msg.type === "operation_in_progress"
+      ) {
+        // Dedupe operation messages by operationId or toolCallId
+        key = `op:${(msg as any).operationId || (msg as any).toolCallId || ""}:${msg.toolName}`;
+      } else {
+        // For other types, use a combination of type and first few fields
+        key = `${msg.type}:${JSON.stringify(msg).slice(0, 100)}`;
+      }
+      if (seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    });
+  }, [initialMessages, messages]);
 
   async function sendMessage(
     content: string,
