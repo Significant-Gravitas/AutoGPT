@@ -1694,10 +1694,10 @@ async def _generate_llm_continuation(
 
         from openai.types.chat import ChatCompletionMessageParam
 
+        # No tools parameter = text-only response (no tool calls)
         response = await client.chat.completions.create(
             model=config.model,
             messages=cast(list[ChatCompletionMessageParam], messages),
-            tools=None,  # No tools for continuation - just text response
             extra_body=extra_body,
         )
 
