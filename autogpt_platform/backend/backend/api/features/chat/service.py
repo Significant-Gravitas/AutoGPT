@@ -49,6 +49,7 @@ from .response_model import (
     StreamUsage,
 )
 from .tools import execute_tool, tools
+from .tools.models import ErrorResponse
 from .tracking import track_user_message
 
 logger = logging.getLogger(__name__)
@@ -933,10 +934,15 @@ async def _yield_tool_call(
         logger.error(
             f"Tool execution failed: {tool_name} ({tool_call_id}): {e}", exc_info=True
         )
+        error_response = ErrorResponse(
+            message=f"Tool execution failed: {e!s}",
+            error=type(e).__name__,
+            session_id=session.session_id,
+        )
         tool_execution_response = StreamToolOutputAvailable(
             toolCallId=tool_call_id,
             toolName=tool_name,
-            output=f'{{"type": "error", "message": "Tool execution failed: {e!s}", "error": "{type(e).__name__}"}}',
+            output=error_response.model_dump_json(),
             success=False,
         )
 
