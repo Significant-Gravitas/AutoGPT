@@ -73,6 +73,11 @@ langfuse = get_client()
 # Used for idempotency across Kubernetes pods - prevents duplicate executions on browser refresh
 RUNNING_OPERATION_PREFIX = "chat:running_operation:"
 
+# Module-level set to hold strong references to background tasks.
+# This prevents asyncio from garbage collecting tasks before they complete.
+# Tasks are automatically removed on completion via done_callback.
+_background_tasks: set[asyncio.Task] = set()
+
 
 async def _mark_operation_started(tool_call_id: str) -> bool:
     """Mark a long-running operation as started (Redis-based).
@@ -1454,7 +1459,8 @@ async def _yield_tool_call(
                 f"in session {session.session_id}"
             )
 
-            asyncio.create_task(
+            # Store task reference in module-level set to prevent GC before completion
+            task = asyncio.create_task(
                 _execute_long_running_tool(
                     tool_name=tool_name,
                     parameters=arguments,
@@ -1464,6 +1470,8 @@ async def _yield_tool_call(
                     user_id=session.user_id,
                 )
             )
+            _background_tasks.add(task)
+            task.add_done_callback(_background_tasks.discard)
         except Exception as e:
             # Roll back appended messages to prevent data corruption on subsequent saves
             if (
