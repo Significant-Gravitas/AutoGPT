@@ -985,8 +985,8 @@ async def _stream_chat_chunks(
             if messages:
                 # Split messages based on whether system prompt exists
                 # Calculate start index for the slice
-                slice_start = max(0, len(messages) - KEEP_RECENT)
-                recent_messages = messages[-KEEP_RECENT:]
+                slice_start = max(0, len(messages_dict) - KEEP_RECENT)
+                recent_messages = messages_dict[-KEEP_RECENT:]
 
                 # Ensure tool_call/tool_response pairs stay together
                 # This prevents API errors from orphan tool responses
@@ -1144,7 +1144,8 @@ async def _stream_chat_chunks(
 
                     # Create a base list excluding system prompt to avoid duplication
                     # This is the pool of messages we'll slice from in the loop
-                    base_msgs = messages[1:] if has_system_prompt else messages
+                    # Use messages_dict for type consistency with _ensure_tool_pairs_intact
+                    base_msgs = messages_dict[1:] if has_system_prompt else messages_dict
 
                     # Try progressively smaller keep counts
                     new_token_count = token_count  # Initialize with current count
@@ -1166,6 +1167,12 @@ async def _stream_chat_chunks(
 
                             # Slice from base_msgs to get recent messages (without system prompt)
                             recent_messages = base_msgs[-keep_count:]
+
+                            # Ensure tool pairs stay intact in the reduced slice
+                            reduced_slice_start = max(0, len(base_msgs) - keep_count)
+                            recent_messages = _ensure_tool_pairs_intact(
+                                recent_messages, base_msgs, reduced_slice_start
+                            )
 
                             if has_system_prompt:
                                 messages = [system_msg] + recent_messages
