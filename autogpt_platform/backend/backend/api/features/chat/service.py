@@ -1384,7 +1384,15 @@ async def _yield_tool_call(
                 "check back in a few minutes."
             )
 
-        # Save "pending" tool response to chat history immediately
+        # Save assistant message with tool_call FIRST (required by LLM)
+        assistant_message = ChatMessage(
+            role="assistant",
+            content="",
+            tool_calls=[tool_calls[yield_idx]],
+        )
+        session.messages.append(assistant_message)
+
+        # Then save pending tool result
         pending_message = ChatMessage(
             role="tool",
             content=OperationPendingResponse(
