@@ -824,7 +824,8 @@ async def _stream_chat_chunks(
                 len(messages) > 0 and messages[0].get("role") == "system"
             )
 
-            if len(messages) > KEEP_RECENT:
+            # Always attempt mitigation when over limit, even with few messages
+            if messages:
                 # Split messages based on whether system prompt exists
                 recent_messages = messages[-KEEP_RECENT:]
 
