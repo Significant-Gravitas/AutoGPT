@@ -120,6 +120,9 @@ def get_blocks(
         # Skip disabled blocks
         if block.disabled:
             continue
+        # Skip excluded blocks
+        if block.id in EXCLUDED_BLOCK_IDS:
+            continue
         # Skip blocks that don't match the category
         if category and category not in {c.name.lower() for c in block.categories}:
             continue
