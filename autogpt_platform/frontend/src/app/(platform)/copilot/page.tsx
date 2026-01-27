@@ -5,7 +5,6 @@ import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { Chat } from "@/components/contextual/Chat/Chat";
 import { ChatInput } from "@/components/contextual/Chat/components/ChatInput/ChatInput";
-import { ChatLoader } from "@/components/contextual/Chat/components/ChatLoader/ChatLoader";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { useCopilotStore } from "./copilot-page-store";
 import { useCopilotPage } from "./useCopilotPage";
@@ -19,7 +18,6 @@ export default function CopilotPage() {
     greetingName,
     quickActions,
     isLoading,
-    isCreating,
     hasSession,
     initialPrompt,
     isReady,
@@ -78,19 +76,6 @@ export default function CopilotPage() {
             </div>
           </Dialog.Content>
         </Dialog>
-      </div>
-    );
-  }
-
-  if (isCreating) {
-    return (
-      <div className="flex h-full flex-1 flex-col items-center justify-center bg-[#f8f8f9]">
-        <div className="flex flex-col items-center gap-4">
-          <ChatLoader />
-          <Text variant="body" className="text-zinc-500">
-            Creating your chat...
-          </Text>
-        </div>
       </div>
     );
   }

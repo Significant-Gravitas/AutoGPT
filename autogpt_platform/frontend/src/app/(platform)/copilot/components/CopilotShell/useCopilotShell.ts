@@ -72,6 +72,7 @@ export function useCopilotShell() {
   const stopStream = useChatStore((s) => s.stopStream);
   const onStreamComplete = useChatStore((s) => s.onStreamComplete);
   const isStreaming = useCopilotStore((s) => s.isStreaming);
+  const isCreatingSession = useCopilotStore((s) => s.isCreatingSession);
   const setIsSwitchingSession = useCopilotStore((s) => s.setIsSwitchingSession);
   const openInterruptModal = useCopilotStore((s) => s.openInterruptModal);
 
@@ -154,7 +155,8 @@ export function useCopilotShell() {
     isLoggedIn,
     hasActiveSession:
       Boolean(currentSessionId) && (!isOnHomepage || Boolean(paramSessionId)),
-    isLoading,
+    isLoading: isLoading || isCreatingSession,
+    isCreatingSession,
     sessions,
     currentSessionId: urlSessionId,
     handleOpenDrawer,
