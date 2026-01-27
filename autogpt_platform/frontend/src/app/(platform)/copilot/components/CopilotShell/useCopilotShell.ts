@@ -8,7 +8,6 @@ import type { SessionSummaryResponse } from "@/app/api/__generated__/models/sess
 import { okData } from "@/app/api/helpers";
 import { useBreakpoint } from "@/lib/hooks/useBreakpoint";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
-import { useStreamSessionInvalidation } from "@/components/contextual/Chat/useStreamSessionInvalidation";
 import { useQueryClient } from "@tanstack/react-query";
 import { parseAsString, useQueryState } from "nuqs";
 import { usePathname, useSearchParams } from "next/navigation";
@@ -31,8 +30,6 @@ export function useCopilotShell() {
   const { isLoggedIn } = useSupabase();
   const isMobile =
     breakpoint === "base" || breakpoint === "sm" || breakpoint === "md";
-
-  useStreamSessionInvalidation();
 
   const [, setUrlSessionId] = useQueryState("sessionId", parseAsString);
 

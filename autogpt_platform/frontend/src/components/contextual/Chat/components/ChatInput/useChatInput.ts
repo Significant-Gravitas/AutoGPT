@@ -2,7 +2,6 @@ import {
   ChangeEvent,
   FormEvent,
   KeyboardEvent,
-  useCallback,
   useEffect,
   useState,
 } from "react";
@@ -101,7 +100,7 @@ export function useChatInput({
     }
   }, [value, maxRows, inputId]);
 
-  const handleSend = useCallback(() => {
+  const handleSend = () => {
     if (disabled || !value.trim()) return;
     onSend(value.trim());
     setValue("");
@@ -117,29 +116,23 @@ export function useChatInput({
       wrapper.style.height = "";
       wrapper.style.maxHeight = "";
     }
-  }, [value, onSend, disabled, inputId]);
+  };
 
-  const handleKeyDown = useCallback(
-    (event: KeyboardEvent<HTMLTextAreaElement>) => {
-      if (event.key === "Enter" && !event.shiftKey) {
-        event.preventDefault();
-        handleSend();
-      }
-    },
-    [handleSend],
-  );
-
-  const handleSubmit = useCallback(
-    (e: FormEvent<HTMLFormElement>) => {
-      e.preventDefault();
+  function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
       handleSend();
-    },
-    [handleSend],
-  );
+    }
+  }
 
-  const handleChange = useCallback((e: ChangeEvent<HTMLTextAreaElement>) => {
+  function handleSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    handleSend();
+  }
+
+  function handleChange(e: ChangeEvent<HTMLTextAreaElement>) {
     setValue(e.target.value);
-  }, []);
+  }
 
   return {
     value,

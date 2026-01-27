@@ -2,9 +2,7 @@ import type { SessionDetailResponse } from "@/app/api/__generated__/models/sessi
 import type { SessionSummaryResponse } from "@/app/api/__generated__/models/sessionSummaryResponse";
 import { format, formatDistanceToNow, isToday } from "date-fns";
 
-export function convertSessionDetailToSummary(
-  session: SessionDetailResponse,
-): SessionSummaryResponse {
+export function convertSessionDetailToSummary(session: SessionDetailResponse) {
   return {
     id: session.id,
     created_at: session.created_at,
@@ -13,22 +11,25 @@ export function convertSessionDetailToSummary(
   };
 }
 
-export function filterVisibleSessions(
-  sessions: SessionSummaryResponse[],
-): SessionSummaryResponse[] {
+export function filterVisibleSessions(sessions: SessionSummaryResponse[]) {
   const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
   return sessions.filter((session) => {
     const hasBeenUpdated = session.updated_at !== session.created_at;
+
     if (hasBeenUpdated) return true;
+
     const isRecentlyCreated =
       new Date(session.created_at).getTime() > fiveMinutesAgo;
+
     return isRecentlyCreated;
   });
 }
 
-export function getSessionTitle(session: SessionSummaryResponse): string {
+export function getSessionTitle(session: SessionSummaryResponse) {
   if (session.title) return session.title;
+
   const isNewSession = session.updated_at === session.created_at;
+
   if (isNewSession) {
     const createdDate = new Date(session.created_at);
     if (isToday(createdDate)) {
@@ -36,12 +37,11 @@ export function getSessionTitle(session: SessionSummaryResponse): string {
     }
     return format(createdDate, "MMM d, yyyy");
   }
+
   return "Untitled Chat";
 }
 
-export function getSessionUpdatedLabel(
-  session: SessionSummaryResponse,
-): string {
+export function getSessionUpdatedLabel(session: SessionSummaryResponse) {
   if (!session.updated_at) return "";
   return formatDistanceToNow(new Date(session.updated_at), { addSuffix: true });
 }
@@ -51,7 +51,7 @@ export function mergeCurrentSessionIntoList(
   currentSessionId: string | null,
   currentSessionData: SessionDetailResponse | null | undefined,
   recentlyCreatedSessions?: Map<string, SessionSummaryResponse>,
-): SessionSummaryResponse[] {
+) {
   const filteredSessions: SessionSummaryResponse[] = [];
   const addedIds = new Set<string>();
 
@@ -101,9 +101,7 @@ export function mergeCurrentSessionIntoList(
   return filteredSessions;
 }
 
-export function getCurrentSessionId(
-  searchParams: URLSearchParams,
-): string | null {
+export function getCurrentSessionId(searchParams: URLSearchParams) {
   return searchParams.get("sessionId");
 }
 
@@ -115,11 +113,7 @@ export function shouldAutoSelectSession(
   accumulatedSessions: SessionSummaryResponse[],
   isLoading: boolean,
   totalCount: number | null,
-): {
-  shouldSelect: boolean;
-  sessionIdToSelect: string | null;
-  shouldCreate: boolean;
-} {
+) {
   if (!areAllSessionsLoaded || hasAutoSelectedSession) {
     return {
       shouldSelect: false,
@@ -166,7 +160,7 @@ export function checkReadyToShowContent(
   isCurrentSessionLoading: boolean,
   currentSessionData: SessionDetailResponse | null | undefined,
   hasAutoSelectedSession: boolean,
-): boolean {
+) {
   if (!areAllSessionsLoaded) return false;
 
   if (paramSessionId) {

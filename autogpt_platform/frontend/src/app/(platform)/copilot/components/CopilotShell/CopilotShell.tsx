@@ -45,7 +45,7 @@ export function CopilotShell({ children }: Props) {
         setNewChatHandler(null);
       };
     },
-    [setNewChatHandler, handleNewChat],
+    [handleNewChat],
   );
 
   function handleNewChatClick() {

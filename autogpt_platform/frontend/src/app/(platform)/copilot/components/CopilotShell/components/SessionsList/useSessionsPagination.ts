@@ -6,7 +6,7 @@ import type { SessionSummaryResponse } from "@/app/api/__generated__/models/sess
 import { okData } from "@/app/api/helpers";
 import { useChatStore } from "@/components/contextual/Chat/chat-store";
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 const PAGE_SIZE = 50;
 
@@ -32,20 +32,17 @@ export function useSessionsPagination({ enabled }: UseSessionsPaginationArgs) {
     },
   );
 
-  useEffect(
-    function refreshOnStreamComplete() {
-      const unsubscribe = onStreamComplete(function handleStreamComplete() {
-        setOffset(0);
-        setAccumulatedSessions([]);
-        setTotalCount(null);
-        queryClient.invalidateQueries({
-          queryKey: getGetV2ListSessionsQueryKey(),
-        });
+  useEffect(function refreshOnStreamComplete() {
+    const unsubscribe = onStreamComplete(function handleStreamComplete() {
+      setOffset(0);
+      setAccumulatedSessions([]);
+      setTotalCount(null);
+      queryClient.invalidateQueries({
+        queryKey: getGetV2ListSessionsQueryKey(),
       });
-      return unsubscribe;
-    },
-    [onStreamComplete, queryClient],
-  );
+    });
+    return unsubscribe;
+  }, []);
 
   useEffect(
     function updateSessionsFromResponse() {
@@ -68,17 +65,14 @@ export function useSessionsPagination({ enabled }: UseSessionsPaginationArgs) {
     [data, offset, enabled],
   );
 
-  const hasNextPage = useMemo(() => {
-    if (totalCount === null) return false;
-    return accumulatedSessions.length < totalCount;
-  }, [accumulatedSessions.length, totalCount]);
+  const hasNextPage =
+    totalCount !== null && accumulatedSessions.length < totalCount;
 
-  const areAllSessionsLoaded = useMemo(() => {
-    if (totalCount === null) return false;
-    return (
-      accumulatedSessions.length >= totalCount && !isFetching && !isLoading
-    );
-  }, [accumulatedSessions.length, totalCount, isFetching, isLoading]);
+  const areAllSessionsLoaded =
+    totalCount !== null &&
+    accumulatedSessions.length >= totalCount &&
+    !isFetching &&
+    !isLoading;
 
   useEffect(() => {
     if (

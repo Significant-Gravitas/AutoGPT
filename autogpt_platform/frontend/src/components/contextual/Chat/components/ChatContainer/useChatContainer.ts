@@ -39,7 +39,8 @@ export function useChatContainer({
     sendMessage: sendStreamMessage,
     stopStreaming,
   } = useChatStream();
-  const chatStore = useChatStore();
+  const activeStreams = useChatStore((s) => s.activeStreams);
+  const subscribeToStream = useChatStore((s) => s.subscribeToStream);
   const isStreaming = isStreamingInitiated || hasTextChunks;
 
   useEffect(
@@ -60,36 +61,30 @@ export function useChatContainer({
 
       if (!sessionId) return;
 
-      const activeStream = chatStore.activeStreams.get(sessionId);
+      const activeStream = activeStreams.get(sessionId);
+      if (!activeStream || activeStream.status !== "streaming") return;
 
-      if (activeStream && activeStream.chunks.length > 0) {
-        const chunksToReplay = activeStream.chunks;
-        const dispatcher = createStreamEventDispatcher({
-          setHasTextChunks,
-          setStreamingChunks,
-          streamingChunksRef,
-          hasResponseRef,
-          setMessages,
-          setIsRegionBlockedModalOpen,
-          sessionId,
-          setIsStreamingInitiated,
-        });
+      const dispatcher = createStreamEventDispatcher({
+        setHasTextChunks,
+        setStreamingChunks,
+        streamingChunksRef,
+        hasResponseRef,
+        setMessages,
+        setIsRegionBlockedModalOpen,
+        sessionId,
+        setIsStreamingInitiated,
+      });
 
-        for (const chunk of chunksToReplay) {
+      if (initialMessages.length === 0 && activeStream.chunks.length > 0) {
+        for (const chunk of activeStream.chunks) {
           dispatcher(chunk);
         }
-
-        if (activeStream.status === "streaming") {
-          setIsStreamingInitiated(true);
-          const unsubscribe = chatStore.subscribeToStream(
-            sessionId,
-            dispatcher,
-          );
-          return unsubscribe;
-        }
       }
+
+      setIsStreamingInitiated(true);
+      return subscribeToStream(sessionId, dispatcher);
     },
-    [sessionId, stopStreaming, chatStore],
+    [sessionId, stopStreaming, activeStreams, subscribeToStream],
   );
 
   const allMessages = useMemo(

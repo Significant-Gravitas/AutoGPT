@@ -4,7 +4,11 @@ import type { ToolResult } from "@/types/chat";
 import { WarningCircleIcon } from "@phosphor-icons/react";
 import { AIChatBubble } from "../AIChatBubble/AIChatBubble";
 import { MarkdownContent } from "../MarkdownContent/MarkdownContent";
-import { formatToolResponse, getErrorMessage, isErrorResponse } from "./helpers";
+import {
+  formatToolResponse,
+  getErrorMessage,
+  isErrorResponse,
+} from "./helpers";
 
 export interface ToolResponseMessageProps {
   toolId?: string;
