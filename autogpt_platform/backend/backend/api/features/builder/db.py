@@ -42,9 +42,11 @@ MIN_SCORE_FOR_FILTERED_RESULTS = 10.0
 BLOCK_SCORE_BOOST = 50.0
 
 # Block IDs to exclude from search results
-EXCLUDED_BLOCK_IDS = frozenset({
-    "e189baac-8c20-45a1-94a7-55177ea42565",  # AgentExecutorBlock
-})
+EXCLUDED_BLOCK_IDS = frozenset(
+    {
+        "e189baac-8c20-45a1-94a7-55177ea42565",  # AgentExecutorBlock
+    }
+)
 
 SearchResultItem = BlockInfo | library_model.LibraryAgent | store_model.StoreAgent
 
