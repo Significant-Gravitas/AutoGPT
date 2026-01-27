@@ -371,7 +371,7 @@ export function parseToolResponse(
       return {
         type: "operation_in_progress",
         toolName: (parsedResult.tool_name as string) || toolName,
-        toolCallId: (parsedResult.tool_call_id as string) || "",
+        toolCallId: (parsedResult.tool_call_id as string) || toolId,
         message:
           (parsedResult.message as string) ||
           "Operation already in progress. Please wait...",
