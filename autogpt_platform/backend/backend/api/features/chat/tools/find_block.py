@@ -107,7 +107,8 @@ class FindBlockTool(BaseTool):
                 block_id = result["content_id"]
                 block = get_block(block_id)
 
-                if block:
+                # Skip disabled blocks
+                if block and not block.disabled:
                     # Get input/output schemas
                     input_schema = {}
                     output_schema = {}
