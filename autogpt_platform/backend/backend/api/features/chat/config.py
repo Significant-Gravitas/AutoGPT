@@ -38,6 +38,12 @@ class ChatConfig(BaseSettings):
         default=3, description="Maximum number of agent schedules"
     )
 
+    # Long-running operation configuration
+    long_running_operation_ttl: int = Field(
+        default=600,
+        description="TTL in seconds for long-running operation tracking in Redis (safety net if pod dies)",
+    )
+
     # Langfuse Prompt Management Configuration
     # Note: Langfuse credentials are in Settings().secrets (settings.py)
     langfuse_prompt_name: str = Field(

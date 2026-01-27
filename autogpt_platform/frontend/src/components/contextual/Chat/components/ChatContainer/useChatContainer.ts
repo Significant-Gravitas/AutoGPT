@@ -82,10 +82,109 @@ export function useChatContainer({
     [sessionId, stopStreaming, activeStreams, subscribeToStream],
   );
 
-  const allMessages = useMemo(
-    () => [...processInitialMessages(initialMessages), ...messages],
-    [initialMessages, messages],
+  // Collect toolIds from completed tool results in initialMessages
+  // Used to filter out operation messages when their results arrive
+  const completedToolIds = useMemo(() => {
+    const processedInitial = processInitialMessages(initialMessages);
+    const ids = new Set<string>();
+    for (const msg of processedInitial) {
+      if (
+        msg.type === "tool_response" ||
+        msg.type === "agent_carousel" ||
+        msg.type === "execution_started"
+      ) {
+        const toolId = (msg as any).toolId;
+        if (toolId) {
+          ids.add(toolId);
+        }
+      }
+    }
+    return ids;
+  }, [initialMessages]);
+
+  // Clean up local operation messages when their completed results arrive from polling
+  // This effect runs when completedToolIds changes (i.e., when polling brings new results)
+  useEffect(
+    function cleanupCompletedOperations() {
+      if (completedToolIds.size === 0) return;
+
+      setMessages((prev) => {
+        const filtered = prev.filter((msg) => {
+          if (
+            msg.type === "operation_started" ||
+            msg.type === "operation_pending" ||
+            msg.type === "operation_in_progress"
+          ) {
+            const toolId = (msg as any).toolId || (msg as any).toolCallId;
+            if (toolId && completedToolIds.has(toolId)) {
+              return false; // Remove - operation completed
+            }
+          }
+          return true;
+        });
+        // Only update state if something was actually filtered
+        return filtered.length === prev.length ? prev : filtered;
+      });
+    },
+    [completedToolIds],
   );
+
+  // Combine initial messages from backend with local streaming messages,
+  // then deduplicate to prevent duplicates when polling refreshes initialMessages
+  const allMessages = useMemo(() => {
+    const processedInitial = processInitialMessages(initialMessages);
+
+    // Filter local messages to remove operation messages for completed tools
+    const filteredLocalMessages = messages.filter((msg) => {
+      if (
+        msg.type === "operation_started" ||
+        msg.type === "operation_pending" ||
+        msg.type === "operation_in_progress"
+      ) {
+        const toolId = (msg as any).toolId || (msg as any).toolCallId;
+        if (toolId && completedToolIds.has(toolId)) {
+          return false; // Filter out - operation completed
+        }
+      }
+      return true;
+    });
+
+    const combined = [...processedInitial, ...filteredLocalMessages];
+
+    // Deduplicate by content+role+timestamp. When initialMessages is refreshed via polling,
+    // it may contain messages that are also in the local `messages` state.
+    // Including timestamp prevents dropping legitimate repeated messages (e.g., user sends "yes" twice)
+    const seen = new Set<string>();
+    return combined.filter((msg) => {
+      // Create a key based on type, role, content, and timestamp for deduplication
+      let key: string;
+      if (msg.type === "message") {
+        // Use timestamp (rounded to nearest second) to allow slight variations
+        // while still catching true duplicates from SSE/polling overlap
+        const ts = msg.timestamp
+          ? Math.floor(new Date(msg.timestamp).getTime() / 1000)
+          : "";
+        key = `msg:${msg.role}:${ts}:${msg.content}`;
+      } else if (msg.type === "tool_call") {
+        key = `toolcall:${msg.toolId}`;
+      } else if (
+        msg.type === "operation_started" ||
+        msg.type === "operation_pending" ||
+        msg.type === "operation_in_progress"
+      ) {
+        // Dedupe operation messages by toolId or operationId
+        key = `op:${(msg as any).toolId || (msg as any).operationId || (msg as any).toolCallId || ""}:${msg.toolName}`;
+      } else {
+        // For other types, use a combination of type and first few fields
+        key = `${msg.type}:${JSON.stringify(msg).slice(0, 100)}`;
+      }
+      if (seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    });
+  }, [initialMessages, messages]);
 
   async function sendMessage(
     content: string,

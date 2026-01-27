@@ -5,25 +5,18 @@ import {
   getGetV2ListSessionsQueryKey,
   useGetV2GetSession,
 } from "@/app/api/__generated__/endpoints/chat/chat";
-import type { SessionSummaryResponse } from "@/app/api/__generated__/models/sessionSummaryResponse";
 import { okData } from "@/app/api/helpers";
 import { useChatStore } from "@/components/contextual/Chat/chat-store";
 import { useBreakpoint } from "@/lib/hooks/useBreakpoint";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { useQueryClient } from "@tanstack/react-query";
-import { parseAsString, useQueryState } from "nuqs";
 import { usePathname, useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useRef } from "react";
 import { useCopilotStore } from "../../copilot-page-store";
+import { useCopilotSessionId } from "../../useCopilotSessionId";
 import { useMobileDrawer } from "./components/MobileDrawer/useMobileDrawer";
-import { useSessionsPagination } from "./components/SessionsList/useSessionsPagination";
-import {
-  checkReadyToShowContent,
-  convertSessionDetailToSummary,
-  filterVisibleSessions,
-  getCurrentSessionId,
-  mergeCurrentSessionIntoList,
-} from "./helpers";
+import { getCurrentSessionId } from "./helpers";
+import { useShellSessionList } from "./useShellSessionList";
 
 export function useCopilotShell() {
   const pathname = usePathname();
@@ -34,7 +27,7 @@ export function useCopilotShell() {
   const isMobile =
     breakpoint === "base" || breakpoint === "sm" || breakpoint === "md";
 
-  const [, setUrlSessionId] = useQueryState("sessionId", parseAsString);
+  const { urlSessionId, setUrlSessionId } = useCopilotSessionId();
 
   const isOnHomepage = pathname === "/copilot";
   const paramSessionId = searchParams.get("sessionId");
@@ -48,234 +41,113 @@ export function useCopilotShell() {
 
   const paginationEnabled = !isMobile || isDrawerOpen || !!paramSessionId;
 
-  const {
-    sessions: accumulatedSessions,
-    isLoading: isSessionsLoading,
-    isFetching: isSessionsFetching,
-    hasNextPage,
-    areAllSessionsLoaded,
-    fetchNextPage,
-    reset: resetPagination,
-  } = useSessionsPagination({
-    enabled: paginationEnabled,
-  });
-
   const currentSessionId = getCurrentSessionId(searchParams);
 
-  const { data: currentSessionData, isLoading: isCurrentSessionLoading } =
-    useGetV2GetSession(currentSessionId || "", {
+  const { data: currentSessionData } = useGetV2GetSession(
+    currentSessionId || "",
+    {
       query: {
         enabled: !!currentSessionId,
         select: okData,
       },
-    });
-
-  const [hasAutoSelectedSession, setHasAutoSelectedSession] = useState(false);
-  const hasAutoSelectedRef = useRef(false);
-  const recentlyCreatedSessionsRef = useRef<
-    Map<string, SessionSummaryResponse>
-  >(new Map());
-
-  const [optimisticSessionId, setOptimisticSessionId] = useState<string | null>(
-    null,
-  );
-
-  useEffect(
-    function clearOptimisticWhenUrlMatches() {
-      if (optimisticSessionId && currentSessionId === optimisticSessionId) {
-        setOptimisticSessionId(null);
-      }
     },
-    [currentSessionId, optimisticSessionId],
   );
 
-  // Mark as auto-selected when sessionId is in URL
-  useEffect(() => {
-    if (paramSessionId && !hasAutoSelectedRef.current) {
-      hasAutoSelectedRef.current = true;
-      setHasAutoSelectedSession(true);
-    }
-  }, [paramSessionId]);
-
-  // On homepage without sessionId, mark as ready immediately
-  useEffect(() => {
-    if (isOnHomepage && !paramSessionId && !hasAutoSelectedRef.current) {
-      hasAutoSelectedRef.current = true;
-      setHasAutoSelectedSession(true);
-    }
-  }, [isOnHomepage, paramSessionId]);
-
-  // Invalidate sessions list when navigating to homepage (to show newly created sessions)
-  useEffect(() => {
-    if (isOnHomepage && !paramSessionId) {
-      queryClient.invalidateQueries({
-        queryKey: getGetV2ListSessionsQueryKey(),
-      });
-    }
-  }, [isOnHomepage, paramSessionId, queryClient]);
-
-  // Track newly created sessions to ensure they stay visible even when switching away
-  useEffect(() => {
-    if (currentSessionId && currentSessionData) {
-      const isNewSession =
-        currentSessionData.updated_at === currentSessionData.created_at;
-      const isNotInAccumulated = !accumulatedSessions.some(
-        (s) => s.id === currentSessionId,
-      );
-      if (isNewSession || isNotInAccumulated) {
-        const summary = convertSessionDetailToSummary(currentSessionData);
-        recentlyCreatedSessionsRef.current.set(currentSessionId, summary);
-      }
-    }
-  }, [currentSessionId, currentSessionData, accumulatedSessions]);
-
-  // Clean up recently created sessions that are now in the accumulated list
-  useEffect(() => {
-    for (const sessionId of recentlyCreatedSessionsRef.current.keys()) {
-      if (accumulatedSessions.some((s) => s.id === sessionId)) {
-        recentlyCreatedSessionsRef.current.delete(sessionId);
-      }
-    }
-  }, [accumulatedSessions]);
-
-  // Reset pagination when query becomes disabled
-  const prevPaginationEnabledRef = useRef(paginationEnabled);
-  useEffect(() => {
-    if (prevPaginationEnabledRef.current && !paginationEnabled) {
-      resetPagination();
-      resetAutoSelect();
-    }
-    prevPaginationEnabledRef.current = paginationEnabled;
-  }, [paginationEnabled, resetPagination]);
-
-  const sessions = mergeCurrentSessionIntoList(
-    accumulatedSessions,
+  const {
+    sessions,
+    isLoading,
+    isSessionsFetching,
+    hasNextPage,
+    fetchNextPage,
+    resetPagination,
+    recentlyCreatedSessionsRef,
+  } = useShellSessionList({
+    paginationEnabled,
     currentSessionId,
     currentSessionData,
-    recentlyCreatedSessionsRef.current,
-  );
-
-  const visibleSessions = filterVisibleSessions(sessions);
-
-  const sidebarSelectedSessionId =
-    isOnHomepage && !paramSessionId && !optimisticSessionId
-      ? null
-      : optimisticSessionId || currentSessionId;
-
-  const isReadyToShowContent = isOnHomepage
-    ? true
-    : checkReadyToShowContent(
-        areAllSessionsLoaded,
-        paramSessionId,
-        accumulatedSessions,
-        isCurrentSessionLoading,
-        currentSessionData,
-        hasAutoSelectedSession,
-      );
+    isOnHomepage,
+    paramSessionId,
+  });
 
   const stopStream = useChatStore((s) => s.stopStream);
   const onStreamComplete = useChatStore((s) => s.onStreamComplete);
+  const isStreaming = useCopilotStore((s) => s.isStreaming);
+  const isCreatingSession = useCopilotStore((s) => s.isCreatingSession);
   const setIsSwitchingSession = useCopilotStore((s) => s.setIsSwitchingSession);
+  const openInterruptModal = useCopilotStore((s) => s.openInterruptModal);
 
-  async function performSelectSession(sessionId: string) {
-    if (sessionId === currentSessionId) return;
+  const pendingActionRef = useRef<(() => void) | null>(null);
 
-    const sourceSessionId = currentSessionId;
+  async function stopCurrentStream() {
+    if (!currentSessionId) return;
 
-    if (sourceSessionId) {
-      setIsSwitchingSession(true);
-
-      await new Promise<void>(function waitForStreamComplete(resolve) {
-        const unsubscribe = onStreamComplete(
-          function handleComplete(completedId) {
-            if (completedId === sourceSessionId) {
-              clearTimeout(timeout);
-              unsubscribe();
-              resolve();
-            }
-          },
-        );
-        const timeout = setTimeout(function handleTimeout() {
+    setIsSwitchingSession(true);
+    await new Promise<void>((resolve) => {
+      const unsubscribe = onStreamComplete((completedId) => {
+        if (completedId === currentSessionId) {
+          clearTimeout(timeout);
           unsubscribe();
           resolve();
-        }, 3000);
-        stopStream(sourceSessionId);
+        }
       });
+      const timeout = setTimeout(() => {
+        unsubscribe();
+        resolve();
+      }, 3000);
+      stopStream(currentSessionId);
+    });
 
-      queryClient.invalidateQueries({
-        queryKey: getGetV2GetSessionQueryKey(sourceSessionId),
-      });
-    }
-
-    setOptimisticSessionId(sessionId);
-    setUrlSessionId(sessionId, { shallow: false });
+    queryClient.invalidateQueries({
+      queryKey: getGetV2GetSessionQueryKey(currentSessionId),
+    });
     setIsSwitchingSession(false);
-    if (isMobile) handleCloseDrawer();
   }
 
-  function handleSelectSession(sessionId: string) {
+  function selectSession(sessionId: string) {
     if (sessionId === currentSessionId) return;
-    setOptimisticSessionId(sessionId);
+    if (recentlyCreatedSessionsRef.current.has(sessionId)) {
+      queryClient.invalidateQueries({
+        queryKey: getGetV2GetSessionQueryKey(sessionId),
+      });
+    }
     setUrlSessionId(sessionId, { shallow: false });
     if (isMobile) handleCloseDrawer();
   }
 
-  async function performNewChat() {
-    const sourceSessionId = currentSessionId;
+  function startNewChat() {
+    resetPagination();
+    queryClient.invalidateQueries({
+      queryKey: getGetV2ListSessionsQueryKey(),
+    });
+    setUrlSessionId(null, { shallow: false });
+    if (isMobile) handleCloseDrawer();
+  }
 
-    if (sourceSessionId) {
-      setIsSwitchingSession(true);
+  function handleSessionClick(sessionId: string) {
+    if (sessionId === currentSessionId) return;
 
-      await new Promise<void>(function waitForStreamComplete(resolve) {
-        const unsubscribe = onStreamComplete(
-          function handleComplete(completedId) {
-            if (completedId === sourceSessionId) {
-              clearTimeout(timeout);
-              unsubscribe();
-              resolve();
-            }
-          },
-        );
-        const timeout = setTimeout(function handleTimeout() {
-          unsubscribe();
-          resolve();
-        }, 3000);
-        stopStream(sourceSessionId);
-      });
-
-      queryClient.invalidateQueries({
-        queryKey: getGetV2GetSessionQueryKey(sourceSessionId),
-      });
-      setIsSwitchingSession(false);
+    if (isStreaming) {
+      pendingActionRef.current = async () => {
+        await stopCurrentStream();
+        selectSession(sessionId);
+      };
+      openInterruptModal(pendingActionRef.current);
+    } else {
+      selectSession(sessionId);
     }
-
-    resetAutoSelect();
-    resetPagination();
-    queryClient.invalidateQueries({
-      queryKey: getGetV2ListSessionsQueryKey(),
-    });
-    setUrlSessionId(null, { shallow: false });
-    setOptimisticSessionId(null);
-    if (isMobile) handleCloseDrawer();
   }
 
-  function handleNewChat() {
-    resetAutoSelect();
-    resetPagination();
-    queryClient.invalidateQueries({
-      queryKey: getGetV2ListSessionsQueryKey(),
-    });
-    setUrlSessionId(null, { shallow: false });
-    setOptimisticSessionId(null);
-    if (isMobile) handleCloseDrawer();
+  function handleNewChatClick() {
+    if (isStreaming) {
+      pendingActionRef.current = async () => {
+        await stopCurrentStream();
+        startNewChat();
+      };
+      openInterruptModal(pendingActionRef.current);
+    } else {
+      startNewChat();
+    }
   }
-
-  function resetAutoSelect() {
-    hasAutoSelectedRef.current = false;
-    setHasAutoSelectedSession(false);
-  }
-
-  const isLoading = isSessionsLoading && accumulatedSessions.length === 0;
 
   return {
     isMobile,
@@ -283,19 +155,17 @@ export function useCopilotShell() {
     isLoggedIn,
     hasActiveSession:
       Boolean(currentSessionId) && (!isOnHomepage || Boolean(paramSessionId)),
-    isLoading,
-    sessions: visibleSessions,
-    currentSessionId: sidebarSelectedSessionId,
-    handleSelectSession,
-    performSelectSession,
+    isLoading: isLoading || isCreatingSession,
+    isCreatingSession,
+    sessions,
+    currentSessionId: urlSessionId,
     handleOpenDrawer,
     handleCloseDrawer,
     handleDrawerOpenChange,
-    handleNewChat,
-    performNewChat,
+    handleNewChatClick,
+    handleSessionClick,
     hasNextPage,
     isFetchingNextPage: isSessionsFetching,
     fetchNextPage,
-    isReadyToShowContent,
   };
 }
