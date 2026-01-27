@@ -795,12 +795,24 @@ async def _stream_chat_chunks(
             # Strip provider prefix (e.g., "anthropic/claude-opus-4.5" -> "claude-opus-4.5")
             token_count_model = model.split("/")[-1]
 
-        # For Claude models, approximate with gpt-4o tokenizer
-        # Claude and GPT-4 have similar tokenization (~1 token per 4 chars)
-        if "claude" in token_count_model.lower():
+        # For Claude and other non-OpenAI models, approximate with gpt-4o tokenizer
+        # Most modern LLMs have similar tokenization (~1 token per 4 chars)
+        if "claude" in token_count_model.lower() or not any(
+            known in token_count_model.lower()
+            for known in ["gpt", "o1", "chatgpt", "text-"]
+        ):
             token_count_model = "gpt-4o"
 
-        token_count = estimate_token_count(messages_dict, model=token_count_model)
+        # Attempt token counting with error handling
+        try:
+            token_count = estimate_token_count(messages_dict, model=token_count_model)
+        except Exception as token_error:
+            # If token counting fails, use gpt-4o as fallback approximation
+            logger.warning(
+                f"Token counting failed for model {token_count_model}: {token_error}. "
+                "Using gpt-4o approximation."
+            )
+            token_count = estimate_token_count(messages_dict, model="gpt-4o")
 
         # If over threshold, summarize old messages
         if token_count > 120_000:
