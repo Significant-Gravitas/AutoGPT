@@ -138,6 +138,7 @@ def test_execute_graph_block(
     """Test execute block endpoint"""
     # Mock block
     mock_block = Mock()
+    mock_block.disabled = False
 
     async def mock_execute(*args, **kwargs):
         yield "output1", {"data": "result1"}

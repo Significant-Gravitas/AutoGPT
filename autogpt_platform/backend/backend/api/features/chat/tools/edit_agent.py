@@ -6,13 +6,10 @@ from typing import Any
 from backend.api.features.chat.model import ChatSession
 
 from .agent_generator import (
-    apply_agent_patch,
-    apply_all_fixes,
+    AgentGeneratorNotConfiguredError,
     generate_agent_patch,
     get_agent_as_json,
-    get_blocks_info,
     save_agent_to_library,
-    validate_agent,
 )
 from .base import BaseTool
 from .models import (
@@ -26,9 +23,6 @@ from .models import (
 
 logger = logging.getLogger(__name__)
 
-# Maximum retries for patch generation with validation feedback
-MAX_GENERATION_RETRIES = 2
-
 
 class EditAgentTool(BaseTool):
     """Tool for editing existing agents using natural language."""
@@ -41,7 +35,7 @@ class EditAgentTool(BaseTool):
     def description(self) -> str:
         return (
             "Edit an existing agent from the user's library using natural language. "
-            "Generates a patch to update the agent while preserving unchanged parts."
+            "Generates updates to the agent while preserving unchanged parts."
         )
 
     @property
@@ -95,9 +89,8 @@ class EditAgentTool(BaseTool):
 
         Flow:
         1. Fetch the current agent
-        2. Generate a patch based on the requested changes
-        3. Apply the patch to create an updated agent
-        4. Preview or save based on the save parameter
+        2. Generate updated agent (external service handles fixing and validation)
+        3. Preview or save based on the save parameter
         """
         agent_id = kwargs.get("agent_id", "").strip()
         changes = kwargs.get("changes", "").strip()
@@ -134,121 +127,58 @@ class EditAgentTool(BaseTool):
         if context:
             update_request = f"{changes}\n\nAdditional context:\n{context}"
 
-        # Step 2: Generate patch with retry on validation failure
-        blocks_info = get_blocks_info()
-        updated_agent = None
-        validation_errors = None
-        intent = "Applied requested changes"
-
-        for attempt in range(MAX_GENERATION_RETRIES + 1):
-            # Generate patch (include validation errors from previous attempt)
-            try:
-                if attempt == 0:
-                    patch_result = await generate_agent_patch(
-                        update_request, current_agent
-                    )
-                else:
-                    # Retry with validation error feedback
-                    logger.info(
-                        f"Retry {attempt}/{MAX_GENERATION_RETRIES} with validation feedback"
-                    )
-                    retry_request = (
-                        f"{update_request}\n\n"
-                        f"IMPORTANT: The previous edit had validation errors. "
-                        f"Please fix these issues:\n{validation_errors}"
-                    )
-                    patch_result = await generate_agent_patch(
-                        retry_request, current_agent
-                    )
-            except ValueError as e:
-                # Handle missing API key or configuration errors
-                return ErrorResponse(
-                    message=f"Agent generation is not configured: {str(e)}",
-                    error="configuration_error",
-                    session_id=session_id,
-                )
-
-            if patch_result is None:
-                if attempt == MAX_GENERATION_RETRIES:
-                    return ErrorResponse(
-                        message="Failed to generate changes. Please try rephrasing.",
-                        error="Patch generation failed",
-                        session_id=session_id,
-                    )
-                continue
-
-            # Check if LLM returned clarifying questions
-            if patch_result.get("type") == "clarifying_questions":
-                questions = patch_result.get("questions", [])
-                return ClarificationNeededResponse(
-                    message=(
-                        "I need some more information about the changes. "
-                        "Please answer the following questions:"
-                    ),
-                    questions=[
-                        ClarifyingQuestion(
-                            question=q.get("question", ""),
-                            keyword=q.get("keyword", ""),
-                            example=q.get("example"),
-                        )
-                        for q in questions
-                    ],
-                    session_id=session_id,
-                )
-
-            # Step 3: Apply patch and fixes
-            try:
-                updated_agent = apply_agent_patch(current_agent, patch_result)
-                updated_agent = apply_all_fixes(updated_agent, blocks_info)
-            except Exception as e:
-                if attempt == MAX_GENERATION_RETRIES:
-                    return ErrorResponse(
-                        message=f"Failed to apply changes: {str(e)}",
-                        error="patch_apply_failed",
-                        details={"exception": str(e)},
-                        session_id=session_id,
-                    )
-                validation_errors = str(e)
-                continue
-
-            # Step 4: Validate the updated agent
-            is_valid, validation_errors = validate_agent(updated_agent, blocks_info)
-
-            if is_valid:
-                logger.info(f"Agent edited successfully on attempt {attempt + 1}")
-                intent = patch_result.get("intent", "Applied requested changes")
-                break
-
-            logger.warning(
-                f"Validation failed on attempt {attempt + 1}: {validation_errors}"
+        # Step 2: Generate updated agent (external service handles fixing and validation)
+        try:
+            result = await generate_agent_patch(update_request, current_agent)
+        except AgentGeneratorNotConfiguredError:
+            return ErrorResponse(
+                message=(
+                    "Agent editing is not available. "
+                    "The Agent Generator service is not configured."
+                ),
+                error="service_not_configured",
+                session_id=session_id,
             )
 
-            if attempt == MAX_GENERATION_RETRIES:
-                # Return error with validation details
-                return ErrorResponse(
-                    message=(
-                        f"Updated agent has validation errors after "
-                        f"{MAX_GENERATION_RETRIES + 1} attempts. "
-                        f"Please try rephrasing your request or simplify the changes."
-                    ),
-                    error="validation_failed",
-                    details={"validation_errors": validation_errors},
-                    session_id=session_id,
-                )
+        if result is None:
+            return ErrorResponse(
+                message="Failed to generate changes. Please try rephrasing.",
+                error="Update generation failed",
+                session_id=session_id,
+            )
 
-        # At this point, updated_agent is guaranteed to be set (we return on all failure paths)
-        assert updated_agent is not None
+        # Check if LLM returned clarifying questions
+        if result.get("type") == "clarifying_questions":
+            questions = result.get("questions", [])
+            return ClarificationNeededResponse(
+                message=(
+                    "I need some more information about the changes. "
+                    "Please answer the following questions:"
+                ),
+                questions=[
+                    ClarifyingQuestion(
+                        question=q.get("question", ""),
+                        keyword=q.get("keyword", ""),
+                        example=q.get("example"),
+                    )
+                    for q in questions
+                ],
+                session_id=session_id,
+            )
+
+        # Result is the updated agent JSON
+        updated_agent = result
 
         agent_name = updated_agent.get("name", "Updated Agent")
         agent_description = updated_agent.get("description", "")
         node_count = len(updated_agent.get("nodes", []))
         link_count = len(updated_agent.get("links", []))
 
-        # Step 5: Preview or save
+        # Step 3: Preview or save
         if not save:
             return AgentPreviewResponse(
                 message=(
-                    f"I've updated the agent. Changes: {intent}. "
+                    f"I've updated the agent. "
                     f"The agent now has {node_count} blocks. "
                     f"Review it and call edit_agent with save=true to save the changes."
                 ),
@@ -274,10 +204,7 @@ class EditAgentTool(BaseTool):
             )
 
             return AgentSavedResponse(
-                message=(
-                    f"Updated agent '{created_graph.name}' has been saved to your library! "
-                    f"Changes: {intent}"
-                ),
+                message=f"Updated agent '{created_graph.name}' has been saved to your library!",
                 agent_id=created_graph.id,
                 agent_name=created_graph.name,
                 library_agent_id=library_agent.id,

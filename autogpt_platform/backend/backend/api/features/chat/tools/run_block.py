@@ -176,6 +176,11 @@ class RunBlockTool(BaseTool):
                 message=f"Block '{block_id}' not found",
                 session_id=session_id,
             )
+        if block.disabled:
+            return ErrorResponse(
+                message=f"Block '{block_id}' is disabled",
+                session_id=session_id,
+            )
 
         logger.info(f"Executing block {block.name} ({block_id}) for user {user_id}")
 
