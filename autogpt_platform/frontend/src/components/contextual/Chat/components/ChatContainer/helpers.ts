@@ -321,6 +321,23 @@ export function parseToolResponse(
         timestamp: timestamp || new Date(),
       };
     }
+    if (responseType === "clarification_needed") {
+      return {
+        type: "clarification_needed",
+        toolName,
+        questions:
+          (parsedResult.questions as Array<{
+            question: string;
+            keyword: string;
+            example?: string;
+          }>) || [],
+        message:
+          (parsedResult.message as string) ||
+          "I need more information to proceed.",
+        sessionId: (parsedResult.session_id as string) || "",
+        timestamp: timestamp || new Date(),
+      };
+    }
     if (responseType === "need_login") {
       return {
         type: "login_needed",
