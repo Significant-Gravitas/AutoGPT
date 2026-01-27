@@ -67,7 +67,7 @@ export const useBlockMenuSearchContent = () => {
       page_size: 8,
       search_query: searchQuery,
       search_id: searchId,
-      filter: filters.length > 0 ? filters : undefined,
+      filter: filters.length > 0 ? filters.join(",") : undefined,
       by_creator: creators.length > 0 ? creators : undefined,
     },
     {
