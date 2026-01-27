@@ -1,7 +1,6 @@
 "use client";
 
 import { Button } from "@/components/atoms/Button/Button";
-
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { Chat } from "@/components/contextual/Chat/Chat";
@@ -16,7 +15,15 @@ export default function CopilotPage() {
   const isInterruptModalOpen = useCopilotStore((s) => s.isInterruptModalOpen);
   const confirmInterrupt = useCopilotStore((s) => s.confirmInterrupt);
   const cancelInterrupt = useCopilotStore((s) => s.cancelInterrupt);
-  const { greetingName, quickActions, isLoading, pageState, isReady } = state;
+  const {
+    greetingName,
+    quickActions,
+    isLoading,
+    isCreating,
+    hasSession,
+    initialPrompt,
+    isReady,
+  } = state;
   const {
     handleQuickAction,
     startChatWithPrompt,
@@ -26,14 +33,12 @@ export default function CopilotPage() {
 
   if (!isReady) return null;
 
-  if (pageState.type === "chat") {
+  if (hasSession) {
     return (
       <div className="flex h-full flex-col">
         <Chat
-          key={pageState.sessionId ?? "welcome"}
           className="flex-1"
-          urlSessionId={pageState.sessionId}
-          initialPrompt={pageState.initialPrompt}
+          initialPrompt={initialPrompt}
           onSessionNotFound={handleSessionNotFound}
           onStreamingChange={handleStreamingChange}
         />
@@ -77,13 +82,13 @@ export default function CopilotPage() {
     );
   }
 
-  if (pageState.type === "newChat" || pageState.type === "creating") {
+  if (isCreating) {
     return (
       <div className="flex h-full flex-1 flex-col items-center justify-center bg-[#f8f8f9]">
         <div className="flex flex-col items-center gap-4">
           <ChatLoader />
           <Text variant="body" className="text-zinc-500">
-            Loading your chats...
+            Creating your chat...
           </Text>
         </div>
       </div>

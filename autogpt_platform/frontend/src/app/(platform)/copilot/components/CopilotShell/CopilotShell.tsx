@@ -3,10 +3,7 @@
 import { ChatLoader } from "@/components/contextual/Chat/components/ChatLoader/ChatLoader";
 import { NAVBAR_HEIGHT_PX } from "@/lib/constants";
 import type { ReactNode } from "react";
-import { useCallback, useEffect } from "react";
-import { useCopilotStore } from "../../copilot-page-store";
 import { DesktopSidebar } from "./components/DesktopSidebar/DesktopSidebar";
-import { LoadingState } from "./components/LoadingState/LoadingState";
 import { MobileDrawer } from "./components/MobileDrawer/MobileDrawer";
 import { MobileHeader } from "./components/MobileHeader/MobileHeader";
 import { useCopilotShell } from "./useCopilotShell";
@@ -24,84 +21,15 @@ export function CopilotShell({ children }: Props) {
     hasActiveSession,
     sessions,
     currentSessionId,
-    handleSelectSession,
-    performSelectSession,
     handleOpenDrawer,
     handleCloseDrawer,
     handleDrawerOpenChange,
-    handleNewChat,
-    performNewChat,
+    handleNewChatClick,
+    handleSessionClick,
     hasNextPage,
     isFetchingNextPage,
     fetchNextPage,
-    isReadyToShowContent,
   } = useCopilotShell();
-
-  const setNewChatHandler = useCopilotStore((s) => s.setNewChatHandler);
-  const setNewChatWithInterruptHandler = useCopilotStore(
-    (s) => s.setNewChatWithInterruptHandler,
-  );
-  const setSelectSessionHandler = useCopilotStore(
-    (s) => s.setSelectSessionHandler,
-  );
-  const setSelectSessionWithInterruptHandler = useCopilotStore(
-    (s) => s.setSelectSessionWithInterruptHandler,
-  );
-  const requestNewChat = useCopilotStore((s) => s.requestNewChat);
-  const requestSelectSession = useCopilotStore((s) => s.requestSelectSession);
-
-  const stableHandleNewChat = useCallback(handleNewChat, [handleNewChat]);
-  const stablePerformNewChat = useCallback(performNewChat, [performNewChat]);
-
-  useEffect(
-    function registerNewChatHandlers() {
-      setNewChatHandler(stableHandleNewChat);
-      setNewChatWithInterruptHandler(stablePerformNewChat);
-      return function cleanup() {
-        setNewChatHandler(null);
-        setNewChatWithInterruptHandler(null);
-      };
-    },
-    [
-      stableHandleNewChat,
-      stablePerformNewChat,
-      setNewChatHandler,
-      setNewChatWithInterruptHandler,
-    ],
-  );
-
-  const stableHandleSelectSession = useCallback(handleSelectSession, [
-    handleSelectSession,
-  ]);
-
-  const stablePerformSelectSession = useCallback(performSelectSession, [
-    performSelectSession,
-  ]);
-
-  useEffect(
-    function registerSelectSessionHandlers() {
-      setSelectSessionHandler(stableHandleSelectSession);
-      setSelectSessionWithInterruptHandler(stablePerformSelectSession);
-      return function cleanup() {
-        setSelectSessionHandler(null);
-        setSelectSessionWithInterruptHandler(null);
-      };
-    },
-    [
-      stableHandleSelectSession,
-      stablePerformSelectSession,
-      setSelectSessionHandler,
-      setSelectSessionWithInterruptHandler,
-    ],
-  );
-
-  function handleNewChatClick() {
-    requestNewChat();
-  }
-
-  function handleSessionClick(sessionId: string) {
-    requestSelectSession(sessionId);
-  }
 
   if (!isLoggedIn) {
     return (
@@ -132,9 +60,7 @@ export function CopilotShell({ children }: Props) {
 
       <div className="relative flex min-h-0 flex-1 flex-col">
         {isMobile && <MobileHeader onOpenDrawer={handleOpenDrawer} />}
-        <div className="flex min-h-0 flex-1 flex-col">
-          {isReadyToShowContent ? children : <LoadingState />}
-        </div>
+        <div className="flex min-h-0 flex-1 flex-col">{children}</div>
       </div>
 
       {isMobile && (

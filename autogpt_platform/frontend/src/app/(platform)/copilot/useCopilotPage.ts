@@ -14,60 +14,10 @@ import * as Sentry from "@sentry/nextjs";
 import { useQueryClient } from "@tanstack/react-query";
 import { useFlags } from "launchdarkly-react-client-sdk";
 import { useRouter } from "next/navigation";
-import { useEffect, useReducer } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useCopilotStore } from "./copilot-page-store";
-import { getGreetingName, getQuickActions, type PageState } from "./helpers";
-import { useCopilotURLState } from "./useCopilotURLState";
-
-type CopilotState = {
-  pageState: PageState;
-  initialPrompts: Record<string, string>;
-  previousSessionId: string | null;
-};
-
-type CopilotAction =
-  | { type: "setPageState"; pageState: PageState }
-  | { type: "setInitialPrompt"; sessionId: string; prompt: string }
-  | { type: "setPreviousSessionId"; sessionId: string | null };
-
-function isSamePageState(next: PageState, current: PageState) {
-  if (next.type !== current.type) return false;
-  if (next.type === "creating" && current.type === "creating") {
-    return next.prompt === current.prompt;
-  }
-  if (next.type === "chat" && current.type === "chat") {
-    return (
-      next.sessionId === current.sessionId &&
-      next.initialPrompt === current.initialPrompt
-    );
-  }
-  return true;
-}
-
-function copilotReducer(
-  state: CopilotState,
-  action: CopilotAction,
-): CopilotState {
-  if (action.type === "setPageState") {
-    if (isSamePageState(action.pageState, state.pageState)) return state;
-    return { ...state, pageState: action.pageState };
-  }
-  if (action.type === "setInitialPrompt") {
-    if (state.initialPrompts[action.sessionId] === action.prompt) return state;
-    return {
-      ...state,
-      initialPrompts: {
-        ...state.initialPrompts,
-        [action.sessionId]: action.prompt,
-      },
-    };
-  }
-  if (action.type === "setPreviousSessionId") {
-    if (state.previousSessionId === action.sessionId) return state;
-    return { ...state, previousSessionId: action.sessionId };
-  }
-  return state;
-}
+import { getGreetingName, getQuickActions } from "./helpers";
+import { useCopilotSessionId } from "./useCopilotSessionId";
 
 export function useCopilotPage() {
   const router = useRouter();
@@ -75,6 +25,7 @@ export function useCopilotPage() {
   const { user, isLoggedIn, isUserLoading } = useSupabase();
   const { toast } = useToast();
 
+  const { urlSessionId, setUrlSessionId } = useCopilotSessionId();
   const setIsStreaming = useCopilotStore((s) => s.setIsStreaming);
 
   const isChatEnabled = useGetFlag(Flag.CHAT);
@@ -86,72 +37,30 @@ export function useCopilotPage() {
   const isFlagReady =
     !isLaunchDarklyConfigured || flags[Flag.CHAT] !== undefined;
 
-  const [state, dispatch] = useReducer(copilotReducer, {
-    pageState: { type: "welcome" },
-    initialPrompts: {},
-    previousSessionId: null,
-  });
+  const [isCreating, setIsCreating] = useState(false);
+  const initialPromptsRef = useRef<Record<string, string>>({});
 
   const greetingName = getGreetingName(user);
   const quickActions = getQuickActions();
 
-  function setPageState(pageState: PageState) {
-    dispatch({ type: "setPageState", pageState });
-  }
+  const hasSession = Boolean(urlSessionId);
+  const initialPrompt = urlSessionId
+    ? initialPromptsRef.current[urlSessionId]
+    : undefined;
 
-  function setInitialPrompt(sessionId: string, prompt: string) {
-    dispatch({ type: "setInitialPrompt", sessionId, prompt });
-  }
-
-  function setPreviousSessionId(sessionId: string | null) {
-    dispatch({ type: "setPreviousSessionId", sessionId });
-  }
-
-  const { setUrlSessionId } = useCopilotURLState({
-    pageState: state.pageState,
-    initialPrompts: state.initialPrompts,
-    previousSessionId: state.previousSessionId,
-    setPageState,
-    setInitialPrompt,
-    setPreviousSessionId,
-  });
-
-  useEffect(
-    function transitionNewChatToWelcome() {
-      if (state.pageState.type === "newChat") {
-        function setWelcomeState() {
-          dispatch({ type: "setPageState", pageState: { type: "welcome" } });
-        }
-
-        const timer = setTimeout(setWelcomeState, 300);
-
-        return function cleanup() {
-          clearTimeout(timer);
-        };
-      }
-    },
-    [state.pageState.type],
-  );
-
-  useEffect(
-    function ensureAccess() {
-      if (!isFlagReady) return;
-      if (isChatEnabled === false) {
-        router.replace(homepageRoute);
-      }
-    },
-    [homepageRoute, isChatEnabled, isFlagReady, router],
-  );
+  useEffect(() => {
+    if (!isFlagReady) return;
+    if (isChatEnabled === false) {
+      router.replace(homepageRoute);
+    }
+  }, [homepageRoute, isChatEnabled, isFlagReady, router]);
 
   async function startChatWithPrompt(prompt: string) {
     if (!prompt?.trim()) return;
-    if (state.pageState.type === "creating") return;
+    if (isCreating) return;
 
     const trimmedPrompt = prompt.trim();
-    dispatch({
-      type: "setPageState",
-      pageState: { type: "creating", prompt: trimmedPrompt },
-    });
+    setIsCreating(true);
 
     try {
       const sessionResponse = await postV2CreateSession({
@@ -163,27 +72,19 @@ export function useCopilotPage() {
       }
 
       const sessionId = sessionResponse.data.id;
-
-      dispatch({
-        type: "setInitialPrompt",
-        sessionId,
-        prompt: trimmedPrompt,
-      });
+      initialPromptsRef.current[sessionId] = trimmedPrompt;
 
       await queryClient.invalidateQueries({
         queryKey: getGetV2ListSessionsQueryKey(),
       });
 
       await setUrlSessionId(sessionId, { shallow: false });
-      dispatch({
-        type: "setPageState",
-        pageState: { type: "chat", sessionId, initialPrompt: trimmedPrompt },
-      });
     } catch (error) {
       console.error("[CopilotPage] Failed to start chat:", error);
       toast({ title: "Failed to start chat", variant: "destructive" });
       Sentry.captureException(error);
-      dispatch({ type: "setPageState", pageState: { type: "welcome" } });
+    } finally {
+      setIsCreating(false);
     }
   }
 
@@ -204,7 +105,9 @@ export function useCopilotPage() {
       greetingName,
       quickActions,
       isLoading: isUserLoading,
-      pageState: state.pageState,
+      isCreating,
+      hasSession,
+      initialPrompt,
       isReady: isFlagReady && isChatEnabled !== false && isLoggedIn,
     },
     handlers: {
