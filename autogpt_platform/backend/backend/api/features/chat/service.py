@@ -427,12 +427,18 @@ async def stream_chat_completion(
                     if isinstance(chunk.output, str)
                     else orjson.dumps(chunk.output).decode("utf-8")
                 )
-                # Skip saving long-running operation responses - pending message already saved
+                # Skip saving long-running operation responses - messages already saved in _yield_tool_call
                 is_long_running_response = any(
                     op_type in result_content
                     for op_type in ('"operation_started"', '"operation_in_progress"')
                 )
-                if not is_long_running_response:
+                if is_long_running_response:
+                    # Remove from accumulated_tool_calls since assistant message was already saved
+                    accumulated_tool_calls[:] = [
+                        tc for tc in accumulated_tool_calls
+                        if tc["id"] != chunk.toolCallId
+                    ]
+                else:
                     tool_response_messages.append(
                         ChatMessage(
                             role="tool",
