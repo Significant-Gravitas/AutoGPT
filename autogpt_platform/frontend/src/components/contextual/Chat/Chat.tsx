@@ -62,7 +62,9 @@ export function Chat({
             <div className="flex flex-col items-center gap-3">
               <LoadingSpinner size="large" className="text-neutral-400" />
               <Text variant="body" className="text-zinc-500">
-                {isSwitchingSession ? "Switching chat..." : "Loading your chat..."}
+                {isSwitchingSession
+                  ? "Switching chat..."
+                  : "Loading your chat..."}
               </Text>
             </div>
           </div>

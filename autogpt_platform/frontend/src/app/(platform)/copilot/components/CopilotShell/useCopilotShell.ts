@@ -187,13 +187,15 @@ export function useCopilotShell() {
 
       await new Promise<void>(function waitForStreamComplete(resolve) {
         const timeout = setTimeout(resolve, 3000);
-        const unsubscribe = onStreamComplete(function handleComplete(completedId) {
-          if (completedId === sourceSessionId) {
-            clearTimeout(timeout);
-            unsubscribe();
-            resolve();
-          }
-        });
+        const unsubscribe = onStreamComplete(
+          function handleComplete(completedId) {
+            if (completedId === sourceSessionId) {
+              clearTimeout(timeout);
+              unsubscribe();
+              resolve();
+            }
+          },
+        );
         stopStream(sourceSessionId);
       });
 

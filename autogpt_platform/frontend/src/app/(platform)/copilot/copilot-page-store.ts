@@ -16,8 +16,12 @@ interface CopilotStoreActions {
   setIsStreaming: (isStreaming: boolean) => void;
   setIsSwitchingSession: (isSwitchingSession: boolean) => void;
   setNewChatHandler: (handler: (() => void) | null) => void;
-  setSelectSessionHandler: (handler: ((sessionId: string) => void) | null) => void;
-  setSelectSessionWithInterruptHandler: (handler: ((sessionId: string) => void) | null) => void;
+  setSelectSessionHandler: (
+    handler: ((sessionId: string) => void) | null,
+  ) => void;
+  setSelectSessionWithInterruptHandler: (
+    handler: ((sessionId: string) => void) | null,
+  ) => void;
   requestNewChat: () => void;
   requestSelectSession: (sessionId: string) => void;
   confirmInterrupt: () => void;
@@ -65,7 +69,11 @@ export const useCopilotStore = create<CopilotStore>((set, get) => ({
   },
 
   requestSelectSession(sessionId) {
-    const { isStreaming, selectSessionHandler, selectSessionWithInterruptHandler } = get();
+    const {
+      isStreaming,
+      selectSessionHandler,
+      selectSessionWithInterruptHandler,
+    } = get();
     if (isStreaming) {
       if (!selectSessionWithInterruptHandler) return;
       set({

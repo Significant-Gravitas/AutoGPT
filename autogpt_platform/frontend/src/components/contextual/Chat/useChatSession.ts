@@ -101,7 +101,6 @@ export function useChatSession({
     }
   }, [createError, loadError]);
 
-
   async function createSession() {
     try {
       setError(null);

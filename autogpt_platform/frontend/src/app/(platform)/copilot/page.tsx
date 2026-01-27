@@ -16,13 +16,7 @@ export default function CopilotPage() {
   const isInterruptModalOpen = useCopilotStore((s) => s.isInterruptModalOpen);
   const confirmInterrupt = useCopilotStore((s) => s.confirmInterrupt);
   const cancelInterrupt = useCopilotStore((s) => s.cancelInterrupt);
-  const {
-    greetingName,
-    quickActions,
-    isLoading,
-    pageState,
-    isReady,
-  } = state;
+  const { greetingName, quickActions, isLoading, pageState, isReady } = state;
   const {
     handleQuickAction,
     startChatWithPrompt,
@@ -48,7 +42,9 @@ export default function CopilotPage() {
           styling={{ maxWidth: 300, width: "100%" }}
           controlled={{
             isOpen: isInterruptModalOpen,
-            set: (open) => { if (!open) cancelInterrupt(); },
+            set: (open) => {
+              if (!open) cancelInterrupt();
+            },
           }}
           onClose={cancelInterrupt}
         >
