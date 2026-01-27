@@ -35,8 +35,10 @@ export function useCopilotPage() {
 
   // Complete VISIT_COPILOT onboarding step to grant $5 welcome bonus
   useEffect(() => {
-    completeStep("VISIT_COPILOT");
-  }, [completeStep]);
+    if (isLoggedIn) {
+      completeStep("VISIT_COPILOT");
+    }
+  }, [completeStep, isLoggedIn]);
 
   const isChatEnabled = useGetFlag(Flag.CHAT);
   const flags = useFlags<FlagValues>();
