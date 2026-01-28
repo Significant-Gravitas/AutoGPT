@@ -34,7 +34,6 @@ class ResponseType(str, Enum):
     WORKSPACE_FILE_METADATA = "workspace_file_metadata"
     WORKSPACE_FILE_WRITTEN = "workspace_file_written"
     WORKSPACE_FILE_DELETED = "workspace_file_deleted"
-    WORKSPACE_FILE_INFO = "workspace_file_info"
     # Long-running operation types
     OPERATION_STARTED = "operation_started"
     OPERATION_PENDING = "operation_pending"
