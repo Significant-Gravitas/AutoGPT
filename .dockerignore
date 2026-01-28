@@ -29,9 +29,6 @@
 !autogpt_platform/market/poetry.lock
 !autogpt_platform/market/README.md
 
-# Platform - Agent Generator
-!autogpt_platform/agent-generator/
-
 # Platform - Frontend
 !autogpt_platform/frontend/src/
 !autogpt_platform/frontend/public/

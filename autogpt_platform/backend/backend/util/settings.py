@@ -351,11 +351,11 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     )
 
     agentgenerator_host: str = Field(
-        default="localhost",
-        description="The host for the Agent Generator service",
+        default="",
+        description="The host for the Agent Generator service (empty to use built-in)",
     )
     agentgenerator_port: int = Field(
-        default=8009,
+        default=8000,
         description="The port for the Agent Generator service",
     )
     agentgenerator_timeout: int = Field(

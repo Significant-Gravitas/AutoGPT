@@ -14,8 +14,6 @@ x-backend-env: &backend-env # Docker internal service hostnames (override localh
   EXECUTIONMANAGER_HOST: executor
   NOTIFICATIONMANAGER_HOST: notification_server
   CLAMAV_SERVICE_HOST: clamav
-  AGENTGENERATOR_HOST: agent_generator
-  AGENTGENERATOR_PORT: 8009
   DB_HOST: db
   REDIS_HOST: redis
   RABBITMQ_HOST: rabbitmq
@@ -335,36 +333,6 @@ services:
       SUPABASE_URL: http://kong:8000
       AGPT_SERVER_URL: http://rest_server:8006/api
       AGPT_WS_SERVER_URL: ws://websocket_server:8001/ws
-
-  agent_generator:
-    build:
-      context: ../
-      dockerfile: autogpt_platform/agent-generator/Dockerfile
-    depends_on:
-      rest_server:
-        condition: service_started
-    ports:
-      - "8009:8009"
-    networks:
-      - app-network
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
-    env_file:
-      - path: ./agent-generator/.env # Agent generator env (optional)
-        required: false
-    environment:
-      PORT: 8009
-      AUTOGPT_API_URL: http://rest_server:8006/api
-    healthcheck:
-      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8009/health')"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
-
 networks:
   app-network:
     driver: bridge
