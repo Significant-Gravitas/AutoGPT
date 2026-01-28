@@ -12,6 +12,7 @@ from backend.data.block import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
+from backend.data.execution import ExecutionContext
 from backend.data.model import (
     APIKeyCredentials,
     CredentialsField,
@@ -134,8 +135,7 @@ class AIImageEditorBlock(Block):
         input_data: Input,
         *,
         credentials: APIKeyCredentials,
-        graph_exec_id: str,
-        user_id: str,
+        execution_context: ExecutionContext,
         **kwargs,
     ) -> BlockOutput:
         result = await self.run_model(
@@ -144,9 +144,8 @@ class AIImageEditorBlock(Block):
             prompt=input_data.prompt,
             input_image_b64=(
                 await store_media_file(
-                    graph_exec_id=graph_exec_id,
                     file=input_data.input_image,
-                    user_id=user_id,
+                    execution_context=execution_context,
                     return_content=True,
                 )
                 if input_data.input_image
@@ -154,10 +153,16 @@ class AIImageEditorBlock(Block):
             ),
             aspect_ratio=input_data.aspect_ratio.value,
             seed=input_data.seed,
-            user_id=user_id,
-            graph_exec_id=graph_exec_id,
+            user_id=execution_context.user_id or "",
+            graph_exec_id=execution_context.graph_exec_id or "",
         )
-        yield "output_image", result
+        # Store the generated image to the user's workspace for persistence
+        stored_url = await store_media_file(
+            file=result,
+            execution_context=execution_context,
+            return_content=True,
+        )
+        yield "output_image", stored_url
 
     async def run_model(
         self,

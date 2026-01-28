@@ -6,6 +6,7 @@ if TYPE_CHECKING:
 
 from pydantic import SecretStr
 
+from backend.data.execution import ExecutionContext
 from backend.sdk import (
     APIKeyCredentials,
     Block,
@@ -17,6 +18,8 @@ from backend.sdk import (
     Requests,
     SchemaField,
 )
+from backend.util.file import store_media_file
+from backend.util.type import MediaFileType
 
 from ._config import bannerbear
 
@@ -177,7 +180,12 @@ class BannerbearTextOverlayBlock(Block):
             raise Exception(error_msg)
 
     async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+        self,
+        input_data: Input,
+        *,
+        credentials: APIKeyCredentials,
+        execution_context: ExecutionContext,
+        **kwargs,
     ) -> BlockOutput:
         # Build the modifications array
         modifications = []
@@ -234,6 +242,18 @@ class BannerbearTextOverlayBlock(Block):
 
         # Synchronous request - image should be ready
         yield "success", True
-        yield "image_url", data.get("image_url", "")
+
+        # Store the generated image to workspace for persistence
+        image_url = data.get("image_url", "")
+        if image_url:
+            stored_url = await store_media_file(
+                file=MediaFileType(image_url),
+                execution_context=execution_context,
+                return_content=True,
+            )
+            yield "image_url", stored_url
+        else:
+            yield "image_url", ""
+
         yield "uid", data.get("uid", "")
         yield "status", data.get("status", "completed")

@@ -13,6 +13,7 @@ from backend.data.block import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
+from backend.data.execution import ExecutionContext
 from backend.data.model import (
     APIKeyCredentials,
     CredentialsField,
@@ -21,7 +22,9 @@ from backend.data.model import (
 )
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import BlockExecutionError
+from backend.util.file import store_media_file
 from backend.util.request import Requests
+from backend.util.type import MediaFileType
 
 TEST_CREDENTIALS = APIKeyCredentials(
     id="01234567-89ab-cdef-0123-456789abcdef",
@@ -288,7 +291,12 @@ class AIShortformVideoCreatorBlock(Block):
         )
 
     async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+        self,
+        input_data: Input,
+        *,
+        credentials: APIKeyCredentials,
+        execution_context: ExecutionContext,
+        **kwargs,
     ) -> BlockOutput:
         # Create a new Webhook.site URL
         webhook_token, webhook_url = await self.create_webhook()
@@ -340,7 +348,13 @@ class AIShortformVideoCreatorBlock(Block):
             )
             video_url = await self.wait_for_video(credentials.api_key, pid)
             logger.debug(f"Video ready: {video_url}")
-            yield "video_url", video_url
+            # Store the generated video to the user's workspace for persistence
+            stored_url = await store_media_file(
+                file=MediaFileType(video_url),
+                execution_context=execution_context,
+                return_content=True,
+            )
+            yield "video_url", stored_url
 
 
 class AIAdMakerVideoCreatorBlock(Block):
@@ -463,7 +477,14 @@ class AIAdMakerVideoCreatorBlock(Block):
             test_credentials=TEST_CREDENTIALS,
         )
 
-    async def run(self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs):
+    async def run(
+        self,
+        input_data: Input,
+        *,
+        credentials: APIKeyCredentials,
+        execution_context: ExecutionContext,
+        **kwargs,
+    ):
         webhook_token, webhook_url = await self.create_webhook()
 
         payload = {
@@ -531,7 +552,13 @@ class AIAdMakerVideoCreatorBlock(Block):
             raise RuntimeError("Failed to create video: No project ID returned")
 
         video_url = await self.wait_for_video(credentials.api_key, pid)
-        yield "video_url", video_url
+        # Store the generated video to the user's workspace for persistence
+        stored_url = await store_media_file(
+            file=MediaFileType(video_url),
+            execution_context=execution_context,
+            return_content=True,
+        )
+        yield "video_url", stored_url
 
 
 class AIScreenshotToVideoAdBlock(Block):
@@ -642,7 +669,14 @@ class AIScreenshotToVideoAdBlock(Block):
             test_credentials=TEST_CREDENTIALS,
         )
 
-    async def run(self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs):
+    async def run(
+        self,
+        input_data: Input,
+        *,
+        credentials: APIKeyCredentials,
+        execution_context: ExecutionContext,
+        **kwargs,
+    ):
         webhook_token, webhook_url = await self.create_webhook()
 
         payload = {
@@ -710,4 +744,10 @@ class AIScreenshotToVideoAdBlock(Block):
             raise RuntimeError("Failed to create video: No project ID returned")
 
         video_url = await self.wait_for_video(credentials.api_key, pid)
-        yield "video_url", video_url
+        # Store the generated video to the user's workspace for persistence
+        stored_url = await store_media_file(
+            file=MediaFileType(video_url),
+            execution_context=execution_context,
+            return_content=True,
+        )
+        yield "video_url", stored_url

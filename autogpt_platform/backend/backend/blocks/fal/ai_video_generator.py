@@ -17,8 +17,11 @@ from backend.data.block import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
+from backend.data.execution import ExecutionContext
 from backend.data.model import SchemaField
+from backend.util.file import store_media_file
 from backend.util.request import ClientResponseError, Requests
+from backend.util.type import MediaFileType
 
 logger = logging.getLogger(__name__)
 
@@ -208,11 +211,22 @@ class AIVideoGeneratorBlock(Block):
             raise RuntimeError(f"API request failed: {str(e)}")
 
     async def run(
-        self, input_data: Input, *, credentials: FalCredentials, **kwargs
+        self,
+        input_data: Input,
+        *,
+        credentials: FalCredentials,
+        execution_context: ExecutionContext,
+        **kwargs,
     ) -> BlockOutput:
         try:
             video_url = await self.generate_video(input_data, credentials)
-            yield "video_url", video_url
+            # Store the generated video to the user's workspace for persistence
+            stored_url = await store_media_file(
+                file=MediaFileType(video_url),
+                execution_context=execution_context,
+                return_content=True,
+            )
+            yield "video_url", stored_url
         except Exception as e:
             error_message = str(e)
             yield "error", error_message

@@ -13,6 +13,7 @@ from backend.data.block import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
+from backend.data.execution import ExecutionContext
 from backend.data.model import (
     APIKeyCredentials,
     CredentialsField,
@@ -132,8 +133,7 @@ class AIImageCustomizerBlock(Block):
         input_data: Input,
         *,
         credentials: APIKeyCredentials,
-        graph_exec_id: str,
-        user_id: str,
+        execution_context: ExecutionContext,
         **kwargs,
     ) -> BlockOutput:
         try:
@@ -141,9 +141,8 @@ class AIImageCustomizerBlock(Block):
             processed_images = await asyncio.gather(
                 *(
                     store_media_file(
-                        graph_exec_id=graph_exec_id,
                         file=img,
-                        user_id=user_id,
+                        execution_context=execution_context,
                         return_content=True,
                     )
                     for img in input_data.images
@@ -158,7 +157,14 @@ class AIImageCustomizerBlock(Block):
                 aspect_ratio=input_data.aspect_ratio.value,
                 output_format=input_data.output_format.value,
             )
-            yield "image_url", result
+
+            # Store the generated image to the user's workspace for persistence
+            stored_url = await store_media_file(
+                file=result,
+                execution_context=execution_context,
+                return_content=True,
+            )
+            yield "image_url", stored_url
         except Exception as e:
             yield "error", str(e)
 
