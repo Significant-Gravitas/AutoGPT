@@ -78,10 +78,24 @@ async def _create_file_download_response(file) -> Response:
             content = await storage.retrieve(file.storagePath)
             return _create_streaming_response(content, file)
         return fastapi.responses.RedirectResponse(url=url, status_code=302)
-    except Exception:
+    except Exception as e:
+        # Log the signed URL failure with context
+        logger.error(
+            f"Failed to get signed URL for file {file.id} "
+            f"(storagePath={file.storagePath}): {e}",
+            exc_info=True,
+        )
         # Fall back to streaming directly from GCS
-        content = await storage.retrieve(file.storagePath)
-        return _create_streaming_response(content, file)
+        try:
+            content = await storage.retrieve(file.storagePath)
+            return _create_streaming_response(content, file)
+        except Exception as fallback_error:
+            logger.error(
+                f"Fallback streaming also failed for file {file.id} "
+                f"(storagePath={file.storagePath}): {fallback_error}",
+                exc_info=True,
+            )
+            raise
 
 
 @router.get(
