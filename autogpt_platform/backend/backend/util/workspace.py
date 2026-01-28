@@ -80,6 +80,34 @@ class WorkspaceManager:
         # No session context, use path as-is
         return path if path.startswith("/") else f"/{path}"
 
+    def _get_effective_path(
+        self, path: Optional[str], include_all_sessions: bool
+    ) -> Optional[str]:
+        """
+        Get effective path for list/count operations based on session context.
+
+        Args:
+            path: Optional path prefix to filter
+            include_all_sessions: If True, don't apply session scoping
+
+        Returns:
+            Effective path prefix for database query
+        """
+        if include_all_sessions:
+            # Normalize path to ensure leading slash (stored paths are normalized)
+            if path is not None and not path.startswith("/"):
+                return f"/{path}"
+            return path
+        elif path is not None:
+            # Resolve the provided path with session scoping
+            return self._resolve_path(path)
+        elif self.session_path:
+            # Default to session folder
+            return self.session_path
+        else:
+            # No session context, use path as-is
+            return path
+
     async def read_file(self, path: str) -> bytes:
         """
         Read file from workspace by virtual path.
@@ -255,6 +283,13 @@ class WorkspaceManager:
                 except Exception as e:
                     logger.warning(f"Failed to clean up orphaned storage file: {e}")
                 raise ValueError(f"File already exists at path: {path}")
+        except Exception:
+            # Any other database error (connection, validation, etc.) - clean up storage
+            try:
+                await storage.delete(storage_path)
+            except Exception as e:
+                logger.warning(f"Failed to clean up orphaned storage file: {e}")
+            raise
 
         logger.info(
             f"Wrote file {file.id} ({filename}) to workspace {self.workspace_id} "
@@ -286,22 +321,7 @@ class WorkspaceManager:
         Returns:
             List of UserWorkspaceFile instances
         """
-        # Determine the effective path prefix
-        if include_all_sessions:
-            # Normalize path to ensure leading slash (stored paths are normalized)
-            if path is not None and not path.startswith("/"):
-                effective_path = f"/{path}"
-            else:
-                effective_path = path
-        elif path is not None:
-            # Resolve the provided path with session scoping
-            effective_path = self._resolve_path(path)
-        elif self.session_path:
-            # Default to session folder
-            effective_path = self.session_path
-        else:
-            # No session context, list all
-            effective_path = path
+        effective_path = self._get_effective_path(path, include_all_sessions)
 
         return await list_workspace_files(
             workspace_id=self.workspace_id,
@@ -404,22 +424,7 @@ class WorkspaceManager:
         Returns:
             Number of files
         """
-        # Determine the effective path prefix (same logic as list_files)
-        if include_all_sessions:
-            # Normalize path to ensure leading slash (stored paths are normalized)
-            if path is not None and not path.startswith("/"):
-                effective_path = f"/{path}"
-            else:
-                effective_path = path
-        elif path is not None:
-            # Resolve the provided path with session scoping
-            effective_path = self._resolve_path(path)
-        elif self.session_path:
-            # Default to session folder
-            effective_path = self.session_path
-        else:
-            # No session context, use path as-is
-            effective_path = path
+        effective_path = self._get_effective_path(path, include_all_sessions)
 
         return await count_workspace_files(
             self.workspace_id, path_prefix=effective_path

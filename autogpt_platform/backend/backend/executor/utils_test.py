@@ -435,6 +435,9 @@ async def test_add_graph_execution_is_repeatable(mocker: MockerFixture):
     # Create a second mock execution for the sanity check
     mock_graph_exec_2 = mocker.MagicMock(spec=GraphExecutionWithNodes)
     mock_graph_exec_2.id = "execution-id-456"
+    mock_graph_exec_2.node_executions = []
+    mock_graph_exec_2.status = ExecutionStatus.QUEUED
+    mock_graph_exec_2.graph_version = graph_version
     mock_graph_exec_2.to_graph_execution_entry.return_value = mocker.MagicMock()
 
     # Reset mocks and set up for second call
