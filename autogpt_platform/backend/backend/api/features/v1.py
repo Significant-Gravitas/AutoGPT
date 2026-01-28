@@ -261,18 +261,36 @@ async def get_onboarding_agents(
     return await get_recommended_agents(user_id)
 
 
+class OnboardingStatusResponse(pydantic.BaseModel):
+    """Response for onboarding status check."""
+
+    is_onboarding_enabled: bool
+    is_chat_enabled: bool
+
+
 @v1_router.get(
     "/onboarding/enabled",
     summary="Is onboarding enabled",
     tags=["onboarding", "public"],
+    response_model=OnboardingStatusResponse,
 )
 async def is_onboarding_enabled(
     user_id: Annotated[str, Security(get_user_id)],
-) -> bool:
-    # If chat is enabled for user, skip legacy onboarding
-    if await is_feature_enabled(Flag.CHAT, user_id, False):
-        return False
-    return await onboarding_enabled()
+) -> OnboardingStatusResponse:
+    # Check if chat is enabled for user
+    is_chat_enabled = await is_feature_enabled(Flag.CHAT, user_id, False)
+
+    # If chat is enabled, skip legacy onboarding
+    if is_chat_enabled:
+        return OnboardingStatusResponse(
+            is_onboarding_enabled=False,
+            is_chat_enabled=True,
+        )
+
+    return OnboardingStatusResponse(
+        is_onboarding_enabled=await onboarding_enabled(),
+        is_chat_enabled=False,
+    )
 
 
 @v1_router.post(
