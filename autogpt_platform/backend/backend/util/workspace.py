@@ -393,4 +393,6 @@ class WorkspaceManager:
             # No session context, use path as-is
             effective_path = path
 
-        return await count_workspace_files(self.workspace_id, path_prefix=effective_path)
+        return await count_workspace_files(
+            self.workspace_id, path_prefix=effective_path
+        )
