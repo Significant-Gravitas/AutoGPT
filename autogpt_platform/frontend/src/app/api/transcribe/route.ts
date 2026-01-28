@@ -3,6 +3,11 @@ import { NextRequest, NextResponse } from "next/server";
 const WHISPER_API_URL = "https://api.openai.com/v1/audio/transcriptions";
 const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25MB - Whisper's limit
 
+function getExtensionFromMimeType(mimeType: string): string {
+  const subtype = mimeType.split("/")[1]?.split(";")[0];
+  return subtype || "webm";
+}
+
 export async function POST(request: NextRequest) {
   const apiKey = process.env.OPENAI_API_KEY;
 
@@ -31,8 +36,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const ext = getExtensionFromMimeType(audioFile.type);
     const whisperFormData = new FormData();
-    whisperFormData.append("file", audioFile, "recording.webm");
+    whisperFormData.append("file", audioFile, `recording.${ext}`);
     whisperFormData.append("model", "whisper-1");
 
     const response = await fetch(WHISPER_API_URL, {
