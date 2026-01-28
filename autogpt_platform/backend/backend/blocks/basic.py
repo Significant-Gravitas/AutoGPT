@@ -9,6 +9,7 @@ from backend.data.block import (
     BlockSchemaOutput,
     BlockType,
 )
+from backend.data.execution import ExecutionContext
 from backend.data.model import SchemaField
 from backend.util.file import store_media_file
 from backend.util.type import MediaFileType, convert
@@ -45,14 +46,12 @@ class FileStoreBlock(Block):
         self,
         input_data: Input,
         *,
-        graph_exec_id: str,
-        user_id: str,
+        execution_context: ExecutionContext,
         **kwargs,
     ) -> BlockOutput:
         yield "file_out", await store_media_file(
-            graph_exec_id=graph_exec_id,
             file=input_data.file_in,
-            user_id=user_id,
+            execution_context=execution_context,
             return_content=input_data.base_64,
         )
 

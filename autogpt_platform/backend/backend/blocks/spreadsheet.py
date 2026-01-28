@@ -7,6 +7,7 @@ from backend.data.block import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
+from backend.data.execution import ExecutionContext
 from backend.data.model import ContributorDetails, SchemaField
 from backend.util.file import get_exec_file_path, store_media_file
 from backend.util.type import MediaFileType
@@ -98,7 +99,7 @@ class ReadSpreadsheetBlock(Block):
         )
 
     async def run(
-        self, input_data: Input, *, graph_exec_id: str, user_id: str, **_kwargs
+        self, input_data: Input, *, execution_context: ExecutionContext, **_kwargs
     ) -> BlockOutput:
         import csv
         from io import StringIO
@@ -106,14 +107,15 @@ class ReadSpreadsheetBlock(Block):
         # Determine data source - prefer file_input if provided, otherwise use contents
         if input_data.file_input:
             stored_file_path = await store_media_file(
-                user_id=user_id,
-                graph_exec_id=graph_exec_id,
                 file=input_data.file_input,
+                execution_context=execution_context,
                 return_content=False,
             )
 
             # Get full file path
-            file_path = get_exec_file_path(graph_exec_id, stored_file_path)
+            file_path = get_exec_file_path(
+                execution_context.graph_exec_id or "", stored_file_path
+            )
             if not Path(file_path).exists():
                 raise ValueError(f"File does not exist: {file_path}")
 

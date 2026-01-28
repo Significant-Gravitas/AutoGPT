@@ -11,6 +11,7 @@ from backend.data.block import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
+from backend.data.execution import ExecutionContext
 from backend.data.model import SchemaField
 from backend.util import json, text
 from backend.util.file import get_exec_file_path, store_media_file
@@ -444,18 +445,19 @@ class FileReadBlock(Block):
         )
 
     async def run(
-        self, input_data: Input, *, graph_exec_id: str, user_id: str, **_kwargs
+        self, input_data: Input, *, execution_context: ExecutionContext, **_kwargs
     ) -> BlockOutput:
         # Store the media file properly (handles URLs, data URIs, etc.)
         stored_file_path = await store_media_file(
-            user_id=user_id,
-            graph_exec_id=graph_exec_id,
             file=input_data.file_input,
+            execution_context=execution_context,
             return_content=False,
         )
 
         # Get full file path
-        file_path = get_exec_file_path(graph_exec_id, stored_file_path)
+        file_path = get_exec_file_path(
+            execution_context.graph_exec_id or "", stored_file_path
+        )
 
         if not Path(file_path).exists():
             raise ValueError(f"File does not exist: {file_path}")
