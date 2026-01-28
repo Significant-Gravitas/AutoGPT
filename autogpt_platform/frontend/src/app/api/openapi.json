@@ -4525,8 +4525,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "boolean",
-                  "title": "Response Getv1Is Onboarding Enabled"
+                  "$ref": "#/components/schemas/OnboardingStatusResponse"
                 }
               }
             }
@@ -8729,6 +8728,19 @@
         "required": ["name", "scopes"],
         "title": "OAuthApplicationPublicInfo",
         "description": "Public information about an OAuth application (for consent screen)"
+      },
+      "OnboardingStatusResponse": {
+        "properties": {
+          "is_onboarding_enabled": {
+            "type": "boolean",
+            "title": "Is Onboarding Enabled"
+          },
+          "is_chat_enabled": { "type": "boolean", "title": "Is Chat Enabled" }
+        },
+        "type": "object",
+        "required": ["is_onboarding_enabled", "is_chat_enabled"],
+        "title": "OnboardingStatusResponse",
+        "description": "Response for onboarding status check."
       },
       "OnboardingStep": {
         "type": "string",
