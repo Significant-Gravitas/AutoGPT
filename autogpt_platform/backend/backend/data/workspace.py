@@ -259,24 +259,6 @@ async def soft_delete_workspace_file(
     return updated
 
 
-async def workspace_file_exists(
-    workspace_id: str,
-    path: str,
-) -> bool:
-    """
-    Check if a file exists at the given path in the workspace.
-
-    Args:
-        workspace_id: The workspace ID
-        path: Virtual path to check
-
-    Returns:
-        True if file exists, False otherwise
-    """
-    file = await get_workspace_file_by_path(workspace_id, path)
-    return file is not None
-
-
 async def get_workspace_total_size(workspace_id: str) -> int:
     """
     Get the total size of all files in a workspace.
