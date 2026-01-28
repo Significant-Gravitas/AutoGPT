@@ -144,6 +144,7 @@ class AIImageCustomizerBlock(Block):
                         file=img,
                         execution_context=execution_context,
                         return_content=True,
+                        save_to_workspace=False,  # Just get content for API, don't save input
                     )
                     for img in input_data.images
                 )

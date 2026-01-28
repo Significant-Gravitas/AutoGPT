@@ -147,6 +147,7 @@ class AIImageEditorBlock(Block):
                     file=input_data.input_image,
                     execution_context=execution_context,
                     return_content=True,
+                    save_to_workspace=False,  # Just get content for API, don't save input
                 )
                 if input_data.input_image
                 else None

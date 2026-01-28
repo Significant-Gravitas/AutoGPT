@@ -78,6 +78,7 @@ async def store_media_file(
     execution_context: "ExecutionContext",
     *,
     return_content: bool = False,
+    save_to_workspace: bool = True,
 ) -> MediaFileType:
     """
     Safely handle 'file' (a data URI, a URL, a workspace:// reference, or a local path
@@ -107,9 +108,11 @@ async def store_media_file(
 
     :param file:               Data URI, URL, workspace://, or local (relative) path.
     :param execution_context:  ExecutionContext with user_id, graph_exec_id, workspace_id.
-    :param return_content:     If True, return a data URI of the file content.
-                               If False, return the *relative* path inside the exec_id folder,
-                               or a workspace:// reference if workspace is available.
+    :param return_content:     If True, return content (data URI or workspace ref).
+                               If False, return the *relative* path inside the exec_id folder.
+    :param save_to_workspace:  If True (default), save new content to workspace and return ref.
+                               If False, don't save to workspace, return data URI directly.
+                               Use False when getting content for external APIs.
     :return:                   The requested result: data URI, relative path, or workspace ref.
     """
     # Extract values from execution_context
@@ -308,12 +311,12 @@ async def store_media_file(
         if not target_path.is_file():
             raise ValueError(f"Local file does not exist: {target_path}")
 
-    # If workspace_manager is provided and return_content=True:
-    # - For workspace:// input: return data URI (caller needs actual content for APIs)
-    # - For new content (URL/data URI): save to workspace and return ref (output persistence)
-    if workspace_manager is not None and return_content:
-        # If input was already from workspace, caller needs actual content (e.g., for external API)
-        # Return data URI - don't re-save the same file
+    # Handle workspace saving and return value based on parameters:
+    # - save_to_workspace=True + return_content=True: save to workspace, return ref
+    # - save_to_workspace=False + return_content=True: don't save, return data URI
+    # - return_content=False: return local path (for file processing)
+    if workspace_manager is not None and return_content and save_to_workspace:
+        # Don't re-save if input was already from workspace
         if is_from_workspace:
             return MediaFileType(_file_to_data_uri(target_path))
 

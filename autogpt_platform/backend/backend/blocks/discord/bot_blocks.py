@@ -734,6 +734,7 @@ class SendDiscordFileBlock(Block):
                         file=file,
                         execution_context=execution_context,
                         return_content=True,  # Get as data URI
+                        save_to_workspace=False,  # Just get content to send, don't save input
                     )
                     # Now process as data URI
                     header, encoded = stored_file.split(",", 1)
