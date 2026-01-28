@@ -1,4 +1,5 @@
 import { Button } from "@/components/atoms/Button/Button";
+import { useToast } from "@/components/molecules/Toast/use-toast";
 import { cn } from "@/lib/utils";
 import {
   ArrowUpIcon,
@@ -7,52 +8,9 @@ import {
   StopIcon,
 } from "@phosphor-icons/react";
 import { KeyboardEvent, useCallback, useEffect } from "react";
+import { RecordingIndicator } from "./components/RecordingIndicator";
 import { useChatInput } from "./useChatInput";
 import { useVoiceRecording } from "./useVoiceRecording";
-import { useToast } from "@/components/molecules/Toast/use-toast";
-
-function formatElapsedTime(ms: number): string {
-  const seconds = Math.floor(ms / 1000);
-  const minutes = Math.floor(seconds / 60);
-  const remainingSeconds = seconds % 60;
-  return `${minutes}:${remainingSeconds.toString().padStart(2, "0")}`;
-}
-
-function RecordingIndicator({ elapsedTime }: { elapsedTime: number }) {
-  return (
-    <div className="flex items-center gap-3">
-      <div className="flex items-center gap-[3px]">
-        {[0, 1, 2, 3, 4].map((i) => (
-          <div
-            key={i}
-            className="w-[3px] rounded-full bg-red-500"
-            style={{
-              animation: `waveform 1s ease-in-out infinite`,
-              animationDelay: `${i * 0.1}s`,
-              height: "16px",
-            }}
-          />
-        ))}
-      </div>
-      <span className="min-w-[3ch] text-sm font-medium text-red-500">
-        {formatElapsedTime(elapsedTime)}
-      </span>
-      <style jsx>{`
-        @keyframes waveform {
-          0%,
-          100% {
-            transform: scaleY(0.3);
-            opacity: 0.5;
-          }
-          50% {
-            transform: scaleY(1);
-            opacity: 1;
-          }
-        }
-      `}</style>
-    </div>
-  );
-}
 
 export interface Props {
   onSend: (message: string) => void;
