@@ -22,12 +22,10 @@ from backend.data.workspace import (
     list_workspace_files,
     soft_delete_workspace_file,
 )
+from backend.util.settings import Config
 from backend.util.workspace_storage import compute_file_checksum, get_workspace_storage
 
 logger = logging.getLogger(__name__)
-
-# Maximum file size: 100MB per file
-MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024
 
 
 class WorkspaceManager:
@@ -160,10 +158,11 @@ class WorkspaceManager:
             ValueError: If file exceeds size limit or path already exists
         """
         # Enforce file size limit
-        if len(content) > MAX_FILE_SIZE_BYTES:
+        max_file_size = Config().max_file_size_mb * 1024 * 1024
+        if len(content) > max_file_size:
             raise ValueError(
                 f"File too large: {len(content)} bytes exceeds "
-                f"{MAX_FILE_SIZE_BYTES // (1024*1024)}MB limit"
+                f"{Config().max_file_size_mb}MB limit"
             )
 
         # Determine path with session scoping
@@ -209,6 +208,7 @@ class WorkspaceManager:
         try:
             file = await create_workspace_file(
                 workspace_id=self.workspace_id,
+                file_id=file_id,
                 name=filename,
                 path=path,
                 storage_path=storage_path,
@@ -229,6 +229,7 @@ class WorkspaceManager:
                 # Retry the create
                 file = await create_workspace_file(
                     workspace_id=self.workspace_id,
+                    file_id=file_id,
                     name=filename,
                     path=path,
                     storage_path=storage_path,

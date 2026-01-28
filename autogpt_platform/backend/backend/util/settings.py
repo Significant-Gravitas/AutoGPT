@@ -395,6 +395,13 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Maximum file size in MB for file uploads (1-1024 MB)",
     )
 
+    max_file_size_mb: int = Field(
+        default=100,
+        ge=1,
+        le=1024,
+        description="Maximum file size in MB for workspace files (1-1024 MB)",
+    )
+
     # AutoMod configuration
     automod_enabled: bool = Field(
         default=False,

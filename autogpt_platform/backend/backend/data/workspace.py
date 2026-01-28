@@ -55,6 +55,7 @@ async def get_workspace(user_id: str) -> Optional[UserWorkspace]:
 
 async def create_workspace_file(
     workspace_id: str,
+    file_id: str,
     name: str,
     path: str,
     storage_path: str,
@@ -71,6 +72,7 @@ async def create_workspace_file(
 
     Args:
         workspace_id: The workspace ID
+        file_id: The file ID (same as used in storage path for consistency)
         name: User-visible filename
         path: Virtual path (e.g., "/documents/report.pdf")
         storage_path: Actual storage path (GCS or local)
@@ -91,6 +93,7 @@ async def create_workspace_file(
 
     file = await UserWorkspaceFile.prisma().create(
         data={
+            "id": file_id,
             "workspaceId": workspace_id,
             "name": name,
             "path": path,

@@ -12,6 +12,7 @@ from prisma.enums import WorkspaceFileSource
 
 from backend.util.cloud_storage import get_cloud_storage_handler
 from backend.util.request import Requests
+from backend.util.settings import Config
 from backend.util.type import MediaFileType
 from backend.util.virus_scanner import scan_content_safe
 
@@ -130,7 +131,7 @@ async def store_media_file(
     base_path.mkdir(parents=True, exist_ok=True)
 
     # Security fix: Add disk space limits to prevent DoS
-    MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB per file
+    MAX_FILE_SIZE_BYTES = Config().max_file_size_mb * 1024 * 1024
     MAX_TOTAL_DISK_USAGE = 1024 * 1024 * 1024  # 1GB total per execution directory
 
     # Check total disk usage in base_path
@@ -210,9 +211,9 @@ async def store_media_file(
             raise ValueError(f"Invalid file path '{filename}': {e}") from e
 
         # Check file size limit
-        if len(workspace_content) > MAX_FILE_SIZE:
+        if len(workspace_content) > MAX_FILE_SIZE_BYTES:
             raise ValueError(
-                f"File too large: {len(workspace_content)} bytes > {MAX_FILE_SIZE} bytes"
+                f"File too large: {len(workspace_content)} bytes > {MAX_FILE_SIZE_BYTES} bytes"
             )
 
         # Virus scan the workspace content before writing locally
@@ -235,9 +236,9 @@ async def store_media_file(
             raise ValueError(f"Invalid file path '{filename}': {e}") from e
 
         # Check file size limit
-        if len(cloud_content) > MAX_FILE_SIZE:
+        if len(cloud_content) > MAX_FILE_SIZE_BYTES:
             raise ValueError(
-                f"File too large: {len(cloud_content)} bytes > {MAX_FILE_SIZE} bytes"
+                f"File too large: {len(cloud_content)} bytes > {MAX_FILE_SIZE_BYTES} bytes"
             )
 
         # Virus scan the cloud content before writing locally
@@ -265,9 +266,9 @@ async def store_media_file(
         content = base64.b64decode(b64_content)
 
         # Check file size limit
-        if len(content) > MAX_FILE_SIZE:
+        if len(content) > MAX_FILE_SIZE_BYTES:
             raise ValueError(
-                f"File too large: {len(content)} bytes > {MAX_FILE_SIZE} bytes"
+                f"File too large: {len(content)} bytes > {MAX_FILE_SIZE_BYTES} bytes"
             )
 
         # Virus scan the base64 content before writing
@@ -287,9 +288,9 @@ async def store_media_file(
         resp = await Requests().get(file)
 
         # Check file size limit
-        if len(resp.content) > MAX_FILE_SIZE:
+        if len(resp.content) > MAX_FILE_SIZE_BYTES:
             raise ValueError(
-                f"File too large: {len(resp.content)} bytes > {MAX_FILE_SIZE} bytes"
+                f"File too large: {len(resp.content)} bytes > {MAX_FILE_SIZE_BYTES} bytes"
             )
 
         # Virus scan the downloaded content before writing

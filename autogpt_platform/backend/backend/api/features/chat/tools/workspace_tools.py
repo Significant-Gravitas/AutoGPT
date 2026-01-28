@@ -10,7 +10,8 @@ from pydantic import BaseModel
 from backend.api.features.chat.model import ChatSession
 from backend.data.workspace import get_or_create_workspace
 from backend.util.virus_scanner import scan_content_safe
-from backend.util.workspace import MAX_FILE_SIZE_BYTES, WorkspaceManager
+from backend.util.settings import Config
+from backend.util.workspace import WorkspaceManager
 
 from .base import BaseTool
 from .models import ErrorResponse, ResponseType, ToolResponseBase
@@ -468,9 +469,10 @@ class WriteWorkspaceFileTool(BaseTool):
             )
 
         # Check size
-        if len(content) > MAX_FILE_SIZE_BYTES:
+        max_file_size = Config().max_file_size_mb * 1024 * 1024
+        if len(content) > max_file_size:
             return ErrorResponse(
-                message=f"File too large. Maximum size is {MAX_FILE_SIZE_BYTES // (1024*1024)}MB",
+                message=f"File too large. Maximum size is {Config().max_file_size_mb}MB",
                 session_id=session_id,
             )
 
