@@ -175,8 +175,11 @@ async def store_media_file(
     # Get cloud storage handler for checking cloud paths
     cloud_storage = await get_cloud_storage_handler()
 
+    # Track if the input came from workspace (don't re-save it)
+    is_from_workspace = file.startswith("workspace://")
+
     # Check if this is a workspace file reference
-    if file.startswith("workspace://"):
+    if is_from_workspace:
         if workspace_manager is None:
             raise ValueError(
                 "Workspace file reference requires workspace context. "
@@ -305,9 +308,14 @@ async def store_media_file(
         if not target_path.is_file():
             raise ValueError(f"Local file does not exist: {target_path}")
 
-    # If workspace_manager is provided, always save to workspace for persistence
+    # If workspace_manager is provided and return_content=True, save to workspace
     # and return workspace reference instead of base64 (to prevent context bloat)
-    if workspace_manager is not None:
+    if workspace_manager is not None and return_content:
+        # If input was already from workspace, return the original reference
+        # (don't re-save the same file, avoid unique constraint violations)
+        if is_from_workspace:
+            return MediaFileType(file)  # Return original workspace:// ref
+
         # Read the file we just wrote/verified and save to workspace
         content = target_path.read_bytes()
         filename = target_path.name
@@ -318,12 +326,13 @@ async def store_media_file(
             source=WorkspaceFileSource.COPILOT,
             overwrite=True,  # Allow overwriting if file already exists
         )
-        # Always return workspace reference when workspace is available
+        # Return workspace reference instead of base64 data URI
         # This prevents context bloat from large base64 data URIs
         # (100KB file = ~133KB tokens as base64)
         return MediaFileType(f"workspace://{file_record.id}")
 
-    # Legacy behavior: no workspace available (e.g., graph execution without workspace)
+    # When return_content=False, return local relative path
+    # Blocks that need to process files locally (MoviePy, ffmpeg, etc.) need this
     if return_content:
         return MediaFileType(_file_to_data_uri(target_path))
 
