@@ -8,7 +8,8 @@ export const useFilterSheet = () => {
     useBlockMenuStore();
 
   const [isOpen, setIsOpen] = useState(false);
-  const [localCategories, setLocalCategories] = useState<CategoryKey[]>(filters);
+  const [localCategories, setLocalCategories] =
+    useState<CategoryKey[]>(filters);
   const [localCreators, setLocalCreators] = useState<string[]>(creators);
   const [displayedCreatorsCount, setDisplayedCreatorsCount] = useState(
     INITIAL_CREATORS_TO_SHOW,
