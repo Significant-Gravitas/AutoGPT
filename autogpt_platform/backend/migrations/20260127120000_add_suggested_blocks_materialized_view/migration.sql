@@ -66,6 +66,9 @@ EXCEPTION
 END;
 $$;
 
+-- Initial refresh of the materialized view
+SELECT refresh_suggested_blocks_view();
+
 -- Schedule automatic refresh every hour (only if pg_cron is available)
 DO $$
 DECLARE
