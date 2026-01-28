@@ -1,5 +1,3 @@
-import { GetV2BuilderSearchFilterAnyOfItem } from "@/app/api/__generated__/models/getV2BuilderSearchFilterAnyOfItem";
-
 export type DefaultStateType =
   | "suggestion"
   | "all_blocks"
@@ -10,7 +8,11 @@ export type DefaultStateType =
   | "marketplace_agents"
   | "my_agents";
 
-export type CategoryKey = GetV2BuilderSearchFilterAnyOfItem;
+export type CategoryKey =
+  | "blocks"
+  | "integrations"
+  | "marketplace_agents"
+  | "my_agents";
 
 export interface Filters {
   categories: {
