@@ -245,4 +245,5 @@ class TestFileCloudIntegration:
                 await store_media_file(
                     file=MediaFileType(cloud_path),
                     execution_context=make_test_context(graph_exec_id=graph_exec_id),
+                    return_format="for_local_processing",
                 )
