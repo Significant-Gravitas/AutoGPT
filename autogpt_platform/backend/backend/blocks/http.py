@@ -128,7 +128,8 @@ class SendWebRequestBlock(Block):
         """
         files_payload: list[tuple[str, tuple[str, BytesIO, str]]] = []
         graph_exec_id = execution_context.graph_exec_id
-        assert graph_exec_id is not None
+        if graph_exec_id is None:
+            raise ValueError("graph_exec_id is required for file operations")
 
         for media in files:
             # Normalise to a list so we can repeat the same key

@@ -52,19 +52,6 @@ async def get_workspace(user_id: str) -> Optional[UserWorkspace]:
     return await UserWorkspace.prisma().find_unique(where={"userId": user_id})
 
 
-async def get_workspace_by_id(workspace_id: str) -> Optional[UserWorkspace]:
-    """
-    Get workspace by its ID.
-
-    Args:
-        workspace_id: The workspace ID
-
-    Returns:
-        UserWorkspace instance or None
-    """
-    return await UserWorkspace.prisma().find_unique(where={"id": workspace_id})
-
-
 async def create_workspace_file(
     workspace_id: str,
     name: str,
@@ -269,76 +256,6 @@ async def soft_delete_workspace_file(
 
     logger.info(f"Soft-deleted workspace file {file_id}")
     return updated
-
-
-async def hard_delete_workspace_file(file_id: str) -> bool:
-    """
-    Permanently delete a workspace file record.
-
-    Note: This only deletes the database record. The actual file should be
-    deleted from storage separately using the storage backend.
-
-    Args:
-        file_id: The file ID
-
-    Returns:
-        True if deleted, False if not found
-    """
-    try:
-        await UserWorkspaceFile.prisma().delete(where={"id": file_id})
-        logger.info(f"Hard-deleted workspace file {file_id}")
-        return True
-    except Exception:
-        return False
-
-
-async def update_workspace_file(
-    file_id: str,
-    name: Optional[str] = None,
-    path: Optional[str] = None,
-    metadata: Optional[dict] = None,
-) -> Optional[UserWorkspaceFile]:
-    """
-    Update workspace file metadata.
-
-    Args:
-        file_id: The file ID
-        name: New filename
-        path: New virtual path
-        metadata: New metadata (merged with existing)
-
-    Returns:
-        Updated UserWorkspaceFile instance or None if not found
-    """
-    update_data: dict = {}
-
-    if name is not None:
-        update_data["name"] = name
-
-    if path is not None:
-        if not path.startswith("/"):
-            path = f"/{path}"
-        update_data["path"] = path
-
-    if metadata is not None:
-        # Get existing metadata and merge
-        file = await get_workspace_file(file_id)
-        if file is None:
-            return None
-        existing_metadata = file.metadata if file.metadata else {}
-        merged_metadata = {**existing_metadata, **metadata}
-        update_data["metadata"] = SafeJson(merged_metadata)
-
-    if not update_data:
-        return await get_workspace_file(file_id)
-
-    try:
-        return await UserWorkspaceFile.prisma().update(
-            where={"id": file_id},
-            data=update_data,
-        )
-    except Exception:
-        return None
 
 
 async def workspace_file_exists(
