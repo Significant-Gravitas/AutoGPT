@@ -183,7 +183,7 @@ async def list_workspace_files(
     Returns:
         List of UserWorkspaceFile instances
     """
-    where_clause: dict = {"workspaceId": workspace_id}
+    where_clause: UserWorkspaceFileWhereInput = {"workspaceId": workspace_id}
 
     if not include_deleted:
         where_clause["isDeleted"] = False
