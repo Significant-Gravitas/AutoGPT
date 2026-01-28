@@ -6,15 +6,52 @@ import {
   MicrophoneIcon,
   StopIcon,
 } from "@phosphor-icons/react";
-import { KeyboardEvent, useCallback } from "react";
+import { KeyboardEvent, useCallback, useEffect } from "react";
 import { useChatInput } from "./useChatInput";
 import { useVoiceRecording } from "./useVoiceRecording";
+import { useToast } from "@/components/molecules/Toast/use-toast";
 
 function formatElapsedTime(ms: number): string {
   const seconds = Math.floor(ms / 1000);
   const minutes = Math.floor(seconds / 60);
   const remainingSeconds = seconds % 60;
   return `${minutes}:${remainingSeconds.toString().padStart(2, "0")}`;
+}
+
+function RecordingIndicator({ elapsedTime }: { elapsedTime: number }) {
+  return (
+    <div className="flex items-center gap-3">
+      <div className="flex items-center gap-[3px]">
+        {[0, 1, 2, 3, 4].map((i) => (
+          <div
+            key={i}
+            className="w-[3px] rounded-full bg-red-500"
+            style={{
+              animation: `waveform 1s ease-in-out infinite`,
+              animationDelay: `${i * 0.1}s`,
+              height: "16px",
+            }}
+          />
+        ))}
+      </div>
+      <span className="min-w-[3ch] text-sm font-medium text-red-500">
+        {formatElapsedTime(elapsedTime)}
+      </span>
+      <style jsx>{`
+        @keyframes waveform {
+          0%,
+          100% {
+            transform: scaleY(0.3);
+            opacity: 0.5;
+          }
+          50% {
+            transform: scaleY(1);
+            opacity: 1;
+          }
+        }
+      `}</style>
+    </div>
+  );
 }
 
 export interface Props {
@@ -74,6 +111,19 @@ export function ChatInput({
     disabled: disabled || isStreaming,
   });
 
+  const { toast } = useToast();
+
+  // Show voice recording errors via toast
+  useEffect(() => {
+    if (voiceError) {
+      toast({
+        title: "Voice recording failed",
+        description: voiceError,
+        variant: "destructive",
+      });
+    }
+  }, [voiceError, toast]);
+
   const handleKeyDown = useCallback(
     (event: KeyboardEvent<HTMLTextAreaElement>) => {
       // Space key toggles recording when input is empty
@@ -111,11 +161,7 @@ export function ChatInput({
             onChange={handleChange}
             onKeyDown={handleKeyDown}
             placeholder={
-              isTranscribing
-                ? "Transcribing..."
-                : isRecording
-                  ? "Recording... Press Space or click mic to stop"
-                  : placeholder
+              isTranscribing ? "Transcribing..." : isRecording ? "" : placeholder
             }
             disabled={isInputDisabled}
             rows={1}
@@ -131,16 +177,15 @@ export function ChatInput({
                   : "pb-4 pl-4 pr-14 pt-4",
             )}
           />
+          {isRecording && !value && (
+            <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+              <RecordingIndicator elapsedTime={elapsedTime} />
+            </div>
+          )}
         </div>
         <span id="chat-input-hint" className="sr-only">
           Press Enter to send, Shift+Enter for new line, Space to record voice
         </span>
-
-        {voiceError && (
-          <div className="absolute -top-8 left-0 right-0 text-center text-sm text-red-500">
-            {voiceError}
-          </div>
-        )}
 
         {showMicButton && (
           <div className="absolute bottom-[7px] left-2 flex items-center gap-1">
@@ -165,11 +210,6 @@ export function ChatInput({
                 <MicrophoneIcon className="h-4 w-4" weight="bold" />
               )}
             </Button>
-            {isRecording && (
-              <span className="text-xs font-medium text-red-500">
-                {formatElapsedTime(elapsedTime)}
-              </span>
-            )}
           </div>
         )}
 
