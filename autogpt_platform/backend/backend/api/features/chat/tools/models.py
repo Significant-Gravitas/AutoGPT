@@ -28,6 +28,13 @@ class ResponseType(str, Enum):
     BLOCK_OUTPUT = "block_output"
     DOC_SEARCH_RESULTS = "doc_search_results"
     DOC_PAGE = "doc_page"
+    # Workspace response types
+    WORKSPACE_FILE_LIST = "workspace_file_list"
+    WORKSPACE_FILE_CONTENT = "workspace_file_content"
+    WORKSPACE_FILE_METADATA = "workspace_file_metadata"
+    WORKSPACE_FILE_WRITTEN = "workspace_file_written"
+    WORKSPACE_FILE_DELETED = "workspace_file_deleted"
+    WORKSPACE_FILE_INFO = "workspace_file_info"
 
 
 # Base response model
