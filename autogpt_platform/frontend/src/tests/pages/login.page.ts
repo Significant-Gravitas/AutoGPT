@@ -40,7 +40,7 @@ export class LoginPage {
     // Wait for redirect to marketplace, onboarding, library, or copilot (new landing pages)
     const leaveLoginPage = this.page
       .waitForURL(
-        (url) =>
+        (url: URL) =>
           /^\/(marketplace|onboarding(\/.*)?|library|copilot)?$/.test(
             url.pathname,
           ),
