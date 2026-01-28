@@ -79,7 +79,11 @@ export function ChatInput({
             onChange={handleChange}
             onKeyDown={handleKeyDown}
             placeholder={
-              isTranscribing ? "Transcribing..." : isRecording ? "" : placeholder
+              isTranscribing
+                ? "Transcribing..."
+                : isRecording
+                  ? ""
+                  : placeholder
             }
             disabled={isInputDisabled}
             rows={1}
