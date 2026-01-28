@@ -44,15 +44,6 @@ class WorkspaceFileListResponse(BaseModel):
     path_filter: Optional[str] = None
 
 
-class UploadFileRequest(BaseModel):
-    """Request model for file upload metadata."""
-
-    filename: str
-    path: Optional[str] = None
-    mime_type: Optional[str] = None
-    overwrite: bool = False
-
-
 class WriteFileRequest(BaseModel):
     """Request model for writing file content directly (for CoPilot tools)."""
 
