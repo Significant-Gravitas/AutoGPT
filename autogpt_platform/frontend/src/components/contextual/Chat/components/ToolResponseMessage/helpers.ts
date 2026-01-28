@@ -48,9 +48,22 @@ function isWorkspaceRef(value: unknown): value is string {
  * Check if a workspace reference appears to be an image based on common patterns.
  * Since workspace refs don't have extensions, we check the context or assume image
  * for certain block types.
+ *
+ * TODO: Replace keyword matching with MIME type encoded in workspace ref.
+ * e.g., workspace://abc123#image/png or workspace://abc123#video/mp4
+ * This would let frontend render correctly without fragile keyword matching.
  */
 function isLikelyImageRef(value: string, outputKey?: string): boolean {
   if (!isWorkspaceRef(value)) return false;
+
+  // Check output key name for video-related hints (these are NOT images)
+  const videoKeywords = ["video", "mp4", "mov", "avi", "webm", "movie", "clip"];
+  if (outputKey) {
+    const lowerKey = outputKey.toLowerCase();
+    if (videoKeywords.some((kw) => lowerKey.includes(kw))) {
+      return false;
+    }
+  }
 
   // Check output key name for image-related hints
   const imageKeywords = [
@@ -62,9 +75,6 @@ function isLikelyImageRef(value: string, outputKey?: string): boolean {
     "avatar",
     "icon",
     "screenshot",
-    "output",
-    "result",
-    "generated",
   ];
   if (outputKey) {
     const lowerKey = outputKey.toLowerCase();
