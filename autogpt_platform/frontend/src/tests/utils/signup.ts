@@ -36,13 +36,15 @@ export async function signupTestUser(
     const signupButton = getButton("Sign up");
     await signupButton.click();
 
-    // Wait for successful signup - could redirect to onboarding or marketplace
+    // Wait for successful signup - could redirect to various pages depending on onboarding state
 
     try {
-      // Wait for either onboarding or marketplace redirect
+      // Wait for redirect to onboarding, marketplace, copilot, or library
       await Promise.race([
         page.waitForURL(/\/onboarding/, { timeout: 15000 }),
         page.waitForURL(/\/marketplace/, { timeout: 15000 }),
+        page.waitForURL(/\/copilot/, { timeout: 15000 }),
+        page.waitForURL(/\/library/, { timeout: 15000 }),
       ]);
     } catch (error) {
       console.error(
@@ -54,14 +56,19 @@ export async function signupTestUser(
 
     const currentUrl = page.url();
 
-    // Handle onboarding or marketplace redirect
+    // Handle onboarding redirect if needed
     if (currentUrl.includes("/onboarding") && ignoreOnboarding) {
       await page.goto("http://localhost:3000/marketplace");
       await page.waitForLoadState("domcontentloaded", { timeout: 10000 });
     }
 
-    // Verify we're on the expected final page
-    if (ignoreOnboarding || currentUrl.includes("/marketplace")) {
+    // Verify we're on an expected final page and user is authenticated
+    if (currentUrl.includes("/copilot") || currentUrl.includes("/library")) {
+      // For copilot/library landing pages, just verify user is authenticated
+      await page
+        .getByTestId("profile-popout-menu-trigger")
+        .waitFor({ state: "visible", timeout: 10000 });
+    } else if (ignoreOnboarding || currentUrl.includes("/marketplace")) {
       // Verify we're on marketplace
       await page
         .getByText(
