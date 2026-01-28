@@ -20,9 +20,9 @@ function buildBackendUrl(path: string[], queryString: string): string {
  * Check if this is a workspace file download request that needs binary response handling.
  */
 function isWorkspaceDownloadRequest(path: string[]): boolean {
-  // Match pattern: api/workspace/files/{id}/download
+  // Match pattern: api/workspace/files/{id}/download (5 segments)
   return (
-    path.length >= 4 &&
+    path.length >= 5 &&
     path[0] === "api" &&
     path[1] === "workspace" &&
     path[2] === "files" &&
