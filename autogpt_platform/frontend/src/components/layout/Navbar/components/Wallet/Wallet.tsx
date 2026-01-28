@@ -255,13 +255,18 @@ export function Wallet() {
     (notification: WebSocketNotification) => {
       if (
         notification.type !== "onboarding" ||
-        notification.event !== "step_completed" ||
-        !walletRef.current
+        notification.event !== "step_completed"
       ) {
         return;
       }
 
-      // Only trigger confetti for tasks that are in groups
+      // Always refresh credits when any onboarding step completes
+      fetchCredits();
+
+      // Only trigger confetti for tasks that are in displayed groups
+      if (!walletRef.current) {
+        return;
+      }
       const taskIds = groups
         .flatMap((group) => group.tasks)
         .map((task) => task.id);
@@ -274,7 +279,6 @@ export function Wallet() {
         return;
       }
 
-      fetchCredits();
       party.confetti(walletRef.current, {
         count: 30,
         spread: 120,
@@ -284,7 +288,7 @@ export function Wallet() {
         modules: [fadeOut],
       });
     },
-    [fetchCredits, fadeOut],
+    [fetchCredits, fadeOut, groups],
   );
 
   // WebSocket setup for onboarding notifications
