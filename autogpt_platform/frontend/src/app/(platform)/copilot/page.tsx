@@ -1,22 +1,25 @@
 "use client";
 
-import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 import { Button } from "@/components/atoms/Button/Button";
+import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { Chat } from "@/components/contextual/Chat/Chat";
 import { ChatInput } from "@/components/contextual/Chat/components/ChatInput/ChatInput";
-import { ChatLoader } from "@/components/contextual/Chat/components/ChatLoader/ChatLoader";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
+import { useCopilotStore } from "./copilot-page-store";
 import { useCopilotPage } from "./useCopilotPage";
 
 export default function CopilotPage() {
   const { state, handlers } = useCopilotPage();
+  const isInterruptModalOpen = useCopilotStore((s) => s.isInterruptModalOpen);
+  const confirmInterrupt = useCopilotStore((s) => s.confirmInterrupt);
+  const cancelInterrupt = useCopilotStore((s) => s.cancelInterrupt);
   const {
     greetingName,
     quickActions,
     isLoading,
-    pageState,
-    isNewChatModalOpen,
+    hasSession,
+    initialPrompt,
     isReady,
   } = state;
   const {
@@ -24,24 +27,16 @@ export default function CopilotPage() {
     startChatWithPrompt,
     handleSessionNotFound,
     handleStreamingChange,
-    handleCancelNewChat,
-    proceedWithNewChat,
-    handleNewChatModalOpen,
   } = handlers;
 
-  if (!isReady) {
-    return null;
-  }
+  if (!isReady) return null;
 
-  // Show Chat when we have an active session
-  if (pageState.type === "chat") {
+  if (hasSession) {
     return (
       <div className="flex h-full flex-col">
         <Chat
-          key={pageState.sessionId ?? "welcome"}
           className="flex-1"
-          urlSessionId={pageState.sessionId}
-          initialPrompt={pageState.initialPrompt}
+          initialPrompt={initialPrompt}
           onSessionNotFound={handleSessionNotFound}
           onStreamingChange={handleStreamingChange}
         />
@@ -49,31 +44,33 @@ export default function CopilotPage() {
           title="Interrupt current chat?"
           styling={{ maxWidth: 300, width: "100%" }}
           controlled={{
-            isOpen: isNewChatModalOpen,
-            set: handleNewChatModalOpen,
+            isOpen: isInterruptModalOpen,
+            set: (open) => {
+              if (!open) cancelInterrupt();
+            },
           }}
-          onClose={handleCancelNewChat}
+          onClose={cancelInterrupt}
         >
           <Dialog.Content>
             <div className="flex flex-col gap-4">
               <Text variant="body">
                 The current chat response will be interrupted. Are you sure you
-                want to start a new chat?
+                want to continue?
               </Text>
               <Dialog.Footer>
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={handleCancelNewChat}
+                  onClick={cancelInterrupt}
                 >
                   Cancel
                 </Button>
                 <Button
                   type="button"
                   variant="primary"
-                  onClick={proceedWithNewChat}
+                  onClick={confirmInterrupt}
                 >
-                  Start new chat
+                  Continue
                 </Button>
               </Dialog.Footer>
             </div>
@@ -83,34 +80,6 @@ export default function CopilotPage() {
     );
   }
 
-  if (pageState.type === "newChat") {
-    return (
-      <div className="flex h-full flex-1 flex-col items-center justify-center bg-[#f8f8f9]">
-        <div className="flex flex-col items-center gap-4">
-          <ChatLoader />
-          <Text variant="body" className="text-zinc-500">
-            Loading your chats...
-          </Text>
-        </div>
-      </div>
-    );
-  }
-
-  // Show loading state while creating session and sending first message
-  if (pageState.type === "creating") {
-    return (
-      <div className="flex h-full flex-1 flex-col items-center justify-center bg-[#f8f8f9]">
-        <div className="flex flex-col items-center gap-4">
-          <ChatLoader />
-          <Text variant="body" className="text-zinc-500">
-            Loading your chats...
-          </Text>
-        </div>
-      </div>
-    );
-  }
-
-  // Show Welcome screen
   return (
     <div className="flex h-full flex-1 items-center justify-center overflow-y-auto bg-[#f8f8f9] px-6 py-10">
       <div className="w-full text-center">

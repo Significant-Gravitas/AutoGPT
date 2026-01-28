@@ -22,6 +22,7 @@ export interface HandlerDependencies {
   setIsStreamingInitiated: Dispatch<SetStateAction<boolean>>;
   setIsRegionBlockedModalOpen: Dispatch<SetStateAction<boolean>>;
   sessionId: string;
+  onOperationStarted?: () => void;
 }
 
 export function isRegionBlockedError(chunk: StreamChunk): boolean {
@@ -48,6 +49,15 @@ export function handleTextEnded(
   const completedText = deps.streamingChunksRef.current.join("");
   if (completedText.trim()) {
     deps.setMessages((prev) => {
+      // Check if this exact message already exists to prevent duplicates
+      const exists = prev.some(
+        (msg) =>
+          msg.type === "message" &&
+          msg.role === "assistant" &&
+          msg.content === completedText,
+      );
+      if (exists) return prev;
+
       const assistantMessage: ChatMessageData = {
         type: "message",
         role: "assistant",
@@ -154,6 +164,11 @@ export function handleToolResponse(
     }
     return;
   }
+  // Trigger polling when operation_started is received
+  if (responseMessage.type === "operation_started") {
+    deps.onOperationStarted?.();
+  }
+
   deps.setMessages((prev) => {
     const toolCallIndex = prev.findIndex(
       (msg) => msg.type === "tool_call" && msg.toolId === chunk.tool_id,
@@ -203,13 +218,24 @@ export function handleStreamEnd(
     ]);
   }
   if (completedContent.trim()) {
-    const assistantMessage: ChatMessageData = {
-      type: "message",
-      role: "assistant",
-      content: completedContent,
-      timestamp: new Date(),
-    };
-    deps.setMessages((prev) => [...prev, assistantMessage]);
+    deps.setMessages((prev) => {
+      // Check if this exact message already exists to prevent duplicates
+      const exists = prev.some(
+        (msg) =>
+          msg.type === "message" &&
+          msg.role === "assistant" &&
+          msg.content === completedContent,
+      );
+      if (exists) return prev;
+
+      const assistantMessage: ChatMessageData = {
+        type: "message",
+        role: "assistant",
+        content: completedContent,
+        timestamp: new Date(),
+      };
+      return [...prev, assistantMessage];
+    });
   }
   deps.setStreamingChunks([]);
   deps.streamingChunksRef.current = [];

@@ -33,9 +33,15 @@ class ChatConfig(BaseSettings):
 
     stream_timeout: int = Field(default=300, description="Stream timeout in seconds")
     max_retries: int = Field(default=3, description="Maximum number of retries")
-    max_agent_runs: int = Field(default=3, description="Maximum number of agent runs")
+    max_agent_runs: int = Field(default=30, description="Maximum number of agent runs")
     max_agent_schedules: int = Field(
-        default=3, description="Maximum number of agent schedules"
+        default=30, description="Maximum number of agent schedules"
+    )
+
+    # Long-running operation configuration
+    long_running_operation_ttl: int = Field(
+        default=600,
+        description="TTL in seconds for long-running operation tracking in Redis (safety net if pod dies)",
     )
 
     # Langfuse Prompt Management Configuration
