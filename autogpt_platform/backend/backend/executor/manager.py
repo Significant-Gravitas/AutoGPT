@@ -236,7 +236,12 @@ async def execute_node(
     input_size = len(input_data_str)
     log_metadata.debug("Executed node with input", input=input_data_str)
 
+    # Update execution_context with node-level info
+    execution_context.node_id = node_id
+    execution_context.node_exec_id = node_exec_id
+
     # Inject extra execution arguments for the blocks via kwargs
+    # Keep individual kwargs for backwards compatibility with existing blocks
     extra_exec_kwargs: dict = {
         "graph_id": graph_id,
         "graph_version": graph_version,
