@@ -1933,9 +1933,7 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/backend__api__model__UploadFileResponse"
-                }
+                "schema": { "$ref": "#/components/schemas/UploadFileResponse" }
               }
             }
           },
@@ -5929,394 +5927,6 @@
         }
       }
     },
-    "/api/workspace": {
-      "get": {
-        "tags": ["v2", "workspace"],
-        "summary": "Get workspace info",
-        "description": "Get the current user's workspace information.\nCreates workspace if it doesn't exist.",
-        "operationId": "getV2Get workspace info",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/WorkspaceInfo" }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          }
-        },
-        "security": [{ "HTTPBearerJWT": [] }]
-      }
-    },
-    "/api/workspace/files": {
-      "get": {
-        "tags": ["v2", "workspace"],
-        "summary": "List workspace files",
-        "description": "List files in the user's workspace.\n\n- **path**: Optional path prefix to filter results\n- **limit**: Maximum number of files to return (1-100)\n- **offset**: Number of files to skip",
-        "operationId": "getV2List workspace files",
-        "security": [{ "HTTPBearerJWT": [] }],
-        "parameters": [
-          {
-            "name": "path",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [{ "type": "string" }, { "type": "null" }],
-              "description": "Path prefix filter",
-              "title": "Path"
-            },
-            "description": "Path prefix filter"
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "maximum": 100,
-              "minimum": 1,
-              "default": 50,
-              "title": "Limit"
-            }
-          },
-          {
-            "name": "offset",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "minimum": 0,
-              "default": 0,
-              "title": "Offset"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WorkspaceFileListResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "tags": ["v2", "workspace"],
-        "summary": "Upload file to workspace",
-        "description": "Upload a file to the user's workspace.\n\n- **file**: The file to upload (max 100MB)\n- **path**: Optional virtual path (defaults to \"/{filename}\")\n- **overwrite**: Whether to overwrite existing file at path",
-        "operationId": "postV2Upload file to workspace",
-        "security": [{ "HTTPBearerJWT": [] }],
-        "parameters": [
-          {
-            "name": "path",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [{ "type": "string" }, { "type": "null" }],
-              "title": "Path"
-            }
-          },
-          {
-            "name": "overwrite",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "boolean",
-              "default": false,
-              "title": "Overwrite"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "multipart/form-data": {
-              "schema": {
-                "$ref": "#/components/schemas/Body_postV2Upload_file_to_workspace"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/backend__api__features__workspace__models__UploadFileResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/workspace/files/by-path": {
-      "delete": {
-        "tags": ["v2", "workspace"],
-        "summary": "Delete file by path",
-        "description": "Delete a file by its virtual path (soft-delete).",
-        "operationId": "deleteV2Delete file by path",
-        "security": [{ "HTTPBearerJWT": [] }],
-        "parameters": [
-          {
-            "name": "path",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "description": "Virtual file path",
-              "title": "Path"
-            },
-            "description": "Virtual file path"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/DeleteFileResponse" }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      },
-      "get": {
-        "tags": ["v2", "workspace"],
-        "summary": "Get file info by path",
-        "description": "Get file metadata by virtual path.",
-        "operationId": "getV2Get file info by path",
-        "security": [{ "HTTPBearerJWT": [] }],
-        "parameters": [
-          {
-            "name": "path",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "description": "Virtual file path",
-              "title": "Path"
-            },
-            "description": "Virtual file path"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/WorkspaceFileInfo" }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/workspace/files/by-path/download": {
-      "get": {
-        "tags": ["v2", "workspace"],
-        "summary": "Download file by path",
-        "description": "Download a file by its virtual path.",
-        "operationId": "getV2Download file by path",
-        "security": [{ "HTTPBearerJWT": [] }],
-        "parameters": [
-          {
-            "name": "path",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "description": "Virtual file path",
-              "title": "Path"
-            },
-            "description": "Virtual file path"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": { "application/json": { "schema": {} } }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/workspace/files/write": {
-      "post": {
-        "tags": ["v2", "workspace"],
-        "summary": "Write file content directly",
-        "description": "Write file content directly to workspace (for programmatic access).\n\n- **filename**: Name for the file\n- **content_base64**: Base64-encoded file content\n- **path**: Optional virtual path (defaults to \"/{filename}\")\n- **mime_type**: Optional MIME type (auto-detected if not provided)\n- **overwrite**: Whether to overwrite existing file at path",
-        "operationId": "postV2Write file content directly",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": { "$ref": "#/components/schemas/WriteFileRequest" }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/backend__api__features__workspace__models__UploadFileResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        },
-        "security": [{ "HTTPBearerJWT": [] }]
-      }
-    },
-    "/api/workspace/files/{file_id}": {
-      "delete": {
-        "tags": ["v2", "workspace"],
-        "summary": "Delete file by ID",
-        "description": "Delete a file from the workspace (soft-delete).",
-        "operationId": "deleteV2Delete file by id",
-        "security": [{ "HTTPBearerJWT": [] }],
-        "parameters": [
-          {
-            "name": "file_id",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "string", "title": "File Id" }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/DeleteFileResponse" }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      },
-      "get": {
-        "tags": ["v2", "workspace"],
-        "summary": "Get file info by ID",
-        "description": "Get file metadata by file ID.",
-        "operationId": "getV2Get file info by id",
-        "security": [{ "HTTPBearerJWT": [] }],
-        "parameters": [
-          {
-            "name": "file_id",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "string", "title": "File Id" }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/WorkspaceFileInfo" }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/workspace/files/{file_id}/download": {
       "get": {
         "tags": ["v2", "workspace"],
@@ -6336,56 +5946,6 @@
           "200": {
             "description": "Successful Response",
             "content": { "application/json": { "schema": {} } }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/workspace/files/{file_id}/url": {
-      "get": {
-        "tags": ["v2", "workspace"],
-        "summary": "Get download URL",
-        "description": "Get a download URL for a file.\n\n- **expires_in**: URL expiration time in seconds (60-86400, default 3600)",
-        "operationId": "getV2Get download url",
-        "security": [{ "HTTPBearerJWT": [] }],
-        "parameters": [
-          {
-            "name": "file_id",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "string", "title": "File Id" }
-          },
-          {
-            "name": "expires_in",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "maximum": 86400,
-              "minimum": 60,
-              "default": 3600,
-              "title": "Expires In"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/DownloadUrlResponse" }
-              }
-            }
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
@@ -7172,14 +6732,6 @@
         "type": "object",
         "title": "Body_postV2Execute a preset"
       },
-      "Body_postV2Upload_file_to_workspace": {
-        "properties": {
-          "file": { "type": "string", "format": "binary", "title": "File" }
-        },
-        "type": "object",
-        "required": ["file"],
-        "title": "Body_postV2Upload file to workspace"
-      },
       "Body_postV2Upload_submission_media": {
         "properties": {
           "file": { "type": "string", "format": "binary", "title": "File" }
@@ -7471,17 +7023,6 @@
         "enum": ["TOP_UP", "USAGE", "GRANT", "REFUND", "CARD_CHECK"],
         "title": "CreditTransactionType"
       },
-      "DeleteFileResponse": {
-        "properties": {
-          "success": { "type": "boolean", "title": "Success" },
-          "file_id": { "type": "string", "title": "File Id" },
-          "message": { "type": "string", "title": "Message" }
-        },
-        "type": "object",
-        "required": ["success", "file_id", "message"],
-        "title": "DeleteFileResponse",
-        "description": "Response model for file deletion."
-      },
       "DeleteGraphResponse": {
         "properties": {
           "version_counts": { "type": "integer", "title": "Version Counts" }
@@ -7498,19 +7039,6 @@
         "type": "object",
         "required": ["url", "relevance_score"],
         "title": "Document"
-      },
-      "DownloadUrlResponse": {
-        "properties": {
-          "url": { "type": "string", "title": "Url" },
-          "expires_in_seconds": {
-            "type": "integer",
-            "title": "Expires In Seconds"
-          }
-        },
-        "type": "object",
-        "required": ["url", "expires_in_seconds"],
-        "title": "DownloadUrlResponse",
-        "description": "Response model for download URL."
       },
       "ExecutionAnalyticsConfig": {
         "properties": {
@@ -12228,6 +11756,24 @@
         "required": ["timezone"],
         "title": "UpdateTimezoneRequest"
       },
+      "UploadFileResponse": {
+        "properties": {
+          "file_uri": { "type": "string", "title": "File Uri" },
+          "file_name": { "type": "string", "title": "File Name" },
+          "size": { "type": "integer", "title": "Size" },
+          "content_type": { "type": "string", "title": "Content Type" },
+          "expires_in_hours": { "type": "integer", "title": "Expires In Hours" }
+        },
+        "type": "object",
+        "required": [
+          "file_uri",
+          "file_name",
+          "size",
+          "content_type",
+          "expires_in_hours"
+        ],
+        "title": "UploadFileResponse"
+      },
       "UserHistoryResponse": {
         "properties": {
           "history": {
@@ -12531,159 +12077,6 @@
           "url"
         ],
         "title": "Webhook"
-      },
-      "WorkspaceFileInfo": {
-        "properties": {
-          "id": { "type": "string", "title": "Id" },
-          "name": { "type": "string", "title": "Name" },
-          "path": { "type": "string", "title": "Path" },
-          "mime_type": { "type": "string", "title": "Mime Type" },
-          "size_bytes": { "type": "integer", "title": "Size Bytes" },
-          "checksum": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Checksum"
-          },
-          "source": { "$ref": "#/components/schemas/WorkspaceFileSource" },
-          "source_exec_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Source Exec Id"
-          },
-          "source_session_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Source Session Id"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At"
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Updated At"
-          },
-          "metadata": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Metadata"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "name",
-          "path",
-          "mime_type",
-          "size_bytes",
-          "source",
-          "created_at",
-          "updated_at"
-        ],
-        "title": "WorkspaceFileInfo",
-        "description": "Response model for workspace file information."
-      },
-      "WorkspaceFileListResponse": {
-        "properties": {
-          "files": {
-            "items": { "$ref": "#/components/schemas/WorkspaceFileInfo" },
-            "type": "array",
-            "title": "Files"
-          },
-          "total_count": { "type": "integer", "title": "Total Count" },
-          "path_filter": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Path Filter"
-          }
-        },
-        "type": "object",
-        "required": ["files", "total_count"],
-        "title": "WorkspaceFileListResponse",
-        "description": "Response model for listing workspace files."
-      },
-      "WorkspaceFileSource": {
-        "type": "string",
-        "enum": ["UPLOAD", "EXECUTION", "COPILOT", "IMPORT"],
-        "title": "WorkspaceFileSource"
-      },
-      "WorkspaceInfo": {
-        "properties": {
-          "id": { "type": "string", "title": "Id" },
-          "user_id": { "type": "string", "title": "User Id" },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At"
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Updated At"
-          },
-          "file_count": {
-            "type": "integer",
-            "title": "File Count",
-            "default": 0
-          }
-        },
-        "type": "object",
-        "required": ["id", "user_id", "created_at", "updated_at"],
-        "title": "WorkspaceInfo",
-        "description": "Response model for workspace information."
-      },
-      "WriteFileRequest": {
-        "properties": {
-          "filename": { "type": "string", "title": "Filename" },
-          "content_base64": {
-            "type": "string",
-            "title": "Content Base64",
-            "description": "Base64-encoded file content"
-          },
-          "path": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Path"
-          },
-          "mime_type": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Mime Type"
-          },
-          "overwrite": {
-            "type": "boolean",
-            "title": "Overwrite",
-            "default": false
-          }
-        },
-        "type": "object",
-        "required": ["filename", "content_base64"],
-        "title": "WriteFileRequest",
-        "description": "Request model for writing file content directly (for CoPilot tools)."
-      },
-      "backend__api__features__workspace__models__UploadFileResponse": {
-        "properties": {
-          "file": { "$ref": "#/components/schemas/WorkspaceFileInfo" },
-          "message": { "type": "string", "title": "Message" }
-        },
-        "type": "object",
-        "required": ["file", "message"],
-        "title": "UploadFileResponse",
-        "description": "Response model for file upload."
-      },
-      "backend__api__model__UploadFileResponse": {
-        "properties": {
-          "file_uri": { "type": "string", "title": "File Uri" },
-          "file_name": { "type": "string", "title": "File Name" },
-          "size": { "type": "integer", "title": "Size" },
-          "content_type": { "type": "string", "title": "Content Type" },
-          "expires_in_hours": { "type": "integer", "title": "Expires In Hours" }
-        },
-        "type": "object",
-        "required": [
-          "file_uri",
-          "file_name",
-          "size",
-          "content_type",
-          "expires_in_hours"
-        ],
-        "title": "UploadFileResponse"
       }
     },
     "securitySchemes": {
