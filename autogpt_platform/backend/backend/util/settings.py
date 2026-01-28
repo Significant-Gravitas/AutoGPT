@@ -359,8 +359,8 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The port for the Agent Generator service",
     )
     agentgenerator_timeout: int = Field(
-        default=120,
-        description="The timeout in seconds for Agent Generator service requests",
+        default=600,
+        description="The timeout in seconds for Agent Generator service requests (includes retries for rate limits)",
     )
 
     enable_example_blocks: bool = Field(
@@ -677,6 +677,12 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     langfuse_secret_key: str = Field(default="", description="Langfuse secret key")
     langfuse_host: str = Field(
         default="https://cloud.langfuse.com", description="Langfuse host URL"
+    )
+
+    # PostHog analytics
+    posthog_api_key: str = Field(default="", description="PostHog API key")
+    posthog_host: str = Field(
+        default="https://eu.i.posthog.com", description="PostHog host URL"
     )
 
     # Add more secret fields as needed

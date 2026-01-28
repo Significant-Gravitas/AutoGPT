@@ -36,6 +36,16 @@ class BaseTool:
         """Whether this tool requires authentication."""
         return False
 
+    @property
+    def is_long_running(self) -> bool:
+        """Whether this tool is long-running and should execute in background.
+
+        Long-running tools (like agent generation) are executed via background
+        tasks to survive SSE disconnections. The result is persisted to chat
+        history and visible when the user refreshes.
+        """
+        return False
+
     def as_openai_tool(self) -> ChatCompletionToolParam:
         """Convert to OpenAI tool format."""
         return ChatCompletionToolParam(

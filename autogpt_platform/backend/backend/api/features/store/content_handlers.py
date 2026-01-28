@@ -188,6 +188,10 @@ class BlockHandler(ContentHandler):
             try:
                 block_instance = block_cls()
 
+                # Skip disabled blocks - they shouldn't be indexed
+                if block_instance.disabled:
+                    continue
+
                 # Build searchable text from block metadata
                 parts = []
                 if hasattr(block_instance, "name") and block_instance.name:
@@ -248,12 +252,19 @@ class BlockHandler(ContentHandler):
         from backend.data.block import get_blocks
 
         all_blocks = get_blocks()
-        total_blocks = len(all_blocks)
+
+        # Filter out disabled blocks - they're not indexed
+        enabled_block_ids = [
+            block_id
+            for block_id, block_cls in all_blocks.items()
+            if not block_cls().disabled
+        ]
+        total_blocks = len(enabled_block_ids)
 
         if total_blocks == 0:
             return {"total": 0, "with_embeddings": 0, "without_embeddings": 0}
 
-        block_ids = list(all_blocks.keys())
+        block_ids = enabled_block_ids
         placeholders = ",".join([f"${i+1}" for i in range(len(block_ids))])
 
         embedded_result = await query_raw_with_schema(

@@ -1,5 +1,5 @@
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
-import { NodeResolutionData } from "@/app/(platform)/build/stores/nodeStore";
+import { NodeResolutionData } from "@/app/(platform)/build/stores/types";
 import { RJSFSchema } from "@rjsf/utils";
 
 export const nodeStyleBasedOnStatus: Record<AgentExecutionStatus, string> = {

@@ -1,3 +1,42 @@
+function stripInternalReasoning(content: string): string {
+  return content
+    .replace(/<internal_reasoning>[\s\S]*?<\/internal_reasoning>/gi, "")
+    .replace(/<thinking>[\s\S]*?<\/thinking>/gi, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+export function isErrorResponse(result: unknown): boolean {
+  if (typeof result === "string") {
+    const lower = result.toLowerCase();
+    return (
+      lower.startsWith("error:") ||
+      lower.includes("not found") ||
+      lower.includes("does not exist") ||
+      lower.includes("failed to") ||
+      lower.includes("unable to")
+    );
+  }
+  if (typeof result === "object" && result !== null) {
+    const response = result as Record<string, unknown>;
+    return response.type === "error" || response.error !== undefined;
+  }
+  return false;
+}
+
+export function getErrorMessage(result: unknown): string {
+  if (typeof result === "string") {
+    return stripInternalReasoning(result.replace(/^error:\s*/i, ""));
+  }
+  if (typeof result === "object" && result !== null) {
+    const response = result as Record<string, unknown>;
+    if (response.error) return stripInternalReasoning(String(response.error));
+    if (response.message)
+      return stripInternalReasoning(String(response.message));
+  }
+  return "An error occurred";
+}
+
 function getToolCompletionPhrase(toolName: string): string {
   const toolCompletionPhrases: Record<string, string> = {
     add_understanding: "Updated your business information",
@@ -28,10 +67,10 @@ export function formatToolResponse(result: unknown, toolName: string): string {
         const parsed = JSON.parse(trimmed);
         return formatToolResponse(parsed, toolName);
       } catch {
-        return trimmed;
+        return stripInternalReasoning(trimmed);
       }
     }
-    return result;
+    return stripInternalReasoning(result);
   }
 
   if (typeof result !== "object" || result === null) {

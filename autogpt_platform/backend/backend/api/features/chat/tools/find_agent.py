@@ -2,8 +2,6 @@
 
 from typing import Any
 
-from langfuse import observe
-
 from backend.api.features.chat.model import ChatSession
 
 from .agent_search import search_agents
@@ -37,7 +35,6 @@ class FindAgentTool(BaseTool):
             "required": ["query"],
         }
 
-    @observe(as_type="tool", name="find_agent")
     async def _execute(
         self, user_id: str | None, session: ChatSession, **kwargs
     ) -> ToolResponseBase:

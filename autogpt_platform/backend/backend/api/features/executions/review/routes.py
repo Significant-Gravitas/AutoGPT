@@ -14,9 +14,9 @@ from backend.data.execution import (
 from backend.data.graph import get_graph_settings
 from backend.data.human_review import (
     create_auto_approval_record,
-    get_pending_reviews_by_node_exec_ids,
     get_pending_reviews_for_execution,
     get_pending_reviews_for_user,
+    get_reviews_by_node_exec_ids,
     has_pending_reviews_for_graph_exec,
     process_all_reviews_for_execution,
 )
@@ -137,17 +137,17 @@ async def process_review_action(
             detail="At least one review must be provided",
         )
 
-    # Batch fetch all requested reviews
-    reviews_map = await get_pending_reviews_by_node_exec_ids(
+    # Batch fetch all requested reviews (regardless of status for idempotent handling)
+    reviews_map = await get_reviews_by_node_exec_ids(
         list(all_request_node_ids), user_id
     )
 
-    # Validate all reviews were found
+    # Validate all reviews were found (must exist, any status is OK for now)
     missing_ids = all_request_node_ids - set(reviews_map.keys())
     if missing_ids:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"No pending review found for node execution(s): {', '.join(missing_ids)}",
+            detail=f"Review(s) not found: {', '.join(missing_ids)}",
         )
 
     # Validate all reviews belong to the same execution

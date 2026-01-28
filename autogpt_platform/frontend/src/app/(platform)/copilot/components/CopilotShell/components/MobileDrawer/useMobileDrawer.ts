@@ -3,17 +3,17 @@ import { useState } from "react";
 export function useMobileDrawer() {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
-  function handleOpenDrawer() {
+  const handleOpenDrawer = () => {
     setIsDrawerOpen(true);
-  }
+  };
 
-  function handleCloseDrawer() {
+  const handleCloseDrawer = () => {
     setIsDrawerOpen(false);
-  }
+  };
 
-  function handleDrawerOpenChange(open: boolean) {
+  const handleDrawerOpenChange = (open: boolean) => {
     setIsDrawerOpen(open);
-  }
+  };
 
   return {
     isDrawerOpen,

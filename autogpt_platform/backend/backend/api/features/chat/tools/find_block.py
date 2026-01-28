@@ -1,7 +1,6 @@
 import logging
 from typing import Any
 
-from langfuse import observe
 from prisma.enums import ContentType
 
 from backend.api.features.chat.model import ChatSession
@@ -56,7 +55,6 @@ class FindBlockTool(BaseTool):
     def requires_auth(self) -> bool:
         return True
 
-    @observe(as_type="tool", name="find_block")
     async def _execute(
         self,
         user_id: str | None,
@@ -109,7 +107,8 @@ class FindBlockTool(BaseTool):
                 block_id = result["content_id"]
                 block = get_block(block_id)
 
-                if block:
+                # Skip disabled blocks
+                if block and not block.disabled:
                     # Get input/output schemas
                     input_schema = {}
                     output_schema = {}
