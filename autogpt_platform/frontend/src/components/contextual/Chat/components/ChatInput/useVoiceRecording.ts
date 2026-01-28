@@ -34,6 +34,7 @@ export function useVoiceRecording({
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const startTimeRef = useRef<number>(0);
   const streamRef = useRef<MediaStream | null>(null);
+  const isRecordingRef = useRef(false);
 
   const isSupported =
     typeof window !== "undefined" &&
@@ -106,15 +107,16 @@ export function useVoiceRecording({
   );
 
   const stopRecording = useCallback(() => {
-    if (mediaRecorderRef.current && isRecording) {
+    if (mediaRecorderRef.current && isRecordingRef.current) {
       mediaRecorderRef.current.stop();
+      isRecordingRef.current = false;
       setIsRecording(false);
       clearTimer();
     }
-  }, [isRecording, clearTimer]);
+  }, [clearTimer]);
 
   const startRecording = useCallback(async () => {
-    if (disabled || isRecording || isTranscribing) return;
+    if (disabled || isRecordingRef.current || isTranscribing) return;
 
     setError(null);
     chunksRef.current = [];
@@ -154,6 +156,7 @@ export function useVoiceRecording({
       };
 
       mediaRecorder.start(1000); // Collect data every second
+      isRecordingRef.current = true;
       setIsRecording(true);
       startTimeRef.current = Date.now();
 
@@ -176,14 +179,7 @@ export function useVoiceRecording({
       }
       cleanup();
     }
-  }, [
-    disabled,
-    isRecording,
-    isTranscribing,
-    stopRecording,
-    transcribeAudio,
-    cleanup,
-  ]);
+  }, [disabled, isTranscribing, stopRecording, transcribeAudio, cleanup]);
 
   const toggleRecording = useCallback(() => {
     if (isRecording) {
