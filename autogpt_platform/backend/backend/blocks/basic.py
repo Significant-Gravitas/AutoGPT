@@ -18,7 +18,7 @@ from backend.util.type import MediaFileType, convert
 class FileStoreBlock(Block):
     class Input(BlockSchemaInput):
         file_in: MediaFileType = SchemaField(
-            description="The file to store in the temporary directory, it can be a URL, data URI, or local path."
+            description="The file to store, it can be a URL, data URI, or local path."
         )
         base_64: bool = SchemaField(
             description="Whether produce an output in base64 format (not recommended, you can pass the string path just fine accross blocks).",
@@ -29,13 +29,13 @@ class FileStoreBlock(Block):
 
     class Output(BlockSchemaOutput):
         file_out: MediaFileType = SchemaField(
-            description="The relative path to the stored file in the temporary directory."
+            description="Reference to the stored file (workspace:// in CoPilot, data URI in graphs)."
         )
 
     def __init__(self):
         super().__init__(
             id="cbb50872-625b-42f0-8203-a2ae78242d8a",
-            description="Stores the input file in the temporary directory.",
+            description="Stores the input file. In CoPilot, saves to your workspace. In graphs, returns a data URI.",
             categories={BlockCategory.BASIC, BlockCategory.MULTIMEDIA},
             input_schema=FileStoreBlock.Input,
             output_schema=FileStoreBlock.Output,
@@ -51,9 +51,9 @@ class FileStoreBlock(Block):
     ) -> BlockOutput:
         # Determine return format based on user preference
         # for_external_api: always returns data URI (base64) - honors "Produce Base64 Output"
-        # for_local_processing: returns local file path
+        # for_block_output: smart format - workspace:// in CoPilot, data URI in graphs
         return_format = (
-            "for_external_api" if input_data.base_64 else "for_local_processing"
+            "for_external_api" if input_data.base_64 else "for_block_output"
         )
 
         yield "file_out", await store_media_file(
