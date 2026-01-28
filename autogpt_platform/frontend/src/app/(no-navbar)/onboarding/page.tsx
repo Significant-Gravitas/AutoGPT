@@ -2,8 +2,9 @@
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
-import { resolveResponse, shouldShowOnboarding } from "@/app/api/helpers";
+import { resolveResponse, getOnboardingStatus } from "@/app/api/helpers";
 import { getV1OnboardingState } from "@/app/api/__generated__/endpoints/onboarding/onboarding";
+import { getHomepageRoute } from "@/lib/constants";
 
 export default function OnboardingPage() {
   const router = useRouter();
@@ -11,10 +12,13 @@ export default function OnboardingPage() {
   useEffect(() => {
     async function redirectToStep() {
       try {
-        // Check if onboarding is enabled
-        const isEnabled = await shouldShowOnboarding();
-        if (!isEnabled) {
-          router.replace("/");
+        // Check if onboarding is enabled (also gets chat flag for redirect)
+        const { shouldShowOnboarding, isChatEnabled } =
+          await getOnboardingStatus();
+        const homepageRoute = getHomepageRoute(isChatEnabled);
+
+        if (!shouldShowOnboarding) {
+          router.replace(homepageRoute);
           return;
         }
 
@@ -22,7 +26,7 @@ export default function OnboardingPage() {
 
         // Handle completed onboarding
         if (onboarding.completedSteps.includes("GET_RESULTS")) {
-          router.replace("/");
+          router.replace(homepageRoute);
           return;
         }
 
