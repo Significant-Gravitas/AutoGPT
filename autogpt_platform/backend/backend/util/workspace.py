@@ -226,20 +226,28 @@ class WorkspaceManager:
                 existing = await get_workspace_file_by_path(self.workspace_id, path)
                 if existing:
                     await self.delete_file(existing.id)
-                # Retry the create
-                file = await create_workspace_file(
-                    workspace_id=self.workspace_id,
-                    file_id=file_id,
-                    name=filename,
-                    path=path,
-                    storage_path=storage_path,
-                    mime_type=mime_type,
-                    size_bytes=len(content),
-                    checksum=checksum,
-                    source=source,
-                    source_exec_id=source_exec_id,
-                    source_session_id=source_session_id,
-                )
+                # Retry the create - if this also fails, clean up storage file
+                try:
+                    file = await create_workspace_file(
+                        workspace_id=self.workspace_id,
+                        file_id=file_id,
+                        name=filename,
+                        path=path,
+                        storage_path=storage_path,
+                        mime_type=mime_type,
+                        size_bytes=len(content),
+                        checksum=checksum,
+                        source=source,
+                        source_exec_id=source_exec_id,
+                        source_session_id=source_session_id,
+                    )
+                except Exception:
+                    # Clean up orphaned storage file on retry failure
+                    try:
+                        await storage.delete(storage_path)
+                    except Exception as e:
+                        logger.warning(f"Failed to clean up orphaned storage file: {e}")
+                    raise
             else:
                 # Clean up the orphaned storage file before raising
                 try:

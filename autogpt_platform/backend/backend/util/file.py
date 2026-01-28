@@ -339,6 +339,7 @@ async def store_media_file(
             content=content,
             filename=filename,
             source=WorkspaceFileSource.COPILOT,
+            source_session_id=execution_context.session_id,
             overwrite=True,
         )
         return MediaFileType(f"workspace://{file_record.id}")
