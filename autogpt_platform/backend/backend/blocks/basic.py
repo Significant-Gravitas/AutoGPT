@@ -49,10 +49,18 @@ class FileStoreBlock(Block):
         execution_context: ExecutionContext,
         **kwargs,
     ) -> BlockOutput:
+        # Determine return format based on context and user preference
+        if execution_context.workspace_id and input_data.base_64:
+            return_format = "workspace_ref"
+        elif input_data.base_64:
+            return_format = "data_uri"
+        else:
+            return_format = "local_path"
+
         yield "file_out", await store_media_file(
             file=input_data.file_in,
             execution_context=execution_context,
-            return_content=input_data.base_64,
+            return_format=return_format,
         )
 
 

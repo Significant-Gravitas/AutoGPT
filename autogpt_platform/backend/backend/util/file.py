@@ -4,9 +4,13 @@ import re
 import shutil
 import tempfile
 import uuid
+import warnings
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 from urllib.parse import urlparse
+
+# Return format options for store_media_file
+MediaReturnFormat = Literal["local_path", "data_uri", "workspace_ref"]
 
 from prisma.enums import WorkspaceFileSource
 
@@ -77,44 +81,53 @@ async def store_media_file(
     file: MediaFileType,
     execution_context: "ExecutionContext",
     *,
-    return_content: bool = False,
-    save_to_workspace: bool = True,
+    return_format: MediaReturnFormat | None = None,
+    # Deprecated parameters - use return_format instead
+    return_content: bool | None = None,
+    save_to_workspace: bool | None = None,
 ) -> MediaFileType:
     """
     Safely handle 'file' (a data URI, a URL, a workspace:// reference, or a local path
     relative to {temp}/exec_file/{exec_id}), placing or verifying it under:
         {tempdir}/exec_file/{exec_id}/...
 
-    If 'return_content=True', return a data URI (data:<mime>;base64,<content>).
-    Otherwise, returns the file media path relative to the exec_id folder.
+    For each MediaFileType input:
+    - Data URI: decode and store locally
+    - URL: download and store locally
+    - workspace:// reference: read from workspace, store locally
+    - Local path: verify it exists in exec_file directory
 
-    When execution_context has a workspace_id, files are also saved to the user's
-    persistent workspace (for CoPilot sessions).
-
-    For each MediaFileType type:
-    - Data URI:
-      -> decode and store in a new random file in that folder
-    - URL:
-      -> download and store in that folder
-    - workspace:// reference:
-      -> read from user's workspace (requires workspace context)
-         workspace://abc123 - by file ID
-         workspace:///path/to/file.txt - by virtual path
-    - Local path:
-      -> interpret as relative to that folder; verify it exists
-         (no copying, as it's presumably already there).
-         We realpath-check so no symlink or '..' can escape the folder.
-
+    Return format options:
+    - "local_path": Return relative path in exec_file dir (for local processing)
+    - "data_uri": Return base64 data URI (for external APIs)
+    - "workspace_ref": Save to workspace, return workspace://id (for CoPilot outputs)
 
     :param file:               Data URI, URL, workspace://, or local (relative) path.
     :param execution_context:  ExecutionContext with user_id, graph_exec_id, workspace_id.
-    :param return_content:     If True, return content (data URI or workspace ref).
-                               If False, return the *relative* path inside the exec_id folder.
-    :param save_to_workspace:  If True (default), save new content to workspace and return ref.
-                               If False, don't save to workspace, return data URI directly.
-                               Use False when getting content for external APIs.
-    :return:                   The requested result: data URI, relative path, or workspace ref.
+    :param return_format:      What to return: "local_path", "data_uri", or "workspace_ref".
+    :param return_content:     DEPRECATED. Use return_format instead.
+    :param save_to_workspace:  DEPRECATED. Use return_format instead.
+    :return:                   The requested result based on return_format.
     """
+    # Handle deprecated parameters
+    if return_format is None:
+        if return_content is not None or save_to_workspace is not None:
+            warnings.warn(
+                "return_content and save_to_workspace are deprecated. "
+                "Use return_format='local_path', 'data_uri', or 'workspace_ref' instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+        # Map old parameters to new return_format
+        if return_content is False or (return_content is None and save_to_workspace is None):
+            # Default or explicit return_content=False -> local_path
+            return_format = "local_path"
+        elif save_to_workspace is False:
+            # return_content=True, save_to_workspace=False -> data_uri
+            return_format = "data_uri"
+        else:
+            # return_content=True, save_to_workspace=True (or default) -> workspace_ref
+            return_format = "workspace_ref"
     # Extract values from execution_context
     graph_exec_id = execution_context.graph_exec_id
     user_id = execution_context.user_id
@@ -311,16 +324,29 @@ async def store_media_file(
         if not target_path.is_file():
             raise ValueError(f"Local file does not exist: {target_path}")
 
-    # Handle workspace saving and return value based on parameters:
-    # - save_to_workspace=True + return_content=True: save to workspace, return ref
-    # - save_to_workspace=False + return_content=True: don't save, return data URI
-    # - return_content=False: return local path (for file processing)
-    if workspace_manager is not None and return_content and save_to_workspace:
+    # Return based on requested format
+    if return_format == "local_path":
+        # For local file processing (MoviePy, ffmpeg, etc.)
+        return MediaFileType(_strip_base_prefix(target_path, base_path))
+
+    elif return_format == "data_uri":
+        # For external APIs that need base64 content
+        return MediaFileType(_file_to_data_uri(target_path))
+
+    elif return_format == "workspace_ref":
+        # For persisting outputs to workspace (CoPilot)
+        if workspace_manager is None:
+            raise ValueError(
+                "return_format='workspace_ref' requires workspace context. "
+                "Ensure execution_context has workspace_id set."
+            )
+
         # Don't re-save if input was already from workspace
         if is_from_workspace:
-            return MediaFileType(_file_to_data_uri(target_path))
+            # Return original workspace reference
+            return MediaFileType(file)
 
-        # New content to persist - save to workspace and return ref
+        # Save new content to workspace
         content = target_path.read_bytes()
         filename = target_path.name
 
@@ -328,19 +354,12 @@ async def store_media_file(
             content=content,
             filename=filename,
             source=WorkspaceFileSource.COPILOT,
-            overwrite=True,  # Allow overwriting if file already exists
+            overwrite=True,
         )
-        # Return workspace reference instead of base64 data URI
-        # This prevents context bloat from large base64 data URIs
-        # (100KB file = ~133KB tokens as base64)
         return MediaFileType(f"workspace://{file_record.id}")
 
-    # When return_content=False, return local relative path
-    # Blocks that need to process files locally (MoviePy, ffmpeg, etc.) need this
-    if return_content:
-        return MediaFileType(_file_to_data_uri(target_path))
-
-    return MediaFileType(_strip_base_prefix(target_path, base_path))
+    else:
+        raise ValueError(f"Invalid return_format: {return_format}")
 
 
 def get_dir_size(path: Path) -> int:

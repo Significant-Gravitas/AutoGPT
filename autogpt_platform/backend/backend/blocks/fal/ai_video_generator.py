@@ -224,7 +224,7 @@ class AIVideoGeneratorBlock(Block):
             stored_url = await store_media_file(
                 file=MediaFileType(video_url),
                 execution_context=execution_context,
-                return_content=True,
+                return_format="workspace_ref",
             )
             yield "video_url", stored_url
         except Exception as e:

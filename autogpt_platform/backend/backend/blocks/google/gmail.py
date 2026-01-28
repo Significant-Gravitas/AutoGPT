@@ -119,7 +119,7 @@ async def create_mime_message(
             local_path = await store_media_file(
                 file=attach,
                 execution_context=execution_context,
-                return_content=False,
+                return_format="local_path",
             )
             abs_path = get_exec_file_path(
                 execution_context.graph_exec_id or "", local_path
@@ -1189,7 +1189,7 @@ async def _build_reply_message(
         local_path = await store_media_file(
             file=attach,
             execution_context=execution_context,
-            return_content=False,
+            return_format="local_path",
         )
         abs_path = get_exec_file_path(execution_context.graph_exec_id or "", local_path)
         part = MIMEBase("application", "octet-stream")
@@ -1719,7 +1719,7 @@ To: {original_to}
             local_path = await store_media_file(
                 file=attach,
                 execution_context=execution_context,
-                return_content=False,
+                return_format="local_path",
             )
             abs_path = get_exec_file_path(
                 execution_context.graph_exec_id or "", local_path

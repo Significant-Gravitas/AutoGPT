@@ -159,7 +159,7 @@ class ScreenshotWebPageBlock(Block):
                     f"data:image/{format.value};base64,{b64encode(content).decode('utf-8')}"
                 ),
                 execution_context=execution_context,
-                return_content=True,
+                return_format="workspace_ref",
             )
         }
 

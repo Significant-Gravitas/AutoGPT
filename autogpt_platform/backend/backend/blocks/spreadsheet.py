@@ -109,7 +109,7 @@ class ReadSpreadsheetBlock(Block):
             stored_file_path = await store_media_file(
                 file=input_data.file_input,
                 execution_context=execution_context,
-                return_content=False,
+                return_format="local_path",
             )
 
             # Get full file path

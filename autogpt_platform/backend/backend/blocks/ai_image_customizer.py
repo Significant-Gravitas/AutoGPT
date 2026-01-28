@@ -143,8 +143,7 @@ class AIImageCustomizerBlock(Block):
                     store_media_file(
                         file=img,
                         execution_context=execution_context,
-                        return_content=True,
-                        save_to_workspace=False,  # Just get content for API, don't save input
+                        return_format="data_uri",  # Get content for external API
                     )
                     for img in input_data.images
                 )
@@ -163,7 +162,7 @@ class AIImageCustomizerBlock(Block):
             stored_url = await store_media_file(
                 file=result,
                 execution_context=execution_context,
-                return_content=True,
+                return_format="workspace_ref",
             )
             yield "image_url", stored_url
         except Exception as e:

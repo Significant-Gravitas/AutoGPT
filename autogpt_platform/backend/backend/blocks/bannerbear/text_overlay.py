@@ -249,7 +249,7 @@ class BannerbearTextOverlayBlock(Block):
             stored_url = await store_media_file(
                 file=MediaFileType(image_url),
                 execution_context=execution_context,
-                return_content=True,
+                return_format="workspace_ref",
             )
             yield "image_url", stored_url
         else:

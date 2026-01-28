@@ -338,7 +338,7 @@ class AIImageGeneratorBlock(Block):
                 stored_url = await store_media_file(
                     file=MediaFileType(url),
                     execution_context=execution_context,
-                    return_content=True,  # Return as data URI for persistence
+                    return_format="workspace_ref",
                 )
                 yield "image_url", stored_url
             else:

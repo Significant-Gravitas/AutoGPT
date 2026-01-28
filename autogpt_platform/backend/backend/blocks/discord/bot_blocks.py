@@ -733,8 +733,7 @@ class SendDiscordFileBlock(Block):
                     stored_file = await store_media_file(
                         file=file,
                         execution_context=execution_context,
-                        return_content=True,  # Get as data URI
-                        save_to_workspace=False,  # Just get content to send, don't save input
+                        return_format="data_uri",  # Get content to send to Discord
                     )
                     # Now process as data URI
                     header, encoded = stored_file.split(",", 1)
