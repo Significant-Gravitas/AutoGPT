@@ -242,9 +242,8 @@ class SendAuthenticatedWebRequestBlock(SendWebRequestBlock):
         self,
         input_data: Input,
         *,
-        graph_exec_id: str,
+        execution_context: ExecutionContext,
         credentials: HostScopedCredentials,
-        user_id: str,
         **kwargs,
     ) -> BlockOutput:
         # Create SendWebRequestBlock.Input from our input (removing credentials field)
@@ -275,6 +274,6 @@ class SendAuthenticatedWebRequestBlock(SendWebRequestBlock):
 
         # Use parent class run method
         async for output_name, output_data in super().run(
-            base_input, graph_exec_id=graph_exec_id, user_id=user_id, **kwargs
+            base_input, execution_context=execution_context, **kwargs
         ):
             yield output_name, output_data
