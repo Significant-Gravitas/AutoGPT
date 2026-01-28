@@ -19,7 +19,6 @@ from gcloud.aio import storage as async_gcs_storage
 from google.cloud import storage as gcs_storage
 
 from backend.util.data import get_data_path
-from backend.util.file import sanitize_filename
 from backend.util.settings import Config
 
 logger = logging.getLogger(__name__)
@@ -307,6 +306,10 @@ class LocalWorkspaceStorage(WorkspaceStorageBackend):
 
     def _build_file_path(self, workspace_id: str, file_id: str, filename: str) -> Path:
         """Build the local file path with path traversal protection."""
+        # Import here to avoid circular import
+        # (file.py imports workspace.py which imports workspace_storage.py)
+        from backend.util.file import sanitize_filename
+
         # Sanitize filename to prevent path traversal (removes / and \ among others)
         safe_filename = sanitize_filename(filename)
         file_path = (self.base_dir / workspace_id / file_id / safe_filename).resolve()

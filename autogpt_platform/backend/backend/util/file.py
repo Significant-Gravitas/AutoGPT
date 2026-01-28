@@ -4,7 +4,6 @@ import re
 import shutil
 import tempfile
 import uuid
-import warnings
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 from urllib.parse import urlparse
@@ -15,7 +14,6 @@ from backend.util.cloud_storage import get_cloud_storage_handler
 from backend.util.request import Requests
 from backend.util.type import MediaFileType
 from backend.util.virus_scanner import scan_content_safe
-from backend.util.workspace import WorkspaceManager
 
 if TYPE_CHECKING:
     from backend.data.execution import ExecutionContext
@@ -86,10 +84,7 @@ async def store_media_file(
     file: MediaFileType,
     execution_context: "ExecutionContext",
     *,
-    return_format: MediaReturnFormat | None = None,
-    # Deprecated parameters - use return_format instead
-    return_content: bool | None = None,
-    save_to_workspace: bool | None = None,
+    return_format: MediaReturnFormat,
 ) -> MediaFileType:
     """
     Safely handle 'file' (a data URI, a URL, a workspace:// reference, or a local path
@@ -110,31 +105,8 @@ async def store_media_file(
     :param file:               Data URI, URL, workspace://, or local (relative) path.
     :param execution_context:  ExecutionContext with user_id, graph_exec_id, workspace_id.
     :param return_format:      What to return: "for_local_processing", "for_external_api", or "for_block_output".
-    :param return_content:     DEPRECATED. Use return_format instead.
-    :param save_to_workspace:  DEPRECATED. Use return_format instead.
     :return:                   The requested result based on return_format.
     """
-    # Handle deprecated parameters
-    if return_format is None:
-        if return_content is not None or save_to_workspace is not None:
-            warnings.warn(
-                "return_content and save_to_workspace are deprecated. "
-                "Use return_format='for_local_processing', 'for_external_api', or 'for_block_output' instead.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-        # Map old parameters to new return_format
-        if return_content is False or (
-            return_content is None and save_to_workspace is None
-        ):
-            # Default or explicit return_content=False -> for_local_processing
-            return_format = "for_local_processing"
-        elif save_to_workspace is False:
-            # return_content=True, save_to_workspace=False -> for_external_api
-            return_format = "for_external_api"
-        else:
-            # return_content=True, save_to_workspace=True (or default) -> for_block_output
-            return_format = "for_block_output"
     # Extract values from execution_context
     graph_exec_id = execution_context.graph_exec_id
     user_id = execution_context.user_id
@@ -145,6 +117,9 @@ async def store_media_file(
         raise ValueError("execution_context.user_id is required")
 
     # Create workspace_manager if we have workspace_id (with session scoping)
+    # Import here to avoid circular import (file.py → workspace.py → data → blocks → file.py)
+    from backend.util.workspace import WorkspaceManager
+
     workspace_manager: WorkspaceManager | None = None
     if execution_context.workspace_id:
         workspace_manager = WorkspaceManager(
