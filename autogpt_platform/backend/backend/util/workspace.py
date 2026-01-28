@@ -360,7 +360,11 @@ class WorkspaceManager:
         resolved_path = self._resolve_path(path)
         return await workspace_file_exists(self.workspace_id, resolved_path)
 
-    async def get_file_count(self, include_all_sessions: bool = False) -> int:
+    async def get_file_count(
+        self,
+        path: Optional[str] = None,
+        include_all_sessions: bool = False,
+    ) -> int:
         """
         Get number of files in workspace.
 
@@ -368,6 +372,7 @@ class WorkspaceManager:
         only counts files in the current session's folder.
 
         Args:
+            path: Optional path prefix to filter (e.g., "/documents/")
             include_all_sessions: If True, count all files in workspace.
                                   If False (default), only count current session's files.
 
@@ -376,10 +381,16 @@ class WorkspaceManager:
         """
         # Determine the effective path prefix (same logic as list_files)
         if include_all_sessions:
-            path_prefix = None
+            # Use provided path as-is (or None for all files)
+            effective_path = path
+        elif path is not None:
+            # Resolve the provided path with session scoping
+            effective_path = self._resolve_path(path)
         elif self.session_path:
-            path_prefix = self.session_path
+            # Default to session folder
+            effective_path = self.session_path
         else:
-            path_prefix = None
+            # No session context, use path as-is
+            effective_path = path
 
-        return await count_workspace_files(self.workspace_id, path_prefix=path_prefix)
+        return await count_workspace_files(self.workspace_id, path_prefix=effective_path)

@@ -222,7 +222,7 @@ async def list_files(
 
     manager = WorkspaceManager(user_id, workspace.id)
     files = await manager.list_files(path=path, limit=limit, offset=offset)
-    total = await manager.get_file_count()
+    total = await manager.get_file_count(path=path)
 
     return WorkspaceFileListResponse(
         files=[_file_to_info(f) for f in files],
