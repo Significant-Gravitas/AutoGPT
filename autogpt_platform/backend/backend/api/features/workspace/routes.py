@@ -58,6 +58,55 @@ def _file_to_info(file) -> WorkspaceFileInfo:
     )
 
 
+async def _create_file_download_response(file) -> Response:
+    """
+    Create a download response for a workspace file.
+
+    Handles both local storage (direct streaming) and GCS (signed URL redirect
+    with fallback to streaming).
+    """
+    storage = await get_workspace_storage()
+
+    # For local storage, stream the file directly
+    if file.storagePath.startswith("local://"):
+        content = await storage.retrieve(file.storagePath)
+        return Response(
+            content=content,
+            media_type=file.mimeType,
+            headers={
+                "Content-Disposition": f'attachment; filename="{file.name}"',
+                "Content-Length": str(len(content)),
+            },
+        )
+
+    # For GCS, try to redirect to signed URL, fall back to streaming
+    try:
+        url = await storage.get_download_url(file.storagePath, expires_in=300)
+        # If we got back an API path (fallback), stream directly instead
+        if url.startswith("/api/"):
+            content = await storage.retrieve(file.storagePath)
+            return Response(
+                content=content,
+                media_type=file.mimeType,
+                headers={
+                    "Content-Disposition": f'attachment; filename="{file.name}"',
+                    "Content-Length": str(len(content)),
+                },
+            )
+        return fastapi.responses.RedirectResponse(url=url, status_code=302)
+    except Exception:
+        # Fall back to streaming directly from GCS
+        content = await storage.retrieve(file.storagePath)
+        return Response(
+            content=content,
+            media_type=file.mimeType,
+            headers={
+                "Content-Disposition": f'attachment; filename="{file.name}"',
+                "Content-Length": str(len(content)),
+            },
+        )
+
+
 @router.get(
     "",
     summary="Get workspace info",
@@ -275,46 +324,7 @@ async def download_file(
     if file is None:
         raise fastapi.HTTPException(status_code=404, detail="File not found")
 
-    storage = await get_workspace_storage()
-
-    # For local storage, stream the file directly
-    if file.storagePath.startswith("local://"):
-        content = await storage.retrieve(file.storagePath)
-        return Response(
-            content=content,
-            media_type=file.mimeType,
-            headers={
-                "Content-Disposition": f'attachment; filename="{file.name}"',
-                "Content-Length": str(len(content)),
-            },
-        )
-
-    # For GCS, try to redirect to signed URL, fall back to streaming
-    try:
-        url = await storage.get_download_url(file.storagePath, expires_in=300)
-        # If we got back an API path (fallback), stream directly instead
-        if url.startswith("/api/"):
-            content = await storage.retrieve(file.storagePath)
-            return Response(
-                content=content,
-                media_type=file.mimeType,
-                headers={
-                    "Content-Disposition": f'attachment; filename="{file.name}"',
-                    "Content-Length": str(len(content)),
-                },
-            )
-        return fastapi.responses.RedirectResponse(url=url, status_code=302)
-    except Exception:
-        # Fall back to streaming directly from GCS
-        content = await storage.retrieve(file.storagePath)
-        return Response(
-            content=content,
-            media_type=file.mimeType,
-            headers={
-                "Content-Disposition": f'attachment; filename="{file.name}"',
-                "Content-Length": str(len(content)),
-            },
-        )
+    return await _create_file_download_response(file)
 
 
 @router.get(
@@ -423,46 +433,7 @@ async def download_file_by_path(
     if file is None:
         raise fastapi.HTTPException(status_code=404, detail="File not found")
 
-    storage = await get_workspace_storage()
-
-    # For local storage, stream the file directly
-    if file.storagePath.startswith("local://"):
-        content = await storage.retrieve(file.storagePath)
-        return Response(
-            content=content,
-            media_type=file.mimeType,
-            headers={
-                "Content-Disposition": f'attachment; filename="{file.name}"',
-                "Content-Length": str(len(content)),
-            },
-        )
-
-    # For GCS, try to redirect to signed URL, fall back to streaming
-    try:
-        url = await storage.get_download_url(file.storagePath, expires_in=300)
-        # If we got back an API path (fallback), stream directly instead
-        if url.startswith("/api/"):
-            content = await storage.retrieve(file.storagePath)
-            return Response(
-                content=content,
-                media_type=file.mimeType,
-                headers={
-                    "Content-Disposition": f'attachment; filename="{file.name}"',
-                    "Content-Length": str(len(content)),
-                },
-            )
-        return fastapi.responses.RedirectResponse(url=url, status_code=302)
-    except Exception:
-        # Fall back to streaming directly from GCS
-        content = await storage.retrieve(file.storagePath)
-        return Response(
-            content=content,
-            media_type=file.mimeType,
-            headers={
-                "Content-Disposition": f'attachment; filename="{file.name}"',
-                "Content-Length": str(len(content)),
-            },
-        )
+    return await _create_file_download_response(file)
 
 
 @router.delete(
