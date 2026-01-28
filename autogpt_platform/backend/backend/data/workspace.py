@@ -20,21 +20,22 @@ async def get_or_create_workspace(user_id: str) -> UserWorkspace:
     """
     Get user's workspace, creating one if it doesn't exist.
 
+    Uses upsert to handle race conditions when multiple concurrent requests
+    attempt to create a workspace for the same user.
+
     Args:
         user_id: The user's ID
 
     Returns:
         UserWorkspace instance
     """
-    workspace = await UserWorkspace.prisma().find_unique(where={"userId": user_id})
-
-    if workspace is None:
-        workspace = await UserWorkspace.prisma().create(
-            data={
-                "userId": user_id,
-            }
-        )
-        logger.info(f"Created new workspace {workspace.id} for user {user_id}")
+    workspace = await UserWorkspace.prisma().upsert(
+        where={"userId": user_id},
+        data={
+            "create": {"userId": user_id},
+            "update": {},  # No updates needed if exists
+        },
+    )
 
     return workspace
 
