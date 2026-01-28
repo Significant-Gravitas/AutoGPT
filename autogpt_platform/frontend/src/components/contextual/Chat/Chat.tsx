@@ -35,6 +35,7 @@ export function Chat({
     sessionId,
     createSession,
     showLoader,
+    startPollingForOperation,
   } = useChat({ urlSessionId });
 
   useEffect(() => {
@@ -86,6 +87,7 @@ export function Chat({
             initialPrompt={initialPrompt}
             className="flex-1"
             onStreamingChange={onStreamingChange}
+            onOperationStarted={startPollingForOperation}
           />
         )}
       </main>

@@ -14,16 +14,40 @@ import {
   processInitialMessages,
 } from "./helpers";
 
+// Helper to generate deduplication key for a message
+function getMessageKey(msg: ChatMessageData): string {
+  if (msg.type === "message") {
+    // Don't include timestamp - dedupe by role + content only
+    // This handles the case where local and server timestamps differ
+    // Server messages are authoritative, so duplicates from local state are filtered
+    return `msg:${msg.role}:${msg.content}`;
+  } else if (msg.type === "tool_call") {
+    return `toolcall:${msg.toolId}`;
+  } else if (msg.type === "tool_response") {
+    return `toolresponse:${(msg as any).toolId}`;
+  } else if (
+    msg.type === "operation_started" ||
+    msg.type === "operation_pending" ||
+    msg.type === "operation_in_progress"
+  ) {
+    return `op:${(msg as any).toolId || (msg as any).operationId || (msg as any).toolCallId || ""}:${msg.toolName}`;
+  } else {
+    return `${msg.type}:${JSON.stringify(msg).slice(0, 100)}`;
+  }
+}
+
 interface Args {
   sessionId: string | null;
   initialMessages: SessionDetailResponse["messages"];
   initialPrompt?: string;
+  onOperationStarted?: () => void;
 }
 
 export function useChatContainer({
   sessionId,
   initialMessages,
   initialPrompt,
+  onOperationStarted,
 }: Args) {
   const [messages, setMessages] = useState<ChatMessageData[]>([]);
   const [streamingChunks, setStreamingChunks] = useState<string[]>([]);
@@ -73,13 +97,20 @@ export function useChatContainer({
         setIsRegionBlockedModalOpen,
         sessionId,
         setIsStreamingInitiated,
+        onOperationStarted,
       });
 
       setIsStreamingInitiated(true);
       const skipReplay = initialMessages.length > 0;
       return subscribeToStream(sessionId, dispatcher, skipReplay);
     },
-    [sessionId, stopStreaming, activeStreams, subscribeToStream],
+    [
+      sessionId,
+      stopStreaming,
+      activeStreams,
+      subscribeToStream,
+      onOperationStarted,
+    ],
   );
 
   // Collect toolIds from completed tool results in initialMessages
@@ -130,12 +161,19 @@ export function useChatContainer({
   );
 
   // Combine initial messages from backend with local streaming messages,
-  // then deduplicate to prevent duplicates when polling refreshes initialMessages
+  // Server messages maintain correct order; only append truly new local messages
   const allMessages = useMemo(() => {
     const processedInitial = processInitialMessages(initialMessages);
 
-    // Filter local messages to remove operation messages for completed tools
-    const filteredLocalMessages = messages.filter((msg) => {
+    // Build a set of keys from server messages for deduplication
+    const serverKeys = new Set<string>();
+    for (const msg of processedInitial) {
+      serverKeys.add(getMessageKey(msg));
+    }
+
+    // Filter local messages: remove duplicates and completed operation messages
+    const newLocalMessages = messages.filter((msg) => {
+      // Remove operation messages for completed tools
       if (
         msg.type === "operation_started" ||
         msg.type === "operation_pending" ||
@@ -143,48 +181,17 @@ export function useChatContainer({
       ) {
         const toolId = (msg as any).toolId || (msg as any).toolCallId;
         if (toolId && completedToolIds.has(toolId)) {
-          return false; // Filter out - operation completed
+          return false;
         }
       }
-      return true;
+      // Remove messages that already exist in server data
+      const key = getMessageKey(msg);
+      return !serverKeys.has(key);
     });
 
-    const combined = [...processedInitial, ...filteredLocalMessages];
-
-    // Deduplicate by content+role+timestamp. When initialMessages is refreshed via polling,
-    // it may contain messages that are also in the local `messages` state.
-    // Including timestamp prevents dropping legitimate repeated messages (e.g., user sends "yes" twice)
-    const seen = new Set<string>();
-    return combined.filter((msg) => {
-      // Create a key based on type, role, content, and timestamp for deduplication
-      let key: string;
-      if (msg.type === "message") {
-        // Use timestamp (rounded to nearest second) to allow slight variations
-        // while still catching true duplicates from SSE/polling overlap
-        const ts = msg.timestamp
-          ? Math.floor(new Date(msg.timestamp).getTime() / 1000)
-          : "";
-        key = `msg:${msg.role}:${ts}:${msg.content}`;
-      } else if (msg.type === "tool_call") {
-        key = `toolcall:${msg.toolId}`;
-      } else if (
-        msg.type === "operation_started" ||
-        msg.type === "operation_pending" ||
-        msg.type === "operation_in_progress"
-      ) {
-        // Dedupe operation messages by toolId or operationId
-        key = `op:${(msg as any).toolId || (msg as any).operationId || (msg as any).toolCallId || ""}:${msg.toolName}`;
-      } else {
-        // For other types, use a combination of type and first few fields
-        key = `${msg.type}:${JSON.stringify(msg).slice(0, 100)}`;
-      }
-      if (seen.has(key)) {
-        return false;
-      }
-      seen.add(key);
-      return true;
-    });
-  }, [initialMessages, messages]);
+    // Server messages first (correct order), then new local messages
+    return [...processedInitial, ...newLocalMessages];
+  }, [initialMessages, messages, completedToolIds]);
 
   async function sendMessage(
     content: string,
@@ -217,6 +224,7 @@ export function useChatContainer({
       setIsRegionBlockedModalOpen,
       sessionId,
       setIsStreamingInitiated,
+      onOperationStarted,
     });
 
     try {
