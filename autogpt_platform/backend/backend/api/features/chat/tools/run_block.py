@@ -1,6 +1,7 @@
 """Tool for executing blocks directly."""
 
 import logging
+import uuid
 from collections import defaultdict
 from typing import Any
 
@@ -10,6 +11,7 @@ from backend.data.execution import ExecutionContext
 from backend.data.model import CredentialsMetaInput
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util.exceptions import BlockError
+from backend.util.file import clean_exec_files
 
 from .base import BaseTool
 from .models import (
@@ -222,32 +224,37 @@ class RunBlockTool(BaseTool):
                 graph_version=None,
             )
 
-        try:
-            # Fetch actual credentials and prepare kwargs for block execution
-            # Create execution context with defaults (blocks may require it)
-            exec_kwargs: dict[str, Any] = {
-                "user_id": user_id,
-                "execution_context": ExecutionContext(),
-            }
+        # Generate synthetic execution context for standalone block execution
+        # These IDs are used as opaque strings for file paths and external APIs,
+        # not as DB foreign keys (blocks requiring real DB records are excluded via SECRT-1831)
+        synthetic_exec_id = f"copilot-{session.session_id}-{uuid.uuid4().hex[:8]}"
 
-            for field_name, cred_meta in matched_credentials.items():
-                # Inject metadata into input_data (for validation)
-                if field_name not in input_data:
-                    input_data[field_name] = cred_meta.model_dump()
+        exec_kwargs: dict[str, Any] = {
+            "user_id": user_id,
+            "graph_exec_id": synthetic_exec_id,
+            "node_exec_id": f"{synthetic_exec_id}-{uuid.uuid4().hex[:8]}",
+            "graph_id": f"copilot-{user_id}",
+            "graph_version": 1,
+            "node_id": block_id,
+            "execution_context": ExecutionContext(),
+        }
 
-                # Fetch actual credentials and pass as kwargs (for execution)
-                actual_credentials = await creds_manager.get(
-                    user_id, cred_meta.id, lock=False
+        # Fetch and inject credentials
+        for field_name, cred_meta in matched_credentials.items():
+            if field_name not in input_data:
+                input_data[field_name] = cred_meta.model_dump()
+
+            actual_credentials = await creds_manager.get(
+                user_id, cred_meta.id, lock=False
+            )
+            if not actual_credentials:
+                return ErrorResponse(
+                    message=f"Failed to retrieve credentials for {field_name}",
+                    session_id=session_id,
                 )
-                if actual_credentials:
-                    exec_kwargs[field_name] = actual_credentials
-                else:
-                    return ErrorResponse(
-                        message=f"Failed to retrieve credentials for {field_name}",
-                        session_id=session_id,
-                    )
+            exec_kwargs[field_name] = actual_credentials
 
-            # Execute the block and collect outputs
+        try:
             outputs: dict[str, list[Any]] = defaultdict(list)
             async for output_name, output_data in block.execute(
                 input_data,
@@ -278,6 +285,8 @@ class RunBlockTool(BaseTool):
                 error=str(e),
                 session_id=session_id,
             )
+        finally:
+            clean_exec_files(synthetic_exec_id)
 
     def _get_inputs_list(self, block: Any) -> list[dict[str, Any]]:
         """Extract non-credential inputs from block schema."""
