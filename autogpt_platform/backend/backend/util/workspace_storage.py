@@ -9,7 +9,7 @@ import asyncio
 import hashlib
 import logging
 from abc import ABC, abstractmethod
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -19,6 +19,11 @@ from gcloud.aio import storage as async_gcs_storage
 from google.cloud import storage as gcs_storage
 
 from backend.util.data import get_data_path
+from backend.util.gcs_utils import (
+    download_with_fresh_session,
+    generate_signed_url,
+    parse_gcs_path,
+)
 from backend.util.settings import Config
 
 logger = logging.getLogger(__name__)
@@ -159,44 +164,12 @@ class GCSWorkspaceStorage(WorkspaceStorageBackend):
 
     async def retrieve(self, storage_path: str) -> bytes:
         """Retrieve file from GCS."""
-        if not storage_path.startswith("gcs://"):
-            raise ValueError(f"Invalid GCS path: {storage_path}")
-
-        # Parse bucket and blob name
-        path = storage_path[6:]  # Remove "gcs://"
-        parts = path.split("/", 1)
-        if len(parts) != 2:
-            raise ValueError(f"Invalid GCS path format: {storage_path}")
-
-        bucket_name, blob_name = parts
-
-        # Create fresh session for download
-        session = aiohttp.ClientSession(
-            connector=aiohttp.TCPConnector(limit=10, force_close=True)
-        )
-        try:
-            client = async_gcs_storage.Storage(session=session)
-            content = await client.download(bucket_name, blob_name)
-            await client.close()
-            return content
-        except Exception as e:
-            if "404" in str(e) or "Not Found" in str(e):
-                raise FileNotFoundError(f"File not found: {storage_path}")
-            raise
-        finally:
-            await session.close()
+        bucket_name, blob_name = parse_gcs_path(storage_path)
+        return await download_with_fresh_session(bucket_name, blob_name)
 
     async def delete(self, storage_path: str) -> None:
         """Delete file from GCS."""
-        if not storage_path.startswith("gcs://"):
-            raise ValueError(f"Invalid GCS path: {storage_path}")
-
-        path = storage_path[6:]
-        parts = path.split("/", 1)
-        if len(parts) != 2:
-            raise ValueError(f"Invalid GCS path format: {storage_path}")
-
-        bucket_name, blob_name = parts
+        bucket_name, blob_name = parse_gcs_path(storage_path)
         client = await self._get_async_client()
 
         try:
@@ -214,15 +187,7 @@ class GCSWorkspaceStorage(WorkspaceStorageBackend):
         Falls back to an API proxy endpoint if signed URL generation fails
         (e.g., when running locally with user OAuth credentials).
         """
-        if not storage_path.startswith("gcs://"):
-            raise ValueError(f"Invalid GCS path: {storage_path}")
-
-        path = storage_path[6:]
-        parts = path.split("/", 1)
-        if len(parts) != 2:
-            raise ValueError(f"Invalid GCS path format: {storage_path}")
-
-        bucket_name, blob_name = parts
+        bucket_name, blob_name = parse_gcs_path(storage_path)
 
         # Extract file_id from blob_name for fallback: workspaces/{workspace_id}/{file_id}/{filename}
         blob_parts = blob_name.split("/")
@@ -231,16 +196,9 @@ class GCSWorkspaceStorage(WorkspaceStorageBackend):
         # Try to generate signed URL (requires service account credentials)
         try:
             sync_client = self._get_sync_client()
-            bucket = sync_client.bucket(bucket_name)
-            blob = bucket.blob(blob_name)
-
-            url = await asyncio.to_thread(
-                blob.generate_signed_url,
-                version="v4",
-                expiration=datetime.now(timezone.utc) + timedelta(seconds=expires_in),
-                method="GET",
+            return await generate_signed_url(
+                sync_client, bucket_name, blob_name, expires_in
             )
-            return url
         except AttributeError as e:
             # Signed URL generation requires service account with private key.
             # When running with user OAuth credentials, fall back to API proxy.
