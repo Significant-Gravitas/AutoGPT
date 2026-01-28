@@ -213,6 +213,7 @@ async def list_workspace_files(
 
 async def count_workspace_files(
     workspace_id: str,
+    path_prefix: Optional[str] = None,
     include_deleted: bool = False,
 ) -> int:
     """
@@ -220,6 +221,7 @@ async def count_workspace_files(
 
     Args:
         workspace_id: The workspace ID
+        path_prefix: Optional path prefix to filter (e.g., "/sessions/abc123/")
         include_deleted: Whether to include soft-deleted files
 
     Returns:
@@ -228,6 +230,12 @@ async def count_workspace_files(
     where_clause: dict = {"workspaceId": workspace_id}
     if not include_deleted:
         where_clause["isDeleted"] = False
+
+    if path_prefix:
+        # Normalize prefix
+        if not path_prefix.startswith("/"):
+            path_prefix = f"/{path_prefix}"
+        where_clause["path"] = {"startswith": path_prefix}
 
     return await UserWorkspaceFile.prisma().count(where=where_clause)
 

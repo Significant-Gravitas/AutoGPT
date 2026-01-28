@@ -156,7 +156,9 @@ class ListWorkspaceFilesTool(BaseTool):
                 limit=limit,
                 include_all_sessions=include_all_sessions,
             )
-            total = await manager.get_file_count()
+            total = await manager.get_file_count(
+                include_all_sessions=include_all_sessions
+            )
 
             file_infos = [
                 WorkspaceFileInfoData(
