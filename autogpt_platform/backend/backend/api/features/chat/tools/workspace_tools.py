@@ -326,9 +326,10 @@ class ReadWorkspaceFileTool(BaseTool):
                     session_id=session_id,
                 )
 
-            # Return metadata + URL for large or binary files
+            # Return metadata + workspace:// reference for large or binary files
             # This prevents context bloat (100KB file = ~133KB as base64)
-            download_url = await manager.get_download_url(target_file_id)
+            # Use workspace:// format so frontend urlTransform can add proxy prefix
+            download_url = f"workspace://{target_file_id}"
 
             # Generate preview for text files
             preview: str | None = None
