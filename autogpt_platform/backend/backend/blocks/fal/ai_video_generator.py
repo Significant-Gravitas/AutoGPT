@@ -67,9 +67,13 @@ class AIVideoGeneratorBlock(Block):
                 "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,
-            test_output=[("video_url", "https://fal.media/files/example/video.mp4")],
+            test_output=[
+                # Output will be a workspace ref or data URI depending on context
+                ("video_url", lambda x: x.startswith(("workspace://", "data:"))),
+            ],
             test_mock={
-                "generate_video": lambda *args, **kwargs: "https://fal.media/files/example/video.mp4"
+                # Use data URI to avoid HTTP requests during tests
+                "generate_video": lambda *args, **kwargs: "data:video/mp4;base64,AAAAIGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDEAAAAIZnJlZQAAA"
             },
         )
 

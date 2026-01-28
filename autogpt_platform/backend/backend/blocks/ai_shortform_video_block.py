@@ -274,7 +274,10 @@ class AIShortformVideoCreatorBlock(Block):
                 "voice": Voice.LILY,
                 "video_style": VisualMediaType.STOCK_VIDEOS,
             },
-            test_output=("video_url", "https://example.com/video.mp4"),
+            test_output=(
+                "video_url",
+                lambda x: x.startswith(("workspace://", "data:")),
+            ),
             test_mock={
                 "create_webhook": lambda *args, **kwargs: (
                     "test_uuid",
@@ -283,9 +286,10 @@ class AIShortformVideoCreatorBlock(Block):
                 "create_video": lambda *args, **kwargs: {"pid": "test_pid"},
                 "check_video_status": lambda *args, **kwargs: {
                     "status": "ready",
-                    "videoUrl": "https://example.com/video.mp4",
+                    "videoUrl": "data:video/mp4;base64,AAAA",
                 },
-                "wait_for_video": lambda *args, **kwargs: "https://example.com/video.mp4",
+                # Use data URI to avoid HTTP requests during tests
+                "wait_for_video": lambda *args, **kwargs: "data:video/mp4;base64,AAAA",
             },
             test_credentials=TEST_CREDENTIALS,
         )
@@ -461,7 +465,10 @@ class AIAdMakerVideoCreatorBlock(Block):
                     "https://cdn.revid.ai/uploads/1747076315114-image.png",
                 ],
             },
-            test_output=("video_url", "https://example.com/ad.mp4"),
+            test_output=(
+                "video_url",
+                lambda x: x.startswith(("workspace://", "data:")),
+            ),
             test_mock={
                 "create_webhook": lambda *args, **kwargs: (
                     "test_uuid",
@@ -470,9 +477,9 @@ class AIAdMakerVideoCreatorBlock(Block):
                 "create_video": lambda *args, **kwargs: {"pid": "test_pid"},
                 "check_video_status": lambda *args, **kwargs: {
                     "status": "ready",
-                    "videoUrl": "https://example.com/ad.mp4",
+                    "videoUrl": "data:video/mp4;base64,AAAA",
                 },
-                "wait_for_video": lambda *args, **kwargs: "https://example.com/ad.mp4",
+                "wait_for_video": lambda *args, **kwargs: "data:video/mp4;base64,AAAA",
             },
             test_credentials=TEST_CREDENTIALS,
         )
@@ -653,7 +660,10 @@ class AIScreenshotToVideoAdBlock(Block):
                 "script": "Amazing numbers!",
                 "screenshot_url": "https://cdn.revid.ai/uploads/1747080376028-image.png",
             },
-            test_output=("video_url", "https://example.com/screenshot.mp4"),
+            test_output=(
+                "video_url",
+                lambda x: x.startswith(("workspace://", "data:")),
+            ),
             test_mock={
                 "create_webhook": lambda *args, **kwargs: (
                     "test_uuid",
@@ -662,9 +672,9 @@ class AIScreenshotToVideoAdBlock(Block):
                 "create_video": lambda *args, **kwargs: {"pid": "test_pid"},
                 "check_video_status": lambda *args, **kwargs: {
                     "status": "ready",
-                    "videoUrl": "https://example.com/screenshot.mp4",
+                    "videoUrl": "data:video/mp4;base64,AAAA",
                 },
-                "wait_for_video": lambda *args, **kwargs: "https://example.com/screenshot.mp4",
+                "wait_for_video": lambda *args, **kwargs: "data:video/mp4;base64,AAAA",
             },
             test_credentials=TEST_CREDENTIALS,
         )

@@ -122,10 +122,12 @@ class AIImageEditorBlock(Block):
                 "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_output=[
-                ("output_image", "https://replicate.com/output/edited-image.png"),
+                # Output will be a workspace ref or data URI depending on context
+                ("output_image", lambda x: x.startswith(("workspace://", "data:"))),
             ],
             test_mock={
-                "run_model": lambda *args, **kwargs: "https://replicate.com/output/edited-image.png",
+                # Use data URI to avoid HTTP requests during tests
+                "run_model": lambda *args, **kwargs: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
             },
             test_credentials=TEST_CREDENTIALS,
         )

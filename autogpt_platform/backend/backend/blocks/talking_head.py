@@ -105,7 +105,7 @@ class CreateTalkingAvatarVideoBlock(Block):
             test_output=[
                 (
                     "video_url",
-                    "https://d-id.com/api/clips/abcd1234-5678-efgh-ijkl-mnopqrstuvwx/video",
+                    lambda x: x.startswith(("workspace://", "data:")),
                 ),
             ],
             test_mock={
@@ -113,9 +113,10 @@ class CreateTalkingAvatarVideoBlock(Block):
                     "id": "abcd1234-5678-efgh-ijkl-mnopqrstuvwx",
                     "status": "created",
                 },
+                # Use data URI to avoid HTTP requests during tests
                 "get_clip_status": lambda *args, **kwargs: {
                     "status": "done",
-                    "result_url": "https://d-id.com/api/clips/abcd1234-5678-efgh-ijkl-mnopqrstuvwx/video",
+                    "result_url": "data:video/mp4;base64,AAAA",
                 },
             },
             test_credentials=TEST_CREDENTIALS,
