@@ -14,7 +14,9 @@ import { AgentCarouselMessage } from "../AgentCarouselMessage/AgentCarouselMessa
 import { AIChatBubble } from "../AIChatBubble/AIChatBubble";
 import { AuthPromptWidget } from "../AuthPromptWidget/AuthPromptWidget";
 import { ChatCredentialsSetup } from "../ChatCredentialsSetup/ChatCredentialsSetup";
+import { ClarificationQuestionsWidget } from "../ClarificationQuestionsWidget/ClarificationQuestionsWidget";
 import { ExecutionStartedMessage } from "../ExecutionStartedMessage/ExecutionStartedMessage";
+import { PendingOperationWidget } from "../PendingOperationWidget/PendingOperationWidget";
 import { MarkdownContent } from "../MarkdownContent/MarkdownContent";
 import { NoResultsMessage } from "../NoResultsMessage/NoResultsMessage";
 import { ToolCallMessage } from "../ToolCallMessage/ToolCallMessage";
@@ -69,6 +71,10 @@ export function ChatMessage({
     isToolResponse,
     isLoginNeeded,
     isCredentialsNeeded,
+    isClarificationNeeded,
+    isOperationStarted,
+    isOperationPending,
+    isOperationInProgress,
   } = useChatMessage(message);
   const displayContent = getDisplayContent(message, isUser);
 
@@ -96,6 +102,18 @@ export function ChatMessage({
     }
   }
 
+  function handleClarificationAnswers(answers: Record<string, string>) {
+    if (onSendMessage) {
+      const contextMessage = Object.entries(answers)
+        .map(([keyword, answer]) => `${keyword}: ${answer}`)
+        .join("\n");
+
+      onSendMessage(
+        `I have the answers to your questions:\n\n${contextMessage}\n\nPlease proceed with creating the agent.`,
+      );
+    }
+  }
+
   const handleCopy = useCallback(
     async function handleCopy() {
       if (message.type !== "message") return;
@@ -111,10 +129,6 @@ export function ChatMessage({
     },
     [displayContent, message],
   );
-
-  function isLongResponse(content: string): boolean {
-    return content.split("\n").length > 5;
-  }
 
   const handleTryAgain = useCallback(() => {
     if (message.type !== "message" || !onSendMessage) return;
@@ -136,6 +150,17 @@ export function ChatMessage({
         message={message.message}
         onAllCredentialsComplete={handleAllCredentialsComplete}
         onCancel={handleCancelCredentials}
+        className={className}
+      />
+    );
+  }
+
+  if (isClarificationNeeded && message.type === "clarification_needed") {
+    return (
+      <ClarificationQuestionsWidget
+        questions={message.questions}
+        message={message.message}
+        onSubmitAnswers={handleClarificationAnswers}
         className={className}
       />
     );
@@ -269,6 +294,42 @@ export function ChatMessage({
     );
   }
 
+  // Render operation_started messages (long-running background operations)
+  if (isOperationStarted && message.type === "operation_started") {
+    return (
+      <PendingOperationWidget
+        status="started"
+        message={message.message}
+        toolName={message.toolName}
+        className={className}
+      />
+    );
+  }
+
+  // Render operation_pending messages (operations in progress when refreshing)
+  if (isOperationPending && message.type === "operation_pending") {
+    return (
+      <PendingOperationWidget
+        status="pending"
+        message={message.message}
+        toolName={message.toolName}
+        className={className}
+      />
+    );
+  }
+
+  // Render operation_in_progress messages (duplicate request while operation running)
+  if (isOperationInProgress && message.type === "operation_in_progress") {
+    return (
+      <PendingOperationWidget
+        status="in_progress"
+        message={message.message}
+        toolName={message.toolName}
+        className={className}
+      />
+    );
+  }
+
   // Render tool response messages (but skip agent_output if it's being rendered inside assistant message)
   if (isToolResponse && message.type === "tool_response") {
     return (
@@ -333,7 +394,7 @@ export function ChatMessage({
                   <ArrowsClockwiseIcon className="size-4 text-zinc-600" />
                 </Button>
               )}
-              {!isUser && isFinalMessage && isLongResponse(displayContent) && (
+              {!isUser && isFinalMessage && !isStreaming && (
                 <Button
                   variant="ghost"
                   size="icon"

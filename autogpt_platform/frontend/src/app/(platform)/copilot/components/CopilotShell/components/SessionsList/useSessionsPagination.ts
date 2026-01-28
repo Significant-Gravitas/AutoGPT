@@ -1,7 +1,7 @@
 import { useGetV2ListSessions } from "@/app/api/__generated__/endpoints/chat/chat";
 import type { SessionSummaryResponse } from "@/app/api/__generated__/models/sessionSummaryResponse";
 import { okData } from "@/app/api/helpers";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 const PAGE_SIZE = 50;
 
@@ -11,9 +11,11 @@ export interface UseSessionsPaginationArgs {
 
 export function useSessionsPagination({ enabled }: UseSessionsPaginationArgs) {
   const [offset, setOffset] = useState(0);
+
   const [accumulatedSessions, setAccumulatedSessions] = useState<
     SessionSummaryResponse[]
   >([]);
+
   const [totalCount, setTotalCount] = useState<number | null>(null);
 
   const { data, isLoading, isFetching, isError } = useGetV2ListSessions(
@@ -43,17 +45,14 @@ export function useSessionsPagination({ enabled }: UseSessionsPaginationArgs) {
     }
   }, [data, offset, enabled]);
 
-  const hasNextPage = useMemo(() => {
-    if (totalCount === null) return false;
-    return accumulatedSessions.length < totalCount;
-  }, [accumulatedSessions.length, totalCount]);
+  const hasNextPage =
+    totalCount !== null && accumulatedSessions.length < totalCount;
 
-  const areAllSessionsLoaded = useMemo(() => {
-    if (totalCount === null) return false;
-    return (
-      accumulatedSessions.length >= totalCount && !isFetching && !isLoading
-    );
-  }, [accumulatedSessions.length, totalCount, isFetching, isLoading]);
+  const areAllSessionsLoaded =
+    totalCount !== null &&
+    accumulatedSessions.length >= totalCount &&
+    !isFetching &&
+    !isLoading;
 
   useEffect(() => {
     if (
@@ -67,17 +66,17 @@ export function useSessionsPagination({ enabled }: UseSessionsPaginationArgs) {
     }
   }, [hasNextPage, isFetching, isLoading, isError, totalCount]);
 
-  function fetchNextPage() {
+  const fetchNextPage = () => {
     if (hasNextPage && !isFetching) {
       setOffset((prev) => prev + PAGE_SIZE);
     }
-  }
+  };
 
-  function reset() {
+  const reset = () => {
     setOffset(0);
     setAccumulatedSessions([]);
     setTotalCount(null);
-  }
+  };
 
   return {
     sessions: accumulatedSessions,

@@ -1,17 +1,27 @@
+import asyncio
 import logging
-from typing import List
+from typing import Any, List
 
 import autogpt_libs.auth as autogpt_auth_lib
 from fastapi import APIRouter, HTTPException, Query, Security, status
 from prisma.enums import ReviewStatus
 
-from backend.data.execution import get_graph_execution_meta
+from backend.data.execution import (
+    ExecutionContext,
+    ExecutionStatus,
+    get_graph_execution_meta,
+)
+from backend.data.graph import get_graph_settings
 from backend.data.human_review import (
+    create_auto_approval_record,
     get_pending_reviews_for_execution,
     get_pending_reviews_for_user,
+    get_reviews_by_node_exec_ids,
     has_pending_reviews_for_graph_exec,
     process_all_reviews_for_execution,
 )
+from backend.data.model import USER_TIMEZONE_NOT_SET
+from backend.data.user import get_user_by_id
 from backend.executor.utils import add_graph_execution
 
 from .model import PendingHumanReviewModel, ReviewRequest, ReviewResponse
@@ -127,23 +137,157 @@ async def process_review_action(
             detail="At least one review must be provided",
         )
 
-    # Build review decisions map
+    # Batch fetch all requested reviews (regardless of status for idempotent handling)
+    reviews_map = await get_reviews_by_node_exec_ids(
+        list(all_request_node_ids), user_id
+    )
+
+    # Validate all reviews were found (must exist, any status is OK for now)
+    missing_ids = all_request_node_ids - set(reviews_map.keys())
+    if missing_ids:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Review(s) not found: {', '.join(missing_ids)}",
+        )
+
+    # Validate all reviews belong to the same execution
+    graph_exec_ids = {review.graph_exec_id for review in reviews_map.values()}
+    if len(graph_exec_ids) > 1:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="All reviews in a single request must belong to the same execution.",
+        )
+
+    graph_exec_id = next(iter(graph_exec_ids))
+
+    # Validate execution status before processing reviews
+    graph_exec_meta = await get_graph_execution_meta(
+        user_id=user_id, execution_id=graph_exec_id
+    )
+
+    if not graph_exec_meta:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Graph execution #{graph_exec_id} not found",
+        )
+
+    # Only allow processing reviews if execution is paused for review
+    # or incomplete (partial execution with some reviews already processed)
+    if graph_exec_meta.status not in (
+        ExecutionStatus.REVIEW,
+        ExecutionStatus.INCOMPLETE,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Cannot process reviews while execution status is {graph_exec_meta.status}. "
+            f"Reviews can only be processed when execution is paused (REVIEW status). "
+            f"Current status: {graph_exec_meta.status}",
+        )
+
+    # Build review decisions map and track which reviews requested auto-approval
+    # Auto-approved reviews use original data (no modifications allowed)
     review_decisions = {}
+    auto_approve_requests = {}  # Map node_exec_id -> auto_approve_future flag
+
     for review in request.reviews:
         review_status = (
             ReviewStatus.APPROVED if review.approved else ReviewStatus.REJECTED
         )
+        # If this review requested auto-approval, don't allow data modifications
+        reviewed_data = None if review.auto_approve_future else review.reviewed_data
         review_decisions[review.node_exec_id] = (
             review_status,
-            review.reviewed_data,
+            reviewed_data,
             review.message,
         )
+        auto_approve_requests[review.node_exec_id] = review.auto_approve_future
 
     # Process all reviews
     updated_reviews = await process_all_reviews_for_execution(
         user_id=user_id,
         review_decisions=review_decisions,
     )
+
+    # Create auto-approval records for approved reviews that requested it
+    # Deduplicate by node_id to avoid race conditions when multiple reviews
+    # for the same node are processed in parallel
+    async def create_auto_approval_for_node(
+        node_id: str, review_result
+    ) -> tuple[str, bool]:
+        """
+        Create auto-approval record for a node.
+        Returns (node_id, success) tuple for tracking failures.
+        """
+        try:
+            await create_auto_approval_record(
+                user_id=user_id,
+                graph_exec_id=review_result.graph_exec_id,
+                graph_id=review_result.graph_id,
+                graph_version=review_result.graph_version,
+                node_id=node_id,
+                payload=review_result.payload,
+            )
+            return (node_id, True)
+        except Exception as e:
+            logger.error(
+                f"Failed to create auto-approval record for node {node_id}",
+                exc_info=e,
+            )
+            return (node_id, False)
+
+    # Collect node_exec_ids that need auto-approval
+    node_exec_ids_needing_auto_approval = [
+        node_exec_id
+        for node_exec_id, review_result in updated_reviews.items()
+        if review_result.status == ReviewStatus.APPROVED
+        and auto_approve_requests.get(node_exec_id, False)
+    ]
+
+    # Batch-fetch node executions to get node_ids
+    nodes_needing_auto_approval: dict[str, Any] = {}
+    if node_exec_ids_needing_auto_approval:
+        from backend.data.execution import get_node_executions
+
+        node_execs = await get_node_executions(
+            graph_exec_id=graph_exec_id, include_exec_data=False
+        )
+        node_exec_map = {node_exec.node_exec_id: node_exec for node_exec in node_execs}
+
+        for node_exec_id in node_exec_ids_needing_auto_approval:
+            node_exec = node_exec_map.get(node_exec_id)
+            if node_exec:
+                review_result = updated_reviews[node_exec_id]
+                # Use the first approved review for this node (deduplicate by node_id)
+                if node_exec.node_id not in nodes_needing_auto_approval:
+                    nodes_needing_auto_approval[node_exec.node_id] = review_result
+            else:
+                logger.error(
+                    f"Failed to create auto-approval record for {node_exec_id}: "
+                    f"Node execution not found. This may indicate a race condition "
+                    f"or data inconsistency."
+                )
+
+    # Execute all auto-approval creations in parallel (deduplicated by node_id)
+    auto_approval_results = await asyncio.gather(
+        *[
+            create_auto_approval_for_node(node_id, review_result)
+            for node_id, review_result in nodes_needing_auto_approval.items()
+        ],
+        return_exceptions=True,
+    )
+
+    # Count auto-approval failures
+    auto_approval_failed_count = 0
+    for result in auto_approval_results:
+        if isinstance(result, Exception):
+            # Unexpected exception during auto-approval creation
+            auto_approval_failed_count += 1
+            logger.error(
+                f"Unexpected exception during auto-approval creation: {result}"
+            )
+        elif isinstance(result, tuple) and len(result) == 2 and not result[1]:
+            # Auto-approval creation failed (returned False)
+            auto_approval_failed_count += 1
 
     # Count results
     approved_count = sum(
@@ -157,30 +301,53 @@ async def process_review_action(
         if review.status == ReviewStatus.REJECTED
     )
 
-    # Resume execution if we processed some reviews
+    # Resume execution only if ALL pending reviews for this execution have been processed
     if updated_reviews:
-        # Get graph execution ID from any processed review
-        first_review = next(iter(updated_reviews.values()))
-        graph_exec_id = first_review.graph_exec_id
-
-        # Check if any pending reviews remain for this execution
         still_has_pending = await has_pending_reviews_for_graph_exec(graph_exec_id)
 
         if not still_has_pending:
-            # Resume execution
+            # Get the graph_id from any processed review
+            first_review = next(iter(updated_reviews.values()))
+
             try:
+                # Fetch user and settings to build complete execution context
+                user = await get_user_by_id(user_id)
+                settings = await get_graph_settings(
+                    user_id=user_id, graph_id=first_review.graph_id
+                )
+
+                # Preserve user's timezone preference when resuming execution
+                user_timezone = (
+                    user.timezone if user.timezone != USER_TIMEZONE_NOT_SET else "UTC"
+                )
+
+                execution_context = ExecutionContext(
+                    human_in_the_loop_safe_mode=settings.human_in_the_loop_safe_mode,
+                    sensitive_action_safe_mode=settings.sensitive_action_safe_mode,
+                    user_timezone=user_timezone,
+                )
+
                 await add_graph_execution(
                     graph_id=first_review.graph_id,
                     user_id=user_id,
                     graph_exec_id=graph_exec_id,
+                    execution_context=execution_context,
                 )
                 logger.info(f"Resumed execution {graph_exec_id}")
             except Exception as e:
                 logger.error(f"Failed to resume execution {graph_exec_id}: {str(e)}")
 
+    # Build error message if auto-approvals failed
+    error_message = None
+    if auto_approval_failed_count > 0:
+        error_message = (
+            f"{auto_approval_failed_count} auto-approval setting(s) could not be saved. "
+            f"You may need to manually approve these reviews in future executions."
+        )
+
     return ReviewResponse(
         approved_count=approved_count,
         rejected_count=rejected_count,
-        failed_count=0,
-        error=None,
+        failed_count=auto_approval_failed_count,
+        error=error_message,
     )

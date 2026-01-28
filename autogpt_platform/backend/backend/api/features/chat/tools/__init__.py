@@ -1,8 +1,10 @@
+import logging
 from typing import TYPE_CHECKING, Any
 
 from openai.types.chat import ChatCompletionToolParam
 
 from backend.api.features.chat.model import ChatSession
+from backend.api.features.chat.tracking import track_tool_called
 
 from .add_understanding import AddUnderstandingTool
 from .agent_output import AgentOutputTool
@@ -19,6 +21,8 @@ from .search_docs import SearchDocsTool
 
 if TYPE_CHECKING:
     from backend.api.features.chat.response_model import StreamToolOutputAvailable
+
+logger = logging.getLogger(__name__)
 
 # Single source of truth for all tools
 TOOL_REGISTRY: dict[str, BaseTool] = {
@@ -45,6 +49,11 @@ tools: list[ChatCompletionToolParam] = [
 ]
 
 
+def get_tool(tool_name: str) -> BaseTool | None:
+    """Get a tool instance by name."""
+    return TOOL_REGISTRY.get(tool_name)
+
+
 async def execute_tool(
     tool_name: str,
     parameters: dict[str, Any],
@@ -53,7 +62,20 @@ async def execute_tool(
     tool_call_id: str,
 ) -> "StreamToolOutputAvailable":
     """Execute a tool by name."""
-    tool = TOOL_REGISTRY.get(tool_name)
+    tool = get_tool(tool_name)
     if not tool:
         raise ValueError(f"Tool {tool_name} not found")
+
+    # Track tool call in PostHog
+    logger.info(
+        f"Tracking tool call: tool={tool_name}, user={user_id}, "
+        f"session={session.session_id}, call_id={tool_call_id}"
+    )
+    track_tool_called(
+        user_id=user_id,
+        session_id=session.session_id,
+        tool_name=tool_name,
+        tool_call_id=tool_call_id,
+    )
+
     return await tool.execute(user_id, session, tool_call_id, **parameters)

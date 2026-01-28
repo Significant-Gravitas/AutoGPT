@@ -28,6 +28,10 @@ class ResponseType(str, Enum):
     BLOCK_OUTPUT = "block_output"
     DOC_SEARCH_RESULTS = "doc_search_results"
     DOC_PAGE = "doc_page"
+    # Long-running operation types
+    OPERATION_STARTED = "operation_started"
+    OPERATION_PENDING = "operation_pending"
+    OPERATION_IN_PROGRESS = "operation_in_progress"
 
 
 # Base response model
@@ -334,3 +338,39 @@ class BlockOutputResponse(ToolResponseBase):
     block_name: str
     outputs: dict[str, list[Any]]
     success: bool = True
+
+
+# Long-running operation models
+class OperationStartedResponse(ToolResponseBase):
+    """Response when a long-running operation has been started in the background.
+
+    This is returned immediately to the client while the operation continues
+    to execute. The user can close the tab and check back later.
+    """
+
+    type: ResponseType = ResponseType.OPERATION_STARTED
+    operation_id: str
+    tool_name: str
+
+
+class OperationPendingResponse(ToolResponseBase):
+    """Response stored in chat history while a long-running operation is executing.
+
+    This is persisted to the database so users see a pending state when they
+    refresh before the operation completes.
+    """
+
+    type: ResponseType = ResponseType.OPERATION_PENDING
+    operation_id: str
+    tool_name: str
+
+
+class OperationInProgressResponse(ToolResponseBase):
+    """Response when an operation is already in progress.
+
+    Returned for idempotency when the same tool_call_id is requested again
+    while the background task is still running.
+    """
+
+    type: ResponseType = ResponseType.OPERATION_IN_PROGRESS
+    tool_call_id: str

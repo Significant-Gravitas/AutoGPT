@@ -81,6 +81,7 @@ enum OnboardingStep {
   AGENT_INPUT
   CONGRATS
   // First Wins
+  VISIT_COPILOT
   GET_RESULTS
   MARKETPLACE_VISIT
   MARKETPLACE_ADD_AGENT
@@ -517,8 +518,6 @@ model AgentNodeExecution {
 
   stats Json?
 
-  PendingHumanReview PendingHumanReview?
-
   @@index([agentGraphExecutionId, agentNodeId, executionStatus])
   @@index([agentNodeId, executionStatus])
   @@index([addedTime, queuedTime])
@@ -567,6 +566,7 @@ enum ReviewStatus {
 }
 
 // Pending human reviews for Human-in-the-loop blocks
+// Also stores auto-approval records with special nodeExecId patterns (e.g., "auto_approve_{graph_exec_id}_{node_id}")
 model PendingHumanReview {
   nodeExecId    String       @id
   userId        String
@@ -585,7 +585,6 @@ model PendingHumanReview {
   reviewedAt    DateTime?
 
   User           User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  NodeExecution  AgentNodeExecution  @relation(fields: [nodeExecId], references: [id], onDelete: Cascade)
   GraphExecution AgentGraphExecution @relation(fields: [graphExecId], references: [id], onDelete: Cascade)
 
   @@unique([nodeExecId]) // One pending review per node execution
