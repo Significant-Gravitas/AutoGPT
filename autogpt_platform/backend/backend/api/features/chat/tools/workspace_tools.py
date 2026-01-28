@@ -382,7 +382,7 @@ class WriteWorkspaceFileTool(BaseTool):
         return (
             "Write or create a file in the user's workspace. "
             "Provide the content as a base64-encoded string. "
-            "Maximum file size is 100MB. "
+            f"Maximum file size is {Config().max_file_size_mb}MB. "
             "Files are saved to the current session's folder by default. "
             "Use /sessions/<session_id>/... for cross-session access."
         )
