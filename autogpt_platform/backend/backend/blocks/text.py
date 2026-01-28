@@ -454,9 +454,12 @@ class FileReadBlock(Block):
             return_format="for_local_processing",
         )
 
-        # Get full file path
-        assert execution_context.graph_exec_id  # Validated by store_media_file
-        file_path = get_exec_file_path(execution_context.graph_exec_id, stored_file_path)
+        # Get full file path (graph_exec_id validated by store_media_file above)
+        if not execution_context.graph_exec_id:
+            raise ValueError("execution_context.graph_exec_id is required")
+        file_path = get_exec_file_path(
+            execution_context.graph_exec_id, stored_file_path
+        )
 
         if not Path(file_path).exists():
             raise ValueError(f"File does not exist: {file_path}")
