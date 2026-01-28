@@ -5,12 +5,19 @@ import shutil
 import tempfile
 import uuid
 from pathlib import Path
+from typing import TYPE_CHECKING
 from urllib.parse import urlparse
+
+from prisma.enums import WorkspaceFileSource
 
 from backend.util.cloud_storage import get_cloud_storage_handler
 from backend.util.request import Requests
 from backend.util.type import MediaFileType
 from backend.util.virus_scanner import scan_content_safe
+from backend.util.workspace import WorkspaceManager
+
+if TYPE_CHECKING:
+    from backend.data.execution import ExecutionContext
 
 TEMP_DIR = Path(tempfile.gettempdir()).resolve()
 
@@ -67,36 +74,59 @@ def clean_exec_files(graph_exec_id: str, file: str = "") -> None:
 
 
 async def store_media_file(
-    graph_exec_id: str,
     file: MediaFileType,
-    user_id: str,
+    execution_context: "ExecutionContext",
+    *,
     return_content: bool = False,
 ) -> MediaFileType:
     """
-    Safely handle 'file' (a data URI, a URL, or a local path relative to {temp}/exec_file/{exec_id}),
-    placing or verifying it under:
+    Safely handle 'file' (a data URI, a URL, a workspace:// reference, or a local path
+    relative to {temp}/exec_file/{exec_id}), placing or verifying it under:
         {tempdir}/exec_file/{exec_id}/...
 
     If 'return_content=True', return a data URI (data:<mime>;base64,<content>).
     Otherwise, returns the file media path relative to the exec_id folder.
+
+    When execution_context has a workspace_id, files are also saved to the user's
+    persistent workspace (for CoPilot sessions).
 
     For each MediaFileType type:
     - Data URI:
       -> decode and store in a new random file in that folder
     - URL:
       -> download and store in that folder
+    - workspace:// reference:
+      -> read from user's workspace (requires workspace context)
+         workspace://abc123 - by file ID
+         workspace:///path/to/file.txt - by virtual path
     - Local path:
       -> interpret as relative to that folder; verify it exists
          (no copying, as it's presumably already there).
          We realpath-check so no symlink or '..' can escape the folder.
 
 
-    :param graph_exec_id:  The unique ID of the graph execution.
-    :param file:           Data URI, URL, or local (relative) path.
-    :param return_content: If True, return a data URI of the file content.
-                           If False, return the *relative* path inside the exec_id folder.
-    :return:               The requested result: data URI or relative path of the media.
+    :param file:               Data URI, URL, workspace://, or local (relative) path.
+    :param execution_context:  ExecutionContext with user_id, graph_exec_id, workspace_id.
+    :param return_content:     If True, return a data URI of the file content.
+                               If False, return the *relative* path inside the exec_id folder,
+                               or a workspace:// reference if workspace is available.
+    :return:                   The requested result: data URI, relative path, or workspace ref.
     """
+    # Extract values from execution_context
+    graph_exec_id = execution_context.graph_exec_id
+    user_id = execution_context.user_id
+
+    if not graph_exec_id:
+        raise ValueError("execution_context.graph_exec_id is required")
+    if not user_id:
+        raise ValueError("execution_context.user_id is required")
+
+    # Create workspace_manager if we have workspace_id (with session scoping)
+    workspace_manager: WorkspaceManager | None = None
+    if execution_context.workspace_id:
+        workspace_manager = WorkspaceManager(
+            user_id, execution_context.workspace_id, execution_context.session_id
+        )
     # Build base path
     base_path = Path(get_exec_file_path(graph_exec_id, ""))
     base_path.mkdir(parents=True, exist_ok=True)
@@ -142,9 +172,54 @@ async def store_media_file(
         """
         return str(absolute_path.relative_to(base))
 
-    # Check if this is a cloud storage path
+    # Get cloud storage handler for checking cloud paths
     cloud_storage = await get_cloud_storage_handler()
-    if cloud_storage.is_cloud_path(file):
+
+    # Check if this is a workspace file reference
+    if file.startswith("workspace://"):
+        if workspace_manager is None:
+            raise ValueError(
+                "Workspace file reference requires workspace context. "
+                "This file type is only available in CoPilot sessions."
+            )
+
+        # Parse workspace reference
+        # workspace://abc123 - by file ID
+        # workspace:///path/to/file.txt - by virtual path
+        file_ref = file[12:]  # Remove "workspace://"
+
+        if file_ref.startswith("/"):
+            # Path reference
+            workspace_content = await workspace_manager.read_file(file_ref)
+            file_info = await workspace_manager.get_file_info_by_path(file_ref)
+            filename = sanitize_filename(
+                file_info.name if file_info else f"{uuid.uuid4()}.bin"
+            )
+        else:
+            # ID reference
+            workspace_content = await workspace_manager.read_file_by_id(file_ref)
+            file_info = await workspace_manager.get_file_info(file_ref)
+            filename = sanitize_filename(
+                file_info.name if file_info else f"{uuid.uuid4()}.bin"
+            )
+
+        try:
+            target_path = _ensure_inside_base(base_path / filename, base_path)
+        except OSError as e:
+            raise ValueError(f"Invalid file path '{filename}': {e}") from e
+
+        # Check file size limit
+        if len(workspace_content) > MAX_FILE_SIZE:
+            raise ValueError(
+                f"File too large: {len(workspace_content)} bytes > {MAX_FILE_SIZE} bytes"
+            )
+
+        # Virus scan the workspace content before writing locally
+        await scan_content_safe(workspace_content, filename=filename)
+        target_path.write_bytes(workspace_content)
+
+    # Check if this is a cloud storage path
+    elif cloud_storage.is_cloud_path(file):
         # Download from cloud storage and store locally
         cloud_content = await cloud_storage.retrieve_file(
             file, user_id=user_id, graph_exec_id=graph_exec_id
@@ -230,11 +305,29 @@ async def store_media_file(
         if not target_path.is_file():
             raise ValueError(f"Local file does not exist: {target_path}")
 
-    # Return result
+    # If workspace_manager is provided, always save to workspace for persistence
+    # and return workspace reference instead of base64 (to prevent context bloat)
+    if workspace_manager is not None:
+        # Read the file we just wrote/verified and save to workspace
+        content = target_path.read_bytes()
+        filename = target_path.name
+
+        file_record = await workspace_manager.write_file(
+            content=content,
+            filename=filename,
+            source=WorkspaceFileSource.COPILOT,
+            overwrite=True,  # Allow overwriting if file already exists
+        )
+        # Always return workspace reference when workspace is available
+        # This prevents context bloat from large base64 data URIs
+        # (100KB file = ~133KB tokens as base64)
+        return MediaFileType(f"workspace://{file_record.id}")
+
+    # Legacy behavior: no workspace available (e.g., graph execution without workspace)
     if return_content:
         return MediaFileType(_file_to_data_uri(target_path))
-    else:
-        return MediaFileType(_strip_base_prefix(target_path, base_path))
+
+    return MediaFileType(_strip_base_prefix(target_path, base_path))
 
 
 def get_dir_size(path: Path) -> int:
