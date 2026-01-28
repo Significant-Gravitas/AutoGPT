@@ -102,8 +102,9 @@ class WorkspaceManager:
             # Resolve the provided path with session scoping
             return self._resolve_path(path)
         elif self.session_path:
-            # Default to session folder
-            return self.session_path
+            # Default to session folder with trailing slash to prevent prefix collisions
+            # e.g., "/sessions/abc" should not match "/sessions/abc123"
+            return self.session_path.rstrip("/") + "/"
         else:
             # No session context, use path as-is
             return path
