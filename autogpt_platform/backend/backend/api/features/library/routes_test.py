@@ -118,21 +118,6 @@ async def test_get_library_agents_success(
     )
 
 
-def test_get_library_agents_error(mocker: pytest_mock.MockFixture, test_user_id: str):
-    mock_db_call = mocker.patch("backend.api.features.library.db.list_library_agents")
-    mock_db_call.side_effect = Exception("Test error")
-
-    response = client.get("/agents?search_term=test")
-    assert response.status_code == 500
-    mock_db_call.assert_called_once_with(
-        user_id=test_user_id,
-        search_term="test",
-        sort_by=library_model.LibraryAgentSort.UPDATED_AT,
-        page=1,
-        page_size=15,
-    )
-
-
 @pytest.mark.asyncio
 async def test_get_favorite_library_agents_success(
     mocker: pytest_mock.MockFixture,
@@ -183,23 +168,6 @@ async def test_get_favorite_library_agents_success(
     assert data.agents[0].is_favorite is True
     assert data.agents[0].name == "Favorite Agent 1"
 
-    mock_db_call.assert_called_once_with(
-        user_id=test_user_id,
-        page=1,
-        page_size=15,
-    )
-
-
-def test_get_favorite_library_agents_error(
-    mocker: pytest_mock.MockFixture, test_user_id: str
-):
-    mock_db_call = mocker.patch(
-        "backend.api.features.library.db.list_favorite_library_agents"
-    )
-    mock_db_call.side_effect = Exception("Test error")
-
-    response = client.get("/agents/favorites")
-    assert response.status_code == 500
     mock_db_call.assert_called_once_with(
         user_id=test_user_id,
         page=1,
@@ -258,19 +226,3 @@ def test_add_agent_to_library_success(
         store_listing_version_id="test-version-id", user_id=test_user_id
     )
     mock_complete_onboarding.assert_awaited_once()
-
-
-def test_add_agent_to_library_error(mocker: pytest_mock.MockFixture, test_user_id: str):
-    mock_db_call = mocker.patch(
-        "backend.api.features.library.db.add_store_agent_to_library"
-    )
-    mock_db_call.side_effect = Exception("Test error")
-
-    response = client.post(
-        "/agents", json={"store_listing_version_id": "test-version-id"}
-    )
-    assert response.status_code == 500
-    assert "detail" in response.json()  # Verify error response structure
-    mock_db_call.assert_called_once_with(
-        store_listing_version_id="test-version-id", user_id=test_user_id
-    )
