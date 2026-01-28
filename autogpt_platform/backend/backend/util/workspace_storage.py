@@ -19,6 +19,7 @@ from gcloud.aio import storage as async_gcs_storage
 from google.cloud import storage as gcs_storage
 
 from backend.util.data import get_data_path
+from backend.util.file import sanitize_filename
 from backend.util.settings import Config
 
 logger = logging.getLogger(__name__)
@@ -305,8 +306,16 @@ class LocalWorkspaceStorage(WorkspaceStorageBackend):
         self.base_dir.mkdir(parents=True, exist_ok=True)
 
     def _build_file_path(self, workspace_id: str, file_id: str, filename: str) -> Path:
-        """Build the local file path."""
-        return self.base_dir / workspace_id / file_id / filename
+        """Build the local file path with path traversal protection."""
+        # Sanitize filename to prevent path traversal (removes / and \ among others)
+        safe_filename = sanitize_filename(filename)
+        file_path = (self.base_dir / workspace_id / file_id / safe_filename).resolve()
+
+        # Verify the resolved path is still under base_dir
+        if not file_path.is_relative_to(self.base_dir.resolve()):
+            raise ValueError("Invalid filename: path traversal detected")
+
+        return file_path
 
     def _parse_storage_path(self, storage_path: str) -> Path:
         """Parse local storage path to filesystem path."""
@@ -318,7 +327,9 @@ class LocalWorkspaceStorage(WorkspaceStorageBackend):
         full_path = (self.base_dir / relative_path).resolve()
 
         # Security check: ensure path is under base_dir
-        if not str(full_path).startswith(str(self.base_dir.resolve())):
+        # Use is_relative_to() for robust path containment check
+        # (handles case-insensitive filesystems and edge cases)
+        if not full_path.is_relative_to(self.base_dir.resolve()):
             raise ValueError("Invalid storage path: path traversal detected")
 
         return full_path
