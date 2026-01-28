@@ -46,6 +46,7 @@ from backend.integrations.providers import ProviderName
 from backend.monitoring.instrumentation import instrument_fastapi
 from backend.util import json
 from backend.util.cloud_storage import shutdown_cloud_storage_handler
+from backend.util.workspace_storage import shutdown_workspace_storage
 from backend.util.exceptions import (
     MissingConfigError,
     NotAuthorizedError,
@@ -124,6 +125,11 @@ async def lifespan_context(app: fastapi.FastAPI):
         await shutdown_cloud_storage_handler()
     except Exception as e:
         logger.warning(f"Error shutting down cloud storage handler: {e}")
+
+    try:
+        await shutdown_workspace_storage()
+    except Exception as e:
+        logger.warning(f"Error shutting down workspace storage: {e}")
 
     await backend.data.db.disconnect()
 

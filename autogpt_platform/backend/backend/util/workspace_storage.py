@@ -455,6 +455,23 @@ async def get_workspace_storage() -> WorkspaceStorageBackend:
     return _workspace_storage
 
 
+async def shutdown_workspace_storage() -> None:
+    """
+    Properly shutdown the global workspace storage backend.
+
+    Closes aiohttp sessions and other resources for GCS backend.
+    Should be called during application shutdown.
+    """
+    global _workspace_storage
+
+    if _workspace_storage is not None:
+        async with _storage_lock:
+            if _workspace_storage is not None:
+                if isinstance(_workspace_storage, GCSWorkspaceStorage):
+                    await _workspace_storage.close()
+                _workspace_storage = None
+
+
 def compute_file_checksum(content: bytes) -> str:
     """Compute SHA256 checksum of file content."""
     return hashlib.sha256(content).hexdigest()
