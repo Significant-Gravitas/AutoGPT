@@ -240,6 +240,11 @@ class WorkspaceManager:
                     source_session_id=source_session_id,
                 )
             else:
+                # Clean up the orphaned storage file before raising
+                try:
+                    await storage.delete(storage_path)
+                except Exception as e:
+                    logger.warning(f"Failed to clean up orphaned storage file: {e}")
                 raise ValueError(f"File already exists at path: {path}")
 
         logger.info(
@@ -274,8 +279,11 @@ class WorkspaceManager:
         """
         # Determine the effective path prefix
         if include_all_sessions:
-            # Use provided path as-is (or None for all files)
-            effective_path = path
+            # Normalize path to ensure leading slash (stored paths are normalized)
+            if path is not None and not path.startswith("/"):
+                effective_path = f"/{path}"
+            else:
+                effective_path = path
         elif path is not None:
             # Resolve the provided path with session scoping
             effective_path = self._resolve_path(path)
@@ -389,8 +397,11 @@ class WorkspaceManager:
         """
         # Determine the effective path prefix (same logic as list_files)
         if include_all_sessions:
-            # Use provided path as-is (or None for all files)
-            effective_path = path
+            # Normalize path to ensure leading slash (stored paths are normalized)
+            if path is not None and not path.startswith("/"):
+                effective_path = f"/{path}"
+            else:
+                effective_path = path
         elif path is not None:
             # Resolve the provided path with session scoping
             effective_path = self._resolve_path(path)

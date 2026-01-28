@@ -44,6 +44,18 @@ router = fastapi.APIRouter(
 )
 
 
+def _create_streaming_response(content: bytes, file) -> Response:
+    """Create a streaming response for file content."""
+    return Response(
+        content=content,
+        media_type=file.mimeType,
+        headers={
+            "Content-Disposition": _sanitize_filename_for_header(file.name),
+            "Content-Length": str(len(content)),
+        },
+    )
+
+
 async def _create_file_download_response(file) -> Response:
     """
     Create a download response for a workspace file.
@@ -56,14 +68,7 @@ async def _create_file_download_response(file) -> Response:
     # For local storage, stream the file directly
     if file.storagePath.startswith("local://"):
         content = await storage.retrieve(file.storagePath)
-        return Response(
-            content=content,
-            media_type=file.mimeType,
-            headers={
-                "Content-Disposition": _sanitize_filename_for_header(file.name),
-                "Content-Length": str(len(content)),
-            },
-        )
+        return _create_streaming_response(content, file)
 
     # For GCS, try to redirect to signed URL, fall back to streaming
     try:
@@ -71,26 +76,12 @@ async def _create_file_download_response(file) -> Response:
         # If we got back an API path (fallback), stream directly instead
         if url.startswith("/api/"):
             content = await storage.retrieve(file.storagePath)
-            return Response(
-                content=content,
-                media_type=file.mimeType,
-                headers={
-                    "Content-Disposition": _sanitize_filename_for_header(file.name),
-                    "Content-Length": str(len(content)),
-                },
-            )
+            return _create_streaming_response(content, file)
         return fastapi.responses.RedirectResponse(url=url, status_code=302)
     except Exception:
         # Fall back to streaming directly from GCS
         content = await storage.retrieve(file.storagePath)
-        return Response(
-            content=content,
-            media_type=file.mimeType,
-            headers={
-                "Content-Disposition": _sanitize_filename_for_header(file.name),
-                "Content-Length": str(len(content)),
-            },
-        )
+        return _create_streaming_response(content, file)
 
 
 @router.get(

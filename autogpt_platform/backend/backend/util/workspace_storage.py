@@ -86,19 +86,6 @@ class WorkspaceStorageBackend(ABC):
         """
         pass
 
-    @abstractmethod
-    async def exists(self, storage_path: str) -> bool:
-        """
-        Check if a file exists at the storage path.
-
-        Args:
-            storage_path: The storage path to check
-
-        Returns:
-            True if file exists, False otherwise
-        """
-        pass
-
 
 class GCSWorkspaceStorage(WorkspaceStorageBackend):
     """Google Cloud Storage implementation for workspace storage."""
@@ -265,25 +252,6 @@ class GCSWorkspaceStorage(WorkspaceStorageBackend):
                 return f"/api/workspace/files/{file_id}/download"
             raise
 
-    async def exists(self, storage_path: str) -> bool:
-        """Check if file exists in GCS."""
-        if not storage_path.startswith("gcs://"):
-            return False
-
-        path = storage_path[6:]
-        parts = path.split("/", 1)
-        if len(parts) != 2:
-            return False
-
-        bucket_name, blob_name = parts
-
-        try:
-            client = await self._get_async_client()
-            await client.download_metadata(bucket_name, blob_name)
-            return True
-        except Exception:
-            return False
-
 
 class LocalWorkspaceStorage(WorkspaceStorageBackend):
     """Local filesystem implementation for workspace storage (self-hosted deployments)."""
@@ -409,14 +377,6 @@ class LocalWorkspaceStorage(WorkspaceStorageBackend):
             return f"/api/workspace/files/{file_id}/download"
         else:
             raise ValueError(f"Invalid storage path format: {storage_path}")
-
-    async def exists(self, storage_path: str) -> bool:
-        """Check if file exists locally."""
-        try:
-            file_path = self._parse_storage_path(storage_path)
-            return file_path.exists()
-        except ValueError:
-            return False
 
 
 # Global storage backend instance

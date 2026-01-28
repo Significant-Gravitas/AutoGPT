@@ -38,6 +38,14 @@ interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
  * Uses the generated API URL helper and routes through the Next.js proxy
  * which handles authentication and proper backend routing.
  */
+/**
+ * URL transformer for ReactMarkdown.
+ * Converts workspace:// URLs to proxy URLs that route through Next.js to the backend.
+ * workspace://abc123 -> /api/proxy/api/workspace/files/abc123/download
+ *
+ * This is needed because ReactMarkdown sanitizes URLs and only allows
+ * http, https, mailto, and tel protocols by default.
+ */
 function resolveWorkspaceUrl(src: string): string {
   if (src.startsWith("workspace://")) {
     const fileId = src.replace("workspace://", "");
@@ -47,16 +55,6 @@ function resolveWorkspaceUrl(src: string): string {
     return `/api/proxy${apiPath}`;
   }
   return src;
-}
-
-/**
- * URL transformer for ReactMarkdown.
- * Transforms workspace:// URLs to backend API download URLs before rendering.
- * This is needed because ReactMarkdown sanitizes URLs and only allows
- * http, https, mailto, and tel protocols by default.
- */
-function transformUrl(url: string): string {
-  return resolveWorkspaceUrl(url);
 }
 
 /**
@@ -114,7 +112,7 @@ export function MarkdownContent({ content, className }: MarkdownContentProps) {
       <ReactMarkdown
         skipHtml={true}
         remarkPlugins={[remarkGfm]}
-        urlTransform={transformUrl}
+        urlTransform={resolveWorkspaceUrl}
         components={{
           code: ({ children, className, ...props }: CodeProps) => {
             const isInline = !className?.includes("language-");
