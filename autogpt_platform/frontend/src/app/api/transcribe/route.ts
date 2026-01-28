@@ -1,3 +1,4 @@
+import { getServerAuthToken } from "@/lib/autogpt-server-api/helpers";
 import { NextRequest, NextResponse } from "next/server";
 
 const WHISPER_API_URL = "https://api.openai.com/v1/audio/transcriptions";
@@ -9,6 +10,12 @@ function getExtensionFromMimeType(mimeType: string): string {
 }
 
 export async function POST(request: NextRequest) {
+  const token = await getServerAuthToken();
+
+  if (!token) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const apiKey = process.env.OPENAI_API_KEY;
 
   if (!apiKey) {
