@@ -11,6 +11,7 @@ import uuid
 from typing import Optional
 
 from prisma.enums import WorkspaceFileSource
+from prisma.errors import UniqueViolationError
 from prisma.models import UserWorkspaceFile
 
 from backend.data.workspace import (
@@ -20,7 +21,6 @@ from backend.data.workspace import (
     get_workspace_file_by_path,
     list_workspace_files,
     soft_delete_workspace_file,
-    workspace_file_exists,
 )
 from backend.util.workspace_storage import compute_file_checksum, get_workspace_storage
 
@@ -204,19 +204,43 @@ class WorkspaceManager:
             content=content,
         )
 
-        # Create database record
-        file = await create_workspace_file(
-            workspace_id=self.workspace_id,
-            name=filename,
-            path=path,
-            storage_path=storage_path,
-            mime_type=mime_type,
-            size_bytes=len(content),
-            checksum=checksum,
-            source=source,
-            source_exec_id=source_exec_id,
-            source_session_id=source_session_id,
-        )
+        # Create database record - handle race condition where another request
+        # created a file at the same path between our check and create
+        try:
+            file = await create_workspace_file(
+                workspace_id=self.workspace_id,
+                name=filename,
+                path=path,
+                storage_path=storage_path,
+                mime_type=mime_type,
+                size_bytes=len(content),
+                checksum=checksum,
+                source=source,
+                source_exec_id=source_exec_id,
+                source_session_id=source_session_id,
+            )
+        except UniqueViolationError:
+            # Race condition: another request created a file at this path
+            if overwrite:
+                # Re-fetch and delete the conflicting file, then retry
+                existing = await get_workspace_file_by_path(self.workspace_id, path)
+                if existing:
+                    await self.delete_file(existing.id)
+                # Retry the create
+                file = await create_workspace_file(
+                    workspace_id=self.workspace_id,
+                    name=filename,
+                    path=path,
+                    storage_path=storage_path,
+                    mime_type=mime_type,
+                    size_bytes=len(content),
+                    checksum=checksum,
+                    source=source,
+                    source_exec_id=source_exec_id,
+                    source_session_id=source_session_id,
+                )
+            else:
+                raise ValueError(f"File already exists at path: {path}")
 
         logger.info(
             f"Wrote file {file.id} ({filename}) to workspace {self.workspace_id} "
@@ -343,22 +367,6 @@ class WorkspaceManager:
         """
         resolved_path = self._resolve_path(path)
         return await get_workspace_file_by_path(self.workspace_id, resolved_path)
-
-    async def file_exists(self, path: str) -> bool:
-        """
-        Check if a file exists at the given path.
-
-        When session_id is set, paths are resolved relative to the session folder
-        unless they explicitly reference /sessions/...
-
-        Args:
-            path: Virtual path
-
-        Returns:
-            True if file exists
-        """
-        resolved_path = self._resolve_path(path)
-        return await workspace_file_exists(self.workspace_id, resolved_path)
 
     async def get_file_count(
         self,
