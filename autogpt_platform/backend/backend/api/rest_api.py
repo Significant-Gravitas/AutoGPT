@@ -324,7 +324,7 @@ app.include_router(
 )
 app.include_router(
     workspace_routes.router,
-    tags=["v2", "workspace"],
+    tags=["workspace"],
     prefix="/api/workspace",
 )
 app.include_router(
