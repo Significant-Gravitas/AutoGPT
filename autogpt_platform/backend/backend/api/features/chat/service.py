@@ -198,7 +198,7 @@ def _is_langfuse_configured() -> bool:
     )
 
 
-def _get_system_prompt_template(context: str) -> str:
+async def _get_system_prompt_template(context: str) -> str:
     """Get the system prompt, trying Langfuse first with fallback to default.
 
     Args:
@@ -210,8 +210,9 @@ def _get_system_prompt_template(context: str) -> str:
     if _is_langfuse_configured():
         try:
             # cache_ttl_seconds=0 disables SDK caching to always get the latest prompt
-            prompt = langfuse.get_prompt(
-                config.langfuse_prompt_name, cache_ttl_seconds=0
+            # Use asyncio.to_thread to avoid blocking the event loop
+            prompt = await asyncio.to_thread(
+                langfuse.get_prompt, config.langfuse_prompt_name, cache_ttl_seconds=0
             )
             return prompt.compile(users_information=context)
         except Exception as e:
@@ -245,7 +246,7 @@ async def _build_system_prompt(user_id: str | None) -> tuple[str, Any]:
     else:
         context = "This is the first time you are meeting the user. Greet them and introduce them to the platform"
 
-    compiled = _get_system_prompt_template(context)
+    compiled = await _get_system_prompt_template(context)
     return compiled, understanding
 
 
