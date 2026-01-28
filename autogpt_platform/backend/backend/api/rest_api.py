@@ -46,7 +46,6 @@ from backend.integrations.providers import ProviderName
 from backend.monitoring.instrumentation import instrument_fastapi
 from backend.util import json
 from backend.util.cloud_storage import shutdown_cloud_storage_handler
-from backend.util.workspace_storage import shutdown_workspace_storage
 from backend.util.exceptions import (
     MissingConfigError,
     NotAuthorizedError,
@@ -54,6 +53,7 @@ from backend.util.exceptions import (
 )
 from backend.util.feature_flag import initialize_launchdarkly, shutdown_launchdarkly
 from backend.util.service import UnhealthyServiceError
+from backend.util.workspace_storage import shutdown_workspace_storage
 
 from .external.fastapi_app import external_api
 from .features.analytics import router as analytics_router

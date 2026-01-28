@@ -23,18 +23,19 @@ def _sanitize_filename_for_header(filename: str) -> str:
     Uses RFC5987 encoding for non-ASCII characters.
     """
     # Remove CR, LF, and null bytes (header injection prevention)
-    sanitized = re.sub(r'[\r\n\x00]', '', filename)
+    sanitized = re.sub(r"[\r\n\x00]", "", filename)
     # Escape quotes
     sanitized = sanitized.replace('"', '\\"')
     # For non-ASCII, use RFC5987 filename* parameter
     # Check if filename has non-ASCII characters
     try:
-        sanitized.encode('ascii')
+        sanitized.encode("ascii")
         return f'attachment; filename="{sanitized}"'
     except UnicodeEncodeError:
         # Use RFC5987 encoding for UTF-8 filenames
-        encoded = quote(filename, safe='')
+        encoded = quote(filename, safe="")
         return f"attachment; filename*=UTF-8''{encoded}"
+
 
 logger = logging.getLogger(__name__)
 
