@@ -33,7 +33,7 @@ def _sanitize_filename_for_header(filename: str) -> str:
         return f'attachment; filename="{sanitized}"'
     except UnicodeEncodeError:
         # Use RFC5987 encoding for UTF-8 filenames
-        encoded = quote(filename, safe="")
+        encoded = quote(sanitized, safe="")
         return f"attachment; filename*=UTF-8''{encoded}"
 
 
