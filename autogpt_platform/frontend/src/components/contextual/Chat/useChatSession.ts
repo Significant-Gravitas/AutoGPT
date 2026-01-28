@@ -103,9 +103,14 @@ export function useChatSession({
     }
   }, [createError, loadError]);
 
+  // Track if we should be polling (set by external callers when they receive operation_started via SSE)
+  const [forcePolling, setForcePolling] = useState(false);
+  // Track if we've seen server acknowledge the pending operation (to avoid clearing forcePolling prematurely)
+  const hasSeenServerPendingRef = useRef(false);
+
   // Check if there are any pending operations in the messages
   // Must check all operation types: operation_pending, operation_started, operation_in_progress
-  const hasPendingOperations = useMemo(() => {
+  const hasPendingOperationsFromServer = useMemo(() => {
     if (!messages || messages.length === 0) return false;
     const pendingTypes = new Set([
       "operation_pending",
@@ -126,6 +131,35 @@ export function useChatSession({
     });
   }, [messages]);
 
+  // Track when server has acknowledged the pending operation
+  useEffect(() => {
+    if (hasPendingOperationsFromServer) {
+      hasSeenServerPendingRef.current = true;
+    }
+  }, [hasPendingOperationsFromServer]);
+
+  // Combined: poll if server has pending ops OR if we received operation_started via SSE
+  const hasPendingOperations = hasPendingOperationsFromServer || forcePolling;
+
+  // Clear forcePolling only after server has acknowledged AND completed the operation
+  useEffect(() => {
+    if (
+      forcePolling &&
+      !hasPendingOperationsFromServer &&
+      hasSeenServerPendingRef.current
+    ) {
+      // Server acknowledged the operation and it's now complete
+      setForcePolling(false);
+      hasSeenServerPendingRef.current = false;
+    }
+  }, [forcePolling, hasPendingOperationsFromServer]);
+
+  // Function to trigger polling (called when operation_started is received via SSE)
+  function startPollingForOperation() {
+    setForcePolling(true);
+    hasSeenServerPendingRef.current = false; // Reset for new operation
+  }
+
   // Refresh sessions list when a pending operation completes
   // (hasPendingOperations transitions from true to false)
   const prevHasPendingOperationsRef = useRef(hasPendingOperations);
@@ -144,7 +178,8 @@ export function useChatSession({
     [hasPendingOperations, sessionId, queryClient],
   );
 
-  // Poll for updates when there are pending operations (long poll - 10s intervals with backoff)
+  // Poll for updates when there are pending operations
+  // Backoff: 2s, 4s, 6s, 8s, 10s, ... up to 30s max
   const pollAttemptRef = useRef(0);
   const hasPendingOperationsRef = useRef(hasPendingOperations);
   hasPendingOperationsRef.current = hasPendingOperations;
@@ -159,27 +194,17 @@ export function useChatSession({
       let cancelled = false;
       let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
-      // Calculate delay with exponential backoff: 10s, 15s, 20s, 25s, 30s (max)
-      const baseDelay = 10000;
-      const maxDelay = 30000;
-
       function schedule() {
-        const delay = Math.min(
-          baseDelay + pollAttemptRef.current * 5000,
-          maxDelay,
-        );
+        // 2s, 4s, 6s, 8s, 10s, ... 30s (max)
+        const delay = Math.min((pollAttemptRef.current + 1) * 2000, 30000);
         timeoutId = setTimeout(async () => {
           if (cancelled) return;
-          console.info(
-            `[useChatSession] Polling for pending operation updates (attempt ${pollAttemptRef.current + 1})`,
-          );
           pollAttemptRef.current += 1;
           try {
             await refetch();
           } catch (err) {
             console.error("[useChatSession] Poll failed:", err);
           } finally {
-            // Continue polling if still pending and not cancelled
             if (!cancelled && hasPendingOperationsRef.current) {
               schedule();
             }
@@ -329,6 +354,7 @@ export function useChatSession({
     refreshSession,
     claimSession,
     clearSession,
+    startPollingForOperation,
   };
 }
 

@@ -22,6 +22,7 @@ export interface HandlerDependencies {
   setIsStreamingInitiated: Dispatch<SetStateAction<boolean>>;
   setIsRegionBlockedModalOpen: Dispatch<SetStateAction<boolean>>;
   sessionId: string;
+  onOperationStarted?: () => void;
 }
 
 export function isRegionBlockedError(chunk: StreamChunk): boolean {
@@ -163,6 +164,11 @@ export function handleToolResponse(
     }
     return;
   }
+  // Trigger polling when operation_started is received
+  if (responseMessage.type === "operation_started") {
+    deps.onOperationStarted?.();
+  }
+
   deps.setMessages((prev) => {
     const toolCallIndex = prev.findIndex(
       (msg) => msg.type === "tool_call" && msg.toolId === chunk.tool_id,
