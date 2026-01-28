@@ -265,9 +265,13 @@ async def get_onboarding_agents(
     "/onboarding/enabled",
     summary="Is onboarding enabled",
     tags=["onboarding", "public"],
-    dependencies=[Security(requires_user)],
 )
-async def is_onboarding_enabled() -> bool:
+async def is_onboarding_enabled(
+    user_id: Annotated[str, Security(get_user_id)],
+) -> bool:
+    # If chat is enabled for user, skip legacy onboarding
+    if await is_feature_enabled(Flag.CHAT, user_id, False):
+        return False
     return await onboarding_enabled()
 
 
@@ -364,6 +368,8 @@ async def execute_graph_block(
     obj = get_block(block_id)
     if not obj:
         raise HTTPException(status_code=404, detail=f"Block #{block_id} not found.")
+    if obj.disabled:
+        raise HTTPException(status_code=403, detail=f"Block #{block_id} is disabled.")
 
     user = await get_user_by_id(user_id)
     if not user:

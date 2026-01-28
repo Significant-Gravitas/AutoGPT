@@ -1,12 +1,37 @@
 -- CreateExtension
 -- Supabase: pgvector must be enabled via Dashboard → Database → Extensions first
--- Creates extension in current schema (determined by search_path from DATABASE_URL ?schema= param)
+-- Ensures vector extension is in the current schema (from DATABASE_URL ?schema= param)
+-- If it exists in a different schema (e.g., public), we drop and recreate it in the current schema
 -- This ensures vector type is in the same schema as tables, making ::vector work without explicit qualification
 DO $$
+DECLARE
+    current_schema_name text;
+    vector_schema text;
 BEGIN
-    CREATE EXTENSION IF NOT EXISTS "vector";
-EXCEPTION WHEN OTHERS THEN
-    RAISE NOTICE 'vector extension not available or already exists, skipping';
+    -- Get the current schema from search_path
+    SELECT current_schema() INTO current_schema_name;
+
+    -- Check if vector extension exists and which schema it's in
+    SELECT n.nspname INTO vector_schema
+    FROM pg_extension e
+    JOIN pg_namespace n ON e.extnamespace = n.oid
+    WHERE e.extname = 'vector';
+
+    -- Handle removal if in wrong schema
+    IF vector_schema IS NOT NULL AND vector_schema != current_schema_name THEN
+        BEGIN
+            -- Vector exists in a different schema, drop it first
+            RAISE WARNING 'pgvector found in schema "%" but need it in "%". Dropping and reinstalling...',
+                vector_schema, current_schema_name;
+            EXECUTE 'DROP EXTENSION IF EXISTS vector CASCADE';
+        EXCEPTION WHEN OTHERS THEN
+            RAISE EXCEPTION 'Failed to drop pgvector from schema "%": %. You may need to drop it manually.',
+                vector_schema, SQLERRM;
+        END;
+    END IF;
+
+    -- Create extension in current schema (let it fail naturally if not available)
+    EXECUTE format('CREATE EXTENSION IF NOT EXISTS vector SCHEMA %I', current_schema_name);
 END $$;
 
 -- CreateEnum

@@ -172,8 +172,8 @@ async def test_hybrid_search_without_embeddings():
         with patch(
             "backend.api.features.store.hybrid_search.query_raw_with_schema"
         ) as mock_query:
-            # Simulate embedding failure
-            mock_embed.return_value = None
+            # Simulate embedding failure by raising exception
+            mock_embed.side_effect = Exception("Embedding generation failed")
             mock_query.return_value = mock_results
 
             # Should NOT raise - graceful degradation
@@ -613,7 +613,9 @@ async def test_unified_hybrid_search_graceful_degradation():
             "backend.api.features.store.hybrid_search.embed_query"
         ) as mock_embed:
             mock_query.return_value = mock_results
-            mock_embed.return_value = None  # Embedding failure
+            mock_embed.side_effect = Exception(
+                "Embedding generation failed"
+            )  # Embedding failure
 
             # Should NOT raise - graceful degradation
             results, total = await unified_hybrid_search(

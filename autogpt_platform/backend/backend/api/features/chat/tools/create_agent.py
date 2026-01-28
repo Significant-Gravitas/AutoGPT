@@ -3,17 +3,13 @@
 import logging
 from typing import Any
 
-from langfuse import observe
-
 from backend.api.features.chat.model import ChatSession
 
 from .agent_generator import (
-    apply_all_fixes,
+    AgentGeneratorNotConfiguredError,
     decompose_goal,
     generate_agent,
-    get_blocks_info,
     save_agent_to_library,
-    validate_agent,
 )
 from .base import BaseTool
 from .models import (
@@ -26,9 +22,6 @@ from .models import (
 )
 
 logger = logging.getLogger(__name__)
-
-# Maximum retries for agent generation with validation feedback
-MAX_GENERATION_RETRIES = 2
 
 
 class CreateAgentTool(BaseTool):
@@ -47,6 +40,10 @@ class CreateAgentTool(BaseTool):
 
     @property
     def requires_auth(self) -> bool:
+        return True
+
+    @property
+    def is_long_running(self) -> bool:
         return True
 
     @property
@@ -80,7 +77,6 @@ class CreateAgentTool(BaseTool):
             "required": ["description"],
         }
 
-    @observe(as_type="tool", name="create_agent")
     async def _execute(
         self,
         user_id: str | None,
@@ -91,9 +87,8 @@ class CreateAgentTool(BaseTool):
 
         Flow:
         1. Decompose the description into steps (may return clarifying questions)
-        2. Generate agent JSON from the steps
-        3. Apply fixes to correct common LLM errors
-        4. Preview or save based on the save parameter
+        2. Generate agent JSON (external service handles fixing and validation)
+        3. Preview or save based on the save parameter
         """
         description = kwargs.get("description", "").strip()
         context = kwargs.get("context", "")
@@ -110,18 +105,23 @@ class CreateAgentTool(BaseTool):
         # Step 1: Decompose goal into steps
         try:
             decomposition_result = await decompose_goal(description, context)
-        except ValueError as e:
-            # Handle missing API key or configuration errors
+        except AgentGeneratorNotConfiguredError:
             return ErrorResponse(
-                message=f"Agent generation is not configured: {str(e)}",
-                error="configuration_error",
+                message=(
+                    "Agent generation is not available. "
+                    "The Agent Generator service is not configured."
+                ),
+                error="service_not_configured",
                 session_id=session_id,
             )
 
         if decomposition_result is None:
             return ErrorResponse(
-                message="Failed to analyze the goal. Please try rephrasing.",
-                error="Decomposition failed",
+                message="Failed to analyze the goal. The agent generation service may be unavailable or timed out. Please try again.",
+                error="decomposition_failed",
+                details={
+                    "description": description[:100]
+                },  # Include context for debugging
                 session_id=session_id,
             )
 
@@ -171,72 +171,35 @@ class CreateAgentTool(BaseTool):
                 session_id=session_id,
             )
 
-        # Step 2: Generate agent JSON with retry on validation failure
-        blocks_info = get_blocks_info()
-        agent_json = None
-        validation_errors = None
-
-        for attempt in range(MAX_GENERATION_RETRIES + 1):
-            # Generate agent (include validation errors from previous attempt)
-            if attempt == 0:
-                agent_json = await generate_agent(decomposition_result)
-            else:
-                # Retry with validation error feedback
-                logger.info(
-                    f"Retry {attempt}/{MAX_GENERATION_RETRIES} with validation feedback"
-                )
-                retry_instructions = {
-                    **decomposition_result,
-                    "previous_errors": validation_errors,
-                    "retry_instructions": (
-                        "The previous generation had validation errors. "
-                        "Please fix these issues in the new generation:\n"
-                        f"{validation_errors}"
-                    ),
-                }
-                agent_json = await generate_agent(retry_instructions)
-
-            if agent_json is None:
-                if attempt == MAX_GENERATION_RETRIES:
-                    return ErrorResponse(
-                        message="Failed to generate the agent. Please try again.",
-                        error="Generation failed",
-                        session_id=session_id,
-                    )
-                continue
-
-            # Step 3: Apply fixes to correct common errors
-            agent_json = apply_all_fixes(agent_json, blocks_info)
-
-            # Step 4: Validate the agent
-            is_valid, validation_errors = validate_agent(agent_json, blocks_info)
-
-            if is_valid:
-                logger.info(f"Agent generated successfully on attempt {attempt + 1}")
-                break
-
-            logger.warning(
-                f"Validation failed on attempt {attempt + 1}: {validation_errors}"
+        # Step 2: Generate agent JSON (external service handles fixing and validation)
+        try:
+            agent_json = await generate_agent(decomposition_result)
+        except AgentGeneratorNotConfiguredError:
+            return ErrorResponse(
+                message=(
+                    "Agent generation is not available. "
+                    "The Agent Generator service is not configured."
+                ),
+                error="service_not_configured",
+                session_id=session_id,
             )
 
-            if attempt == MAX_GENERATION_RETRIES:
-                # Return error with validation details
-                return ErrorResponse(
-                    message=(
-                        f"Generated agent has validation errors after {MAX_GENERATION_RETRIES + 1} attempts. "
-                        f"Please try rephrasing your request or simplify the workflow."
-                    ),
-                    error="validation_failed",
-                    details={"validation_errors": validation_errors},
-                    session_id=session_id,
-                )
+        if agent_json is None:
+            return ErrorResponse(
+                message="Failed to generate the agent. The agent generation service may be unavailable or timed out. Please try again.",
+                error="generation_failed",
+                details={
+                    "description": description[:100]
+                },  # Include context for debugging
+                session_id=session_id,
+            )
 
         agent_name = agent_json.get("name", "Generated Agent")
         agent_description = agent_json.get("description", "")
         node_count = len(agent_json.get("nodes", []))
         link_count = len(agent_json.get("links", []))
 
-        # Step 4: Preview or save
+        # Step 3: Preview or save
         if not save:
             return AgentPreviewResponse(
                 message=(

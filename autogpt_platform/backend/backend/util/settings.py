@@ -350,6 +350,19 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Whether to mark failed scans as clean or not",
     )
 
+    agentgenerator_host: str = Field(
+        default="",
+        description="The host for the Agent Generator service (empty to use built-in)",
+    )
+    agentgenerator_port: int = Field(
+        default=8000,
+        description="The port for the Agent Generator service",
+    )
+    agentgenerator_timeout: int = Field(
+        default=600,
+        description="The timeout in seconds for Agent Generator service requests (includes retries for rate limits)",
+    )
+
     enable_example_blocks: bool = Field(
         default=False,
         description="Whether to enable example blocks in production",
@@ -664,6 +677,12 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     langfuse_secret_key: str = Field(default="", description="Langfuse secret key")
     langfuse_host: str = Field(
         default="https://cloud.langfuse.com", description="Langfuse host URL"
+    )
+
+    # PostHog analytics
+    posthog_api_key: str = Field(default="", description="PostHog API key")
+    posthog_host: str = Field(
+        default="https://eu.i.posthog.com", description="PostHog host URL"
     )
 
     # Add more secret fields as needed
