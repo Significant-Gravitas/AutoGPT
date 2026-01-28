@@ -348,6 +348,7 @@ async def test_add_graph_execution_is_repeatable(mocker: MockerFixture):
     mock_graph_exec.id = "execution-id-123"
     mock_graph_exec.node_executions = []  # Add this to avoid AttributeError
     mock_graph_exec.status = ExecutionStatus.QUEUED  # Required for race condition check
+    mock_graph_exec.graph_version = graph_version
     mock_graph_exec.to_graph_execution_entry.return_value = mocker.MagicMock()
 
     # Mock the queue and event bus
@@ -614,6 +615,7 @@ async def test_add_graph_execution_with_nodes_to_skip(mocker: MockerFixture):
     mock_graph_exec.id = "execution-id-123"
     mock_graph_exec.node_executions = []
     mock_graph_exec.status = ExecutionStatus.QUEUED  # Required for race condition check
+    mock_graph_exec.graph_version = graph_version
 
     # Track what's passed to to_graph_execution_entry
     captured_kwargs = {}
