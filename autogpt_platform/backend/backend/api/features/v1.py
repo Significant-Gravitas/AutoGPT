@@ -270,7 +270,7 @@ async def is_onboarding_enabled(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> bool:
     # If chat is enabled for user, skip legacy onboarding
-    if await is_feature_enabled(Flag.CHAT, user_id, True):
+    if await is_feature_enabled(Flag.CHAT, user_id, False):
         return False
     return await onboarding_enabled()
 
