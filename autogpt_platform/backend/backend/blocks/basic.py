@@ -50,10 +50,10 @@ class FileStoreBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         # Determine return format based on user preference
-        # for_block_output: returns workspace:// if available, else data URI
+        # for_external_api: always returns data URI (base64) - honors "Produce Base64 Output"
         # for_local_processing: returns local file path
         return_format = (
-            "for_block_output" if input_data.base_64 else "for_local_processing"
+            "for_external_api" if input_data.base_64 else "for_local_processing"
         )
 
         yield "file_out", await store_media_file(
