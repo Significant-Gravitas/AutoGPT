@@ -138,15 +138,17 @@ class BannerbearTextOverlayBlock(Block):
             },
             test_output=[
                 ("success", True),
-                ("image_url", "https://cdn.bannerbear.com/test-image.jpg"),
+                # Output will be a workspace ref or data URI depending on context
+                ("image_url", lambda x: x.startswith(("workspace://", "data:"))),
                 ("uid", "test-uid-123"),
                 ("status", "completed"),
             ],
             test_mock={
+                # Use data URI to avoid HTTP requests during tests
                 "_make_api_request": lambda *args, **kwargs: {
                     "uid": "test-uid-123",
                     "status": "completed",
-                    "image_url": "https://cdn.bannerbear.com/test-image.jpg",
+                    "image_url": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/9oACAEBAAA/APn+v//Z",
                 }
             },
             test_credentials=TEST_CREDENTIALS,

@@ -73,7 +73,7 @@ class AIVideoGeneratorBlock(Block):
             ],
             test_mock={
                 # Use data URI to avoid HTTP requests during tests
-                "generate_video": lambda *args, **kwargs: "data:video/mp4;base64,AAAAIGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDEAAAAIZnJlZQAAA"
+                "generate_video": lambda *args, **kwargs: "data:video/mp4;base64,AAAA"
             },
         )
 
