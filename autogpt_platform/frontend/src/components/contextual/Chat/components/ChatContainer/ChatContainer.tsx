@@ -16,6 +16,7 @@ export interface ChatContainerProps {
   initialPrompt?: string;
   className?: string;
   onStreamingChange?: (isStreaming: boolean) => void;
+  onOperationStarted?: () => void;
 }
 
 export function ChatContainer({
@@ -24,6 +25,7 @@ export function ChatContainer({
   initialPrompt,
   className,
   onStreamingChange,
+  onOperationStarted,
 }: ChatContainerProps) {
   const {
     messages,
@@ -38,6 +40,7 @@ export function ChatContainer({
     sessionId,
     initialMessages,
     initialPrompt,
+    onOperationStarted,
   });
 
   useEffect(() => {

@@ -103,6 +103,12 @@ services:
       file: ./docker-compose.platform.yml
       service: frontend
 
+  agent_generator:
+    <<: *agpt-services
+    extends:
+      file: ./docker-compose.platform.yml
+      service: agent_generator
+
   # Supabase services (minimal: auth + db + kong)
   kong:
     <<: *supabase-services

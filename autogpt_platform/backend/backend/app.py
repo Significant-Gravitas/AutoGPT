@@ -34,14 +34,20 @@ def run_processes(*processes: "AppProcess", **kwargs):
 def main(**kwargs):
     """
     Run all the processes required for the AutoGPT-server (REST and WebSocket APIs).
-    """
 
+    If the agent-generator submodule is present, it will also be started automatically.
+    To initialize the submodule:
+        git submodule update --init autogpt_platform/agent-generator
+        cd autogpt_platform/agent-generator && poetry install
+    """
+    from backend.agent_generator import AgentGeneratorProcess
     from backend.api.rest_api import AgentServer
     from backend.api.ws_api import WebsocketServer
     from backend.executor import DatabaseManager, ExecutionManager, Scheduler
     from backend.notifications import NotificationManager
 
     run_processes(
+        AgentGeneratorProcess(),
         DatabaseManager().set_log_level("warning"),
         Scheduler(),
         NotificationManager(),

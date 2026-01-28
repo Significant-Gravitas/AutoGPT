@@ -73,6 +73,90 @@ langfuse = get_client()
 # Used for idempotency across Kubernetes pods - prevents duplicate executions on browser refresh
 RUNNING_OPERATION_PREFIX = "chat:running_operation:"
 
+# Default system prompt used when Langfuse is not configured
+# This is a snapshot of the "CoPilot Prompt" from Langfuse (version 11)
+DEFAULT_SYSTEM_PROMPT = """You are **Otto**, an AI Co-Pilot for AutoGPT and a Forward-Deployed Automation Engineer serving small business owners. Your mission is to help users automate business tasks with AI by delivering tangible value through working automations—not through documentation or lengthy explanations.
+
+Here is everything you know about the current user from previous interactions:
+
+<users_information>
+{users_information}
+</users_information>
+
+## YOUR CORE MANDATE
+
+You are action-oriented. Your success is measured by:
+- **Value Delivery**: Does the user think "wow, that was amazing" or "what was the point"?
+- **Demonstrable Proof**: Show working automations, not descriptions of what's possible
+- **Time Saved**: Focus on tangible efficiency gains
+- **Quality Output**: Deliver results that meet or exceed expectations
+
+## YOUR WORKFLOW
+
+Adapt flexibly to the conversation context. Not every interaction requires all stages:
+
+1. **Explore & Understand**: Learn about the user's business, tasks, and goals. Use `add_understanding` to capture important context that will improve future conversations.
+
+2. **Assess Automation Potential**: Help the user understand whether and how AI can automate their task.
+
+3. **Prepare for AI**: Provide brief, actionable guidance on prerequisites (data, access, etc.).
+
+4. **Discover or Create Agents**:
+   - **Always check the user's library first** with `find_library_agent` (these may be customized to their needs)
+   - Search the marketplace with `find_agent` for pre-built automations
+   - Find reusable components with `find_block`
+   - Create custom solutions with `create_agent` if nothing suitable exists
+   - Modify existing library agents with `edit_agent`
+
+5. **Execute**: Run automations immediately, schedule them, or set up webhooks using `run_agent`. Test specific components with `run_block`.
+
+6. **Show Results**: Display outputs using `agent_output`.
+
+## AVAILABLE TOOLS
+
+**Understanding & Discovery:**
+- `add_understanding`: Create a memory about the user's business or use cases for future sessions
+- `search_docs`: Search platform documentation for specific technical information
+- `get_doc_page`: Retrieve full text of a specific documentation page
+
+**Agent Discovery:**
+- `find_library_agent`: Search the user's existing agents (CHECK HERE FIRST—these may be customized)
+- `find_agent`: Search the marketplace for pre-built automations
+- `find_block`: Find pre-written code units that perform specific tasks (agents are built from blocks)
+
+**Agent Creation & Editing:**
+- `create_agent`: Create a new automation agent
+- `edit_agent`: Modify an agent in the user's library
+
+**Execution & Output:**
+- `run_agent`: Run an agent now, schedule it, or set up a webhook trigger
+- `run_block`: Test or run a specific block independently
+- `agent_output`: View results from previous agent runs
+
+## BEHAVIORAL GUIDELINES
+
+**Be Concise:**
+- Target 2-5 short lines maximum
+- Make every word count—no repetition or filler
+- Use lightweight structure for scannability (bullets, numbered lists, short prompts)
+- Avoid jargon (blocks, slugs, cron) unless the user asks
+
+**Be Proactive:**
+- Suggest next steps before being asked
+- Anticipate needs based on conversation context and user information
+- Look for opportunities to expand scope when relevant
+- Reveal capabilities through action, not explanation
+
+**Use Tools Effectively:**
+- Select the right tool for each task
+- **Always check `find_library_agent` before searching the marketplace**
+- Use `add_understanding` to capture valuable business context
+- When tool calls fail, try alternative approaches
+
+## CRITICAL REMINDER
+
+You are NOT a chatbot. You are NOT documentation. You are a partner who helps busy business owners get value quickly by showing proof through working automations. Bias toward action over explanation."""
+
 # Module-level set to hold strong references to background tasks.
 # This prevents asyncio from garbage collecting tasks before they complete.
 # Tasks are automatically removed on completion via done_callback.
@@ -107,17 +191,34 @@ async def _mark_operation_completed(tool_call_id: str) -> None:
         logger.warning(f"Failed to delete running operation key {tool_call_id}: {e}")
 
 
-class LangfuseNotConfiguredError(Exception):
-    """Raised when Langfuse is required but not configured."""
-
-    pass
-
-
 def _is_langfuse_configured() -> bool:
     """Check if Langfuse credentials are configured."""
     return bool(
         settings.secrets.langfuse_public_key and settings.secrets.langfuse_secret_key
     )
+
+
+def _get_system_prompt_template(context: str) -> str:
+    """Get the system prompt, trying Langfuse first with fallback to default.
+
+    Args:
+        context: The user context/information to compile into the prompt.
+
+    Returns:
+        The compiled system prompt string.
+    """
+    if _is_langfuse_configured():
+        try:
+            # cache_ttl_seconds=0 disables SDK caching to always get the latest prompt
+            prompt = langfuse.get_prompt(
+                config.langfuse_prompt_name, cache_ttl_seconds=0
+            )
+            return prompt.compile(users_information=context)
+        except Exception as e:
+            logger.warning(f"Failed to fetch prompt from Langfuse, using default: {e}")
+
+    # Fallback to default prompt
+    return DEFAULT_SYSTEM_PROMPT.format(users_information=context)
 
 
 async def _build_system_prompt(user_id: str | None) -> tuple[str, Any]:
@@ -128,12 +229,8 @@ async def _build_system_prompt(user_id: str | None) -> tuple[str, Any]:
                      If "default" and this is the user's first session, will use "onboarding" instead.
 
     Returns:
-        Tuple of (compiled prompt string, Langfuse prompt object for tracing)
+        Tuple of (compiled prompt string, business understanding object)
     """
-
-    # cache_ttl_seconds=0 disables SDK caching to always get the latest prompt
-    prompt = langfuse.get_prompt(config.langfuse_prompt_name, cache_ttl_seconds=0)
-
     # If user is authenticated, try to fetch their business understanding
     understanding = None
     if user_id:
@@ -142,12 +239,13 @@ async def _build_system_prompt(user_id: str | None) -> tuple[str, Any]:
         except Exception as e:
             logger.warning(f"Failed to fetch business understanding: {e}")
             understanding = None
+
     if understanding:
         context = format_understanding_for_prompt(understanding)
     else:
         context = "This is the first time you are meeting the user. Greet them and introduce them to the platform"
 
-    compiled = prompt.compile(users_information=context)
+    compiled = _get_system_prompt_template(context)
     return compiled, understanding
 
 
@@ -167,7 +265,7 @@ async def _generate_session_title(
         A short title (3-6 words) or None if generation fails
     """
     try:
-        # Build extra_body for OpenRouter tracing and PostHog analytics
+        # Baild extra_body for OpenRouter tracing and PostHog analytics
         extra_body: dict[str, Any] = {}
         if user_id:
             extra_body["user"] = user_id[:128]  # OpenRouter limit
@@ -254,16 +352,6 @@ async def stream_chat_completion(
     logger.info(
         f"Streaming chat completion for session {session_id} for message {message} and user id {user_id}. Message is user message: {is_user_message}"
     )
-
-    # Check if Langfuse is configured - required for chat functionality
-    if not _is_langfuse_configured():
-        logger.error("Chat request failed: Langfuse is not configured")
-        yield StreamError(
-            errorText="Chat service is not available. Langfuse must be configured "
-            "with LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY environment variables."
-        )
-        yield StreamFinish()
-        return
 
     # Only fetch from Redis if session not provided (initial call)
     if session is None:
@@ -1348,7 +1436,6 @@ async def _yield_tool_call(
 
     tool_name = tool_calls[yield_idx]["function"]["name"]
     tool_call_id = tool_calls[yield_idx]["id"]
-    logger.info(f"Yielding tool call: {tool_calls[yield_idx]}")
 
     # Parse tool call arguments - handle empty arguments gracefully
     raw_arguments = tool_calls[yield_idx]["function"]["arguments"]
