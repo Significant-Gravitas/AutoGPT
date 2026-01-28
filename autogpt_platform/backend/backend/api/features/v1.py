@@ -265,9 +265,13 @@ async def get_onboarding_agents(
     "/onboarding/enabled",
     summary="Is onboarding enabled",
     tags=["onboarding", "public"],
-    dependencies=[Security(requires_user)],
 )
-async def is_onboarding_enabled() -> bool:
+async def is_onboarding_enabled(
+    user_id: Annotated[str, Security(get_user_id)],
+) -> bool:
+    # If chat is enabled for user, skip legacy onboarding
+    if await is_feature_enabled(Flag.CHAT, user_id, True):
+        return False
     return await onboarding_enabled()
 
 

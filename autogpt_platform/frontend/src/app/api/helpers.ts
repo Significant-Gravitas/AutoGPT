@@ -1,4 +1,8 @@
 import type { InfiniteData } from "@tanstack/react-query";
+import {
+  getV1IsOnboardingEnabled,
+  getV1OnboardingState,
+} from "./__generated__/endpoints/onboarding/onboarding";
 import { Pagination } from "./__generated__/models/pagination";
 
 export type OKData<TResponse extends { status: number; data?: any }> =
@@ -172,7 +176,8 @@ export async function resolveResponse<
 }
 
 export async function shouldShowOnboarding() {
-  // OPEN-2967: Disable onboarding redirects - users land on /copilot directly
-  // The checklist/wallet remains functional as it reads from onboarding state independently
-  return false;
+  const isEnabled = await resolveResponse(getV1IsOnboardingEnabled());
+  const onboarding = await resolveResponse(getV1OnboardingState());
+  const isCompleted = onboarding.completedSteps.includes("CONGRATS");
+  return isEnabled && !isCompleted;
 }
