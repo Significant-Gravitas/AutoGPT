@@ -62,12 +62,7 @@ This is a "quoted" string."""},
             **kwargs: Additional keyword arguments (unused).
 
         Yields:
-            The encoded text with escape sequences, or an error message on failure.
+            The encoded text with escape sequences.
         """
-        try:
-            encoded_text = codecs.encode(input_data.text, "unicode_escape").decode(
-                "utf-8"
-            )
-            yield "encoded_text", encoded_text
-        except Exception as e:
-            yield "error", f"Failed to encode text: {e}"
+        encoded_text = codecs.encode(input_data.text, "unicode_escape").decode("utf-8")
+        yield "encoded_text", encoded_text
