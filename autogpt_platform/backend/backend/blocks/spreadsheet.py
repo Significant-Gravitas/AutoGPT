@@ -113,8 +113,9 @@ class ReadSpreadsheetBlock(Block):
             )
 
             # Get full file path
+            assert execution_context.graph_exec_id  # Validated by store_media_file
             file_path = get_exec_file_path(
-                execution_context.graph_exec_id or "", stored_file_path
+                execution_context.graph_exec_id, stored_file_path
             )
             if not Path(file_path).exists():
                 raise ValueError(f"File does not exist: {file_path}")

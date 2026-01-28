@@ -121,9 +121,8 @@ async def create_mime_message(
                 execution_context=execution_context,
                 return_format="for_local_processing",
             )
-            abs_path = get_exec_file_path(
-                execution_context.graph_exec_id or "", local_path
-            )
+            assert execution_context.graph_exec_id  # Validated by store_media_file
+            abs_path = get_exec_file_path(execution_context.graph_exec_id, local_path)
             part = MIMEBase("application", "octet-stream")
             with open(abs_path, "rb") as f:
                 part.set_payload(f.read())
@@ -1191,7 +1190,8 @@ async def _build_reply_message(
             execution_context=execution_context,
             return_format="for_local_processing",
         )
-        abs_path = get_exec_file_path(execution_context.graph_exec_id or "", local_path)
+        assert execution_context.graph_exec_id  # Validated by store_media_file
+        abs_path = get_exec_file_path(execution_context.graph_exec_id, local_path)
         part = MIMEBase("application", "octet-stream")
         with open(abs_path, "rb") as f:
             part.set_payload(f.read())
@@ -1721,9 +1721,8 @@ To: {original_to}
                 execution_context=execution_context,
                 return_format="for_local_processing",
             )
-            abs_path = get_exec_file_path(
-                execution_context.graph_exec_id or "", local_path
-            )
+            assert execution_context.graph_exec_id  # Validated by store_media_file
+            abs_path = get_exec_file_path(execution_context.graph_exec_id, local_path)
             part = MIMEBase("application", "octet-stream")
             with open(abs_path, "rb") as f:
                 part.set_payload(f.read())
