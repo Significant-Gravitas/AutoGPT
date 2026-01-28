@@ -1,27 +1,29 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useToast } from "@/components/molecules/Toast/use-toast";
+import React, {
+  KeyboardEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
 const MAX_RECORDING_DURATION = 2 * 60 * 1000; // 2 minutes in ms
 
-interface UseVoiceRecordingArgs {
-  onTranscription: (text: string) => void;
+interface Args {
+  setValue: React.Dispatch<React.SetStateAction<string>>;
   disabled?: boolean;
-}
-
-interface UseVoiceRecordingReturn {
-  isRecording: boolean;
-  isTranscribing: boolean;
-  error: string | null;
-  elapsedTime: number;
-  startRecording: () => Promise<void>;
-  stopRecording: () => void;
-  toggleRecording: () => void;
-  isSupported: boolean;
+  isStreaming?: boolean;
+  value: string;
+  baseHandleKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void;
 }
 
 export function useVoiceRecording({
-  onTranscription,
+  setValue,
   disabled = false,
-}: UseVoiceRecordingArgs): UseVoiceRecordingReturn {
+  isStreaming = false,
+  value,
+  baseHandleKeyDown,
+}: Args) {
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -55,6 +57,19 @@ export function useVoiceRecording({
     setElapsedTime(0);
   }, [clearTimer]);
 
+  const handleTranscription = useCallback(
+    (text: string) => {
+      setValue((prev) => {
+        const trimmedPrev = prev.trim();
+        if (trimmedPrev) {
+          return `${trimmedPrev} ${text}`;
+        }
+        return text;
+      });
+    },
+    [setValue],
+  );
+
   const transcribeAudio = useCallback(
     async (audioBlob: Blob) => {
       setIsTranscribing(true);
@@ -76,7 +91,7 @@ export function useVoiceRecording({
 
         const data = await response.json();
         if (data.text) {
-          onTranscription(data.text);
+          handleTranscription(data.text);
         }
       } catch (err) {
         const message =
@@ -87,7 +102,7 @@ export function useVoiceRecording({
         setIsTranscribing(false);
       }
     },
-    [onTranscription],
+    [handleTranscription],
   );
 
   const stopRecording = useCallback(() => {
@@ -178,6 +193,33 @@ export function useVoiceRecording({
     }
   }, [isRecording, startRecording, stopRecording]);
 
+  const { toast } = useToast();
+
+  useEffect(() => {
+    if (error) {
+      toast({
+        title: "Voice recording failed",
+        description: error,
+        variant: "destructive",
+      });
+    }
+  }, [error, toast]);
+
+  const handleKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLTextAreaElement>) => {
+      if (event.key === " " && !value.trim() && !isTranscribing) {
+        event.preventDefault();
+        toggleRecording();
+        return;
+      }
+      baseHandleKeyDown(event);
+    },
+    [value, isTranscribing, toggleRecording, baseHandleKeyDown],
+  );
+
+  const showMicButton = isSupported && !isStreaming;
+  const isInputDisabled = disabled || isStreaming || isTranscribing;
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -194,5 +236,8 @@ export function useVoiceRecording({
     stopRecording,
     toggleRecording,
     isSupported,
+    handleKeyDown,
+    showMicButton,
+    isInputDisabled,
   };
 }

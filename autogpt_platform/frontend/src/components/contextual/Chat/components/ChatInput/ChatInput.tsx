@@ -1,5 +1,4 @@
 import { Button } from "@/components/atoms/Button/Button";
-import { useToast } from "@/components/molecules/Toast/use-toast";
 import { cn } from "@/lib/utils";
 import {
   ArrowUpIcon,
@@ -7,7 +6,6 @@ import {
   MicrophoneIcon,
   StopIcon,
 } from "@phosphor-icons/react";
-import { KeyboardEvent, useCallback, useEffect } from "react";
 import { RecordingIndicator } from "./components/RecordingIndicator";
 import { useChatInput } from "./useChatInput";
 import { useVoiceRecording } from "./useVoiceRecording";
@@ -44,59 +42,21 @@ export function ChatInput({
     inputId,
   });
 
-  const handleTranscription = useCallback(
-    (text: string) => {
-      setValue((prev) => {
-        const trimmedPrev = prev.trim();
-        if (trimmedPrev) {
-          return `${trimmedPrev} ${text}`;
-        }
-        return text;
-      });
-    },
-    [setValue],
-  );
-
   const {
     isRecording,
     isTranscribing,
-    error: voiceError,
     elapsedTime,
     toggleRecording,
-    isSupported: isVoiceSupported,
+    handleKeyDown,
+    showMicButton,
+    isInputDisabled,
   } = useVoiceRecording({
-    onTranscription: handleTranscription,
+    setValue,
     disabled: disabled || isStreaming,
+    isStreaming,
+    value,
+    baseHandleKeyDown,
   });
-
-  const { toast } = useToast();
-
-  // Show voice recording errors via toast
-  useEffect(() => {
-    if (voiceError) {
-      toast({
-        title: "Voice recording failed",
-        description: voiceError,
-        variant: "destructive",
-      });
-    }
-  }, [voiceError, toast]);
-
-  const handleKeyDown = useCallback(
-    (event: KeyboardEvent<HTMLTextAreaElement>) => {
-      // Space key toggles recording when input is empty
-      if (event.key === " " && !value.trim() && !isTranscribing) {
-        event.preventDefault();
-        toggleRecording();
-        return;
-      }
-      baseHandleKeyDown(event);
-    },
-    [value, isTranscribing, toggleRecording, baseHandleKeyDown],
-  );
-
-  const showMicButton = isVoiceSupported && !isStreaming;
-  const isInputDisabled = disabled || isStreaming || isTranscribing;
 
   return (
     <form onSubmit={handleSubmit} className={cn("relative flex-1", className)}>
