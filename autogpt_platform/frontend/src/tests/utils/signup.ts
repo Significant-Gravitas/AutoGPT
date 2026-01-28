@@ -40,12 +40,12 @@ export async function signupTestUser(
 
     try {
       // Wait for redirect to onboarding, marketplace, copilot, or library
-      await Promise.race([
-        page.waitForURL(/\/onboarding/, { timeout: 15000 }),
-        page.waitForURL(/\/marketplace/, { timeout: 15000 }),
-        page.waitForURL(/\/copilot/, { timeout: 15000 }),
-        page.waitForURL(/\/library/, { timeout: 15000 }),
-      ]);
+      // Use a single waitForURL with a callback to avoid Promise.race race conditions
+      await page.waitForURL(
+        (url) =>
+          /\/(onboarding|marketplace|copilot|library)/.test(url.pathname),
+        { timeout: 15000 },
+      );
     } catch (error) {
       console.error(
         "❌ Timeout waiting for redirect, current URL:",
