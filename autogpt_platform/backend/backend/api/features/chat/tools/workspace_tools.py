@@ -9,8 +9,8 @@ from pydantic import BaseModel
 
 from backend.api.features.chat.model import ChatSession
 from backend.data.workspace import get_or_create_workspace
-from backend.util.virus_scanner import scan_content_safe
 from backend.util.settings import Config
+from backend.util.virus_scanner import scan_content_safe
 from backend.util.workspace import WorkspaceManager
 
 from .base import BaseTool
