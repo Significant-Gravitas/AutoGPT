@@ -18,7 +18,7 @@ from .get_doc_page import GetDocPageTool
 from .run_agent import RunAgentTool
 from .run_block import RunBlockTool
 from .search_docs import SearchDocsTool
-from .workspace_tools import (
+from .workspace_files import (
     DeleteWorkspaceFileTool,
     ListWorkspaceFilesTool,
     ReadWorkspaceFileTool,
