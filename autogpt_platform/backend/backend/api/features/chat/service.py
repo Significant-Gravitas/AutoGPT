@@ -857,7 +857,22 @@ def _ensure_tool_pairs_intact(
             msg_tool_ids = {tc.get("id") for tc in msg["tool_calls"] if tc.get("id")}
             if msg_tool_ids & orphan_tool_call_ids:
                 # This assistant message has tool_calls we need
-                messages_to_prepend.insert(0, msg)
+                # Also collect its contiguous tool responses that follow it
+                assistant_and_responses: list[dict] = [msg]
+
+                # Scan forward from this assistant to collect tool responses
+                for j in range(i + 1, start_index):
+                    following_msg = all_messages[j]
+                    if following_msg.get("role") == "tool":
+                        tool_id = following_msg.get("tool_call_id")
+                        if tool_id and tool_id in msg_tool_ids:
+                            assistant_and_responses.append(following_msg)
+                    else:
+                        # Stop at first non-tool message
+                        break
+
+                # Prepend the assistant and its tool responses (maintain order)
+                messages_to_prepend = assistant_and_responses + messages_to_prepend
                 # Mark these as found
                 orphan_tool_call_ids -= msg_tool_ids
                 # Also add this assistant's tool_call_ids to available set
