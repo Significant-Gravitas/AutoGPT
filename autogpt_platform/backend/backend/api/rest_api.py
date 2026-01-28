@@ -32,6 +32,7 @@ import backend.api.features.postmark.postmark
 import backend.api.features.store.model
 import backend.api.features.store.routes
 import backend.api.features.v1
+import backend.api.features.workspace.routes as workspace_routes
 import backend.data.block
 import backend.data.db
 import backend.data.graph
@@ -314,6 +315,11 @@ app.include_router(
     chat_routes.router,
     tags=["v2", "chat"],
     prefix="/api/chat",
+)
+app.include_router(
+    workspace_routes.router,
+    tags=["v2", "workspace"],
+    prefix="/api/workspace",
 )
 app.include_router(
     backend.api.features.oauth.router,
