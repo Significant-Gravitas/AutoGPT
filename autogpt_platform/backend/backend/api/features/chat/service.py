@@ -265,7 +265,7 @@ async def _generate_session_title(
         A short title (3-6 words) or None if generation fails
     """
     try:
-        # Baild extra_body for OpenRouter tracing and PostHog analytics
+        # Build extra_body for OpenRouter tracing and PostHog analytics
         extra_body: dict[str, Any] = {}
         if user_id:
             extra_body["user"] = user_id[:128]  # OpenRouter limit
