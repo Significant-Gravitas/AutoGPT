@@ -276,15 +276,7 @@ async def store_media_file(
         target_path.write_bytes(content)
 
     elif file.startswith(("http://", "https://")):
-        # URL
-        parsed_url = urlparse(file)
-        filename = sanitize_filename(Path(parsed_url.path).name or f"{uuid.uuid4()}")
-        try:
-            target_path = _ensure_inside_base(base_path / filename, base_path)
-        except OSError as e:
-            raise ValueError(f"Invalid file path '{filename}': {e}") from e
-
-        # Download and save
+        # URL - download first to get Content-Type header
         resp = await Requests().get(file)
 
         # Check file size limit
@@ -292,6 +284,22 @@ async def store_media_file(
             raise ValueError(
                 f"File too large: {len(resp.content)} bytes > {MAX_FILE_SIZE_BYTES} bytes"
             )
+
+        # Extract filename from URL path
+        parsed_url = urlparse(file)
+        filename = sanitize_filename(Path(parsed_url.path).name or f"{uuid.uuid4()}")
+
+        # If filename lacks extension, add one from Content-Type header
+        if "." not in filename:
+            content_type = resp.headers.get("Content-Type", "").split(";")[0].strip()
+            if content_type:
+                ext = _extension_from_mime(content_type)
+                filename = f"{filename}{ext}"
+
+        try:
+            target_path = _ensure_inside_base(base_path / filename, base_path)
+        except OSError as e:
+            raise ValueError(f"Invalid file path '{filename}': {e}") from e
 
         # Virus scan the downloaded content before writing
         await scan_content_safe(resp.content, filename=filename)

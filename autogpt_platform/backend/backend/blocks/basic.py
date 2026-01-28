@@ -18,10 +18,10 @@ from backend.util.type import MediaFileType, convert
 class FileStoreBlock(Block):
     class Input(BlockSchemaInput):
         file_in: MediaFileType = SchemaField(
-            description="The file to store, it can be a URL, data URI, or local path."
+            description="The file to download and store. Can be a URL (https://...), data URI, or local path."
         )
         base_64: bool = SchemaField(
-            description="Whether produce an output in base64 format (not recommended, you can pass the string path just fine accross blocks).",
+            description="Whether to produce output in base64 format (not recommended, you can pass the file reference across blocks).",
             default=False,
             advanced=True,
             title="Produce Base64 Output",
@@ -29,13 +29,18 @@ class FileStoreBlock(Block):
 
     class Output(BlockSchemaOutput):
         file_out: MediaFileType = SchemaField(
-            description="Reference to the stored file (workspace:// in CoPilot, data URI in graphs)."
+            description="Reference to the stored file. In CoPilot: workspace:// URI (visible in list_workspace_files). In graphs: data URI for passing to other blocks."
         )
 
     def __init__(self):
         super().__init__(
             id="cbb50872-625b-42f0-8203-a2ae78242d8a",
-            description="Stores the input file. In CoPilot, saves to your workspace. In graphs, returns a data URI.",
+            description=(
+                "Downloads and stores a file from a URL, data URI, or local path. "
+                "Use this to fetch images, documents, or other files for processing. "
+                "In CoPilot: saves to workspace (use list_workspace_files to see it). "
+                "In graphs: outputs a data URI to pass to other blocks."
+            ),
             categories={BlockCategory.BASIC, BlockCategory.MULTIMEDIA},
             input_schema=FileStoreBlock.Input,
             output_schema=FileStoreBlock.Output,
