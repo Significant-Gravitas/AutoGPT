@@ -84,7 +84,7 @@ class TestFileCloudIntegration:
             result = await store_media_file(
                 file=MediaFileType(cloud_path),
                 execution_context=make_test_context(graph_exec_id=graph_exec_id),
-                return_format="local_path",
+                return_format="for_local_processing",
             )
 
             # Verify cloud storage operations
@@ -157,7 +157,7 @@ class TestFileCloudIntegration:
                 result = await store_media_file(
                     file=MediaFileType(cloud_path),
                     execution_context=make_test_context(graph_exec_id=graph_exec_id),
-                    return_format="data_uri",
+                    return_format="for_external_api",
                 )
 
             # Verify result is a data URI
@@ -210,7 +210,7 @@ class TestFileCloudIntegration:
             await store_media_file(
                 file=MediaFileType(data_uri),
                 execution_context=make_test_context(graph_exec_id=graph_exec_id),
-                return_format="local_path",
+                return_format="for_local_processing",
             )
 
             # Verify cloud handler was checked but not used for retrieval

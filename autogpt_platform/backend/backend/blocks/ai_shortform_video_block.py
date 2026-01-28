@@ -352,7 +352,7 @@ class AIShortformVideoCreatorBlock(Block):
             stored_url = await store_media_file(
                 file=MediaFileType(video_url),
                 execution_context=execution_context,
-                return_format="workspace_ref",
+                return_format="for_block_output",
             )
             yield "video_url", stored_url
 
@@ -556,7 +556,7 @@ class AIAdMakerVideoCreatorBlock(Block):
         stored_url = await store_media_file(
             file=MediaFileType(video_url),
             execution_context=execution_context,
-            return_format="workspace_ref",
+            return_format="for_block_output",
         )
         yield "video_url", stored_url
 
@@ -748,6 +748,6 @@ class AIScreenshotToVideoAdBlock(Block):
         stored_url = await store_media_file(
             file=MediaFileType(video_url),
             execution_context=execution_context,
-            return_format="workspace_ref",
+            return_format="for_block_output",
         )
         yield "video_url", stored_url

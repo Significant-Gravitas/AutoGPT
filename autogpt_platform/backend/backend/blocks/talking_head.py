@@ -178,7 +178,7 @@ class CreateTalkingAvatarVideoBlock(Block):
                 stored_url = await store_media_file(
                     file=MediaFileType(video_url),
                     execution_context=execution_context,
-                    return_format="workspace_ref",
+                    return_format="for_block_output",
                 )
                 yield "video_url", stored_url
                 return

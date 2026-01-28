@@ -146,7 +146,7 @@ class AIImageEditorBlock(Block):
                 await store_media_file(
                     file=input_data.input_image,
                     execution_context=execution_context,
-                    return_format="data_uri",  # Get content for external API
+                    return_format="for_external_api",  # Get content for Replicate API
                 )
                 if input_data.input_image
                 else None
@@ -160,7 +160,7 @@ class AIImageEditorBlock(Block):
         stored_url = await store_media_file(
             file=result,
             execution_context=execution_context,
-            return_format="workspace_ref",
+            return_format="for_block_output",
         )
         yield "output_image", stored_url
 

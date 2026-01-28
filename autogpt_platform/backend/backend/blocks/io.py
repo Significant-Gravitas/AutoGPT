@@ -469,13 +469,12 @@ class AgentFileInputBlock(AgentInputBlock):
         if not input_data.value:
             return
 
-        # Determine return format based on context and user preference
-        if execution_context.workspace_id and input_data.base_64:
-            return_format = "workspace_ref"
-        elif input_data.base_64:
-            return_format = "data_uri"
-        else:
-            return_format = "local_path"
+        # Determine return format based on user preference
+        # for_block_output: returns workspace:// if available, else data URI
+        # for_local_processing: returns local file path
+        return_format = (
+            "for_block_output" if input_data.base_64 else "for_local_processing"
+        )
 
         yield "result", await store_media_file(
             file=input_data.value,

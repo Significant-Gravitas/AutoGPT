@@ -54,7 +54,7 @@ class MediaDurationBlock(Block):
         local_media_path = await store_media_file(
             file=input_data.media_in,
             execution_context=execution_context,
-            return_format="local_path",
+            return_format="for_local_processing",
         )
         assert execution_context.graph_exec_id is not None
         media_abspath = get_exec_file_path(
@@ -125,7 +125,7 @@ class LoopVideoBlock(Block):
         local_video_path = await store_media_file(
             file=input_data.video_in,
             execution_context=execution_context,
-            return_format="local_path",
+            return_format="for_local_processing",
         )
         input_abspath = get_exec_file_path(graph_exec_id, local_video_path)
 
@@ -153,13 +153,11 @@ class LoopVideoBlock(Block):
         looped_clip = looped_clip.with_audio(clip.audio)
         looped_clip.write_videofile(output_abspath, codec="libx264", audio_codec="aac")
 
-        # Return output - use workspace_ref for persistence, fallback to data_uri
+        # Return output - for_block_output returns workspace:// if available, else data URI
         video_out = await store_media_file(
             file=output_filename,
             execution_context=execution_context,
-            return_format="workspace_ref" if execution_context.workspace_id else (
-                "data_uri" if input_data.output_return_type == "data_uri" else "local_path"
-            ),
+            return_format="for_block_output",
         )
 
         yield "video_out", video_out
@@ -217,12 +215,12 @@ class AddAudioToVideoBlock(Block):
         local_video_path = await store_media_file(
             file=input_data.video_in,
             execution_context=execution_context,
-            return_format="local_path",
+            return_format="for_local_processing",
         )
         local_audio_path = await store_media_file(
             file=input_data.audio_in,
             execution_context=execution_context,
-            return_format="local_path",
+            return_format="for_local_processing",
         )
 
         abs_temp_dir = os.path.join(tempfile.gettempdir(), "exec_file", graph_exec_id)
@@ -246,13 +244,11 @@ class AddAudioToVideoBlock(Block):
         output_abspath = os.path.join(abs_temp_dir, output_filename)
         final_clip.write_videofile(output_abspath, codec="libx264", audio_codec="aac")
 
-        # 5) Return output - use workspace_ref for persistence, fallback to data_uri
+        # 5) Return output - for_block_output returns workspace:// if available, else data URI
         video_out = await store_media_file(
             file=output_filename,
             execution_context=execution_context,
-            return_format="workspace_ref" if execution_context.workspace_id else (
-                "data_uri" if input_data.output_return_type == "data_uri" else "local_path"
-            ),
+            return_format="for_block_output",
         )
 
         yield "video_out", video_out

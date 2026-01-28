@@ -135,7 +135,7 @@ class SendWebRequestBlock(Block):
             rel_path = await store_media_file(
                 file=media,
                 execution_context=execution_context,
-                return_format="local_path",
+                return_format="for_local_processing",
             )
             abs_path = get_exec_file_path(graph_exec_id, rel_path)
             async with aiofiles.open(abs_path, "rb") as f:

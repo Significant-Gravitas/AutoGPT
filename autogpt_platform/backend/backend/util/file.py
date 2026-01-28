@@ -9,9 +9,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 from urllib.parse import urlparse
 
-# Return format options for store_media_file
-MediaReturnFormat = Literal["local_path", "data_uri", "workspace_ref"]
-
 from prisma.enums import WorkspaceFileSource
 
 from backend.util.cloud_storage import get_cloud_storage_handler
@@ -22,6 +19,14 @@ from backend.util.workspace import WorkspaceManager
 
 if TYPE_CHECKING:
     from backend.data.execution import ExecutionContext
+
+# Return format options for store_media_file
+# - "for_local_processing": Returns local file path - use with ffmpeg, MoviePy, PIL, etc.
+# - "for_external_api": Returns data URI (base64) - use when sending content to external APIs
+# - "for_block_output": Returns best format for output - workspace:// in CoPilot, data URI in graphs
+MediaReturnFormat = Literal[
+    "for_local_processing", "for_external_api", "for_block_output"
+]
 
 TEMP_DIR = Path(tempfile.gettempdir()).resolve()
 
@@ -98,13 +103,13 @@ async def store_media_file(
     - Local path: verify it exists in exec_file directory
 
     Return format options:
-    - "local_path": Return relative path in exec_file dir (for local processing)
-    - "data_uri": Return base64 data URI (for external APIs)
-    - "workspace_ref": Save to workspace, return workspace://id (for CoPilot outputs)
+    - "for_local_processing": Returns local file path - use with ffmpeg, MoviePy, PIL, etc.
+    - "for_external_api": Returns data URI (base64) - use when sending to external APIs
+    - "for_block_output": Returns best format for output - workspace:// in CoPilot, data URI in graphs
 
     :param file:               Data URI, URL, workspace://, or local (relative) path.
     :param execution_context:  ExecutionContext with user_id, graph_exec_id, workspace_id.
-    :param return_format:      What to return: "local_path", "data_uri", or "workspace_ref".
+    :param return_format:      What to return: "for_local_processing", "for_external_api", or "for_block_output".
     :param return_content:     DEPRECATED. Use return_format instead.
     :param save_to_workspace:  DEPRECATED. Use return_format instead.
     :return:                   The requested result based on return_format.
@@ -114,20 +119,22 @@ async def store_media_file(
         if return_content is not None or save_to_workspace is not None:
             warnings.warn(
                 "return_content and save_to_workspace are deprecated. "
-                "Use return_format='local_path', 'data_uri', or 'workspace_ref' instead.",
+                "Use return_format='for_local_processing', 'for_external_api', or 'for_block_output' instead.",
                 DeprecationWarning,
                 stacklevel=2,
             )
         # Map old parameters to new return_format
-        if return_content is False or (return_content is None and save_to_workspace is None):
-            # Default or explicit return_content=False -> local_path
-            return_format = "local_path"
+        if return_content is False or (
+            return_content is None and save_to_workspace is None
+        ):
+            # Default or explicit return_content=False -> for_local_processing
+            return_format = "for_local_processing"
         elif save_to_workspace is False:
-            # return_content=True, save_to_workspace=False -> data_uri
-            return_format = "data_uri"
+            # return_content=True, save_to_workspace=False -> for_external_api
+            return_format = "for_external_api"
         else:
-            # return_content=True, save_to_workspace=True (or default) -> workspace_ref
-            return_format = "workspace_ref"
+            # return_content=True, save_to_workspace=True (or default) -> for_block_output
+            return_format = "for_block_output"
     # Extract values from execution_context
     graph_exec_id = execution_context.graph_exec_id
     user_id = execution_context.user_id
@@ -325,21 +332,23 @@ async def store_media_file(
             raise ValueError(f"Local file does not exist: {target_path}")
 
     # Return based on requested format
-    if return_format == "local_path":
-        # For local file processing (MoviePy, ffmpeg, etc.)
+    if return_format == "for_local_processing":
+        # Use when processing files locally with tools like ffmpeg, MoviePy, PIL
+        # Returns: relative path in exec_file directory (e.g., "image.png")
         return MediaFileType(_strip_base_prefix(target_path, base_path))
 
-    elif return_format == "data_uri":
-        # For external APIs that need base64 content
+    elif return_format == "for_external_api":
+        # Use when sending content to external APIs that need base64
+        # Returns: data URI (e.g., "data:image/png;base64,iVBORw0...")
         return MediaFileType(_file_to_data_uri(target_path))
 
-    elif return_format == "workspace_ref":
-        # For persisting outputs to workspace (CoPilot)
+    elif return_format == "for_block_output":
+        # Use when returning output from a block to user/next block
+        # Returns: workspace:// ref (CoPilot) or data URI (graph execution)
         if workspace_manager is None:
-            raise ValueError(
-                "return_format='workspace_ref' requires workspace context. "
-                "Ensure execution_context has workspace_id set."
-            )
+            # No workspace available (graph execution without CoPilot)
+            # Fallback to data URI so the content can still be used/displayed
+            return MediaFileType(_file_to_data_uri(target_path))
 
         # Don't re-save if input was already from workspace
         if is_from_workspace:
