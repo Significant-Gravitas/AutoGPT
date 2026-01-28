@@ -236,9 +236,11 @@ async def execute_node(
     input_size = len(input_data_str)
     log_metadata.debug("Executed node with input", input=input_data_str)
 
-    # Update execution_context with node-level info
-    execution_context.node_id = node_id
-    execution_context.node_exec_id = node_exec_id
+    # Create node-specific execution context to avoid race conditions
+    # (multiple nodes can execute concurrently and would otherwise mutate shared state)
+    execution_context = execution_context.model_copy(
+        update={"node_id": node_id, "node_exec_id": node_exec_id}
+    )
 
     # Inject extra execution arguments for the blocks via kwargs
     # Keep individual kwargs for backwards compatibility with existing blocks
