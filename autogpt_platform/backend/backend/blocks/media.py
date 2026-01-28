@@ -1,6 +1,6 @@
 import os
 import tempfile
-from typing import Literal, Optional
+from typing import Optional
 
 from moviepy.audio.io.AudioFileClip import AudioFileClip
 from moviepy.video.fx.Loop import Loop
@@ -90,10 +90,6 @@ class LoopVideoBlock(Block):
             default=None,
             ge=1,
         )
-        output_return_type: Literal["file_path", "data_uri"] = SchemaField(
-            description="How to return the output video. Either a relative path or base64 data URI.",
-            default="file_path",
-        )
 
     class Output(BlockSchemaOutput):
         video_out: str = SchemaField(
@@ -179,10 +175,6 @@ class AddAudioToVideoBlock(Block):
         volume: float = SchemaField(
             description="Volume scale for the newly attached audio track (1.0 = original).",
             default=1.0,
-        )
-        output_return_type: Literal["file_path", "data_uri"] = SchemaField(
-            description="Return the final output as a relative path or base64 data URI.",
-            default="file_path",
         )
 
     class Output(BlockSchemaOutput):
