@@ -308,15 +308,16 @@ async def store_media_file(
         if not target_path.is_file():
             raise ValueError(f"Local file does not exist: {target_path}")
 
-    # If workspace_manager is provided and return_content=True, save to workspace
-    # and return workspace reference instead of base64 (to prevent context bloat)
+    # If workspace_manager is provided and return_content=True:
+    # - For workspace:// input: return data URI (caller needs actual content for APIs)
+    # - For new content (URL/data URI): save to workspace and return ref (output persistence)
     if workspace_manager is not None and return_content:
-        # If input was already from workspace, return the original reference
-        # (don't re-save the same file, avoid unique constraint violations)
+        # If input was already from workspace, caller needs actual content (e.g., for external API)
+        # Return data URI - don't re-save the same file
         if is_from_workspace:
-            return MediaFileType(file)  # Return original workspace:// ref
+            return MediaFileType(_file_to_data_uri(target_path))
 
-        # Read the file we just wrote/verified and save to workspace
+        # New content to persist - save to workspace and return ref
         content = target_path.read_bytes()
         filename = target_path.name
 
