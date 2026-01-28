@@ -896,7 +896,7 @@ async def add_graph_execution(
             user_id=user_id,
             graph_id=graph_id,
             graph_exec_id=graph_exec.id,
-            graph_version=graph_version,
+            graph_version=graph_exec.graph_version,
             # Safety settings
             human_in_the_loop_safe_mode=settings.human_in_the_loop_safe_mode,
             sensitive_action_safe_mode=settings.sensitive_action_safe_mode,
