@@ -30,6 +30,7 @@ export function ClarificationQuestionsWidget({
   className,
 }: Props) {
   const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [isSubmitted, setIsSubmitted] = useState(false);
 
   function handleAnswerChange(keyword: string, value: string) {
     setAnswers((prev) => ({ ...prev, [keyword]: value }));
@@ -41,10 +42,41 @@ export function ClarificationQuestionsWidget({
     if (!allAnswered) {
       return;
     }
+    setIsSubmitted(true);
     onSubmitAnswers(answers);
   }
 
   const allAnswered = questions.every((q) => answers[q.keyword]?.trim());
+
+  // Show submitted state after answers are submitted
+  if (isSubmitted) {
+    return (
+      <div
+        className={cn(
+          "group relative flex w-full justify-start gap-3 px-4 py-3",
+          className,
+        )}
+      >
+        <div className="flex w-full max-w-3xl gap-3">
+          <div className="flex-shrink-0">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-green-500">
+              <CheckCircleIcon className="h-4 w-4 text-white" weight="bold" />
+            </div>
+          </div>
+          <div className="flex min-w-0 flex-1 flex-col">
+            <Card className="p-4">
+              <Text variant="h4" className="mb-1 text-slate-900">
+                Answers submitted
+              </Text>
+              <Text variant="small" className="text-slate-600">
+                Processing your responses...
+              </Text>
+            </Card>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div

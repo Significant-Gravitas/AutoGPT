@@ -304,6 +304,7 @@ export function parseToolResponse(
       if (isAgentArray(agentsData)) {
         return {
           type: "agent_carousel",
+          toolId,
           toolName: "agent_carousel",
           agents: agentsData,
           totalCount: parsedResult.total_count as number | undefined,
@@ -316,6 +317,7 @@ export function parseToolResponse(
     if (responseType === "execution_started") {
       return {
         type: "execution_started",
+        toolId,
         toolName: "execution_started",
         executionId: (parsedResult.execution_id as string) || "",
         agentName: (parsedResult.graph_name as string) || undefined,
@@ -338,6 +340,41 @@ export function parseToolResponse(
           (parsedResult.message as string) ||
           "I need more information to proceed.",
         sessionId: (parsedResult.session_id as string) || "",
+        timestamp: timestamp || new Date(),
+      };
+    }
+    if (responseType === "operation_started") {
+      return {
+        type: "operation_started",
+        toolName: (parsedResult.tool_name as string) || toolName,
+        toolId,
+        operationId: (parsedResult.operation_id as string) || "",
+        message:
+          (parsedResult.message as string) ||
+          "Operation started. You can close this tab.",
+        timestamp: timestamp || new Date(),
+      };
+    }
+    if (responseType === "operation_pending") {
+      return {
+        type: "operation_pending",
+        toolName: (parsedResult.tool_name as string) || toolName,
+        toolId,
+        operationId: (parsedResult.operation_id as string) || "",
+        message:
+          (parsedResult.message as string) ||
+          "Operation in progress. Please wait...",
+        timestamp: timestamp || new Date(),
+      };
+    }
+    if (responseType === "operation_in_progress") {
+      return {
+        type: "operation_in_progress",
+        toolName: (parsedResult.tool_name as string) || toolName,
+        toolCallId: (parsedResult.tool_call_id as string) || toolId,
+        message:
+          (parsedResult.message as string) ||
+          "Operation already in progress. Please wait...",
         timestamp: timestamp || new Date(),
       };
     }
