@@ -6,9 +6,3 @@
 */
 -- AlterEnum
 ALTER TYPE "OnboardingStep" ADD VALUE 'VISIT_COPILOT';
-
--- DropIndex
-DROP INDEX "UnifiedContentEmbedding_search_idx";
-
--- AlterTable
-ALTER TABLE "StoreListingVersion" DROP COLUMN "search";
