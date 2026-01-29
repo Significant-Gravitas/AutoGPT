@@ -151,15 +151,20 @@ class TestDecomposeGoalExternal:
     @pytest.mark.asyncio
     async def test_decompose_goal_handles_http_error(self):
         """Test decomposition handles HTTP errors gracefully."""
+        mock_response = MagicMock()
+        mock_response.status_code = 500
         mock_client = AsyncMock()
         mock_client.post.side_effect = httpx.HTTPStatusError(
-            "Server error", request=MagicMock(), response=MagicMock()
+            "Server error", request=MagicMock(), response=mock_response
         )
 
         with patch.object(service, "_get_client", return_value=mock_client):
             result = await service.decompose_goal_external("Build a chatbot")
 
-        assert result is None
+        assert result is not None
+        assert result.get("type") == "error"
+        assert result.get("error_type") == "http_error"
+        assert "Server error" in result.get("error", "")
 
     @pytest.mark.asyncio
     async def test_decompose_goal_handles_request_error(self):
@@ -170,7 +175,10 @@ class TestDecomposeGoalExternal:
         with patch.object(service, "_get_client", return_value=mock_client):
             result = await service.decompose_goal_external("Build a chatbot")
 
-        assert result is None
+        assert result is not None
+        assert result.get("type") == "error"
+        assert result.get("error_type") == "connection_error"
+        assert "Connection failed" in result.get("error", "")
 
     @pytest.mark.asyncio
     async def test_decompose_goal_handles_service_error(self):
@@ -179,6 +187,7 @@ class TestDecomposeGoalExternal:
         mock_response.json.return_value = {
             "success": False,
             "error": "Internal error",
+            "error_type": "internal_error",
         }
         mock_response.raise_for_status = MagicMock()
 
@@ -188,7 +197,10 @@ class TestDecomposeGoalExternal:
         with patch.object(service, "_get_client", return_value=mock_client):
             result = await service.decompose_goal_external("Build a chatbot")
 
-        assert result is None
+        assert result is not None
+        assert result.get("type") == "error"
+        assert result.get("error") == "Internal error"
+        assert result.get("error_type") == "internal_error"
 
 
 class TestGenerateAgentExternal:
@@ -236,7 +248,10 @@ class TestGenerateAgentExternal:
         with patch.object(service, "_get_client", return_value=mock_client):
             result = await service.generate_agent_external({"steps": []})
 
-        assert result is None
+        assert result is not None
+        assert result.get("type") == "error"
+        assert result.get("error_type") == "connection_error"
+        assert "Connection failed" in result.get("error", "")
 
 
 class TestGenerateAgentPatchExternal:
