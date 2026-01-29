@@ -22,7 +22,7 @@ export function FeatureFlagPage({
   const flagValue = useGetFlag(flag);
   const ldClient = useLDClient();
   const ldEnabled = environment.areFeatureFlagsEnabled();
-  const ldReady = typeof flagValue !== "undefined" && Boolean(ldClient);
+  const ldReady = Boolean(ldClient);
   const flagEnabled = Boolean(flagValue);
 
   useEffect(() => {

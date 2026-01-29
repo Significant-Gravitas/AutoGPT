@@ -22,8 +22,7 @@ export function FeatureFlagRedirect({
   const flagValue = useGetFlag(flag);
   const ldEnabled = environment.areFeatureFlagsEnabled();
   const ldClient = useLDClient();
-  const ldReady = typeof flagValue !== "undefined" && Boolean(ldClient);
-
+  const ldReady = Boolean(ldClient);
   const flagEnabled = Boolean(flagValue);
 
   useEffect(() => {
