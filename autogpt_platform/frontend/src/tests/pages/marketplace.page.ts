@@ -116,7 +116,9 @@ export class MarketplacePage extends BasePage {
   }
 
   async getFirstTopAgent() {
-    const card = this.page.locator('[data-testid="store-card"]:visible').first();
+    const card = this.page
+      .locator('[data-testid="store-card"]:visible')
+      .first();
     await card.waitFor({ state: "visible", timeout: 30000 });
     return card;
   }

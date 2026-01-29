@@ -566,7 +566,7 @@ class TestDataCreator:
         test_user = next(
             (user for user in self.users if user["email"] == "test123@gmail.com"), None
         )
-        if test_user:
+        if test_user and self.agent_graphs:
             test_submission_data = {
                 "user_id": test_user["id"],
                 "agent_id": self.agent_graphs[0]["id"],
@@ -746,7 +746,7 @@ class TestDataCreator:
                     traceback.print_exc()
                     continue
 
-        print(f"\n📊 Store Submissions Summary:")
+        print("\n📊 Store Submissions Summary:")
         print(f"   Created: {len(submissions)}")
         print(f"   Approved: {len(approved_submissions)}")
         print(f"   Featured: {featured_count} (guaranteed min: {GUARANTEED_FEATURED_AGENTS})")
