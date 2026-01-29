@@ -263,6 +263,12 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The name of the Google Cloud Storage bucket for media files",
     )
 
+    workspace_storage_dir: str = Field(
+        default="",
+        description="Local directory for workspace file storage when GCS is not configured. "
+        "If empty, defaults to {app_data}/workspaces. Used for self-hosted deployments.",
+    )
+
     reddit_user_agent: str = Field(
         default="web:AutoGPT:v0.6.0 (by /u/autogpt)",
         description="The user agent for the Reddit API",
@@ -387,6 +393,13 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         ge=1,
         le=1024,
         description="Maximum file size in MB for file uploads (1-1024 MB)",
+    )
+
+    max_file_size_mb: int = Field(
+        default=100,
+        ge=1,
+        le=1024,
+        description="Maximum file size in MB for workspace files (1-1024 MB)",
     )
 
     # AutoMod configuration

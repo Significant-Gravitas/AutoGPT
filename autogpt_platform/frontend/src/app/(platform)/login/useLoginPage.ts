@@ -97,13 +97,8 @@ export function useLoginPage() {
         throw new Error(result.error || "Login failed");
       }
 
-      if (nextUrl) {
-        router.replace(nextUrl);
-      } else if (result.onboarding) {
-        router.replace("/onboarding");
-      } else {
-        router.replace(homepageRoute);
-      }
+      // Prefer URL's next parameter, then use backend-determined route
+      router.replace(nextUrl || result.next || homepageRoute);
     } catch (error) {
       toast({
         title:
