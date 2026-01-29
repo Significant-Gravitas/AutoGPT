@@ -6,6 +6,8 @@ import re
 from logging import Logger
 
 import distro
+from pydantic import Field
+
 from forge.config.ai_directives import AIDirectives
 from forge.config.ai_profile import AIProfile
 from forge.json.parsing import extract_dict_from_json
@@ -21,7 +23,6 @@ from forge.models.config import SystemConfiguration, UserConfigurable
 from forge.models.json_schema import JSONSchema
 from forge.models.utils import ModelWithSummary
 from forge.utils.exceptions import InvalidAgentResponseError
-from pydantic import Field
 
 _RESPONSE_INTERFACE_NAME = "AssistantResponse"
 
@@ -30,14 +31,12 @@ class AssistantThoughts(ModelWithSummary):
     observations: str = Field(
         description="Relevant observations from your last action (if any)"
     )
-    text: str = Field(description="Thoughts")
-    reasoning: str = Field(description="Reasoning behind the thoughts")
+    reasoning: str = Field(description="Reasoning behind choosing this action")
     self_criticism: str = Field(description="Constructive self-criticism")
     plan: list[str] = Field(description="Short list that conveys the long-term plan")
-    speak: str = Field(description="Summary of thoughts, to say to user")
 
     def summary(self) -> str:
-        return self.text
+        return self.reasoning
 
 
 class OneShotAgentActionProposal(ActionProposal):
@@ -60,20 +59,41 @@ class OneShotAgentPromptConfiguration(SystemConfiguration):
         "{commands}\n"
         "\n"
         "## Best practices\n"
-        "{best_practices}"
+        "{best_practices}\n"
+        "\n"
+        "## Efficiency Guidelines\n"
+        "You have LIMITED steps. Be efficient:\n\n"
+        "1. UNDERSTAND BEFORE ACTING: Read ALL relevant files before making changes. "
+        "Understand requirements, interfaces, and existing code patterns first.\n\n"
+        "2. PARALLEL EXECUTION: When multiple operations don't depend on each other, "
+        "execute them simultaneously (e.g., read multiple files at once).\n\n"
+        "3. WRITE COMPLETE CODE: Write complete, working implementations. "
+        "No stubs, TODOs, or placeholders.\n\n"
+        "4. VERIFY AFTER CHANGES: After modifying code, verify it works. "
+        "Run available linters/formatters/tests if available.\n\n"
+        "5. FIX ROOT CAUSE: When debugging, fix the underlying issue, not symptoms. "
+        "If a test fails, the bug is in your code, NOT in the test.\n\n"
+        "6. CODE STYLE: Mimic existing code conventions. "
+        "Don't add comments unless the logic is genuinely complex.\n\n"
+        "7. SECURITY: Never expose, log, or commit secrets, API keys, or credentials."
     )
 
     DEFAULT_CHOOSE_ACTION_INSTRUCTION: str = (
         "Determine exactly one command to use next based on the given goals "
         "and the progress you have made so far, "
-        "and respond using the JSON schema specified previously:"
+        "and respond using the JSON schema specified previously.\n\n"
+        "PARALLEL EXECUTION: When multiple operations don't depend on each other, "
+        "you may call multiple independent commands simultaneously. For example:\n"
+        "- Read multiple files at once before making changes\n"
+        "- Execute multiple independent writes\n"
+        "- Run multiple search queries in parallel"
     )
 
     body_template: str = UserConfigurable(default=DEFAULT_BODY_TEMPLATE)
     choose_action_instruction: str = UserConfigurable(
         default=DEFAULT_CHOOSE_ACTION_INSTRUCTION
     )
-    use_functions_api: bool = UserConfigurable(default=False)
+    use_prefill: bool = True
 
     #########
     # State #
@@ -134,8 +154,8 @@ class OneShotAgentPromptStrategy(PromptStrategy):
                 *messages,
                 final_instruction_msg,
             ],
-            prefill_response=response_prefill,
-            functions=commands if self.config.use_functions_api else [],
+            prefill_response=response_prefill if self.config.use_prefill else "",
+            functions=commands,
         )
 
     def build_system_prompt(
@@ -152,9 +172,7 @@ class OneShotAgentPromptStrategy(PromptStrategy):
             str: The system prompt body
             str: The desired start for the LLM's response; used to steer the output
         """
-        response_fmt_instruction, response_prefill = self.response_format_instruction(
-            self.config.use_functions_api
-        )
+        response_fmt_instruction, response_prefill = self.response_format_instruction()
         system_prompt_parts = (
             self._generate_intro_prompt(ai_profile)
             + (self._generate_os_info() if include_os_info else [])
@@ -170,7 +188,9 @@ class OneShotAgentPromptStrategy(PromptStrategy):
                 "## Your Task\n"
                 "The user will specify a task for you to execute, in triple quotes,"
                 " in the next message. Your job is to complete the task while following"
-                " your directives as given above, and terminate when your task is done."
+                " your directives as given above, and terminate when done.\n\n"
+                "For coding tasks: Read ALL files first. Tests define correct "
+                "behavior - follow them exactly, even if it differs from intuition."
             ]
             + ["## RESPONSE FORMAT\n" + response_fmt_instruction]
         )
@@ -181,10 +201,11 @@ class OneShotAgentPromptStrategy(PromptStrategy):
             response_prefill,
         )
 
-    def response_format_instruction(self, use_functions_api: bool) -> tuple[str, str]:
+    def response_format_instruction(self) -> tuple[str, str]:
         response_schema = self.response_schema.model_copy(deep=True)
         assert response_schema.properties
-        if use_functions_api and "use_tool" in response_schema.properties:
+        # use_tool comes from tool_calls, so remove from JSON schema
+        if "use_tool" in response_schema.properties:
             del response_schema.properties["use_tool"]
 
         # Unindent for performance
@@ -199,7 +220,7 @@ class OneShotAgentPromptStrategy(PromptStrategy):
             (
                 f"YOU MUST ALWAYS RESPOND WITH A JSON OBJECT OF THE FOLLOWING TYPE:\n"
                 f"{response_format}"
-                + ("\n\nYOU MUST ALSO INVOKE A TOOL!" if use_functions_api else "")
+                "\n\nYOU MUST ALSO INVOKE A TOOL!"
             ),
             response_prefill,
         )
@@ -212,9 +233,9 @@ class OneShotAgentPromptStrategy(PromptStrategy):
         """
         return [
             f"You are {ai_profile.ai_name}, {ai_profile.ai_role.rstrip('.')}.",
-            "Your decisions must always be made independently without seeking "
-            "user assistance. Play to your strengths as an LLM and pursue "
-            "simple strategies with no legal complications.",
+            "Make decisions independently. Only use ask_user when you truly need "
+            "clarification that cannot be inferred from the task or context. "
+            "Play to your strengths as an LLM and pursue simple strategies.",
         ]
 
     def _generate_os_info(self) -> list[str]:
@@ -269,13 +290,18 @@ class OneShotAgentPromptStrategy(PromptStrategy):
             "Parsing object extracted from LLM response:\n"
             f"{json.dumps(assistant_reply_dict, indent=4)}"
         )
-        if self.config.use_functions_api:
-            if not response.tool_calls:
-                raise InvalidAgentResponseError("Assistant did not use a tool")
-            assistant_reply_dict["use_tool"] = response.tool_calls[0].function
+        # Always expect tool calls - native tool calling is always enabled
+        if not response.tool_calls:
+            raise InvalidAgentResponseError("Assistant did not use a tool")
+        assistant_reply_dict["use_tool"] = response.tool_calls[0].function
+        # Capture all tool calls for parallel execution
+        if len(response.tool_calls) > 1:
+            assistant_reply_dict["use_tools"] = [
+                tc.function for tc in response.tool_calls
+            ]
 
         parsed_response = OneShotAgentActionProposal.model_validate(
             assistant_reply_dict
         )
-        parsed_response.raw_message = response.copy()
+        parsed_response.raw_message = response.model_copy()
         return parsed_response
