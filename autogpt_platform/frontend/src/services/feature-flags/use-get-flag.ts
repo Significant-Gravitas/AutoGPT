@@ -34,7 +34,7 @@ const defaultFlags = {
   [Flag.MARKETPLACE_SEARCH_TERMS]: DEFAULT_SEARCH_TERMS,
   [Flag.ENABLE_PLATFORM_PAYMENT]: false,
   [Flag.CHAT]: false,
-} as const;
+};
 
 type FlagValues = typeof defaultFlags;
 
