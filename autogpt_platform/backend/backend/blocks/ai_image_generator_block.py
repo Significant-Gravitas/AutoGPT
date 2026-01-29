@@ -6,6 +6,7 @@ from replicate.client import Client as ReplicateClient
 from replicate.helpers import FileOutput
 
 from backend.data.block import Block, BlockCategory, BlockSchemaInput, BlockSchemaOutput
+from backend.data.execution import ExecutionContext
 from backend.data.model import (
     APIKeyCredentials,
     CredentialsField,
@@ -13,6 +14,8 @@ from backend.data.model import (
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
+from backend.util.file import store_media_file
+from backend.util.type import MediaFileType
 
 
 class ImageSize(str, Enum):
@@ -165,11 +168,13 @@ class AIImageGeneratorBlock(Block):
             test_output=[
                 (
                     "image_url",
-                    "https://replicate.delivery/generated-image.webp",
+                    # Test output is a data URI since we now store images
+                    lambda x: x.startswith("data:image/"),
                 ),
             ],
             test_mock={
-                "_run_client": lambda *args, **kwargs: "https://replicate.delivery/generated-image.webp"
+                # Return a data URI directly so store_media_file doesn't need to download
+                "_run_client": lambda *args, **kwargs: "data:image/webp;base64,UklGRiQAAABXRUJQVlA4IBgAAAAwAQCdASoBAAEAAQAcJYgCdAEO"
             },
         )
 
@@ -318,11 +323,24 @@ class AIImageGeneratorBlock(Block):
         style_text = style_map.get(style, "")
         return f"{style_text} of" if style_text else ""
 
-    async def run(self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs):
+    async def run(
+        self,
+        input_data: Input,
+        *,
+        credentials: APIKeyCredentials,
+        execution_context: ExecutionContext,
+        **kwargs,
+    ):
         try:
             url = await self.generate_image(input_data, credentials)
             if url:
-                yield "image_url", url
+                # Store the generated image to the user's workspace/execution folder
+                stored_url = await store_media_file(
+                    file=MediaFileType(url),
+                    execution_context=execution_context,
+                    return_format="for_block_output",
+                )
+                yield "image_url", stored_url
             else:
                 yield "error", "Image generation returned an empty result."
         except Exception as e:

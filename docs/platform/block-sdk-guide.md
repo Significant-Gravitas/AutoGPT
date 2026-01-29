@@ -277,6 +277,50 @@ async def run(
         token = credentials.api_key.get_secret_value()
 ```
 
+### Handling Files
+
+When your block works with files (images, videos, documents), use `store_media_file()`:
+
+```python
+from backend.data.execution import ExecutionContext
+from backend.util.file import store_media_file
+from backend.util.type import MediaFileType
+
+async def run(
+    self,
+    input_data: Input,
+    *,
+    execution_context: ExecutionContext,
+    **kwargs,
+):
+    # PROCESSING: Need local file path for tools like ffmpeg, MoviePy, PIL
+    local_path = await store_media_file(
+        file=input_data.video,
+        execution_context=execution_context,
+        return_format="for_local_processing",
+    )
+
+    # EXTERNAL API: Need base64 content for APIs like Replicate, OpenAI
+    image_b64 = await store_media_file(
+        file=input_data.image,
+        execution_context=execution_context,
+        return_format="for_external_api",
+    )
+
+    # OUTPUT: Return to user/next block (auto-adapts to context)
+    result = await store_media_file(
+        file=generated_url,
+        execution_context=execution_context,
+        return_format="for_block_output",  # workspace:// in CoPilot, data URI in graphs
+    )
+    yield "image_url", result
+```
+
+**Return format options:**
+- `"for_local_processing"` - Local file path for processing tools
+- `"for_external_api"` - Data URI for external APIs needing base64
+- `"for_block_output"` - **Always use for outputs** - automatically picks best format
+
 ## Testing Your Block
 
 ```bash

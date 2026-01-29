@@ -83,11 +83,28 @@ class ExecutionContext(BaseModel):
 
     model_config = {"extra": "ignore"}
 
+    # Execution identity
+    user_id: Optional[str] = None
+    graph_id: Optional[str] = None
+    graph_exec_id: Optional[str] = None
+    graph_version: Optional[int] = None
+    node_id: Optional[str] = None
+    node_exec_id: Optional[str] = None
+
+    # Safety settings
     human_in_the_loop_safe_mode: bool = True
     sensitive_action_safe_mode: bool = False
+
+    # User settings
     user_timezone: str = "UTC"
+
+    # Execution hierarchy
     root_execution_id: Optional[str] = None
     parent_execution_id: Optional[str] = None
+
+    # Workspace
+    workspace_id: Optional[str] = None
+    session_id: Optional[str] = None
 
 
 # -------------------------- Models -------------------------- #

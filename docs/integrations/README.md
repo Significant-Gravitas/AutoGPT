@@ -53,7 +53,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Block Installation](block-integrations/basic.md#block-installation) | Given a code string, this block allows the verification and installation of a block code into the system |
 | [Concatenate Lists](block-integrations/basic.md#concatenate-lists) | Concatenates multiple lists into a single list |
 | [Dictionary Is Empty](block-integrations/basic.md#dictionary-is-empty) | Checks if a dictionary is empty |
-| [File Store](block-integrations/basic.md#file-store) | Stores the input file in the temporary directory |
+| [File Store](block-integrations/basic.md#file-store) | Downloads and stores a file from a URL, data URI, or local path |
 | [Find In Dictionary](block-integrations/basic.md#find-in-dictionary) | A block that looks up a value in a dictionary, list, or object by key or index and returns the corresponding value |
 | [Find In List](block-integrations/basic.md#find-in-list) | Finds the index of the value in the list |
 | [Get All Memories](block-integrations/basic.md#get-all-memories) | Retrieve all memories from Mem0 with optional conversation filtering |

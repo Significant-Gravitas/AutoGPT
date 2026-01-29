@@ -1,5 +1,6 @@
 import {
   ApiError,
+  getServerAuthToken,
   makeAuthenticatedFileUpload,
   makeAuthenticatedRequest,
 } from "@/lib/autogpt-server-api/helpers";
@@ -13,6 +14,69 @@ export const dynamic = "force-dynamic";
 function buildBackendUrl(path: string[], queryString: string): string {
   const backendPath = path.join("/");
   return `${environment.getAGPTServerBaseUrl()}/${backendPath}${queryString}`;
+}
+
+/**
+ * Check if this is a workspace file download request that needs binary response handling.
+ */
+function isWorkspaceDownloadRequest(path: string[]): boolean {
+  // Match pattern: api/workspace/files/{id}/download (5 segments)
+  return (
+    path.length == 5 &&
+    path[0] === "api" &&
+    path[1] === "workspace" &&
+    path[2] === "files" &&
+    path[path.length - 1] === "download"
+  );
+}
+
+/**
+ * Handle workspace file download requests with proper binary response streaming.
+ */
+async function handleWorkspaceDownload(
+  req: NextRequest,
+  backendUrl: string,
+): Promise<NextResponse> {
+  const token = await getServerAuthToken();
+
+  const headers: Record<string, string> = {};
+  if (token && token !== "no-token-found") {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const response = await fetch(backendUrl, {
+    method: "GET",
+    headers,
+    redirect: "follow", // Follow redirects to signed URLs
+  });
+
+  if (!response.ok) {
+    return NextResponse.json(
+      { error: `Failed to download file: ${response.statusText}` },
+      { status: response.status },
+    );
+  }
+
+  // Get the content type from the backend response
+  const contentType =
+    response.headers.get("Content-Type") || "application/octet-stream";
+  const contentDisposition = response.headers.get("Content-Disposition");
+
+  // Stream the response body
+  const responseHeaders: Record<string, string> = {
+    "Content-Type": contentType,
+  };
+
+  if (contentDisposition) {
+    responseHeaders["Content-Disposition"] = contentDisposition;
+  }
+
+  // Return the binary content
+  const arrayBuffer = await response.arrayBuffer();
+  return new NextResponse(arrayBuffer, {
+    status: 200,
+    headers: responseHeaders,
+  });
 }
 
 async function handleJsonRequest(
@@ -180,6 +244,11 @@ async function handler(
   };
 
   try {
+    // Handle workspace file downloads separately (binary response)
+    if (method === "GET" && isWorkspaceDownloadRequest(path)) {
+      return await handleWorkspaceDownload(req, backendUrl);
+    }
+
     if (method === "GET" || method === "DELETE") {
       responseBody = await handleGetDeleteRequest(method, backendUrl, req);
     } else if (contentType?.includes("application/json")) {

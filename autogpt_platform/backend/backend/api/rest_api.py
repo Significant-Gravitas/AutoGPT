@@ -32,6 +32,7 @@ import backend.api.features.postmark.postmark
 import backend.api.features.store.model
 import backend.api.features.store.routes
 import backend.api.features.v1
+import backend.api.features.workspace.routes as workspace_routes
 import backend.data.block
 import backend.data.db
 import backend.data.graph
@@ -52,6 +53,7 @@ from backend.util.exceptions import (
 )
 from backend.util.feature_flag import initialize_launchdarkly, shutdown_launchdarkly
 from backend.util.service import UnhealthyServiceError
+from backend.util.workspace_storage import shutdown_workspace_storage
 
 from .external.fastapi_app import external_api
 from .features.analytics import router as analytics_router
@@ -123,6 +125,11 @@ async def lifespan_context(app: fastapi.FastAPI):
         await shutdown_cloud_storage_handler()
     except Exception as e:
         logger.warning(f"Error shutting down cloud storage handler: {e}")
+
+    try:
+        await shutdown_workspace_storage()
+    except Exception as e:
+        logger.warning(f"Error shutting down workspace storage: {e}")
 
     await backend.data.db.disconnect()
 
@@ -314,6 +321,11 @@ app.include_router(
     chat_routes.router,
     tags=["v2", "chat"],
     prefix="/api/chat",
+)
+app.include_router(
+    workspace_routes.router,
+    tags=["workspace"],
+    prefix="/api/workspace",
 )
 app.include_router(
     backend.api.features.oauth.router,
