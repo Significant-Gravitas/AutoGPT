@@ -8,7 +8,7 @@ To run something with Python package dependencies you MUST use `poetry run ...`.
 
 ```bash
 # Install dependencies
-cd backend && poetry install
+poetry install
 
 # Run database migrations
 poetry run prisma migrate dev
@@ -99,7 +99,7 @@ Quick steps:
 6. Generate unique block ID using `uuid.uuid4()`
 7. Test with `poetry run pytest backend/blocks/test/test_block.py`
 
-Note: when making many new blocks analyze the interfaces for each of these blocks and picture if they would go well together in a graph based editor or would they struggle to connect productively?
+Note: when making many new blocks analyze the interfaces for each of these blocks and picture if they would go well together in a graph-based editor or would they struggle to connect productively?
 ex: do the inputs and outputs tie well together?
 
 If you get any pushback or hit complex block conditions check the new_blocks guide in the docs.

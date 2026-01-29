@@ -6,7 +6,7 @@ This file provides guidance to Claude Code when working with the frontend.
 
 ```bash
 # Install dependencies
-cd frontend && pnpm i
+pnpm i
 
 # Generate API client from OpenAPI spec
 pnpm generate:api
