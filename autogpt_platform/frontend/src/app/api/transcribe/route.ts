@@ -12,7 +12,7 @@ function getExtensionFromMimeType(mimeType: string): string {
 export async function POST(request: NextRequest) {
   const token = await getServerAuthToken();
 
-  if (!token) {
+  if (!token || token === "no-token-found") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
