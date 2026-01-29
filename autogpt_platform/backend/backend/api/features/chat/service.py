@@ -1877,6 +1877,9 @@ async def _execute_long_running_tool_with_streaming(
     This function runs independently of the SSE connection, publishes progress
     to the stream registry, and survives if the user closes their browser tab.
     Clients can reconnect via GET /chat/tasks/{task_id}/stream to resume streaming.
+
+    If the external service returns a 202 Accepted (async), this function exits
+    early and lets the RabbitMQ completion consumer handle the rest.
     """
     try:
         # Load fresh session (not stale reference)
@@ -1886,14 +1889,38 @@ async def _execute_long_running_tool_with_streaming(
             await stream_registry.mark_task_completed(task_id, status="failed")
             return
 
+        # Pass operation_id and task_id to the tool for async processing
+        enriched_parameters = {
+            **parameters,
+            "_operation_id": operation_id,
+            "_task_id": task_id,
+        }
+
         # Execute the actual tool
         result = await execute_tool(
             tool_name=tool_name,
-            parameters=parameters,
+            parameters=enriched_parameters,
             tool_call_id=tool_call_id,
             user_id=user_id,
             session=session,
         )
+
+        # Check if the tool result indicates async processing
+        # (e.g., Agent Generator returned 202 Accepted)
+        try:
+            result_data = orjson.loads(result.output) if result.output else {}
+            if result_data.get("status") == "accepted":
+                logger.info(
+                    f"Tool {tool_name} delegated to async processing "
+                    f"(operation_id={operation_id}, task_id={task_id}). "
+                    f"RabbitMQ completion consumer will handle the rest."
+                )
+                # Don't publish result, don't continue with LLM
+                # The RabbitMQ consumer will handle everything when the external
+                # service completes and publishes to the queue
+                return
+        except (orjson.JSONDecodeError, TypeError):
+            pass  # Not JSON or not async - continue normally
 
         # Publish tool result to stream registry
         await stream_registry.publish_chunk(task_id, result)

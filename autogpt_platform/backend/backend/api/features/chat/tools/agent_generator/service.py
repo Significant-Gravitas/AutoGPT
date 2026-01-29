@@ -124,22 +124,39 @@ async def decompose_goal_external(
 
 
 async def generate_agent_external(
-    instructions: dict[str, Any]
+    instructions: dict[str, Any],
+    operation_id: str | None = None,
+    task_id: str | None = None,
 ) -> dict[str, Any] | None:
     """Call the external service to generate an agent from instructions.
 
     Args:
         instructions: Structured instructions from decompose_goal
+        operation_id: Operation ID for async processing (enables RabbitMQ callback)
+        task_id: Task ID for async processing (enables RabbitMQ callback)
 
     Returns:
-        Agent JSON dict or None on error
+        Agent JSON dict, or {"status": "accepted"} for async, or None on error
     """
     client = _get_client()
 
+    # Build request payload
+    payload: dict[str, Any] = {"instructions": instructions}
+    if operation_id and task_id:
+        payload["operation_id"] = operation_id
+        payload["task_id"] = task_id
+
     try:
-        response = await client.post(
-            "/api/generate-agent", json={"instructions": instructions}
-        )
+        response = await client.post("/api/generate-agent", json=payload)
+
+        # Handle 202 Accepted for async processing
+        if response.status_code == 202:
+            logger.info(
+                f"Agent Generator accepted async request "
+                f"(operation_id={operation_id}, task_id={task_id})"
+            )
+            return {"status": "accepted", "operation_id": operation_id, "task_id": task_id}
+
         response.raise_for_status()
         data = response.json()
 
@@ -161,27 +178,44 @@ async def generate_agent_external(
 
 
 async def generate_agent_patch_external(
-    update_request: str, current_agent: dict[str, Any]
+    update_request: str,
+    current_agent: dict[str, Any],
+    operation_id: str | None = None,
+    task_id: str | None = None,
 ) -> dict[str, Any] | None:
     """Call the external service to generate a patch for an existing agent.
 
     Args:
         update_request: Natural language description of changes
         current_agent: Current agent JSON
+        operation_id: Operation ID for async processing (enables RabbitMQ callback)
+        task_id: Task ID for async processing (enables RabbitMQ callback)
 
     Returns:
-        Updated agent JSON, clarifying questions dict, or None on error
+        Updated agent JSON, clarifying questions dict, {"status": "accepted"} for async, or None on error
     """
     client = _get_client()
 
+    # Build request payload
+    payload: dict[str, Any] = {
+        "update_request": update_request,
+        "current_agent_json": current_agent,
+    }
+    if operation_id and task_id:
+        payload["operation_id"] = operation_id
+        payload["task_id"] = task_id
+
     try:
-        response = await client.post(
-            "/api/update-agent",
-            json={
-                "update_request": update_request,
-                "current_agent_json": current_agent,
-            },
-        )
+        response = await client.post("/api/update-agent", json=payload)
+
+        # Handle 202 Accepted for async processing
+        if response.status_code == 202:
+            logger.info(
+                f"Agent Generator accepted async update request "
+                f"(operation_id={operation_id}, task_id={task_id})"
+            )
+            return {"status": "accepted", "operation_id": operation_id, "task_id": task_id}
+
         response.raise_for_status()
         data = response.json()
 

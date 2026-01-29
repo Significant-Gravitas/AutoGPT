@@ -15,7 +15,7 @@ from . import service as chat_service
 from . import stream_registry
 from .config import ChatConfig
 from .model import ChatSession, create_chat_session, get_chat_session, get_user_sessions
-from .response_model import StreamFinish
+from .response_model import StreamFinish, StreamHeartbeat
 
 config = ChatConfig()
 
@@ -385,7 +385,10 @@ async def session_assign_user(
 async def stream_task(
     task_id: str,
     user_id: str | None = Depends(auth.get_user_id),
-    last_idx: int = Query(default=0, ge=0, description="Last message index received"),
+    last_message_id: str = Query(
+        default="0-0",
+        description="Last Redis Stream message ID received (e.g., '1706540123456-0'). Use '0-0' for full replay.",
+    ),
 ):
     """
     Reconnect to a long-running task's SSE stream.
@@ -397,10 +400,10 @@ async def stream_task(
     Args:
         task_id: The task ID from the operation_started response.
         user_id: Authenticated user ID for ownership validation.
-        last_idx: Last message index received (0 for full replay).
+        last_message_id: Last Redis Stream message ID received ("0-0" for full replay).
 
     Returns:
-        StreamingResponse: SSE-formatted response chunks starting from last_idx.
+        StreamingResponse: SSE-formatted response chunks starting after last_message_id.
 
     Raises:
         NotFoundError: If task_id is not found or user doesn't have access.
@@ -409,30 +412,42 @@ async def stream_task(
     subscriber_queue = await stream_registry.subscribe_to_task(
         task_id=task_id,
         user_id=user_id,
-        last_idx=last_idx,
+        last_message_id=last_message_id,
     )
 
     if subscriber_queue is None:
         raise NotFoundError(f"Task {task_id} not found or access denied.")
 
     async def event_generator() -> AsyncGenerator[str, None]:
+        import asyncio
+
         chunk_count = 0
+        heartbeat_interval = 15.0  # Send heartbeat every 15 seconds
         try:
             while True:
-                # Wait for next chunk from the queue
-                chunk = await subscriber_queue.get()
-                chunk_count += 1
-                yield chunk.to_sse()
-
-                # Check for finish signal
-                if isinstance(chunk, StreamFinish):
-                    logger.info(
-                        f"Task stream completed for task {task_id}, "
-                        f"chunk_count={chunk_count}"
+                try:
+                    # Wait for next chunk with timeout for heartbeats
+                    chunk = await asyncio.wait_for(
+                        subscriber_queue.get(), timeout=heartbeat_interval
                     )
-                    break
+                    chunk_count += 1
+                    yield chunk.to_sse()
+
+                    # Check for finish signal
+                    if isinstance(chunk, StreamFinish):
+                        logger.info(
+                            f"Task stream completed for task {task_id}, "
+                            f"chunk_count={chunk_count}"
+                        )
+                        break
+                except asyncio.TimeoutError:
+                    # Send heartbeat to keep connection alive
+                    yield StreamHeartbeat().to_sse()
         except Exception as e:
             logger.error(f"Error in task stream {task_id}: {e}", exc_info=True)
+        finally:
+            # Unsubscribe when client disconnects or stream ends
+            await stream_registry.unsubscribe_from_task(task_id, subscriber_queue)
 
         # AI SDK protocol termination
         yield "data: [DONE]\n\n"

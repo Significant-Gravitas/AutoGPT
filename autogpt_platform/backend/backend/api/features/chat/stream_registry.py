@@ -6,6 +6,7 @@ messages. It supports:
 - Publishing stream messages to both Redis Streams and in-memory queues
 - Subscribing to tasks with replay of missed messages
 - Looking up tasks by operation_id for webhook callbacks
+- Cross-pod real-time delivery via Redis pub/sub
 """
 
 import asyncio
@@ -24,6 +25,9 @@ from .response_model import StreamBaseResponse, StreamFinish
 logger = logging.getLogger(__name__)
 config = ChatConfig()
 
+# Track active pub/sub listeners for cross-pod delivery
+_pubsub_listeners: dict[str, asyncio.Task] = {}
+
 
 @dataclass
 class ActiveTask:
@@ -39,6 +43,10 @@ class ActiveTask:
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     queue: asyncio.Queue[StreamBaseResponse] = field(default_factory=asyncio.Queue)
     asyncio_task: asyncio.Task | None = None
+    # Lock for atomic status checks and subscriber management
+    lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    # Set of subscriber queues for fan-out
+    subscribers: set[asyncio.Queue[StreamBaseResponse]] = field(default_factory=set)
 
 
 # Module-level registry for active tasks
@@ -48,6 +56,7 @@ _active_tasks: dict[str, ActiveTask] = {}
 TASK_META_PREFIX = "chat:task:meta:"  # Hash for task metadata
 TASK_STREAM_PREFIX = "chat:stream:"  # Redis Stream for messages
 TASK_OP_PREFIX = "chat:task:op:"  # Operation ID -> task_id mapping
+TASK_PUBSUB_PREFIX = "chat:task:pubsub:"  # Pub/sub channel for cross-pod delivery
 
 
 def _get_task_meta_key(task_id: str) -> str:
@@ -63,6 +72,11 @@ def _get_task_stream_key(task_id: str) -> str:
 def _get_operation_mapping_key(operation_id: str) -> str:
     """Get Redis key for operation_id to task_id mapping."""
     return f"{TASK_OP_PREFIX}{operation_id}"
+
+
+def _get_task_pubsub_channel(task_id: str) -> str:
+    """Get Redis pub/sub channel for task cross-pod delivery."""
+    return f"{TASK_PUBSUB_PREFIX}{task_id}"
 
 
 async def create_task(
@@ -132,58 +146,74 @@ async def create_task(
 async def publish_chunk(
     task_id: str,
     chunk: StreamBaseResponse,
-) -> int:
+) -> str:
     """Publish a chunk to the task's stream.
 
-    Writes to both Redis Stream (for replay) and in-memory queue (for live subscribers).
+    Delivers to in-memory subscribers first (for real-time), then persists to
+    Redis Stream (for replay). This order ensures live subscribers get messages
+    even if Redis temporarily fails.
 
     Args:
         task_id: Task ID to publish to
         chunk: The stream response chunk to publish
 
     Returns:
-        The message index in the Redis Stream
+        The Redis Stream message ID (format: "timestamp-sequence"), or "0-0" if
+        Redis persistence failed
     """
-    redis = await get_redis_async()
-    stream_key = _get_task_stream_key(task_id)
-
-    # Serialize chunk to JSON
-    chunk_json = chunk.model_dump_json()
-
-    # Add to Redis Stream with auto-generated ID
-    # The ID format is "timestamp-sequence" which gives us ordering
-    message_id = await redis.xadd(
-        stream_key,
-        {"data": chunk_json},
-        maxlen=config.stream_max_length,
-    )
-
-    # Publish to in-memory queue if task exists
+    # Deliver to in-memory subscribers FIRST for real-time updates
     task = _active_tasks.get(task_id)
     if task:
-        try:
-            task.queue.put_nowait(chunk)
-        except asyncio.QueueFull:
-            logger.warning(f"Queue full for task {task_id}, dropping chunk")
+        async with task.lock:
+            for subscriber_queue in task.subscribers:
+                try:
+                    subscriber_queue.put_nowait(chunk)
+                except asyncio.QueueFull:
+                    logger.warning(
+                        f"Subscriber queue full for task {task_id}, dropping chunk"
+                    )
 
-    logger.debug(f"Published chunk to task {task_id}, message_id={message_id}")
+    # Then persist to Redis Stream for replay (with error handling)
+    message_id = "0-0"
+    chunk_json = chunk.model_dump_json()
+    try:
+        redis = await get_redis_async()
+        stream_key = _get_task_stream_key(task_id)
 
-    # Parse the message_id to extract the index
-    # Redis Stream IDs are "timestamp-sequence", we return the raw ID
-    return int(message_id.split("-")[1]) if "-" in message_id else 0
+        # Add to Redis Stream with auto-generated ID
+        # The ID format is "timestamp-sequence" which gives us ordering
+        raw_id = await redis.xadd(
+            stream_key,
+            {"data": chunk_json},
+            maxlen=config.stream_max_length,
+        )
+        message_id = raw_id if isinstance(raw_id, str) else raw_id.decode()
+
+        # Publish to pub/sub for cross-pod real-time delivery
+        pubsub_channel = _get_task_pubsub_channel(task_id)
+        await redis.publish(pubsub_channel, chunk_json)
+
+        logger.debug(f"Published chunk to task {task_id}, message_id={message_id}")
+    except Exception as e:
+        logger.error(
+            f"Failed to persist chunk to Redis for task {task_id}: {e}",
+            exc_info=True,
+        )
+
+    return message_id
 
 
 async def subscribe_to_task(
     task_id: str,
     user_id: str | None,
-    last_idx: int = 0,
+    last_message_id: str = "0-0",
 ) -> asyncio.Queue[StreamBaseResponse] | None:
     """Subscribe to a task's stream with replay of missed messages.
 
     Args:
         task_id: Task ID to subscribe to
         user_id: User ID for ownership validation
-        last_idx: Last message index received (0 for full replay)
+        last_message_id: Last Redis Stream message ID received ("0-0" for full replay)
 
     Returns:
         An asyncio Queue that will receive stream chunks, or None if task not found
@@ -208,15 +238,21 @@ async def subscribe_to_task(
         redis = await get_redis_async()
         stream_key = _get_task_stream_key(task_id)
 
-        # Read all messages from stream
-        # Use "0-0" to get all messages or construct ID from last_idx
-        start_id = "0-0" if last_idx == 0 else f"0-{last_idx}"
-        messages = await redis.xread({stream_key: start_id}, block=0, count=1000)
+        # Track the last message ID we've seen for gap detection
+        replay_last_id = last_message_id
+
+        # Read all messages from stream starting after last_message_id
+        # xread returns messages with ID > last_message_id
+        messages = await redis.xread({stream_key: last_message_id}, block=0, count=1000)
 
         if messages:
             # messages format: [[stream_name, [(id, {data: json}), ...]]]
             for _stream_name, stream_messages in messages:
-                for _msg_id, msg_data in stream_messages:
+                for msg_id, msg_data in stream_messages:
+                    # Track the last message ID we've processed
+                    replay_last_id = (
+                        msg_id if isinstance(msg_id, str) else msg_id.decode()
+                    )
                     if b"data" in msg_data:
                         try:
                             chunk_data = orjson.loads(msg_data[b"data"])
@@ -227,23 +263,44 @@ async def subscribe_to_task(
                         except Exception as e:
                             logger.warning(f"Failed to replay message: {e}")
 
-        # If task is still running, set up live subscription
-        if task.status == "running":
-            # Forward messages from task queue to subscriber queue
-            async def _forward_messages():
-                try:
-                    while True:
-                        chunk = await task.queue.get()
-                        await subscriber_queue.put(chunk)
-                        if isinstance(chunk, StreamFinish):
-                            break
-                except asyncio.CancelledError:
-                    pass
+        # Atomically check status and register subscriber under lock
+        # This prevents race condition where task completes between check and subscribe
+        should_start_pubsub = False
+        async with task.lock:
+            if task.status == "running":
+                # Register this subscriber for live updates
+                task.subscribers.add(subscriber_queue)
+                # Start pub/sub listener if this is the first subscriber
+                should_start_pubsub = len(task.subscribers) == 1
+                logger.debug(
+                    f"Registered subscriber for task {task_id}, "
+                    f"total subscribers: {len(task.subscribers)}"
+                )
+            else:
+                # Task is done, add finish marker
+                await subscriber_queue.put(StreamFinish())
 
-            asyncio.create_task(_forward_messages())
-        else:
-            # Task is done, add finish marker
-            await subscriber_queue.put(StreamFinish())
+        # After registering, do a second read to catch any messages published
+        # between the first read and registration (closes the race window)
+        if task.status == "running":
+            gap_messages = await redis.xread(
+                {stream_key: replay_last_id}, block=0, count=1000
+            )
+            if gap_messages:
+                for _stream_name, stream_messages in gap_messages:
+                    for _msg_id, msg_data in stream_messages:
+                        if b"data" in msg_data:
+                            try:
+                                chunk_data = orjson.loads(msg_data[b"data"])
+                                chunk = _reconstruct_chunk(chunk_data)
+                                if chunk:
+                                    await subscriber_queue.put(chunk)
+                            except Exception as e:
+                                logger.warning(f"Failed to replay gap message: {e}")
+
+        # Start pub/sub listener outside the lock to avoid deadlocks
+        if should_start_pubsub:
+            await start_pubsub_listener(task_id)
 
         return subscriber_queue
 
@@ -269,8 +326,8 @@ async def subscribe_to_task(
     subscriber_queue = asyncio.Queue()
     stream_key = _get_task_stream_key(task_id)
 
-    start_id = "0-0" if last_idx == 0 else f"0-{last_idx}"
-    messages = await redis.xread({stream_key: start_id}, block=0, count=1000)
+    # Read all messages starting after last_message_id
+    messages = await redis.xread({stream_key: last_message_id}, block=0, count=1000)
 
     if messages:
         for _stream_name, stream_messages in messages:
@@ -303,8 +360,25 @@ async def mark_task_completed(
     task = _active_tasks.get(task_id)
 
     if task:
-        task.status = status
-        # Publish finish event to all subscribers
+        # Acquire lock to prevent new subscribers during completion
+        async with task.lock:
+            task.status = status
+            # Send finish event directly to all current subscribers
+            finish_event = StreamFinish()
+            for subscriber_queue in task.subscribers:
+                try:
+                    subscriber_queue.put_nowait(finish_event)
+                except asyncio.QueueFull:
+                    logger.warning(
+                        f"Subscriber queue full for task {task_id} during completion"
+                    )
+            # Clear subscribers since task is done
+            task.subscribers.clear()
+
+        # Stop pub/sub listener since task is done
+        await stop_pubsub_listener(task_id)
+
+        # Also publish to Redis Stream for replay (and pub/sub for cross-pod)
         await publish_chunk(task_id, StreamFinish())
 
         # Remove from active tasks after a short delay to allow subscribers to finish
@@ -468,3 +542,107 @@ async def set_task_asyncio_task(task_id: str, asyncio_task: asyncio.Task) -> Non
     task = _active_tasks.get(task_id)
     if task:
         task.asyncio_task = asyncio_task
+
+
+async def unsubscribe_from_task(
+    task_id: str,
+    subscriber_queue: asyncio.Queue[StreamBaseResponse],
+) -> None:
+    """Unsubscribe a queue from a task's stream.
+
+    Should be called when a client disconnects to clean up resources.
+    Also stops the pub/sub listener if there are no more local subscribers.
+
+    Args:
+        task_id: Task ID to unsubscribe from
+        subscriber_queue: The queue to remove from subscribers
+    """
+    task = _active_tasks.get(task_id)
+    if task:
+        async with task.lock:
+            task.subscribers.discard(subscriber_queue)
+            remaining = len(task.subscribers)
+            logger.debug(
+                f"Unsubscribed from task {task_id}, "
+                f"remaining subscribers: {remaining}"
+            )
+            # Stop pub/sub listener if no more local subscribers
+            if remaining == 0:
+                await stop_pubsub_listener(task_id)
+
+
+async def start_pubsub_listener(task_id: str) -> None:
+    """Start listening to Redis pub/sub for cross-pod delivery.
+
+    This enables real-time updates when another pod publishes chunks for a task
+    that has local subscribers on this pod.
+
+    Args:
+        task_id: Task ID to listen for
+    """
+    if task_id in _pubsub_listeners:
+        return  # Already listening
+
+    task = _active_tasks.get(task_id)
+    if not task:
+        return
+
+    async def _listener():
+        try:
+            redis = await get_redis_async()
+            pubsub = redis.pubsub()
+            channel = _get_task_pubsub_channel(task_id)
+            await pubsub.subscribe(channel)
+            logger.debug(f"Started pub/sub listener for task {task_id}")
+
+            async for message in pubsub.listen():
+                if message["type"] != "message":
+                    continue
+
+                try:
+                    chunk_data = orjson.loads(message["data"])
+                    chunk = _reconstruct_chunk(chunk_data)
+                    if chunk:
+                        # Deliver to local subscribers
+                        local_task = _active_tasks.get(task_id)
+                        if local_task:
+                            async with local_task.lock:
+                                for queue in local_task.subscribers:
+                                    try:
+                                        queue.put_nowait(chunk)
+                                    except asyncio.QueueFull:
+                                        pass
+                        # Stop listening if this was a finish event
+                        if isinstance(chunk, StreamFinish):
+                            break
+                except Exception as e:
+                    logger.warning(f"Error processing pub/sub message: {e}")
+
+            await pubsub.unsubscribe(channel)
+            await pubsub.close()
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            logger.error(f"Pub/sub listener error for task {task_id}: {e}")
+        finally:
+            _pubsub_listeners.pop(task_id, None)
+            logger.debug(f"Stopped pub/sub listener for task {task_id}")
+
+    listener_task = asyncio.create_task(_listener())
+    _pubsub_listeners[task_id] = listener_task
+
+
+async def stop_pubsub_listener(task_id: str) -> None:
+    """Stop the pub/sub listener for a task.
+
+    Args:
+        task_id: Task ID to stop listening for
+    """
+    listener = _pubsub_listeners.pop(task_id, None)
+    if listener and not listener.done():
+        listener.cancel()
+        try:
+            await listener
+        except asyncio.CancelledError:
+            pass
+        logger.debug(f"Cancelled pub/sub listener for task {task_id}")

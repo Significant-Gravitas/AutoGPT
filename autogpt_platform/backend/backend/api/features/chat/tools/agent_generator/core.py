@@ -57,21 +57,32 @@ async def decompose_goal(description: str, context: str = "") -> dict[str, Any] 
     return await decompose_goal_external(description, context)
 
 
-async def generate_agent(instructions: dict[str, Any]) -> dict[str, Any] | None:
+async def generate_agent(
+    instructions: dict[str, Any],
+    operation_id: str | None = None,
+    task_id: str | None = None,
+) -> dict[str, Any] | None:
     """Generate agent JSON from instructions.
 
     Args:
         instructions: Structured instructions from decompose_goal
+        operation_id: Operation ID for async processing (enables RabbitMQ callback)
+        task_id: Task ID for async processing (enables RabbitMQ callback)
 
     Returns:
-        Agent JSON dict or None on error
+        Agent JSON dict, {"status": "accepted"} for async, or None on error
 
     Raises:
         AgentGeneratorNotConfiguredError: If the external service is not configured.
     """
     _check_service_configured()
     logger.info("Calling external Agent Generator service for generate_agent")
-    result = await generate_agent_external(instructions)
+    result = await generate_agent_external(instructions, operation_id, task_id)
+
+    # Don't modify async response
+    if result and result.get("status") == "accepted":
+        return result
+
     if result:
         # Ensure required fields
         if "id" not in result:
@@ -253,7 +264,10 @@ async def get_agent_as_json(
 
 
 async def generate_agent_patch(
-    update_request: str, current_agent: dict[str, Any]
+    update_request: str,
+    current_agent: dict[str, Any],
+    operation_id: str | None = None,
+    task_id: str | None = None,
 ) -> dict[str, Any] | None:
     """Update an existing agent using natural language.
 
@@ -265,13 +279,17 @@ async def generate_agent_patch(
     Args:
         update_request: Natural language description of changes
         current_agent: Current agent JSON
+        operation_id: Operation ID for async processing (enables RabbitMQ callback)
+        task_id: Task ID for async processing (enables RabbitMQ callback)
 
     Returns:
-        Updated agent JSON, clarifying questions dict, or None on error
+        Updated agent JSON, clarifying questions dict, {"status": "accepted"} for async, or None on error
 
     Raises:
         AgentGeneratorNotConfiguredError: If the external service is not configured.
     """
     _check_service_configured()
     logger.info("Calling external Agent Generator service for generate_agent_patch")
-    return await generate_agent_patch_external(update_request, current_agent)
+    return await generate_agent_patch_external(
+        update_request, current_agent, operation_id, task_id
+    )
