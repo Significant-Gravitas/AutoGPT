@@ -4,13 +4,15 @@ This is a minimal file intended to be run by users to help them manage the autog
 If you want to contribute, please use only libraries that come as part of Python.
 To ensure efficiency, add the imports to the functions so only what is needed is imported.
 """
+# === CHANGED: fail fast instead of auto-installing dependencies ===
 try:
     import click
 except ImportError:
-    import os
-
-    os.system("pip3 install click")
-    import click
+    raise SystemExit(
+        "Missing dependency: click\n"
+        "Please install it using:\n"
+        "  pip install click"
+    )
 
 
 @click.group()
