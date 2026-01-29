@@ -18,6 +18,12 @@ from .get_doc_page import GetDocPageTool
 from .run_agent import RunAgentTool
 from .run_block import RunBlockTool
 from .search_docs import SearchDocsTool
+from .workspace_files import (
+    DeleteWorkspaceFileTool,
+    ListWorkspaceFilesTool,
+    ReadWorkspaceFileTool,
+    WriteWorkspaceFileTool,
+)
 
 if TYPE_CHECKING:
     from backend.api.features.chat.response_model import StreamToolOutputAvailable
@@ -37,6 +43,11 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "view_agent_output": AgentOutputTool(),
     "search_docs": SearchDocsTool(),
     "get_doc_page": GetDocPageTool(),
+    # Workspace tools for CoPilot file operations
+    "list_workspace_files": ListWorkspaceFilesTool(),
+    "read_workspace_file": ReadWorkspaceFileTool(),
+    "write_workspace_file": WriteWorkspaceFileTool(),
+    "delete_workspace_file": DeleteWorkspaceFileTool(),
 }
 
 # Export individual tool instances for backwards compatibility

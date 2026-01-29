@@ -85,17 +85,6 @@ pnpm format
 pnpm types
 ```
 
-**📖 Complete Guide**: See `/frontend/CONTRIBUTING.md` and `/frontend/.cursorrules` for comprehensive frontend patterns.
-
-**Key Frontend Conventions:**
-
-- Separate render logic from data/behavior in components
-- Use generated API hooks from `@/app/api/__generated__/endpoints/`
-- Use function declarations (not arrow functions) for components/handlers
-- Use design system components from `src/components/` (atoms, molecules, organisms)
-- Only use Phosphor Icons
-- Never use `src/components/__legacy__/*` or deprecated `BackendAPI`
-
 ## Architecture Overview
 
 ### Backend Architecture
@@ -194,6 +183,50 @@ ex: do the inputs and outputs tie well together?
 
 If you get any pushback or hit complex block conditions check the new_blocks guide in the docs.
 
+**Handling files in blocks with `store_media_file()`:**
+
+When blocks need to work with files (images, videos, documents), use `store_media_file()` from `backend.util.file`. The `return_format` parameter determines what you get back:
+
+| Format | Use When | Returns |
+|--------|----------|---------|
+| `"for_local_processing"` | Processing with local tools (ffmpeg, MoviePy, PIL) | Local file path (e.g., `"image.png"`) |
+| `"for_external_api"` | Sending content to external APIs (Replicate, OpenAI) | Data URI (e.g., `"data:image/png;base64,..."`) |
+| `"for_block_output"` | Returning output from your block | Smart: `workspace://` in CoPilot, data URI in graphs |
+
+**Examples:**
+```python
+# INPUT: Need to process file locally with ffmpeg
+local_path = await store_media_file(
+    file=input_data.video,
+    execution_context=execution_context,
+    return_format="for_local_processing",
+)
+# local_path = "video.mp4" - use with Path/ffmpeg/etc
+
+# INPUT: Need to send to external API like Replicate
+image_b64 = await store_media_file(
+    file=input_data.image,
+    execution_context=execution_context,
+    return_format="for_external_api",
+)
+# image_b64 = "data:image/png;base64,iVBORw0..." - send to API
+
+# OUTPUT: Returning result from block
+result_url = await store_media_file(
+    file=generated_image_url,
+    execution_context=execution_context,
+    return_format="for_block_output",
+)
+yield "image_url", result_url
+# In CoPilot: result_url = "workspace://abc123"
+# In graphs:  result_url = "data:image/png;base64,..."
+```
+
+**Key points:**
+- `for_block_output` is the ONLY format that auto-adapts to execution context
+- Always use `for_block_output` for block outputs unless you have a specific reason not to
+- Never hardcode workspace checks - let `for_block_output` handle it
+
 **Modifying the API:**
 
 1. Update route in `/backend/backend/server/routers/`
@@ -217,14 +250,17 @@ See `/frontend/CONTRIBUTING.md` for complete patterns. Quick reference:
 4. **Styling**: Tailwind CSS only, use design tokens, Phosphor Icons only
 5. **Testing**: Add Storybook stories for new components, Playwright for E2E
 6. **Code conventions**: Function declarations (not arrow functions) for components/handlers
+
 - Component props should be `interface Props { ... }` (not exported) unless the interface needs to be used outside the component
 - Separate render logic from business logic (component.tsx + useComponent.ts + helpers.ts)
 - Colocate state when possible and avoid creating large components, use sub-components ( local `/components` folder next to the parent component ) when sensible
 - Avoid large hooks, abstract logic into `helpers.ts` files when sensible
 - Use function declarations for components, arrow functions only for callbacks
 - No barrel files or `index.ts` re-exports
-- Do not use `useCallback` or `useMemo` unless strictly needed
+- Do not use `useCallback` or `useMemo` unless asked to optimise a given function
 - Avoid comments at all times unless the code is very complex
+- Do not type hook returns, let Typescript infer as much as possible
+- Never type with `any`, if not types available use `unknown`
 
 ### Security Implementation
 

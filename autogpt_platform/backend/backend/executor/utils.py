@@ -892,11 +892,19 @@ async def add_graph_execution(
         settings = await gdb.get_graph_settings(user_id=user_id, graph_id=graph_id)
 
         execution_context = ExecutionContext(
+            # Execution identity
+            user_id=user_id,
+            graph_id=graph_id,
+            graph_exec_id=graph_exec.id,
+            graph_version=graph_exec.graph_version,
+            # Safety settings
             human_in_the_loop_safe_mode=settings.human_in_the_loop_safe_mode,
             sensitive_action_safe_mode=settings.sensitive_action_safe_mode,
+            # User settings
             user_timezone=(
                 user.timezone if user.timezone != USER_TIMEZONE_NOT_SET else "UTC"
             ),
+            # Execution hierarchy
             root_execution_id=graph_exec.id,
         )
 
