@@ -616,8 +616,13 @@ class ExecutionProcessor:
         nodes_to_skip: Optional[set[str]] = None,
     ) -> ExecutionStatus:
         status = ExecutionStatus.RUNNING
+        has_error_output = False
 
         async def persist_output(output_name: str, output_data: Any) -> None:
+            nonlocal has_error_output
+            if output_name == "error":
+                has_error_output = True
+
             await db_client.upsert_execution_output(
                 node_exec_id=node_exec.node_exec_id,
                 output_name=output_name,
@@ -655,7 +660,11 @@ class ExecutionProcessor:
                 await persist_output(output_name, output_data)
 
             log_metadata.info(f"Finished node execution {node_exec.node_exec_id}")
-            status = ExecutionStatus.COMPLETED
+            # Mark as FAILED if block yielded an error output, even without exception
+            if has_error_output:
+                status = ExecutionStatus.FAILED
+            else:
+                status = ExecutionStatus.COMPLETED
 
         except BaseException as e:
             stats.error = e
