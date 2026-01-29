@@ -520,7 +520,9 @@ class TestDataCreator:
         featured_profile_ids = set(
             random.sample([p.id for p in selected_profiles], num_featured)
         )
-        print(f"🎯 Creating {num_featured} featured creators (min: {GUARANTEED_FEATURED_CREATORS})")
+        print(
+            f"🎯 Creating {num_featured} featured creators (min: {GUARANTEED_FEATURED_CREATORS})"
+        )
 
         for profile in selected_profiles:
             try:
@@ -749,7 +751,9 @@ class TestDataCreator:
         print("\n📊 Store Submissions Summary:")
         print(f"   Created: {len(submissions)}")
         print(f"   Approved: {len(approved_submissions)}")
-        print(f"   Featured: {featured_count} (guaranteed min: {GUARANTEED_FEATURED_AGENTS})")
+        print(
+            f"   Featured: {featured_count} (guaranteed min: {GUARANTEED_FEATURED_AGENTS})"
+        )
 
         self.store_submissions = submissions
         return submissions
