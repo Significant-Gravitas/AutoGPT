@@ -308,10 +308,12 @@ export class LibraryPage extends BasePage {
     await this.scrollToBottom();
 
     // Wait for network to settle (more reliable than fixed timeout in CI)
-    await this.page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {
-      // Fallback if networkidle times out - some requests may be long-polling
-      console.log("Network idle timeout, continuing...");
-    });
+    await this.page
+      .waitForLoadState("networkidle", { timeout: 10000 })
+      .catch(() => {
+        // Fallback if networkidle times out - some requests may be long-polling
+        console.log("Network idle timeout, continuing...");
+      });
 
     // Additional small wait for React state updates
     await this.page.waitForTimeout(500);
