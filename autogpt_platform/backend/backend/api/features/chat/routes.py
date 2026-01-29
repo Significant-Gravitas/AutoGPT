@@ -5,7 +5,7 @@ from collections.abc import AsyncGenerator
 from typing import Annotated
 
 from autogpt_libs import auth
-from fastapi import APIRouter, Depends, Query, Security
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Security
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -491,9 +491,6 @@ async def get_task_status(
 # ========== External Completion Webhook ==========
 
 
-from fastapi import Header, HTTPException
-
-
 @router.post(
     "/operations/{operation_id}/complete",
     status_code=200,
@@ -527,8 +524,8 @@ async def complete_operation(
     else:
         # If no internal API key is configured, log a warning
         logger.warning(
-            f"Operation complete webhook called without API key validation "
-            f"(CHAT_INTERNAL_API_KEY not configured)"
+            "Operation complete webhook called without API key validation "
+            "(CHAT_INTERNAL_API_KEY not configured)"
         )
 
     # Find task by operation_id
@@ -554,7 +551,11 @@ async def complete_operation(
             StreamToolOutputAvailable(
                 toolCallId=task.tool_call_id,
                 toolName=task.tool_name,
-                output=result_output if isinstance(result_output, str) else str(result_output),
+                output=(
+                    result_output
+                    if isinstance(result_output, str)
+                    else str(result_output)
+                ),
                 success=True,
             ),
         )

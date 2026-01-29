@@ -12,7 +12,7 @@ import asyncio
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Literal
+from typing import Any, Literal
 
 import orjson
 
@@ -103,7 +103,7 @@ async def create_task(
     meta_key = _get_task_meta_key(task_id)
     op_key = _get_operation_mapping_key(operation_id)
 
-    await redis.hset(
+    await redis.hset(  # type: ignore[misc]
         meta_key,
         mapping={
             "task_id": task_id,
@@ -250,7 +250,7 @@ async def subscribe_to_task(
     # Try to load from Redis if not in memory
     redis = await get_redis_async()
     meta_key = _get_task_meta_key(task_id)
-    meta = await redis.hgetall(meta_key)
+    meta: dict[Any, Any] = await redis.hgetall(meta_key)  # type: ignore[misc]
 
     if not meta:
         logger.warning(f"Task {task_id} not found in memory or Redis")
@@ -318,7 +318,7 @@ async def mark_task_completed(
     # Update Redis metadata
     redis = await get_redis_async()
     meta_key = _get_task_meta_key(task_id)
-    await redis.hset(meta_key, "status", status)
+    await redis.hset(meta_key, "status", status)  # type: ignore[misc]
 
     logger.info(f"Marked task {task_id} as {status}")
 
@@ -352,7 +352,7 @@ async def find_task_by_operation_id(operation_id: str) -> ActiveTask | None:
 
         # Load metadata from Redis
         meta_key = _get_task_meta_key(task_id_str)
-        meta = await redis.hgetall(meta_key)
+        meta: dict[Any, Any] = await redis.hgetall(meta_key)  # type: ignore[misc]
 
         if meta:
             # Reconstruct task object (not fully active, but has metadata)
@@ -385,7 +385,7 @@ async def get_task(task_id: str) -> ActiveTask | None:
     # Try Redis lookup
     redis = await get_redis_async()
     meta_key = _get_task_meta_key(task_id)
-    meta = await redis.hgetall(meta_key)
+    meta: dict[Any, Any] = await redis.hgetall(meta_key)  # type: ignore[misc]
 
     if meta:
         return ActiveTask(
@@ -395,7 +395,7 @@ async def get_task(task_id: str) -> ActiveTask | None:
             tool_call_id=meta.get(b"tool_call_id", b"").decode(),
             tool_name=meta.get(b"tool_name", b"").decode(),
             operation_id=meta.get(b"operation_id", b"").decode(),
-            status=meta.get(b"status", b"running").decode(),  # type: ignore
+            status=meta.get(b"status", b"running").decode(),  # type: ignore[arg-type]
         )
 
     return None

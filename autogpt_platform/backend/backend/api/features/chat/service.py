@@ -26,6 +26,7 @@ from backend.util.exceptions import NotFoundError
 from backend.util.settings import Settings
 
 from . import db as chat_db
+from . import stream_registry
 from .config import ChatConfig
 from .model import (
     ChatMessage,
@@ -59,7 +60,6 @@ from .tools.models import (
     OperationStartedResponse,
 )
 from .tracking import track_user_message
-from . import stream_registry
 
 logger = logging.getLogger(__name__)
 
@@ -2134,12 +2134,8 @@ async def _generate_llm_continuation_with_streaming(
         text_block_id = str(uuid_module.uuid4())
 
         # Publish start event
-        await stream_registry.publish_chunk(
-            task_id, StreamStart(messageId=message_id)
-        )
-        await stream_registry.publish_chunk(
-            task_id, StreamTextStart(id=text_block_id)
-        )
+        await stream_registry.publish_chunk(task_id, StreamStart(messageId=message_id))
+        await stream_registry.publish_chunk(task_id, StreamTextStart(id=text_block_id))
 
         # Stream the response
         stream = await client.chat.completions.create(
@@ -2161,9 +2157,7 @@ async def _generate_llm_continuation_with_streaming(
                 )
 
         # Publish end events
-        await stream_registry.publish_chunk(
-            task_id, StreamTextEnd(id=text_block_id)
-        )
+        await stream_registry.publish_chunk(task_id, StreamTextEnd(id=text_block_id))
 
         if assistant_content:
             # Reload session from DB to avoid race condition with user messages

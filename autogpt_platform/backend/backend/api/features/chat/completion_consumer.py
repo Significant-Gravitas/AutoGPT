@@ -7,12 +7,17 @@ stream registry and chat service updates.
 
 import asyncio
 import logging
-from typing import Any
 
 import orjson
 from pydantic import BaseModel
 
-from backend.data.rabbitmq import AsyncRabbitMQ, Exchange, ExchangeType, Queue, RabbitMQConfig
+from backend.data.rabbitmq import (
+    AsyncRabbitMQ,
+    Exchange,
+    ExchangeType,
+    Queue,
+    RabbitMQConfig,
+)
 
 from . import service as chat_service
 from . import stream_registry
@@ -182,9 +187,11 @@ class ChatCompletionConsumer:
         result_str = (
             message.result
             if isinstance(message.result, str)
-            else orjson.dumps(message.result).decode("utf-8")
-            if message.result
-            else '{"status": "completed"}'
+            else (
+                orjson.dumps(message.result).decode("utf-8")
+                if message.result
+                else '{"status": "completed"}'
+            )
         )
         await chat_service._update_pending_operation(
             session_id=task.session_id,
