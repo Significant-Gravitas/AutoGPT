@@ -48,14 +48,13 @@ class SearchTheWebBlock(Block, GetRequest):
     async def run(
         self, input_data: Input, *, credentials: JinaCredentials, **kwargs
     ) -> BlockOutput:
-        # Encode the search query
         encoded_query = quote(input_data.query)
+
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {credentials.api_key.get_secret_value()}",
         }
 
-        # Prepend the Jina Search URL to the encoded query
         jina_search_url = f"https://s.jina.ai/{encoded_query}"
 
         try:
@@ -69,7 +68,6 @@ class SearchTheWebBlock(Block, GetRequest):
                 block_id=self.id,
             ) from e
 
-        # Output the search results
         yield "results", results
 
 
@@ -87,7 +85,8 @@ class ExtractWebsiteContentBlock(Block, GetRequest):
     class Output(BlockSchemaOutput):
         content: str = SchemaField(description="The scraped content from the given URL")
         error: str = SchemaField(
-            description="Error message if the content cannot be retrieved"
+            default="",
+            description="Error message if the content cannot be retrieved",
         )
 
     def __init__(self):
@@ -113,11 +112,23 @@ class ExtractWebsiteContentBlock(Block, GetRequest):
             url = input_data.url
             headers = {}
         else:
-            url = f"https://r.jina.ai/{input_data.url}"
+            encoded_url = quote(input_data.url, safe=":/")
+            url = f"https://r.jina.ai/{encoded_url}"
             headers = {
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {credentials.api_key.get_secret_value()}",
             }
 
-        content = await self.get_request(url, json=False, headers=headers)
-        yield "content", content
+        try:
+            content = await self.get_request(url, json=False, headers=headers)
+            yield "content", content
+        except Exception as e:
+            raise BlockExecutionError(
+                message=(
+                    "Failed to extract content from URL.\n"
+                    f"URL: {input_data.url}\n"
+                    f"Reason: {e}"
+                ),
+                block_name=self.name,
+                block_id=self.id,
+            ) from e
