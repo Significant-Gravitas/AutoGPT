@@ -216,7 +216,27 @@ async def get_business_understanding(
 
     # Cache miss - load from database
     logger.debug(f"Business understanding cache miss for user {user_id}")
-    record = await CoPilotUnderstanding.prisma().find_unique(where={"userId": user_id})
+    try:
+        record = await CoPilotUnderstanding.prisma().find_unique(where={"userId": user_id})
+    except Exception as e:
+        error_msg = str(e)
+        if "does not exist" in error_msg:
+            # Log connection debug info to diagnose if connections go to different DBs
+            from backend.data.db import get_connection_debug_info
+
+            try:
+                debug_info = await get_connection_debug_info()
+                logger.error(
+                    f"CoPilotUnderstanding table not found. Connection debug: {debug_info}. "
+                    f"Error: {error_msg}"
+                )
+            except Exception:
+                logger.error(
+                    f"CoPilotUnderstanding table not found (debug unavailable). "
+                    f"Error: {error_msg}"
+                )
+        raise
+
     if record is None:
         return None
 
