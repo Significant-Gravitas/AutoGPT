@@ -10,6 +10,7 @@ from typing import Optional
 
 from prisma.enums import WorkspaceFileSource
 from prisma.models import UserWorkspace, UserWorkspaceFile
+from prisma.types import UserWorkspaceFileWhereInput
 
 from backend.util.json import SafeJson
 
