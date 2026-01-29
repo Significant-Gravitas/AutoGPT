@@ -8,35 +8,11 @@ import { environment } from "../environment";
 import { Flag, useGetFlag } from "./use-get-flag";
 
 interface FeatureFlagRedirectProps {
-  /** The feature flag to check */
   flag: Flag;
-  /** Route to redirect to when flag is false */
   whenDisabled: string;
-  /** Children to render when flag is enabled */
   children: ReactNode;
 }
 
-/**
- * Component that redirects based on a feature flag value.
- *
- * Waits for LaunchDarkly to initialize before redirecting to avoid
- * race conditions where the flag hasn't loaded yet.
- *
- * @example
- * ```tsx
- * export default function Page() {
- *   return (
- *     <FeatureFlagRedirect
- *       flag={Flag.CHAT}
- *       whenDisabled="/library"
- *     >
- *       <div>Feature is enabled!</div>
- *     </FeatureFlagGate>
- *     />
- *   );
- * }
- * ```
- */
 export function FeatureFlagPage({
   flag,
   whenDisabled,
