@@ -158,14 +158,6 @@ model UserWorkspace {
   @@index([userId])
 }
 
-// Source of workspace file creation
-enum WorkspaceFileSource {
-  UPLOAD // Direct user upload
-  EXECUTION // Created by graph execution
-  COPILOT // Created by CoPilot session
-  IMPORT // Imported from external source
-}
-
 // Individual files in a user's workspace
 model UserWorkspaceFile {
   id        String   @id @default(uuid())
@@ -186,11 +178,6 @@ model UserWorkspaceFile {
   // File state
   isDeleted Boolean   @default(false)
   deletedAt DateTime?
-
-  // Source tracking
-  source          WorkspaceFileSource @default(UPLOAD)
-  sourceExecId    String? // graph_exec_id if from execution
-  sourceSessionId String? // chat_session_id if from CoPilot
 
   metadata Json @default("{}")
 

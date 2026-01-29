@@ -8,7 +8,6 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-from prisma.enums import WorkspaceFileSource
 from prisma.models import UserWorkspace, UserWorkspaceFile
 from prisma.types import UserWorkspaceFileWhereInput
 
@@ -63,9 +62,6 @@ async def create_workspace_file(
     mime_type: str,
     size_bytes: int,
     checksum: Optional[str] = None,
-    source: WorkspaceFileSource = WorkspaceFileSource.UPLOAD,
-    source_exec_id: Optional[str] = None,
-    source_session_id: Optional[str] = None,
     metadata: Optional[dict] = None,
 ) -> UserWorkspaceFile:
     """
@@ -80,9 +76,6 @@ async def create_workspace_file(
         mime_type: MIME type of the file
         size_bytes: File size in bytes
         checksum: Optional SHA256 checksum
-        source: How the file was created
-        source_exec_id: Graph execution ID if from execution
-        source_session_id: Chat session ID if from CoPilot
         metadata: Optional additional metadata
 
     Returns:
@@ -102,9 +95,6 @@ async def create_workspace_file(
             "mimeType": mime_type,
             "sizeBytes": size_bytes,
             "checksum": checksum,
-            "source": source,
-            "sourceExecId": source_exec_id,
-            "sourceSessionId": source_session_id,
             "metadata": SafeJson(metadata or {}),
         }
     )

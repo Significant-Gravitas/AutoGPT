@@ -4,7 +4,6 @@ import base64
 import logging
 from typing import Any, Optional
 
-from prisma.enums import WorkspaceFileSource
 from pydantic import BaseModel
 
 from backend.api.features.chat.model import ChatSession
@@ -27,7 +26,6 @@ class WorkspaceFileInfoData(BaseModel):
     path: str
     mime_type: str
     size_bytes: int
-    source: str
 
 
 class WorkspaceFileListResponse(ToolResponseBase):
@@ -169,7 +167,6 @@ class ListWorkspaceFilesTool(BaseTool):
                     path=f.path,
                     mime_type=f.mimeType,
                     size_bytes=f.sizeBytes,
-                    source=f.source,
                 )
                 for f in files
             ]
@@ -490,8 +487,6 @@ class WriteWorkspaceFileTool(BaseTool):
                 filename=filename,
                 path=path,
                 mime_type=mime_type,
-                source=WorkspaceFileSource.COPILOT,
-                source_session_id=session.session_id,
                 overwrite=overwrite,
             )
 

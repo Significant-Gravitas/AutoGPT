@@ -10,7 +10,6 @@ import mimetypes
 import uuid
 from typing import Optional
 
-from prisma.enums import WorkspaceFileSource
 from prisma.errors import UniqueViolationError
 from prisma.models import UserWorkspaceFile
 
@@ -159,9 +158,6 @@ class WorkspaceManager:
         filename: str,
         path: Optional[str] = None,
         mime_type: Optional[str] = None,
-        source: WorkspaceFileSource = WorkspaceFileSource.UPLOAD,
-        source_exec_id: Optional[str] = None,
-        source_session_id: Optional[str] = None,
         overwrite: bool = False,
     ) -> UserWorkspaceFile:
         """
@@ -175,9 +171,6 @@ class WorkspaceManager:
             filename: Filename for the file
             path: Virtual path (defaults to "/{filename}", session-scoped if session_id set)
             mime_type: MIME type (auto-detected if not provided)
-            source: How the file was created
-            source_exec_id: Graph execution ID if from execution
-            source_session_id: Chat session ID if from CoPilot
             overwrite: Whether to overwrite existing file at path
 
         Returns:
@@ -244,9 +237,6 @@ class WorkspaceManager:
                 mime_type=mime_type,
                 size_bytes=len(content),
                 checksum=checksum,
-                source=source,
-                source_exec_id=source_exec_id,
-                source_session_id=source_session_id,
             )
         except UniqueViolationError:
             # Race condition: another request created a file at this path
@@ -266,9 +256,6 @@ class WorkspaceManager:
                         mime_type=mime_type,
                         size_bytes=len(content),
                         checksum=checksum,
-                        source=source,
-                        source_exec_id=source_exec_id,
-                        source_session_id=source_session_id,
                     )
                 except Exception:
                     # Clean up orphaned storage file on retry failure

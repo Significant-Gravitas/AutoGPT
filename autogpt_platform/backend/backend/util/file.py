@@ -8,8 +8,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 from urllib.parse import urlparse
 
-from prisma.enums import WorkspaceFileSource
-
 from backend.util.cloud_storage import get_cloud_storage_handler
 from backend.util.request import Requests
 from backend.util.settings import Config
@@ -346,8 +344,6 @@ async def store_media_file(
         file_record = await workspace_manager.write_file(
             content=content,
             filename=filename,
-            source=WorkspaceFileSource.COPILOT,
-            source_session_id=execution_context.session_id,
             overwrite=True,
         )
         return MediaFileType(f"workspace://{file_record.id}")
