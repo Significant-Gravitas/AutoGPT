@@ -66,6 +66,7 @@ jobs:
         run: |
           echo "Testing ReadFile challenge with one_shot strategy..."
           poetry run direct-benchmark run \
+            --fresh \
             --strategies one_shot \
             --models claude \
             --tests ReadFile \
@@ -73,6 +74,7 @@ jobs:
 
           echo "Testing WriteFile challenge..."
           poetry run direct-benchmark run \
+            --fresh \
             --strategies one_shot \
             --models claude \
             --tests WriteFile \
@@ -87,6 +89,7 @@ jobs:
         run: |
           echo "Testing coding category..."
           poetry run direct-benchmark run \
+            --fresh \
             --strategies one_shot \
             --models claude \
             --categories coding \
@@ -102,6 +105,7 @@ jobs:
         run: |
           echo "Testing multiple strategies..."
           poetry run direct-benchmark run \
+            --fresh \
             --strategies one_shot,plan_execute \
             --models claude \
             --tests ReadFile \
@@ -145,6 +149,7 @@ jobs:
         run: |
           echo "Running regression tests (previously beaten challenges)..."
           poetry run direct-benchmark run \
+            --fresh \
             --strategies one_shot \
             --models claude \
             --maintain \

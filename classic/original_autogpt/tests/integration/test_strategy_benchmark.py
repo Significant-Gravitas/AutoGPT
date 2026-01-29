@@ -86,6 +86,7 @@ def test_strategy_comparison_quick():
     Note: Requires API keys to be configured in environment.
     """
     result = run_harness(
+        "--fresh",  # Don't resume from previous runs
         "--strategies",
         "one_shot",
         "--categories",
@@ -116,6 +117,7 @@ def test_single_strategy():
     to verify basic functionality without testing all strategies.
     """
     result = run_harness(
+        "--fresh",  # Don't resume from previous runs
         "--strategies",
         "one_shot",
         "--categories",

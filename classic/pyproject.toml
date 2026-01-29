@@ -179,6 +179,7 @@ exclude = [
     "**/__pycache__",
     "**/.*",
     "direct_benchmark/challenges/**",  # Legacy code with unavailable imports
+    "direct_benchmark/direct_benchmark/adapters/**",  # Optional deps (datasets, swebench, modal)
 ]
 
 

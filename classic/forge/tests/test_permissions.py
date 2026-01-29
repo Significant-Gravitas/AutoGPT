@@ -640,7 +640,7 @@ class TestApprovalScopes:
     def test_agent_approval_auto_approves_subsequent_calls(
         self, workspace: Path, agent_dir: Path
     ):
-        """After AGENT approval, subsequent calls to same command type should auto-approve.
+        """After AGENT approval, subsequent calls should auto-approve.
 
         This tests the scenario where multiple tools are executed in sequence -
         after approving the first one with 'Always (this agent)', subsequent
