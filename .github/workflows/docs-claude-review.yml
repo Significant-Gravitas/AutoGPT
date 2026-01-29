@@ -33,7 +33,7 @@ jobs:
           python-version: "3.11"
 
       - name: Set up Python dependency cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/pypoetry
           key: poetry-${{ runner.os }}-${{ hashFiles('autogpt_platform/backend/poetry.lock') }}
