@@ -26,7 +26,10 @@ export function FeatureFlagRedirect({
   const flagEnabled = Boolean(flagValue);
 
   useEffect(() => {
-    if (!ldEnabled) router.replace(whenDisabled);
+    if (!ldEnabled) {
+      router.replace(whenDisabled);
+      return;
+    }
 
     // Wait for LaunchDarkly to initialize when enabled to prevent race conditions
     if (ldEnabled && !ldReady) return;
