@@ -59,12 +59,13 @@ test.describe("Library", () => {
   });
 
   test("pagination works correctly", async ({ page }, testInfo) => {
-    test.setTimeout(testInfo.timeout * 3); // Increase timeout for pagination operations
+    test.setTimeout(testInfo.timeout * 3);
     await page.goto("/library");
 
+    const PAGE_SIZE = 20;
     const paginationResult = await libraryPage.testPagination();
 
-    if (paginationResult.initialCount >= 10) {
+    if (paginationResult.initialCount >= PAGE_SIZE) {
       expect(paginationResult.finalCount).toBeGreaterThanOrEqual(
         paginationResult.initialCount,
       );
