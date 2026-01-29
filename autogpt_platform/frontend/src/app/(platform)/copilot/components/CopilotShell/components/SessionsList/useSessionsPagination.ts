@@ -73,9 +73,9 @@ export function useSessionsPagination({ enabled }: UseSessionsPaginationArgs) {
   };
 
   const reset = () => {
+    // Only reset the offset - keep existing sessions visible during refetch
+    // The effect will replace sessions when new data arrives at offset 0
     setOffset(0);
-    setAccumulatedSessions([]);
-    setTotalCount(null);
   };
 
   return {
