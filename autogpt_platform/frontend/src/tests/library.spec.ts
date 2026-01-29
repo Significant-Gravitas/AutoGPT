@@ -62,14 +62,10 @@ test.describe("Library", () => {
     test.setTimeout(testInfo.timeout * 3); // Increase timeout for pagination operations
     await page.goto("/library");
 
-    // Library page_size is 20, so we need at least 20 agents to trigger pagination
-    // Test data creates 25 agents per user to ensure pagination is testable
     const PAGE_SIZE = 20;
 
     const paginationResult = await libraryPage.testPagination();
 
-    // Only check for pagination if we have a full first page
-    // (meaning there could be more pages)
     if (paginationResult.initialCount >= PAGE_SIZE) {
       expect(paginationResult.finalCount).toBeGreaterThanOrEqual(
         paginationResult.initialCount,

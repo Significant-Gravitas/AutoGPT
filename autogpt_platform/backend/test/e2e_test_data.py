@@ -43,7 +43,6 @@ faker = Faker()
 # Constants for data generation limits (reduced for E2E tests)
 NUM_USERS = 15
 NUM_AGENT_BLOCKS = 30
-# Page size in library is 20, so we need >20 agents to test pagination
 MIN_GRAPHS_PER_USER = 25
 MAX_GRAPHS_PER_USER = 25
 MIN_NODES_PER_GRAPH = 3
@@ -386,7 +385,7 @@ class TestDataCreator:
 
         library_agents = []
         for user in self.users:
-            num_agents = 10  # Create exactly 10 agents per user
+            num_agents = random.randint(MIN_AGENTS_PER_USER, MAX_AGENTS_PER_USER)
 
             # Get available graphs for this user
             user_graphs = [
