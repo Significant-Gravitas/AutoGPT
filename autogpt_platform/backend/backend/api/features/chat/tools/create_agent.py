@@ -117,11 +117,35 @@ class CreateAgentTool(BaseTool):
 
         if decomposition_result is None:
             return ErrorResponse(
-                message="Failed to analyze the goal. The agent generation service may be unavailable or timed out. Please try again.",
+                message="Failed to analyze the goal. The agent generation service may be unavailable. Please try again.",
                 error="decomposition_failed",
+                details={"description": description[:100]},
+                session_id=session_id,
+            )
+
+        # Check if the result is an error from the external service
+        if decomposition_result.get("type") == "error":
+            error_msg = decomposition_result.get("error", "Unknown error")
+            error_type = decomposition_result.get("error_type", "unknown")
+            # Provide user-friendly messages based on error type
+            if error_type == "llm_parse_error":
+                user_message = "The AI had trouble understanding this request. Please try rephrasing your goal."
+            elif error_type in ("timeout", "llm_timeout"):
+                user_message = "The request took too long. Please try again."
+            elif error_type in ("rate_limit", "llm_rate_limit"):
+                user_message = (
+                    "The service is currently busy. Please try again in a moment."
+                )
+            else:
+                user_message = "Failed to analyze the goal. Please try again."
+            return ErrorResponse(
+                message=user_message,
+                error=f"decomposition_failed:{error_type}",
                 details={
-                    "description": description[:100]
-                },  # Include context for debugging
+                    "description": description[:100],
+                    "service_error": error_msg,
+                    "error_type": error_type,
+                },
                 session_id=session_id,
             )
 
@@ -186,11 +210,37 @@ class CreateAgentTool(BaseTool):
 
         if agent_json is None:
             return ErrorResponse(
-                message="Failed to generate the agent. The agent generation service may be unavailable or timed out. Please try again.",
+                message="Failed to generate the agent. The agent generation service may be unavailable. Please try again.",
                 error="generation_failed",
+                details={"description": description[:100]},
+                session_id=session_id,
+            )
+
+        # Check if the result is an error from the external service
+        if isinstance(agent_json, dict) and agent_json.get("type") == "error":
+            error_msg = agent_json.get("error", "Unknown error")
+            error_type = agent_json.get("error_type", "unknown")
+            # Provide user-friendly messages based on error type
+            if error_type == "llm_parse_error":
+                user_message = "The AI had trouble generating the agent. Please try again or simplify your goal."
+            elif error_type == "validation_error":
+                user_message = "The generated agent failed validation. Please try rephrasing your goal."
+            elif error_type in ("timeout", "llm_timeout"):
+                user_message = "The request took too long. Please try again."
+            elif error_type in ("rate_limit", "llm_rate_limit"):
+                user_message = (
+                    "The service is currently busy. Please try again in a moment."
+                )
+            else:
+                user_message = "Failed to generate the agent. Please try again."
+            return ErrorResponse(
+                message=user_message,
+                error=f"generation_failed:{error_type}",
                 details={
-                    "description": description[:100]
-                },  # Include context for debugging
+                    "description": description[:100],
+                    "service_error": error_msg,
+                    "error_type": error_type,
+                },
                 session_id=session_id,
             )
 
