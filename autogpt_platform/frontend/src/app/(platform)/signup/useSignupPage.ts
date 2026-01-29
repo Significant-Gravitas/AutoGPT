@@ -108,7 +108,6 @@ export function useSignupPage() {
         data.password,
         data.confirmPassword,
         data.agreeToTerms,
-        isChatEnabled === true,
       );
 
       setIsLoading(false);

@@ -454,6 +454,7 @@ async def backfill_all_content_types(batch_size: int = 10) -> dict[str, Any]:
     total_processed = 0
     total_success = 0
     total_failed = 0
+    all_errors: dict[str, int] = {}  # Aggregate errors across all content types
 
     # Process content types in explicit order
     processing_order = [
@@ -499,23 +500,12 @@ async def backfill_all_content_types(batch_size: int = 10) -> dict[str, Any]:
             success = sum(1 for result in results if result is True)
             failed = len(results) - success
 
-            # Aggregate unique errors to avoid Sentry spam
+            # Aggregate errors across all content types
             if failed > 0:
-                # Group errors by type and message
-                error_summary: dict[str, int] = {}
                 for result in results:
                     if isinstance(result, Exception):
                         error_key = f"{type(result).__name__}: {str(result)}"
-                        error_summary[error_key] = error_summary.get(error_key, 0) + 1
-
-                # Log aggregated error summary
-                error_details = ", ".join(
-                    f"{error} ({count}x)" for error, count in error_summary.items()
-                )
-                logger.error(
-                    f"{content_type.value}: {failed}/{len(results)} embeddings failed. "
-                    f"Errors: {error_details}"
-                )
+                        all_errors[error_key] = all_errors.get(error_key, 0) + 1
 
             results_by_type[content_type.value] = {
                 "processed": len(missing_items),
@@ -541,6 +531,13 @@ async def backfill_all_content_types(batch_size: int = 10) -> dict[str, Any]:
                 "failed": 0,
                 "error": str(e),
             }
+
+    # Log aggregated errors once at the end
+    if all_errors:
+        error_details = ", ".join(
+            f"{error} ({count}x)" for error, count in all_errors.items()
+        )
+        logger.error(f"Embedding backfill errors: {error_details}")
 
     return {
         "by_type": results_by_type,
