@@ -51,5 +51,9 @@ export function FeatureFlagPage({
     initialize();
   }, [ldReady, flagEnabled]);
 
-  return isLoading || !flagEnabled ? <LoadingSpinner size="large" cover /> : <>{children}</>;
+  return isLoading || !flagEnabled ? (
+    <LoadingSpinner size="large" cover />
+  ) : (
+    <>{children}</>
+  );
 }
