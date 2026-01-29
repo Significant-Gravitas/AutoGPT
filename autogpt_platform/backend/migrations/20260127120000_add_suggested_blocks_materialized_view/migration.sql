@@ -53,16 +53,19 @@ RETURNS void
 LANGUAGE plpgsql
 AS $$
 DECLARE
-    target_schema text := current_schema();
+    current_schema_name text;
 BEGIN
-    -- Use CONCURRENTLY for better performance during refresh
-    REFRESH MATERIALIZED VIEW CONCURRENTLY "mv_suggested_blocks";
-    RAISE NOTICE 'Suggested blocks materialized view refreshed in schema % at %', target_schema, NOW();
+    -- Get the current schema
+    current_schema_name := current_schema();
+
+    -- Use CONCURRENTLY for better performance during refresh (schema-qualified)
+    EXECUTE format('REFRESH MATERIALIZED VIEW CONCURRENTLY %I."mv_suggested_blocks"', current_schema_name);
+    RAISE NOTICE 'Suggested blocks materialized view refreshed in schema % at %', current_schema_name, NOW();
 EXCEPTION
     WHEN OTHERS THEN
         -- Fallback to non-concurrent refresh if concurrent fails
-        REFRESH MATERIALIZED VIEW "mv_suggested_blocks";
-        RAISE NOTICE 'Suggested blocks materialized view refreshed (non-concurrent) in schema % at %. Concurrent refresh failed due to: %', target_schema, NOW(), SQLERRM;
+        EXECUTE format('REFRESH MATERIALIZED VIEW %I."mv_suggested_blocks"', current_schema_name);
+        RAISE NOTICE 'Suggested blocks materialized view refreshed (non-concurrent) in schema % at %. Concurrent refresh failed due to: %', current_schema_name, NOW(), SQLERRM;
 END;
 $$;
 
