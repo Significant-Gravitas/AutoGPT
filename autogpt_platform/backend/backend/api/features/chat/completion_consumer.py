@@ -21,7 +21,7 @@ from backend.data.rabbitmq import (
 
 from . import service as chat_service
 from . import stream_registry
-from .response_model import StreamError, StreamToolOutputAvailable
+from .response_model import StreamError, StreamFinish, StreamToolOutputAvailable
 from .tools.models import ErrorResponse
 
 logger = logging.getLogger(__name__)
@@ -96,38 +96,52 @@ class ChatCompletionConsumer:
         logger.info("Chat completion consumer stopped")
 
     async def _consume_messages(self) -> None:
-        """Main message consumption loop."""
-        if not self._rabbitmq:
-            logger.error("RabbitMQ not initialized")
-            return
+        """Main message consumption loop with retry logic."""
+        max_retries = 10
+        retry_delay = 5  # seconds
+        retry_count = 0
 
-        try:
-            channel = await self._rabbitmq.get_channel()
-            queue = await channel.get_queue(OPERATION_COMPLETE_QUEUE.name)
+        while self._running and retry_count < max_retries:
+            if not self._rabbitmq:
+                logger.error("RabbitMQ not initialized")
+                return
 
-            async with queue.iterator() as queue_iter:
-                async for message in queue_iter:
-                    if not self._running:
-                        break
+            try:
+                channel = await self._rabbitmq.get_channel()
+                queue = await channel.get_queue(OPERATION_COMPLETE_QUEUE.name)
 
-                    try:
-                        async with message.process():
-                            await self._handle_message(message.body)
-                    except Exception as e:
-                        logger.error(
-                            f"Error processing completion message: {e}",
-                            exc_info=True,
-                        )
-                        # Message will be requeued due to exception
+                # Reset retry count on successful connection
+                retry_count = 0
 
-        except asyncio.CancelledError:
-            logger.info("Consumer cancelled")
-        except Exception as e:
-            logger.error(f"Consumer error: {e}", exc_info=True)
-            # Attempt to reconnect after a delay
-            if self._running:
-                await asyncio.sleep(5)
-                await self._consume_messages()
+                async with queue.iterator() as queue_iter:
+                    async for message in queue_iter:
+                        if not self._running:
+                            return
+
+                        try:
+                            async with message.process():
+                                await self._handle_message(message.body)
+                        except Exception as e:
+                            logger.error(
+                                f"Error processing completion message: {e}",
+                                exc_info=True,
+                            )
+                            # Message will be requeued due to exception
+
+            except asyncio.CancelledError:
+                logger.info("Consumer cancelled")
+                return
+            except Exception as e:
+                retry_count += 1
+                logger.error(
+                    f"Consumer error (retry {retry_count}/{max_retries}): {e}",
+                    exc_info=True,
+                )
+                if self._running and retry_count < max_retries:
+                    await asyncio.sleep(retry_delay)
+                else:
+                    logger.error("Max retries reached, stopping consumer")
+                    return
 
     async def _handle_message(self, body: bytes) -> None:
         """Handle a single completion message."""
@@ -206,8 +220,9 @@ class ChatCompletionConsumer:
             task_id=task.task_id,
         )
 
-        # Mark task as completed
+        # Mark task as completed and release Redis lock
         await stream_registry.mark_task_completed(task.task_id, status="completed")
+        await chat_service._mark_operation_completed(task.tool_call_id)
 
         logger.info(
             f"Successfully processed completion for task {task.task_id} "
@@ -222,11 +237,12 @@ class ChatCompletionConsumer:
         """Handle failed operation completion."""
         error_msg = message.error or "Operation failed"
 
-        # Publish error to stream registry
+        # Publish error to stream registry followed by finish event
         await stream_registry.publish_chunk(
             task.task_id,
             StreamError(errorText=error_msg),
         )
+        await stream_registry.publish_chunk(task.task_id, StreamFinish())
 
         # Update pending operation with error
         error_response = ErrorResponse(
@@ -239,8 +255,9 @@ class ChatCompletionConsumer:
             result=error_response.model_dump_json(),
         )
 
-        # Mark task as failed
+        # Mark task as failed and release Redis lock
         await stream_registry.mark_task_completed(task.task_id, status="failed")
+        await chat_service._mark_operation_completed(task.tool_call_id)
 
         logger.info(
             f"Processed failure for task {task.task_id} "

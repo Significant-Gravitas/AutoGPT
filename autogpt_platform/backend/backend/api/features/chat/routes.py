@@ -4,6 +4,7 @@ import logging
 from collections.abc import AsyncGenerator
 from typing import Annotated
 
+import orjson
 from autogpt_libs import auth
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Security
 from fastapi.responses import StreamingResponse
@@ -532,16 +533,17 @@ async def complete_operation(
     Raises:
         HTTPException: If API key is invalid or operation not found.
     """
-    # Validate internal API key
-    if config.internal_api_key:
-        if x_api_key != config.internal_api_key:
-            raise HTTPException(status_code=401, detail="Invalid API key")
-    else:
-        # If no internal API key is configured, log a warning
-        logger.warning(
-            "Operation complete webhook called without API key validation "
-            "(CHAT_INTERNAL_API_KEY not configured)"
+    # Validate internal API key - reject if not configured or invalid
+    if not config.internal_api_key:
+        logger.error(
+            "Operation complete webhook rejected: CHAT_INTERNAL_API_KEY not configured"
         )
+        raise HTTPException(
+            status_code=503,
+            detail="Webhook not available: internal API key not configured",
+        )
+    if x_api_key != config.internal_api_key:
+        raise HTTPException(status_code=401, detail="Invalid API key")
 
     # Find task by operation_id
     task = await stream_registry.find_task_by_operation_id(operation_id)
@@ -569,7 +571,7 @@ async def complete_operation(
                 output=(
                     result_output
                     if isinstance(result_output, str)
-                    else str(result_output)
+                    else orjson.dumps(result_output).decode("utf-8")
                 ),
                 success=True,
             ),
@@ -581,7 +583,11 @@ async def complete_operation(
         result_str = (
             request.result
             if isinstance(request.result, str)
-            else str(request.result) if request.result else '{"status": "completed"}'
+            else (
+                orjson.dumps(request.result).decode("utf-8")
+                if request.result
+                else '{"status": "completed"}'
+            )
         )
         await svc._update_pending_operation(
             session_id=task.session_id,
@@ -596,8 +602,9 @@ async def complete_operation(
             task_id=task.task_id,
         )
 
-        # Mark task as completed
+        # Mark task as completed and release Redis lock
         await stream_registry.mark_task_completed(task.task_id, status="completed")
+        await svc._mark_operation_completed(task.tool_call_id)
     else:
         # Publish error to stream registry
         from .response_model import StreamError
@@ -607,6 +614,8 @@ async def complete_operation(
             task.task_id,
             StreamError(errorText=error_msg),
         )
+        # Send finish event to end the stream
+        await stream_registry.publish_chunk(task.task_id, StreamFinish())
 
         # Update pending operation with error
         from . import service as svc
@@ -622,8 +631,9 @@ async def complete_operation(
             result=error_response.model_dump_json(),
         )
 
-        # Mark task as failed
+        # Mark task as failed and release Redis lock
         await stream_registry.mark_task_completed(task.task_id, status="failed")
+        await svc._mark_operation_completed(task.tool_call_id)
 
     return {"status": "ok", "task_id": task.task_id}
 

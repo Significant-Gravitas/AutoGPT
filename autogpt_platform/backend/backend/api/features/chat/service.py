@@ -1881,6 +1881,10 @@ async def _execute_long_running_tool_with_streaming(
     If the external service returns a 202 Accepted (async), this function exits
     early and lets the RabbitMQ completion consumer handle the rest.
     """
+    # Track whether we delegated to async processing - if so, the RabbitMQ
+    # completion consumer will handle cleanup, not us
+    delegated_to_async = False
+
     try:
         # Load fresh session (not stale reference)
         session = await get_chat_session(session_id, user_id)
@@ -1915,9 +1919,10 @@ async def _execute_long_running_tool_with_streaming(
                     f"(operation_id={operation_id}, task_id={task_id}). "
                     f"RabbitMQ completion consumer will handle the rest."
                 )
-                # Don't publish result, don't continue with LLM
+                # Don't publish result, don't continue with LLM, and don't cleanup
                 # The RabbitMQ consumer will handle everything when the external
                 # service completes and publishes to the queue
+                delegated_to_async = True
                 return
         except (orjson.JSONDecodeError, TypeError):
             pass  # Not JSON or not async - continue normally
@@ -1958,11 +1963,12 @@ async def _execute_long_running_tool_with_streaming(
             message=f"Tool {tool_name} failed: {str(e)}",
         )
 
-        # Publish error to stream registry
+        # Publish error to stream registry followed by finish event
         await stream_registry.publish_chunk(
             task_id,
             StreamError(errorText=str(e)),
         )
+        await stream_registry.publish_chunk(task_id, StreamFinish())
 
         await _update_pending_operation(
             session_id=session_id,
@@ -1973,7 +1979,10 @@ async def _execute_long_running_tool_with_streaming(
         # Mark task as failed in stream registry
         await stream_registry.mark_task_completed(task_id, status="failed")
     finally:
-        await _mark_operation_completed(tool_call_id)
+        # Only cleanup if we didn't delegate to async processing
+        # For async path, the RabbitMQ completion consumer handles cleanup
+        if not delegated_to_async:
+            await _mark_operation_completed(tool_call_id)
 
 
 async def _update_pending_operation(
@@ -2221,8 +2230,9 @@ async def _generate_llm_continuation_with_streaming(
         logger.error(
             f"Failed to generate streaming LLM continuation: {e}", exc_info=True
         )
-        # Publish error to stream registry
+        # Publish error to stream registry followed by finish event
         await stream_registry.publish_chunk(
             task_id,
             StreamError(errorText=f"Failed to generate response: {e}"),
         )
+        await stream_registry.publish_chunk(task_id, StreamFinish())

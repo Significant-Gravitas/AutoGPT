@@ -96,6 +96,14 @@ class ChatConfig(BaseSettings):
                 v = "https://openrouter.ai/api/v1"
         return v
 
+    @field_validator("internal_api_key", mode="before")
+    @classmethod
+    def get_internal_api_key(cls, v):
+        """Get internal API key from environment if not provided."""
+        if v is None:
+            v = os.getenv("CHAT_INTERNAL_API_KEY")
+        return v
+
     # Prompt paths for different contexts
     PROMPT_PATHS: dict[str, str] = {
         "default": "prompts/chat_system.md",
