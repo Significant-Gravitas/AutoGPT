@@ -196,13 +196,13 @@ class WorkspaceManager:
         # Resolve path with session prefix
         path = self._resolve_path(path)
 
-        # Check if file exists at path
-        existing = await get_workspace_file_by_path(self.workspace_id, path)
-        if existing is not None:
-            if overwrite:
-                # Delete existing file first
-                await self.delete_file(existing.id)
-            else:
+        # Check if file exists at path (only error for non-overwrite case)
+        # For overwrite=True, we let the write proceed and handle via UniqueViolationError
+        # This ensures the new file is written to storage BEFORE the old one is deleted,
+        # preventing data loss if the new write fails
+        if not overwrite:
+            existing = await get_workspace_file_by_path(self.workspace_id, path)
+            if existing is not None:
                 raise ValueError(f"File already exists at path: {path}")
 
         # Auto-detect MIME type if not provided

@@ -471,10 +471,8 @@ class AgentFileInputBlock(AgentInputBlock):
 
         # Determine return format based on user preference
         # for_external_api: always returns data URI (base64) - honors "Produce Base64 Output"
-        # for_local_processing: returns local file path
-        return_format = (
-            "for_external_api" if input_data.base_64 else "for_local_processing"
-        )
+        # for_block_output: smart format - workspace:// in CoPilot, data URI in graphs
+        return_format = "for_external_api" if input_data.base_64 else "for_block_output"
 
         yield "result", await store_media_file(
             file=input_data.value,

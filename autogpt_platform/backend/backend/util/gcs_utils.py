@@ -60,16 +60,21 @@ async def download_with_fresh_session(bucket: str, blob: str) -> bytes:
     session = aiohttp.ClientSession(
         connector=aiohttp.TCPConnector(limit=10, force_close=True)
     )
+    client: async_gcs_storage.Storage | None = None
     try:
         client = async_gcs_storage.Storage(session=session)
         content = await client.download(bucket, blob)
-        await client.close()
         return content
     except Exception as e:
         if "404" in str(e) or "Not Found" in str(e):
             raise FileNotFoundError(f"File not found: gcs://{bucket}/{blob}")
         raise
     finally:
+        if client:
+            try:
+                await client.close()
+            except Exception:
+                pass  # Best-effort cleanup
         await session.close()
 
 
