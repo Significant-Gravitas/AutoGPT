@@ -9,6 +9,7 @@ from .agent_generator import (
     AgentGeneratorNotConfiguredError,
     decompose_goal,
     generate_agent,
+    get_all_relevant_agents_for_generation,
     get_user_message_for_error,
     save_agent_to_library,
 )
@@ -103,9 +104,27 @@ class CreateAgentTool(BaseTool):
                 session_id=session_id,
             )
 
+        # Fetch relevant library and marketplace agents for sub-agent composition
+        library_agents = None
+        if user_id:
+            try:
+                library_agents = await get_all_relevant_agents_for_generation(
+                    user_id=user_id,
+                    search_query=description,  # Use goal as search term
+                    include_marketplace=True,
+                )
+                logger.debug(
+                    f"Found {len(library_agents)} relevant agents for sub-agent composition"
+                )
+            except Exception as e:
+                # Log but don't fail - agent generation can work without sub-agents
+                logger.warning(f"Failed to fetch library agents: {e}")
+
         # Step 1: Decompose goal into steps
         try:
-            decomposition_result = await decompose_goal(description, context)
+            decomposition_result = await decompose_goal(
+                description, context, library_agents
+            )
         except AgentGeneratorNotConfiguredError:
             return ErrorResponse(
                 message=(
@@ -192,7 +211,7 @@ class CreateAgentTool(BaseTool):
 
         # Step 2: Generate agent JSON (external service handles fixing and validation)
         try:
-            agent_json = await generate_agent(decomposition_result)
+            agent_json = await generate_agent(decomposition_result, library_agents)
         except AgentGeneratorNotConfiguredError:
             return ErrorResponse(
                 message=(

@@ -36,12 +36,152 @@ def _check_service_configured() -> None:
         )
 
 
-async def decompose_goal(description: str, context: str = "") -> dict[str, Any] | None:
+async def get_library_agents_for_generation(
+    user_id: str,
+    search_query: str | None = None,
+    exclude_graph_id: str | None = None,
+    max_results: int = 15,
+) -> list[dict[str, Any]]:
+    """Fetch user's library agents formatted for Agent Generator.
+
+    Uses search-based fetching to return relevant agents instead of all agents.
+    This is more scalable for users with large libraries.
+
+    Args:
+        user_id: The user ID
+        search_query: Optional search term to find relevant agents (user's goal/description)
+        exclude_graph_id: Optional graph ID to exclude (prevents circular references)
+        max_results: Maximum number of agents to return (default 15)
+
+    Returns:
+        List of library agent dicts with schemas for sub-agent composition
+    """
+    response = await library_db.list_library_agents(
+        user_id=user_id,
+        search_term=search_query,  # Use search API
+        page=1,
+        page_size=max_results,
+    )
+
+    return [
+        {
+            "graph_id": agent.graph_id,
+            "graph_version": agent.graph_version,
+            "name": agent.name,
+            "description": agent.description,
+            "input_schema": agent.input_schema,
+            "output_schema": agent.output_schema,
+        }
+        for agent in response.agents
+        # Exclude the agent being generated/edited to prevent circular references
+        if exclude_graph_id is None or agent.graph_id != exclude_graph_id
+    ]
+
+
+async def search_marketplace_agents_for_generation(
+    search_query: str,
+    max_results: int = 10,
+) -> list[dict[str, Any]]:
+    """Search marketplace agents formatted for Agent Generator.
+
+    Note: This returns basic agent info. Full input/output schemas would require
+    additional graph fetches and is a potential future enhancement.
+
+    Args:
+        search_query: Search term to find relevant public agents
+        max_results: Maximum number of agents to return (default 10)
+
+    Returns:
+        List of marketplace agent dicts (without detailed schemas for now)
+    """
+    from backend.api.features.store import db as store_db
+
+    try:
+        response = await store_db.get_store_agents(
+            search_query=search_query,
+            page=1,
+            page_size=max_results,
+        )
+
+        # Return basic info - full schemas would require fetching each agent's graph
+        return [
+            {
+                "name": agent.agent_name,
+                "description": agent.description,
+                "sub_heading": agent.sub_heading,
+                "creator": agent.creator,
+                "is_marketplace_agent": True,
+                # Note: graph_id and schemas not available without additional fetches
+            }
+            for agent in response.agents
+        ]
+    except Exception as e:
+        logger.warning(f"Failed to search marketplace agents: {e}")
+        return []
+
+
+async def get_all_relevant_agents_for_generation(
+    user_id: str,
+    search_query: str | None = None,
+    exclude_graph_id: str | None = None,
+    include_marketplace: bool = True,
+    max_library_results: int = 15,
+    max_marketplace_results: int = 10,
+) -> list[dict[str, Any]]:
+    """Fetch relevant agents from library and optionally marketplace.
+
+    Combines search results from user's library and public marketplace,
+    with library agents taking priority (they have full schemas).
+
+    Args:
+        user_id: The user ID
+        search_query: Search term to find relevant agents (user's goal/description)
+        exclude_graph_id: Optional graph ID to exclude (prevents circular references)
+        include_marketplace: Whether to also search marketplace (default True)
+        max_library_results: Max library agents to return (default 15)
+        max_marketplace_results: Max marketplace agents to return (default 10)
+
+    Returns:
+        List of agent dicts, library agents first (with full schemas),
+        then marketplace agents (basic info only)
+    """
+    agents: list[dict[str, Any]] = []
+
+    # Get library agents (these have full schemas)
+    library_agents = await get_library_agents_for_generation(
+        user_id=user_id,
+        search_query=search_query,
+        exclude_graph_id=exclude_graph_id,
+        max_results=max_library_results,
+    )
+    agents.extend(library_agents)
+
+    # Optionally add marketplace agents
+    if include_marketplace and search_query:
+        marketplace_agents = await search_marketplace_agents_for_generation(
+            search_query=search_query,
+            max_results=max_marketplace_results,
+        )
+        # Add marketplace agents that aren't already in library (by name)
+        library_names = {a["name"].lower() for a in library_agents}
+        for agent in marketplace_agents:
+            if agent["name"].lower() not in library_names:
+                agents.append(agent)
+
+    return agents
+
+
+async def decompose_goal(
+    description: str,
+    context: str = "",
+    library_agents: list[dict[str, Any]] | None = None,
+) -> dict[str, Any] | None:
     """Break down a goal into steps or return clarifying questions.
 
     Args:
         description: Natural language goal description
         context: Additional context (e.g., answers to previous questions)
+        library_agents: User's library agents available for sub-agent composition
 
     Returns:
         Dict with either:
@@ -54,14 +194,18 @@ async def decompose_goal(description: str, context: str = "") -> dict[str, Any] 
     """
     _check_service_configured()
     logger.info("Calling external Agent Generator service for decompose_goal")
-    return await decompose_goal_external(description, context)
+    return await decompose_goal_external(description, context, library_agents)
 
 
-async def generate_agent(instructions: dict[str, Any]) -> dict[str, Any] | None:
+async def generate_agent(
+    instructions: dict[str, Any],
+    library_agents: list[dict[str, Any]] | None = None,
+) -> dict[str, Any] | None:
     """Generate agent JSON from instructions.
 
     Args:
         instructions: Structured instructions from decompose_goal
+        library_agents: User's library agents available for sub-agent composition
 
     Returns:
         Agent JSON dict, error dict {"type": "error", ...}, or None on error
@@ -71,7 +215,7 @@ async def generate_agent(instructions: dict[str, Any]) -> dict[str, Any] | None:
     """
     _check_service_configured()
     logger.info("Calling external Agent Generator service for generate_agent")
-    result = await generate_agent_external(instructions)
+    result = await generate_agent_external(instructions, library_agents)
     if result:
         # Check if it's an error response - pass through as-is
         if isinstance(result, dict) and result.get("type") == "error":
@@ -256,7 +400,9 @@ async def get_agent_as_json(
 
 
 async def generate_agent_patch(
-    update_request: str, current_agent: dict[str, Any]
+    update_request: str,
+    current_agent: dict[str, Any],
+    library_agents: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any] | None:
     """Update an existing agent using natural language.
 
@@ -268,6 +414,7 @@ async def generate_agent_patch(
     Args:
         update_request: Natural language description of changes
         current_agent: Current agent JSON
+        library_agents: User's library agents available for sub-agent composition
 
     Returns:
         Updated agent JSON, clarifying questions dict {"type": "clarifying_questions", ...},
@@ -278,4 +425,6 @@ async def generate_agent_patch(
     """
     _check_service_configured()
     logger.info("Calling external Agent Generator service for generate_agent_patch")
-    return await generate_agent_patch_external(update_request, current_agent)
+    return await generate_agent_patch_external(
+        update_request, current_agent, library_agents
+    )

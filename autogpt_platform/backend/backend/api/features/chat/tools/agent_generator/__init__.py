@@ -6,8 +6,11 @@ from .core import (
     generate_agent,
     generate_agent_patch,
     get_agent_as_json,
+    get_all_relevant_agents_for_generation,
+    get_library_agents_for_generation,
     json_to_graph,
     save_agent_to_library,
+    search_marketplace_agents_for_generation,
 )
 from .errors import get_user_message_for_error
 from .service import health_check as check_external_service_health
@@ -20,6 +23,9 @@ __all__ = [
     "generate_agent_patch",
     "save_agent_to_library",
     "get_agent_as_json",
+    "get_library_agents_for_generation",
+    "get_all_relevant_agents_for_generation",
+    "search_marketplace_agents_for_generation",
     "json_to_graph",
     # Exceptions
     "AgentGeneratorNotConfiguredError",

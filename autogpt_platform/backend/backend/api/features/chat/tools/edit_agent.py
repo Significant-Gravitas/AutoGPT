@@ -9,6 +9,7 @@ from .agent_generator import (
     AgentGeneratorNotConfiguredError,
     generate_agent_patch,
     get_agent_as_json,
+    get_all_relevant_agents_for_generation,
     get_user_message_for_error,
     save_agent_to_library,
 )
@@ -127,6 +128,23 @@ class EditAgentTool(BaseTool):
                 session_id=session_id,
             )
 
+        # Fetch relevant library and marketplace agents for sub-agent composition
+        library_agents = None
+        if user_id:
+            try:
+                library_agents = await get_all_relevant_agents_for_generation(
+                    user_id=user_id,
+                    search_query=changes,  # Use changes as search term
+                    exclude_graph_id=agent_id,  # Don't include the agent being edited
+                    include_marketplace=True,
+                )
+                logger.debug(
+                    f"Found {len(library_agents)} relevant agents for sub-agent composition"
+                )
+            except Exception as e:
+                # Log but don't fail - agent editing can work without sub-agents
+                logger.warning(f"Failed to fetch library agents: {e}")
+
         # Build the update request with context
         update_request = changes
         if context:
@@ -134,7 +152,9 @@ class EditAgentTool(BaseTool):
 
         # Step 2: Generate updated agent (external service handles fixing and validation)
         try:
-            result = await generate_agent_patch(update_request, current_agent)
+            result = await generate_agent_patch(
+                update_request, current_agent, library_agents
+            )
         except AgentGeneratorNotConfiguredError:
             return ErrorResponse(
                 message=(
