@@ -20,7 +20,7 @@ Configure timeouts for DOM settlement and page loading. Variables can be passed 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | browserbase_project_id | Browserbase project ID (required if using Browserbase) | str | Yes |
-| model | LLM to use for Stagehand (provider is inferred) | "gpt-4.1-2025-04-14" \| "gpt-4.1-mini-2025-04-14" \| "claude-3-7-sonnet-20250219" | No |
+| model | LLM to use for Stagehand (provider is inferred) | "gpt-4.1-2025-04-14" \| "gpt-4.1-mini-2025-04-14" \| "claude-sonnet-4-5-20250929" | No |
 | url | URL to navigate to. | str | Yes |
 | action | Action to perform. Suggested actions are: click, fill, type, press, scroll, select from dropdown. For multi-step actions, add an entry for each step. | List[str] | Yes |
 | variables | Variables to use in the action. Variables contains data you want the action to use. | Dict[str, str] | No |
@@ -65,7 +65,7 @@ Supports searching within iframes and configurable timeouts for dynamic content 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | browserbase_project_id | Browserbase project ID (required if using Browserbase) | str | Yes |
-| model | LLM to use for Stagehand (provider is inferred) | "gpt-4.1-2025-04-14" \| "gpt-4.1-mini-2025-04-14" \| "claude-3-7-sonnet-20250219" | No |
+| model | LLM to use for Stagehand (provider is inferred) | "gpt-4.1-2025-04-14" \| "gpt-4.1-mini-2025-04-14" \| "claude-sonnet-4-5-20250929" | No |
 | url | URL to navigate to. | str | Yes |
 | instruction | Natural language description of elements or actions to discover. | str | Yes |
 | iframes | Whether to search within iframes. If True, Stagehand will search for actions within iframes. | bool | No |
@@ -106,7 +106,7 @@ Use this to explore a page's interactive elements before building automated work
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | browserbase_project_id | Browserbase project ID (required if using Browserbase) | str | Yes |
-| model | LLM to use for Stagehand (provider is inferred) | "gpt-4.1-2025-04-14" \| "gpt-4.1-mini-2025-04-14" \| "claude-3-7-sonnet-20250219" | No |
+| model | LLM to use for Stagehand (provider is inferred) | "gpt-4.1-2025-04-14" \| "gpt-4.1-mini-2025-04-14" \| "claude-sonnet-4-5-20250929" | No |
 | url | URL to navigate to. | str | Yes |
 | instruction | Natural language description of elements or actions to discover. | str | Yes |
 | iframes | Whether to search within iframes. If True, Stagehand will search for actions within iframes. | bool | No |
