@@ -5914,10 +5914,10 @@
     },
     "/api/workspace/files/{file_id}/download": {
       "get": {
-        "tags": ["v2", "workspace"],
+        "tags": ["workspace"],
         "summary": "Download file by ID",
         "description": "Download a file by its ID.\n\nReturns the file content directly or redirects to a signed URL for GCS.",
-        "operationId": "getV2Download file by id",
+        "operationId": "getWorkspaceDownload file by id",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
