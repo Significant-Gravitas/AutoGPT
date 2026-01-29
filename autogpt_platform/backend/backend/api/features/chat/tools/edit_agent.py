@@ -9,6 +9,7 @@ from .agent_generator import (
     AgentGeneratorNotConfiguredError,
     generate_agent_patch,
     get_agent_as_json,
+    get_user_message_for_error,
     save_agent_to_library,
 )
 from .base import BaseTool
@@ -156,21 +157,12 @@ class EditAgentTool(BaseTool):
         if isinstance(result, dict) and result.get("type") == "error":
             error_msg = result.get("error", "Unknown error")
             error_type = result.get("error_type", "unknown")
-            # Provide user-friendly messages based on error type
-            if error_type == "llm_parse_error":
-                user_message = "The AI had trouble generating the changes. Please try again or simplify your request."
-            elif error_type == "validation_error":
-                user_message = "The generated changes failed validation. Please try rephrasing your request."
-            elif error_type == "patch_error":
-                user_message = "Failed to apply the changes. Please try a different approach."
-            elif error_type in ("timeout", "llm_timeout"):
-                user_message = "The request took too long. Please try again."
-            elif error_type in ("rate_limit", "llm_rate_limit"):
-                user_message = (
-                    "The service is currently busy. Please try again in a moment."
-                )
-            else:
-                user_message = "Failed to generate the changes. Please try again."
+            user_message = get_user_message_for_error(
+                error_type,
+                operation="generate the changes",
+                llm_parse_message="The AI had trouble generating the changes. Please try again or simplify your request.",
+                validation_message="The generated changes failed validation. Please try rephrasing your request.",
+            )
             return ErrorResponse(
                 message=user_message,
                 error=f"update_generation_failed:{error_type}",

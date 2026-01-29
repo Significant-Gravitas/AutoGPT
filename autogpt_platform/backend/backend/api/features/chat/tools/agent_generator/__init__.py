@@ -9,6 +9,7 @@ from .core import (
     json_to_graph,
     save_agent_to_library,
 )
+from .errors import get_user_message_for_error
 from .service import health_check as check_external_service_health
 from .service import is_external_service_configured
 
@@ -25,4 +26,6 @@ __all__ = [
     # Service
     "is_external_service_configured",
     "check_external_service_health",
+    # Error handling
+    "get_user_message_for_error",
 ]
