@@ -44,6 +44,20 @@ class ChatConfig(BaseSettings):
         description="TTL in seconds for long-running operation tracking in Redis (safety net if pod dies)",
     )
 
+    # Stream registry configuration for SSE reconnection
+    stream_ttl: int = Field(
+        default=3600,
+        description="TTL in seconds for stream data in Redis (1 hour)",
+    )
+    stream_max_length: int = Field(
+        default=1000,
+        description="Maximum number of messages to store per stream",
+    )
+    internal_api_key: str | None = Field(
+        default=None,
+        description="API key for internal webhook callbacks (env: CHAT_INTERNAL_API_KEY)",
+    )
+
     # Langfuse Prompt Management Configuration
     # Note: Langfuse credentials are in Settings().secrets (settings.py)
     langfuse_prompt_name: str = Field(

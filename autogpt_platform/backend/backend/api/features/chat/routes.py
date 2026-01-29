@@ -12,8 +12,10 @@ from pydantic import BaseModel
 from backend.util.exceptions import NotFoundError
 
 from . import service as chat_service
+from . import stream_registry
 from .config import ChatConfig
 from .model import ChatSession, create_chat_session, get_chat_session, get_user_sessions
+from .response_model import StreamFinish
 
 config = ChatConfig()
 
@@ -79,6 +81,14 @@ class ListSessionsResponse(BaseModel):
 
     sessions: list[SessionSummaryResponse]
     total: int
+
+
+class OperationCompleteRequest(BaseModel):
+    """Request model for external completion webhook."""
+
+    success: bool
+    result: dict | str | None = None
+    error: str | None = None
 
 
 # ========== Routes ==========
@@ -364,6 +374,242 @@ async def session_assign_user(
     """
     await chat_service.assign_user_to_session(session_id, user_id)
     return {"status": "ok"}
+
+
+# ========== Task Streaming (SSE Reconnection) ==========
+
+
+@router.get(
+    "/tasks/{task_id}/stream",
+)
+async def stream_task(
+    task_id: str,
+    user_id: str | None = Depends(auth.get_user_id),
+    last_idx: int = Query(default=0, ge=0, description="Last message index received"),
+):
+    """
+    Reconnect to a long-running task's SSE stream.
+
+    When a long-running operation (like agent generation) starts, the client
+    receives a task_id. If the connection drops, the client can reconnect
+    using this endpoint to resume receiving updates.
+
+    Args:
+        task_id: The task ID from the operation_started response.
+        user_id: Authenticated user ID for ownership validation.
+        last_idx: Last message index received (0 for full replay).
+
+    Returns:
+        StreamingResponse: SSE-formatted response chunks starting from last_idx.
+
+    Raises:
+        NotFoundError: If task_id is not found or user doesn't have access.
+    """
+    # Get subscriber queue from stream registry
+    subscriber_queue = await stream_registry.subscribe_to_task(
+        task_id=task_id,
+        user_id=user_id,
+        last_idx=last_idx,
+    )
+
+    if subscriber_queue is None:
+        raise NotFoundError(f"Task {task_id} not found or access denied.")
+
+    async def event_generator() -> AsyncGenerator[str, None]:
+        chunk_count = 0
+        try:
+            while True:
+                # Wait for next chunk from the queue
+                chunk = await subscriber_queue.get()
+                chunk_count += 1
+                yield chunk.to_sse()
+
+                # Check for finish signal
+                if isinstance(chunk, StreamFinish):
+                    logger.info(
+                        f"Task stream completed for task {task_id}, "
+                        f"chunk_count={chunk_count}"
+                    )
+                    break
+        except Exception as e:
+            logger.error(f"Error in task stream {task_id}: {e}", exc_info=True)
+
+        # AI SDK protocol termination
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+            "x-vercel-ai-ui-message-stream": "v1",
+        },
+    )
+
+
+@router.get(
+    "/tasks/{task_id}",
+)
+async def get_task_status(
+    task_id: str,
+    user_id: str | None = Depends(auth.get_user_id),
+) -> dict:
+    """
+    Get the status of a long-running task.
+
+    Args:
+        task_id: The task ID to check.
+        user_id: Authenticated user ID for ownership validation.
+
+    Returns:
+        dict: Task status including task_id, status, tool_name, and operation_id.
+
+    Raises:
+        NotFoundError: If task_id is not found or user doesn't have access.
+    """
+    task = await stream_registry.get_task(task_id)
+
+    if task is None:
+        raise NotFoundError(f"Task {task_id} not found.")
+
+    # Validate ownership
+    if user_id and task.user_id and task.user_id != user_id:
+        raise NotFoundError(f"Task {task_id} not found.")
+
+    return {
+        "task_id": task.task_id,
+        "session_id": task.session_id,
+        "status": task.status,
+        "tool_name": task.tool_name,
+        "operation_id": task.operation_id,
+        "created_at": task.created_at.isoformat(),
+    }
+
+
+# ========== External Completion Webhook ==========
+
+
+from fastapi import Header, HTTPException
+
+
+@router.post(
+    "/operations/{operation_id}/complete",
+    status_code=200,
+)
+async def complete_operation(
+    operation_id: str,
+    request: OperationCompleteRequest,
+    x_api_key: str | None = Header(default=None),
+) -> dict:
+    """
+    External completion webhook for long-running operations.
+
+    Called by Agent Generator (or other services) when an operation completes.
+    This triggers the stream registry to publish completion and continue LLM generation.
+
+    Args:
+        operation_id: The operation ID to complete.
+        request: Completion payload with success status and result/error.
+        x_api_key: Internal API key for authentication.
+
+    Returns:
+        dict: Status of the completion.
+
+    Raises:
+        HTTPException: If API key is invalid or operation not found.
+    """
+    # Validate internal API key
+    if config.internal_api_key:
+        if x_api_key != config.internal_api_key:
+            raise HTTPException(status_code=401, detail="Invalid API key")
+    else:
+        # If no internal API key is configured, log a warning
+        logger.warning(
+            f"Operation complete webhook called without API key validation "
+            f"(CHAT_INTERNAL_API_KEY not configured)"
+        )
+
+    # Find task by operation_id
+    task = await stream_registry.find_task_by_operation_id(operation_id)
+    if task is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Operation {operation_id} not found",
+        )
+
+    logger.info(
+        f"Received completion webhook for operation {operation_id} "
+        f"(task_id={task.task_id}, success={request.success})"
+    )
+
+    if request.success:
+        # Publish result to stream registry
+        from .response_model import StreamToolOutputAvailable
+
+        result_output = request.result if request.result else {"status": "completed"}
+        await stream_registry.publish_chunk(
+            task.task_id,
+            StreamToolOutputAvailable(
+                toolCallId=task.tool_call_id,
+                toolName=task.tool_name,
+                output=result_output if isinstance(result_output, str) else str(result_output),
+                success=True,
+            ),
+        )
+
+        # Update pending operation in database
+        from . import service as svc
+
+        result_str = (
+            request.result
+            if isinstance(request.result, str)
+            else str(request.result) if request.result else '{"status": "completed"}'
+        )
+        await svc._update_pending_operation(
+            session_id=task.session_id,
+            tool_call_id=task.tool_call_id,
+            result=result_str,
+        )
+
+        # Generate LLM continuation with streaming
+        await svc._generate_llm_continuation_with_streaming(
+            session_id=task.session_id,
+            user_id=task.user_id,
+            task_id=task.task_id,
+        )
+
+        # Mark task as completed
+        await stream_registry.mark_task_completed(task.task_id, status="completed")
+    else:
+        # Publish error to stream registry
+        from .response_model import StreamError
+
+        error_msg = request.error or "Operation failed"
+        await stream_registry.publish_chunk(
+            task.task_id,
+            StreamError(errorText=error_msg),
+        )
+
+        # Update pending operation with error
+        from . import service as svc
+        from .tools.models import ErrorResponse
+
+        error_response = ErrorResponse(
+            message=error_msg,
+            error=request.error,
+        )
+        await svc._update_pending_operation(
+            session_id=task.session_id,
+            tool_call_id=task.tool_call_id,
+            result=error_response.model_dump_json(),
+        )
+
+        # Mark task as failed
+        await stream_registry.mark_task_completed(task.task_id, status="failed")
+
+    return {"status": "ok", "task_id": task.task_id}
 
 
 # ========== Health Check ==========

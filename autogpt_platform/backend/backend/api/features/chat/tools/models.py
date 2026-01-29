@@ -352,11 +352,15 @@ class OperationStartedResponse(ToolResponseBase):
 
     This is returned immediately to the client while the operation continues
     to execute. The user can close the tab and check back later.
+
+    The task_id can be used to reconnect to the SSE stream via
+    GET /chat/tasks/{task_id}/stream?last_idx=0
     """
 
     type: ResponseType = ResponseType.OPERATION_STARTED
     operation_id: str
     tool_name: str
+    task_id: str | None = None  # For SSE reconnection
 
 
 class OperationPendingResponse(ToolResponseBase):
