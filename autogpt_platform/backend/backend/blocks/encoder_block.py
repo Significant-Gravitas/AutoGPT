@@ -20,6 +20,7 @@ class TextEncoderBlock(Block):
     special characters (like newlines, tabs, etc.) and converts them into
     their escape sequence representations (e.g., newline becomes \\n).
     """
+
     class Input(BlockSchemaInput):
         """Input schema for TextEncoderBlock."""
 
@@ -42,9 +43,11 @@ class TextEncoderBlock(Block):
             categories={BlockCategory.TEXT},
             input_schema=TextEncoderBlock.Input,
             output_schema=TextEncoderBlock.Output,
-            test_input={"text": """Hello
+            test_input={
+                "text": """Hello
 World!
-This is a "quoted" string."""},
+This is a "quoted" string."""
+            },
             test_output=[
                 (
                     "encoded_text",
