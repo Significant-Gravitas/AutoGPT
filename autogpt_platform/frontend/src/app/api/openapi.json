@@ -5912,6 +5912,40 @@
         }
       }
     },
+    "/api/workspace/files/{file_id}/download": {
+      "get": {
+        "tags": ["workspace"],
+        "summary": "Download file by ID",
+        "description": "Download a file by its ID.\n\nReturns the file content directly or redirects to a signed URL for GCS.",
+        "operationId": "getWorkspaceDownload file by id",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "file_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "File Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health": {
       "get": {
         "tags": ["health"],
