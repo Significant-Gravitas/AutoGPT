@@ -152,6 +152,37 @@ class EditAgentTool(BaseTool):
                 session_id=session_id,
             )
 
+        # Check if the result is an error from the external service
+        if isinstance(result, dict) and result.get("type") == "error":
+            error_msg = result.get("error", "Unknown error")
+            error_type = result.get("error_type", "unknown")
+            # Provide user-friendly messages based on error type
+            if error_type == "llm_parse_error":
+                user_message = "The AI had trouble generating the changes. Please try again or simplify your request."
+            elif error_type == "validation_error":
+                user_message = "The generated changes failed validation. Please try rephrasing your request."
+            elif error_type == "patch_error":
+                user_message = "Failed to apply the changes. Please try a different approach."
+            elif error_type in ("timeout", "llm_timeout"):
+                user_message = "The request took too long. Please try again."
+            elif error_type in ("rate_limit", "llm_rate_limit"):
+                user_message = (
+                    "The service is currently busy. Please try again in a moment."
+                )
+            else:
+                user_message = "Failed to generate the changes. Please try again."
+            return ErrorResponse(
+                message=user_message,
+                error=f"update_generation_failed:{error_type}",
+                details={
+                    "agent_id": agent_id,
+                    "changes": changes[:100],
+                    "service_error": error_msg,
+                    "error_type": error_type,
+                },
+                session_id=session_id,
+            )
+
         # Check if LLM returned clarifying questions
         if result.get("type") == "clarifying_questions":
             questions = result.get("questions", [])
