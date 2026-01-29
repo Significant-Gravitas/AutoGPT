@@ -270,7 +270,8 @@ async def generate_agent_patch(
         current_agent: Current agent JSON
 
     Returns:
-        Updated agent JSON, clarifying questions dict, or None on error
+        Updated agent JSON, clarifying questions dict {"type": "clarifying_questions", ...},
+        error dict {"type": "error", ...}, or None on unexpected error
 
     Raises:
         AgentGeneratorNotConfiguredError: If the external service is not configured.
