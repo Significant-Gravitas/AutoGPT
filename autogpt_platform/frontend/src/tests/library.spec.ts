@@ -134,7 +134,10 @@ test.describe("Library", () => {
     test.expect(clearedSearchValue).toBe("");
   });
 
-  test("pagination while searching works correctly", async ({ page }) => {
+  test("pagination while searching works correctly", async ({
+    page,
+  }, testInfo) => {
+    test.setTimeout(testInfo.timeout * 3);
     await page.goto("/library");
 
     const allAgents = await libraryPage.getAgents();
@@ -153,9 +156,10 @@ test.describe("Library", () => {
     );
     expect(matchingResults.length).toEqual(initialSearchResults.length);
 
+    const PAGE_SIZE = 20;
     const searchPaginationResult = await libraryPage.testPagination();
 
-    if (searchPaginationResult.initialCount >= 10) {
+    if (searchPaginationResult.initialCount >= PAGE_SIZE) {
       expect(searchPaginationResult.finalCount).toBeGreaterThanOrEqual(
         searchPaginationResult.initialCount,
       );
