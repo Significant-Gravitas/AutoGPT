@@ -61,7 +61,10 @@ export const IntegrationBlock: IntegrationBlockComponent = ({
     // preview when user drags it
     const dragPreview = document.createElement("div");
     dragPreview.style.cssText = blockDragPreviewStyle;
-    dragPreview.textContent = beautifyString(title || "");
+    dragPreview.textContent = beautifyString(title || "").replace(
+      / Block$/,
+      "",
+    );
 
     document.body.appendChild(dragPreview);
     e.dataTransfer.setDragImage(dragPreview, 0, 0);
@@ -100,7 +103,10 @@ export const IntegrationBlock: IntegrationBlockComponent = ({
               "line-clamp-1 font-sans text-sm font-medium leading-[1.375rem] text-zinc-800 group-disabled:text-zinc-400",
             )}
           >
-            {highlightText(beautifyString(title), highlightedText)}
+            {highlightText(
+              beautifyString(title).replace(/ Block$/, ""),
+              highlightedText,
+            )}
           </span>
         )}
         {description && (
