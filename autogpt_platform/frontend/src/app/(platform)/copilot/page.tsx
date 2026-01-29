@@ -14,13 +14,8 @@ export default function CopilotPage() {
   const isInterruptModalOpen = useCopilotStore((s) => s.isInterruptModalOpen);
   const confirmInterrupt = useCopilotStore((s) => s.confirmInterrupt);
   const cancelInterrupt = useCopilotStore((s) => s.cancelInterrupt);
-  const {
-    greetingName,
-    quickActions,
-    isLoading,
-    hasSession,
-    initialPrompt,
-  } = state;
+  const { greetingName, quickActions, isLoading, hasSession, initialPrompt } =
+    state;
   const {
     handleQuickAction,
     startChatWithPrompt,

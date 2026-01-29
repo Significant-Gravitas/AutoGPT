@@ -6,10 +6,7 @@ import { CopilotShell } from "./components/CopilotShell/CopilotShell";
 
 export default function CopilotLayout({ children }: { children: ReactNode }) {
   return (
-    <FeatureFlagPage
-      flag={Flag.CHAT}
-      whenDisabled="/library"
-    >
+    <FeatureFlagPage flag={Flag.CHAT} whenDisabled="/library">
       <CopilotShell>{children}</CopilotShell>
     </FeatureFlagPage>
   );

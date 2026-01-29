@@ -38,9 +38,7 @@ export async function login(email: string, password: string) {
 
     // Get onboarding status from backend (includes chat flag evaluated for this user)
     const { shouldShowOnboarding } = await getOnboardingStatus();
-    const next = shouldShowOnboarding
-      ? "/onboarding"
-      : "/";
+    const next = shouldShowOnboarding ? "/onboarding" : "/";
 
     return {
       success: true,

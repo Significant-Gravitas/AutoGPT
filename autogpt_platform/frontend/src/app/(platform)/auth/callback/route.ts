@@ -26,8 +26,7 @@ export async function GET(request: Request) {
         await api.createUser();
 
         // Get onboarding status from backend (includes chat flag evaluated for this user)
-        const { shouldShowOnboarding } =
-          await getOnboardingStatus();
+        const { shouldShowOnboarding } = await getOnboardingStatus();
         if (shouldShowOnboarding) {
           next = "/onboarding";
           revalidatePath("/onboarding", "layout");

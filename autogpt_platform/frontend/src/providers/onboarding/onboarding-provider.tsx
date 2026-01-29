@@ -46,12 +46,12 @@ type FrontendOnboardingStep = PostV1CompleteOnboardingStepStep;
 
 const OnboardingContext = createContext<
   | {
-    state: UserOnboarding | null;
-    updateState: (state: LocalOnboardingStateUpdate) => void;
-    step: number;
-    setStep: (step: number) => void;
-    completeStep: (step: FrontendOnboardingStep) => void;
-  }
+      state: UserOnboarding | null;
+      updateState: (state: LocalOnboardingStateUpdate) => void;
+      step: number;
+      setStep: (step: number) => void;
+      completeStep: (step: FrontendOnboardingStep) => void;
+    }
   | undefined
 >(undefined);
 
@@ -114,7 +114,7 @@ export default function OnboardingProvider({
 
       // Wait for pending updates to complete before unmounting
       pendingUpdatesRef.current.forEach((promise) => {
-        promise.catch(() => { });
+        promise.catch(() => {});
       });
 
       pendingUpdatesRef.current.clear();

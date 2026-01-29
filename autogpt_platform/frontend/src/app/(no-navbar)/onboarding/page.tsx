@@ -12,8 +12,7 @@ export default function OnboardingPage() {
     async function redirectToStep() {
       try {
         // Check if onboarding is enabled (also gets chat flag for redirect)
-        const { shouldShowOnboarding } =
-          await getOnboardingStatus();
+        const { shouldShowOnboarding } = await getOnboardingStatus();
 
         if (!shouldShowOnboarding) {
           router.replace("/");

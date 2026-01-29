@@ -87,7 +87,7 @@ export function setupSessionEventListeners(
   onStorageChange: (e: StorageEvent) => void,
 ): EventListeners {
   if (environment.isServerSide()) {
-    return { cleanup: () => { } };
+    return { cleanup: () => {} };
   }
 
   document.addEventListener("visibilitychange", onVisibilityChange);
