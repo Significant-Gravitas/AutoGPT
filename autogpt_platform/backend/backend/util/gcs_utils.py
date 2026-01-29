@@ -8,8 +8,6 @@ including path parsing, client management, and signed URL generation.
 import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import Optional
-
 import aiohttp
 from gcloud.aio import storage as async_gcs_storage
 from google.cloud import storage as gcs_storage
@@ -39,62 +37,6 @@ def parse_gcs_path(path: str) -> tuple[str, str]:
         raise ValueError(f"Invalid GCS path format: {path}")
 
     return parts[0], parts[1]
-
-
-class GCSClientManager:
-    """
-    Manages async and sync GCS clients with lazy initialization.
-
-    This class provides a unified way to manage GCS client lifecycle,
-    supporting both async operations (uploads, downloads) and sync
-    operations that require service account credentials (signed URLs).
-    """
-
-    def __init__(self):
-        self._async_client: Optional[async_gcs_storage.Storage] = None
-        self._sync_client: Optional[gcs_storage.Client] = None
-        self._session: Optional[aiohttp.ClientSession] = None
-
-    async def get_async_client(self) -> async_gcs_storage.Storage:
-        """
-        Get or create async GCS client.
-
-        Returns:
-            Async GCS storage client
-        """
-        if self._async_client is None:
-            self._session = aiohttp.ClientSession(
-                connector=aiohttp.TCPConnector(limit=100, force_close=False)
-            )
-            self._async_client = async_gcs_storage.Storage(session=self._session)
-        return self._async_client
-
-    def get_sync_client(self) -> gcs_storage.Client:
-        """
-        Get or create sync GCS client (used for signed URLs).
-
-        Returns:
-            Sync GCS storage client
-        """
-        if self._sync_client is None:
-            self._sync_client = gcs_storage.Client()
-        return self._sync_client
-
-    async def close(self) -> None:
-        """Close all client connections."""
-        if self._async_client is not None:
-            try:
-                await self._async_client.close()
-            except Exception as e:
-                logger.warning(f"Error closing GCS client: {e}")
-            self._async_client = None
-
-        if self._session is not None:
-            try:
-                await self._session.close()
-            except Exception as e:
-                logger.warning(f"Error closing session: {e}")
-            self._session = None
 
 
 async def download_with_fresh_session(bucket: str, blob: str) -> bytes:
