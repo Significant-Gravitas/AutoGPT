@@ -125,7 +125,7 @@ function isVercelPreview() {
 
 function areFeatureFlagsEnabled() {
   return (
-    process.env.NEXT_PUBLIC_LAUNCHDARKLY_ENABLED === "enabled" &&
+    process.env.NEXT_PUBLIC_LAUNCHDARKLY_ENABLED === "true" &&
     Boolean(process.env.NEXT_PUBLIC_LAUNCHDARKLY_CLIENT_ID)
   );
 }

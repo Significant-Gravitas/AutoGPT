@@ -26,15 +26,25 @@ export function FeatureFlagRedirect({
   const flagEnabled = Boolean(flagValue);
 
   useEffect(() => {
-    if (!ldEnabled) {
-      router.replace(whenDisabled);
-      return;
-    }
+    const initialize = async () => {
+      if (!ldEnabled) {
+        router.replace(whenDisabled);
+        return;
+      }
 
-    // Wait for LaunchDarkly to initialize when enabled to prevent race conditions
-    if (ldEnabled && !ldReady) return;
+      // Wait for LaunchDarkly to initialize when enabled to prevent race conditions
+      if (ldEnabled && !ldReady) return;
 
-    router.replace(flagEnabled ? whenEnabled : whenDisabled);
+      try {
+        await ldClient?.waitForInitialization();
+        router.replace(flagEnabled ? whenEnabled : whenDisabled);
+      } catch (error) {
+        console.error(error);
+        router.replace(whenDisabled);
+      }
+    };
+
+    initialize();
   }, [ldReady, flagEnabled]);
 
   return <LoadingSpinner size="large" cover />;

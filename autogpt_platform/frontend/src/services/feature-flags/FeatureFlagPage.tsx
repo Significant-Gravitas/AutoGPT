@@ -3,7 +3,7 @@
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { useLDClient } from "launchdarkly-react-client-sdk";
 import { useRouter } from "next/navigation";
-import { ReactNode, useEffect } from "react";
+import { ReactNode, useEffect, useState } from "react";
 import { environment } from "../environment";
 import { Flag, useGetFlag } from "./use-get-flag";
 
@@ -18,6 +18,7 @@ export function FeatureFlagPage({
   whenDisabled,
   children,
 }: FeatureFlagRedirectProps) {
+  const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
   const flagValue = useGetFlag(flag);
   const ldClient = useLDClient();
@@ -26,13 +27,29 @@ export function FeatureFlagPage({
   const flagEnabled = Boolean(flagValue);
 
   useEffect(() => {
-    // Wait for LaunchDarkly to initialize when enabled to prevent race conditions
-    if (ldEnabled && !ldReady) return;
+    const initialize = async () => {
+      if (!ldEnabled) {
+        router.replace(whenDisabled);
+        setIsLoading(false);
+        return;
+      }
 
-    if (!ldEnabled || !flagEnabled) {
-      router.replace(whenDisabled);
-    }
-  }, [ldEnabled, ldReady, flagEnabled]);
+      // Wait for LaunchDarkly to initialize when enabled to prevent race conditions
+      if (ldEnabled && !ldReady) return;
 
-  return !flagEnabled ? <LoadingSpinner size="large" cover /> : <>{children}</>;
+      try {
+        await ldClient?.waitForInitialization();
+        if (!flagEnabled) router.replace(whenDisabled);
+      } catch (error) {
+        console.error(error);
+        router.replace(whenDisabled);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    initialize();
+  }, [ldReady, flagEnabled]);
+
+  return isLoading || !flagEnabled ? <LoadingSpinner size="large" cover /> : <>{children}</>;
 }
