@@ -393,6 +393,7 @@ async def get_creators(
 @router.get(
     "/creator/{username}",
     summary="Get creator details",
+    operation_id="getV2GetCreatorDetails",
     tags=["store", "public"],
     response_model=store_model.CreatorDetails,
 )
