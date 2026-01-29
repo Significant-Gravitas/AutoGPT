@@ -1,6 +1,6 @@
 import os
 import tempfile
-from typing import Literal, Optional
+from typing import Optional
 
 from moviepy.audio.io.AudioFileClip import AudioFileClip
 from moviepy.video.fx.Loop import Loop
@@ -13,6 +13,7 @@ from backend.data.block import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
+from backend.data.execution import ExecutionContext
 from backend.data.model import SchemaField
 from backend.util.file import MediaFileType, get_exec_file_path, store_media_file
 
@@ -46,18 +47,19 @@ class MediaDurationBlock(Block):
         self,
         input_data: Input,
         *,
-        graph_exec_id: str,
-        user_id: str,
+        execution_context: ExecutionContext,
         **kwargs,
     ) -> BlockOutput:
         # 1) Store the input media locally
         local_media_path = await store_media_file(
-            graph_exec_id=graph_exec_id,
             file=input_data.media_in,
-            user_id=user_id,
-            return_content=False,
+            execution_context=execution_context,
+            return_format="for_local_processing",
         )
-        media_abspath = get_exec_file_path(graph_exec_id, local_media_path)
+        assert execution_context.graph_exec_id is not None
+        media_abspath = get_exec_file_path(
+            execution_context.graph_exec_id, local_media_path
+        )
 
         # 2) Load the clip
         if input_data.is_video:
@@ -88,10 +90,6 @@ class LoopVideoBlock(Block):
             default=None,
             ge=1,
         )
-        output_return_type: Literal["file_path", "data_uri"] = SchemaField(
-            description="How to return the output video. Either a relative path or base64 data URI.",
-            default="file_path",
-        )
 
     class Output(BlockSchemaOutput):
         video_out: str = SchemaField(
@@ -111,17 +109,19 @@ class LoopVideoBlock(Block):
         self,
         input_data: Input,
         *,
-        node_exec_id: str,
-        graph_exec_id: str,
-        user_id: str,
+        execution_context: ExecutionContext,
         **kwargs,
     ) -> BlockOutput:
+        assert execution_context.graph_exec_id is not None
+        assert execution_context.node_exec_id is not None
+        graph_exec_id = execution_context.graph_exec_id
+        node_exec_id = execution_context.node_exec_id
+
         # 1) Store the input video locally
         local_video_path = await store_media_file(
-            graph_exec_id=graph_exec_id,
             file=input_data.video_in,
-            user_id=user_id,
-            return_content=False,
+            execution_context=execution_context,
+            return_format="for_local_processing",
         )
         input_abspath = get_exec_file_path(graph_exec_id, local_video_path)
 
@@ -149,12 +149,11 @@ class LoopVideoBlock(Block):
         looped_clip = looped_clip.with_audio(clip.audio)
         looped_clip.write_videofile(output_abspath, codec="libx264", audio_codec="aac")
 
-        # Return as data URI
+        # Return output - for_block_output returns workspace:// if available, else data URI
         video_out = await store_media_file(
-            graph_exec_id=graph_exec_id,
             file=output_filename,
-            user_id=user_id,
-            return_content=input_data.output_return_type == "data_uri",
+            execution_context=execution_context,
+            return_format="for_block_output",
         )
 
         yield "video_out", video_out
@@ -177,10 +176,6 @@ class AddAudioToVideoBlock(Block):
             description="Volume scale for the newly attached audio track (1.0 = original).",
             default=1.0,
         )
-        output_return_type: Literal["file_path", "data_uri"] = SchemaField(
-            description="Return the final output as a relative path or base64 data URI.",
-            default="file_path",
-        )
 
     class Output(BlockSchemaOutput):
         video_out: MediaFileType = SchemaField(
@@ -200,23 +195,24 @@ class AddAudioToVideoBlock(Block):
         self,
         input_data: Input,
         *,
-        node_exec_id: str,
-        graph_exec_id: str,
-        user_id: str,
+        execution_context: ExecutionContext,
         **kwargs,
     ) -> BlockOutput:
+        assert execution_context.graph_exec_id is not None
+        assert execution_context.node_exec_id is not None
+        graph_exec_id = execution_context.graph_exec_id
+        node_exec_id = execution_context.node_exec_id
+
         # 1) Store the inputs locally
         local_video_path = await store_media_file(
-            graph_exec_id=graph_exec_id,
             file=input_data.video_in,
-            user_id=user_id,
-            return_content=False,
+            execution_context=execution_context,
+            return_format="for_local_processing",
         )
         local_audio_path = await store_media_file(
-            graph_exec_id=graph_exec_id,
             file=input_data.audio_in,
-            user_id=user_id,
-            return_content=False,
+            execution_context=execution_context,
+            return_format="for_local_processing",
         )
 
         abs_temp_dir = os.path.join(tempfile.gettempdir(), "exec_file", graph_exec_id)
@@ -240,12 +236,11 @@ class AddAudioToVideoBlock(Block):
         output_abspath = os.path.join(abs_temp_dir, output_filename)
         final_clip.write_videofile(output_abspath, codec="libx264", audio_codec="aac")
 
-        # 5) Return either path or data URI
+        # 5) Return output - for_block_output returns workspace:// if available, else data URI
         video_out = await store_media_file(
-            graph_exec_id=graph_exec_id,
             file=output_filename,
-            user_id=user_id,
-            return_content=input_data.output_return_type == "data_uri",
+            execution_context=execution_context,
+            return_format="for_block_output",
         )
 
         yield "video_out", video_out

@@ -3,13 +3,16 @@ Unified Hybrid Search
 
 Combines semantic (embedding) search with lexical (tsvector) search
 for improved relevance across all content types (agents, blocks, docs).
+Includes BM25 reranking for improved lexical relevance.
 """
 
 import logging
+import re
 from dataclasses import dataclass
 from typing import Any, Literal
 
 from prisma.enums import ContentType
+from rank_bm25 import BM25Okapi  # type: ignore[import-untyped]
 
 from backend.api.features.store.embeddings import (
     EMBEDDING_DIM,
@@ -19,6 +22,84 @@ from backend.api.features.store.embeddings import (
 from backend.data.db import query_raw_with_schema
 
 logger = logging.getLogger(__name__)
+
+
+# ============================================================================
+# BM25 Reranking
+# ============================================================================
+
+
+def tokenize(text: str) -> list[str]:
+    """Simple tokenizer for BM25 - lowercase and split on non-alphanumeric."""
+    if not text:
+        return []
+    # Lowercase and split on non-alphanumeric characters
+    tokens = re.findall(r"\b\w+\b", text.lower())
+    return tokens
+
+
+def bm25_rerank(
+    query: str,
+    results: list[dict[str, Any]],
+    text_field: str = "searchable_text",
+    bm25_weight: float = 0.3,
+    original_score_field: str = "combined_score",
+) -> list[dict[str, Any]]:
+    """
+    Rerank search results using BM25.
+
+    Combines the original combined_score with BM25 score for improved
+    lexical relevance, especially for exact term matches.
+
+    Args:
+        query: The search query
+        results: List of result dicts with text_field and original_score_field
+        text_field: Field name containing the text to score
+        bm25_weight: Weight for BM25 score (0-1). Original score gets (1 - bm25_weight)
+        original_score_field: Field name containing the original score
+
+    Returns:
+        Results list sorted by combined score (BM25 + original)
+    """
+    if not results or not query:
+        return results
+
+    # Extract texts and tokenize
+    corpus = [tokenize(r.get(text_field, "") or "") for r in results]
+
+    # Handle edge case where all documents are empty
+    if all(len(doc) == 0 for doc in corpus):
+        return results
+
+    # Build BM25 index
+    bm25 = BM25Okapi(corpus)
+
+    # Score query against corpus
+    query_tokens = tokenize(query)
+    if not query_tokens:
+        return results
+
+    bm25_scores = bm25.get_scores(query_tokens)
+
+    # Normalize BM25 scores to 0-1 range
+    max_bm25 = max(bm25_scores) if max(bm25_scores) > 0 else 1.0
+    normalized_bm25 = [s / max_bm25 for s in bm25_scores]
+
+    # Combine scores
+    original_weight = 1.0 - bm25_weight
+    for i, result in enumerate(results):
+        original_score = result.get(original_score_field, 0) or 0
+        result["bm25_score"] = normalized_bm25[i]
+        final_score = (
+            original_weight * original_score + bm25_weight * normalized_bm25[i]
+        )
+        result["final_score"] = final_score
+        result["relevance"] = final_score
+
+    # Sort by relevance descending
+    results.sort(key=lambda x: x.get("relevance", 0), reverse=True)
+
+    return results
 
 
 @dataclass
@@ -105,13 +186,12 @@ async def unified_hybrid_search(
 
     offset = (page - 1) * page_size
 
-    # Generate query embedding
-    query_embedding = await embed_query(query)
-
-    # Graceful degradation if embedding unavailable
-    if query_embedding is None or not query_embedding:
+    # Generate query embedding with graceful degradation
+    try:
+        query_embedding = await embed_query(query)
+    except Exception as e:
         logger.warning(
-            "Failed to generate query embedding - falling back to lexical-only search. "
+            f"Failed to generate query embedding - falling back to lexical-only search: {e}. "
             "Check that openai_internal_api_key is configured and OpenAI API is accessible."
         )
         query_embedding = [0.0] * EMBEDDING_DIM
@@ -273,9 +353,7 @@ async def unified_hybrid_search(
             FROM normalized
         ),
         filtered AS (
-            SELECT
-                *,
-                COUNT(*) OVER () as total_count
+            SELECT *, COUNT(*) OVER () as total_count
             FROM scored
             WHERE combined_score >= {min_score_param}
         )
@@ -284,11 +362,18 @@ async def unified_hybrid_search(
         LIMIT {limit_param} OFFSET {offset_param}
     """
 
-    results = await query_raw_with_schema(
-        sql_query, *params, set_public_search_path=True
-    )
+    results = await query_raw_with_schema(sql_query, *params)
 
     total = results[0]["total_count"] if results else 0
+    # Apply BM25 reranking
+    if results:
+        results = bm25_rerank(
+            query=query,
+            results=results,
+            text_field="searchable_text",
+            bm25_weight=0.3,
+            original_score_field="combined_score",
+        )
 
     # Clean up results
     for result in results:
@@ -378,13 +463,12 @@ async def hybrid_search(
 
     offset = (page - 1) * page_size
 
-    # Generate query embedding
-    query_embedding = await embed_query(query)
-
-    # Graceful degradation
-    if query_embedding is None or not query_embedding:
+    # Generate query embedding with graceful degradation
+    try:
+        query_embedding = await embed_query(query)
+    except Exception as e:
         logger.warning(
-            "Failed to generate query embedding - falling back to lexical-only search."
+            f"Failed to generate query embedding - falling back to lexical-only search: {e}"
         )
         query_embedding = [0.0] * EMBEDDING_DIM
         total_non_semantic = (
@@ -516,6 +600,8 @@ async def hybrid_search(
                 sa.featured,
                 sa.is_available,
                 sa.updated_at,
+                -- Searchable text for BM25 reranking
+                COALESCE(sa.agent_name, '') || ' ' || COALESCE(sa.sub_heading, '') || ' ' || COALESCE(sa.description, '') as searchable_text,
                 -- Semantic score
                 COALESCE(1 - (uce.embedding <=> {embedding_param}::vector), 0) as semantic_score,
                 -- Lexical score (raw, will normalize)
@@ -573,6 +659,7 @@ async def hybrid_search(
                 featured,
                 is_available,
                 updated_at,
+                searchable_text,
                 semantic_score,
                 lexical_score,
                 category_score,
@@ -597,14 +684,23 @@ async def hybrid_search(
         LIMIT {limit_param} OFFSET {offset_param}
     """
 
-    results = await query_raw_with_schema(
-        sql_query, *params, set_public_search_path=True
-    )
+    results = await query_raw_with_schema(sql_query, *params)
 
     total = results[0]["total_count"] if results else 0
 
+    # Apply BM25 reranking
+    if results:
+        results = bm25_rerank(
+            query=query,
+            results=results,
+            text_field="searchable_text",
+            bm25_weight=0.3,
+            original_score_field="combined_score",
+        )
+
     for result in results:
         result.pop("total_count", None)
+        result.pop("searchable_text", None)
 
     logger.info(f"Hybrid search (store agents): {len(results)} results, {total} total")
 

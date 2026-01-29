@@ -21,6 +21,23 @@ class ResponseType(str, Enum):
     NO_RESULTS = "no_results"
     AGENT_OUTPUT = "agent_output"
     UNDERSTANDING_UPDATED = "understanding_updated"
+    AGENT_PREVIEW = "agent_preview"
+    AGENT_SAVED = "agent_saved"
+    CLARIFICATION_NEEDED = "clarification_needed"
+    BLOCK_LIST = "block_list"
+    BLOCK_OUTPUT = "block_output"
+    DOC_SEARCH_RESULTS = "doc_search_results"
+    DOC_PAGE = "doc_page"
+    # Workspace response types
+    WORKSPACE_FILE_LIST = "workspace_file_list"
+    WORKSPACE_FILE_CONTENT = "workspace_file_content"
+    WORKSPACE_FILE_METADATA = "workspace_file_metadata"
+    WORKSPACE_FILE_WRITTEN = "workspace_file_written"
+    WORKSPACE_FILE_DELETED = "workspace_file_deleted"
+    # Long-running operation types
+    OPERATION_STARTED = "operation_started"
+    OPERATION_PENDING = "operation_pending"
+    OPERATION_IN_PROGRESS = "operation_in_progress"
 
 
 # Base response model
@@ -209,3 +226,157 @@ class UnderstandingUpdatedResponse(ToolResponseBase):
     type: ResponseType = ResponseType.UNDERSTANDING_UPDATED
     updated_fields: list[str] = Field(default_factory=list)
     current_understanding: dict[str, Any] = Field(default_factory=dict)
+
+
+# Agent generation models
+class ClarifyingQuestion(BaseModel):
+    """A question that needs user clarification."""
+
+    question: str
+    keyword: str
+    example: str | None = None
+
+
+class AgentPreviewResponse(ToolResponseBase):
+    """Response for previewing a generated agent before saving."""
+
+    type: ResponseType = ResponseType.AGENT_PREVIEW
+    agent_json: dict[str, Any]
+    agent_name: str
+    description: str
+    node_count: int
+    link_count: int = 0
+
+
+class AgentSavedResponse(ToolResponseBase):
+    """Response when an agent is saved to the library."""
+
+    type: ResponseType = ResponseType.AGENT_SAVED
+    agent_id: str
+    agent_name: str
+    library_agent_id: str
+    library_agent_link: str
+    agent_page_link: str  # Link to the agent builder/editor page
+
+
+class ClarificationNeededResponse(ToolResponseBase):
+    """Response when the LLM needs more information from the user."""
+
+    type: ResponseType = ResponseType.CLARIFICATION_NEEDED
+    questions: list[ClarifyingQuestion] = Field(default_factory=list)
+
+
+# Documentation search models
+class DocSearchResult(BaseModel):
+    """A single documentation search result."""
+
+    title: str
+    path: str
+    section: str
+    snippet: str  # Short excerpt for UI display
+    score: float
+    doc_url: str | None = None
+
+
+class DocSearchResultsResponse(ToolResponseBase):
+    """Response for search_docs tool."""
+
+    type: ResponseType = ResponseType.DOC_SEARCH_RESULTS
+    results: list[DocSearchResult]
+    count: int
+    query: str
+
+
+class DocPageResponse(ToolResponseBase):
+    """Response for get_doc_page tool."""
+
+    type: ResponseType = ResponseType.DOC_PAGE
+    title: str
+    path: str
+    content: str  # Full document content
+    doc_url: str | None = None
+
+
+# Block models
+class BlockInputFieldInfo(BaseModel):
+    """Information about a block input field."""
+
+    name: str
+    type: str
+    description: str = ""
+    required: bool = False
+    default: Any | None = None
+
+
+class BlockInfoSummary(BaseModel):
+    """Summary of a block for search results."""
+
+    id: str
+    name: str
+    description: str
+    categories: list[str]
+    input_schema: dict[str, Any]
+    output_schema: dict[str, Any]
+    required_inputs: list[BlockInputFieldInfo] = Field(
+        default_factory=list,
+        description="List of required input fields for this block",
+    )
+
+
+class BlockListResponse(ToolResponseBase):
+    """Response for find_block tool."""
+
+    type: ResponseType = ResponseType.BLOCK_LIST
+    blocks: list[BlockInfoSummary]
+    count: int
+    query: str
+    usage_hint: str = Field(
+        default="To execute a block, call run_block with block_id set to the block's "
+        "'id' field and input_data containing the required fields from input_schema."
+    )
+
+
+class BlockOutputResponse(ToolResponseBase):
+    """Response for run_block tool."""
+
+    type: ResponseType = ResponseType.BLOCK_OUTPUT
+    block_id: str
+    block_name: str
+    outputs: dict[str, list[Any]]
+    success: bool = True
+
+
+# Long-running operation models
+class OperationStartedResponse(ToolResponseBase):
+    """Response when a long-running operation has been started in the background.
+
+    This is returned immediately to the client while the operation continues
+    to execute. The user can close the tab and check back later.
+    """
+
+    type: ResponseType = ResponseType.OPERATION_STARTED
+    operation_id: str
+    tool_name: str
+
+
+class OperationPendingResponse(ToolResponseBase):
+    """Response stored in chat history while a long-running operation is executing.
+
+    This is persisted to the database so users see a pending state when they
+    refresh before the operation completes.
+    """
+
+    type: ResponseType = ResponseType.OPERATION_PENDING
+    operation_id: str
+    tool_name: str
+
+
+class OperationInProgressResponse(ToolResponseBase):
+    """Response when an operation is already in progress.
+
+    Returned for idempotency when the same tool_call_id is requested again
+    while the background task is still running.
+    """
+
+    type: ResponseType = ResponseType.OPERATION_IN_PROGRESS
+    tool_call_id: str

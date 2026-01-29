@@ -163,7 +163,7 @@ export function NewAgentLibraryView() {
 
   return (
     <>
-      <div className="mx-4 grid h-full grid-cols-1 gap-0 pt-3 md:ml-4 md:mr-0 md:gap-4 lg:grid-cols-[25%_70%]">
+      <div className="mx-4 grid h-full w-full grid-cols-1 gap-0 pt-3 md:ml-4 md:mr-0 md:gap-4 lg:grid-cols-[25%_70%]">
         <SectionWrap className="mb-3 block">
           <div
             className={cn(

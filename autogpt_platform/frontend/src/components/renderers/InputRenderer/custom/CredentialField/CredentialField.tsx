@@ -1,6 +1,6 @@
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
-import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/modals/CredentialsInputs/CredentialsInput";
 import { Switch } from "@/components/atoms/Switch/Switch";
+import { CredentialsInput } from "@/components/contextual/CredentialsInput/CredentialsInput";
 import {
   BlockIOCredentialsSubSchema,
   CredentialsMetaInput,

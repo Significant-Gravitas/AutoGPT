@@ -1,11 +1,37 @@
 -- CreateExtension
 -- Supabase: pgvector must be enabled via Dashboard → Database → Extensions first
--- Create in public schema so vector type is available across all schemas
+-- Ensures vector extension is in the current schema (from DATABASE_URL ?schema= param)
+-- If it exists in a different schema (e.g., public), we drop and recreate it in the current schema
+-- This ensures vector type is in the same schema as tables, making ::vector work without explicit qualification
 DO $$
+DECLARE
+    current_schema_name text;
+    vector_schema text;
 BEGIN
-    CREATE EXTENSION IF NOT EXISTS "vector" WITH SCHEMA "public";
-EXCEPTION WHEN OTHERS THEN
-    RAISE NOTICE 'vector extension not available or already exists, skipping';
+    -- Get the current schema from search_path
+    SELECT current_schema() INTO current_schema_name;
+
+    -- Check if vector extension exists and which schema it's in
+    SELECT n.nspname INTO vector_schema
+    FROM pg_extension e
+    JOIN pg_namespace n ON e.extnamespace = n.oid
+    WHERE e.extname = 'vector';
+
+    -- Handle removal if in wrong schema
+    IF vector_schema IS NOT NULL AND vector_schema != current_schema_name THEN
+        BEGIN
+            -- Vector exists in a different schema, drop it first
+            RAISE WARNING 'pgvector found in schema "%" but need it in "%". Dropping and reinstalling...',
+                vector_schema, current_schema_name;
+            EXECUTE 'DROP EXTENSION IF EXISTS vector CASCADE';
+        EXCEPTION WHEN OTHERS THEN
+            RAISE EXCEPTION 'Failed to drop pgvector from schema "%": %. You may need to drop it manually.',
+                vector_schema, SQLERRM;
+        END;
+    END IF;
+
+    -- Create extension in current schema (let it fail naturally if not available)
+    EXECUTE format('CREATE EXTENSION IF NOT EXISTS vector SCHEMA %I', current_schema_name);
 END $$;
 
 -- CreateEnum
@@ -19,7 +45,7 @@ CREATE TABLE "UnifiedContentEmbedding" (
     "contentType" "ContentType" NOT NULL,
     "contentId" TEXT NOT NULL,
     "userId" TEXT,
-    "embedding" public.vector(1536) NOT NULL,
+    "embedding" vector(1536) NOT NULL,
     "searchableText" TEXT NOT NULL,
     "metadata" JSONB NOT NULL DEFAULT '{}',
 
@@ -45,4 +71,4 @@ CREATE UNIQUE INDEX "UnifiedContentEmbedding_contentType_contentId_userId_key" O
 -- Uses cosine distance operator (<=>), which matches the query in hybrid_search.py
 -- Note: Drop first in case Prisma created a btree index (Prisma doesn't support HNSW)
 DROP INDEX IF EXISTS "UnifiedContentEmbedding_embedding_idx";
-CREATE INDEX "UnifiedContentEmbedding_embedding_idx" ON "UnifiedContentEmbedding" USING hnsw ("embedding" public.vector_cosine_ops);
+CREATE INDEX "UnifiedContentEmbedding_embedding_idx" ON "UnifiedContentEmbedding" USING hnsw ("embedding" vector_cosine_ops);

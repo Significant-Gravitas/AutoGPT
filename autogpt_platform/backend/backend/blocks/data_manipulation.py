@@ -159,7 +159,7 @@ class FindInDictionaryBlock(Block):
     def __init__(self):
         super().__init__(
             id="0e50422c-6dee-4145-83d6-3a5a392f65de",
-            description="Lookup the given key in the input dictionary/object/list and return the value.",
+            description="A block that looks up a value in a dictionary, list, or object by key or index and returns the corresponding value.",
             input_schema=FindInDictionaryBlock.Input,
             output_schema=FindInDictionaryBlock.Output,
             test_input=[
@@ -680,3 +680,58 @@ class ListIsEmptyBlock(Block):
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         yield "is_empty", len(input_data.list) == 0
+
+
+class ConcatenateListsBlock(Block):
+    class Input(BlockSchemaInput):
+        lists: List[List[Any]] = SchemaField(
+            description="A list of lists to concatenate together. All lists will be combined in order into a single list.",
+            placeholder="e.g., [[1, 2], [3, 4], [5, 6]]",
+        )
+
+    class Output(BlockSchemaOutput):
+        concatenated_list: List[Any] = SchemaField(
+            description="The concatenated list containing all elements from all input lists in order."
+        )
+        error: str = SchemaField(
+            description="Error message if concatenation failed due to invalid input types."
+        )
+
+    def __init__(self):
+        super().__init__(
+            id="3cf9298b-5817-4141-9d80-7c2cc5199c8e",
+            description="Concatenates multiple lists into a single list. All elements from all input lists are combined in order.",
+            categories={BlockCategory.BASIC},
+            input_schema=ConcatenateListsBlock.Input,
+            output_schema=ConcatenateListsBlock.Output,
+            test_input=[
+                {"lists": [[1, 2, 3], [4, 5, 6]]},
+                {"lists": [["a", "b"], ["c"], ["d", "e", "f"]]},
+                {"lists": [[1, 2], []]},
+                {"lists": []},
+            ],
+            test_output=[
+                ("concatenated_list", [1, 2, 3, 4, 5, 6]),
+                ("concatenated_list", ["a", "b", "c", "d", "e", "f"]),
+                ("concatenated_list", [1, 2]),
+                ("concatenated_list", []),
+            ],
+        )
+
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
+        concatenated = []
+        for idx, lst in enumerate(input_data.lists):
+            if lst is None:
+                # Skip None values to avoid errors
+                continue
+            if not isinstance(lst, list):
+                # Type validation: each item must be a list
+                # Strings are iterable and would cause extend() to iterate character-by-character
+                # Non-iterable types would raise TypeError
+                yield "error", (
+                    f"Invalid input at index {idx}: expected a list, got {type(lst).__name__}. "
+                    f"All items in 'lists' must be lists (e.g., [[1, 2], [3, 4]])."
+                )
+                return
+            concatenated.extend(lst)
+        yield "concatenated_list", concatenated

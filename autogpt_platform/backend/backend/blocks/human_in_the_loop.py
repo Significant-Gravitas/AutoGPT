@@ -97,6 +97,7 @@ class HumanInTheLoopBlock(Block):
         input_data: Input,
         *,
         user_id: str,
+        node_id: str,
         node_exec_id: str,
         graph_exec_id: str,
         graph_id: str,
@@ -104,7 +105,7 @@ class HumanInTheLoopBlock(Block):
         execution_context: ExecutionContext,
         **_kwargs,
     ) -> BlockOutput:
-        if not execution_context.safe_mode:
+        if not execution_context.human_in_the_loop_safe_mode:
             logger.info(
                 f"HITL block skipping review for node {node_exec_id} - safe mode disabled"
             )
@@ -115,12 +116,12 @@ class HumanInTheLoopBlock(Block):
         decision = await self.handle_review_decision(
             input_data=input_data.data,
             user_id=user_id,
+            node_id=node_id,
             node_exec_id=node_exec_id,
             graph_exec_id=graph_exec_id,
             graph_id=graph_id,
             graph_version=graph_version,
-            execution_context=execution_context,
-            block_name=self.name,
+            block_name=input_data.name,  # Use user-provided name instead of block type
             editable=input_data.editable,
         )
 

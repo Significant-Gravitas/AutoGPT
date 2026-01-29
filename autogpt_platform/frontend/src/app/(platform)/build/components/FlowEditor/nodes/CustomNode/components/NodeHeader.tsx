@@ -22,7 +22,7 @@ export const NodeHeader = ({ data, nodeId }: Props) => {
   const updateNodeData = useNodeStore((state) => state.updateNodeData);
   const title =
     (data.metadata?.customized_name as string) ||
-    data.hardcodedValues.agent_name ||
+    data.hardcodedValues?.agent_name ||
     data.title;
 
   const [isEditingTitle, setIsEditingTitle] = useState(false);

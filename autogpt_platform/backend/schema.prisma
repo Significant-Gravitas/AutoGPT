@@ -63,6 +63,7 @@ model User {
   IntegrationWebhooks   IntegrationWebhook[]
   NotificationBatches   UserNotificationBatch[]
   PendingHumanReviews   PendingHumanReview[]
+  Workspace             UserWorkspace?
 
   // OAuth Provider relations
   OAuthApplications       OAuthApplication[]
@@ -81,6 +82,7 @@ enum OnboardingStep {
   AGENT_INPUT
   CONGRATS
   // First Wins
+  VISIT_COPILOT
   GET_RESULTS
   MARKETPLACE_VISIT
   MARKETPLACE_ADD_AGENT
@@ -134,6 +136,53 @@ model CoPilotUnderstanding {
   data Json?
 
   @@index([userId])
+}
+
+////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////
+////////////////   USER WORKSPACE TABLES   /////////////////
+////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////
+
+// User's persistent file storage workspace
+model UserWorkspace {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId String @unique
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  Files UserWorkspaceFile[]
+
+  @@index([userId])
+}
+
+// Individual files in a user's workspace
+model UserWorkspaceFile {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workspaceId String
+  Workspace   UserWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  // File metadata
+  name        String // User-visible filename
+  path        String // Virtual path (e.g., "/documents/report.pdf")
+  storagePath String // Actual GCS or local storage path
+  mimeType    String
+  sizeBytes   BigInt
+  checksum    String? // SHA256 for integrity
+
+  // File state
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
+
+  metadata Json @default("{}")
+
+  @@unique([workspaceId, path])
+  @@index([workspaceId, isDeleted])
 }
 
 model BuilderSearchHistory {
@@ -450,6 +499,7 @@ model AgentGraphExecution {
   createdAt DateTime  @default(now())
   updatedAt DateTime? @updatedAt
   startedAt DateTime?
+  endedAt   DateTime?
 
   isDeleted Boolean @default(false)
 
@@ -516,8 +566,6 @@ model AgentNodeExecution {
 
   stats Json?
 
-  PendingHumanReview PendingHumanReview?
-
   @@index([agentGraphExecutionId, agentNodeId, executionStatus])
   @@index([agentNodeId, executionStatus])
   @@index([addedTime, queuedTime])
@@ -566,6 +614,7 @@ enum ReviewStatus {
 }
 
 // Pending human reviews for Human-in-the-loop blocks
+// Also stores auto-approval records with special nodeExecId patterns (e.g., "auto_approve_{graph_exec_id}_{node_id}")
 model PendingHumanReview {
   nodeExecId    String       @id
   userId        String
@@ -584,7 +633,6 @@ model PendingHumanReview {
   reviewedAt    DateTime?
 
   User           User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  NodeExecution  AgentNodeExecution  @relation(fields: [nodeExecId], references: [id], onDelete: Cascade)
   GraphExecution AgentGraphExecution @relation(fields: [graphExecId], references: [id], onDelete: Cascade)
 
   @@unique([nodeExecId]) // One pending review per node execution

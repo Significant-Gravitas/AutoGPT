@@ -172,8 +172,8 @@ async def test_hybrid_search_without_embeddings():
         with patch(
             "backend.api.features.store.hybrid_search.query_raw_with_schema"
         ) as mock_query:
-            # Simulate embedding failure
-            mock_embed.return_value = None
+            # Simulate embedding failure by raising exception
+            mock_embed.side_effect = Exception("Embedding generation failed")
             mock_query.return_value = mock_results
 
             # Should NOT raise - graceful degradation
@@ -311,11 +311,43 @@ async def test_hybrid_search_min_score_filtering():
 @pytest.mark.asyncio(loop_scope="session")
 @pytest.mark.integration
 async def test_hybrid_search_pagination():
-    """Test hybrid search pagination."""
+    """Test hybrid search pagination.
+
+    Pagination happens in SQL (LIMIT/OFFSET), then BM25 reranking is applied
+    to the paginated results.
+    """
+    # Create mock results that SQL would return for a page
+    mock_results = [
+        {
+            "slug": f"agent-{i}",
+            "agent_name": f"Agent {i}",
+            "agent_image": "test.png",
+            "creator_username": "test",
+            "creator_avatar": "avatar.png",
+            "sub_heading": "Test",
+            "description": "Test description",
+            "runs": 100 - i,
+            "rating": 4.5,
+            "categories": ["test"],
+            "featured": False,
+            "is_available": True,
+            "updated_at": "2024-01-01T00:00:00Z",
+            "searchable_text": f"Agent {i} test description",
+            "combined_score": 0.9 - (i * 0.01),
+            "semantic_score": 0.7,
+            "lexical_score": 0.6,
+            "category_score": 0.5,
+            "recency_score": 0.4,
+            "popularity_score": 0.3,
+            "total_count": 25,
+        }
+        for i in range(10)  # SQL returns page_size results
+    ]
+
     with patch(
         "backend.api.features.store.hybrid_search.query_raw_with_schema"
     ) as mock_query:
-        mock_query.return_value = []
+        mock_query.return_value = mock_results
 
         with patch(
             "backend.api.features.store.hybrid_search.embed_query"
@@ -329,16 +361,18 @@ async def test_hybrid_search_pagination():
                 page_size=10,
             )
 
-            # Verify pagination parameters
+            # Verify results returned
+            assert len(results) == 10
+            assert total == 25  # Total from SQL COUNT(*) OVER()
+
+            # Verify the SQL query uses page_size and offset
             call_args = mock_query.call_args
             params = call_args[0]
-
-            # Last two params should be LIMIT and OFFSET
-            limit = params[-2]
-            offset = params[-1]
-
-            assert limit == 10  # page_size
-            assert offset == 10  # (page - 1) * page_size = (2 - 1) * 10
+            # Last two params are page_size and offset
+            page_size_param = params[-2]
+            offset_param = params[-1]
+            assert page_size_param == 10
+            assert offset_param == 10  # (page 2 - 1) * 10
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -579,7 +613,9 @@ async def test_unified_hybrid_search_graceful_degradation():
             "backend.api.features.store.hybrid_search.embed_query"
         ) as mock_embed:
             mock_query.return_value = mock_results
-            mock_embed.return_value = None  # Embedding failure
+            mock_embed.side_effect = Exception(
+                "Embedding generation failed"
+            )  # Embedding failure
 
             # Should NOT raise - graceful degradation
             results, total = await unified_hybrid_search(
@@ -609,14 +645,36 @@ async def test_unified_hybrid_search_empty_query():
 @pytest.mark.asyncio(loop_scope="session")
 @pytest.mark.integration
 async def test_unified_hybrid_search_pagination():
-    """Test unified search pagination."""
+    """Test unified search pagination with BM25 reranking.
+
+    Pagination happens in SQL (LIMIT/OFFSET), then BM25 reranking is applied
+    to the paginated results.
+    """
+    # Create mock results that SQL would return for a page
+    mock_results = [
+        {
+            "content_type": "STORE_AGENT",
+            "content_id": f"agent-{i}",
+            "searchable_text": f"Agent {i} description",
+            "metadata": {"name": f"Agent {i}"},
+            "updated_at": "2025-01-01T00:00:00Z",
+            "semantic_score": 0.7,
+            "lexical_score": 0.8 - (i * 0.01),
+            "category_score": 0.5,
+            "recency_score": 0.3,
+            "combined_score": 0.6 - (i * 0.01),
+            "total_count": 50,
+        }
+        for i in range(15)  # SQL returns page_size results
+    ]
+
     with patch(
         "backend.api.features.store.hybrid_search.query_raw_with_schema"
     ) as mock_query:
         with patch(
             "backend.api.features.store.hybrid_search.embed_query"
         ) as mock_embed:
-            mock_query.return_value = []
+            mock_query.return_value = mock_results
             mock_embed.return_value = [0.1] * embeddings.EMBEDDING_DIM
 
             results, total = await unified_hybrid_search(
@@ -625,15 +683,18 @@ async def test_unified_hybrid_search_pagination():
                 page_size=15,
             )
 
-            # Verify pagination parameters (last two params are LIMIT and OFFSET)
+            # Verify results returned
+            assert len(results) == 15
+            assert total == 50  # Total from SQL COUNT(*) OVER()
+
+            # Verify the SQL query uses page_size and offset
             call_args = mock_query.call_args
             params = call_args[0]
-
-            limit = params[-2]
-            offset = params[-1]
-
-            assert limit == 15  # page_size
-            assert offset == 30  # (page - 1) * page_size = (3 - 1) * 15
+            # Last two params are page_size and offset
+            page_size_param = params[-2]
+            offset_param = params[-1]
+            assert page_size_param == 15
+            assert offset_param == 30  # (page 3 - 1) * 15
 
 
 @pytest.mark.asyncio(loop_scope="session")

@@ -103,7 +103,7 @@ class AgentOutputTool(BaseTool):
 
     @property
     def name(self) -> str:
-        return "agent_output"
+        return "view_agent_output"
 
     @property
     def description(self) -> str:
