@@ -11,8 +11,20 @@ from backend.blocks.http import (
     HttpMethod,
     SendAuthenticatedWebRequestBlock,
 )
+from backend.data.execution import ExecutionContext
 from backend.data.model import HostScopedCredentials
 from backend.util.request import Response
+
+
+def make_test_context(
+    graph_exec_id: str = "test-exec-id",
+    user_id: str = "test-user-id",
+) -> ExecutionContext:
+    """Helper to create test ExecutionContext."""
+    return ExecutionContext(
+        user_id=user_id,
+        graph_exec_id=graph_exec_id,
+    )
 
 
 class TestHttpBlockWithHostScopedCredentials:
@@ -105,8 +117,7 @@ class TestHttpBlockWithHostScopedCredentials:
         async for output_name, output_data in http_block.run(
             input_data,
             credentials=exact_match_credentials,
-            graph_exec_id="test-exec-id",
-            user_id="test-user-id",
+            execution_context=make_test_context(),
         ):
             result.append((output_name, output_data))
 
@@ -161,8 +172,7 @@ class TestHttpBlockWithHostScopedCredentials:
         async for output_name, output_data in http_block.run(
             input_data,
             credentials=wildcard_credentials,
-            graph_exec_id="test-exec-id",
-            user_id="test-user-id",
+            execution_context=make_test_context(),
         ):
             result.append((output_name, output_data))
 
@@ -208,8 +218,7 @@ class TestHttpBlockWithHostScopedCredentials:
         async for output_name, output_data in http_block.run(
             input_data,
             credentials=non_matching_credentials,
-            graph_exec_id="test-exec-id",
-            user_id="test-user-id",
+            execution_context=make_test_context(),
         ):
             result.append((output_name, output_data))
 
@@ -258,8 +267,7 @@ class TestHttpBlockWithHostScopedCredentials:
         async for output_name, output_data in http_block.run(
             input_data,
             credentials=exact_match_credentials,
-            graph_exec_id="test-exec-id",
-            user_id="test-user-id",
+            execution_context=make_test_context(),
         ):
             result.append((output_name, output_data))
 
@@ -318,8 +326,7 @@ class TestHttpBlockWithHostScopedCredentials:
         async for output_name, output_data in http_block.run(
             input_data,
             credentials=auto_discovered_creds,  # Execution manager found these
-            graph_exec_id="test-exec-id",
-            user_id="test-user-id",
+            execution_context=make_test_context(),
         ):
             result.append((output_name, output_data))
 
@@ -382,8 +389,7 @@ class TestHttpBlockWithHostScopedCredentials:
         async for output_name, output_data in http_block.run(
             input_data,
             credentials=multi_header_creds,
-            graph_exec_id="test-exec-id",
-            user_id="test-user-id",
+            execution_context=make_test_context(),
         ):
             result.append((output_name, output_data))
 
@@ -471,8 +477,7 @@ class TestHttpBlockWithHostScopedCredentials:
             async for output_name, output_data in http_block.run(
                 input_data,
                 credentials=test_creds,
-                graph_exec_id="test-exec-id",
-                user_id="test-user-id",
+                execution_context=make_test_context(),
             ):
                 result.append((output_name, output_data))
 

@@ -3325,7 +3325,7 @@
       "get": {
         "tags": ["v2", "library", "private"],
         "summary": "List Library Agents",
-        "description": "Get all agents in the user's library (both created and saved).\n\nArgs:\n    user_id: ID of the authenticated user.\n    search_term: Optional search term to filter agents by name/description.\n    filter_by: List of filters to apply (favorites, created by user).\n    sort_by: List of sorting criteria (created date, updated date).\n    page: Page number to retrieve.\n    page_size: Number of agents per page.\n\nReturns:\n    A LibraryAgentResponse containing agents and pagination metadata.\n\nRaises:\n    HTTPException: If a server/database error occurs.",
+        "description": "Get all agents in the user's library (both created and saved).",
         "operationId": "getV2List library agents",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -3380,7 +3380,7 @@
         ],
         "responses": {
           "200": {
-            "description": "List of library agents",
+            "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
@@ -3399,17 +3399,13 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
-          },
-          "500": {
-            "description": "Server error",
-            "content": { "application/json": {} }
           }
         }
       },
       "post": {
         "tags": ["v2", "library", "private"],
         "summary": "Add Marketplace Agent",
-        "description": "Add an agent from the marketplace to the user's library.\n\nArgs:\n    store_listing_version_id: ID of the store listing version to add.\n    user_id: ID of the authenticated user.\n\nReturns:\n    library_model.LibraryAgent: Agent added to the library\n\nRaises:\n    HTTPException(404): If the listing version is not found.\n    HTTPException(500): If a server/database error occurs.",
+        "description": "Add an agent from the marketplace to the user's library.",
         "operationId": "postV2Add marketplace agent",
         "security": [{ "HTTPBearerJWT": [] }],
         "requestBody": {
@@ -3424,7 +3420,7 @@
         },
         "responses": {
           "201": {
-            "description": "Agent added successfully",
+            "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/LibraryAgent" }
@@ -3434,7 +3430,6 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
-          "404": { "description": "Store listing version not found" },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -3442,8 +3437,7 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
-          },
-          "500": { "description": "Server error" }
+          }
         }
       }
     },
@@ -3497,7 +3491,7 @@
       "get": {
         "tags": ["v2", "library", "private"],
         "summary": "List Favorite Library Agents",
-        "description": "Get all favorite agents in the user's library.\n\nArgs:\n    user_id: ID of the authenticated user.\n    page: Page number to retrieve.\n    page_size: Number of agents per page.\n\nReturns:\n    A LibraryAgentResponse containing favorite agents and pagination metadata.\n\nRaises:\n    HTTPException: If a server/database error occurs.",
+        "description": "Get all favorite agents in the user's library.",
         "operationId": "getV2List favorite library agents",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -3549,10 +3543,6 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
-          },
-          "500": {
-            "description": "Server error",
-            "content": { "application/json": {} }
           }
         }
       }
@@ -3574,7 +3564,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Library agent found",
+            "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
@@ -3590,7 +3580,6 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
-          "404": { "description": "Agent not found" },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -3606,7 +3595,7 @@
       "delete": {
         "tags": ["v2", "library", "private"],
         "summary": "Delete Library Agent",
-        "description": "Soft-delete the specified library agent.\n\nArgs:\n    library_agent_id: ID of the library agent to delete.\n    user_id: ID of the authenticated user.\n\nReturns:\n    204 No Content if successful.\n\nRaises:\n    HTTPException(404): If the agent does not exist.\n    HTTPException(500): If a server/database error occurs.",
+        "description": "Soft-delete the specified library agent.",
         "operationId": "deleteV2Delete library agent",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -3622,11 +3611,9 @@
             "description": "Successful Response",
             "content": { "application/json": { "schema": {} } }
           },
-          "204": { "description": "Agent deleted successfully" },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
-          "404": { "description": "Agent not found" },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -3634,8 +3621,7 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
-          },
-          "500": { "description": "Server error" }
+          }
         }
       },
       "get": {
@@ -3676,7 +3662,7 @@
       "patch": {
         "tags": ["v2", "library", "private"],
         "summary": "Update Library Agent",
-        "description": "Update the library agent with the given fields.\n\nArgs:\n    library_agent_id: ID of the library agent to update.\n    payload: Fields to update (auto_update_version, is_favorite, etc.).\n    user_id: ID of the authenticated user.\n\nRaises:\n    HTTPException(500): If a server/database error occurs.",
+        "description": "Update the library agent with the given fields.",
         "operationId": "patchV2Update library agent",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -3699,7 +3685,7 @@
         },
         "responses": {
           "200": {
-            "description": "Agent updated successfully",
+            "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/LibraryAgent" }
@@ -3716,8 +3702,7 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
-          },
-          "500": { "description": "Server error" }
+          }
         }
       }
     },
@@ -4526,8 +4511,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "boolean",
-                  "title": "Response Getv1Is Onboarding Enabled"
+                  "$ref": "#/components/schemas/OnboardingStatusResponse"
                 }
               }
             }
@@ -4580,6 +4564,7 @@
                 "AGENT_NEW_RUN",
                 "AGENT_INPUT",
                 "CONGRATS",
+                "VISIT_COPILOT",
                 "MARKETPLACE_VISIT",
                 "BUILDER_OPEN"
               ],
@@ -5898,6 +5883,40 @@
                 }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workspace/files/{file_id}/download": {
+      "get": {
+        "tags": ["workspace"],
+        "summary": "Download file by ID",
+        "description": "Download a file by its ID.\n\nReturns the file content directly or redirects to a signed URL for GCS.",
+        "operationId": "getWorkspaceDownload file by id",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "file_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "File Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
@@ -8730,6 +8749,19 @@
         "title": "OAuthApplicationPublicInfo",
         "description": "Public information about an OAuth application (for consent screen)"
       },
+      "OnboardingStatusResponse": {
+        "properties": {
+          "is_onboarding_enabled": {
+            "type": "boolean",
+            "title": "Is Onboarding Enabled"
+          },
+          "is_chat_enabled": { "type": "boolean", "title": "Is Chat Enabled" }
+        },
+        "type": "object",
+        "required": ["is_onboarding_enabled", "is_chat_enabled"],
+        "title": "OnboardingStatusResponse",
+        "description": "Response for onboarding status check."
+      },
       "OnboardingStep": {
         "type": "string",
         "enum": [
@@ -8740,6 +8772,7 @@
           "AGENT_NEW_RUN",
           "AGENT_INPUT",
           "CONGRATS",
+          "VISIT_COPILOT",
           "GET_RESULTS",
           "MARKETPLACE_VISIT",
           "MARKETPLACE_ADD_AGENT",
