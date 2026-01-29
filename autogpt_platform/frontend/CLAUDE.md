@@ -30,16 +30,6 @@ pnpm format
 pnpm types
 ```
 
-**📖 Complete Guide**: See @CONTRIBUTING.md and @.cursorrules for comprehensive frontend patterns.
-
-## Key Conventions
-
-- Separate render logic from data/behavior in components
-- Use generated API hooks from `@/app/api/__generated__/endpoints/`
-- Use design system components from `src/components/` (atoms, molecules, organisms)
-- Only use Phosphor Icons
-- Never use `src/components/__legacy__/*` or deprecated `BackendAPI`
-
 ### Code Style
 
 - Fully capitalize acronyms in symbols, e.g. `graphID`, `useBackendAPI`
@@ -70,6 +60,7 @@ See @CONTRIBUTING.md for complete patterns. Quick reference:
    - Extract component logic into custom hooks grouped by concern, not by component. Each hook should represent a cohesive domain of functionality (e.g., useSearch, useFilters, usePagination) rather than bundling all state into one useComponentState hook.
      - Put each hook in its own `.ts` file
    - Put sub-components in local `components/` folder
+   - Component props should be `type Props = { ... }` (not exported) unless it needs to be used outside the component
 2. **Components**: Structure as `ComponentName/ComponentName.tsx` + `useComponentName.ts` + `helpers.ts`
    - Use design system components from `src/components/` (atoms, molecules, organisms)
    - Never use `src/components/__legacy__/*`
@@ -78,4 +69,8 @@ See @CONTRIBUTING.md for complete patterns. Quick reference:
    - Pattern: `use{Method}{Version}{OperationName}`
 4. **Styling**: Tailwind CSS only, use design tokens, Phosphor Icons only
 5. **Testing**: Add Storybook stories for new components, Playwright for E2E
-6. **Code conventions**: Function declarations (not arrow functions) for components/handlers
+6. **Code conventions**:
+   - Use function declarations (not arrow functions) for components/handlers
+   - Do not use `useCallback` or `useMemo` unless asked to optimise a given function
+   - Do not type hook returns, let Typescript infer as much as possible
+   - Never type with `any` unless a variable/attribute can ACTUALLY be of any type
