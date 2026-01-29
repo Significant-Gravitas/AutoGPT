@@ -1,4 +1,3 @@
-import { getHomepageRoute } from "@/lib/constants";
 import { environment } from "@/services/environment";
 import { Key, storage } from "@/services/storage/local-storage";
 import { type CookieOptions } from "@supabase/ssr";
@@ -71,7 +70,7 @@ export function getRedirectPath(
   }
 
   if (isAdminPage(path) && userRole !== "admin") {
-    return getHomepageRoute();
+    return "/";
   }
 
   return null;
@@ -88,7 +87,7 @@ export function setupSessionEventListeners(
   onStorageChange: (e: StorageEvent) => void,
 ): EventListeners {
   if (environment.isServerSide()) {
-    return { cleanup: () => {} };
+    return { cleanup: () => { } };
   }
 
   document.addEventListener("visibilitychange", onVisibilityChange);

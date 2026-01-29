@@ -20,7 +20,6 @@ export default function CopilotPage() {
     isLoading,
     hasSession,
     initialPrompt,
-    isReady,
   } = state;
   const {
     handleQuickAction,
@@ -28,8 +27,6 @@ export default function CopilotPage() {
     handleSessionNotFound,
     handleStreamingChange,
   } = handlers;
-
-  if (!isReady) return null;
 
   if (hasSession) {
     return (

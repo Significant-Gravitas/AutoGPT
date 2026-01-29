@@ -1,6 +1,5 @@
 "use server";
 
-import { getHomepageRoute } from "@/lib/constants";
 import BackendAPI from "@/lib/autogpt-server-api";
 import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
 import { loginFormSchema } from "@/types/auth";
@@ -38,10 +37,10 @@ export async function login(email: string, password: string) {
     await api.createUser();
 
     // Get onboarding status from backend (includes chat flag evaluated for this user)
-    const { shouldShowOnboarding, isChatEnabled } = await getOnboardingStatus();
+    const { shouldShowOnboarding } = await getOnboardingStatus();
     const next = shouldShowOnboarding
       ? "/onboarding"
-      : getHomepageRoute(isChatEnabled);
+      : "/";
 
     return {
       success: true,

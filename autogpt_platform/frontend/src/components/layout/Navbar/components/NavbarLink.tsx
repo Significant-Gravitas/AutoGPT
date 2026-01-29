@@ -1,7 +1,6 @@
 "use client";
 
 import { IconLaptop } from "@/components/__legacy__/ui/icons";
-import { getHomepageRoute } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { ListChecksIcon } from "@phosphor-icons/react/dist/ssr";
@@ -24,11 +23,11 @@ interface Props {
 export function NavbarLink({ name, href }: Props) {
   const pathname = usePathname();
   const isChatEnabled = useGetFlag(Flag.CHAT);
-  const homepageRoute = getHomepageRoute(isChatEnabled);
+  const expectedHomeRoute = isChatEnabled ? "/copilot" : "/library";
 
   const isActive =
-    href === homepageRoute
-      ? pathname === "/" || pathname.startsWith(homepageRoute)
+    href === expectedHomeRoute
+      ? pathname === "/" || pathname.startsWith(expectedHomeRoute)
       : pathname.includes(href);
 
   return (
@@ -37,7 +36,7 @@ export function NavbarLink({ name, href }: Props) {
         className={cn(
           "flex items-center justify-start gap-1 p-1 md:p-2",
           isActive &&
-            "rounded-small bg-neutral-800 py-1 pl-1 pr-1.5 transition-all duration-300 dark:bg-neutral-200 md:py-2 md:pl-2 md:pr-3",
+          "rounded-small bg-neutral-800 py-1 pl-1 pr-1.5 transition-all duration-300 dark:bg-neutral-200 md:py-2 md:pl-2 md:pr-3",
         )}
       >
         {href === "/marketplace" && (

@@ -47,7 +47,7 @@ export function getPaginatedTotalCount(
 
 export function getPaginationNextPageNumber(
   lastPage:
-    | { data: { pagination?: Pagination; [key: string]: any } }
+    | { data: { pagination?: Pagination;[key: string]: any } }
     | undefined,
 ): number | undefined {
   if (!hasValidPaginationInfo(lastPage)) return undefined;
@@ -64,10 +64,10 @@ export function unpaginate<
   TPageDataKey extends {
     // Only allow keys for which the value is an array:
     [K in keyof OKData<TResponse>]: OKData<TResponse>[K] extends any[]
-      ? K
-      : never;
+    ? K
+    : never;
   }[keyof OKData<TResponse>] &
-    string,
+  string,
   TItemData extends OKData<TResponse>[TPageDataKey][number],
 >(
   infiniteData: InfiniteData<TResponse>,
@@ -100,7 +100,7 @@ function hasValidListPage<TKey extends string>(
 
 function hasValidPaginationInfo(
   page: unknown,
-): page is { data: { pagination: Pagination; [key: string]: any } } {
+): page is { data: { pagination: Pagination;[key: string]: any } } {
   return (
     typeof page === "object" &&
     page !== null &&
@@ -127,10 +127,10 @@ type SuccessfulResponses<T extends ResponseWithData> = T extends {
   status: infer S;
 }
   ? S extends number
-    ? `${S}` extends `2${string}`
-      ? T
-      : never
-    : never
+  ? `${S}` extends `2${string}`
+  ? T
+  : never
+  : never
   : never;
 
 /**
@@ -181,6 +181,5 @@ export async function getOnboardingStatus() {
   const isCompleted = onboarding.completedSteps.includes("CONGRATS");
   return {
     shouldShowOnboarding: status.is_onboarding_enabled && !isCompleted,
-    isChatEnabled: status.is_chat_enabled,
   };
 }
