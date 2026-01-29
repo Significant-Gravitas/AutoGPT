@@ -300,8 +300,8 @@ export class LibraryPage extends BasePage {
   async scrollToLoadMore(): Promise<void> {
     console.log(`scrolling to load more agents`);
 
-    const initialCount = await this.getAgentCount();
-    console.log(`Initial agent count: ${initialCount}`);
+    const initialCount = await this.getAgentCountByListLength();
+    console.log(`Initial agent count (DOM cards): ${initialCount}`);
 
     await this.scrollToBottom();
 
@@ -319,8 +319,8 @@ export class LibraryPage extends BasePage {
       )
       .catch(() => {});
 
-    const newCount = await this.getAgentCount();
-    console.log(`New agent count after scroll: ${newCount}`);
+    const newCount = await this.getAgentCountByListLength();
+    console.log(`New agent count after scroll (DOM cards): ${newCount}`);
   }
 
   async testPagination(): Promise<{
