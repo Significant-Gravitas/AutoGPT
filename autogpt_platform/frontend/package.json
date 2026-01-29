@@ -30,6 +30,7 @@
     "defaults"
   ],
   "dependencies": {
+    "@ai-sdk/react": "3.0.61",
     "@faker-js/faker": "10.0.0",
     "@hookform/resolvers": "5.2.2",
     "@next/third-parties": "15.4.6",
@@ -68,6 +69,7 @@
     "@vercel/analytics": "1.5.0",
     "@vercel/speed-insights": "1.2.0",
     "@xyflow/react": "12.9.2",
+    "ai": "6.0.59",
     "boring-avatars": "1.11.2",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
