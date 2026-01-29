@@ -161,7 +161,7 @@ yield "image_url", result_url
 
 ### Cache Protection Middleware
 
-- Located in `backend/server/middleware/security.py`
+- Located in `backend/api/middleware/security.py`
 - Default behavior: Disables caching for ALL endpoints with `Cache-Control: no-store, no-cache, must-revalidate, private`
 - Uses an allow list approach - only explicitly permitted paths can be cached
 - Cacheable paths include: static assets (`static/*`, `_next/static/*`), health checks, public store pages, documentation
