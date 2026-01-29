@@ -1,0 +1,53 @@
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
+from backend.data.model import SchemaField
+
+
+class TextEncoderBlock(Block):
+    class Input(BlockSchemaInput):
+        text: str = SchemaField(
+            description="A string to be encoded with escape sequences",
+            placeholder='Your text with newlines and "quotes" to be escaped',
+        )
+
+    class Output(BlockSchemaOutput):
+        encoded_text: str = SchemaField(
+            description="The encoded text with escape sequences added"
+        )
+
+    def __init__(self):
+        super().__init__(
+            id="9602dd22-fbf4-4427-879a-2a9b334b82b7",
+            description="Encodes a string by adding escape sequences for special characters",
+            categories={BlockCategory.TEXT},
+            input_schema=TextEncoderBlock.Input,
+            output_schema=TextEncoderBlock.Output,
+            test_input={
+                "text": """Hello
+World!
+This is a "quoted" string."""
+            },
+            test_output=[
+                (
+                    "encoded_text",
+                    """Hello\\nWorld!\\nThis is a \\"quoted\\" string.""",
+                )
+            ],
+        )
+
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
+        # Escape only common special characters, preserving unicode characters
+        encoded_text = (
+            input_data.text.replace("\\", "\\\\")  # Escape backslashes first
+            .replace("\n", "\\n")  # Escape newlines
+            .replace("\r", "\\r")  # Escape carriage returns
+            .replace("\t", "\\t")  # Escape tabs
+            .replace('"', '\\"')  # Escape double quotes
+            .replace("'", "\\'")  # Escape single quotes
+        )
+        yield "encoded_text", encoded_text
