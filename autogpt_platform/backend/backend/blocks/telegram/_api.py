@@ -1,0 +1,117 @@
+"""
+Telegram Bot API helper functions.
+
+Provides utilities for making authenticated requests to the Telegram Bot API.
+"""
+
+import logging
+from typing import Any, Optional
+
+from backend.data.model import APIKeyCredentials
+from backend.util.request import Requests
+
+logger = logging.getLogger(__name__)
+
+TELEGRAM_API_BASE = "https://api.telegram.org"
+
+
+class TelegramAPIException(Exception):
+    """Exception raised for Telegram API errors."""
+
+    def __init__(self, message: str, error_code: int = 0):
+        super().__init__(message)
+        self.error_code = error_code
+
+
+def get_bot_api_url(bot_token: str, method: str) -> str:
+    """Construct Telegram Bot API URL for a method."""
+    return f"{TELEGRAM_API_BASE}/bot{bot_token}/{method}"
+
+
+def get_file_url(bot_token: str, file_path: str) -> str:
+    """Construct Telegram file download URL."""
+    return f"{TELEGRAM_API_BASE}/file/bot{bot_token}/{file_path}"
+
+
+async def call_telegram_api(
+    credentials: APIKeyCredentials,
+    method: str,
+    data: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
+    """
+    Make a request to the Telegram Bot API.
+
+    Args:
+        credentials: Bot token credentials
+        method: API method name (e.g., "sendMessage", "getFile")
+        data: Request parameters
+
+    Returns:
+        API response result
+
+    Raises:
+        TelegramAPIException: If the API returns an error
+    """
+    token = credentials.api_key.get_secret_value()
+    url = get_bot_api_url(token, method)
+
+    response = await Requests().post(url, json=data or {})
+    result = response.json()
+
+    if not result.get("ok"):
+        error_code = result.get("error_code", 0)
+        description = result.get("description", "Unknown error")
+        raise TelegramAPIException(description, error_code)
+
+    return result.get("result", {})
+
+
+async def get_file_info(
+    credentials: APIKeyCredentials, file_id: str
+) -> dict[str, Any]:
+    """
+    Get file information from Telegram.
+
+    Args:
+        credentials: Bot token credentials
+        file_id: Telegram file_id from message
+
+    Returns:
+        File info dict containing file_id, file_unique_id, file_size, file_path
+    """
+    return await call_telegram_api(credentials, "getFile", {"file_id": file_id})
+
+
+async def get_file_download_url(credentials: APIKeyCredentials, file_id: str) -> str:
+    """
+    Get the download URL for a Telegram file.
+
+    Args:
+        credentials: Bot token credentials
+        file_id: Telegram file_id from message
+
+    Returns:
+        Full download URL
+    """
+    token = credentials.api_key.get_secret_value()
+    result = await get_file_info(credentials, file_id)
+    file_path = result.get("file_path")
+    if not file_path:
+        raise TelegramAPIException("No file_path returned from getFile")
+    return get_file_url(token, file_path)
+
+
+async def download_telegram_file(credentials: APIKeyCredentials, file_id: str) -> bytes:
+    """
+    Download a file from Telegram servers.
+
+    Args:
+        credentials: Bot token credentials
+        file_id: Telegram file_id
+
+    Returns:
+        File content as bytes
+    """
+    url = await get_file_download_url(credentials, file_id)
+    response = await Requests().get(url)
+    return response.content
