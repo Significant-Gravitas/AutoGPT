@@ -6,7 +6,7 @@ import {
   useState,
 } from "react";
 
-interface UseChatInputArgs {
+interface Args {
   onSend: (message: string) => void;
   disabled?: boolean;
   maxRows?: number;
@@ -18,7 +18,7 @@ export function useChatInput({
   disabled = false,
   maxRows = 5,
   inputId = "chat-input",
-}: UseChatInputArgs) {
+}: Args) {
   const [value, setValue] = useState("");
   const [hasMultipleLines, setHasMultipleLines] = useState(false);
 
