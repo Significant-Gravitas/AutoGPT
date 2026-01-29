@@ -235,5 +235,6 @@ export function useVoiceRecording({
     handleKeyDown,
     showMicButton,
     isInputDisabled,
+    audioStream: streamRef.current,
   };
 }

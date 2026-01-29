@@ -1,41 +1,26 @@
 import { formatElapsedTime } from "../helpers";
+import { AudioWaveform } from "./AudioWaveform";
 
 type Props = {
   elapsedTime: number;
+  audioStream: MediaStream | null;
 };
 
-export function RecordingIndicator({ elapsedTime }: Props) {
+export function RecordingIndicator({ elapsedTime, audioStream }: Props) {
   return (
     <div className="flex items-center gap-3">
-      <div className="flex items-center gap-[3px]">
-        {[0, 1, 2, 3, 4].map((i) => (
-          <div
-            key={i}
-            className="w-[3px] rounded-full bg-red-500"
-            style={{
-              animation: `waveform 1s ease-in-out infinite`,
-              animationDelay: `${i * 0.1}s`,
-              height: "16px",
-            }}
-          />
-        ))}
-      </div>
+      <AudioWaveform
+        stream={audioStream}
+        barCount={20}
+        barWidth={3}
+        barGap={2}
+        barColor="#ef4444"
+        minBarHeight={4}
+        maxBarHeight={24}
+      />
       <span className="min-w-[3ch] text-sm font-medium text-red-500">
         {formatElapsedTime(elapsedTime)}
       </span>
-      <style jsx>{`
-        @keyframes waveform {
-          0%,
-          100% {
-            transform: scaleY(0.3);
-            opacity: 0.5;
-          }
-          50% {
-            transform: scaleY(1);
-            opacity: 1;
-          }
-        }
-      `}</style>
     </div>
   );
 }

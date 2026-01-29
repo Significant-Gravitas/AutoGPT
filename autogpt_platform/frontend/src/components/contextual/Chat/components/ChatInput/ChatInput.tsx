@@ -50,6 +50,7 @@ export function ChatInput({
     handleKeyDown,
     showMicButton,
     isInputDisabled,
+    audioStream,
   } = useVoiceRecording({
     setValue,
     disabled: disabled || isStreaming,
@@ -101,7 +102,10 @@ export function ChatInput({
           />
           {isRecording && !value && (
             <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-              <RecordingIndicator elapsedTime={elapsedTime} />
+              <RecordingIndicator
+                elapsedTime={elapsedTime}
+                audioStream={audioStream}
+              />
             </div>
           )}
         </div>
