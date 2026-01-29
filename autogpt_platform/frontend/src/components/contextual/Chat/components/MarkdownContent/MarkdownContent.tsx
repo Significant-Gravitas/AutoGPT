@@ -1,6 +1,6 @@
 "use client";
 
-import { getGetV2DownloadFileByIdUrl } from "@/app/api/__generated__/endpoints/workspace/workspace";
+import { getGetWorkspaceDownloadFileByIdUrl } from "@/app/api/__generated__/endpoints/workspace/workspace";
 import { cn } from "@/lib/utils";
 import { EyeSlash } from "@phosphor-icons/react";
 import React from "react";
@@ -50,7 +50,7 @@ function resolveWorkspaceUrl(src: string): string {
   if (src.startsWith("workspace://")) {
     const fileId = src.replace("workspace://", "");
     // Use the generated API URL helper to get the correct path
-    const apiPath = getGetV2DownloadFileByIdUrl(fileId);
+    const apiPath = getGetWorkspaceDownloadFileByIdUrl(fileId);
     // Route through the Next.js proxy (same pattern as customMutator for client-side)
     return `/api/proxy${apiPath}`;
   }
