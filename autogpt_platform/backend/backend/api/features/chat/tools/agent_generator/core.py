@@ -557,12 +557,12 @@ async def save_agent_to_library(
 
 
 async def get_agent_as_json(
-    graph_id: str, user_id: str | None
+    agent_id: str, user_id: str | None
 ) -> dict[str, Any] | None:
     """Fetch an agent and convert to JSON format for editing.
 
     Args:
-        graph_id: Graph ID or library agent ID
+        agent_id: Graph ID or library agent ID
         user_id: User ID
 
     Returns:
@@ -570,8 +570,22 @@ async def get_agent_as_json(
     """
     from backend.data.graph import get_graph
 
-    # Try to get the graph (version=None gets the active version)
-    graph = await get_graph(graph_id, version=None, user_id=user_id)
+    # First try to get the graph directly with the provided ID
+    graph = await get_graph(agent_id, version=None, user_id=user_id)
+
+    # If not found, try to resolve as a library agent ID
+    if not graph and user_id:
+        try:
+            from backend.api.features.library import db as library_db
+
+            library_agent = await library_db.get_library_agent(agent_id, user_id)
+            graph = await get_graph(
+                library_agent.graph_id, version=None, user_id=user_id
+            )
+        except Exception:
+            # Library agent lookup failed, graph remains None
+            pass
+
     if not graph:
         return None
 
