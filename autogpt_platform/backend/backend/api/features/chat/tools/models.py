@@ -68,6 +68,10 @@ class AgentInfo(BaseModel):
     has_external_trigger: bool | None = None
     new_output: bool | None = None
     graph_id: str | None = None
+    inputs: dict[str, Any] | None = Field(
+        default=None,
+        description="Input schema for the agent (properties from input_schema)",
+    )
 
 
 class AgentsFoundResponse(ToolResponseBase):

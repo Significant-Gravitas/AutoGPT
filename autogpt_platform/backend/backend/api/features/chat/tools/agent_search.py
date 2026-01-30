@@ -1,10 +1,11 @@
 """Shared agent search functionality for find_agent and find_library_agent tools."""
 
 import logging
-from typing import Literal
+from typing import Any, Literal
 
 from backend.api.features.library import db as library_db
 from backend.api.features.store import db as store_db
+from backend.data.graph import get_graph
 from backend.util.exceptions import DatabaseError, NotFoundError
 
 from .models import (
@@ -14,10 +15,37 @@ from .models import (
     NoResultsResponse,
     ToolResponseBase,
 )
+from .utils import fetch_graph_from_store_slug
 
 logger = logging.getLogger(__name__)
 
 SearchSource = Literal["marketplace", "library"]
+
+
+async def _fetch_input_schema_for_store_agent(
+    creator: str, slug: str
+) -> dict[str, Any] | None:
+    """Fetch input schema for a marketplace agent. Returns None on error."""
+    try:
+        graph, _ = await fetch_graph_from_store_slug(creator, slug)
+        if graph and graph.input_schema:
+            return graph.input_schema.get("properties", {})
+    except Exception as e:
+        logger.debug(f"Could not fetch input schema for {creator}/{slug}: {e}")
+    return None
+
+
+async def _fetch_input_schema_for_library_agent(
+    graph_id: str, graph_version: int, user_id: str
+) -> dict[str, Any] | None:
+    """Fetch input schema for a library agent. Returns None on error."""
+    try:
+        graph = await get_graph(graph_id, graph_version, user_id=user_id)
+        if graph and graph.input_schema:
+            return graph.input_schema.get("properties", {})
+    except Exception as e:
+        logger.debug(f"Could not fetch input schema for graph {graph_id}: {e}")
+    return None
 
 
 async def search_agents(
@@ -55,6 +83,10 @@ async def search_agents(
             logger.info(f"Searching marketplace for: {query}")
             results = await store_db.get_store_agents(search_query=query, page_size=5)
             for agent in results.agents:
+                # Fetch input schema for this agent
+                inputs = await _fetch_input_schema_for_store_agent(
+                    agent.creator, agent.slug
+                )
                 agents.append(
                     AgentInfo(
                         id=f"{agent.creator}/{agent.slug}",
@@ -67,6 +99,7 @@ async def search_agents(
                         rating=agent.rating,
                         runs=agent.runs,
                         is_featured=False,
+                        inputs=inputs,
                     )
                 )
         else:  # library
@@ -77,6 +110,10 @@ async def search_agents(
                 page_size=10,
             )
             for agent in results.agents:
+                # Fetch input schema for this agent
+                inputs = await _fetch_input_schema_for_library_agent(
+                    agent.graph_id, agent.graph_version, user_id  # type: ignore[arg-type]
+                )
                 agents.append(
                     AgentInfo(
                         id=agent.id,
@@ -90,6 +127,7 @@ async def search_agents(
                         has_external_trigger=agent.has_external_trigger,
                         new_output=agent.new_output,
                         graph_id=agent.graph_id,
+                        inputs=inputs,
                     )
                 )
         logger.info(f"Found {len(agents)} agents in {source}")

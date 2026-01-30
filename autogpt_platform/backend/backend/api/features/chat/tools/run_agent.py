@@ -273,6 +273,27 @@ class RunAgentTool(BaseTool):
             input_properties = graph.input_schema.get("properties", {})
             required_fields = set(graph.input_schema.get("required", []))
             provided_inputs = set(params.inputs.keys())
+            valid_fields = set(input_properties.keys())
+
+            # Check for unknown fields - reject early with helpful message
+            unknown_fields = provided_inputs - valid_fields
+            if unknown_fields:
+                valid_list = ", ".join(sorted(valid_fields)) if valid_fields else "none"
+                return AgentDetailsResponse(
+                    message=(
+                        f"Unknown input field(s) provided: {', '.join(sorted(unknown_fields))}. "
+                        f"Valid fields for '{graph.name}': {valid_list}. "
+                        "Please check the field names and try again."
+                    ),
+                    session_id=session_id,
+                    agent=self._build_agent_details(
+                        graph,
+                        extract_credentials_from_schema(graph.credentials_input_schema),
+                    ),
+                    user_authenticated=True,
+                    graph_id=graph.id,
+                    graph_version=graph.version,
+                )
 
             # If agent has inputs but none were provided AND use_defaults is not set,
             # always show what's available first so user can decide
