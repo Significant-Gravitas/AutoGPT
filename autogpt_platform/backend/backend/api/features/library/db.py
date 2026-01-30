@@ -81,7 +81,8 @@ async def list_library_agents(
     }
 
     if search_term:
-        words = [w.strip() for w in search_term.split() if len(w.strip()) >= 3]
+        term = search_term.strip()
+        words = [w.strip() for w in term.split() if len(w.strip()) >= 3]
         if words:
             or_conditions: list[prisma.types.LibraryAgentWhereInput] = []
             for word in words:
@@ -105,6 +106,25 @@ async def list_library_agents(
                     }
                 )
             where_clause["OR"] = or_conditions
+        elif term:
+            # Fallback to full search term when no words >= 3 chars (e.g., "AI")
+            where_clause["OR"] = [
+                {
+                    "AgentGraph": {
+                        "is": {"name": {"contains": term, "mode": "insensitive"}}
+                    }
+                },
+                {
+                    "AgentGraph": {
+                        "is": {
+                            "description": {
+                                "contains": term,
+                                "mode": "insensitive",
+                            }
+                        }
+                    }
+                },
+            ]
 
     order_by: prisma.types.LibraryAgentOrderByInput | None = None
 
