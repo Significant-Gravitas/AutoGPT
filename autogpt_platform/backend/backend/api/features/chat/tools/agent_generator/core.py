@@ -521,7 +521,6 @@ async def decompose_goal(
     result = await decompose_goal_external(
         description, context, _to_dict_list(library_agents)
     )
-    # Cast the result to DecompositionResult (external service returns dict)
     return result  # type: ignore[return-value]
 
 
@@ -547,10 +546,8 @@ async def generate_agent(
         dict(instructions), _to_dict_list(library_agents)
     )
     if result:
-        # Check if it's an error response - pass through as-is
         if isinstance(result, dict) and result.get("type") == "error":
             return result
-        # Ensure required fields for successful agent generation
         if "id" not in result:
             result["id"] = str(uuid.uuid4())
         if "version" not in result:
@@ -607,16 +604,13 @@ def _reassign_node_ids(graph: Graph) -> None:
 
     This is needed when creating a new version to avoid unique constraint violations.
     """
-    # Create mapping from old node IDs to new UUIDs
     id_map = {node.id: str(uuid.uuid4()) for node in graph.nodes}
 
-    # Reassign node IDs
     for node in graph.nodes:
         node.id = id_map[node.id]
 
-    # Update link references to use new node IDs
     for link in graph.links:
-        link.id = str(uuid.uuid4())  # Also give links new IDs
+        link.id = str(uuid.uuid4())
         if link.source_id in id_map:
             link.source_id = id_map[link.source_id]
         if link.sink_id in id_map:
@@ -639,28 +633,21 @@ async def save_agent_to_library(
     graph = json_to_graph(agent_json)
 
     if is_update:
-        # For updates, keep the same graph ID but increment version
-        # and reassign node/link IDs to avoid conflicts
         if graph.id:
             existing_versions = await get_graph_all_versions(graph.id, user_id)
             if existing_versions:
                 latest_version = max(v.version for v in existing_versions)
                 graph.version = latest_version + 1
-                # Reassign node IDs (but keep graph ID the same)
                 _reassign_node_ids(graph)
                 logger.info(f"Updating agent {graph.id} to version {graph.version}")
     else:
-        # For new agents, always generate a fresh UUID to avoid collisions
         graph.id = str(uuid.uuid4())
         graph.version = 1
-        # Reassign all node IDs as well
         _reassign_node_ids(graph)
         logger.info(f"Creating new agent with ID {graph.id}")
 
-    # Save to database
     created_graph = await create_graph(graph, user_id)
 
-    # Add to user's library (or update existing library agent)
     library_agents = await library_db.create_library_agent(
         graph=created_graph,
         user_id=user_id,

@@ -118,7 +118,6 @@ class EditAgentTool(BaseTool):
                 session_id=session_id,
             )
 
-        # Step 1: Fetch current agent
         current_agent = await get_agent_as_json(agent_id, user_id)
 
         if current_agent is None:
@@ -144,12 +143,10 @@ class EditAgentTool(BaseTool):
             except Exception as e:
                 logger.warning(f"Failed to fetch library agents: {e}")
 
-        # Build the update request with context
         update_request = changes
         if context:
             update_request = f"{changes}\n\nAdditional context:\n{context}"
 
-        # Step 2: Generate updated agent (external service handles fixing and validation)
         try:
             result = await generate_agent_patch(
                 update_request, current_agent, library_agents
@@ -172,7 +169,6 @@ class EditAgentTool(BaseTool):
                 session_id=session_id,
             )
 
-        # Check if the result is an error from the external service
         if isinstance(result, dict) and result.get("type") == "error":
             error_msg = result.get("error", "Unknown error")
             error_type = result.get("error_type", "unknown")
@@ -195,7 +191,6 @@ class EditAgentTool(BaseTool):
                 session_id=session_id,
             )
 
-        # Check if LLM returned clarifying questions
         if result.get("type") == "clarifying_questions":
             questions = result.get("questions", [])
             return ClarificationNeededResponse(
@@ -214,7 +209,6 @@ class EditAgentTool(BaseTool):
                 session_id=session_id,
             )
 
-        # Result is the updated agent JSON
         updated_agent = result
 
         agent_name = updated_agent.get("name", "Updated Agent")
@@ -222,7 +216,6 @@ class EditAgentTool(BaseTool):
         node_count = len(updated_agent.get("nodes", []))
         link_count = len(updated_agent.get("links", []))
 
-        # Step 3: Preview or save
         if not save:
             return AgentPreviewResponse(
                 message=(
@@ -238,7 +231,6 @@ class EditAgentTool(BaseTool):
                 session_id=session_id,
             )
 
-        # Save to library (creates a new version)
         if not user_id:
             return ErrorResponse(
                 message="You must be logged in to save agents.",
