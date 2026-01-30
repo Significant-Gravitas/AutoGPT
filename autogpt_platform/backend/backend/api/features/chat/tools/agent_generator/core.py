@@ -74,7 +74,7 @@ class DecompositionStep(TypedDict, total=False):
 class DecompositionResult(TypedDict, total=False):
     """Result from decompose_goal - can be instructions, questions, or error."""
 
-    type: str  # "instructions", "clarifying_questions", "error", etc.
+    type: str
     steps: list[DecompositionStep]
     questions: list[dict[str, Any]]
     error: str
@@ -518,7 +518,6 @@ async def decompose_goal(
     """
     _check_service_configured()
     logger.info("Calling external Agent Generator service for decompose_goal")
-    # Convert typed dicts to plain dicts for external service
     result = await decompose_goal_external(
         description, context, _to_dict_list(library_agents)
     )
@@ -544,7 +543,6 @@ async def generate_agent(
     """
     _check_service_configured()
     logger.info("Calling external Agent Generator service for generate_agent")
-    # Convert typed dicts to plain dicts for external service
     result = await generate_agent_external(
         dict(instructions), _to_dict_list(library_agents)
     )
@@ -761,7 +759,6 @@ async def generate_agent_patch(
     """
     _check_service_configured()
     logger.info("Calling external Agent Generator service for generate_agent_patch")
-    # Convert typed dicts to plain dicts for external service
     return await generate_agent_patch_external(
         update_request, current_agent, _to_dict_list(library_agents)
     )
