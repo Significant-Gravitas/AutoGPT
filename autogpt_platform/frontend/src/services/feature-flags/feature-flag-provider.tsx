@@ -40,8 +40,6 @@ export function LaunchDarklyProvider({ children }: { children: ReactNode }) {
 
   return (
     <LDProvider
-      // Add this key prop. It will be 'anonymous' when logged out,
-      key={context.key}
       clientSideID={clientId ?? ""}
       context={context}
       timeout={LAUNCHDARKLY_INIT_TIMEOUT_MS}
