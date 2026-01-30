@@ -330,6 +330,7 @@ async def stream_chat_completion(
     retry_count: int = 0,
     session: ChatSession | None = None,
     context: dict[str, str] | None = None,  # {url: str, content: str}
+    _continuation_message_id: str | None = None,  # Internal: reuse message ID for tool call continuations
 ) -> AsyncGenerator[StreamBaseResponse, None]:
     """Main entry point for streaming chat completions with database handling.
 
@@ -458,11 +459,15 @@ async def stream_chat_completion(
     # Generate unique IDs for AI SDK protocol
     import uuid as uuid_module
 
-    message_id = str(uuid_module.uuid4())
+    # Reuse message ID for continuations (tool call follow-ups) to avoid duplicate messages
+    is_continuation = _continuation_message_id is not None
+    message_id = _continuation_message_id or str(uuid_module.uuid4())
     text_block_id = str(uuid_module.uuid4())
 
-    # Yield message start
-    yield StreamStart(messageId=message_id)
+    # Only yield message start for the initial call, not for continuations
+    # This prevents the AI SDK from creating duplicate message objects
+    if not is_continuation:
+        yield StreamStart(messageId=message_id)
 
     try:
         async for chunk in _stream_chat_chunks(
@@ -690,6 +695,7 @@ async def stream_chat_completion(
             retry_count=retry_count + 1,
             session=session,
             context=context,
+            _continuation_message_id=message_id,  # Reuse message ID since start was already sent
         ):
             yield chunk
         return  # Exit after retry to avoid double-saving in finally block
@@ -759,6 +765,7 @@ async def stream_chat_completion(
             session=session,  # Pass session object to avoid Redis refetch
             context=context,
             tool_call_response=str(tool_response_messages),
+            _continuation_message_id=message_id,  # Reuse message ID to avoid duplicates
         ):
             yield chunk
 
