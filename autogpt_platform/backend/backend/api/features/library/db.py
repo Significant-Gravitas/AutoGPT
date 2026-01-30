@@ -77,21 +77,32 @@ async def list_library_agents(
     }
 
     # Build search filter if applicable
+    # Split into words and match ANY word in name or description
     if search_term:
-        where_clause["OR"] = [
-            {
-                "AgentGraph": {
-                    "is": {"name": {"contains": search_term, "mode": "insensitive"}}
-                }
-            },
-            {
-                "AgentGraph": {
-                    "is": {
-                        "description": {"contains": search_term, "mode": "insensitive"}
+        words = [w.strip() for w in search_term.split() if len(w.strip()) >= 3]
+        if words:
+            or_conditions: list[prisma.types.LibraryAgentWhereInput] = []
+            for word in words:
+                or_conditions.append(
+                    {
+                        "AgentGraph": {
+                            "is": {"name": {"contains": word, "mode": "insensitive"}}
+                        }
                     }
-                }
-            },
-        ]
+                )
+                or_conditions.append(
+                    {
+                        "AgentGraph": {
+                            "is": {
+                                "description": {
+                                    "contains": word,
+                                    "mode": "insensitive",
+                                }
+                            }
+                        }
+                    }
+                )
+            where_clause["OR"] = or_conditions
 
     # Determine sorting
     order_by: prisma.types.LibraryAgentOrderByInput | None = None

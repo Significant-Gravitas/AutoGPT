@@ -1,6 +1,5 @@
 """Tool for searching agents in the user's library."""
 
-import logging
 from typing import Any
 
 from backend.api.features.chat.model import ChatSession
@@ -8,8 +7,6 @@ from backend.api.features.chat.model import ChatSession
 from .agent_search import search_agents
 from .base import BaseTool
 from .models import ToolResponseBase
-
-logger = logging.getLogger(__name__)
 
 
 class FindLibraryAgentTool(BaseTool):
@@ -47,10 +44,8 @@ class FindLibraryAgentTool(BaseTool):
     async def _execute(
         self, user_id: str | None, session: ChatSession, **kwargs
     ) -> ToolResponseBase:
-        query = kwargs.get("query", "").strip()
-        logger.info(f"find_library_agent called: query={query!r}, user_id={user_id}")
         return await search_agents(
-            query=query,
+            query=kwargs.get("query", "").strip(),
             source="library",
             session_id=session.session_id,
             user_id=user_id,

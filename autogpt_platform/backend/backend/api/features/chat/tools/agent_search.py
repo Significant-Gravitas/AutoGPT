@@ -153,17 +153,11 @@ async def search_agents(
 
             # If no results from UUID lookup, do text search
             if not agents:
-                logger.info(
-                    f"Searching user library for: {query!r} (user_id={user_id})"
-                )
+                logger.info(f"Searching user library for: {query}")
                 results = await library_db.list_library_agents(
                     user_id=user_id,  # type: ignore[arg-type]
                     search_term=query,
                     page_size=10,
-                )
-                logger.info(
-                    f"Library search returned {len(results.agents)} agents "
-                    f"(total_items={results.pagination.total_items})"
                 )
                 for agent in results.agents:
                     agents.append(
