@@ -261,7 +261,7 @@ class CreateAgentTool(BaseTool):
                     "The generated workflow had some structural issues. "
                     "Please try simplifying your goal or breaking it into smaller steps."
                 ),
-                error_details=error_msg if error_type == "validation_error" else None,
+                error_details=error_msg,  # Always pass error details to give users context
             )
             return ErrorResponse(
                 message=user_message,

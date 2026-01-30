@@ -39,6 +39,18 @@ class MarketplaceListing(pydantic.BaseModel):
     creator: MarketplaceListingCreator
 
 
+class RecentExecution(pydantic.BaseModel):
+    """Summary of a recent execution for quality assessment.
+
+    Used by the LLM to understand the agent's recent performance with specific examples
+    rather than just aggregate statistics.
+    """
+
+    status: str  # COMPLETED, FAILED, RUNNING, QUEUED
+    correctness_score: float | None = None  # 0-1 score if evaluated
+    activity_summary: str | None = None  # AI-generated summary of what happened
+
+
 class LibraryAgent(pydantic.BaseModel):
     """
     Represents an agent in the library, including metadata for display and
@@ -83,6 +95,19 @@ class LibraryAgent(pydantic.BaseModel):
 
     # Indicates whether there's a new output (based on recent runs)
     new_output: bool
+
+    # Execution metrics (for quality assessment by LLM)
+    execution_count: int = 0  # Number of recent executions sampled
+    success_rate: float | None = (
+        None  # Percentage (0-100) of technically successful executions
+    )
+    avg_correctness_score: float | None = (
+        None  # 0-1 score of how well executions achieved their purpose
+    )
+    recent_executions: list[RecentExecution] = pydantic.Field(
+        default_factory=list,
+        description="List of recent executions with status, score, and summary",
+    )
 
     # Whether the user can access the underlying graph
     can_access_graph: bool
@@ -145,6 +170,50 @@ class LibraryAgent(pydantic.BaseModel):
         status = status_result.status
         new_output = status_result.new_output
 
+        # Calculate execution metrics
+        execution_count = len(executions)
+        success_rate: float | None = None
+        avg_correctness_score: float | None = None
+        if execution_count > 0:
+            success_count = sum(
+                1
+                for e in executions
+                if e.executionStatus == prisma.enums.AgentExecutionStatus.COMPLETED
+            )
+            success_rate = (success_count / execution_count) * 100
+
+            # Calculate average correctness score from execution stats
+            correctness_scores = []
+            for e in executions:
+                if e.stats and isinstance(e.stats, dict):
+                    score = e.stats.get("correctness_score")
+                    if score is not None and isinstance(score, (int, float)):
+                        correctness_scores.append(float(score))
+            if correctness_scores:
+                avg_correctness_score = sum(correctness_scores) / len(
+                    correctness_scores
+                )
+
+        # Build recent executions list with status, score, and summary
+        recent_executions: list[RecentExecution] = []
+        for e in executions:
+            exec_score: float | None = None
+            exec_summary: str | None = None
+            if e.stats and isinstance(e.stats, dict):
+                score = e.stats.get("correctness_score")
+                if score is not None and isinstance(score, (int, float)):
+                    exec_score = float(score)
+                summary = e.stats.get("activity_status")
+                if summary is not None and isinstance(summary, str):
+                    exec_summary = summary
+            recent_executions.append(
+                RecentExecution(
+                    status=e.executionStatus.value,
+                    correctness_score=exec_score,
+                    activity_summary=exec_summary,
+                )
+            )
+
         # Check if user can access the graph
         can_access_graph = agent.AgentGraph.userId == agent.userId
 
@@ -190,6 +259,10 @@ class LibraryAgent(pydantic.BaseModel):
             has_sensitive_action=graph.has_sensitive_action,
             trigger_setup_info=graph.trigger_setup_info,
             new_output=new_output,
+            execution_count=execution_count,
+            success_rate=success_rate,
+            avg_correctness_score=avg_correctness_score,
+            recent_executions=recent_executions,
             can_access_graph=can_access_graph,
             is_latest_version=is_latest_version,
             is_favorite=agent.isFavorite,

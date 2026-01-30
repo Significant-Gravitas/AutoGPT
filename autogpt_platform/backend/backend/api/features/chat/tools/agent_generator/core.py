@@ -3,7 +3,7 @@
 import logging
 import re
 import uuid
-from typing import Any, TypedDict
+from typing import Any, NotRequired, TypedDict
 
 from backend.api.features.library import db as library_db
 from backend.api.features.store import db as store_db
@@ -27,15 +27,30 @@ from .service import (
 logger = logging.getLogger(__name__)
 
 
-class LibraryAgentSummary(TypedDict):
-    """Summary of a library agent for sub-agent composition."""
+class ExecutionSummary(TypedDict):
+    """Summary of a single execution for quality assessment."""
 
+    status: str  # COMPLETED, FAILED, RUNNING, QUEUED
+    correctness_score: NotRequired[float]  # 0-1 score if evaluated
+    activity_summary: NotRequired[str]  # AI-generated summary of what happened
+
+
+class LibraryAgentSummary(TypedDict):
+    """Summary of a library agent for sub-agent composition.
+
+    Includes recent executions to help the LLM decide whether to use this agent.
+    Each execution shows status, correctness_score (0-1), and activity_summary.
+    """
+
+    # Required fields
     graph_id: str
     graph_version: int
     name: str
     description: str
     input_schema: dict[str, Any]
     output_schema: dict[str, Any]
+    # Recent executions with detailed status and quality info
+    recent_executions: NotRequired[list[ExecutionSummary]]
 
 
 class MarketplaceAgentSummary(TypedDict):
@@ -196,6 +211,10 @@ async def get_library_agents_for_generation(
     Uses search-based fetching to return relevant agents instead of all agents.
     This is more scalable for users with large libraries.
 
+    Includes recent_executions list to help the LLM assess agent quality:
+    - Each execution has status, correctness_score (0-1), and activity_summary
+    - This gives the LLM concrete examples of recent performance
+
     Args:
         user_id: The user ID
         search_query: Optional search term to find relevant agents (user's goal/description)
@@ -203,21 +222,16 @@ async def get_library_agents_for_generation(
         max_results: Maximum number of agents to return (default 15)
 
     Returns:
-        List of LibraryAgentSummary with schemas for sub-agent composition
-
-    Note:
-        Future enhancement: Add quality filtering based on execution success rate
-        or correctness_score from AgentGraphExecution stats. The current
-        LibraryAgentStatus.ERROR is too aggressive (1 failed run = ERROR).
-        Better approach: filter by success rate (e.g., >50% successful runs)
-        or require at least 1 successful execution.
+        List of LibraryAgentSummary with schemas and recent executions for sub-agent composition
     """
     try:
+        # Include executions to calculate accurate status and metrics
         response = await library_db.list_library_agents(
             user_id=user_id,
             search_term=search_query,
             page=1,
             page_size=max_results,
+            include_executions=True,
         )
 
         results: list[LibraryAgentSummary] = []
@@ -225,16 +239,26 @@ async def get_library_agents_for_generation(
             if exclude_graph_id is not None and agent.graph_id == exclude_graph_id:
                 continue
 
-            results.append(
-                LibraryAgentSummary(
-                    graph_id=agent.graph_id,
-                    graph_version=agent.graph_version,
-                    name=agent.name,
-                    description=agent.description,
-                    input_schema=agent.input_schema,
-                    output_schema=agent.output_schema,
-                )
+            summary = LibraryAgentSummary(
+                graph_id=agent.graph_id,
+                graph_version=agent.graph_version,
+                name=agent.name,
+                description=agent.description,
+                input_schema=agent.input_schema,
+                output_schema=agent.output_schema,
             )
+            # Include recent executions if available
+            if agent.recent_executions:
+                exec_summaries: list[ExecutionSummary] = []
+                for ex in agent.recent_executions:
+                    exec_sum = ExecutionSummary(status=ex.status)
+                    if ex.correctness_score is not None:
+                        exec_sum["correctness_score"] = ex.correctness_score
+                    if ex.activity_summary:
+                        exec_sum["activity_summary"] = ex.activity_summary
+                    exec_summaries.append(exec_sum)
+                summary["recent_executions"] = exec_summaries
+            results.append(summary)
         return results
     except Exception as e:
         logger.warning(f"Failed to fetch library agents: {e}")
