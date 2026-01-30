@@ -85,7 +85,7 @@ export class LibraryPage extends BasePage {
 
   async selectSortOption(
     page: Page,
-    sortOption: "Creation Date" | "Last Modified",
+    sortOption: "Last Executed" | "Creation Date" | "Last Modified",
   ): Promise<void> {
     const { getRole } = getSelectors(page);
     await getRole("combobox").click();
