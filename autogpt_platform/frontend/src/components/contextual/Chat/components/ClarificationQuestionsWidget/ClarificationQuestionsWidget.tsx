@@ -68,13 +68,13 @@ export function ClarificationQuestionsWidget({
     if (!storageKey) return;
 
     const hasAnswers = Object.values(answers).some((v) => v.trim());
-    if (hasAnswers) {
-      try {
+    try {
+      if (hasAnswers) {
         localStorage.setItem(storageKey, JSON.stringify(answers));
-      } catch {
-        // Ignore storage errors
+      } else {
+        localStorage.removeItem(storageKey);
       }
-    }
+    } catch {}
   }, [answers, sessionId]);
 
   const handleAnswerChange = useCallback((keyword: string, value: string) => {
@@ -93,15 +93,12 @@ export function ClarificationQuestionsWidget({
     if (storageKey) {
       try {
         localStorage.removeItem(storageKey);
-      } catch {
-        // Ignore storage errors
-      }
+      } catch {}
     }
   }
 
   const allAnswered = questions.every((q) => answers[q.keyword]?.trim());
 
-  // Show submitted state after answers are submitted
   if (isSubmitted) {
     return (
       <div
