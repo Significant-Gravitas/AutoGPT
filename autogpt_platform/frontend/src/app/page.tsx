@@ -1,7 +1,4 @@
-"use client";
-
-import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { redirect } from "next/navigation";
 
 /**
  * Root page always redirects to /copilot.
@@ -10,11 +7,5 @@ import { useEffect } from "react";
  * See: SECRT-1845
  */
 export default function Page() {
-  const router = useRouter();
-
-  useEffect(() => {
-    router.replace("/copilot");
-  }, [router]);
-
-  return null;
+  redirect("/copilot");
 }
