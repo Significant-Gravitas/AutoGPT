@@ -148,7 +148,9 @@ class VideoClipBlock(Block):
             )
 
             # Return as workspace path or data URI based on context
-            video_out = await self._store_output_video(execution_context, output_filename)
+            video_out = await self._store_output_video(
+                execution_context, output_filename
+            )
 
             yield "video_out", video_out
             yield "duration", duration
