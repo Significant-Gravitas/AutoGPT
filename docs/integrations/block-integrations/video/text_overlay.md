@@ -25,7 +25,6 @@ The block uses MoviePy's TextClip and CompositeVideoClip to render text onto vid
 | font_size | Font size | int | No |
 | font_color | Font color (hex or name) | str | No |
 | bg_color | Background color behind text (None for transparent) | str | No |
-| output_return_type | Return the output as a relative path or base64 data URI. | "file_path" \| "data_uri" | No |
 
 ### Outputs
 

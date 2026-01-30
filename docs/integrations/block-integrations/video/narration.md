@@ -20,10 +20,10 @@ The block uses ElevenLabs text-to-speech API to generate natural-sounding narrat
 | video_in | Input video (URL, data URI, or local path) | str (file) | Yes |
 | script | Narration script text | str | Yes |
 | voice_id | ElevenLabs voice ID | str | No |
+| model_id | ElevenLabs TTS model | "eleven_multilingual_v2" \| "eleven_flash_v2_5" \| "eleven_turbo_v2_5" \| "eleven_turbo_v2" | No |
 | mix_mode | How to combine with original audio. 'ducking' applies stronger attenuation than 'mix'. | "replace" \| "mix" \| "ducking" | No |
 | narration_volume | Narration volume (0.0 to 2.0) | float | No |
 | original_volume | Original audio volume when mixing (0.0 to 1.0) | float | No |
-| output_return_type | Return the output as a relative path or base64 data URI. | "file_path" \| "data_uri" | No |
 
 ### Outputs
 

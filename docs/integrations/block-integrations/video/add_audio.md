@@ -1,4 +1,3 @@
-
 # Video Add Audio
 <!-- MANUAL: file_description -->
 This block allows you to attach a separate audio track to a video file, replacing or combining with the original audio.
@@ -21,7 +20,6 @@ The block uses MoviePy to combine video and audio files. It loads the video and 
 | video_in | Video input (URL, data URI, or local path). | str (file) | Yes |
 | audio_in | Audio input (URL, data URI, or local path). | str (file) | Yes |
 | volume | Volume scale for the newly attached audio track (1.0 = original). | float | No |
-| output_return_type | Return the final output as a relative path or base64 data URI. | "file_path" \| "data_uri" | No |
 
 ### Outputs
 

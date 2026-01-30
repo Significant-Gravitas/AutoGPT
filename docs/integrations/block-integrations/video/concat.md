@@ -21,7 +21,6 @@ The block uses MoviePy's `concatenate_videoclips` function to join multiple vide
 | transition | Transition between clips | "none" \| "crossfade" \| "fade_black" | No |
 | transition_duration | Transition duration in seconds | int | No |
 | output_format | Output format | "mp4" \| "webm" \| "mkv" \| "mov" | No |
-| output_return_type | Return the output as a relative path or base64 data URI. | "file_path" \| "data_uri" | No |
 
 ### Outputs
 

@@ -21,7 +21,6 @@ The block uses MoviePy's `subclipped` function to extract a portion of the video
 | start_time | Start time in seconds | float | Yes |
 | end_time | End time in seconds | float | Yes |
 | output_format | Output format | "mp4" \| "webm" \| "mkv" \| "mov" | No |
-| output_return_type | Return the output as a relative path or base64 data URI. | "file_path" \| "data_uri" | No |
 
 ### Outputs
 

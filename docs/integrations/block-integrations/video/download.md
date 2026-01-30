@@ -20,7 +20,6 @@ The block uses yt-dlp, a powerful video downloading library that supports over 1
 | url | URL of the video to download (YouTube, Vimeo, direct link, etc.) | str | Yes |
 | quality | Video quality preference | "best" \| "1080p" \| "720p" \| "480p" \| "audio_only" | No |
 | output_format | Output video format | "mp4" \| "webm" \| "mkv" | No |
-| output_return_type | Return the output as a relative path or base64 data URI. | "file_path" \| "data_uri" | No |
 
 ### Outputs
 
