@@ -1,6 +1,35 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in the `autogpt_platform/` directory.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Windows Development Environment
+
+**Project Location**: `C:\Users\shach\OneDrive\Documents\GitHub\AutoGPT\autogpt_platform`
+
+### Windows-Specific Commands
+
+```powershell
+# Navigate to project
+cd "C:\Users\shach\OneDrive\Documents\GitHub\AutoGPT\autogpt_platform"
+
+# Backend (PowerShell)
+cd backend; poetry install
+poetry run prisma migrate dev
+poetry run serve
+
+# Frontend (PowerShell)
+cd frontend; npm install
+npm run dev
+
+# Docker (ensure Docker Desktop is running)
+docker compose up -d
+```
+
+### Prerequisites for Windows
+- Docker Desktop for Windows (with WSL2 backend recommended)
+- Python 3.11+ with Poetry
+- Node.js 18+ with npm
+- Git for Windows
 
 For repository-wide context, see the root `/CLAUDE.md`.
 
@@ -8,9 +37,11 @@ For repository-wide context, see the root `/CLAUDE.md`.
 
 AutoGPT Platform is a graph-based workflow automation system for building, deploying, and managing AI agents. It consists of three main packages:
 
-- **Backend** (`/backend`): Python FastAPI server with async support (v0.4.9)
-- **Frontend** (`/frontend`): Next.js 15 React application (v0.3.4)
-- **Shared Libraries** (`/autogpt_libs`): Common Python utilities for auth, rate limiting, logging (v0.2.0)
+- **Backend** (`/backend`): Python FastAPI server with async support
+- **Frontend** (`/frontend`): Next.js React application
+- **Shared Libraries** (`/autogpt_libs`): Common Python utilities
+- **Graph Templates** (`/graph_templates`): Pre-built agent workflow templates
+- **Installer** (`/installer`): Automated setup scripts for Linux and Windows
 
 ## Essential Commands
 
@@ -280,15 +311,22 @@ QueryClientProvider -> NuqsAdapter -> NextThemesProvider -> BackendAPIProvider -
 
 ### Key Concepts
 
-1. **Agent Graphs**: Workflow definitions composed of connected blocks, stored as versioned JSON, executed by the backend executor service
-2. **Blocks**: Python components in `/backend/backend/blocks/` that perform specific tasks. Each block has typed Input/Output schemas (Pydantic), enabling the visual editor to render correct connection points
-3. **Block Categories**: AI, SOCIAL, TEXT, SEARCH, BASIC, INPUT, OUTPUT, LOGIC, COMMUNICATION, DEVELOPER_TOOLS, DATA, CRM, SAFETY, PRODUCTIVITY, MULTIMEDIA, MARKETING
-4. **Block Types**: STANDARD, INPUT, OUTPUT, AGENT (nested execution), WEBHOOK (triggers), AI (LLM-based)
-5. **Integrations**: OAuth-based credential management per user (GitHub, Google, Twitter, Linear, Todoist, Notion)
-6. **Store/Marketplace**: Users publish and share agent templates with ratings and reviews
-7. **Execution Model**: Graphs execute node-by-node; streaming output via WebSocket; results stored in AgentGraphExecution/AgentNodeExecution
-8. **Credits System**: Usage-based billing with CreditTransaction records
-9. **Virus Scanning**: ClamAV integration for file upload security
+1. **Agent Graphs**: Workflow definitions stored as JSON, executed by the backend
+2. **Blocks**: Reusable components in `/backend/blocks/` that perform specific tasks
+3. **Integrations**: OAuth and API connections stored per user (25+ providers including Google, GitHub, Twitter, Notion, Todoist, Ayrshare, Slant3D)
+4. **Store**: Marketplace for sharing agent templates (v2 API with enhanced search/filtering)
+5. **Virus Scanning**: ClamAV integration for file upload security
+6. **Credits System**: Stripe-powered payment system with block cost configuration
+7. **Notifications**: Email notification system with Jinja2 templates for agent runs, low balance, refunds, and weekly summaries
+8. **Feature Flags**: LaunchDarkly integration for gradual feature rollouts
+
+### Testing Approach
+
+- Backend uses pytest with snapshot testing for API responses
+- Test files are colocated with source files (`*_test.py`)
+- Frontend uses Playwright for E2E tests
+- Component testing via Storybook
+- See `TESTING.md` for comprehensive testing guide including auth overrides and async patterns
 
 ### Database Schema
 
@@ -397,28 +435,27 @@ class MyBlock(Block):
 
 ### Frontend Feature Development
 
-1. Components go in `/frontend/src/components/` organized by domain
-2. Reuse existing Radix UI primitives from `/frontend/src/components/ui/`
-3. Add Storybook stories for new components (`.stories.tsx`)
-4. For protected routes, update `/frontend/src/lib/supabase/middleware.ts`
-5. Use the auto-generated API hooks from `/frontend/src/app/api/__generated__/`
-6. Test user-facing flows with Playwright in `/frontend/src/tests/`
+1. Components go in `/frontend/src/components/`
+2. Use existing UI components from `/frontend/src/components/ui/`
+3. Add Storybook stories for new components
+4. Test with Playwright if user-facing
 
-### Database Schema Changes
+**API client generation (Frontend):**
 
-1. Edit `/backend/schema.prisma`
-2. Run `poetry run prisma migrate dev --name describe_your_change`
-3. Run `poetry run prisma generate` to update the Python client
-4. Update data access code in `/backend/backend/data/`
+```bash
+# Regenerate API client from OpenAPI spec
+pnpm generate:api:force
+```
 
-### Adding an OAuth Integration
+Uses Orval to generate two clients: `autogpt_api_client` and `autogpt_zod_schema`
 
-1. Create a new provider in `/backend/backend/integrations/oauth/`
-2. Inherit from the base OAuth handler
-3. Implement: `get_login_url()`, `exchange_code_for_tokens()`, `refresh_tokens()`, `revoke_tokens()`
-4. Add client ID/secret environment variables to `.env.default`
+**Adding a graph template:**
 
-## Security Implementation
+1. Create workflow JSON in `/graph_templates/`
+2. Follow existing template patterns (Discord bots, Medium blogger, etc.)
+3. Templates are importable in the agent builder
+
+### Security Implementation
 
 ### Cache Protection Middleware
 
@@ -428,6 +465,94 @@ class MyBlock(Block):
 - Cacheable paths: static assets (`/static/*`, `/_next/static/*`), health checks, public store pages, documentation
 - To allow caching for a new endpoint, add it to `CACHEABLE_PATHS` in the middleware
 - Applied to both main API server and external API applications
+
+### API v2 Architecture
+
+The backend has evolved to include a v2 API layer at `/backend/backend/server/v2/`:
+
+- **`/v2/store/`**: Enhanced store with paginated listings, media upload to Google Cloud Storage
+- **`/v2/admin/`**: Admin routes for credit and store management
+- **`/v2/otto/`**: Otto AI integration features
+- **`/v2/AutoMod/`**: Automation/moderation features
+- **`/v2/turnstile/`**: Cloudflare Turnstile CAPTCHA integration
+
+### Monitoring System
+
+Located in `/backend/backend/monitoring/`:
+- `block_error_monitor.py`: Monitors block execution errors
+- `late_execution_monitor.py`: Tracks delayed executions
+- `notification_monitor.py`: Monitors notification delivery
+
+### Notification System
+
+Located in `/backend/backend/notifications/`:
+- Email notifications via `email.py`
+- Templates in Jinja2 format: `agent_run.html.jinja2`, `low_balance.html.jinja2`, `refund_processed.html.jinja2`, `weekly_summary.html.jinja2`
+
+### Cloud Storage
+
+- Google Cloud Storage integration via `gcloud-aio-storage`
+- Utility module at `/backend/backend/util/cloud_storage.py`
+- Used for media uploads in store submissions
+
+### Feature Flags
+
+**Backend**: Feature flag utilities in `/backend/backend/util/feature_flag.py`
+
+**Frontend**: LaunchDarkly integration:
+```typescript
+// Check flag value
+const isEnabled = useGetFlag(Flag.AGENT_ACTIVITY);
+
+// Protect component with HOC
+export default withFeatureFlag(Flag.MY_FEATURE)(MyComponent);
+
+// Mock mode for Playwright tests via NEXT_PUBLIC_PW_TEST
+```
+
+### API v2 Architecture
+
+The backend has evolved to include a v2 API layer at `/backend/backend/server/v2/`:
+
+- **`/v2/store/`**: Enhanced store with paginated listings, media upload to Google Cloud Storage
+- **`/v2/admin/`**: Admin routes for credit and store management
+- **`/v2/otto/`**: Otto AI integration features
+- **`/v2/AutoMod/`**: Automation/moderation features
+- **`/v2/turnstile/`**: Cloudflare Turnstile CAPTCHA integration
+
+### Monitoring System
+
+Located in `/backend/backend/monitoring/`:
+- `block_error_monitor.py`: Monitors block execution errors
+- `late_execution_monitor.py`: Tracks delayed executions
+- `notification_monitor.py`: Monitors notification delivery
+
+### Notification System
+
+Located in `/backend/backend/notifications/`:
+- Email notifications via `email.py`
+- Templates in Jinja2 format: `agent_run.html.jinja2`, `low_balance.html.jinja2`, `refund_processed.html.jinja2`, `weekly_summary.html.jinja2`
+
+### Cloud Storage
+
+- Google Cloud Storage integration via `gcloud-aio-storage`
+- Utility module at `/backend/backend/util/cloud_storage.py`
+- Used for media uploads in store submissions
+
+### Feature Flags
+
+**Backend**: Feature flag utilities in `/backend/backend/util/feature_flag.py`
+
+**Frontend**: LaunchDarkly integration:
+```typescript
+// Check flag value
+const isEnabled = useGetFlag(Flag.AGENT_ACTIVITY);
+
+// Protect component with HOC
+export default withFeatureFlag(Flag.MY_FEATURE)(MyComponent);
+
+// Mock mode for Playwright tests via NEXT_PUBLIC_PW_TEST
+```
 
 ### Authentication
 
@@ -535,10 +660,60 @@ Use this format for commit messages and Pull Request titles:
 - `frontend/library`, `frontend/marketplace`
 - `infra/prod`
 
-**Examples:**
+Use these scopes and subscopes for clarity and consistency in commit messages.
+
+## Quick Setup
+
+For new development environments, use the automated installers:
+
+```bash
+# Linux/macOS
+./installer/setup-autogpt.sh
+
+# Windows (run in PowerShell as Administrator)
+.\installer\setup-autogpt.bat
 ```
-feat(blocks): add Airtable integration block
-fix(backend/executor): handle timeout in graph execution
-refactor(frontend/builder): simplify node connection logic
-dx(platform): update Docker Compose for faster local dev
+
+These scripts handle prerequisite checking, repo setup, and service startup.
+
+### Windows MCP Extension Notes
+
+When using Claude with the Windows MCP Extension:
+
+1. **File Paths**: Always use full Windows paths (e.g., `C:\Users\shach\OneDrive\Documents\GitHub\AutoGPT\autogpt_platform\backend`)
+2. **Shell Commands**: Use PowerShell syntax; semicolons separate commands instead of `&&`
+3. **Docker**: Ensure Docker Desktop is running before executing docker commands
+4. **Poetry**: Run `poetry run <command>` from within the backend directory
+5. **npm**: Run `npm run <command>` from within the frontend directory
+
+**Common Windows PowerShell Commands:**
+```powershell
+# Check services status
+docker ps
+
+# View backend logs
+docker compose logs -f backend
+
+# Kill process on port (e.g., 8000)
+Get-Process -Id (Get-NetTCPConnection -LocalPort 8000).OwningProcess | Stop-Process
+
+# Check if port is in use
+Get-NetTCPConnection -LocalPort 8000 -ErrorAction SilentlyContinue
 ```
+
+## Key Dependencies
+
+### Backend
+- `mem0ai`: Memory integration for agents
+- `stripe`: Payment processing for credits
+- `gcloud-aio-storage`: Google Cloud Storage async support
+- `firecrawl-py`: Web crawling/scraping
+- `exa-py`: Exa search integration
+- `tiktoken`: Token counting for LLMs
+- `aioclamd`: ClamAV virus scanning (async)
+
+### Frontend
+- `@tanstack/react-table`: Advanced table management
+- `react-shepherd`: Product tours/onboarding guides
+- `party-js`: Celebration effects
+\installer\setup-autogpt.bat
