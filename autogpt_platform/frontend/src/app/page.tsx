@@ -1,14 +1,20 @@
 "use client";
 
-import { FeatureFlagRedirect } from "@/services/feature-flags/FeatureFlagRedirect";
-import { Flag } from "@/services/feature-flags/use-get-flag";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 
+/**
+ * Root page always redirects to /copilot.
+ * The /copilot page handles the feature flag check and redirects to /library if needed.
+ * This single-check approach avoids race conditions with LaunchDarkly initialization.
+ * See: SECRT-1845
+ */
 export default function Page() {
-  return (
-    <FeatureFlagRedirect
-      flag={Flag.CHAT}
-      whenEnabled="/copilot"
-      whenDisabled="/library"
-    />
-  );
+  const router = useRouter();
+
+  useEffect(() => {
+    router.replace("/copilot");
+  }, [router]);
+
+  return null;
 }
