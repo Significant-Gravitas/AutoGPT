@@ -271,22 +271,21 @@ async def get_all_relevant_agents_for_generation(
     user_id: str,
     search_query: str | None = None,
     exclude_graph_id: str | None = None,
+    include_library: bool = True,
     include_marketplace: bool = True,
     max_library_results: int = 15,
     max_marketplace_results: int = 10,
 ) -> list[AgentSummary]:
-    """Fetch relevant agents from library and optionally marketplace.
+    """Fetch relevant agents from library and/or marketplace.
 
-    Combines search results from user's library and public marketplace,
-    with library agents taking priority (they have full schemas).
-
-    Also extracts UUIDs from the search_query and fetches those agents
-    directly to ensure explicitly referenced agents are included.
+    Searches both user's library and marketplace by default.
+    Explicitly mentioned UUIDs in the search query are always looked up.
 
     Args:
         user_id: The user ID
         search_query: Search term to find relevant agents (user's goal/description)
         exclude_graph_id: Optional graph ID to exclude (prevents circular references)
+        include_library: Whether to search user's library (default True)
         include_marketplace: Whether to also search marketplace (default True)
         max_library_results: Max library agents to return (default 15)
         max_marketplace_results: Max marketplace agents to return (default 10)
@@ -309,16 +308,17 @@ async def get_all_relevant_agents_for_generation(
                 seen_graph_ids.add(agent["graph_id"])
                 logger.debug(f"Found explicitly mentioned agent: {agent['name']}")
 
-    library_agents = await get_library_agents_for_generation(
-        user_id=user_id,
-        search_query=search_query,
-        exclude_graph_id=exclude_graph_id,
-        max_results=max_library_results,
-    )
-    for agent in library_agents:
-        if agent["graph_id"] not in seen_graph_ids:
-            agents.append(agent)
-            seen_graph_ids.add(agent["graph_id"])
+    if include_library:
+        library_agents = await get_library_agents_for_generation(
+            user_id=user_id,
+            search_query=search_query,
+            exclude_graph_id=exclude_graph_id,
+            max_results=max_library_results,
+        )
+        for agent in library_agents:
+            if agent["graph_id"] not in seen_graph_ids:
+                agents.append(agent)
+                seen_graph_ids.add(agent["graph_id"])
 
     if include_marketplace and search_query:
         marketplace_agents = await search_marketplace_agents_for_generation(
