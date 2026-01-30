@@ -678,7 +678,7 @@ def _populate_agent_executor_user_ids(agent_json: dict[str, Any], user_id: str) 
     """
     for node in agent_json.get("nodes", []):
         if node.get("block_id") == AGENT_EXECUTOR_BLOCK_ID:
-            input_default = node.get("input_default", {})
+            input_default = node.get("input_default") or {}
             if not input_default.get("user_id"):
                 input_default["user_id"] = user_id
                 node["input_default"] = input_default
