@@ -16,6 +16,7 @@ from .base import BaseTool
 from .models import (
     AgentPreviewResponse,
     AgentSavedResponse,
+    AsyncProcessingResponse,
     ClarificationNeededResponse,
     ClarifyingQuestion,
     ErrorResponse,
@@ -95,6 +96,10 @@ class CreateAgentTool(BaseTool):
         context = kwargs.get("context", "")
         save = kwargs.get("save", True)
         session_id = session.session_id if session else None
+
+        # Extract async processing params (passed by long-running tool handler)
+        operation_id = kwargs.get("_operation_id")
+        task_id = kwargs.get("_task_id")
 
         if not description:
             return ErrorResponse(
@@ -192,7 +197,11 @@ class CreateAgentTool(BaseTool):
 
         # Step 2: Generate agent JSON (external service handles fixing and validation)
         try:
-            agent_json = await generate_agent(decomposition_result)
+            agent_json = await generate_agent(
+                decomposition_result,
+                operation_id=operation_id,
+                task_id=task_id,
+            )
         except AgentGeneratorNotConfiguredError:
             return ErrorResponse(
                 message=(
@@ -229,6 +238,19 @@ class CreateAgentTool(BaseTool):
                     "service_error": error_msg,
                     "error_type": error_type,
                 },
+                session_id=session_id,
+            )
+
+        # Check if Agent Generator accepted for async processing
+        if agent_json.get("status") == "accepted":
+            logger.info(
+                f"Agent generation delegated to async processing "
+                f"(operation_id={operation_id}, task_id={task_id})"
+            )
+            return AsyncProcessingResponse(
+                message="Agent generation started. You'll be notified when it's complete.",
+                operation_id=operation_id,
+                task_id=task_id,
                 session_id=session_id,
             )
 

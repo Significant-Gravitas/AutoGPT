@@ -1,7 +1,6 @@
 "use client";
 
 import { useCopilotSessionId } from "@/app/(platform)/copilot/useCopilotSessionId";
-import { useCopilotStore } from "@/app/(platform)/copilot/copilot-page-store";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
@@ -25,7 +24,6 @@ export function Chat({
 }: ChatProps) {
   const { urlSessionId } = useCopilotSessionId();
   const hasHandledNotFoundRef = useRef(false);
-  const isSwitchingSession = useCopilotStore((s) => s.isSwitchingSession);
   const {
     messages,
     isLoading,
@@ -53,8 +51,7 @@ export function Chat({
     isCreating,
   ]);
 
-  const shouldShowLoader =
-    (showLoader && (isLoading || isCreating)) || isSwitchingSession;
+  const shouldShowLoader = showLoader && (isLoading || isCreating);
 
   return (
     <div className={cn("flex h-full flex-col", className)}>
@@ -66,21 +63,19 @@ export function Chat({
             <div className="flex flex-col items-center gap-3">
               <LoadingSpinner size="large" className="text-neutral-400" />
               <Text variant="body" className="text-zinc-500">
-                {isSwitchingSession
-                  ? "Switching chat..."
-                  : "Loading your chat..."}
+                Loading your chat...
               </Text>
             </div>
           </div>
         )}
 
         {/* Error State */}
-        {error && !isLoading && !isSwitchingSession && (
+        {error && !isLoading && (
           <ChatErrorState error={error} onRetry={createSession} />
         )}
 
         {/* Session Content */}
-        {sessionId && !isLoading && !error && !isSwitchingSession && (
+        {sessionId && !isLoading && !error && (
           <ChatContainer
             sessionId={sessionId}
             initialMessages={messages}

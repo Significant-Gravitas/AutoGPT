@@ -23,6 +23,12 @@ export interface HandlerDependencies {
   setIsRegionBlockedModalOpen: Dispatch<SetStateAction<boolean>>;
   sessionId: string;
   onOperationStarted?: () => void;
+  onActiveTaskStarted?: (taskInfo: {
+    taskId: string;
+    operationId: string;
+    toolName: string;
+    toolCallId: string;
+  }) => void;
 }
 
 export function isRegionBlockedError(chunk: StreamChunk): boolean {
@@ -164,9 +170,19 @@ export function handleToolResponse(
     }
     return;
   }
-  // Trigger polling when operation_started is received
+  // Trigger polling and store task info when operation_started is received
   if (responseMessage.type === "operation_started") {
     deps.onOperationStarted?.();
+    // Store task info for SSE reconnection if taskId is present
+    const taskId = (responseMessage as any).taskId;
+    if (taskId && deps.onActiveTaskStarted) {
+      deps.onActiveTaskStarted({
+        taskId,
+        operationId: (responseMessage as any).operationId || "",
+        toolName: (responseMessage as any).toolName || "",
+        toolCallId: (responseMessage as any).toolId || "",
+      });
+    }
   }
 
   deps.setMessages((prev) => {

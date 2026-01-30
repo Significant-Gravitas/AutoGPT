@@ -111,6 +111,7 @@ export type ChatMessageData =
       toolName: string;
       toolId: string;
       operationId: string;
+      taskId?: string; // For SSE reconnection
       message: string;
       timestamp?: string | Date;
     }

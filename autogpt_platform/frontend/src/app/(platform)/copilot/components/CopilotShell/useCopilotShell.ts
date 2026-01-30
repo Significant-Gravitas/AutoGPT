@@ -11,7 +11,6 @@ import { useBreakpoint } from "@/lib/hooks/useBreakpoint";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { useQueryClient } from "@tanstack/react-query";
 import { usePathname, useSearchParams } from "next/navigation";
-import { useRef } from "react";
 import { useCopilotStore } from "../../copilot-page-store";
 import { useCopilotSessionId } from "../../useCopilotSessionId";
 import { useMobileDrawer } from "./components/MobileDrawer/useMobileDrawer";
@@ -70,41 +69,16 @@ export function useCopilotShell() {
   });
 
   const stopStream = useChatStore((s) => s.stopStream);
-  const onStreamComplete = useChatStore((s) => s.onStreamComplete);
-  const isStreaming = useCopilotStore((s) => s.isStreaming);
   const isCreatingSession = useCopilotStore((s) => s.isCreatingSession);
-  const setIsSwitchingSession = useCopilotStore((s) => s.setIsSwitchingSession);
-  const openInterruptModal = useCopilotStore((s) => s.openInterruptModal);
 
-  const pendingActionRef = useRef<(() => void) | null>(null);
-
-  async function stopCurrentStream() {
-    if (!currentSessionId) return;
-
-    setIsSwitchingSession(true);
-    await new Promise<void>((resolve) => {
-      const unsubscribe = onStreamComplete((completedId) => {
-        if (completedId === currentSessionId) {
-          clearTimeout(timeout);
-          unsubscribe();
-          resolve();
-        }
-      });
-      const timeout = setTimeout(() => {
-        unsubscribe();
-        resolve();
-      }, 3000);
-      stopStream(currentSessionId);
-    });
-
-    queryClient.invalidateQueries({
-      queryKey: getGetV2GetSessionQueryKey(currentSessionId),
-    });
-    setIsSwitchingSession(false);
-  }
-
-  function selectSession(sessionId: string) {
+  function handleSessionClick(sessionId: string) {
     if (sessionId === currentSessionId) return;
+
+    // Stop current stream - SSE reconnection allows resuming later
+    if (currentSessionId) {
+      stopStream(currentSessionId);
+    }
+
     if (recentlyCreatedSessionsRef.current.has(sessionId)) {
       queryClient.invalidateQueries({
         queryKey: getGetV2GetSessionQueryKey(sessionId),
@@ -114,39 +88,18 @@ export function useCopilotShell() {
     if (isMobile) handleCloseDrawer();
   }
 
-  function startNewChat() {
+  function handleNewChatClick() {
+    // Stop current stream - SSE reconnection allows resuming later
+    if (currentSessionId) {
+      stopStream(currentSessionId);
+    }
+
     resetPagination();
     queryClient.invalidateQueries({
       queryKey: getGetV2ListSessionsQueryKey(),
     });
     setUrlSessionId(null, { shallow: false });
     if (isMobile) handleCloseDrawer();
-  }
-
-  function handleSessionClick(sessionId: string) {
-    if (sessionId === currentSessionId) return;
-
-    if (isStreaming) {
-      pendingActionRef.current = async () => {
-        await stopCurrentStream();
-        selectSession(sessionId);
-      };
-      openInterruptModal(pendingActionRef.current);
-    } else {
-      selectSession(sessionId);
-    }
-  }
-
-  function handleNewChatClick() {
-    if (isStreaming) {
-      pendingActionRef.current = async () => {
-        await stopCurrentStream();
-        startNewChat();
-      };
-      openInterruptModal(pendingActionRef.current);
-    } else {
-      startNewChat();
-    }
   }
 
   return {

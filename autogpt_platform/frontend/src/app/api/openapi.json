@@ -939,6 +939,63 @@
         }
       }
     },
+    "/api/chat/operations/{operation_id}/complete": {
+      "post": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Complete Operation",
+        "description": "External completion webhook for long-running operations.\n\nCalled by Agent Generator (or other services) when an operation completes.\nThis triggers the stream registry to publish completion and continue LLM generation.\n\nArgs:\n    operation_id: The operation ID to complete.\n    request: Completion payload with success status and result/error.\n    x_api_key: Internal API key for authentication.\n\nReturns:\n    dict: Status of the completion.\n\nRaises:\n    HTTPException: If API key is invalid or operation not found.",
+        "operationId": "postV2CompleteOperation",
+        "parameters": [
+          {
+            "name": "operation_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Operation Id" }
+          },
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OperationCompleteRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Postv2Completeoperation"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/chat/sessions": {
       "get": {
         "tags": ["v2", "chat", "chat"],
@@ -1176,6 +1233,94 @@
             }
           }
         },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/chat/tasks/{task_id}": {
+      "get": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Get Task Status",
+        "description": "Get the status of a long-running task.\n\nArgs:\n    task_id: The task ID to check.\n    user_id: Authenticated user ID for ownership validation.\n\nReturns:\n    dict: Task status including task_id, status, tool_name, and operation_id.\n\nRaises:\n    NotFoundError: If task_id is not found or user doesn't have access.",
+        "operationId": "getV2GetTaskStatus",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Task Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Getv2Gettaskstatus"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/chat/tasks/{task_id}/stream": {
+      "get": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Stream Task",
+        "description": "Reconnect to a long-running task's SSE stream.\n\nWhen a long-running operation (like agent generation) starts, the client\nreceives a task_id. If the connection drops, the client can reconnect\nusing this endpoint to resume receiving updates.\n\nArgs:\n    task_id: The task ID from the operation_started response.\n    user_id: Authenticated user ID for ownership validation.\n    last_message_id: Last Redis Stream message ID received (\"0-0\" for full replay).\n\nReturns:\n    StreamingResponse: SSE-formatted response chunks starting after last_message_id.\n\nRaises:\n    NotFoundError: If task_id is not found or user doesn't have access.",
+        "operationId": "getV2StreamTask",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Task Id" }
+          },
+          {
+            "name": "last_message_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Last Redis Stream message ID received (e.g., '1706540123456-0'). Use '0-0' for full replay.",
+              "default": "0-0",
+              "title": "Last Message Id"
+            },
+            "description": "Last Redis Stream message ID received (e.g., '1706540123456-0'). Use '0-0' for full replay."
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -8803,6 +8948,27 @@
           "BUILDER_RUN_AGENT"
         ],
         "title": "OnboardingStep"
+      },
+      "OperationCompleteRequest": {
+        "properties": {
+          "success": { "type": "boolean", "title": "Success" },
+          "result": {
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "string" },
+              { "type": "null" }
+            ],
+            "title": "Result"
+          },
+          "error": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": ["success"],
+        "title": "OperationCompleteRequest",
+        "description": "Request model for external completion webhook."
       },
       "Pagination": {
         "properties": {

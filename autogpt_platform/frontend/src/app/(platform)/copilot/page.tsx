@@ -5,15 +5,10 @@ import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { Chat } from "@/components/contextual/Chat/Chat";
 import { ChatInput } from "@/components/contextual/Chat/components/ChatInput/ChatInput";
-import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import { useCopilotStore } from "./copilot-page-store";
 import { useCopilotPage } from "./useCopilotPage";
 
 export default function CopilotPage() {
   const { state, handlers } = useCopilotPage();
-  const isInterruptModalOpen = useCopilotStore((s) => s.isInterruptModalOpen);
-  const confirmInterrupt = useCopilotStore((s) => s.confirmInterrupt);
-  const cancelInterrupt = useCopilotStore((s) => s.cancelInterrupt);
   const {
     greetingName,
     quickActions,
@@ -40,42 +35,6 @@ export default function CopilotPage() {
           onSessionNotFound={handleSessionNotFound}
           onStreamingChange={handleStreamingChange}
         />
-        <Dialog
-          title="Interrupt current chat?"
-          styling={{ maxWidth: 300, width: "100%" }}
-          controlled={{
-            isOpen: isInterruptModalOpen,
-            set: (open) => {
-              if (!open) cancelInterrupt();
-            },
-          }}
-          onClose={cancelInterrupt}
-        >
-          <Dialog.Content>
-            <div className="flex flex-col gap-4">
-              <Text variant="body">
-                The current chat response will be interrupted. Are you sure you
-                want to continue?
-              </Text>
-              <Dialog.Footer>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={cancelInterrupt}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="button"
-                  variant="primary"
-                  onClick={confirmInterrupt}
-                >
-                  Continue
-                </Button>
-              </Dialog.Footer>
-            </div>
-          </Dialog.Content>
-        </Dialog>
       </div>
     );
   }

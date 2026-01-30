@@ -5,7 +5,6 @@ import {
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { getHomepageRoute } from "@/lib/constants";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
-import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
 import {
   Flag,
   type FlagValues,
@@ -26,19 +25,11 @@ export function useCopilotPage() {
   const queryClient = useQueryClient();
   const { user, isLoggedIn, isUserLoading } = useSupabase();
   const { toast } = useToast();
-  const { completeStep } = useOnboarding();
 
   const { urlSessionId, setUrlSessionId } = useCopilotSessionId();
   const setIsStreaming = useCopilotStore((s) => s.setIsStreaming);
   const isCreating = useCopilotStore((s) => s.isCreatingSession);
   const setIsCreating = useCopilotStore((s) => s.setIsCreatingSession);
-
-  // Complete VISIT_COPILOT onboarding step to grant $5 welcome bonus
-  useEffect(() => {
-    if (isLoggedIn) {
-      completeStep("VISIT_COPILOT");
-    }
-  }, [completeStep, isLoggedIn]);
 
   const isChatEnabled = useGetFlag(Flag.CHAT);
   const flags = useFlags<FlagValues>();
