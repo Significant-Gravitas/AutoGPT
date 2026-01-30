@@ -107,18 +107,63 @@ async def list_library_agents(
         order_by = {"updatedAt": "desc"}
 
     try:
-        library_agents = await prisma.models.LibraryAgent.prisma().find_many(
-            where=where_clause,
-            include=library_agent_include(
-                user_id, include_nodes=False, include_executions=include_executions
-            ),
-            order=order_by,
-            skip=(page - 1) * page_size,
-            take=page_size,
-        )
-        agent_count = await prisma.models.LibraryAgent.prisma().count(
-            where=where_clause
-        )
+        # For LAST_EXECUTED sorting, we need to fetch execution data and sort in Python
+        # since Prisma doesn't support sorting by nested relations
+        if sort_by == library_model.LibraryAgentSort.LAST_EXECUTED:
+            # TODO: This fetches all agents into memory for sorting, which may cause
+            # performance issues for users with many agents. Prisma doesn't support
+            # sorting by nested relations, so a dedicated lastExecutedAt column or
+            # raw SQL query would be needed for database-level pagination.
+            library_agents = await prisma.models.LibraryAgent.prisma().find_many(
+                where=where_clause,
+                include=library_agent_include(
+                    user_id,
+                    include_nodes=False,
+                    include_executions=True,
+                    execution_limit=1,
+                ),
+            )
+
+            def get_sort_key(
+                agent: prisma.models.LibraryAgent,
+            ) -> tuple[int, float]:
+                """
+                Returns a tuple for sorting: (has_no_executions, -timestamp).
+
+                Agents WITH executions come first (sorted by most recent execution),
+                agents WITHOUT executions come last (sorted by creation date).
+
+                Uses updatedAt (not createdAt) because it reflects when the execution
+                completed or last progressed, showing recently-finished agents first.
+                """
+                graph = agent.AgentGraph
+                if graph and graph.Executions and len(graph.Executions) > 0:
+                    execution = graph.Executions[0]
+                    timestamp = execution.updatedAt or execution.createdAt
+                    return (0, -timestamp.timestamp())
+                return (1, -agent.createdAt.timestamp())
+
+            library_agents.sort(key=get_sort_key)
+
+            # Apply pagination after sorting
+            agent_count = len(library_agents)
+            start_idx = (page - 1) * page_size
+            end_idx = start_idx + page_size
+            library_agents = library_agents[start_idx:end_idx]
+        else:
+            # Standard sorting via database
+            library_agents = await prisma.models.LibraryAgent.prisma().find_many(
+                where=where_clause,
+                include=library_agent_include(
+                    user_id, include_nodes=False, include_executions=False
+                ),
+                order=order_by,
+                skip=(page - 1) * page_size,
+                take=page_size,
+            )
+            agent_count = await prisma.models.LibraryAgent.prisma().count(
+                where=where_clause
+            )
 
         logger.debug(
             f"Retrieved {len(library_agents)} library agents for user #{user_id}"
