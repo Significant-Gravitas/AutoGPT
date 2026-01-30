@@ -42,6 +42,7 @@ from typing_extensions import TypedDict
 
 from backend.integrations.providers import ProviderName
 from backend.util.json import loads as json_loads
+from backend.util.request import parse_url
 from backend.util.settings import Secrets
 
 # Type alias for any provider name (including custom ones)
@@ -554,8 +555,8 @@ class CredentialsMetaInput(BaseModel, Generic[CP, CT]):
 def _extract_host_from_url(url: str) -> str:
     """Extract host from URL for grouping host-scoped credentials."""
     try:
-        parsed = urlparse(url)
-        return parsed.hostname or url
+        parsed = parse_url(url)
+        return parsed.netloc or url
     except Exception:
         return ""
 
