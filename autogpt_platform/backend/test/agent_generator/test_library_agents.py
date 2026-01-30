@@ -347,5 +347,295 @@ class TestGetAllRelevantAgentsForGeneration:
         assert len(result) == 1
 
 
+class TestExtractSearchTermsFromSteps:
+    """Test extract_search_terms_from_steps function."""
+
+    def test_extracts_terms_from_instructions_type(self):
+        """Test extraction from valid instructions decomposition result."""
+        decomposition_result = {
+            "type": "instructions",
+            "steps": [
+                {
+                    "description": "Send an email notification",
+                    "block_name": "GmailSendBlock",
+                },
+                {"description": "Fetch weather data", "action": "Get weather API"},
+            ],
+        }
+
+        result = core.extract_search_terms_from_steps(decomposition_result)
+
+        assert "Send an email notification" in result
+        assert "GmailSendBlock" in result
+        assert "Fetch weather data" in result
+        assert "Get weather API" in result
+
+    def test_returns_empty_for_non_instructions_type(self):
+        """Test that non-instructions types return empty list."""
+        decomposition_result = {
+            "type": "clarifying_questions",
+            "questions": [{"question": "What email?"}],
+        }
+
+        result = core.extract_search_terms_from_steps(decomposition_result)
+
+        assert result == []
+
+    def test_deduplicates_terms_case_insensitively(self):
+        """Test that duplicate terms are removed (case-insensitive)."""
+        decomposition_result = {
+            "type": "instructions",
+            "steps": [
+                {"description": "Send Email", "name": "send email"},
+                {"description": "Other task"},
+            ],
+        }
+
+        result = core.extract_search_terms_from_steps(decomposition_result)
+
+        # Should only have one "send email" variant
+        email_terms = [t for t in result if "email" in t.lower()]
+        assert len(email_terms) == 1
+
+    def test_filters_short_terms(self):
+        """Test that terms with 3 or fewer characters are filtered out."""
+        decomposition_result = {
+            "type": "instructions",
+            "steps": [
+                {"description": "ab", "action": "xyz"},  # Both too short
+                {"description": "Valid term here"},
+            ],
+        }
+
+        result = core.extract_search_terms_from_steps(decomposition_result)
+
+        assert "ab" not in result
+        assert "xyz" not in result
+        assert "Valid term here" in result
+
+    def test_handles_empty_steps(self):
+        """Test handling of empty steps list."""
+        decomposition_result = {
+            "type": "instructions",
+            "steps": [],
+        }
+
+        result = core.extract_search_terms_from_steps(decomposition_result)
+
+        assert result == []
+
+
+class TestEnrichLibraryAgentsFromSteps:
+    """Test enrich_library_agents_from_steps function."""
+
+    @pytest.mark.asyncio
+    async def test_enriches_with_additional_agents(self):
+        """Test that additional agents are found based on steps."""
+        existing_agents = [
+            {
+                "graph_id": "existing-123",
+                "graph_version": 1,
+                "name": "Existing Agent",
+                "description": "Already fetched",
+                "input_schema": {},
+                "output_schema": {},
+            }
+        ]
+
+        additional_agents = [
+            {
+                "graph_id": "new-456",
+                "graph_version": 1,
+                "name": "Email Agent",
+                "description": "For sending emails",
+                "input_schema": {},
+                "output_schema": {},
+            }
+        ]
+
+        decomposition_result = {
+            "type": "instructions",
+            "steps": [
+                {"description": "Send email notification"},
+            ],
+        }
+
+        with patch.object(
+            core,
+            "get_all_relevant_agents_for_generation",
+            new_callable=AsyncMock,
+            return_value=additional_agents,
+        ):
+            result = await core.enrich_library_agents_from_steps(
+                user_id="user-123",
+                decomposition_result=decomposition_result,
+                existing_agents=existing_agents,
+            )
+
+        # Should have both existing and new agents
+        assert len(result) == 2
+        names = [a["name"] for a in result]
+        assert "Existing Agent" in names
+        assert "Email Agent" in names
+
+    @pytest.mark.asyncio
+    async def test_deduplicates_by_graph_id(self):
+        """Test that agents with same graph_id are not duplicated."""
+        existing_agents = [
+            {
+                "graph_id": "agent-123",
+                "graph_version": 1,
+                "name": "Existing Agent",
+                "description": "Already fetched",
+                "input_schema": {},
+                "output_schema": {},
+            }
+        ]
+
+        # Additional search returns same agent
+        additional_agents = [
+            {
+                "graph_id": "agent-123",  # Same ID
+                "graph_version": 1,
+                "name": "Existing Agent Copy",
+                "description": "Same agent different name",
+                "input_schema": {},
+                "output_schema": {},
+            }
+        ]
+
+        decomposition_result = {
+            "type": "instructions",
+            "steps": [{"description": "Some action"}],
+        }
+
+        with patch.object(
+            core,
+            "get_all_relevant_agents_for_generation",
+            new_callable=AsyncMock,
+            return_value=additional_agents,
+        ):
+            result = await core.enrich_library_agents_from_steps(
+                user_id="user-123",
+                decomposition_result=decomposition_result,
+                existing_agents=existing_agents,
+            )
+
+        # Should not duplicate
+        assert len(result) == 1
+
+    @pytest.mark.asyncio
+    async def test_deduplicates_by_name(self):
+        """Test that agents with same name are not duplicated."""
+        existing_agents = [
+            {
+                "graph_id": "agent-123",
+                "graph_version": 1,
+                "name": "Email Agent",
+                "description": "Already fetched",
+                "input_schema": {},
+                "output_schema": {},
+            }
+        ]
+
+        # Additional search returns agent with same name but different ID
+        additional_agents = [
+            {
+                "graph_id": "agent-456",  # Different ID
+                "graph_version": 1,
+                "name": "Email Agent",  # Same name
+                "description": "Different agent same name",
+                "input_schema": {},
+                "output_schema": {},
+            }
+        ]
+
+        decomposition_result = {
+            "type": "instructions",
+            "steps": [{"description": "Send email"}],
+        }
+
+        with patch.object(
+            core,
+            "get_all_relevant_agents_for_generation",
+            new_callable=AsyncMock,
+            return_value=additional_agents,
+        ):
+            result = await core.enrich_library_agents_from_steps(
+                user_id="user-123",
+                decomposition_result=decomposition_result,
+                existing_agents=existing_agents,
+            )
+
+        # Should not duplicate by name
+        assert len(result) == 1
+        assert result[0].get("graph_id") == "agent-123"  # Original kept
+
+    @pytest.mark.asyncio
+    async def test_returns_existing_when_no_steps(self):
+        """Test that existing agents are returned when no search terms extracted."""
+        existing_agents = [
+            {
+                "graph_id": "existing-123",
+                "graph_version": 1,
+                "name": "Existing Agent",
+                "description": "Already fetched",
+                "input_schema": {},
+                "output_schema": {},
+            }
+        ]
+
+        decomposition_result = {
+            "type": "clarifying_questions",  # Not instructions type
+            "questions": [],
+        }
+
+        result = await core.enrich_library_agents_from_steps(
+            user_id="user-123",
+            decomposition_result=decomposition_result,
+            existing_agents=existing_agents,
+        )
+
+        # Should return existing unchanged
+        assert result == existing_agents
+
+    @pytest.mark.asyncio
+    async def test_limits_search_terms_to_three(self):
+        """Test that only first 3 search terms are used."""
+        existing_agents = []
+
+        decomposition_result = {
+            "type": "instructions",
+            "steps": [
+                {"description": "First action"},
+                {"description": "Second action"},
+                {"description": "Third action"},
+                {"description": "Fourth action"},
+                {"description": "Fifth action"},
+            ],
+        }
+
+        call_count = 0
+
+        async def mock_get_agents(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            return []
+
+        with patch.object(
+            core,
+            "get_all_relevant_agents_for_generation",
+            side_effect=mock_get_agents,
+        ):
+            await core.enrich_library_agents_from_steps(
+                user_id="user-123",
+                decomposition_result=decomposition_result,
+                existing_agents=existing_agents,
+            )
+
+        # Should only make 3 calls (limited to first 3 terms)
+        assert call_count == 3
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

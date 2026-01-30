@@ -8,6 +8,7 @@ from backend.api.features.chat.model import ChatSession
 from .agent_generator import (
     AgentGeneratorNotConfiguredError,
     decompose_goal,
+    enrich_library_agents_from_steps,
     generate_agent,
     get_all_relevant_agents_for_generation,
     get_user_message_for_error,
@@ -208,6 +209,23 @@ class CreateAgentTool(BaseTool):
                 details={"suggested_goal": suggested},
                 session_id=session_id,
             )
+
+        # Step 1.5: Enrich library agents with step-based search (two-phase search)
+        # After decomposition, search for additional relevant agents based on the steps
+        if user_id and library_agents is not None:
+            try:
+                library_agents = await enrich_library_agents_from_steps(
+                    user_id=user_id,
+                    decomposition_result=decomposition_result,
+                    existing_agents=library_agents,
+                    include_marketplace=True,
+                )
+                logger.debug(
+                    f"After enrichment: {len(library_agents)} total agents for sub-agent composition"
+                )
+            except Exception as e:
+                # Log but don't fail - continue with existing agents
+                logger.warning(f"Failed to enrich library agents from steps: {e}")
 
         # Step 2: Generate agent JSON (external service handles fixing and validation)
         try:
