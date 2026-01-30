@@ -1,0 +1,53 @@
+{
+  "current": {
+    "color_primary": "#1a1a1a",
+    "color_secondary": "#8b6f47",
+    "color_accent": "#c9a96e",
+    "color_background": "#faf9f7",
+    "color_text": "#1a1a1a",
+    "tiktok_pixel_enabled": true,
+    "tiktok_pixel_id": "",
+    "tiktok_handle": "",
+    "tiktok_url": "",
+    "instagram_url": "",
+    "sections": {
+      "announcement-bar": {
+        "type": "announcement-bar",
+        "settings": {
+          "show_bar": true,
+          "text": "LIVE ON TIKTOK — Shop the Launch"
+        }
+      },
+      "header": {
+        "type": "header",
+        "settings": {
+          "logo_width": 160,
+          "menu": "main-menu"
+        }
+      },
+      "footer": {
+        "type": "footer",
+        "settings": {
+          "description": "Curated luxury beauty for the modern woman."
+        },
+        "blocks": {
+          "menu-1": {
+            "type": "menu",
+            "settings": {
+              "heading": "Shop",
+              "menu": "footer"
+            }
+          },
+          "menu-2": {
+            "type": "menu",
+            "settings": {
+              "heading": "Help",
+              "menu": "footer"
+            }
+          }
+        },
+        "block_order": ["menu-1", "menu-2"]
+      }
+    }
+  }
+}

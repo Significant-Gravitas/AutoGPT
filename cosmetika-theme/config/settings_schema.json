@@ -1,0 +1,152 @@
+[
+  {
+    "name": "theme_info",
+    "theme_name": "COSMETIKA",
+    "theme_version": "1.0.0",
+    "theme_author": "COSMETIKA",
+    "theme_documentation_url": "",
+    "theme_support_url": ""
+  },
+  {
+    "name": "Brand",
+    "settings": [
+      {
+        "type": "header",
+        "content": "Logo"
+      },
+      {
+        "type": "image_picker",
+        "id": "logo",
+        "label": "Primary Logo (SVG preferred)"
+      },
+      {
+        "type": "image_picker",
+        "id": "logo_light",
+        "label": "Light Logo (for dark backgrounds)"
+      },
+      {
+        "type": "image_picker",
+        "id": "favicon",
+        "label": "Favicon"
+      }
+    ]
+  },
+  {
+    "name": "Colors",
+    "settings": [
+      {
+        "type": "header",
+        "content": "Brand Colors — Update from Notion Config"
+      },
+      {
+        "type": "color",
+        "id": "color_primary",
+        "label": "Primary",
+        "default": "#1a1a1a"
+      },
+      {
+        "type": "color",
+        "id": "color_secondary",
+        "label": "Secondary",
+        "default": "#8b6f47"
+      },
+      {
+        "type": "color",
+        "id": "color_accent",
+        "label": "Accent",
+        "default": "#c9a96e"
+      },
+      {
+        "type": "color",
+        "id": "color_background",
+        "label": "Background",
+        "default": "#faf9f7"
+      },
+      {
+        "type": "color",
+        "id": "color_text",
+        "label": "Text",
+        "default": "#1a1a1a"
+      }
+    ]
+  },
+  {
+    "name": "Typography",
+    "settings": [
+      {
+        "type": "font_picker",
+        "id": "font_heading",
+        "label": "Heading Font",
+        "default": "playfair_display_n6"
+      },
+      {
+        "type": "font_picker",
+        "id": "font_body",
+        "label": "Body Font",
+        "default": "assistant_n4"
+      }
+    ]
+  },
+  {
+    "name": "Social Media",
+    "settings": [
+      {
+        "type": "header",
+        "content": "TikTok (Primary launch channel)"
+      },
+      {
+        "type": "text",
+        "id": "tiktok_handle",
+        "label": "TikTok Handle (e.g. @cosmetika)"
+      },
+      {
+        "type": "url",
+        "id": "tiktok_url",
+        "label": "TikTok Profile URL"
+      },
+      {
+        "type": "header",
+        "content": "Other Social"
+      },
+      {
+        "type": "url",
+        "id": "instagram_url",
+        "label": "Instagram URL"
+      },
+      {
+        "type": "url",
+        "id": "youtube_url",
+        "label": "YouTube URL"
+      }
+    ]
+  },
+  {
+    "name": "TikTok Shop Integration",
+    "settings": [
+      {
+        "type": "header",
+        "content": "TikTok Pixel & Shop Settings"
+      },
+      {
+        "type": "text",
+        "id": "tiktok_pixel_id",
+        "label": "TikTok Pixel ID",
+        "info": "Required for TikTok Shop product sync and conversion tracking."
+      },
+      {
+        "type": "checkbox",
+        "id": "tiktok_pixel_enabled",
+        "label": "Enable TikTok Pixel",
+        "default": true
+      },
+      {
+        "type": "header",
+        "content": "Product Sync Notes"
+      },
+      {
+        "type": "paragraph",
+        "content": "TikTok Shop syncs via the Shopify Sales Channel. Ensure each product has: (1) title, (2) description, (3) at least one image, (4) price, (5) inventory count, (6) SKU, (7) weight. Missing fields will block sync."
+      }
+    ]
+  }
+]

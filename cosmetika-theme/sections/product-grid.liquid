@@ -1,0 +1,223 @@
+{% comment %}
+  ============================================================
+  COSMETIKA — Product Grid
+  ============================================================
+  Dynamic product grid with staggered scroll-reveal animations.
+  Products pull from a Shopify collection — TikTok Shop syncs
+  directly from the product catalog, so keep schema clean.
+  ============================================================
+{% endcomment %}
+
+<section
+  class="cosmetika-product-grid"
+  data-section-id="{{ section.id }}"
+  data-animate="stagger-grid"
+>
+  <div class="cosmetika-product-grid__container">
+
+    {% if section.settings.heading != blank %}
+      <div class="cosmetika-product-grid__header" data-animate="fade-up">
+        <h2 class="cosmetika-product-grid__heading">{{ section.settings.heading }}</h2>
+        {% if section.settings.subheading != blank %}
+          <p class="cosmetika-product-grid__subheading">{{ section.settings.subheading }}</p>
+        {% endif %}
+      </div>
+    {% endif %}
+
+    {% if section.settings.collection != blank %}
+      {% assign collection = collections[section.settings.collection] %}
+      {% assign limit = section.settings.products_to_show %}
+
+      <div class="cosmetika-product-grid__grid cosmetika-grid cosmetika-grid--{{ section.settings.columns }}">
+        {% for product in collection.products limit: limit %}
+          <div
+            class="cosmetika-product-grid__item cosmetika-product-card"
+            data-animate="fade-up"
+            data-delay="{{ forloop.index | times: 0.1 }}"
+          >
+            <a href="{{ product.url }}" class="cosmetika-product-card__link" aria-label="{{ product.title }}">
+
+              <div class="cosmetika-product-card__media">
+                {% if product.featured_image != blank %}
+                  <img
+                    class="cosmetika-product-card__image cosmetika-product-card__image--primary"
+                    src="{{ product.featured_image | image_url: width: 600 }}"
+                    srcset="
+                      {{ product.featured_image | image_url: width: 300 }} 300w,
+                      {{ product.featured_image | image_url: width: 450 }} 450w,
+                      {{ product.featured_image | image_url: width: 600 }} 600w
+                    "
+                    sizes="(min-width: 1200px) 25vw, (min-width: 768px) 33vw, 50vw"
+                    alt="{{ product.featured_image.alt | escape }}"
+                    loading="lazy"
+                    width="{{ product.featured_image.width }}"
+                    height="{{ product.featured_image.height }}"
+                  >
+                  {% if product.images[1] != blank %}
+                    <img
+                      class="cosmetika-product-card__image cosmetika-product-card__image--hover"
+                      src="{{ product.images[1] | image_url: width: 600 }}"
+                      alt="{{ product.images[1].alt | escape }}"
+                      loading="lazy"
+                      width="{{ product.images[1].width }}"
+                      height="{{ product.images[1].height }}"
+                    >
+                  {% endif %}
+                {% else %}
+                  <div class="cosmetika-product-card__placeholder">
+                    {{ 'product-1' | placeholder_svg_tag: 'placeholder-svg' }}
+                  </div>
+                {% endif %}
+
+                {% if product.compare_at_price > product.price %}
+                  <span class="cosmetika-product-card__badge cosmetika-product-card__badge--sale">
+                    Sale
+                  </span>
+                {% endif %}
+              </div>
+
+              <div class="cosmetika-product-card__info">
+                {% if section.settings.show_vendor %}
+                  <p class="cosmetika-product-card__vendor">{{ product.vendor }}</p>
+                {% endif %}
+
+                <h3 class="cosmetika-product-card__title">{{ product.title }}</h3>
+
+                <div class="cosmetika-product-card__price">
+                  {% if product.compare_at_price > product.price %}
+                    <span class="cosmetika-product-card__price--compare">
+                      {{ product.compare_at_price | money }}
+                    </span>
+                  {% endif %}
+                  <span class="cosmetika-product-card__price--current">
+                    {{ product.price | money }}
+                  </span>
+                </div>
+              </div>
+
+            </a>
+
+            {% if section.settings.show_quick_add %}
+              {% if product.available %}
+                {% if product.variants.size == 1 %}
+                  <form method="post" action="/cart/add" class="cosmetika-product-card__quick-add">
+                    <input type="hidden" name="id" value="{{ product.variants.first.id }}">
+                    <button type="submit" class="cosmetika-product-card__quick-add-btn button button--secondary">
+                      Add to Bag
+                    </button>
+                  </form>
+                {% else %}
+                  <a href="{{ product.url }}" class="cosmetika-product-card__quick-add-btn button button--secondary">
+                    Choose Options
+                  </a>
+                {% endif %}
+              {% else %}
+                <button class="cosmetika-product-card__quick-add-btn button button--disabled" disabled>
+                  Sold Out
+                </button>
+              {% endif %}
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+
+      {% if section.settings.show_view_all %}
+        <div class="cosmetika-product-grid__footer" data-animate="fade-up">
+          <a href="{{ collection.url }}" class="cosmetika-product-grid__view-all button button--outline">
+            View All {{ collection.title }}
+          </a>
+        </div>
+      {% endif %}
+
+    {% else %}
+      <!-- Placeholder grid for theme editor preview -->
+      <div class="cosmetika-product-grid__grid cosmetika-grid cosmetika-grid--{{ section.settings.columns }}">
+        {% for i in (1..section.settings.products_to_show) %}
+          <div class="cosmetika-product-grid__item cosmetika-product-card" data-animate="fade-up" data-delay="{{ forloop.index | times: 0.1 }}">
+            <div class="cosmetika-product-card__media">
+              {{ 'product-1' | placeholder_svg_tag: 'placeholder-svg' }}
+            </div>
+            <div class="cosmetika-product-card__info">
+              <p class="cosmetika-product-card__vendor">Brand Name</p>
+              <h3 class="cosmetika-product-card__title">Product Title</h3>
+              <div class="cosmetika-product-card__price">
+                <span class="cosmetika-product-card__price--current">$0.00</span>
+              </div>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+  </div>
+</section>
+
+{% schema %}
+{
+  "name": "COSMETIKA Products",
+  "tag": "section",
+  "class": "cosmetika-section cosmetika-section--product-grid",
+  "settings": [
+    {
+      "type": "text",
+      "id": "heading",
+      "label": "Heading",
+      "default": "Best Sellers"
+    },
+    {
+      "type": "text",
+      "id": "subheading",
+      "label": "Subheading",
+      "default": "Our most-loved beauty essentials"
+    },
+    {
+      "type": "collection",
+      "id": "collection",
+      "label": "Collection"
+    },
+    {
+      "type": "range",
+      "id": "products_to_show",
+      "label": "Products to show",
+      "min": 2,
+      "max": 24,
+      "step": 1,
+      "default": 8
+    },
+    {
+      "type": "select",
+      "id": "columns",
+      "label": "Columns",
+      "options": [
+        { "value": "2", "label": "2" },
+        { "value": "3", "label": "3" },
+        { "value": "4", "label": "4" }
+      ],
+      "default": "4"
+    },
+    {
+      "type": "checkbox",
+      "id": "show_vendor",
+      "label": "Show vendor",
+      "default": true
+    },
+    {
+      "type": "checkbox",
+      "id": "show_quick_add",
+      "label": "Show quick add button",
+      "default": true
+    },
+    {
+      "type": "checkbox",
+      "id": "show_view_all",
+      "label": "Show 'View All' button",
+      "default": true
+    }
+  ],
+  "presets": [
+    {
+      "name": "COSMETIKA Products"
+    }
+  ]
+}
+{% endschema %}

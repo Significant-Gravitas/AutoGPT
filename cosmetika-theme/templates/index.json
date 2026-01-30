@@ -1,0 +1,31 @@
+{
+  "sections": {
+    "hero": {
+      "type": "home-hero",
+      "settings": {
+        "subtitle": "The New Standard",
+        "heading": "Beauty, Redefined.",
+        "description": "<p>Curated luxury beauty from the world's most sought-after brands.</p>",
+        "cta_text": "Shop Now",
+        "cta_link": "/collections/all",
+        "overlay_opacity": 30
+      }
+    },
+    "featured-products": {
+      "type": "product-grid",
+      "settings": {
+        "heading": "Best Sellers",
+        "subheading": "Our most-loved beauty essentials",
+        "products_to_show": 8,
+        "columns": "4",
+        "show_vendor": true,
+        "show_quick_add": true,
+        "show_view_all": true
+      }
+    }
+  },
+  "order": [
+    "hero",
+    "featured-products"
+  ]
+}

@@ -1,0 +1,116 @@
+{% comment %}
+  ============================================================
+  COSMETIKA — Header / Navigation
+  ============================================================
+{% endcomment %}
+
+<header class="cosmetika-header" data-section-id="{{ section.id }}" data-animate="header">
+  <div class="cosmetika-header__container">
+
+    <!-- Logo -->
+    <div class="cosmetika-header__logo">
+      <a href="/" class="cosmetika-header__logo-link" aria-label="{{ shop.name }}">
+        {% if section.settings.logo != blank %}
+          <img
+            src="{{ section.settings.logo | image_url: width: 300 }}"
+            alt="{{ shop.name }}"
+            class="cosmetika-header__logo-image"
+            width="{{ section.settings.logo_width }}"
+            loading="eager"
+          >
+        {% else %}
+          <span class="cosmetika-header__logo-text">{{ shop.name }}</span>
+        {% endif %}
+      </a>
+    </div>
+
+    <!-- Navigation -->
+    <nav class="cosmetika-header__nav" aria-label="Main navigation">
+      <ul class="cosmetika-header__menu" role="menubar">
+        {% for link in section.settings.menu.links %}
+          <li class="cosmetika-header__menu-item {% if link.links.size > 0 %}has-dropdown{% endif %}" role="none">
+            <a
+              href="{{ link.url }}"
+              class="cosmetika-header__menu-link"
+              role="menuitem"
+              {% if link.links.size > 0 %}aria-haspopup="true" aria-expanded="false"{% endif %}
+            >
+              {{ link.title }}
+            </a>
+
+            {% if link.links.size > 0 %}
+              <ul class="cosmetika-header__dropdown" role="menu" aria-label="{{ link.title }}">
+                {% for child in link.links %}
+                  <li role="none">
+                    <a href="{{ child.url }}" class="cosmetika-header__dropdown-link" role="menuitem">
+                      {{ child.title }}
+                    </a>
+                  </li>
+                {% endfor %}
+              </ul>
+            {% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    </nav>
+
+    <!-- Actions -->
+    <div class="cosmetika-header__actions">
+      <a href="/search" class="cosmetika-header__action" aria-label="Search">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+        </svg>
+      </a>
+      <a href="/account" class="cosmetika-header__action" aria-label="Account">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+        </svg>
+      </a>
+      <a href="/cart" class="cosmetika-header__action cosmetika-header__cart" aria-label="Cart ({{ cart.item_count }})">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/>
+        </svg>
+        {% if cart.item_count > 0 %}
+          <span class="cosmetika-header__cart-count">{{ cart.item_count }}</span>
+        {% endif %}
+      </a>
+    </div>
+
+    <!-- Mobile Toggle -->
+    <button class="cosmetika-header__mobile-toggle" aria-label="Menu" aria-expanded="false">
+      <span class="cosmetika-header__hamburger"></span>
+    </button>
+
+  </div>
+</header>
+
+{% schema %}
+{
+  "name": "Header",
+  "tag": "sticky-header",
+  "class": "cosmetika-section cosmetika-section--header",
+  "settings": [
+    {
+      "type": "image_picker",
+      "id": "logo",
+      "label": "Logo"
+    },
+    {
+      "type": "range",
+      "id": "logo_width",
+      "label": "Logo width (px)",
+      "min": 50,
+      "max": 300,
+      "step": 10,
+      "default": 160,
+      "unit": "px"
+    },
+    {
+      "type": "link_list",
+      "id": "menu",
+      "label": "Menu",
+      "default": "main-menu"
+    }
+  ]
+}
+{% endschema %}

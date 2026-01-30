@@ -1,0 +1,136 @@
+/* ============================================================
+   COSMETIKA — Animation CSS
+   ============================================================
+   Initial states for GSAP-driven animations.
+   JS handles the actual transitions via ScrollTrigger.
+
+   TOMORROW (Phase 1): After inspecting the reference site
+   via Window MCP, update timing/easing values here and
+   in cosmetika-animations.js to match the reference motion.
+   ============================================================ */
+
+/* --- Initial hidden states for scroll reveals --- */
+[data-animate] {
+  will-change: transform, opacity;
+}
+
+[data-animate="fade-up"] {
+  opacity: 0;
+  transform: translateY(40px);
+}
+
+[data-animate="fade-in"] {
+  opacity: 0;
+}
+
+[data-animate="fade-left"] {
+  opacity: 0;
+  transform: translateX(-40px);
+}
+
+[data-animate="fade-right"] {
+  opacity: 0;
+  transform: translateX(40px);
+}
+
+[data-animate="scale-in"] {
+  opacity: 0;
+  transform: scale(0.92);
+}
+
+[data-animate="clip-reveal"] {
+  clip-path: inset(0 0 100% 0);
+}
+
+/* Once animated, elements get this class */
+[data-animate].is-animated {
+  opacity: 1;
+  transform: none;
+  clip-path: none;
+}
+
+/* --- Hero-specific --- */
+[data-animate="hero"] .cosmetika-hero__image,
+[data-animate="hero"] .cosmetika-hero__video {
+  transform: scale(1.15);
+  transition: transform 1.5s var(--ease-out);
+}
+
+[data-animate="hero"].is-animated .cosmetika-hero__image,
+[data-animate="hero"].is-animated .cosmetika-hero__video {
+  transform: scale(1);
+}
+
+/* --- Parallax marker --- */
+[data-parallax] {
+  will-change: transform;
+}
+
+/* --- Stagger grid marker (JS handles timing) --- */
+[data-animate="stagger-grid"] .cosmetika-product-card {
+  opacity: 0;
+  transform: translateY(30px);
+}
+
+[data-animate="stagger-grid"].is-animated .cosmetika-product-card {
+  opacity: 1;
+  transform: none;
+}
+
+/* --- Header scroll state --- */
+.cosmetika-header--hidden {
+  transform: translateY(-100%);
+}
+
+.cosmetika-header--scrolled {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+/* --- Smooth image reveal on load --- */
+.cosmetika-img-reveal {
+  overflow: hidden;
+}
+
+.cosmetika-img-reveal img {
+  transform: scale(1.2);
+  opacity: 0;
+  transition: transform 1.2s var(--ease-out), opacity 0.8s ease;
+}
+
+.cosmetika-img-reveal.is-loaded img {
+  transform: scale(1);
+  opacity: 1;
+}
+
+/* --- Text split animation markers --- */
+.cosmetika-split-text .char {
+  display: inline-block;
+  opacity: 0;
+  transform: translateY(100%);
+}
+
+.cosmetika-split-text.is-animated .char {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* --- Magnetic hover (for buttons/links) --- */
+.cosmetika-magnetic {
+  transition: transform var(--duration-base) var(--ease-out);
+}
+
+/* --- Reduced motion --- */
+@media (prefers-reduced-motion: reduce) {
+  [data-animate],
+  [data-parallax],
+  .cosmetika-split-text .char,
+  .cosmetika-img-reveal img {
+    opacity: 1 !important;
+    transform: none !important;
+    clip-path: none !important;
+    transition: none !important;
+    animation: none !important;
+  }
+}

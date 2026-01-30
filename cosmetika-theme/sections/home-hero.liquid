@@ -1,0 +1,147 @@
+{% comment %}
+  ============================================================
+  COSMETIKA — Hero Section
+  ============================================================
+  TOMORROW: Replace placeholder copy with Notion brand voice.
+  Replace hero image with actual brand asset.
+  Fine-tune GSAP values after inspecting reference site via Window MCP.
+  ============================================================
+{% endcomment %}
+
+<section
+  class="cosmetika-hero"
+  data-section-id="{{ section.id }}"
+  data-animate="hero"
+>
+  <div class="cosmetika-hero__media">
+    {% if section.settings.hero_video != blank %}
+      <video
+        class="cosmetika-hero__video"
+        autoplay
+        muted
+        loop
+        playsinline
+        poster="{{ section.settings.hero_image | image_url: width: 1920 }}"
+      >
+        <source src="{{ section.settings.hero_video }}" type="video/mp4">
+      </video>
+    {% elsif section.settings.hero_image != blank %}
+      <img
+        class="cosmetika-hero__image"
+        src="{{ section.settings.hero_image | image_url: width: 1920 }}"
+        srcset="
+          {{ section.settings.hero_image | image_url: width: 768 }} 768w,
+          {{ section.settings.hero_image | image_url: width: 1200 }} 1200w,
+          {{ section.settings.hero_image | image_url: width: 1920 }} 1920w
+        "
+        sizes="100vw"
+        alt="{{ section.settings.hero_image.alt | escape }}"
+        loading="eager"
+        fetchpriority="high"
+      >
+    {% else %}
+      <div class="cosmetika-hero__placeholder">
+        {{ 'lifestyle-1' | placeholder_svg_tag: 'placeholder-svg' }}
+      </div>
+    {% endif %}
+
+    <div class="cosmetika-hero__overlay"></div>
+  </div>
+
+  <div class="cosmetika-hero__content">
+    <div class="cosmetika-hero__content-inner">
+      {% if section.settings.subtitle != blank %}
+        <p class="cosmetika-hero__subtitle" data-animate="fade-up" data-delay="0.2">
+          {{ section.settings.subtitle }}
+        </p>
+      {% endif %}
+
+      {% if section.settings.heading != blank %}
+        <h1 class="cosmetika-hero__heading" data-animate="fade-up" data-delay="0.4">
+          {{ section.settings.heading }}
+        </h1>
+      {% endif %}
+
+      {% if section.settings.description != blank %}
+        <p class="cosmetika-hero__description" data-animate="fade-up" data-delay="0.6">
+          {{ section.settings.description }}
+        </p>
+      {% endif %}
+
+      {% if section.settings.cta_text != blank %}
+        <a
+          href="{{ section.settings.cta_link }}"
+          class="cosmetika-hero__cta button button--primary"
+          data-animate="fade-up"
+          data-delay="0.8"
+        >
+          {{ section.settings.cta_text }}
+        </a>
+      {% endif %}
+    </div>
+  </div>
+</section>
+
+{% schema %}
+{
+  "name": "COSMETIKA Hero",
+  "tag": "section",
+  "class": "cosmetika-section cosmetika-section--hero",
+  "settings": [
+    {
+      "type": "image_picker",
+      "id": "hero_image",
+      "label": "Hero Image"
+    },
+    {
+      "type": "url",
+      "id": "hero_video",
+      "label": "Hero Video URL (MP4)"
+    },
+    {
+      "type": "text",
+      "id": "subtitle",
+      "label": "Subtitle",
+      "default": "The New Standard"
+    },
+    {
+      "type": "text",
+      "id": "heading",
+      "label": "Heading",
+      "default": "Beauty, Redefined."
+    },
+    {
+      "type": "richtext",
+      "id": "description",
+      "label": "Description",
+      "default": "<p>Curated luxury beauty from the world's most sought-after brands.</p>"
+    },
+    {
+      "type": "text",
+      "id": "cta_text",
+      "label": "Button Text",
+      "default": "Shop Now"
+    },
+    {
+      "type": "url",
+      "id": "cta_link",
+      "label": "Button Link"
+    },
+    {
+      "type": "range",
+      "id": "overlay_opacity",
+      "label": "Overlay Opacity",
+      "min": 0,
+      "max": 100,
+      "step": 5,
+      "default": 30,
+      "unit": "%"
+    }
+  ],
+  "presets": [
+    {
+      "name": "COSMETIKA Hero"
+    }
+  ]
+}
+{% endschema %}
