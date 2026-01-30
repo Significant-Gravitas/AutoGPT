@@ -310,6 +310,26 @@ class RunAgentTool(BaseTool):
                     graph_version=graph.version,
                 )
 
+            # Check for unknown input fields - reject to prevent silent failures
+            valid_fields = set(input_properties.keys())
+            unknown_fields = provided_inputs - valid_fields
+            if unknown_fields:
+                credentials = extract_credentials_from_schema(
+                    graph.credentials_input_schema
+                )
+                return AgentDetailsResponse(
+                    message=(
+                        f"Unknown input field(s) provided: {', '.join(sorted(unknown_fields))}. "
+                        f"Agent was not executed. "
+                        f"Valid input fields are: {', '.join(sorted(valid_fields)) or 'none'}."
+                    ),
+                    session_id=session_id,
+                    agent=self._build_agent_details(graph, credentials),
+                    user_authenticated=True,
+                    graph_id=graph.id,
+                    graph_version=graph.version,
+                )
+
             # Step 4: Execute or Schedule
             if is_schedule:
                 return await self._schedule_agent(
