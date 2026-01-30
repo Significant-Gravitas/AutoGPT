@@ -40,7 +40,7 @@
 * Compass
   * [Triggers](block-integrations/compass/triggers.md)
 * [Data](block-integrations/data.md)
-* DataForSEO
+* Dataforseo
   * [Keyword Suggestions](block-integrations/dataforseo/keyword_suggestions.md)
   * [Related Keywords](block-integrations/dataforseo/related_keywords.md)
 * Discord

@@ -641,10 +641,51 @@ def generate_summary_md(
     lines.append("")
 
     file_mapping = get_block_file_mapping(blocks)
+
+    # Group files by provider (subdirectory) for collapsible sidebar
+    providers: dict[str, list[tuple[str, str, str]]] = defaultdict(list)
+    standalone_files: list[tuple[str, str, str]] = []
+
     for file_path in sorted(file_mapping.keys()):
-        title = file_path_to_title(file_path)
+        path = Path(file_path)
         link_path = f"{block_dir_prefix}{file_path}"
-        lines.append(f"* [{title}]({link_path})")
+
+        if "/" in file_path:
+            # Has a provider subdirectory (e.g., "ayrshare/post_to_x.md")
+            provider = path.parent.name
+            file_title = file_path_to_title(path.stem.replace("_", " ") + ".md")
+            # Apply title fixes for the file name only
+            providers[provider].append((file_title, link_path, file_path))
+        else:
+            # Standalone file (e.g., "basic.md")
+            title = file_path_to_title(file_path)
+            standalone_files.append((title, link_path, file_path))
+
+    # Sort providers alphabetically and output grouped structure
+    all_items = []
+
+    # Add providers with their nested files
+    for provider in sorted(providers.keys()):
+        provider_title = file_path_to_title(provider.replace("_", " ") + ".md")
+        all_items.append((provider_title, None, providers[provider]))
+
+    # Add standalone files
+    for title, link_path, file_path in standalone_files:
+        all_items.append((title, link_path, None))
+
+    # Sort all items alphabetically by title
+    all_items.sort(key=lambda x: x[0].lower())
+
+    # Output the sorted items
+    for title, link_path, nested_files in all_items:
+        if nested_files is not None:
+            # Provider group with nested files
+            lines.append(f"* {title}")
+            for file_title, file_link, _ in sorted(nested_files, key=lambda x: x[0].lower()):
+                lines.append(f"  * [{file_title}]({file_link})")
+        else:
+            # Standalone file
+            lines.append(f"* [{title}]({link_path})")
 
     lines.append("")
 
