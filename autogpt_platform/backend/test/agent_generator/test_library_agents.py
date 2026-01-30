@@ -687,11 +687,11 @@ class TestExtractUuidsFromText:
         assert len(result) == 0
 
 
-class TestGetLibraryAgentByGraphId:
-    """Test get_library_agent_by_graph_id function."""
+class TestGetLibraryAgentById:
+    """Test get_library_agent_by_id function (and its alias get_library_agent_by_graph_id)."""
 
     @pytest.mark.asyncio
-    async def test_returns_agent_when_found(self):
+    async def test_returns_agent_when_found_by_graph_id(self):
         """Test that agent is returned when found by graph_id."""
         mock_agent = MagicMock()
         mock_agent.graph_id = "agent-123"
@@ -707,37 +707,89 @@ class TestGetLibraryAgentByGraphId:
             new_callable=AsyncMock,
             return_value=mock_agent,
         ):
-            result = await core.get_library_agent_by_graph_id("user-123", "agent-123")
+            result = await core.get_library_agent_by_id("user-123", "agent-123")
 
         assert result is not None
         assert result["graph_id"] == "agent-123"
         assert result["name"] == "Test Agent"
 
     @pytest.mark.asyncio
-    async def test_returns_none_when_not_found(self):
-        """Test that None is returned when agent not found."""
-        with patch.object(
-            core.library_db,
-            "get_library_agent_by_graph_id",
-            new_callable=AsyncMock,
-            return_value=None,
+    async def test_falls_back_to_library_agent_id(self):
+        """Test that lookup falls back to library agent ID when graph_id not found."""
+        mock_agent = MagicMock()
+        mock_agent.graph_id = "graph-456"  # Different from the lookup ID
+        mock_agent.graph_version = 1
+        mock_agent.name = "Library Agent"
+        mock_agent.description = "Found by library ID"
+        mock_agent.input_schema = {"properties": {}}
+        mock_agent.output_schema = {"properties": {}}
+
+        with (
+            patch.object(
+                core.library_db,
+                "get_library_agent_by_graph_id",
+                new_callable=AsyncMock,
+                return_value=None,  # Not found by graph_id
+            ),
+            patch.object(
+                core.library_db,
+                "get_library_agent",
+                new_callable=AsyncMock,
+                return_value=mock_agent,  # Found by library ID
+            ),
         ):
-            result = await core.get_library_agent_by_graph_id("user-123", "nonexistent")
+            result = await core.get_library_agent_by_id("user-123", "library-id-123")
+
+        assert result is not None
+        assert result["graph_id"] == "graph-456"
+        assert result["name"] == "Library Agent"
+
+    @pytest.mark.asyncio
+    async def test_returns_none_when_not_found_by_either_method(self):
+        """Test that None is returned when agent not found by either method."""
+        with (
+            patch.object(
+                core.library_db,
+                "get_library_agent_by_graph_id",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch.object(
+                core.library_db,
+                "get_library_agent",
+                new_callable=AsyncMock,
+                side_effect=core.NotFoundError("Not found"),
+            ),
+        ):
+            result = await core.get_library_agent_by_id("user-123", "nonexistent")
 
         assert result is None
 
     @pytest.mark.asyncio
     async def test_returns_none_on_exception(self):
-        """Test that None is returned when exception occurs."""
-        with patch.object(
-            core.library_db,
-            "get_library_agent_by_graph_id",
-            new_callable=AsyncMock,
-            side_effect=Exception("Database error"),
+        """Test that None is returned when exception occurs in both lookups."""
+        with (
+            patch.object(
+                core.library_db,
+                "get_library_agent_by_graph_id",
+                new_callable=AsyncMock,
+                side_effect=Exception("Database error"),
+            ),
+            patch.object(
+                core.library_db,
+                "get_library_agent",
+                new_callable=AsyncMock,
+                side_effect=Exception("Database error"),
+            ),
         ):
-            result = await core.get_library_agent_by_graph_id("user-123", "agent-123")
+            result = await core.get_library_agent_by_id("user-123", "agent-123")
 
         assert result is None
+
+    @pytest.mark.asyncio
+    async def test_alias_works(self):
+        """Test that get_library_agent_by_graph_id is an alias for get_library_agent_by_id."""
+        assert core.get_library_agent_by_graph_id is core.get_library_agent_by_id
 
 
 class TestGetAllRelevantAgentsWithUuids:
