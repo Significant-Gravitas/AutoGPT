@@ -3,11 +3,14 @@
 import logging
 from typing import Any
 
-from langfuse import observe
 from pydantic import BaseModel, Field, field_validator
 
 from backend.api.features.chat.config import ChatConfig
 from backend.api.features.chat.model import ChatSession
+from backend.api.features.chat.tracking import (
+    track_agent_run_success,
+    track_agent_scheduled,
+)
 from backend.api.features.library import db as library_db
 from backend.data.graph import GraphModel
 from backend.data.model import CredentialsMetaInput
@@ -155,7 +158,6 @@ class RunAgentTool(BaseTool):
         """All operations require authentication."""
         return True
 
-    @observe(as_type="tool", name="run_agent")
     async def _execute(
         self,
         user_id: str | None,
@@ -453,6 +455,16 @@ class RunAgentTool(BaseTool):
             session.successful_agent_runs.get(library_agent.graph_id, 0) + 1
         )
 
+        # Track in PostHog
+        track_agent_run_success(
+            user_id=user_id,
+            session_id=session_id,
+            graph_id=library_agent.graph_id,
+            graph_name=library_agent.name,
+            execution_id=execution.id,
+            library_agent_id=library_agent.id,
+        )
+
         library_agent_link = f"/library/agents/{library_agent.id}"
         return ExecutionStartedResponse(
             message=(
@@ -532,6 +544,18 @@ class RunAgentTool(BaseTool):
         # Track successful schedule
         session.successful_agent_schedules[library_agent.graph_id] = (
             session.successful_agent_schedules.get(library_agent.graph_id, 0) + 1
+        )
+
+        # Track in PostHog
+        track_agent_scheduled(
+            user_id=user_id,
+            session_id=session_id,
+            graph_id=library_agent.graph_id,
+            graph_name=library_agent.name,
+            schedule_id=result.id,
+            schedule_name=schedule_name,
+            cron=cron,
+            library_agent_id=library_agent.id,
         )
 
         library_agent_link = f"/library/agents/{library_agent.id}"

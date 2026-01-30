@@ -1,10 +1,10 @@
 "use client";
 
-import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
+import { ChatLoader } from "@/components/contextual/Chat/components/ChatLoader/ChatLoader";
+import { Text } from "@/components/atoms/Text/Text";
 import { NAVBAR_HEIGHT_PX } from "@/lib/constants";
 import type { ReactNode } from "react";
 import { DesktopSidebar } from "./components/DesktopSidebar/DesktopSidebar";
-import { LoadingState } from "./components/LoadingState/LoadingState";
 import { MobileDrawer } from "./components/MobileDrawer/MobileDrawer";
 import { MobileHeader } from "./components/MobileHeader/MobileHeader";
 import { useCopilotShell } from "./useCopilotShell";
@@ -18,25 +18,25 @@ export function CopilotShell({ children }: Props) {
     isMobile,
     isDrawerOpen,
     isLoading,
+    isCreatingSession,
     isLoggedIn,
     hasActiveSession,
     sessions,
     currentSessionId,
-    handleSelectSession,
     handleOpenDrawer,
     handleCloseDrawer,
     handleDrawerOpenChange,
-    handleNewChat,
+    handleNewChatClick,
+    handleSessionClick,
     hasNextPage,
     isFetchingNextPage,
     fetchNextPage,
-    isReadyToShowContent,
   } = useCopilotShell();
 
   if (!isLoggedIn) {
     return (
       <div className="flex h-full items-center justify-center">
-        <LoadingSpinner size="large" />
+        <ChatLoader />
       </div>
     );
   }
@@ -53,9 +53,9 @@ export function CopilotShell({ children }: Props) {
           isLoading={isLoading}
           hasNextPage={hasNextPage}
           isFetchingNextPage={isFetchingNextPage}
-          onSelectSession={handleSelectSession}
+          onSelectSession={handleSessionClick}
           onFetchNextPage={fetchNextPage}
-          onNewChat={handleNewChat}
+          onNewChat={handleNewChatClick}
           hasActiveSession={Boolean(hasActiveSession)}
         />
       )}
@@ -63,7 +63,18 @@ export function CopilotShell({ children }: Props) {
       <div className="relative flex min-h-0 flex-1 flex-col">
         {isMobile && <MobileHeader onOpenDrawer={handleOpenDrawer} />}
         <div className="flex min-h-0 flex-1 flex-col">
-          {isReadyToShowContent ? children : <LoadingState />}
+          {isCreatingSession ? (
+            <div className="flex h-full flex-1 flex-col items-center justify-center bg-[#f8f8f9]">
+              <div className="flex flex-col items-center gap-4">
+                <ChatLoader />
+                <Text variant="body" className="text-zinc-500">
+                  Creating your chat...
+                </Text>
+              </div>
+            </div>
+          ) : (
+            children
+          )}
         </div>
       </div>
 
@@ -75,9 +86,9 @@ export function CopilotShell({ children }: Props) {
           isLoading={isLoading}
           hasNextPage={hasNextPage}
           isFetchingNextPage={isFetchingNextPage}
-          onSelectSession={handleSelectSession}
+          onSelectSession={handleSessionClick}
           onFetchNextPage={fetchNextPage}
-          onNewChat={handleNewChat}
+          onNewChat={handleNewChatClick}
           onClose={handleCloseDrawer}
           onOpenChange={handleDrawerOpenChange}
           hasActiveSession={Boolean(hasActiveSession)}

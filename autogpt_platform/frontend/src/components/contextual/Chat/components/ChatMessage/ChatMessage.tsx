@@ -7,7 +7,6 @@ import {
   ArrowsClockwiseIcon,
   CheckCircleIcon,
   CheckIcon,
-  CopyIcon,
 } from "@phosphor-icons/react";
 import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
@@ -15,7 +14,9 @@ import { AgentCarouselMessage } from "../AgentCarouselMessage/AgentCarouselMessa
 import { AIChatBubble } from "../AIChatBubble/AIChatBubble";
 import { AuthPromptWidget } from "../AuthPromptWidget/AuthPromptWidget";
 import { ChatCredentialsSetup } from "../ChatCredentialsSetup/ChatCredentialsSetup";
+import { ClarificationQuestionsWidget } from "../ClarificationQuestionsWidget/ClarificationQuestionsWidget";
 import { ExecutionStartedMessage } from "../ExecutionStartedMessage/ExecutionStartedMessage";
+import { PendingOperationWidget } from "../PendingOperationWidget/PendingOperationWidget";
 import { MarkdownContent } from "../MarkdownContent/MarkdownContent";
 import { NoResultsMessage } from "../NoResultsMessage/NoResultsMessage";
 import { ToolCallMessage } from "../ToolCallMessage/ToolCallMessage";
@@ -70,6 +71,10 @@ export function ChatMessage({
     isToolResponse,
     isLoginNeeded,
     isCredentialsNeeded,
+    isClarificationNeeded,
+    isOperationStarted,
+    isOperationPending,
+    isOperationInProgress,
   } = useChatMessage(message);
   const displayContent = getDisplayContent(message, isUser);
 
@@ -97,6 +102,18 @@ export function ChatMessage({
     }
   }
 
+  function handleClarificationAnswers(answers: Record<string, string>) {
+    if (onSendMessage) {
+      const contextMessage = Object.entries(answers)
+        .map(([keyword, answer]) => `${keyword}: ${answer}`)
+        .join("\n");
+
+      onSendMessage(
+        `I have the answers to your questions:\n\n${contextMessage}\n\nPlease proceed with creating the agent.`,
+      );
+    }
+  }
+
   const handleCopy = useCallback(
     async function handleCopy() {
       if (message.type !== "message") return;
@@ -112,10 +129,6 @@ export function ChatMessage({
     },
     [displayContent, message],
   );
-
-  function isLongResponse(content: string): boolean {
-    return content.split("\n").length > 5;
-  }
 
   const handleTryAgain = useCallback(() => {
     if (message.type !== "message" || !onSendMessage) return;
@@ -137,6 +150,17 @@ export function ChatMessage({
         message={message.message}
         onAllCredentialsComplete={handleAllCredentialsComplete}
         onCancel={handleCancelCredentials}
+        className={className}
+      />
+    );
+  }
+
+  if (isClarificationNeeded && message.type === "clarification_needed") {
+    return (
+      <ClarificationQuestionsWidget
+        questions={message.questions}
+        message={message.message}
+        onSubmitAnswers={handleClarificationAnswers}
         className={className}
       />
     );
@@ -270,6 +294,42 @@ export function ChatMessage({
     );
   }
 
+  // Render operation_started messages (long-running background operations)
+  if (isOperationStarted && message.type === "operation_started") {
+    return (
+      <PendingOperationWidget
+        status="started"
+        message={message.message}
+        toolName={message.toolName}
+        className={className}
+      />
+    );
+  }
+
+  // Render operation_pending messages (operations in progress when refreshing)
+  if (isOperationPending && message.type === "operation_pending") {
+    return (
+      <PendingOperationWidget
+        status="pending"
+        message={message.message}
+        toolName={message.toolName}
+        className={className}
+      />
+    );
+  }
+
+  // Render operation_in_progress messages (duplicate request while operation running)
+  if (isOperationInProgress && message.type === "operation_in_progress") {
+    return (
+      <PendingOperationWidget
+        status="in_progress"
+        message={message.message}
+        toolName={message.toolName}
+        className={className}
+      />
+    );
+  }
+
   // Render tool response messages (but skip agent_output if it's being rendered inside assistant message)
   if (isToolResponse && message.type === "tool_response") {
     return (
@@ -334,17 +394,32 @@ export function ChatMessage({
                   <ArrowsClockwiseIcon className="size-4 text-zinc-600" />
                 </Button>
               )}
-              {!isUser && isFinalMessage && isLongResponse(displayContent) && (
+              {!isUser && isFinalMessage && !isStreaming && (
                 <Button
                   variant="ghost"
                   size="icon"
                   onClick={handleCopy}
                   aria-label="Copy message"
+                  className="p-1"
                 >
                   {copied ? (
                     <CheckIcon className="size-4 text-green-600" />
                   ) : (
-                    <CopyIcon className="size-4 text-zinc-600" />
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="24"
+                      height="24"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="size-3 text-zinc-600"
+                    >
+                      <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
+                      <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+                    </svg>
                   )}
                 </Button>
               )}

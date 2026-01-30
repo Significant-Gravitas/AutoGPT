@@ -11,7 +11,6 @@ test.describe("Marketplace – Navigation", () => {
 
     const firstFeaturedAgent =
       await marketplacePage.getFirstFeaturedAgent(page);
-    await firstFeaturedAgent.waitFor({ state: "visible" });
     await firstFeaturedAgent.click();
     await page.waitForURL("**/marketplace/agent/**");
     await matchesUrl(page, /\/marketplace\/agent\/.+/);
@@ -50,7 +49,15 @@ test.describe("Marketplace – Navigation", () => {
     const searchTerm = page.getByText("DummyInput").first();
     await isVisible(searchTerm);
 
-    await page.waitForTimeout(10000);
+    await page.waitForLoadState("networkidle").catch(() => {});
+
+    await page
+      .waitForFunction(
+        () =>
+          document.querySelectorAll('[data-testid="store-card"]').length > 0,
+        { timeout: 15000 },
+      )
+      .catch(() => console.log("No search results appeared within timeout"));
 
     const results = await marketplacePage.getSearchResultsCount(page);
     expect(results).toBeGreaterThan(0);

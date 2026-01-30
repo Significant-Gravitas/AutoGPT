@@ -1,5 +1,6 @@
 import type { SessionDetailResponse } from "@/app/api/__generated__/models/sessionDetailResponse";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useChatStore } from "../../chat-store";
 import { toast } from "sonner";
 import { useChatStream } from "../../useChatStream";
 import { usePageContext } from "../../usePageContext";
@@ -9,23 +10,44 @@ import {
   createUserMessage,
   filterAuthMessages,
   hasSentInitialPrompt,
-  isToolCallArray,
-  isValidMessage,
   markInitialPromptSent,
-  parseToolResponse,
-  removePageContext,
+  processInitialMessages,
 } from "./helpers";
+
+// Helper to generate deduplication key for a message
+function getMessageKey(msg: ChatMessageData): string {
+  if (msg.type === "message") {
+    // Don't include timestamp - dedupe by role + content only
+    // This handles the case where local and server timestamps differ
+    // Server messages are authoritative, so duplicates from local state are filtered
+    return `msg:${msg.role}:${msg.content}`;
+  } else if (msg.type === "tool_call") {
+    return `toolcall:${msg.toolId}`;
+  } else if (msg.type === "tool_response") {
+    return `toolresponse:${(msg as any).toolId}`;
+  } else if (
+    msg.type === "operation_started" ||
+    msg.type === "operation_pending" ||
+    msg.type === "operation_in_progress"
+  ) {
+    return `op:${(msg as any).toolId || (msg as any).operationId || (msg as any).toolCallId || ""}:${msg.toolName}`;
+  } else {
+    return `${msg.type}:${JSON.stringify(msg).slice(0, 100)}`;
+  }
+}
 
 interface Args {
   sessionId: string | null;
   initialMessages: SessionDetailResponse["messages"];
   initialPrompt?: string;
+  onOperationStarted?: () => void;
 }
 
 export function useChatContainer({
   sessionId,
   initialMessages,
   initialPrompt,
+  onOperationStarted,
 }: Args) {
   const [messages, setMessages] = useState<ChatMessageData[]>([]);
   const [streamingChunks, setStreamingChunks] = useState<string[]>([]);
@@ -41,11 +63,18 @@ export function useChatContainer({
     sendMessage: sendStreamMessage,
     stopStreaming,
   } = useChatStream();
+  const activeStreams = useChatStore((s) => s.activeStreams);
+  const subscribeToStream = useChatStore((s) => s.subscribeToStream);
   const isStreaming = isStreamingInitiated || hasTextChunks;
 
-  useEffect(() => {
-    if (sessionId !== previousSessionIdRef.current) {
-      stopStreaming(previousSessionIdRef.current ?? undefined, true);
+  useEffect(
+    function handleSessionChange() {
+      if (sessionId === previousSessionIdRef.current) return;
+
+      const prevSession = previousSessionIdRef.current;
+      if (prevSession) {
+        stopStreaming(prevSession);
+      }
       previousSessionIdRef.current = sessionId;
       setMessages([]);
       setStreamingChunks([]);
@@ -53,138 +82,11 @@ export function useChatContainer({
       setHasTextChunks(false);
       setIsStreamingInitiated(false);
       hasResponseRef.current = false;
-    }
-  }, [sessionId, stopStreaming]);
 
-  const allMessages = useMemo(() => {
-    const processedInitialMessages: ChatMessageData[] = [];
-    const toolCallMap = new Map<string, string>();
+      if (!sessionId) return;
 
-    for (const msg of initialMessages) {
-      if (!isValidMessage(msg)) {
-        console.warn("Invalid message structure from backend:", msg);
-        continue;
-      }
-
-      let content = String(msg.content || "");
-      const role = String(msg.role || "assistant").toLowerCase();
-      const toolCalls = msg.tool_calls;
-      const timestamp = msg.timestamp
-        ? new Date(msg.timestamp as string)
-        : undefined;
-
-      if (role === "user") {
-        content = removePageContext(content);
-        if (!content.trim()) continue;
-        processedInitialMessages.push({
-          type: "message",
-          role: "user",
-          content,
-          timestamp,
-        });
-        continue;
-      }
-
-      if (role === "assistant") {
-        content = content
-          .replace(/<thinking>[\s\S]*?<\/thinking>/gi, "")
-          .trim();
-
-        if (toolCalls && isToolCallArray(toolCalls) && toolCalls.length > 0) {
-          for (const toolCall of toolCalls) {
-            const toolName = toolCall.function.name;
-            const toolId = toolCall.id;
-            toolCallMap.set(toolId, toolName);
-
-            try {
-              const args = JSON.parse(toolCall.function.arguments || "{}");
-              processedInitialMessages.push({
-                type: "tool_call",
-                toolId,
-                toolName,
-                arguments: args,
-                timestamp,
-              });
-            } catch (err) {
-              console.warn("Failed to parse tool call arguments:", err);
-              processedInitialMessages.push({
-                type: "tool_call",
-                toolId,
-                toolName,
-                arguments: {},
-                timestamp,
-              });
-            }
-          }
-          if (content.trim()) {
-            processedInitialMessages.push({
-              type: "message",
-              role: "assistant",
-              content,
-              timestamp,
-            });
-          }
-        } else if (content.trim()) {
-          processedInitialMessages.push({
-            type: "message",
-            role: "assistant",
-            content,
-            timestamp,
-          });
-        }
-        continue;
-      }
-
-      if (role === "tool") {
-        const toolCallId = (msg.tool_call_id as string) || "";
-        const toolName = toolCallMap.get(toolCallId) || "unknown";
-        const toolResponse = parseToolResponse(
-          content,
-          toolCallId,
-          toolName,
-          timestamp,
-        );
-        if (toolResponse) {
-          processedInitialMessages.push(toolResponse);
-        }
-        continue;
-      }
-
-      if (content.trim()) {
-        processedInitialMessages.push({
-          type: "message",
-          role: role as "user" | "assistant" | "system",
-          content,
-          timestamp,
-        });
-      }
-    }
-
-    return [...processedInitialMessages, ...messages];
-  }, [initialMessages, messages]);
-
-  const sendMessage = useCallback(
-    async function sendMessage(
-      content: string,
-      isUserMessage: boolean = true,
-      context?: { url: string; content: string },
-    ) {
-      if (!sessionId) {
-        console.error("[useChatContainer] Cannot send message: no session ID");
-        return;
-      }
-      setIsRegionBlockedModalOpen(false);
-      if (isUserMessage) {
-        const userMessage = createUserMessage(content);
-        setMessages((prev) => [...filterAuthMessages(prev), userMessage]);
-      } else {
-        setMessages((prev) => filterAuthMessages(prev));
-      }
-      setStreamingChunks([]);
-      streamingChunksRef.current = [];
-      setHasTextChunks(false);
-      setIsStreamingInitiated(true);
-      hasResponseRef.current = false;
+      const activeStream = activeStreams.get(sessionId);
+      if (!activeStream || activeStream.status !== "streaming") return;
 
       const dispatcher = createStreamEventDispatcher({
         setHasTextChunks,
@@ -195,44 +97,170 @@ export function useChatContainer({
         setIsRegionBlockedModalOpen,
         sessionId,
         setIsStreamingInitiated,
+        onOperationStarted,
       });
 
-      try {
-        await sendStreamMessage(
-          sessionId,
-          content,
-          dispatcher,
-          isUserMessage,
-          context,
-        );
-      } catch (err) {
-        console.error("[useChatContainer] Failed to send message:", err);
-        setIsStreamingInitiated(false);
-
-        // Don't show error toast for AbortError (expected during cleanup)
-        if (err instanceof Error && err.name === "AbortError") return;
-
-        const errorMessage =
-          err instanceof Error ? err.message : "Failed to send message";
-        toast.error("Failed to send message", {
-          description: errorMessage,
-        });
-      }
+      setIsStreamingInitiated(true);
+      const skipReplay = initialMessages.length > 0;
+      return subscribeToStream(sessionId, dispatcher, skipReplay);
     },
-    [sessionId, sendStreamMessage],
+    [
+      sessionId,
+      stopStreaming,
+      activeStreams,
+      subscribeToStream,
+      onOperationStarted,
+    ],
   );
 
-  const handleStopStreaming = useCallback(() => {
+  // Collect toolIds from completed tool results in initialMessages
+  // Used to filter out operation messages when their results arrive
+  const completedToolIds = useMemo(() => {
+    const processedInitial = processInitialMessages(initialMessages);
+    const ids = new Set<string>();
+    for (const msg of processedInitial) {
+      if (
+        msg.type === "tool_response" ||
+        msg.type === "agent_carousel" ||
+        msg.type === "execution_started"
+      ) {
+        const toolId = (msg as any).toolId;
+        if (toolId) {
+          ids.add(toolId);
+        }
+      }
+    }
+    return ids;
+  }, [initialMessages]);
+
+  // Clean up local operation messages when their completed results arrive from polling
+  // This effect runs when completedToolIds changes (i.e., when polling brings new results)
+  useEffect(
+    function cleanupCompletedOperations() {
+      if (completedToolIds.size === 0) return;
+
+      setMessages((prev) => {
+        const filtered = prev.filter((msg) => {
+          if (
+            msg.type === "operation_started" ||
+            msg.type === "operation_pending" ||
+            msg.type === "operation_in_progress"
+          ) {
+            const toolId = (msg as any).toolId || (msg as any).toolCallId;
+            if (toolId && completedToolIds.has(toolId)) {
+              return false; // Remove - operation completed
+            }
+          }
+          return true;
+        });
+        // Only update state if something was actually filtered
+        return filtered.length === prev.length ? prev : filtered;
+      });
+    },
+    [completedToolIds],
+  );
+
+  // Combine initial messages from backend with local streaming messages,
+  // Server messages maintain correct order; only append truly new local messages
+  const allMessages = useMemo(() => {
+    const processedInitial = processInitialMessages(initialMessages);
+
+    // Build a set of keys from server messages for deduplication
+    const serverKeys = new Set<string>();
+    for (const msg of processedInitial) {
+      serverKeys.add(getMessageKey(msg));
+    }
+
+    // Filter local messages: remove duplicates and completed operation messages
+    const newLocalMessages = messages.filter((msg) => {
+      // Remove operation messages for completed tools
+      if (
+        msg.type === "operation_started" ||
+        msg.type === "operation_pending" ||
+        msg.type === "operation_in_progress"
+      ) {
+        const toolId = (msg as any).toolId || (msg as any).toolCallId;
+        if (toolId && completedToolIds.has(toolId)) {
+          return false;
+        }
+      }
+      // Remove messages that already exist in server data
+      const key = getMessageKey(msg);
+      return !serverKeys.has(key);
+    });
+
+    // Server messages first (correct order), then new local messages
+    return [...processedInitial, ...newLocalMessages];
+  }, [initialMessages, messages, completedToolIds]);
+
+  async function sendMessage(
+    content: string,
+    isUserMessage: boolean = true,
+    context?: { url: string; content: string },
+  ) {
+    if (!sessionId) {
+      console.error("[useChatContainer] Cannot send message: no session ID");
+      return;
+    }
+    setIsRegionBlockedModalOpen(false);
+    if (isUserMessage) {
+      const userMessage = createUserMessage(content);
+      setMessages((prev) => [...filterAuthMessages(prev), userMessage]);
+    } else {
+      setMessages((prev) => filterAuthMessages(prev));
+    }
+    setStreamingChunks([]);
+    streamingChunksRef.current = [];
+    setHasTextChunks(false);
+    setIsStreamingInitiated(true);
+    hasResponseRef.current = false;
+
+    const dispatcher = createStreamEventDispatcher({
+      setHasTextChunks,
+      setStreamingChunks,
+      streamingChunksRef,
+      hasResponseRef,
+      setMessages,
+      setIsRegionBlockedModalOpen,
+      sessionId,
+      setIsStreamingInitiated,
+      onOperationStarted,
+    });
+
+    try {
+      await sendStreamMessage(
+        sessionId,
+        content,
+        dispatcher,
+        isUserMessage,
+        context,
+      );
+    } catch (err) {
+      console.error("[useChatContainer] Failed to send message:", err);
+      setIsStreamingInitiated(false);
+
+      if (err instanceof Error && err.name === "AbortError") return;
+
+      const errorMessage =
+        err instanceof Error ? err.message : "Failed to send message";
+      toast.error("Failed to send message", {
+        description: errorMessage,
+      });
+    }
+  }
+
+  function handleStopStreaming() {
     stopStreaming();
     setStreamingChunks([]);
     streamingChunksRef.current = [];
     setHasTextChunks(false);
     setIsStreamingInitiated(false);
-  }, [stopStreaming]);
+  }
 
   const { capturePageContext } = usePageContext();
+  const sendMessageRef = useRef(sendMessage);
+  sendMessageRef.current = sendMessage;
 
-  // Send initial prompt if provided (for new sessions from homepage)
   useEffect(
     function handleInitialPrompt() {
       if (!initialPrompt || !sessionId) return;
@@ -241,15 +269,9 @@ export function useChatContainer({
 
       markInitialPromptSent(sessionId);
       const context = capturePageContext();
-      sendMessage(initialPrompt, true, context);
+      sendMessageRef.current(initialPrompt, true, context);
     },
-    [
-      initialPrompt,
-      sessionId,
-      initialMessages.length,
-      sendMessage,
-      capturePageContext,
-    ],
+    [initialPrompt, sessionId, initialMessages.length, capturePageContext],
   );
 
   async function sendMessageWithContext(

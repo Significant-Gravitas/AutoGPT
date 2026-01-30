@@ -61,6 +61,7 @@ export type ChatMessageData =
     }
   | {
       type: "agent_carousel";
+      toolId: string;
       toolName: string;
       agents: Array<{
         id: string;
@@ -74,6 +75,7 @@ export type ChatMessageData =
     }
   | {
       type: "execution_started";
+      toolId: string;
       toolName: string;
       executionId: string;
       agentName?: string;
@@ -89,6 +91,41 @@ export type ChatMessageData =
       graphVersion?: number;
       inputSchema: Record<string, any>;
       credentialsSchema?: Record<string, any>;
+      message: string;
+      timestamp?: string | Date;
+    }
+  | {
+      type: "clarification_needed";
+      toolName: string;
+      questions: Array<{
+        question: string;
+        keyword: string;
+        example?: string;
+      }>;
+      message: string;
+      sessionId: string;
+      timestamp?: string | Date;
+    }
+  | {
+      type: "operation_started";
+      toolName: string;
+      toolId: string;
+      operationId: string;
+      message: string;
+      timestamp?: string | Date;
+    }
+  | {
+      type: "operation_pending";
+      toolName: string;
+      toolId: string;
+      operationId: string;
+      message: string;
+      timestamp?: string | Date;
+    }
+  | {
+      type: "operation_in_progress";
+      toolName: string;
+      toolCallId: string;
       message: string;
       timestamp?: string | Date;
     };
@@ -111,5 +148,9 @@ export function useChatMessage(message: ChatMessageData) {
     isAgentCarousel: message.type === "agent_carousel",
     isExecutionStarted: message.type === "execution_started",
     isInputsNeeded: message.type === "inputs_needed",
+    isClarificationNeeded: message.type === "clarification_needed",
+    isOperationStarted: message.type === "operation_started",
+    isOperationPending: message.type === "operation_pending",
+    isOperationInProgress: message.type === "operation_in_progress",
   };
 }

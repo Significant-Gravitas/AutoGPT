@@ -111,6 +111,71 @@ Follow these steps to create and test a new block:
      - `graph_exec_id`: The ID of the execution of the agent. This changes every time the agent has a new "run"
      - `node_exec_id`: The ID of the execution of the node. This changes every time the node is executed
      - `node_id`: The ID of the node that is being executed. It changes every version of the graph, but not every time the node is executed.
+     - `execution_context`: An `ExecutionContext` object containing user_id, graph_exec_id, workspace_id, and session_id. Required for file handling.
+
+### Handling Files in Blocks
+
+When your block needs to work with files (images, videos, documents), use `store_media_file()` from `backend.util.file`. This function handles downloading, validation, virus scanning, and storage.
+
+**Import:**
+```python
+from backend.data.execution import ExecutionContext
+from backend.util.file import store_media_file
+from backend.util.type import MediaFileType
+```
+
+**The `return_format` parameter determines what you get back:**
+
+| Format | Use When | Returns |
+|--------|----------|---------|
+| `"for_local_processing"` | Processing with local tools (ffmpeg, MoviePy, PIL) | Local file path (e.g., `"image.png"`) |
+| `"for_external_api"` | Sending content to external APIs (Replicate, OpenAI) | Data URI (e.g., `"data:image/png;base64,..."`) |
+| `"for_block_output"` | Returning output from your block | Smart: `workspace://` in CoPilot, data URI in graphs |
+
+**Examples:**
+
+```python
+async def run(
+    self,
+    input_data: Input,
+    *,
+    execution_context: ExecutionContext,
+    **kwargs,
+) -> BlockOutput:
+    # PROCESSING: Need to work with file locally (ffmpeg, MoviePy, PIL)
+    local_path = await store_media_file(
+        file=input_data.video,
+        execution_context=execution_context,
+        return_format="for_local_processing",
+    )
+    # local_path = "video.mp4" - use with Path, ffmpeg, subprocess, etc.
+    full_path = get_exec_file_path(execution_context.graph_exec_id, local_path)
+
+    # EXTERNAL API: Need to send content to an API like Replicate
+    image_b64 = await store_media_file(
+        file=input_data.image,
+        execution_context=execution_context,
+        return_format="for_external_api",
+    )
+    # image_b64 = "data:image/png;base64,iVBORw0..." - send to external API
+
+    # OUTPUT: Returning result from block to user/next block
+    result_url = await store_media_file(
+        file=generated_image_url,
+        execution_context=execution_context,
+        return_format="for_block_output",
+    )
+    yield "image_url", result_url
+    # In CoPilot: result_url = "workspace://abc123" (persistent, context-efficient)
+    # In graphs:  result_url = "data:image/png;base64,..." (for next block/display)
+```
+
+**Key points:**
+
+- `for_block_output` is the **only** format that auto-adapts to execution context
+- Always use `for_block_output` for block outputs unless you have a specific reason not to
+- Never manually check for `workspace_id` - let `for_block_output` handle the logic
+- The function handles URLs, data URIs, `workspace://` references, and local paths as input
 
 ### Field Types
 

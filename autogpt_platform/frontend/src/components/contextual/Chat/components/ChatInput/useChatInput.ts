@@ -1,6 +1,12 @@
-import { KeyboardEvent, useCallback, useEffect, useState } from "react";
+import {
+  ChangeEvent,
+  FormEvent,
+  KeyboardEvent,
+  useEffect,
+  useState,
+} from "react";
 
-interface UseChatInputArgs {
+interface Args {
   onSend: (message: string) => void;
   disabled?: boolean;
   maxRows?: number;
@@ -12,9 +18,26 @@ export function useChatInput({
   disabled = false,
   maxRows = 5,
   inputId = "chat-input",
-}: UseChatInputArgs) {
+}: Args) {
   const [value, setValue] = useState("");
   const [hasMultipleLines, setHasMultipleLines] = useState(false);
+
+  useEffect(
+    function focusOnMount() {
+      const textarea = document.getElementById(inputId) as HTMLTextAreaElement;
+      if (textarea) textarea.focus();
+    },
+    [inputId],
+  );
+
+  useEffect(
+    function focusWhenEnabled() {
+      if (disabled) return;
+      const textarea = document.getElementById(inputId) as HTMLTextAreaElement;
+      if (textarea) textarea.focus();
+    },
+    [disabled, inputId],
+  );
 
   useEffect(() => {
     const textarea = document.getElementById(inputId) as HTMLTextAreaElement;
@@ -77,7 +100,7 @@ export function useChatInput({
     }
   }, [value, maxRows, inputId]);
 
-  const handleSend = useCallback(() => {
+  const handleSend = () => {
     if (disabled || !value.trim()) return;
     onSend(value.trim());
     setValue("");
@@ -93,23 +116,31 @@ export function useChatInput({
       wrapper.style.height = "";
       wrapper.style.maxHeight = "";
     }
-  }, [value, onSend, disabled, inputId]);
+  };
 
-  const handleKeyDown = useCallback(
-    (event: KeyboardEvent<HTMLTextAreaElement>) => {
-      if (event.key === "Enter" && !event.shiftKey) {
-        event.preventDefault();
-        handleSend();
-      }
-    },
-    [handleSend],
-  );
+  function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      handleSend();
+    }
+  }
+
+  function handleSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    handleSend();
+  }
+
+  function handleChange(e: ChangeEvent<HTMLTextAreaElement>) {
+    setValue(e.target.value);
+  }
 
   return {
     value,
     setValue,
     handleKeyDown,
     handleSend,
+    handleSubmit,
+    handleChange,
     hasMultipleLines,
   };
 }
