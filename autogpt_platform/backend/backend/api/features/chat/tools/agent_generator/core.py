@@ -6,7 +6,6 @@ import uuid
 from typing import Any, TypedDict
 
 from backend.api.features.library import db as library_db
-from backend.api.features.library import model as library_model
 from backend.api.features.store import db as store_db
 from backend.data.graph import (
     Graph,
@@ -184,50 +183,39 @@ async def get_library_agents_for_generation(
     search_query: str | None = None,
     exclude_graph_id: str | None = None,
     max_results: int = 15,
-    exclude_error_status: bool = True,
 ) -> list[LibraryAgentSummary]:
     """Fetch user's library agents formatted for Agent Generator.
 
     Uses search-based fetching to return relevant agents instead of all agents.
     This is more scalable for users with large libraries.
 
-    Quality filtering: By default, excludes agents with ERROR status to avoid
-    recommending broken or draft agents for sub-agent composition.
-
     Args:
         user_id: The user ID
         search_query: Optional search term to find relevant agents (user's goal/description)
         exclude_graph_id: Optional graph ID to exclude (prevents circular references)
         max_results: Maximum number of agents to return (default 15)
-        exclude_error_status: Filter out agents with ERROR status (default True)
 
     Returns:
         List of LibraryAgentSummary with schemas for sub-agent composition
+
+    Note:
+        Future enhancement: Add quality filtering based on execution success rate
+        or correctness_score from AgentGraphExecution stats. The current
+        LibraryAgentStatus.ERROR is too aggressive (1 failed run = ERROR).
+        Better approach: filter by success rate (e.g., >50% successful runs)
+        or require at least 1 successful execution.
     """
     try:
-        # Fetch more than needed to account for filtered out agents
-        fetch_size = max_results * 2 if exclude_error_status else max_results
         response = await library_db.list_library_agents(
             user_id=user_id,
             search_term=search_query,
             page=1,
-            page_size=fetch_size,
+            page_size=max_results,
         )
 
         results: list[LibraryAgentSummary] = []
         for agent in response.agents:
-            if len(results) >= max_results:
-                break
-
             if exclude_graph_id is not None and agent.graph_id == exclude_graph_id:
-                continue
-
-            # Quality filter: skip agents in ERROR state (broken/draft agents)
-            if (
-                exclude_error_status
-                and agent.status == library_model.LibraryAgentStatus.ERROR
-            ):
-                logger.debug(f"Skipping agent '{agent.name}' due to ERROR status")
                 continue
 
             results.append(
