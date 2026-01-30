@@ -8,7 +8,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { useState } from "react";
 import { StoreAgent } from "@/lib/autogpt-server-api";
 
 interface FeaturedStoreCardProps {
@@ -20,14 +19,10 @@ export const FeaturedAgentCard: React.FC<FeaturedStoreCardProps> = ({
   agent,
   backgroundColor,
 }) => {
-  const [isHovered, setIsHovered] = useState(false);
-
   return (
     <Card
       data-testid="featured-store-card"
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-      className={`flex h-full flex-col ${backgroundColor} rounded-[1.5rem] border-none`}
+      className={`group flex h-full flex-col ${backgroundColor} rounded-[1.5rem] border-none`}
     >
       <CardHeader>
         <CardTitle className="line-clamp-2 text-base sm:text-xl">
@@ -44,15 +39,9 @@ export const FeaturedAgentCard: React.FC<FeaturedStoreCardProps> = ({
             alt={`${agent.agent_name} preview`}
             fill
             sizes="100%"
-            className={`object-cover transition-opacity duration-200 ${
-              isHovered ? "opacity-0" : "opacity-100"
-            }`}
+            className="object-cover opacity-100 transition-opacity duration-200 group-hover:opacity-0"
           />
-          <div
-            className={`absolute inset-0 overflow-y-auto p-4 transition-opacity duration-200 ${
-              isHovered ? "opacity-100" : "opacity-0"
-            }`}
-          >
+          <div className="absolute inset-0 overflow-y-auto p-4 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
             <CardDescription className="line-clamp-[6] text-xs sm:line-clamp-[8] sm:text-sm">
               {agent.description}
             </CardDescription>
