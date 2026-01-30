@@ -17,10 +17,10 @@ if TYPE_CHECKING:
 
 
 class LibraryAgentStatus(str, Enum):
-    COMPLETED = "COMPLETED"  # All runs completed
-    HEALTHY = "HEALTHY"  # Agent is running (not all runs have completed)
-    WAITING = "WAITING"  # Agent is queued or waiting to start
-    ERROR = "ERROR"  # Agent is in an error state
+    COMPLETED = "COMPLETED"
+    HEALTHY = "HEALTHY"
+    WAITING = "WAITING"
+    ERROR = "ERROR"
 
 
 class MarketplaceListingCreator(pydantic.BaseModel):
@@ -73,7 +73,7 @@ class LibraryAgent(pydantic.BaseModel):
     id: str
     graph_id: str
     graph_version: int
-    owner_user_id: str  # ID of user who owns/created this agent graph
+    owner_user_id: str
 
     image_url: str | None
 
@@ -89,7 +89,7 @@ class LibraryAgent(pydantic.BaseModel):
     description: str
     instructions: str | None = None
 
-    input_schema: dict[str, Any]  # Should be BlockIOObjectSubSchema in frontend
+    input_schema: dict[str, Any]
     output_schema: dict[str, Any]
     credentials_input_schema: dict[str, Any] | None = pydantic.Field(
         description="Input schema for credentials required by the agent",

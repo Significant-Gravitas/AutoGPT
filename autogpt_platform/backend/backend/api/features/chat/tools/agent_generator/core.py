@@ -254,6 +254,8 @@ async def get_library_agents_for_generation(
                 summary["recent_executions"] = exec_summaries
             results.append(summary)
         return results
+    except DatabaseError:
+        raise
     except Exception as e:
         logger.warning(f"Failed to fetch library agents: {e}")
         return []
