@@ -681,7 +681,9 @@ def generate_summary_md(
         if nested_files is not None:
             # Provider group with nested files
             lines.append(f"* {title}")
-            for file_title, file_link, _ in sorted(nested_files, key=lambda x: x[0].lower()):
+            for file_title, file_link, _ in sorted(
+                nested_files, key=lambda x: x[0].lower()
+            ):
                 lines.append(f"  * [{file_title}]({file_link})")
         else:
             # Standalone file
