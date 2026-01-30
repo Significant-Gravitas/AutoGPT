@@ -11,12 +11,14 @@ export function useLibrarySortMenu({ setLibrarySort }: Props) {
 
   const getSortLabel = (sort: LibraryAgentSort) => {
     switch (sort) {
+      case LibraryAgentSort.lastExecuted:
+        return "Last Executed";
       case LibraryAgentSort.createdAt:
         return "Creation Date";
       case LibraryAgentSort.updatedAt:
         return "Last Modified";
       default:
-        return "Last Modified";
+        return "Last Executed";
     }
   };
 
