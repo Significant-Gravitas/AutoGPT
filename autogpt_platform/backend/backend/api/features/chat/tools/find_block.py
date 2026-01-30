@@ -13,9 +13,27 @@ from backend.api.features.chat.tools.models import (
     NoResultsResponse,
 )
 from backend.api.features.store.hybrid_search import unified_hybrid_search
-from backend.data.block import get_block
+from backend.data.block import BlockType, get_block
 
 logger = logging.getLogger(__name__)
+
+# Blocks excluded from CoPilot standalone execution
+# NOTE: This does NOT affect the Builder UI which uses load_all_blocks() directly
+EXCLUDED_BLOCK_TYPES = {
+    BlockType.INPUT,  # Graph interface definition - data enters via chat, not graph inputs
+    BlockType.OUTPUT,  # Graph interface definition - data exits via chat, not graph outputs
+    BlockType.WEBHOOK,  # Wait for external events - would hang forever in CoPilot
+    BlockType.WEBHOOK_MANUAL,  # Same as WEBHOOK
+    BlockType.NOTE,  # Visual annotation only - no runtime behavior
+    BlockType.HUMAN_IN_THE_LOOP,  # Pauses for human approval - CoPilot IS human-in-the-loop
+    BlockType.AGENT,  # AgentExecutorBlock requires execution_context - use run_agent tool
+}
+
+# Blocks that have STANDARD/other types but still require graph context
+EXCLUDED_BLOCK_IDS = {
+    # SmartDecisionMakerBlock - dynamically discovers downstream blocks via graph topology
+    "3b191d9f-356f-482d-8238-ba04b6d18381",
+}
 
 
 class FindBlockTool(BaseTool):
@@ -108,60 +126,69 @@ class FindBlockTool(BaseTool):
                 block = get_block(block_id)
 
                 # Skip disabled blocks
-                if block and not block.disabled:
-                    # Get input/output schemas
-                    input_schema = {}
-                    output_schema = {}
-                    try:
-                        input_schema = block.input_schema.jsonschema()
-                    except Exception:
-                        pass
-                    try:
-                        output_schema = block.output_schema.jsonschema()
-                    except Exception:
-                        pass
+                if not block or block.disabled:
+                    continue
 
-                    # Get categories from block instance
-                    categories = []
-                    if hasattr(block, "categories") and block.categories:
-                        categories = [cat.value for cat in block.categories]
+                # Skip blocks excluded from CoPilot (graph-only blocks)
+                if (
+                    block.block_type in EXCLUDED_BLOCK_TYPES
+                    or block.id in EXCLUDED_BLOCK_IDS
+                ):
+                    continue
 
-                    # Extract required inputs for easier use
-                    required_inputs: list[BlockInputFieldInfo] = []
-                    if input_schema:
-                        properties = input_schema.get("properties", {})
-                        required_fields = set(input_schema.get("required", []))
-                        # Get credential field names to exclude from required inputs
-                        credentials_fields = set(
-                            block.input_schema.get_credentials_fields().keys()
-                        )
+                # Get input/output schemas
+                input_schema = {}
+                output_schema = {}
+                try:
+                    input_schema = block.input_schema.jsonschema()
+                except Exception:
+                    pass
+                try:
+                    output_schema = block.output_schema.jsonschema()
+                except Exception:
+                    pass
 
-                        for field_name, field_schema in properties.items():
-                            # Skip credential fields - they're handled separately
-                            if field_name in credentials_fields:
-                                continue
+                # Get categories from block instance
+                categories = []
+                if hasattr(block, "categories") and block.categories:
+                    categories = [cat.value for cat in block.categories]
 
-                            required_inputs.append(
-                                BlockInputFieldInfo(
-                                    name=field_name,
-                                    type=field_schema.get("type", "string"),
-                                    description=field_schema.get("description", ""),
-                                    required=field_name in required_fields,
-                                    default=field_schema.get("default"),
-                                )
-                            )
-
-                    blocks.append(
-                        BlockInfoSummary(
-                            id=block_id,
-                            name=block.name,
-                            description=block.description or "",
-                            categories=categories,
-                            input_schema=input_schema,
-                            output_schema=output_schema,
-                            required_inputs=required_inputs,
-                        )
+                # Extract required inputs for easier use
+                required_inputs: list[BlockInputFieldInfo] = []
+                if input_schema:
+                    properties = input_schema.get("properties", {})
+                    required_fields = set(input_schema.get("required", []))
+                    # Get credential field names to exclude from required inputs
+                    credentials_fields = set(
+                        block.input_schema.get_credentials_fields().keys()
                     )
+
+                    for field_name, field_schema in properties.items():
+                        # Skip credential fields - they're handled separately
+                        if field_name in credentials_fields:
+                            continue
+
+                        required_inputs.append(
+                            BlockInputFieldInfo(
+                                name=field_name,
+                                type=field_schema.get("type", "string"),
+                                description=field_schema.get("description", ""),
+                                required=field_name in required_fields,
+                                default=field_schema.get("default"),
+                            )
+                        )
+
+                blocks.append(
+                    BlockInfoSummary(
+                        id=block_id,
+                        name=block.name,
+                        description=block.description or "",
+                        categories=categories,
+                        input_schema=input_schema,
+                        output_schema=output_schema,
+                        required_inputs=required_inputs,
+                    )
+                )
 
             if not blocks:
                 return NoResultsResponse(
