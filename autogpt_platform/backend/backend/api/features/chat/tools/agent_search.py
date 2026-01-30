@@ -46,7 +46,6 @@ async def _get_library_agent_by_id(user_id: str, agent_id: str) -> AgentInfo | N
     Returns:
         AgentInfo if found, None otherwise
     """
-    # Try 1: Look up by graph_id
     try:
         agent = await library_db.get_library_agent_by_graph_id(user_id, agent_id)
         if agent:
@@ -64,10 +63,14 @@ async def _get_library_agent_by_id(user_id: str, agent_id: str) -> AgentInfo | N
                 new_output=agent.new_output,
                 graph_id=agent.graph_id,
             )
+    except DatabaseError:
+        raise
     except Exception as e:
-        logger.debug(f"Could not fetch library agent by graph_id {agent_id}: {e}")
+        logger.warning(
+            f"Could not fetch library agent by graph_id {agent_id}: {e}",
+            exc_info=True,
+        )
 
-    # Try 2: Look up by library agent ID (primary key)
     try:
         agent = await library_db.get_library_agent(agent_id, user_id)
         if agent:
@@ -87,8 +90,13 @@ async def _get_library_agent_by_id(user_id: str, agent_id: str) -> AgentInfo | N
             )
     except NotFoundError:
         logger.debug(f"Library agent not found by library_id: {agent_id}")
+    except DatabaseError:
+        raise
     except Exception as e:
-        logger.debug(f"Could not fetch library agent by library_id {agent_id}: {e}")
+        logger.warning(
+            f"Could not fetch library agent by library_id {agent_id}: {e}",
+            exc_info=True,
+        )
 
     return None
 

@@ -27,11 +27,6 @@ from .service import (
 logger = logging.getLogger(__name__)
 
 
-# =============================================================================
-# Type Definitions
-# =============================================================================
-
-
 class LibraryAgentSummary(TypedDict):
     """Summary of a library agent for sub-agent composition."""
 
@@ -105,7 +100,6 @@ def _check_service_configured() -> None:
         )
 
 
-# UUID v4 pattern for extracting agent IDs from text
 _UUID_PATTERN = re.compile(
     r"[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}",
     re.IGNORECASE,
@@ -122,7 +116,6 @@ def extract_uuids_from_text(text: str) -> list[str]:
         List of unique UUIDs found in the text (lowercase)
     """
     matches = _UUID_PATTERN.findall(text)
-    # Deduplicate and normalize to lowercase
     return list({m.lower() for m in matches})
 
 
@@ -146,7 +139,6 @@ async def get_library_agent_by_id(
     Returns:
         LibraryAgentSummary if found, None otherwise
     """
-    # Try 1: Look up by graph_id
     try:
         agent = await library_db.get_library_agent_by_graph_id(user_id, agent_id)
         if agent:
@@ -162,7 +154,6 @@ async def get_library_agent_by_id(
     except Exception as e:
         logger.debug(f"Could not fetch library agent by graph_id {agent_id}: {e}")
 
-    # Try 2: Look up by library agent ID (primary key)
     try:
         agent = await library_db.get_library_agent(agent_id, user_id)
         if agent:
@@ -308,8 +299,6 @@ async def get_all_relevant_agents_for_generation(
     agents: list[AgentSummary] = []
     seen_graph_ids: set[str] = set()
 
-    # Extract UUIDs from search_query and fetch those agents directly
-    # This ensures explicitly referenced agents are always included
     if search_query:
         mentioned_uuids = extract_uuids_from_text(search_query)
         for graph_id in mentioned_uuids:
@@ -321,7 +310,6 @@ async def get_all_relevant_agents_for_generation(
                 seen_graph_ids.add(agent["graph_id"])
                 logger.debug(f"Found explicitly mentioned agent: {agent['name']}")
 
-    # Get library agents via search (these have full schemas)
     library_agents = await get_library_agents_for_generation(
         user_id=user_id,
         search_query=search_query,
@@ -333,16 +321,15 @@ async def get_all_relevant_agents_for_generation(
             agents.append(agent)
             seen_graph_ids.add(agent["graph_id"])
 
-    # Optionally add marketplace agents
     if include_marketplace and search_query:
         marketplace_agents = await search_marketplace_agents_for_generation(
             search_query=search_query,
             max_results=max_marketplace_results,
         )
-        # Add marketplace agents that aren't already in library (by name)
-        library_names = {a["name"].lower() for a in agents if "name" in a}
+        library_names = {a["name"].lower() for a in agents if a.get("name")}
         for agent in marketplace_agents:
-            if agent["name"].lower() not in library_names:
+            agent_name = agent.get("name")
+            if agent_name and agent_name.lower() not in library_names:
                 agents.append(agent)
 
     return agents
@@ -364,7 +351,6 @@ def extract_search_terms_from_steps(
     """
     search_terms: list[str] = []
 
-    # Handle instructions type (contains steps)
     if decomposition_result.get("type") != "instructions":
         return search_terms
 
@@ -372,17 +358,14 @@ def extract_search_terms_from_steps(
     if not steps:
         return search_terms
 
-    # Keys that might contain useful search terms in DecompositionStep
     step_keys: list[str] = ["description", "action", "block_name", "tool", "name"]
 
     for step in steps:
-        # Extract text values from step dictionary
         for key in step_keys:
             value = step.get(key)  # type: ignore[union-attr]
-            if value and len(value) > 3:
+            if isinstance(value, str) and len(value) > 3:
                 search_terms.append(value)
 
-    # Deduplicate while preserving order
     seen: set[str] = set()
     unique_terms: list[str] = []
     for term in search_terms:
@@ -424,23 +407,19 @@ async def enrich_library_agents_from_steps(
     if not search_terms:
         return existing_agents
 
-    # Track existing agent IDs and names to avoid duplicates
-    # graph_id is only present in LibraryAgentSummary, not MarketplaceAgentSummary
     existing_ids: set[str] = set()
     existing_names: set[str] = set()
 
     for agent in existing_agents:
-        # All agent summaries have 'name'
-        existing_names.add(agent["name"].lower())
-        # Only library agents have 'graph_id'
+        agent_name = agent.get("name", "")
+        if agent_name:
+            existing_names.add(agent_name.lower())
         graph_id = agent.get("graph_id")  # type: ignore[call-overload]
         if graph_id:
             existing_ids.add(graph_id)
 
     all_agents: list[AgentSummary] | list[dict[str, Any]] = list(existing_agents)
 
-    # Search for additional agents using step-derived terms
-    # Limit to first 3 search terms to avoid too many API calls
     for term in search_terms[:3]:
         try:
             additional_agents = await get_all_relevant_agents_for_generation(
@@ -449,29 +428,28 @@ async def enrich_library_agents_from_steps(
                 exclude_graph_id=exclude_graph_id,
                 include_marketplace=include_marketplace,
                 max_library_results=max_additional_results,
-                max_marketplace_results=5,  # Smaller limit for step-based searches
+                max_marketplace_results=5,
             )
 
-            # Add only new agents (deduplicate by graph_id and name)
             for agent in additional_agents:
-                agent_name = agent["name"].lower()
+                agent_name = agent.get("name", "")
+                if not agent_name:
+                    continue
+                agent_name_lower = agent_name.lower()
 
-                # Skip if already have this agent by name
-                if agent_name in existing_names:
+                if agent_name_lower in existing_names:
                     continue
 
-                # Also check by graph_id for library agents
                 graph_id = agent.get("graph_id")  # type: ignore[call-overload]
                 if graph_id and graph_id in existing_ids:
                     continue
 
                 all_agents.append(agent)
-                existing_names.add(agent_name)
+                existing_names.add(agent_name_lower)
                 if graph_id:
                     existing_ids.add(graph_id)
 
         except Exception as e:
-            # Log but don't fail - continue with other search terms
             logger.warning(
                 f"Failed to search for additional agents with term '{term}': {e}"
             )
@@ -674,10 +652,8 @@ async def get_agent_as_json(
     Returns:
         Agent as JSON dict or None if not found
     """
-    # First try to get the graph directly with the provided ID
     graph = await get_graph(agent_id, version=None, user_id=user_id)
 
-    # If not found, try to resolve as a library agent ID
     if not graph and user_id:
         try:
             library_agent = await library_db.get_library_agent(agent_id, user_id)
@@ -685,7 +661,6 @@ async def get_agent_as_json(
                 library_agent.graph_id, version=None, user_id=user_id
             )
         except NotFoundError:
-            # Library agent not found with this ID, graph remains None
             pass
 
     if not graph:
