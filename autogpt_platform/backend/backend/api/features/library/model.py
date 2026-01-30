@@ -52,6 +52,18 @@ class RecentExecution(pydantic.BaseModel):
     activity_summary: str | None = None
 
 
+def _parse_settings(settings: dict | str | None) -> GraphSettings:
+    """Parse settings from database, handling both dict and string formats."""
+    if settings is None:
+        return GraphSettings()
+    try:
+        if isinstance(settings, str):
+            settings = json_loads(settings)
+        return GraphSettings.model_validate(settings)
+    except Exception:
+        return GraphSettings()
+
+
 class LibraryAgent(pydantic.BaseModel):
     """
     Represents an agent in the library, including metadata for display and
@@ -245,11 +257,7 @@ class LibraryAgent(pydantic.BaseModel):
             is_latest_version=is_latest_version,
             is_favorite=agent.isFavorite,
             recommended_schedule_cron=agent.AgentGraph.recommendedScheduleCron,
-            settings=GraphSettings.model_validate(
-                json_loads(agent.settings)
-                if isinstance(agent.settings, str)
-                else agent.settings
-            ),
+            settings=_parse_settings(agent.settings),
             marketplace_listing=marketplace_listing_data,
         )
 

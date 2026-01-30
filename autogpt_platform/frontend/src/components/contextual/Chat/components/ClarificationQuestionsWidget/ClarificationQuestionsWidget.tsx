@@ -41,16 +41,25 @@ export function ClarificationQuestionsWidget({
 
   useEffect(() => {
     const storageKey = getStorageKey(sessionId);
-    if (!storageKey) return;
+    if (!storageKey) {
+      setAnswers({});
+      setIsSubmitted(false);
+      return;
+    }
 
     try {
       const saved = localStorage.getItem(storageKey);
       if (saved) {
         const parsed = JSON.parse(saved) as Record<string, string>;
         setAnswers(parsed);
+        setIsSubmitted(false);
+      } else {
+        setAnswers({});
+        setIsSubmitted(false);
       }
     } catch {
-      // Ignore parse errors
+      setAnswers({});
+      setIsSubmitted(false);
     }
   }, [sessionId]);
 
