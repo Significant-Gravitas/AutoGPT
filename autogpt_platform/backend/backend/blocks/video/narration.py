@@ -22,6 +22,7 @@ from backend.data.block import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
+from backend.data.execution import ExecutionContext
 from backend.data.model import CredentialsField, SchemaField
 from backend.util.exceptions import BlockExecutionError
 from backend.util.file import MediaFileType, get_exec_file_path, store_media_file
@@ -68,10 +69,6 @@ class VideoNarrationBlock(Block):
             le=1.0,
             advanced=True,
         )
-        output_return_type: Literal["file_path", "data_uri"] = SchemaField(
-            description="Return the output as a relative path or base64 data URI.",
-            default="file_path",
-        )
 
     class Output(BlockSchemaOutput):
         video_out: MediaFileType = SchemaField(
@@ -104,29 +101,23 @@ class VideoNarrationBlock(Block):
         )
 
     async def _store_input_video(
-        self, graph_exec_id: str, file: MediaFileType, user_id: str
+        self, execution_context: ExecutionContext, file: MediaFileType
     ) -> MediaFileType:
         """Store input video. Extracted for testability."""
         return await store_media_file(
-            graph_exec_id=graph_exec_id,
             file=file,
-            user_id=user_id,
-            return_content=False,
+            execution_context=execution_context,
+            return_format="for_local_processing",
         )
 
     async def _store_output_video(
-        self,
-        graph_exec_id: str,
-        file: MediaFileType,
-        user_id: str,
-        return_content: bool,
+        self, execution_context: ExecutionContext, file: MediaFileType
     ) -> MediaFileType:
         """Store output video. Extracted for testability."""
         return await store_media_file(
-            graph_exec_id=graph_exec_id,
             file=file,
-            user_id=user_id,
-            return_content=return_content,
+            execution_context=execution_context,
+            return_format="for_block_output",
         )
 
     def _generate_narration_audio(
@@ -204,17 +195,20 @@ class VideoNarrationBlock(Block):
         input_data: Input,
         *,
         credentials: ElevenLabsCredentials,
+        execution_context: ExecutionContext,
         node_exec_id: str,
-        graph_exec_id: str,
-        user_id: str,
         **kwargs,
     ) -> BlockOutput:
         try:
+            assert execution_context.graph_exec_id is not None
+
             # Store the input video locally
             local_video_path = await self._store_input_video(
-                graph_exec_id, input_data.video_in, user_id
+                execution_context, input_data.video_in
             )
-            video_abspath = get_exec_file_path(graph_exec_id, local_video_path)
+            video_abspath = get_exec_file_path(
+                execution_context.graph_exec_id, local_video_path
+            )
 
             # Generate narration audio via ElevenLabs
             audio_content = self._generate_narration_audio(
@@ -226,7 +220,9 @@ class VideoNarrationBlock(Block):
 
             # Save audio to exec file path
             audio_filename = MediaFileType(f"{node_exec_id}_narration.mp3")
-            audio_abspath = get_exec_file_path(graph_exec_id, audio_filename)
+            audio_abspath = get_exec_file_path(
+                execution_context.graph_exec_id, audio_filename
+            )
             os.makedirs(os.path.dirname(audio_abspath), exist_ok=True)
             with open(audio_abspath, "wb") as f:
                 f.write(audio_content)
@@ -235,7 +231,9 @@ class VideoNarrationBlock(Block):
             output_filename = MediaFileType(
                 f"{node_exec_id}_narrated_{os.path.basename(local_video_path)}"
             )
-            output_abspath = get_exec_file_path(graph_exec_id, output_filename)
+            output_abspath = get_exec_file_path(
+                execution_context.graph_exec_id, output_filename
+            )
 
             self._add_narration_to_video(
                 video_abspath,
@@ -246,16 +244,9 @@ class VideoNarrationBlock(Block):
                 input_data.original_volume,
             )
 
-            # Return as data URI or path
-            return_as_data_uri = input_data.output_return_type == "data_uri"
-
-            video_out = await self._store_output_video(
-                graph_exec_id, output_filename, user_id, return_as_data_uri
-            )
-
-            audio_out = await self._store_output_video(
-                graph_exec_id, audio_filename, user_id, return_as_data_uri
-            )
+            # Return as workspace path or data URI based on context
+            video_out = await self._store_output_video(execution_context, output_filename)
+            audio_out = await self._store_output_video(execution_context, audio_filename)
 
             yield "video_out", video_out
             yield "audio_file", audio_out

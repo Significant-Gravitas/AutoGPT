@@ -1,10 +1,16 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { PendingHumanReviewModel } from "@/app/api/__generated__/models/pendingHumanReviewModel";
 import { PendingReviewCard } from "@/components/organisms/PendingReviewCard/PendingReviewCard";
 import { Text } from "@/components/atoms/Text/Text";
 import { Button } from "@/components/atoms/Button/Button";
+import { Switch } from "@/components/atoms/Switch/Switch";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { ClockIcon, WarningIcon } from "@phosphor-icons/react";
+import {
+  ClockIcon,
+  WarningIcon,
+  CaretDownIcon,
+  CaretRightIcon,
+} from "@phosphor-icons/react";
 import { usePostV2ProcessReviewAction } from "@/app/api/__generated__/endpoints/executions/executions";
 
 interface PendingReviewsListProps {
@@ -32,15 +38,33 @@ export function PendingReviewsList({
     },
   );
 
-  const [reviewMessageMap, setReviewMessageMap] = useState<
-    Record<string, string>
-  >({});
-
   const [pendingAction, setPendingAction] = useState<
     "approve" | "reject" | null
   >(null);
 
+  const [autoApproveFutureMap, setAutoApproveFutureMap] = useState<
+    Record<string, boolean>
+  >({});
+
+  const [collapsedGroups, setCollapsedGroups] = useState<
+    Record<string, boolean>
+  >({});
+
   const { toast } = useToast();
+
+  const groupedReviews = useMemo(() => {
+    return reviews.reduce(
+      (acc, review) => {
+        const nodeId = review.node_id || "unknown";
+        if (!acc[nodeId]) {
+          acc[nodeId] = [];
+        }
+        acc[nodeId].push(review);
+        return acc;
+      },
+      {} as Record<string, PendingHumanReviewModel[]>,
+    );
+  }, [reviews]);
 
   const reviewActionMutation = usePostV2ProcessReviewAction({
     mutation: {
@@ -88,8 +112,33 @@ export function PendingReviewsList({
     setReviewDataMap((prev) => ({ ...prev, [nodeExecId]: data }));
   }
 
-  function handleReviewMessageChange(nodeExecId: string, message: string) {
-    setReviewMessageMap((prev) => ({ ...prev, [nodeExecId]: message }));
+  function handleAutoApproveFutureToggle(nodeId: string, enabled: boolean) {
+    setAutoApproveFutureMap((prev) => ({
+      ...prev,
+      [nodeId]: enabled,
+    }));
+
+    if (enabled) {
+      const nodeReviews = groupedReviews[nodeId] || [];
+      setReviewDataMap((prev) => {
+        const updated = { ...prev };
+        nodeReviews.forEach((review) => {
+          updated[review.node_exec_id] = JSON.stringify(
+            review.payload,
+            null,
+            2,
+          );
+        });
+        return updated;
+      });
+    }
+  }
+
+  function toggleGroupCollapse(nodeId: string) {
+    setCollapsedGroups((prev) => ({
+      ...prev,
+      [nodeId]: !prev[nodeId],
+    }));
   }
 
   function processReviews(approved: boolean) {
@@ -107,22 +156,25 @@ export function PendingReviewsList({
 
     for (const review of reviews) {
       const reviewData = reviewDataMap[review.node_exec_id];
-      const reviewMessage = reviewMessageMap[review.node_exec_id];
+      const autoApproveThisNode = autoApproveFutureMap[review.node_id || ""];
 
-      let parsedData: any = review.payload; // Default to original payload
+      let parsedData: any = undefined;
 
-      // Parse edited data if available and editable
-      if (review.editable && reviewData) {
-        try {
-          parsedData = JSON.parse(reviewData);
-        } catch (error) {
-          toast({
-            title: "Invalid JSON",
-            description: `Please fix the JSON format in review for node ${review.node_exec_id}: ${error instanceof Error ? error.message : "Invalid syntax"}`,
-            variant: "destructive",
-          });
-          setPendingAction(null);
-          return;
+      if (!autoApproveThisNode) {
+        if (review.editable && reviewData) {
+          try {
+            parsedData = JSON.parse(reviewData);
+          } catch (error) {
+            toast({
+              title: "Invalid JSON",
+              description: `Please fix the JSON format in review for node ${review.node_exec_id}: ${error instanceof Error ? error.message : "Invalid syntax"}`,
+              variant: "destructive",
+            });
+            setPendingAction(null);
+            return;
+          }
+        } else {
+          parsedData = review.payload;
         }
       }
 
@@ -130,7 +182,7 @@ export function PendingReviewsList({
         node_exec_id: review.node_exec_id,
         approved,
         reviewed_data: parsedData,
-        message: reviewMessage || undefined,
+        auto_approve_future: autoApproveThisNode && approved,
       });
     }
 
@@ -158,7 +210,6 @@ export function PendingReviewsList({
 
   return (
     <div className="space-y-7 rounded-xl border border-yellow-150 bg-yellow-25 p-6">
-      {/* Warning Box Header */}
       <div className="space-y-6">
         <div className="flex items-start gap-2">
           <WarningIcon
@@ -180,23 +231,76 @@ export function PendingReviewsList({
       </div>
 
       <div className="space-y-7">
-        {reviews.map((review) => (
-          <PendingReviewCard
-            key={review.node_exec_id}
-            review={review}
-            onReviewDataChange={handleReviewDataChange}
-            onReviewMessageChange={handleReviewMessageChange}
-            reviewMessage={reviewMessageMap[review.node_exec_id] || ""}
-          />
-        ))}
+        {Object.entries(groupedReviews).map(([nodeId, nodeReviews]) => {
+          const isCollapsed = collapsedGroups[nodeId] ?? nodeReviews.length > 1;
+          const reviewCount = nodeReviews.length;
+
+          const firstReview = nodeReviews[0];
+          const blockName = firstReview?.instructions;
+          const reviewTitle = `Review required for ${blockName}`;
+
+          const getShortenedNodeId = (id: string) => {
+            if (id.length <= 8) return id;
+            return `${id.slice(0, 4)}...${id.slice(-4)}`;
+          };
+
+          return (
+            <div key={nodeId} className="space-y-4">
+              <button
+                onClick={() => toggleGroupCollapse(nodeId)}
+                className="flex w-full items-center gap-2 text-left"
+              >
+                {isCollapsed ? (
+                  <CaretRightIcon size={20} className="text-gray-600" />
+                ) : (
+                  <CaretDownIcon size={20} className="text-gray-600" />
+                )}
+                <div className="flex-1">
+                  <Text variant="body" className="font-semibold text-gray-900">
+                    {reviewTitle}
+                  </Text>
+                  <Text variant="small" className="text-gray-500">
+                    Node #{getShortenedNodeId(nodeId)}
+                  </Text>
+                </div>
+                <span className="text-xs text-gray-600">
+                  {reviewCount} {reviewCount === 1 ? "review" : "reviews"}
+                </span>
+              </button>
+
+              {!isCollapsed && (
+                <div className="space-y-4">
+                  {nodeReviews.map((review) => (
+                    <PendingReviewCard
+                      key={review.node_exec_id}
+                      review={review}
+                      onReviewDataChange={handleReviewDataChange}
+                      autoApproveFuture={autoApproveFutureMap[nodeId] || false}
+                      externalDataValue={reviewDataMap[review.node_exec_id]}
+                      showAutoApprove={false}
+                    />
+                  ))}
+
+                  <div className="flex items-center gap-3 pt-2">
+                    <Switch
+                      checked={autoApproveFutureMap[nodeId] || false}
+                      onCheckedChange={(enabled: boolean) =>
+                        handleAutoApproveFutureToggle(nodeId, enabled)
+                      }
+                    />
+                    <Text variant="small" className="text-gray-700">
+                      Auto-approve future executions of this node
+                    </Text>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
 
-      <div className="space-y-7">
-        <Text variant="body" className="text-textGrey">
-          Note: Changes you make here apply only to this task
-        </Text>
-
-        <div className="flex gap-2">
+      <div className="space-y-4">
+        <div className="flex flex-wrap gap-2">
           <Button
             onClick={() => processReviews(true)}
             disabled={reviewActionMutation.isPending || reviews.length === 0}
@@ -220,6 +324,11 @@ export function PendingReviewsList({
             Reject
           </Button>
         </div>
+
+        <Text variant="small" className="text-textGrey">
+          You can turn auto-approval on or off using the toggle above for each
+          node.
+        </Text>
       </div>
     </div>
   );

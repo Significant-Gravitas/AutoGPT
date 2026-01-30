@@ -14,6 +14,7 @@ from backend.data.block import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
+from backend.data.execution import ExecutionContext
 from backend.data.model import SchemaField
 from backend.util.exceptions import BlockExecutionError
 from backend.util.file import MediaFileType, get_exec_file_path, store_media_file
@@ -37,10 +38,6 @@ class VideoConcatBlock(Block):
         )
         output_format: Literal["mp4", "webm", "mkv", "mov"] = SchemaField(
             description="Output format", default="mp4", advanced=True
-        )
-        output_return_type: Literal["file_path", "data_uri"] = SchemaField(
-            description="Return the output as a relative path or base64 data URI.",
-            default="file_path",
         )
 
     class Output(BlockSchemaOutput):
@@ -66,29 +63,23 @@ class VideoConcatBlock(Block):
         )
 
     async def _store_input_video(
-        self, graph_exec_id: str, file: MediaFileType, user_id: str
+        self, execution_context: ExecutionContext, file: MediaFileType
     ) -> MediaFileType:
         """Store input video. Extracted for testability."""
         return await store_media_file(
-            graph_exec_id=graph_exec_id,
             file=file,
-            user_id=user_id,
-            return_content=False,
+            execution_context=execution_context,
+            return_format="for_local_processing",
         )
 
     async def _store_output_video(
-        self,
-        graph_exec_id: str,
-        file: MediaFileType,
-        user_id: str,
-        return_content: bool,
+        self, execution_context: ExecutionContext, file: MediaFileType
     ) -> MediaFileType:
         """Store output video. Extracted for testability."""
         return await store_media_file(
-            graph_exec_id=graph_exec_id,
             file=file,
-            user_id=user_id,
-            return_content=return_content,
+            execution_context=execution_context,
+            return_format="for_block_output",
         )
 
     def _concat_videos(
@@ -150,9 +141,8 @@ class VideoConcatBlock(Block):
         self,
         input_data: Input,
         *,
+        execution_context: ExecutionContext,
         node_exec_id: str,
-        graph_exec_id: str,
-        user_id: str,
         **kwargs,
     ) -> BlockOutput:
         # Validate minimum clips
@@ -164,19 +154,23 @@ class VideoConcatBlock(Block):
             )
 
         try:
+            assert execution_context.graph_exec_id is not None
+
             # Store all input videos locally
             video_abspaths = []
             for video in input_data.videos:
-                local_path = await self._store_input_video(
-                    graph_exec_id, video, user_id
+                local_path = await self._store_input_video(execution_context, video)
+                video_abspaths.append(
+                    get_exec_file_path(execution_context.graph_exec_id, local_path)
                 )
-                video_abspaths.append(get_exec_file_path(graph_exec_id, local_path))
 
             # Build output path
             output_filename = MediaFileType(
                 f"{node_exec_id}_concat.{input_data.output_format}"
             )
-            output_abspath = get_exec_file_path(graph_exec_id, output_filename)
+            output_abspath = get_exec_file_path(
+                execution_context.graph_exec_id, output_filename
+            )
 
             total_duration = self._concat_videos(
                 video_abspaths,
@@ -185,13 +179,8 @@ class VideoConcatBlock(Block):
                 input_data.transition_duration,
             )
 
-            # Return as data URI or path
-            video_out = await self._store_output_video(
-                graph_exec_id,
-                output_filename,
-                user_id,
-                input_data.output_return_type == "data_uri",
-            )
+            # Return as workspace path or data URI based on context
+            video_out = await self._store_output_video(execution_context, output_filename)
 
             yield "video_out", video_out
             yield "total_duration", total_duration

@@ -709,7 +709,7 @@ This is useful for conditional logic where you need to verify if data was return
 ## File Store
 
 ### What it is
-Stores the input file in the temporary directory.
+Downloads and stores a file from a URL, data URI, or local path. Use this to fetch images, documents, or other files for processing. In CoPilot: saves to workspace (use list_workspace_files to see it). In graphs: outputs a data URI to pass to other blocks.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -722,15 +722,15 @@ The block outputs a file path that other blocks can use to access the stored fil
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| file_in | The file to store in the temporary directory, it can be a URL, data URI, or local path. | str (file) | Yes |
-| base_64 | Whether produce an output in base64 format (not recommended, you can pass the string path just fine accross blocks). | bool | No |
+| file_in | The file to download and store. Can be a URL (https://...), data URI, or local path. | str (file) | Yes |
+| base_64 | Whether to produce output in base64 format (not recommended, you can pass the file reference across blocks). | bool | No |
 
 ### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
-| file_out | The relative path to the stored file in the temporary directory. | str (file) |
+| file_out | Reference to the stored file. In CoPilot: workspace:// URI (visible in list_workspace_files). In graphs: data URI for passing to other blocks. | str (file) |
 
 ### Possible use case
 <!-- MANUAL: use_case -->

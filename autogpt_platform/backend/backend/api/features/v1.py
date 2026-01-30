@@ -261,14 +261,36 @@ async def get_onboarding_agents(
     return await get_recommended_agents(user_id)
 
 
+class OnboardingStatusResponse(pydantic.BaseModel):
+    """Response for onboarding status check."""
+
+    is_onboarding_enabled: bool
+    is_chat_enabled: bool
+
+
 @v1_router.get(
     "/onboarding/enabled",
     summary="Is onboarding enabled",
     tags=["onboarding", "public"],
-    dependencies=[Security(requires_user)],
+    response_model=OnboardingStatusResponse,
 )
-async def is_onboarding_enabled() -> bool:
-    return await onboarding_enabled()
+async def is_onboarding_enabled(
+    user_id: Annotated[str, Security(get_user_id)],
+) -> OnboardingStatusResponse:
+    # Check if chat is enabled for user
+    is_chat_enabled = await is_feature_enabled(Flag.CHAT, user_id, False)
+
+    # If chat is enabled, skip legacy onboarding
+    if is_chat_enabled:
+        return OnboardingStatusResponse(
+            is_onboarding_enabled=False,
+            is_chat_enabled=True,
+        )
+
+    return OnboardingStatusResponse(
+        is_onboarding_enabled=await onboarding_enabled(),
+        is_chat_enabled=False,
+    )
 
 
 @v1_router.post(
@@ -364,6 +386,8 @@ async def execute_graph_block(
     obj = get_block(block_id)
     if not obj:
         raise HTTPException(status_code=404, detail=f"Block #{block_id} not found.")
+    if obj.disabled:
+        raise HTTPException(status_code=403, detail=f"Block #{block_id} is disabled.")
 
     user = await get_user_by_id(user_id)
     if not user:

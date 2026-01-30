@@ -21,7 +21,7 @@ from backend.data.model import CredentialsMetaInput
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.webhooks.graph_lifecycle_hooks import on_graph_activate
 from backend.util.clients import get_scheduler_client
-from backend.util.exceptions import DatabaseError, NotFoundError
+from backend.util.exceptions import DatabaseError, InvalidInputError, NotFoundError
 from backend.util.json import SafeJson
 from backend.util.models import Pagination
 from backend.util.settings import Config
@@ -64,11 +64,11 @@ async def list_library_agents(
 
     if page < 1 or page_size < 1:
         logger.warning(f"Invalid pagination: page={page}, page_size={page_size}")
-        raise DatabaseError("Invalid pagination input")
+        raise InvalidInputError("Invalid pagination input")
 
     if search_term and len(search_term.strip()) > 100:
         logger.warning(f"Search term too long: {repr(search_term)}")
-        raise DatabaseError("Search term is too long")
+        raise InvalidInputError("Search term is too long")
 
     where_clause: prisma.types.LibraryAgentWhereInput = {
         "userId": user_id,
@@ -175,7 +175,7 @@ async def list_favorite_library_agents(
 
     if page < 1 or page_size < 1:
         logger.warning(f"Invalid pagination: page={page}, page_size={page_size}")
-        raise DatabaseError("Invalid pagination input")
+        raise InvalidInputError("Invalid pagination input")
 
     where_clause: prisma.types.LibraryAgentWhereInput = {
         "userId": user_id,
@@ -583,7 +583,13 @@ async def update_library_agent(
             )
         update_fields["isDeleted"] = is_deleted
     if settings is not None:
-        update_fields["settings"] = SafeJson(settings.model_dump())
+        existing_agent = await get_library_agent(id=library_agent_id, user_id=user_id)
+        current_settings_dict = (
+            existing_agent.settings.model_dump() if existing_agent.settings else {}
+        )
+        new_settings = settings.model_dump(exclude_unset=True)
+        merged_settings = {**current_settings_dict, **new_settings}
+        update_fields["settings"] = SafeJson(merged_settings)
 
     try:
         # If graph_version is provided, update to that specific version

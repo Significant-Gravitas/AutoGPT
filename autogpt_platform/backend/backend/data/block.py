@@ -441,6 +441,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         static_output: bool = False,
         block_type: BlockType = BlockType.STANDARD,
         webhook_config: Optional[BlockWebhookConfig | BlockManualWebhookConfig] = None,
+        is_sensitive_action: bool = False,
     ):
         """
         Initialize the block with the given schema.
@@ -473,8 +474,8 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         self.static_output = static_output
         self.block_type = block_type
         self.webhook_config = webhook_config
+        self.is_sensitive_action = is_sensitive_action
         self.execution_stats: NodeExecutionStats = NodeExecutionStats()
-        self.is_sensitive_action: bool = False
 
         if self.webhook_config:
             if isinstance(self.webhook_config, BlockWebhookConfig):
@@ -622,6 +623,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         input_data: BlockInput,
         *,
         user_id: str,
+        node_id: str,
         node_exec_id: str,
         graph_exec_id: str,
         graph_id: str,
@@ -648,11 +650,11 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         decision = await HITLReviewHelper.handle_review_decision(
             input_data=input_data,
             user_id=user_id,
+            node_id=node_id,
             node_exec_id=node_exec_id,
             graph_exec_id=graph_exec_id,
             graph_id=graph_id,
             graph_version=graph_version,
-            execution_context=execution_context,
             block_name=self.name,
             editable=True,
         )

@@ -1,3 +1,123 @@
+function stripInternalReasoning(content: string): string {
+  return content
+    .replace(/<internal_reasoning>[\s\S]*?<\/internal_reasoning>/gi, "")
+    .replace(/<thinking>[\s\S]*?<\/thinking>/gi, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+export function isErrorResponse(result: unknown): boolean {
+  if (typeof result === "string") {
+    const lower = result.toLowerCase();
+    return (
+      lower.startsWith("error:") ||
+      lower.includes("not found") ||
+      lower.includes("does not exist") ||
+      lower.includes("failed to") ||
+      lower.includes("unable to")
+    );
+  }
+  if (typeof result === "object" && result !== null) {
+    const response = result as Record<string, unknown>;
+    return response.type === "error" || response.error !== undefined;
+  }
+  return false;
+}
+
+export function getErrorMessage(result: unknown): string {
+  if (typeof result === "string") {
+    return stripInternalReasoning(result.replace(/^error:\s*/i, ""));
+  }
+  if (typeof result === "object" && result !== null) {
+    const response = result as Record<string, unknown>;
+    if (response.error) return stripInternalReasoning(String(response.error));
+    if (response.message)
+      return stripInternalReasoning(String(response.message));
+  }
+  return "An error occurred";
+}
+
+/**
+ * Check if a value is a workspace file reference.
+ */
+function isWorkspaceRef(value: unknown): value is string {
+  return typeof value === "string" && value.startsWith("workspace://");
+}
+
+/**
+ * Check if a workspace reference appears to be an image based on common patterns.
+ * Since workspace refs don't have extensions, we check the context or assume image
+ * for certain block types.
+ *
+ * TODO: Replace keyword matching with MIME type encoded in workspace ref.
+ * e.g., workspace://abc123#image/png or workspace://abc123#video/mp4
+ * This would let frontend render correctly without fragile keyword matching.
+ */
+function isLikelyImageRef(value: string, outputKey?: string): boolean {
+  if (!isWorkspaceRef(value)) return false;
+
+  // Check output key name for video-related hints (these are NOT images)
+  const videoKeywords = ["video", "mp4", "mov", "avi", "webm", "movie", "clip"];
+  if (outputKey) {
+    const lowerKey = outputKey.toLowerCase();
+    if (videoKeywords.some((kw) => lowerKey.includes(kw))) {
+      return false;
+    }
+  }
+
+  // Check output key name for image-related hints
+  const imageKeywords = [
+    "image",
+    "img",
+    "photo",
+    "picture",
+    "thumbnail",
+    "avatar",
+    "icon",
+    "screenshot",
+  ];
+  if (outputKey) {
+    const lowerKey = outputKey.toLowerCase();
+    if (imageKeywords.some((kw) => lowerKey.includes(kw))) {
+      return true;
+    }
+  }
+
+  // Default to treating workspace refs as potential images
+  // since that's the most common case for generated content
+  return true;
+}
+
+/**
+ * Format a single output value, converting workspace refs to markdown images.
+ */
+function formatOutputValue(value: unknown, outputKey?: string): string {
+  if (isWorkspaceRef(value) && isLikelyImageRef(value, outputKey)) {
+    // Format as markdown image
+    return `![${outputKey || "Generated image"}](${value})`;
+  }
+
+  if (typeof value === "string") {
+    // Check for data URIs (images)
+    if (value.startsWith("data:image/")) {
+      return `![${outputKey || "Generated image"}](${value})`;
+    }
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    return value
+      .map((item, idx) => formatOutputValue(item, `${outputKey}_${idx}`))
+      .join("\n\n");
+  }
+
+  if (typeof value === "object" && value !== null) {
+    return JSON.stringify(value, null, 2);
+  }
+
+  return String(value);
+}
+
 function getToolCompletionPhrase(toolName: string): string {
   const toolCompletionPhrases: Record<string, string> = {
     add_understanding: "Updated your business information",
@@ -28,10 +148,10 @@ export function formatToolResponse(result: unknown, toolName: string): string {
         const parsed = JSON.parse(trimmed);
         return formatToolResponse(parsed, toolName);
       } catch {
-        return trimmed;
+        return stripInternalReasoning(trimmed);
       }
     }
-    return result;
+    return stripInternalReasoning(result);
   }
 
   if (typeof result !== "object" || result === null) {
@@ -88,10 +208,26 @@ export function formatToolResponse(result: unknown, toolName: string): string {
 
     case "block_output":
       const blockName = (response.block_name as string) || "Block";
-      const outputs = response.outputs as Record<string, unknown> | undefined;
+      const outputs = response.outputs as Record<string, unknown[]> | undefined;
       if (outputs && Object.keys(outputs).length > 0) {
-        const outputKeys = Object.keys(outputs);
-        return `${blockName} executed successfully. Outputs: ${outputKeys.join(", ")}`;
+        const formattedOutputs: string[] = [];
+
+        for (const [key, values] of Object.entries(outputs)) {
+          if (!Array.isArray(values) || values.length === 0) continue;
+
+          // Format each value in the output array
+          for (const value of values) {
+            const formatted = formatOutputValue(value, key);
+            if (formatted) {
+              formattedOutputs.push(formatted);
+            }
+          }
+        }
+
+        if (formattedOutputs.length > 0) {
+          return `${blockName} executed successfully.\n\n${formattedOutputs.join("\n\n")}`;
+        }
+        return `${blockName} executed successfully.`;
       }
       return `${blockName} executed successfully.`;
 

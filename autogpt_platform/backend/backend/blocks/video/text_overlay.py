@@ -14,6 +14,7 @@ from backend.data.block import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
+from backend.data.execution import ExecutionContext
 from backend.data.model import SchemaField
 from backend.util.exceptions import BlockExecutionError
 from backend.util.file import MediaFileType, get_exec_file_path, store_media_file
@@ -57,10 +58,6 @@ class VideoTextOverlayBlock(Block):
             default=None,
             advanced=True,
         )
-        output_return_type: Literal["file_path", "data_uri"] = SchemaField(
-            description="Return the output as a relative path or base64 data URI.",
-            default="file_path",
-        )
 
     class Output(BlockSchemaOutput):
         video_out: MediaFileType = SchemaField(
@@ -84,29 +81,23 @@ class VideoTextOverlayBlock(Block):
         )
 
     async def _store_input_video(
-        self, graph_exec_id: str, file: MediaFileType, user_id: str
+        self, execution_context: ExecutionContext, file: MediaFileType
     ) -> MediaFileType:
         """Store input video. Extracted for testability."""
         return await store_media_file(
-            graph_exec_id=graph_exec_id,
             file=file,
-            user_id=user_id,
-            return_content=False,
+            execution_context=execution_context,
+            return_format="for_local_processing",
         )
 
     async def _store_output_video(
-        self,
-        graph_exec_id: str,
-        file: MediaFileType,
-        user_id: str,
-        return_content: bool,
+        self, execution_context: ExecutionContext, file: MediaFileType
     ) -> MediaFileType:
         """Store output video. Extracted for testability."""
         return await store_media_file(
-            graph_exec_id=graph_exec_id,
             file=file,
-            user_id=user_id,
-            return_content=return_content,
+            execution_context=execution_context,
+            return_format="for_block_output",
         )
 
     def _add_text_overlay(
@@ -172,9 +163,8 @@ class VideoTextOverlayBlock(Block):
         self,
         input_data: Input,
         *,
+        execution_context: ExecutionContext,
         node_exec_id: str,
-        graph_exec_id: str,
-        user_id: str,
         **kwargs,
     ) -> BlockOutput:
         # Validate time range if both are provided
@@ -190,17 +180,23 @@ class VideoTextOverlayBlock(Block):
             )
 
         try:
+            assert execution_context.graph_exec_id is not None
+
             # Store the input video locally
             local_video_path = await self._store_input_video(
-                graph_exec_id, input_data.video_in, user_id
+                execution_context, input_data.video_in
             )
-            video_abspath = get_exec_file_path(graph_exec_id, local_video_path)
+            video_abspath = get_exec_file_path(
+                execution_context.graph_exec_id, local_video_path
+            )
 
             # Build output path
             output_filename = MediaFileType(
                 f"{node_exec_id}_overlay_{os.path.basename(local_video_path)}"
             )
-            output_abspath = get_exec_file_path(graph_exec_id, output_filename)
+            output_abspath = get_exec_file_path(
+                execution_context.graph_exec_id, output_filename
+            )
 
             self._add_text_overlay(
                 video_abspath,
@@ -214,13 +210,8 @@ class VideoTextOverlayBlock(Block):
                 input_data.bg_color,
             )
 
-            # Return as data URI or path
-            video_out = await self._store_output_video(
-                graph_exec_id,
-                output_filename,
-                user_id,
-                input_data.output_return_type == "data_uri",
-            )
+            # Return as workspace path or data URI based on context
+            video_out = await self._store_output_video(execution_context, output_filename)
 
             yield "video_out", video_out
 
