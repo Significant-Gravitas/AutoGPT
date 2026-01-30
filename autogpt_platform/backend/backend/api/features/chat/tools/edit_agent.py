@@ -130,11 +130,11 @@ class EditAgentTool(BaseTool):
         library_agents = None
         if user_id:
             try:
-                exclude_id = current_agent.get("id") or agent_id
+                graph_id = current_agent.get("id")
                 library_agents = await get_all_relevant_agents_for_generation(
                     user_id=user_id,
                     search_query=changes,
-                    exclude_graph_id=exclude_id,
+                    exclude_graph_id=graph_id,
                     include_marketplace=True,
                 )
                 logger.debug(
