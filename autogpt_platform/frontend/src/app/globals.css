@@ -1,6 +1,7 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+@source "../node_modules/streamdown/dist/*.js";
 
 @layer base {
   :root {
