@@ -14,11 +14,11 @@ export function useLibraryListPage() {
   // Ensure sort param is always present in URL (even if default)
   useEffect(() => {
     if (!librarySortRaw) {
-      setLibrarySortRaw(LibraryAgentSort.updatedAt, { shallow: false });
+      setLibrarySortRaw(LibraryAgentSort.lastExecuted, { shallow: false });
     }
   }, [librarySortRaw, setLibrarySortRaw]);
 
-  const librarySort = librarySortRaw || LibraryAgentSort.updatedAt;
+  const librarySort = librarySortRaw || LibraryAgentSort.lastExecuted;
 
   const setLibrarySort = useCallback(
     (value: LibraryAgentSort) => {

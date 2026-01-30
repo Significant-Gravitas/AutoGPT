@@ -23,10 +23,13 @@ export function LibrarySortMenu({ setLibrarySort }: Props) {
       <Select onValueChange={handleSortChange}>
         <SelectTrigger className="ml-1 w-fit space-x-1 border-none px-0 text-base underline underline-offset-4 shadow-none">
           <ArrowDownNarrowWideIcon className="h-4 w-4 sm:hidden" />
-          <SelectValue placeholder="Last Modified" />
+          <SelectValue placeholder="Last Executed" />
         </SelectTrigger>
         <SelectContent>
           <SelectGroup>
+            <SelectItem value={LibraryAgentSort.lastExecuted}>
+              Last Executed
+            </SelectItem>
             <SelectItem value={LibraryAgentSort.createdAt}>
               Creation Date
             </SelectItem>
