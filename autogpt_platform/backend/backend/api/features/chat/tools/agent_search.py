@@ -20,7 +20,6 @@ logger = logging.getLogger(__name__)
 
 SearchSource = Literal["marketplace", "library"]
 
-# UUID v4 pattern for direct agent ID lookup
 _UUID_PATTERN = re.compile(
     r"^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$",
     re.IGNORECASE,
@@ -150,8 +149,7 @@ async def search_agents(
                         is_featured=False,
                     )
                 )
-        else:  # library
-            # If query looks like a UUID, try direct lookup first
+        else:
             if _is_uuid(query):
                 logger.info(f"Query looks like UUID, trying direct lookup: {query}")
                 agent = await _get_library_agent_by_id(user_id, query)  # type: ignore[arg-type]
@@ -159,7 +157,6 @@ async def search_agents(
                     agents.append(agent)
                     logger.info(f"Found agent by direct ID lookup: {agent.name}")
 
-            # If no results from UUID lookup, do text search
             if not agents:
                 logger.info(f"Searching user library for: {query}")
                 results = await library_db.list_library_agents(

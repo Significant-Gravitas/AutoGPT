@@ -83,7 +83,6 @@ class DecompositionResult(TypedDict, total=False):
     error_type: str
 
 
-# Type alias for agent summaries (can be either library or marketplace)
 AgentSummary = LibraryAgentSummary | MarketplaceAgentSummary | dict[str, Any]
 
 
@@ -196,7 +195,6 @@ async def get_library_agent_by_id(
     return None
 
 
-# Alias for backward compatibility
 get_library_agent_by_graph_id = get_library_agent_by_id
 
 
@@ -225,7 +223,6 @@ async def get_library_agents_for_generation(
         List of LibraryAgentSummary with schemas and recent executions for sub-agent composition
     """
     try:
-        # Include executions to calculate accurate status and metrics
         response = await library_db.list_library_agents(
             user_id=user_id,
             search_term=search_query,
@@ -247,7 +244,6 @@ async def get_library_agents_for_generation(
                 input_schema=agent.input_schema,
                 output_schema=agent.output_schema,
             )
-            # Include recent executions if available
             if agent.recent_executions:
                 exec_summaries: list[ExecutionSummary] = []
                 for ex in agent.recent_executions:

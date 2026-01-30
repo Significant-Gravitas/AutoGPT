@@ -105,23 +105,20 @@ class CreateAgentTool(BaseTool):
                 session_id=session_id,
             )
 
-        # Fetch relevant library and marketplace agents for sub-agent composition
         library_agents = None
         if user_id:
             try:
                 library_agents = await get_all_relevant_agents_for_generation(
                     user_id=user_id,
-                    search_query=description,  # Use goal as search term
+                    search_query=description,
                     include_marketplace=True,
                 )
                 logger.debug(
                     f"Found {len(library_agents)} relevant agents for sub-agent composition"
                 )
             except Exception as e:
-                # Log but don't fail - agent generation can work without sub-agents
                 logger.warning(f"Failed to fetch library agents: {e}")
 
-        # Step 1: Decompose goal into steps
         try:
             decomposition_result = await decompose_goal(
                 description, context, library_agents
@@ -144,7 +141,6 @@ class CreateAgentTool(BaseTool):
                 session_id=session_id,
             )
 
-        # Check if the result is an error from the external service
         if decomposition_result.get("type") == "error":
             error_msg = decomposition_result.get("error", "Unknown error")
             error_type = decomposition_result.get("error_type", "unknown")
@@ -164,7 +160,6 @@ class CreateAgentTool(BaseTool):
                 session_id=session_id,
             )
 
-        # Check if LLM returned clarifying questions
         if decomposition_result.get("type") == "clarifying_questions":
             questions = decomposition_result.get("questions", [])
             return ClarificationNeededResponse(
@@ -183,7 +178,6 @@ class CreateAgentTool(BaseTool):
                 session_id=session_id,
             )
 
-        # Check for unachievable/vague goals
         if decomposition_result.get("type") == "unachievable_goal":
             suggested = decomposition_result.get("suggested_goal", "")
             reason = decomposition_result.get("reason", "")
@@ -210,8 +204,6 @@ class CreateAgentTool(BaseTool):
                 session_id=session_id,
             )
 
-        # Step 1.5: Enrich library agents with step-based search (two-phase search)
-        # After decomposition, search for additional relevant agents based on the steps
         if user_id and library_agents is not None:
             try:
                 library_agents = await enrich_library_agents_from_steps(
@@ -224,10 +216,8 @@ class CreateAgentTool(BaseTool):
                     f"After enrichment: {len(library_agents)} total agents for sub-agent composition"
                 )
             except Exception as e:
-                # Log but don't fail - continue with existing agents
                 logger.warning(f"Failed to enrich library agents from steps: {e}")
 
-        # Step 2: Generate agent JSON (external service handles fixing and validation)
         try:
             agent_json = await generate_agent(decomposition_result, library_agents)
         except AgentGeneratorNotConfiguredError:
@@ -248,7 +238,6 @@ class CreateAgentTool(BaseTool):
                 session_id=session_id,
             )
 
-        # Check if the result is an error from the external service
         if isinstance(agent_json, dict) and agent_json.get("type") == "error":
             error_msg = agent_json.get("error", "Unknown error")
             error_type = agent_json.get("error_type", "unknown")
@@ -261,7 +250,7 @@ class CreateAgentTool(BaseTool):
                     "The generated workflow had some structural issues. "
                     "Please try simplifying your goal or breaking it into smaller steps."
                 ),
-                error_details=error_msg,  # Always pass error details to give users context
+                error_details=error_msg,
             )
             return ErrorResponse(
                 message=user_message,
@@ -279,7 +268,6 @@ class CreateAgentTool(BaseTool):
         node_count = len(agent_json.get("nodes", []))
         link_count = len(agent_json.get("links", []))
 
-        # Step 3: Preview or save
         if not save:
             return AgentPreviewResponse(
                 message=(
@@ -294,7 +282,6 @@ class CreateAgentTool(BaseTool):
                 session_id=session_id,
             )
 
-        # Save to library
         if not user_id:
             return ErrorResponse(
                 message="You must be logged in to save agents.",

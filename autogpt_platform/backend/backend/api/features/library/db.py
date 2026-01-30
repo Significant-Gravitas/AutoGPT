@@ -80,8 +80,6 @@ async def list_library_agents(
         "isArchived": False,
     }
 
-    # Build search filter if applicable
-    # Split into words and match ANY word in name or description
     if search_term:
         words = [w.strip() for w in search_term.split() if len(w.strip()) >= 3]
         if words:
@@ -108,7 +106,6 @@ async def list_library_agents(
                 )
             where_clause["OR"] = or_conditions
 
-    # Determine sorting
     order_by: prisma.types.LibraryAgentOrderByInput | None = None
 
     if sort_by == library_model.LibraryAgentSort.CREATED_AT:

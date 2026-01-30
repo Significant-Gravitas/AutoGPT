@@ -46,9 +46,9 @@ class RecentExecution(pydantic.BaseModel):
     rather than just aggregate statistics.
     """
 
-    status: str  # COMPLETED, FAILED, RUNNING, QUEUED
-    correctness_score: float | None = None  # 0-1 score if evaluated
-    activity_summary: str | None = None  # AI-generated summary of what happened
+    status: str
+    correctness_score: float | None = None
+    activity_summary: str | None = None
 
 
 class LibraryAgent(pydantic.BaseModel):
@@ -93,38 +93,19 @@ class LibraryAgent(pydantic.BaseModel):
     )
     trigger_setup_info: Optional[GraphTriggerInfo] = None
 
-    # Indicates whether there's a new output (based on recent runs)
     new_output: bool
-
-    # Execution metrics (for quality assessment by LLM)
-    execution_count: int = 0  # Number of recent executions sampled
-    success_rate: float | None = (
-        None  # Percentage (0-100) of technically successful executions
-    )
-    avg_correctness_score: float | None = (
-        None  # 0-1 score of how well executions achieved their purpose
-    )
+    execution_count: int = 0
+    success_rate: float | None = None
+    avg_correctness_score: float | None = None
     recent_executions: list[RecentExecution] = pydantic.Field(
         default_factory=list,
         description="List of recent executions with status, score, and summary",
     )
-
-    # Whether the user can access the underlying graph
     can_access_graph: bool
-
-    # Indicates if this agent is the latest version
     is_latest_version: bool
-
-    # Whether the agent is marked as favorite by the user
     is_favorite: bool
-
-    # Recommended schedule cron (from marketplace agents)
     recommended_schedule_cron: str | None = None
-
-    # User-specific settings for this library agent
     settings: GraphSettings = pydantic.Field(default_factory=GraphSettings)
-
-    # Marketplace listing information if the agent has been published
     marketplace_listing: Optional["MarketplaceListing"] = None
 
     @staticmethod
@@ -148,7 +129,6 @@ class LibraryAgent(pydantic.BaseModel):
         agent_updated_at = agent.AgentGraph.updatedAt
         lib_agent_updated_at = agent.updatedAt
 
-        # Compute updated_at as the latest between library agent and graph
         updated_at = (
             max(agent_updated_at, lib_agent_updated_at)
             if agent_updated_at
@@ -161,7 +141,6 @@ class LibraryAgent(pydantic.BaseModel):
             creator_name = agent.Creator.name or "Unknown"
             creator_image_url = agent.Creator.avatarUrl or ""
 
-        # Logic to calculate status and new_output
         week_ago = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(
             days=7
         )
@@ -170,7 +149,6 @@ class LibraryAgent(pydantic.BaseModel):
         status = status_result.status
         new_output = status_result.new_output
 
-        # Calculate execution metrics
         execution_count = len(executions)
         success_rate: float | None = None
         avg_correctness_score: float | None = None
@@ -182,7 +160,6 @@ class LibraryAgent(pydantic.BaseModel):
             )
             success_rate = (success_count / execution_count) * 100
 
-            # Calculate average correctness score from execution stats
             correctness_scores = []
             for e in executions:
                 if e.stats and isinstance(e.stats, dict):
@@ -194,7 +171,6 @@ class LibraryAgent(pydantic.BaseModel):
                     correctness_scores
                 )
 
-        # Build recent executions list with status, score, and summary
         recent_executions: list[RecentExecution] = []
         for e in executions:
             exec_score: float | None = None
@@ -214,13 +190,9 @@ class LibraryAgent(pydantic.BaseModel):
                 )
             )
 
-        # Check if user can access the graph
         can_access_graph = agent.AgentGraph.userId == agent.userId
-
-        # Hard-coded to True until a method to check is implemented
         is_latest_version = True
 
-        # Build marketplace_listing if available
         marketplace_listing_data = None
         if store_listing and store_listing.ActiveVersion and profile:
             creator_data = MarketplaceListingCreator(
@@ -293,18 +265,15 @@ def _calculate_agent_status(
     if not executions:
         return AgentStatusResult(status=LibraryAgentStatus.COMPLETED, new_output=False)
 
-    # Track how many times each execution status appears
     status_counts = {status: 0 for status in prisma.enums.AgentExecutionStatus}
     new_output = False
 
     for execution in executions:
-        # Check if there's a completed run more recent than `recent_threshold`
         if execution.createdAt >= recent_threshold:
             if execution.executionStatus == prisma.enums.AgentExecutionStatus.COMPLETED:
                 new_output = True
         status_counts[execution.executionStatus] += 1
 
-    # Determine the final status based on counts
     if status_counts[prisma.enums.AgentExecutionStatus.FAILED] > 0:
         return AgentStatusResult(status=LibraryAgentStatus.ERROR, new_output=new_output)
     elif status_counts[prisma.enums.AgentExecutionStatus.QUEUED] > 0:
