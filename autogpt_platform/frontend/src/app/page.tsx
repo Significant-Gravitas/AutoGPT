@@ -1,11 +1,15 @@
-import { redirect } from "next/navigation";
+"use client";
 
-/**
- * Root page always redirects to /copilot.
- * The /copilot page handles the feature flag check and redirects to /library if needed.
- * This single-check approach avoids race conditions with LaunchDarkly initialization.
- * See: SECRT-1845
- */
+import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
+
 export default function Page() {
-  redirect("/copilot");
+  const router = useRouter();
+
+  useEffect(() => {
+    router.replace("/copilot");
+  }, [router]);
+
+  return <LoadingSpinner size="large" cover />;
 }
