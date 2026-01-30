@@ -238,8 +238,7 @@ async def generate_agent_external(
             error_msg = data.get("error", "Unknown error from Agent Generator")
             error_type = data.get("error_type", "unknown")
             logger.error(
-                f"Agent Generator generation failed: {error_msg} "
-                f"(type: {error_type})"
+                f"Agent Generator generation failed: {error_msg} (type: {error_type})"
             )
             return _create_error_response(error_msg, error_type)
 
