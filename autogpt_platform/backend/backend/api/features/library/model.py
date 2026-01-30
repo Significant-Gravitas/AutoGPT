@@ -1,4 +1,5 @@
 import datetime
+import json
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Optional
 
@@ -239,7 +240,11 @@ class LibraryAgent(pydantic.BaseModel):
             is_latest_version=is_latest_version,
             is_favorite=agent.isFavorite,
             recommended_schedule_cron=agent.AgentGraph.recommendedScheduleCron,
-            settings=GraphSettings.model_validate(agent.settings),
+            settings=GraphSettings.model_validate(
+                json.loads(agent.settings)
+                if isinstance(agent.settings, str)
+                else agent.settings
+            ),
             marketplace_listing=marketplace_listing_data,
         )
 
