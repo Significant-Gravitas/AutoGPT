@@ -119,7 +119,7 @@ def library_agent_include(
         if include_executions:
             agent_graph_include["Executions"] = {
                 "where": {"userId": user_id},
-                "order_by": {"createdAt": "desc"},
+                "order_by": {"updatedAt": "desc"},
                 "take": execution_limit,
             }
 
