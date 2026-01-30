@@ -26,6 +26,7 @@ class TestGetLibraryAgentsForGeneration:
         mock_agent.description = "Sends emails"
         mock_agent.input_schema = {"properties": {}}
         mock_agent.output_schema = {"properties": {}}
+        mock_agent.recent_executions = []
 
         mock_response = MagicMock()
         mock_response.agents = [mock_agent]
@@ -41,12 +42,12 @@ class TestGetLibraryAgentsForGeneration:
                 search_query="send email",
             )
 
-            # Verify search_term was passed
             mock_list.assert_called_once_with(
                 user_id="user-123",
                 search_term="send email",
                 page=1,
                 page_size=15,
+                include_executions=True,
             )
 
         # Verify result format
@@ -66,6 +67,7 @@ class TestGetLibraryAgentsForGeneration:
                 description="First agent",
                 input_schema={},
                 output_schema={},
+                recent_executions=[],
             ),
             MagicMock(
                 graph_id="agent-456",
@@ -74,6 +76,7 @@ class TestGetLibraryAgentsForGeneration:
                 description="Second agent",
                 input_schema={},
                 output_schema={},
+                recent_executions=[],
             ),
         ]
 
@@ -109,12 +112,12 @@ class TestGetLibraryAgentsForGeneration:
                 max_results=5,
             )
 
-            # Verify page_size was set to max_results
             mock_list.assert_called_once_with(
                 user_id="user-123",
                 search_term=None,
                 page=1,
                 page_size=5,
+                include_executions=True,
             )
 
 

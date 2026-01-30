@@ -337,10 +337,12 @@ async def get_all_relevant_agents_for_generation(
             if graph_id == exclude_graph_id:
                 continue
             agent = await get_library_agent_by_graph_id(user_id, graph_id)
-            if agent and agent["graph_id"] not in seen_graph_ids:
+            if agent and agent.get("graph_id") not in seen_graph_ids:
                 agents.append(agent)
-                seen_graph_ids.add(agent["graph_id"])
-                logger.debug(f"Found explicitly mentioned agent: {agent['name']}")
+                seen_graph_ids.add(agent.get("graph_id", ""))
+                logger.debug(
+                    f"Found explicitly mentioned agent: {agent.get('name', 'Unknown')}"
+                )
 
     if include_library:
         library_agents = await get_library_agents_for_generation(
@@ -350,16 +352,17 @@ async def get_all_relevant_agents_for_generation(
             max_results=max_library_results,
         )
         for agent in library_agents:
-            if agent["graph_id"] not in seen_graph_ids:
+            graph_id = agent.get("graph_id")
+            if graph_id and graph_id not in seen_graph_ids:
                 agents.append(agent)
-                seen_graph_ids.add(agent["graph_id"])
+                seen_graph_ids.add(graph_id)
 
     if include_marketplace and search_query:
         marketplace_agents = await search_marketplace_agents_for_generation(
             search_query=search_query,
             max_results=max_marketplace_results,
         )
-        library_names = {a["name"].lower() for a in agents if a.get("name")}
+        library_names = {name.lower() for a in agents if (name := a.get("name"))}
         for agent in marketplace_agents:
             agent_name = agent.get("name")
             if agent_name and agent_name.lower() not in library_names:

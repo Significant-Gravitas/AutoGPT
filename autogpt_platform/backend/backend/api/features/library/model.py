@@ -183,9 +183,14 @@ class LibraryAgent(pydantic.BaseModel):
                 summary = e.stats.get("activity_status")
                 if summary is not None and isinstance(summary, str):
                     exec_summary = summary
+            exec_status = (
+                e.executionStatus.value
+                if hasattr(e.executionStatus, "value")
+                else str(e.executionStatus)
+            )
             recent_executions.append(
                 RecentExecution(
-                    status=e.executionStatus.value,
+                    status=exec_status,
                     correctness_score=exec_score,
                     activity_summary=exec_summary,
                 )
