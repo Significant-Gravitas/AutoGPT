@@ -80,8 +80,6 @@ describe("MainMarketplacePage - Empty State", () => {
     render(<MainMarkeplacePage />);
 
     // Page should still render the search bar
-    expect(
-      await screen.findByPlaceholderText(/search/i),
-    ).toBeInTheDocument();
+    expect(await screen.findByPlaceholderText(/search/i)).toBeInTheDocument();
   });
 });

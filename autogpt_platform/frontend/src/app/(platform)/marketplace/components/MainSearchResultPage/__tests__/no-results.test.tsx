@@ -41,7 +41,7 @@ describe("MainSearchResultPage - No Results", () => {
     await waitFor(() => {
       expect(screen.getByText("Results for:")).toBeInTheDocument();
     });
-    
+
     // Verify search term is displayed
     expect(screen.getByText("nonexistent-search-term-xyz")).toBeInTheDocument();
   });
@@ -64,7 +64,9 @@ describe("MainSearchResultPage - No Results", () => {
     render(<MainSearchResultPage {...defaultProps} />);
 
     await waitFor(() => {
-      expect(screen.getByText("nonexistent-search-term-xyz")).toBeInTheDocument();
+      expect(
+        screen.getByText("nonexistent-search-term-xyz"),
+      ).toBeInTheDocument();
     });
   });
 

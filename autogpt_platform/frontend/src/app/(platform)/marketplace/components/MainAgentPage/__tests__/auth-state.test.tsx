@@ -57,8 +57,6 @@ describe("MainAgentPage - Auth State", () => {
     await waitFor(() => {
       expect(screen.getByTestId("agent-title")).toBeInTheDocument();
     });
-    expect(
-      screen.getByTestId("agent-add-library-button"),
-    ).toBeInTheDocument();
+    expect(screen.getByTestId("agent-add-library-button")).toBeInTheDocument();
   });
 });

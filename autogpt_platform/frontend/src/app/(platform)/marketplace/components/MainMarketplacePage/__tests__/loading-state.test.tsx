@@ -37,7 +37,9 @@ describe("MainMarketplacePage - Loading State", () => {
     const { container } = render(<MainMarkeplacePage />);
 
     // Check for loading skeleton elements (animated pulse elements)
-    const loadingElements = container.querySelectorAll('[class*="animate-pulse"]');
+    const loadingElements = container.querySelectorAll(
+      '[class*="animate-pulse"]',
+    );
     expect(loadingElements.length).toBeGreaterThan(0);
   });
 });
