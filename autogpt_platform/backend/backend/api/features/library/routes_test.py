@@ -112,7 +112,7 @@ async def test_get_library_agents_success(
     mock_db_call.assert_called_once_with(
         user_id=test_user_id,
         search_term="test",
-        sort_by=library_model.LibraryAgentSort.UPDATED_AT,
+        sort_by=library_model.LibraryAgentSort.LAST_EXECUTED,
         page=1,
         page_size=15,
     )

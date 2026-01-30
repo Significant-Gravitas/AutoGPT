@@ -3361,7 +3361,7 @@
             "schema": {
               "$ref": "#/components/schemas/LibraryAgentSort",
               "description": "Criteria to sort results by",
-              "default": "updatedAt"
+              "default": "lastExecuted"
             },
             "description": "Criteria to sort results by"
           },
@@ -8239,7 +8239,7 @@
       },
       "LibraryAgentSort": {
         "type": "string",
-        "enum": ["createdAt", "updatedAt"],
+        "enum": ["createdAt", "updatedAt", "lastExecuted"],
         "title": "LibraryAgentSort",
         "description": "Possible sort options for sorting library agents."
       },
