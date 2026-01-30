@@ -2,6 +2,7 @@
 
 from .core import (
     AgentGeneratorNotConfiguredError,
+    AgentJsonValidationError,
     AgentSummary,
     DecompositionResult,
     DecompositionStep,
@@ -28,6 +29,7 @@ from .service import is_external_service_configured
 
 __all__ = [
     "AgentGeneratorNotConfiguredError",
+    "AgentJsonValidationError",
     "AgentSummary",
     "DecompositionResult",
     "DecompositionStep",
