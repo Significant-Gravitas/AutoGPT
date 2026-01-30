@@ -256,7 +256,12 @@ class CreateAgentTool(BaseTool):
                 error_type,
                 operation="generate the agent",
                 llm_parse_message="The AI had trouble generating the agent. Please try again or simplify your goal.",
-                validation_message="The generated agent failed validation. Please try rephrasing your goal.",
+                validation_message=(
+                    "I wasn't able to create a valid agent for this request. "
+                    "The generated workflow had some structural issues. "
+                    "Please try simplifying your goal or breaking it into smaller steps."
+                ),
+                error_details=error_msg if error_type == "validation_error" else None,
             )
             return ErrorResponse(
                 message=user_message,
