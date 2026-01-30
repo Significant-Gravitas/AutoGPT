@@ -26,7 +26,6 @@ from .service import (
 
 logger = logging.getLogger(__name__)
 
-# Block ID for AgentExecutorBlock - used to identify sub-agent nodes
 AGENT_EXECUTOR_BLOCK_ID = "e189baac-8c20-45a1-94a7-55177ea42565"
 
 

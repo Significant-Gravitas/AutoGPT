@@ -156,7 +156,6 @@ export function ChatMessage({
   }
 
   if (isClarificationNeeded && message.type === "clarification_needed") {
-    // Check if user already replied after this clarification (answered)
     const hasUserReplyAfter =
       index >= 0 &&
       messages

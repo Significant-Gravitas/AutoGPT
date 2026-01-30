@@ -106,7 +106,6 @@ export function ClarificationQuestionsWidget({
 
   const allAnswered = questions.every((q) => answers[q.keyword]?.trim());
 
-  // Show submitted state if answered from conversation or just submitted
   if (isAnswered || isSubmitted) {
     return (
       <div
