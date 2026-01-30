@@ -3,11 +3,14 @@
 import logging
 from typing import Any
 
-from langfuse import observe
 from pydantic import BaseModel, Field, field_validator
 
 from backend.api.features.chat.config import ChatConfig
 from backend.api.features.chat.model import ChatSession
+from backend.api.features.chat.tracking import (
+    track_agent_run_success,
+    track_agent_scheduled,
+)
 from backend.api.features.library import db as library_db
 from backend.data.graph import GraphModel
 from backend.data.model import CredentialsMetaInput
@@ -33,7 +36,7 @@ from .models import (
     UserReadiness,
 )
 from .utils import (
-    check_user_has_required_credentials,
+    build_missing_credentials_from_graph,
     extract_credentials_from_schema,
     fetch_graph_from_store_slug,
     get_or_create_library_agent,
@@ -155,7 +158,6 @@ class RunAgentTool(BaseTool):
         """All operations require authentication."""
         return True
 
-    @observe(as_type="tool", name="run_agent")
     async def _execute(
         self,
         user_id: str | None,
@@ -237,15 +239,13 @@ class RunAgentTool(BaseTool):
                 # Return credentials needed response with input data info
                 # The UI handles credential setup automatically, so the message
                 # focuses on asking about input data
-                credentials = extract_credentials_from_schema(
-                    graph.credentials_input_schema
+                requirements_creds_dict = build_missing_credentials_from_graph(
+                    graph, None
                 )
-                missing_creds_check = await check_user_has_required_credentials(
-                    user_id, credentials
+                missing_credentials_dict = build_missing_credentials_from_graph(
+                    graph, graph_credentials
                 )
-                missing_credentials_dict = {
-                    c.id: c.model_dump() for c in missing_creds_check
-                }
+                requirements_creds_list = list(requirements_creds_dict.values())
 
                 return SetupRequirementsResponse(
                     message=self._build_inputs_message(graph, MSG_WHAT_VALUES_TO_USE),
@@ -259,7 +259,7 @@ class RunAgentTool(BaseTool):
                             ready_to_run=False,
                         ),
                         requirements={
-                            "credentials": [c.model_dump() for c in credentials],
+                            "credentials": requirements_creds_list,
                             "inputs": self._get_inputs_list(graph.input_schema),
                             "execution_modes": self._get_execution_modes(graph),
                         },
@@ -455,6 +455,16 @@ class RunAgentTool(BaseTool):
             session.successful_agent_runs.get(library_agent.graph_id, 0) + 1
         )
 
+        # Track in PostHog
+        track_agent_run_success(
+            user_id=user_id,
+            session_id=session_id,
+            graph_id=library_agent.graph_id,
+            graph_name=library_agent.name,
+            execution_id=execution.id,
+            library_agent_id=library_agent.id,
+        )
+
         library_agent_link = f"/library/agents/{library_agent.id}"
         return ExecutionStartedResponse(
             message=(
@@ -534,6 +544,18 @@ class RunAgentTool(BaseTool):
         # Track successful schedule
         session.successful_agent_schedules[library_agent.graph_id] = (
             session.successful_agent_schedules.get(library_agent.graph_id, 0) + 1
+        )
+
+        # Track in PostHog
+        track_agent_scheduled(
+            user_id=user_id,
+            session_id=session_id,
+            graph_id=library_agent.graph_id,
+            graph_name=library_agent.name,
+            schedule_id=result.id,
+            schedule_name=schedule_name,
+            cron=cron,
+            library_agent_id=library_agent.id,
         )
 
         library_agent_link = f"/library/agents/{library_agent.id}"

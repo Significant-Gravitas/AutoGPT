@@ -41,6 +41,7 @@ FrontendOnboardingStep = Literal[
     OnboardingStep.AGENT_NEW_RUN,
     OnboardingStep.AGENT_INPUT,
     OnboardingStep.CONGRATS,
+    OnboardingStep.VISIT_COPILOT,
     OnboardingStep.MARKETPLACE_VISIT,
     OnboardingStep.BUILDER_OPEN,
 ]
@@ -122,6 +123,9 @@ async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
 async def _reward_user(user_id: str, onboarding: UserOnboarding, step: OnboardingStep):
     reward = 0
     match step:
+        # Welcome bonus for visiting copilot ($5 = 500 credits)
+        case OnboardingStep.VISIT_COPILOT:
+            reward = 500
         # Reward user when they clicked New Run during onboarding
         # This is because they need credits before scheduling a run (next step)
         # This is seen as a reward for the GET_RESULTS step in the wallet

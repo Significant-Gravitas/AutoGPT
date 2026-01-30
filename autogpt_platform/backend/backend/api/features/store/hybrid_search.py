@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 from prisma.enums import ContentType
-from rank_bm25 import BM25Okapi
+from rank_bm25 import BM25Okapi  # type: ignore[import-untyped]
 
 from backend.api.features.store.embeddings import (
     EMBEDDING_DIM,
@@ -186,13 +186,12 @@ async def unified_hybrid_search(
 
     offset = (page - 1) * page_size
 
-    # Generate query embedding
-    query_embedding = await embed_query(query)
-
-    # Graceful degradation if embedding unavailable
-    if query_embedding is None or not query_embedding:
+    # Generate query embedding with graceful degradation
+    try:
+        query_embedding = await embed_query(query)
+    except Exception as e:
         logger.warning(
-            "Failed to generate query embedding - falling back to lexical-only search. "
+            f"Failed to generate query embedding - falling back to lexical-only search: {e}. "
             "Check that openai_internal_api_key is configured and OpenAI API is accessible."
         )
         query_embedding = [0.0] * EMBEDDING_DIM
@@ -363,9 +362,7 @@ async def unified_hybrid_search(
         LIMIT {limit_param} OFFSET {offset_param}
     """
 
-    results = await query_raw_with_schema(
-        sql_query, *params, set_public_search_path=True
-    )
+    results = await query_raw_with_schema(sql_query, *params)
 
     total = results[0]["total_count"] if results else 0
     # Apply BM25 reranking
@@ -466,13 +463,12 @@ async def hybrid_search(
 
     offset = (page - 1) * page_size
 
-    # Generate query embedding
-    query_embedding = await embed_query(query)
-
-    # Graceful degradation
-    if query_embedding is None or not query_embedding:
+    # Generate query embedding with graceful degradation
+    try:
+        query_embedding = await embed_query(query)
+    except Exception as e:
         logger.warning(
-            "Failed to generate query embedding - falling back to lexical-only search."
+            f"Failed to generate query embedding - falling back to lexical-only search: {e}"
         )
         query_embedding = [0.0] * EMBEDDING_DIM
         total_non_semantic = (
@@ -688,9 +684,7 @@ async def hybrid_search(
         LIMIT {limit_param} OFFSET {offset_param}
     """
 
-    results = await query_raw_with_schema(
-        sql_query, *params, set_public_search_path=True
-    )
+    results = await query_raw_with_schema(sql_query, *params)
 
     total = results[0]["total_count"] if results else 0
 

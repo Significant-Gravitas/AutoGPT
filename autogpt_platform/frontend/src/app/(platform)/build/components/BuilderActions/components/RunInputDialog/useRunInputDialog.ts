@@ -7,12 +7,11 @@ import {
   GraphExecutionMeta,
 } from "@/lib/autogpt-server-api";
 import { parseAsInteger, parseAsString, useQueryStates } from "nuqs";
-import { useMemo, useState } from "react";
-import { uiSchema } from "../../../FlowEditor/nodes/uiSchema";
-import { isCredentialFieldSchema } from "@/components/renderers/InputRenderer/custom/CredentialField/helpers";
+import { useCallback, useMemo, useState } from "react";
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useReactFlow } from "@xyflow/react";
+import type { CredentialField } from "@/components/contextual/CredentialsInput/components/CredentialsGroupedView/helpers";
 
 export const useRunInputDialog = ({
   setIsOpen,
@@ -120,27 +119,32 @@ export const useRunInputDialog = ({
       },
     });
 
-  // We are rendering the credentials field differently compared to other fields.
-  // In the node, we have the field name as "credential" - so our library catches it and renders it differently.
-  // But here we have a different name, something like `Firecrawl credentials`, so here we are telling the library that this field is a credential field type.
+  // Convert credentials schema to credential fields array for CredentialsGroupedView
+  const credentialFields: CredentialField[] = useMemo(() => {
+    if (!credentialsSchema?.properties) return [];
+    return Object.entries(credentialsSchema.properties);
+  }, [credentialsSchema]);
 
-  const credentialsUiSchema = useMemo(() => {
-    const dynamicUiSchema: any = { ...uiSchema };
+  // Get required credentials as a Set
+  const requiredCredentials = useMemo(() => {
+    return new Set<string>(credentialsSchema?.required || []);
+  }, [credentialsSchema]);
 
-    if (credentialsSchema?.properties) {
-      Object.keys(credentialsSchema.properties).forEach((fieldName) => {
-        const fieldSchema = credentialsSchema.properties[fieldName];
-        if (isCredentialFieldSchema(fieldSchema)) {
-          dynamicUiSchema[fieldName] = {
-            ...dynamicUiSchema[fieldName],
-            "ui:field": "custom/credential_field",
-          };
+  // Handler for individual credential changes
+  const handleCredentialFieldChange = useCallback(
+    (key: string, value?: CredentialsMetaInput) => {
+      setCredentialValues((prev) => {
+        if (value) {
+          return { ...prev, [key]: value };
+        } else {
+          const next = { ...prev };
+          delete next[key];
+          return next;
         }
       });
-    }
-
-    return dynamicUiSchema;
-  }, [credentialsSchema]);
+    },
+    [],
+  );
 
   const handleManualRun = async () => {
     // Filter out incomplete credentials (those without a valid id)
@@ -148,6 +152,9 @@ export const useRunInputDialog = ({
     const validCredentials = Object.fromEntries(
       Object.entries(credentialValues).filter(([_, cred]) => cred && cred.id),
     );
+
+    useNodeStore.getState().clearAllNodeExecutionResults();
+    useNodeStore.getState().cleanNodesStatuses();
 
     await executeGraph({
       graphId: flowID ?? "",
@@ -173,12 +180,14 @@ export const useRunInputDialog = ({
   };
 
   return {
-    credentialsUiSchema,
+    credentialFields,
+    requiredCredentials,
     inputValues,
     credentialValues,
     isExecutingGraph,
     handleInputChange,
     handleCredentialChange,
+    handleCredentialFieldChange,
     handleManualRun,
     openCronSchedulerDialog,
     setOpenCronSchedulerDialog,

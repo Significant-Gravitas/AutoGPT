@@ -1,15 +1,15 @@
 """Tool for executing blocks directly."""
 
 import logging
+import uuid
 from collections import defaultdict
 from typing import Any
-
-from langfuse import observe
 
 from backend.api.features.chat.model import ChatSession
 from backend.data.block import get_block
 from backend.data.execution import ExecutionContext
 from backend.data.model import CredentialsMetaInput
+from backend.data.workspace import get_or_create_workspace
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util.exceptions import BlockError
 
@@ -22,6 +22,7 @@ from .models import (
     ToolResponseBase,
     UserReadiness,
 )
+from .utils import build_missing_credentials_from_field_info
 
 logger = logging.getLogger(__name__)
 
@@ -129,7 +130,6 @@ class RunBlockTool(BaseTool):
 
         return matched_credentials, missing_credentials
 
-    @observe(as_type="tool", name="run_block")
     async def _execute(
         self,
         user_id: str | None,
@@ -178,6 +178,11 @@ class RunBlockTool(BaseTool):
                 message=f"Block '{block_id}' not found",
                 session_id=session_id,
             )
+        if block.disabled:
+            return ErrorResponse(
+                message=f"Block '{block_id}' is disabled",
+                session_id=session_id,
+            )
 
         logger.info(f"Executing block {block.name} ({block_id}) for user {user_id}")
 
@@ -189,7 +194,11 @@ class RunBlockTool(BaseTool):
 
         if missing_credentials:
             # Return setup requirements response with missing credentials
-            missing_creds_dict = {c.id: c.model_dump() for c in missing_credentials}
+            credentials_fields_info = block.input_schema.get_credentials_fields_info()
+            missing_creds_dict = build_missing_credentials_from_field_info(
+                credentials_fields_info, set(matched_credentials.keys())
+            )
+            missing_creds_list = list(missing_creds_dict.values())
 
             return SetupRequirementsResponse(
                 message=(
@@ -206,7 +215,7 @@ class RunBlockTool(BaseTool):
                         ready_to_run=False,
                     ),
                     requirements={
-                        "credentials": [c.model_dump() for c in missing_credentials],
+                        "credentials": missing_creds_list,
                         "inputs": self._get_inputs_list(block),
                         "execution_modes": ["immediate"],
                     },
@@ -216,11 +225,48 @@ class RunBlockTool(BaseTool):
             )
 
         try:
-            # Fetch actual credentials and prepare kwargs for block execution
-            # Create execution context with defaults (blocks may require it)
+            # Get or create user's workspace for CoPilot file operations
+            workspace = await get_or_create_workspace(user_id)
+
+            # Generate synthetic IDs for CoPilot context
+            # Each chat session is treated as its own agent with one continuous run
+            # This means:
+            # - graph_id (agent) = session (memories scoped to session when limit_to_agent=True)
+            # - graph_exec_id (run) = session (memories scoped to session when limit_to_run=True)
+            # - node_exec_id = unique per block execution
+            synthetic_graph_id = f"copilot-session-{session.session_id}"
+            synthetic_graph_exec_id = f"copilot-session-{session.session_id}"
+            synthetic_node_id = f"copilot-node-{block_id}"
+            synthetic_node_exec_id = (
+                f"copilot-{session.session_id}-{uuid.uuid4().hex[:8]}"
+            )
+
+            # Create unified execution context with all required fields
+            execution_context = ExecutionContext(
+                # Execution identity
+                user_id=user_id,
+                graph_id=synthetic_graph_id,
+                graph_exec_id=synthetic_graph_exec_id,
+                graph_version=1,  # Versions are 1-indexed
+                node_id=synthetic_node_id,
+                node_exec_id=synthetic_node_exec_id,
+                # Workspace with session scoping
+                workspace_id=workspace.id,
+                session_id=session.session_id,
+            )
+
+            # Prepare kwargs for block execution
+            # Keep individual kwargs for backwards compatibility with existing blocks
             exec_kwargs: dict[str, Any] = {
                 "user_id": user_id,
-                "execution_context": ExecutionContext(),
+                "execution_context": execution_context,
+                # Legacy: individual kwargs for blocks not yet using execution_context
+                "workspace_id": workspace.id,
+                "graph_exec_id": synthetic_graph_exec_id,
+                "node_exec_id": synthetic_node_exec_id,
+                "node_id": synthetic_node_id,
+                "graph_version": 1,  # Versions are 1-indexed
+                "graph_id": synthetic_graph_id,
             }
 
             for field_name, cred_meta in matched_credentials.items():

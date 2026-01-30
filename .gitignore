@@ -183,6 +183,8 @@ autogpt_platform/backend/settings.py
 *.ign.*
 .test-contents
 **/.claude/settings.local.json
+.claude/settings.local.json
+CLAUDE.local.md
 /autogpt_platform/backend/logs
 
 # Test database

@@ -5,12 +5,25 @@ import shutil
 import tempfile
 import uuid
 from pathlib import Path
+from typing import TYPE_CHECKING, Literal
 from urllib.parse import urlparse
 
 from backend.util.cloud_storage import get_cloud_storage_handler
 from backend.util.request import Requests
+from backend.util.settings import Config
 from backend.util.type import MediaFileType
 from backend.util.virus_scanner import scan_content_safe
+
+if TYPE_CHECKING:
+    from backend.data.execution import ExecutionContext
+
+# Return format options for store_media_file
+# - "for_local_processing": Returns local file path - use with ffmpeg, MoviePy, PIL, etc.
+# - "for_external_api": Returns data URI (base64) - use when sending content to external APIs
+# - "for_block_output": Returns best format for output - workspace:// in CoPilot, data URI in graphs
+MediaReturnFormat = Literal[
+    "for_local_processing", "for_external_api", "for_block_output"
+]
 
 TEMP_DIR = Path(tempfile.gettempdir()).resolve()
 
@@ -67,42 +80,56 @@ def clean_exec_files(graph_exec_id: str, file: str = "") -> None:
 
 
 async def store_media_file(
-    graph_exec_id: str,
     file: MediaFileType,
-    user_id: str,
-    return_content: bool = False,
+    execution_context: "ExecutionContext",
+    *,
+    return_format: MediaReturnFormat,
 ) -> MediaFileType:
     """
-    Safely handle 'file' (a data URI, a URL, or a local path relative to {temp}/exec_file/{exec_id}),
-    placing or verifying it under:
+    Safely handle 'file' (a data URI, a URL, a workspace:// reference, or a local path
+    relative to {temp}/exec_file/{exec_id}), placing or verifying it under:
         {tempdir}/exec_file/{exec_id}/...
 
-    If 'return_content=True', return a data URI (data:<mime>;base64,<content>).
-    Otherwise, returns the file media path relative to the exec_id folder.
+    For each MediaFileType input:
+    - Data URI: decode and store locally
+    - URL: download and store locally
+    - workspace:// reference: read from workspace, store locally
+    - Local path: verify it exists in exec_file directory
 
-    For each MediaFileType type:
-    - Data URI:
-      -> decode and store in a new random file in that folder
-    - URL:
-      -> download and store in that folder
-    - Local path:
-      -> interpret as relative to that folder; verify it exists
-         (no copying, as it's presumably already there).
-         We realpath-check so no symlink or '..' can escape the folder.
+    Return format options:
+    - "for_local_processing": Returns local file path - use with ffmpeg, MoviePy, PIL, etc.
+    - "for_external_api": Returns data URI (base64) - use when sending to external APIs
+    - "for_block_output": Returns best format for output - workspace:// in CoPilot, data URI in graphs
 
-
-    :param graph_exec_id:  The unique ID of the graph execution.
-    :param file:           Data URI, URL, or local (relative) path.
-    :param return_content: If True, return a data URI of the file content.
-                           If False, return the *relative* path inside the exec_id folder.
-    :return:               The requested result: data URI or relative path of the media.
+    :param file:               Data URI, URL, workspace://, or local (relative) path.
+    :param execution_context:  ExecutionContext with user_id, graph_exec_id, workspace_id.
+    :param return_format:      What to return: "for_local_processing", "for_external_api", or "for_block_output".
+    :return:                   The requested result based on return_format.
     """
+    # Extract values from execution_context
+    graph_exec_id = execution_context.graph_exec_id
+    user_id = execution_context.user_id
+
+    if not graph_exec_id:
+        raise ValueError("execution_context.graph_exec_id is required")
+    if not user_id:
+        raise ValueError("execution_context.user_id is required")
+
+    # Create workspace_manager if we have workspace_id (with session scoping)
+    # Import here to avoid circular import (file.py → workspace.py → data → blocks → file.py)
+    from backend.util.workspace import WorkspaceManager
+
+    workspace_manager: WorkspaceManager | None = None
+    if execution_context.workspace_id:
+        workspace_manager = WorkspaceManager(
+            user_id, execution_context.workspace_id, execution_context.session_id
+        )
     # Build base path
     base_path = Path(get_exec_file_path(graph_exec_id, ""))
     base_path.mkdir(parents=True, exist_ok=True)
 
     # Security fix: Add disk space limits to prevent DoS
-    MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB per file
+    MAX_FILE_SIZE_BYTES = Config().max_file_size_mb * 1024 * 1024
     MAX_TOTAL_DISK_USAGE = 1024 * 1024 * 1024  # 1GB total per execution directory
 
     # Check total disk usage in base_path
@@ -142,9 +169,57 @@ async def store_media_file(
         """
         return str(absolute_path.relative_to(base))
 
-    # Check if this is a cloud storage path
+    # Get cloud storage handler for checking cloud paths
     cloud_storage = await get_cloud_storage_handler()
-    if cloud_storage.is_cloud_path(file):
+
+    # Track if the input came from workspace (don't re-save it)
+    is_from_workspace = file.startswith("workspace://")
+
+    # Check if this is a workspace file reference
+    if is_from_workspace:
+        if workspace_manager is None:
+            raise ValueError(
+                "Workspace file reference requires workspace context. "
+                "This file type is only available in CoPilot sessions."
+            )
+
+        # Parse workspace reference
+        # workspace://abc123 - by file ID
+        # workspace:///path/to/file.txt - by virtual path
+        file_ref = file[12:]  # Remove "workspace://"
+
+        if file_ref.startswith("/"):
+            # Path reference
+            workspace_content = await workspace_manager.read_file(file_ref)
+            file_info = await workspace_manager.get_file_info_by_path(file_ref)
+            filename = sanitize_filename(
+                file_info.name if file_info else f"{uuid.uuid4()}.bin"
+            )
+        else:
+            # ID reference
+            workspace_content = await workspace_manager.read_file_by_id(file_ref)
+            file_info = await workspace_manager.get_file_info(file_ref)
+            filename = sanitize_filename(
+                file_info.name if file_info else f"{uuid.uuid4()}.bin"
+            )
+
+        try:
+            target_path = _ensure_inside_base(base_path / filename, base_path)
+        except OSError as e:
+            raise ValueError(f"Invalid file path '{filename}': {e}") from e
+
+        # Check file size limit
+        if len(workspace_content) > MAX_FILE_SIZE_BYTES:
+            raise ValueError(
+                f"File too large: {len(workspace_content)} bytes > {MAX_FILE_SIZE_BYTES} bytes"
+            )
+
+        # Virus scan the workspace content before writing locally
+        await scan_content_safe(workspace_content, filename=filename)
+        target_path.write_bytes(workspace_content)
+
+    # Check if this is a cloud storage path
+    elif cloud_storage.is_cloud_path(file):
         # Download from cloud storage and store locally
         cloud_content = await cloud_storage.retrieve_file(
             file, user_id=user_id, graph_exec_id=graph_exec_id
@@ -159,9 +234,9 @@ async def store_media_file(
             raise ValueError(f"Invalid file path '{filename}': {e}") from e
 
         # Check file size limit
-        if len(cloud_content) > MAX_FILE_SIZE:
+        if len(cloud_content) > MAX_FILE_SIZE_BYTES:
             raise ValueError(
-                f"File too large: {len(cloud_content)} bytes > {MAX_FILE_SIZE} bytes"
+                f"File too large: {len(cloud_content)} bytes > {MAX_FILE_SIZE_BYTES} bytes"
             )
 
         # Virus scan the cloud content before writing locally
@@ -189,9 +264,9 @@ async def store_media_file(
         content = base64.b64decode(b64_content)
 
         # Check file size limit
-        if len(content) > MAX_FILE_SIZE:
+        if len(content) > MAX_FILE_SIZE_BYTES:
             raise ValueError(
-                f"File too large: {len(content)} bytes > {MAX_FILE_SIZE} bytes"
+                f"File too large: {len(content)} bytes > {MAX_FILE_SIZE_BYTES} bytes"
             )
 
         # Virus scan the base64 content before writing
@@ -199,22 +274,30 @@ async def store_media_file(
         target_path.write_bytes(content)
 
     elif file.startswith(("http://", "https://")):
-        # URL
+        # URL - download first to get Content-Type header
+        resp = await Requests().get(file)
+
+        # Check file size limit
+        if len(resp.content) > MAX_FILE_SIZE_BYTES:
+            raise ValueError(
+                f"File too large: {len(resp.content)} bytes > {MAX_FILE_SIZE_BYTES} bytes"
+            )
+
+        # Extract filename from URL path
         parsed_url = urlparse(file)
         filename = sanitize_filename(Path(parsed_url.path).name or f"{uuid.uuid4()}")
+
+        # If filename lacks extension, add one from Content-Type header
+        if "." not in filename:
+            content_type = resp.headers.get("Content-Type", "").split(";")[0].strip()
+            if content_type:
+                ext = _extension_from_mime(content_type)
+                filename = f"{filename}{ext}"
+
         try:
             target_path = _ensure_inside_base(base_path / filename, base_path)
         except OSError as e:
             raise ValueError(f"Invalid file path '{filename}': {e}") from e
-
-        # Download and save
-        resp = await Requests().get(file)
-
-        # Check file size limit
-        if len(resp.content) > MAX_FILE_SIZE:
-            raise ValueError(
-                f"File too large: {len(resp.content)} bytes > {MAX_FILE_SIZE} bytes"
-            )
 
         # Virus scan the downloaded content before writing
         await scan_content_safe(resp.content, filename=filename)
@@ -230,11 +313,43 @@ async def store_media_file(
         if not target_path.is_file():
             raise ValueError(f"Local file does not exist: {target_path}")
 
-    # Return result
-    if return_content:
-        return MediaFileType(_file_to_data_uri(target_path))
-    else:
+    # Return based on requested format
+    if return_format == "for_local_processing":
+        # Use when processing files locally with tools like ffmpeg, MoviePy, PIL
+        # Returns: relative path in exec_file directory (e.g., "image.png")
         return MediaFileType(_strip_base_prefix(target_path, base_path))
+
+    elif return_format == "for_external_api":
+        # Use when sending content to external APIs that need base64
+        # Returns: data URI (e.g., "data:image/png;base64,iVBORw0...")
+        return MediaFileType(_file_to_data_uri(target_path))
+
+    elif return_format == "for_block_output":
+        # Use when returning output from a block to user/next block
+        # Returns: workspace:// ref (CoPilot) or data URI (graph execution)
+        if workspace_manager is None:
+            # No workspace available (graph execution without CoPilot)
+            # Fallback to data URI so the content can still be used/displayed
+            return MediaFileType(_file_to_data_uri(target_path))
+
+        # Don't re-save if input was already from workspace
+        if is_from_workspace:
+            # Return original workspace reference
+            return MediaFileType(file)
+
+        # Save new content to workspace
+        content = target_path.read_bytes()
+        filename = target_path.name
+
+        file_record = await workspace_manager.write_file(
+            content=content,
+            filename=filename,
+            overwrite=True,
+        )
+        return MediaFileType(f"workspace://{file_record.id}")
+
+    else:
+        raise ValueError(f"Invalid return_format: {return_format}")
 
 
 def get_dir_size(path: Path) -> int:

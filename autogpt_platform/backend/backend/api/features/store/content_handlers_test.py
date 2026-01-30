@@ -81,6 +81,7 @@ async def test_block_handler_get_missing_items(mocker):
     mock_block_instance.name = "Calculator Block"
     mock_block_instance.description = "Performs calculations"
     mock_block_instance.categories = [MagicMock(value="MATH")]
+    mock_block_instance.disabled = False
     mock_block_instance.input_schema.model_json_schema.return_value = {
         "properties": {"expression": {"description": "Math expression to evaluate"}}
     }
@@ -116,11 +117,18 @@ async def test_block_handler_get_stats(mocker):
     """Test BlockHandler returns correct stats."""
     handler = BlockHandler()
 
-    # Mock get_blocks
+    # Mock get_blocks - each block class returns an instance with disabled=False
+    def make_mock_block_class():
+        mock_class = MagicMock()
+        mock_instance = MagicMock()
+        mock_instance.disabled = False
+        mock_class.return_value = mock_instance
+        return mock_class
+
     mock_blocks = {
-        "block-1": MagicMock(),
-        "block-2": MagicMock(),
-        "block-3": MagicMock(),
+        "block-1": make_mock_block_class(),
+        "block-2": make_mock_block_class(),
+        "block-3": make_mock_block_class(),
     }
 
     # Mock embedded count query (2 blocks have embeddings)
@@ -309,6 +317,7 @@ async def test_block_handler_handles_missing_attributes():
     mock_block_class = MagicMock()
     mock_block_instance = MagicMock()
     mock_block_instance.name = "Minimal Block"
+    mock_block_instance.disabled = False
     # No description, categories, or schema
     del mock_block_instance.description
     del mock_block_instance.categories
@@ -342,6 +351,7 @@ async def test_block_handler_skips_failed_blocks():
     good_instance.name = "Good Block"
     good_instance.description = "Works fine"
     good_instance.categories = []
+    good_instance.disabled = False
     good_block.return_value = good_instance
 
     bad_block = MagicMock()
