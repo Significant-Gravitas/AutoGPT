@@ -155,7 +155,11 @@ async def generate_agent_external(
                 f"Agent Generator accepted async request "
                 f"(operation_id={operation_id}, task_id={task_id})"
             )
-            return {"status": "accepted", "operation_id": operation_id, "task_id": task_id}
+            return {
+                "status": "accepted",
+                "operation_id": operation_id,
+                "task_id": task_id,
+            }
 
         response.raise_for_status()
         data = response.json()
@@ -214,7 +218,11 @@ async def generate_agent_patch_external(
                 f"Agent Generator accepted async update request "
                 f"(operation_id={operation_id}, task_id={task_id})"
             )
-            return {"status": "accepted", "operation_id": operation_id, "task_id": task_id}
+            return {
+                "status": "accepted",
+                "operation_id": operation_id,
+                "task_id": task_id,
+            }
 
         response.raise_for_status()
         data = response.json()

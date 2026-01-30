@@ -22,10 +22,6 @@ import backend.api.features.admin.store_admin_routes
 import backend.api.features.builder
 import backend.api.features.builder.routes
 import backend.api.features.chat.routes as chat_routes
-from backend.api.features.chat.completion_consumer import (
-    start_completion_consumer,
-    stop_completion_consumer,
-)
 import backend.api.features.executions.review.routes
 import backend.api.features.library.db
 import backend.api.features.library.model
@@ -44,6 +40,10 @@ import backend.data.user
 import backend.integrations.webhooks.utils
 import backend.util.service
 import backend.util.settings
+from backend.api.features.chat.completion_consumer import (
+    start_completion_consumer,
+    stop_completion_consumer,
+)
 from backend.blocks.llm import DEFAULT_LLM_MODEL
 from backend.data.model import Credentials
 from backend.integrations.providers import ProviderName
