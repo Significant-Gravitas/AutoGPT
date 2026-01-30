@@ -1,0 +1,680 @@
+/* ============================================================
+   COSMETIKA — Base Styles
+   ============================================================
+   TOMORROW: Update CSS custom properties with values from
+   Notion Brand Config (hex codes, font families).
+   ============================================================ */
+
+/* --- Design Tokens (UPDATE FROM NOTION) --- */
+:root {
+  /* Colors — REPLACE with brand hex codes */
+  --color-primary: #1a1a1a;
+  --color-secondary: #8b6f47;
+  --color-accent: #c9a96e;
+  --color-background: #faf9f7;
+  --color-surface: #ffffff;
+  --color-text: #1a1a1a;
+  --color-text-muted: #6b6b6b;
+  --color-border: #e5e2de;
+  --color-error: #c0392b;
+  --color-sale: #c0392b;
+
+  /* Typography — REPLACE with brand fonts */
+  --font-heading: 'Playfair Display', Georgia, serif;
+  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-weight-light: 300;
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  /* Spacing scale */
+  --space-xs: 0.25rem;
+  --space-sm: 0.5rem;
+  --space-md: 1rem;
+  --space-lg: 2rem;
+  --space-xl: 4rem;
+  --space-2xl: 6rem;
+  --space-3xl: 8rem;
+
+  /* Layout */
+  --container-max: 1400px;
+  --container-padding: 1.5rem;
+  --header-height: 72px;
+
+  /* Transitions */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --duration-fast: 200ms;
+  --duration-base: 400ms;
+  --duration-slow: 800ms;
+
+  /* Border radius */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-full: 9999px;
+}
+
+/* --- Reset --- */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-body);
+  font-weight: var(--font-weight-regular);
+  color: var(--color-text);
+  background-color: var(--color-background);
+  line-height: 1.6;
+  overflow-x: hidden;
+}
+
+img, video {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+  border: none;
+  background: none;
+}
+
+ul, ol { list-style: none; }
+
+/* --- Typography --- */
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+
+h1 { font-size: clamp(2.5rem, 6vw, 5rem); }
+h2 { font-size: clamp(1.75rem, 4vw, 3rem); }
+h3 { font-size: clamp(1.25rem, 2.5vw, 1.75rem); }
+
+/* --- Layout --- */
+.cosmetika-container {
+  width: 100%;
+  max-width: var(--container-max);
+  margin: 0 auto;
+  padding: 0 var(--container-padding);
+}
+
+.cosmetika-section {
+  padding: var(--space-2xl) 0;
+}
+
+/* --- Grid --- */
+.cosmetika-grid {
+  display: grid;
+  gap: var(--space-lg);
+}
+
+.cosmetika-grid--2 { grid-template-columns: repeat(2, 1fr); }
+.cosmetika-grid--3 { grid-template-columns: repeat(3, 1fr); }
+.cosmetika-grid--4 { grid-template-columns: repeat(4, 1fr); }
+
+@media (max-width: 768px) {
+  .cosmetika-grid--3,
+  .cosmetika-grid--4 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 480px) {
+  .cosmetika-grid--2,
+  .cosmetika-grid--3,
+  .cosmetika-grid--4 {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* --- Buttons --- */
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.875rem 2rem;
+  font-family: var(--font-body);
+  font-size: 0.8125rem;
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  border-radius: var(--radius-sm);
+  transition: all var(--duration-base) var(--ease-out);
+  cursor: pointer;
+}
+
+.button--primary {
+  background: var(--color-primary);
+  color: var(--color-surface);
+  border: 1px solid var(--color-primary);
+}
+
+.button--primary:hover {
+  background: transparent;
+  color: var(--color-primary);
+}
+
+.button--secondary {
+  background: var(--color-surface);
+  color: var(--color-primary);
+  border: 1px solid var(--color-border);
+}
+
+.button--secondary:hover {
+  background: var(--color-primary);
+  color: var(--color-surface);
+  border-color: var(--color-primary);
+}
+
+.button--outline {
+  background: transparent;
+  color: var(--color-primary);
+  border: 1px solid var(--color-primary);
+}
+
+.button--outline:hover {
+  background: var(--color-primary);
+  color: var(--color-surface);
+}
+
+.button--disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* --- Announcement Bar --- */
+.cosmetika-announcement {
+  background: var(--color-primary);
+  color: var(--color-surface);
+  text-align: center;
+  padding: var(--space-sm) var(--container-padding);
+  font-size: 0.8125rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.cosmetika-announcement__link {
+  color: inherit;
+}
+
+/* --- Header --- */
+.cosmetika-header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  height: var(--header-height);
+  transition: transform var(--duration-base) var(--ease-out),
+              background var(--duration-base) var(--ease-out);
+}
+
+.cosmetika-header__container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 100%;
+  max-width: var(--container-max);
+  margin: 0 auto;
+  padding: 0 var(--container-padding);
+}
+
+.cosmetika-header__logo-image {
+  height: 28px;
+  width: auto;
+}
+
+.cosmetika-header__logo-text {
+  font-family: var(--font-heading);
+  font-size: 1.5rem;
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+
+.cosmetika-header__nav {
+  display: flex;
+}
+
+.cosmetika-header__menu {
+  display: flex;
+  gap: var(--space-lg);
+}
+
+.cosmetika-header__menu-link {
+  font-size: 0.8125rem;
+  font-weight: var(--font-weight-medium);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: var(--space-sm) 0;
+  position: relative;
+}
+
+.cosmetika-header__menu-link::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 0;
+  height: 1px;
+  background: var(--color-primary);
+  transition: width var(--duration-base) var(--ease-out);
+}
+
+.cosmetika-header__menu-link:hover::after {
+  width: 100%;
+}
+
+.cosmetika-header__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+}
+
+.cosmetika-header__action {
+  position: relative;
+  transition: opacity var(--duration-fast);
+}
+
+.cosmetika-header__action:hover {
+  opacity: 0.6;
+}
+
+.cosmetika-header__cart-count {
+  position: absolute;
+  top: -6px;
+  right: -8px;
+  background: var(--color-accent);
+  color: var(--color-surface);
+  font-size: 0.625rem;
+  font-weight: var(--font-weight-bold);
+  width: 16px;
+  height: 16px;
+  border-radius: var(--radius-full);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Dropdown */
+.cosmetika-header__menu-item {
+  position: relative;
+}
+
+.cosmetika-header__dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  padding: var(--space-md);
+  min-width: 200px;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(8px);
+  transition: all var(--duration-base) var(--ease-out);
+}
+
+.cosmetika-header__menu-item:hover .cosmetika-header__dropdown {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+.cosmetika-header__dropdown-link {
+  display: block;
+  padding: var(--space-xs) 0;
+  font-size: 0.8125rem;
+}
+
+/* Mobile toggle */
+.cosmetika-header__mobile-toggle {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .cosmetika-header__nav {
+    display: none;
+  }
+  .cosmetika-header__mobile-toggle {
+    display: block;
+    width: 24px;
+    height: 24px;
+  }
+  .cosmetika-header__hamburger,
+  .cosmetika-header__hamburger::before,
+  .cosmetika-header__hamburger::after {
+    display: block;
+    width: 20px;
+    height: 1.5px;
+    background: var(--color-primary);
+    transition: all var(--duration-base) var(--ease-out);
+  }
+  .cosmetika-header__hamburger {
+    position: relative;
+  }
+  .cosmetika-header__hamburger::before,
+  .cosmetika-header__hamburger::after {
+    content: '';
+    position: absolute;
+    left: 0;
+  }
+  .cosmetika-header__hamburger::before { top: -6px; }
+  .cosmetika-header__hamburger::after { top: 6px; }
+}
+
+/* --- Hero --- */
+.cosmetika-hero {
+  position: relative;
+  height: 100vh;
+  min-height: 600px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.cosmetika-hero__media {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+
+.cosmetika-hero__image,
+.cosmetika-hero__video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.cosmetika-hero__overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.cosmetika-hero__content {
+  position: relative;
+  z-index: 1;
+  text-align: center;
+  color: var(--color-surface);
+  max-width: 800px;
+  padding: 0 var(--container-padding);
+}
+
+.cosmetika-hero__subtitle {
+  font-size: 0.8125rem;
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  margin-bottom: var(--space-md);
+}
+
+.cosmetika-hero__heading {
+  color: var(--color-surface);
+  margin-bottom: var(--space-lg);
+}
+
+.cosmetika-hero__description {
+  font-size: 1.125rem;
+  line-height: 1.6;
+  margin-bottom: var(--space-xl);
+  opacity: 0.9;
+}
+
+.cosmetika-hero__cta {
+  background: var(--color-surface);
+  color: var(--color-primary);
+  border-color: var(--color-surface);
+}
+
+.cosmetika-hero__cta:hover {
+  background: transparent;
+  color: var(--color-surface);
+}
+
+/* --- Product Grid --- */
+.cosmetika-product-grid__container {
+  max-width: var(--container-max);
+  margin: 0 auto;
+  padding: 0 var(--container-padding);
+}
+
+.cosmetika-product-grid__header {
+  text-align: center;
+  margin-bottom: var(--space-xl);
+}
+
+.cosmetika-product-grid__subheading {
+  color: var(--color-text-muted);
+  margin-top: var(--space-sm);
+}
+
+.cosmetika-product-grid__footer {
+  text-align: center;
+  margin-top: var(--space-xl);
+}
+
+/* Product Card */
+.cosmetika-product-card {
+  position: relative;
+}
+
+.cosmetika-product-card__link {
+  display: block;
+}
+
+.cosmetika-product-card__media {
+  position: relative;
+  overflow: hidden;
+  aspect-ratio: 3 / 4;
+  background: var(--color-border);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-md);
+}
+
+.cosmetika-product-card__image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform var(--duration-slow) var(--ease-out);
+}
+
+.cosmetika-product-card__image--hover {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity var(--duration-base) var(--ease-out),
+              transform var(--duration-slow) var(--ease-out);
+}
+
+.cosmetika-product-card:hover .cosmetika-product-card__image {
+  transform: scale(1.05);
+}
+
+.cosmetika-product-card:hover .cosmetika-product-card__image--hover {
+  opacity: 1;
+}
+
+.cosmetika-product-card__badge {
+  position: absolute;
+  top: var(--space-sm);
+  left: var(--space-sm);
+  background: var(--color-sale);
+  color: var(--color-surface);
+  font-size: 0.6875rem;
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+}
+
+.cosmetika-product-card__vendor {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  margin-bottom: var(--space-xs);
+}
+
+.cosmetika-product-card__title {
+  font-family: var(--font-body);
+  font-size: 0.9375rem;
+  font-weight: var(--font-weight-medium);
+  margin-bottom: var(--space-xs);
+}
+
+.cosmetika-product-card__price {
+  display: flex;
+  gap: var(--space-sm);
+  align-items: center;
+}
+
+.cosmetika-product-card__price--compare {
+  text-decoration: line-through;
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
+.cosmetika-product-card__price--current {
+  font-size: 0.9375rem;
+  font-weight: var(--font-weight-medium);
+}
+
+.cosmetika-product-card__quick-add {
+  margin-top: var(--space-sm);
+}
+
+.cosmetika-product-card__quick-add-btn {
+  width: 100%;
+  padding: 0.625rem 1rem;
+  font-size: 0.75rem;
+}
+
+/* --- Footer --- */
+.cosmetika-footer {
+  background: var(--color-primary);
+  color: var(--color-surface);
+  padding: var(--space-3xl) 0 var(--space-xl);
+}
+
+.cosmetika-footer__container {
+  max-width: var(--container-max);
+  margin: 0 auto;
+  padding: 0 var(--container-padding);
+}
+
+.cosmetika-footer__grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr 1fr;
+  gap: var(--space-xl);
+  margin-bottom: var(--space-xl);
+}
+
+@media (max-width: 768px) {
+  .cosmetika-footer__grid {
+    grid-template-columns: 1fr;
+    gap: var(--space-lg);
+  }
+}
+
+.cosmetika-footer__logo {
+  height: 24px;
+  width: auto;
+  margin-bottom: var(--space-md);
+  filter: brightness(0) invert(1);
+}
+
+.cosmetika-footer__logo-text {
+  font-family: var(--font-heading);
+  font-size: 1.25rem;
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  display: block;
+  margin-bottom: var(--space-md);
+}
+
+.cosmetika-footer__description {
+  font-size: 0.875rem;
+  opacity: 0.7;
+  line-height: 1.6;
+  margin-bottom: var(--space-lg);
+}
+
+.cosmetika-footer__social {
+  display: flex;
+  gap: var(--space-md);
+}
+
+.cosmetika-footer__social a {
+  opacity: 0.7;
+  transition: opacity var(--duration-fast);
+}
+
+.cosmetika-footer__social a:hover {
+  opacity: 1;
+}
+
+.cosmetika-footer__menu-heading {
+  font-family: var(--font-body);
+  font-size: 0.75rem;
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: var(--space-md);
+}
+
+.cosmetika-footer__menu-list li {
+  margin-bottom: var(--space-sm);
+}
+
+.cosmetika-footer__menu-list a {
+  font-size: 0.875rem;
+  opacity: 0.7;
+  transition: opacity var(--duration-fast);
+}
+
+.cosmetika-footer__menu-list a:hover {
+  opacity: 1;
+}
+
+.cosmetika-footer__bottom {
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  padding-top: var(--space-lg);
+  text-align: center;
+}
+
+.cosmetika-footer__copyright {
+  font-size: 0.75rem;
+  opacity: 0.5;
+}
+
+/* --- Utility --- */
+.placeholder-svg {
+  width: 100%;
+  height: 100%;
+  background: var(--color-border);
+}

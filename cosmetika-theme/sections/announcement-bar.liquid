@@ -1,0 +1,47 @@
+{% comment %}
+  COSMETIKA — Announcement Bar
+  Useful for "LIVE ON TIKTOK" banners during launch.
+{% endcomment %}
+
+{% if section.settings.show_bar %}
+<div class="cosmetika-announcement" data-section-id="{{ section.id }}">
+  <div class="cosmetika-announcement__container">
+    <p class="cosmetika-announcement__text">
+      {% if section.settings.link != blank %}
+        <a href="{{ section.settings.link }}" class="cosmetika-announcement__link">
+          {{ section.settings.text }}
+        </a>
+      {% else %}
+        {{ section.settings.text }}
+      {% endif %}
+    </p>
+  </div>
+</div>
+{% endif %}
+
+{% schema %}
+{
+  "name": "Announcement Bar",
+  "tag": "section",
+  "class": "cosmetika-section cosmetika-section--announcement",
+  "settings": [
+    {
+      "type": "checkbox",
+      "id": "show_bar",
+      "label": "Show announcement bar",
+      "default": true
+    },
+    {
+      "type": "text",
+      "id": "text",
+      "label": "Text",
+      "default": "🔴 LIVE ON TIKTOK — Shop the Launch"
+    },
+    {
+      "type": "url",
+      "id": "link",
+      "label": "Link"
+    }
+  ]
+}
+{% endschema %}
