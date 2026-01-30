@@ -65,7 +65,26 @@ export function useChatContainer({
   } = useChatStream();
   const activeStreams = useChatStore((s) => s.activeStreams);
   const subscribeToStream = useChatStore((s) => s.subscribeToStream);
+  const setActiveTask = useChatStore((s) => s.setActiveTask);
+  const getActiveTask = useChatStore((s) => s.getActiveTask);
+  const reconnectToTask = useChatStore((s) => s.reconnectToTask);
   const isStreaming = isStreamingInitiated || hasTextChunks;
+
+  // Callback to store active task info for SSE reconnection
+  function handleActiveTaskStarted(taskInfo: {
+    taskId: string;
+    operationId: string;
+    toolName: string;
+    toolCallId: string;
+  }) {
+    if (!sessionId) return;
+    setActiveTask(sessionId, {
+      taskId: taskInfo.taskId,
+      operationId: taskInfo.operationId,
+      toolName: taskInfo.toolName,
+      lastMessageId: "0-0", // Redis Stream ID format for full replay
+    });
+  }
 
   useEffect(
     function handleSessionChange() {
@@ -85,6 +104,34 @@ export function useChatContainer({
 
       if (!sessionId) return;
 
+      // Check if there's an active task for this session that we should reconnect to
+      const activeTask = getActiveTask(sessionId);
+      if (activeTask) {
+        const dispatcher = createStreamEventDispatcher({
+          setHasTextChunks,
+          setStreamingChunks,
+          streamingChunksRef,
+          hasResponseRef,
+          setMessages,
+          setIsRegionBlockedModalOpen,
+          sessionId,
+          setIsStreamingInitiated,
+          onOperationStarted,
+          onActiveTaskStarted: handleActiveTaskStarted,
+        });
+
+        setIsStreamingInitiated(true);
+        // Reconnect to the task stream
+        reconnectToTask(
+          sessionId,
+          activeTask.taskId,
+          activeTask.lastMessageId,
+          dispatcher,
+        );
+        return;
+      }
+
+      // Otherwise check for an in-memory active stream
       const activeStream = activeStreams.get(sessionId);
       if (!activeStream || activeStream.status !== "streaming") return;
 
@@ -98,6 +145,7 @@ export function useChatContainer({
         sessionId,
         setIsStreamingInitiated,
         onOperationStarted,
+        onActiveTaskStarted: handleActiveTaskStarted,
       });
 
       setIsStreamingInitiated(true);
@@ -110,6 +158,8 @@ export function useChatContainer({
       activeStreams,
       subscribeToStream,
       onOperationStarted,
+      getActiveTask,
+      reconnectToTask,
     ],
   );
 
@@ -225,6 +275,7 @@ export function useChatContainer({
       sessionId,
       setIsStreamingInitiated,
       onOperationStarted,
+      onActiveTaskStarted: handleActiveTaskStarted,
     });
 
     try {
