@@ -1,5 +1,6 @@
 "use client";
 
+import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import * as Sentry from "@sentry/nextjs";
 import { LDProvider } from "launchdarkly-react-client-sdk";
@@ -15,7 +16,9 @@ export function LaunchDarklyProvider({ children }: { children: ReactNode }) {
   const clientId = environment.getLaunchDarklyClientId();
 
   const context = useMemo(() => {
-    if (isUserLoading || !user) {
+    if (isUserLoading) return;
+
+    if (!user) {
       return {
         kind: "user" as const,
         key: "anonymous",
@@ -36,6 +39,10 @@ export function LaunchDarklyProvider({ children }: { children: ReactNode }) {
 
   if (!envEnabled) {
     return <>{children}</>;
+  }
+
+  if (isUserLoading) {
+    return <LoadingSpinner size="large" cover />;
   }
 
   return (
