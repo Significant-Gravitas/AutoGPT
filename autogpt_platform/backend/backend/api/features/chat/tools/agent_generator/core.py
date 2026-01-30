@@ -15,7 +15,7 @@ from backend.data.graph import (
     get_graph,
     get_graph_all_versions,
 )
-from backend.util.exceptions import NotFoundError
+from backend.util.exceptions import DatabaseError, NotFoundError
 
 from .service import (
     decompose_goal_external,
@@ -151,6 +151,8 @@ async def get_library_agent_by_id(
                 input_schema=agent.input_schema,
                 output_schema=agent.output_schema,
             )
+    except DatabaseError:
+        raise
     except Exception as e:
         logger.debug(f"Could not fetch library agent by graph_id {agent_id}: {e}")
 
@@ -168,8 +170,13 @@ async def get_library_agent_by_id(
             )
     except NotFoundError:
         logger.debug(f"Library agent not found by library_id: {agent_id}")
+    except DatabaseError:
+        raise
     except Exception as e:
-        logger.debug(f"Could not fetch library agent by library_id {agent_id}: {e}")
+        logger.warning(
+            f"Could not fetch library agent by library_id {agent_id}: {e}",
+            exc_info=True,
+        )
 
     return None
 

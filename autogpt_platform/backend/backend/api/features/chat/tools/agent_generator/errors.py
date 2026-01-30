@@ -1,5 +1,42 @@
 """Error handling utilities for agent generator."""
 
+import re
+
+
+def _sanitize_error_details(details: str) -> str:
+    """Sanitize error details to remove sensitive information.
+
+    Strips common patterns that could expose internal system info:
+    - File paths (Unix and Windows)
+    - Database connection strings
+    - URLs with credentials
+    - Stack trace internals
+
+    Args:
+        details: Raw error details string
+
+    Returns:
+        Sanitized error details safe for user display
+    """
+    # Remove file paths (Unix-style)
+    sanitized = re.sub(
+        r"/[a-zA-Z0-9_./\-]+\.(py|js|ts|json|yaml|yml)", "[path]", details
+    )
+    # Remove file paths (Windows-style)
+    sanitized = re.sub(r"[A-Z]:\\[a-zA-Z0-9_\\.\\-]+", "[path]", sanitized)
+    # Remove database URLs
+    sanitized = re.sub(
+        r"(postgres|mysql|mongodb|redis)://[^\s]+", "[database_url]", sanitized
+    )
+    # Remove URLs with credentials
+    sanitized = re.sub(r"https?://[^:]+:[^@]+@[^\s]+", "[url]", sanitized)
+    # Remove line numbers from stack traces
+    sanitized = re.sub(r", line \d+", "", sanitized)
+    # Remove "File" references from stack traces
+    sanitized = re.sub(r'File "[^"]+",?', "", sanitized)
+
+    return sanitized.strip()
+
 
 def get_user_message_for_error(
     error_type: str,
@@ -55,12 +92,13 @@ def get_user_message_for_error(
     else:
         base_message = f"Failed to {operation}. Please try again."
 
-    # Add error details if provided (for debugging, truncated)
+    # Add error details if provided (sanitized and truncated)
     if error_details:
+        # Sanitize to remove sensitive information
+        details = _sanitize_error_details(error_details)
         # Truncate long error details
-        details = (
-            error_details[:200] + "..." if len(error_details) > 200 else error_details
-        )
+        if len(details) > 200:
+            details = details[:200] + "..."
         base_message += f"\n\nTechnical details: {details}"
 
     return base_message
