@@ -6,7 +6,7 @@ import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import { CheckCircleIcon, QuestionIcon } from "@phosphor-icons/react";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 
 export interface ClarifyingQuestion {
   question: string;
@@ -38,12 +38,14 @@ export function ClarificationQuestionsWidget({
 }: Props) {
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const lastSessionIdRef = useRef<string | undefined>(undefined);
 
   useEffect(() => {
     const storageKey = getStorageKey(sessionId);
     if (!storageKey) {
       setAnswers({});
       setIsSubmitted(false);
+      lastSessionIdRef.current = sessionId;
       return;
     }
 
@@ -61,9 +63,13 @@ export function ClarificationQuestionsWidget({
       setAnswers({});
       setIsSubmitted(false);
     }
+    lastSessionIdRef.current = sessionId;
   }, [sessionId]);
 
   useEffect(() => {
+    if (lastSessionIdRef.current !== sessionId) {
+      return;
+    }
     const storageKey = getStorageKey(sessionId);
     if (!storageKey) return;
 
@@ -77,9 +83,9 @@ export function ClarificationQuestionsWidget({
     } catch {}
   }, [answers, sessionId]);
 
-  const handleAnswerChange = useCallback((keyword: string, value: string) => {
+  function handleAnswerChange(keyword: string, value: string) {
     setAnswers((prev) => ({ ...prev, [keyword]: value }));
-  }, []);
+  }
 
   function handleSubmit() {
     const allAnswered = questions.every((q) => answers[q.keyword]?.trim());
