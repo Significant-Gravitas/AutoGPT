@@ -103,13 +103,6 @@ export function useVoiceRecording({
         console.error("Transcription error:", err);
       } finally {
         setIsTranscribing(false);
-        // Refocus the input after transcription so user can continue typing or send
-        if (inputId) {
-          const inputElement = document.getElementById(inputId);
-          if (inputElement) {
-            inputElement.focus();
-          }
-        }
       }
     },
     [handleTranscription, inputId],
@@ -209,6 +202,15 @@ export function useVoiceRecording({
       });
     }
   }, [error, toast]);
+
+  useEffect(() => {
+    if (!isTranscribing && inputId) {
+      const inputElement = document.getElementById(inputId);
+      if (inputElement) {
+        inputElement.focus();
+      }
+    }
+  }, [isTranscribing, inputId]);
 
   const handleKeyDown = useCallback(
     (event: KeyboardEvent<HTMLTextAreaElement>) => {
