@@ -6,7 +6,7 @@ import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import { CheckCircleIcon, QuestionIcon } from "@phosphor-icons/react";
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 
 export interface ClarifyingQuestion {
   question: string;
@@ -17,14 +17,21 @@ export interface ClarifyingQuestion {
 interface Props {
   questions: ClarifyingQuestion[];
   message: string;
+  sessionId?: string;
   onSubmitAnswers: (answers: Record<string, string>) => void;
   onCancel?: () => void;
   className?: string;
 }
 
+function getStorageKey(sessionId?: string): string | null {
+  if (!sessionId) return null;
+  return `clarification_answers_${sessionId}`;
+}
+
 export function ClarificationQuestionsWidget({
   questions,
   message,
+  sessionId,
   onSubmitAnswers,
   onCancel,
   className,
@@ -32,18 +39,55 @@ export function ClarificationQuestionsWidget({
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [isSubmitted, setIsSubmitted] = useState(false);
 
-  function handleAnswerChange(keyword: string, value: string) {
+  useEffect(() => {
+    const storageKey = getStorageKey(sessionId);
+    if (!storageKey) return;
+
+    try {
+      const saved = localStorage.getItem(storageKey);
+      if (saved) {
+        const parsed = JSON.parse(saved) as Record<string, string>;
+        setAnswers(parsed);
+      }
+    } catch {
+      // Ignore parse errors
+    }
+  }, [sessionId]);
+
+  useEffect(() => {
+    const storageKey = getStorageKey(sessionId);
+    if (!storageKey) return;
+
+    const hasAnswers = Object.values(answers).some((v) => v.trim());
+    if (hasAnswers) {
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(answers));
+      } catch {
+        // Ignore storage errors
+      }
+    }
+  }, [answers, sessionId]);
+
+  const handleAnswerChange = useCallback((keyword: string, value: string) => {
     setAnswers((prev) => ({ ...prev, [keyword]: value }));
-  }
+  }, []);
 
   function handleSubmit() {
-    // Check if all questions are answered
     const allAnswered = questions.every((q) => answers[q.keyword]?.trim());
     if (!allAnswered) {
       return;
     }
     setIsSubmitted(true);
     onSubmitAnswers(answers);
+
+    const storageKey = getStorageKey(sessionId);
+    if (storageKey) {
+      try {
+        localStorage.removeItem(storageKey);
+      } catch {
+        // Ignore storage errors
+      }
+    }
   }
 
   const allAnswered = questions.every((q) => answers[q.keyword]?.trim());

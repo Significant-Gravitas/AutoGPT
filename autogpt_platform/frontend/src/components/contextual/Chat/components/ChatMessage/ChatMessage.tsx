@@ -160,6 +160,7 @@ export function ChatMessage({
       <ClarificationQuestionsWidget
         questions={message.questions}
         message={message.message}
+        sessionId={message.sessionId}
         onSubmitAnswers={handleClarificationAnswers}
         className={className}
       />
