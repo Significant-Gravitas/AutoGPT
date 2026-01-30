@@ -107,7 +107,10 @@ class RunBlockTool(BaseTool):
             effective_field_info = field_info
             if field_info.discriminator and field_info.discriminator_mapping:
                 discriminator_value = input_data.get(field_info.discriminator)
-                if discriminator_value and discriminator_value in field_info.discriminator_mapping:
+                if (
+                    discriminator_value
+                    and discriminator_value in field_info.discriminator_mapping
+                ):
                     effective_field_info = field_info.discriminate(discriminator_value)
                     logger.debug(
                         f"Discriminated provider for {field_name}: "
