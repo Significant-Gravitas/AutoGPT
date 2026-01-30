@@ -181,7 +181,7 @@ class EditAgentTool(BaseTool):
                 operation="generate the changes",
                 llm_parse_message="The AI had trouble generating the changes. Please try again or simplify your request.",
                 validation_message="The generated changes failed validation. Please try rephrasing your request.",
-                error_details=error_msg,  # Always pass error details to give users context
+                error_details=error_msg,
             )
             return ErrorResponse(
                 message=user_message,

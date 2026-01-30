@@ -30,9 +30,9 @@ logger = logging.getLogger(__name__)
 class ExecutionSummary(TypedDict):
     """Summary of a single execution for quality assessment."""
 
-    status: str  # COMPLETED, FAILED, RUNNING, QUEUED
-    correctness_score: NotRequired[float]  # 0-1 score if evaluated
-    activity_summary: NotRequired[str]  # AI-generated summary of what happened
+    status: str
+    correctness_score: NotRequired[float]
+    activity_summary: NotRequired[str]
 
 
 class LibraryAgentSummary(TypedDict):
@@ -42,14 +42,12 @@ class LibraryAgentSummary(TypedDict):
     Each execution shows status, correctness_score (0-1), and activity_summary.
     """
 
-    # Required fields
     graph_id: str
     graph_version: int
     name: str
     description: str
     input_schema: dict[str, Any]
     output_schema: dict[str, Any]
-    # Recent executions with detailed status and quality info
     recent_executions: NotRequired[list[ExecutionSummary]]
 
 
