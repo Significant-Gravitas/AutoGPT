@@ -364,7 +364,7 @@ export function formatToolResponse(result: unknown, toolName: string): string {
     case "error":
       const errorMsg =
         (response.message as string) || response.error || "An error occurred";
-      return String(errorMsg);
+      return stripInternalReasoning(String(errorMsg));
 
     case "no_results":
       const suggestions = (response.suggestions as string[]) || [];

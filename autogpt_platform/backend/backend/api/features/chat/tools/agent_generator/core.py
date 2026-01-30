@@ -208,7 +208,6 @@ async def get_library_agents_for_generation(
 
         results: list[LibraryAgentSummary] = []
         for agent in response.agents:
-            # Exclude the agent being generated/edited to prevent circular references
             if exclude_graph_id is not None and agent.graph_id == exclude_graph_id:
                 continue
 
@@ -401,7 +400,6 @@ async def enrich_library_agents_from_steps(
     Returns:
         Combined list of library agents (existing + newly discovered)
     """
-    # Extract search terms from steps
     search_terms = extract_search_terms_from_steps(decomposition_result)
 
     if not search_terms:
@@ -666,7 +664,6 @@ async def get_agent_as_json(
     if not graph:
         return None
 
-    # Convert to JSON format
     nodes = []
     for node in graph.nodes:
         nodes.append(
