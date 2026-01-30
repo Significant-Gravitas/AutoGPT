@@ -15,6 +15,7 @@ interface Args {
   isStreaming?: boolean;
   value: string;
   baseHandleKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void;
+  inputId?: string;
 }
 
 export function useVoiceRecording({
@@ -23,6 +24,7 @@ export function useVoiceRecording({
   isStreaming = false,
   value,
   baseHandleKeyDown,
+  inputId,
 }: Args) {
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
@@ -101,9 +103,16 @@ export function useVoiceRecording({
         console.error("Transcription error:", err);
       } finally {
         setIsTranscribing(false);
+        // Refocus the input after transcription so user can continue typing or send
+        if (inputId) {
+          const inputElement = document.getElementById(inputId);
+          if (inputElement) {
+            inputElement.focus();
+          }
+        }
       }
     },
-    [handleTranscription],
+    [handleTranscription, inputId],
   );
 
   const stopRecording = useCallback(() => {
