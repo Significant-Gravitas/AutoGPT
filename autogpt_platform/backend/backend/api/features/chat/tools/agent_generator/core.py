@@ -70,7 +70,7 @@ async def generate_agent(
         task_id: Task ID for async processing (enables RabbitMQ callback)
 
     Returns:
-        Agent JSON dict, {"status": "accepted"} for async, or None on error
+        Agent JSON dict, {"status": "accepted"} for async, error dict {"type": "error", ...}, or None on error
 
     Raises:
         AgentGeneratorNotConfiguredError: If the external service is not configured.
@@ -84,7 +84,10 @@ async def generate_agent(
         return result
 
     if result:
-        # Ensure required fields
+        # Check if it's an error response - pass through as-is
+        if isinstance(result, dict) and result.get("type") == "error":
+            return result
+        # Ensure required fields for successful agent generation
         if "id" not in result:
             result["id"] = str(uuid.uuid4())
         if "version" not in result:
@@ -283,7 +286,8 @@ async def generate_agent_patch(
         task_id: Task ID for async processing (enables RabbitMQ callback)
 
     Returns:
-        Updated agent JSON, clarifying questions dict, {"status": "accepted"} for async, or None on error
+        Updated agent JSON, clarifying questions dict {"type": "clarifying_questions", ...},
+        {"status": "accepted"} for async, error dict {"type": "error", ...}, or None on error
 
     Raises:
         AgentGeneratorNotConfiguredError: If the external service is not configured.

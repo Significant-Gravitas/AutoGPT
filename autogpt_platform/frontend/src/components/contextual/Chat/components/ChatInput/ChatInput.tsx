@@ -57,6 +57,7 @@ export function ChatInput({
     isStreaming,
     value,
     baseHandleKeyDown,
+    inputId,
   });
 
   return (

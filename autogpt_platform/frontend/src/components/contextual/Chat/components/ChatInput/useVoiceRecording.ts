@@ -15,6 +15,7 @@ interface Args {
   isStreaming?: boolean;
   value: string;
   baseHandleKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void;
+  inputId?: string;
 }
 
 export function useVoiceRecording({
@@ -23,6 +24,7 @@ export function useVoiceRecording({
   isStreaming = false,
   value,
   baseHandleKeyDown,
+  inputId,
 }: Args) {
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
@@ -103,7 +105,7 @@ export function useVoiceRecording({
         setIsTranscribing(false);
       }
     },
-    [handleTranscription],
+    [handleTranscription, inputId],
   );
 
   const stopRecording = useCallback(() => {
@@ -200,6 +202,15 @@ export function useVoiceRecording({
       });
     }
   }, [error, toast]);
+
+  useEffect(() => {
+    if (!isTranscribing && inputId) {
+      const inputElement = document.getElementById(inputId);
+      if (inputElement) {
+        inputElement.focus();
+      }
+    }
+  }, [isTranscribing, inputId]);
 
   const handleKeyDown = useCallback(
     (event: KeyboardEvent<HTMLTextAreaElement>) => {

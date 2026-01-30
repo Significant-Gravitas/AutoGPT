@@ -9,6 +9,7 @@ from .agent_generator import (
     AgentGeneratorNotConfiguredError,
     generate_agent_patch,
     get_agent_as_json,
+    get_user_message_for_error,
     save_agent_to_library,
 )
 from .base import BaseTool
@@ -172,6 +173,28 @@ class EditAgentTool(BaseTool):
                 message="Agent edit started. You'll be notified when it's complete.",
                 operation_id=operation_id,
                 task_id=task_id,
+                session_id=session_id,
+            )
+
+        # Check if the result is an error from the external service
+        if isinstance(result, dict) and result.get("type") == "error":
+            error_msg = result.get("error", "Unknown error")
+            error_type = result.get("error_type", "unknown")
+            user_message = get_user_message_for_error(
+                error_type,
+                operation="generate the changes",
+                llm_parse_message="The AI had trouble generating the changes. Please try again or simplify your request.",
+                validation_message="The generated changes failed validation. Please try rephrasing your request.",
+            )
+            return ErrorResponse(
+                message=user_message,
+                error=f"update_generation_failed:{error_type}",
+                details={
+                    "agent_id": agent_id,
+                    "changes": changes[:100],
+                    "service_error": error_msg,
+                    "error_type": error_type,
+                },
                 session_id=session_id,
             )
 
