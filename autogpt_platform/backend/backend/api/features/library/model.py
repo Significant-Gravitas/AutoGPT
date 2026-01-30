@@ -1,5 +1,4 @@
 import datetime
-import json
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Optional
 
@@ -10,6 +9,7 @@ import pydantic
 from backend.data.block import BlockInput
 from backend.data.graph import GraphModel, GraphSettings, GraphTriggerInfo
 from backend.data.model import CredentialsMetaInput, is_credentials_field_name
+from backend.util.json import loads as json_loads
 from backend.util.models import Pagination
 
 if TYPE_CHECKING:
@@ -241,7 +241,7 @@ class LibraryAgent(pydantic.BaseModel):
             is_favorite=agent.isFavorite,
             recommended_schedule_cron=agent.AgentGraph.recommendedScheduleCron,
             settings=GraphSettings.model_validate(
-                json.loads(agent.settings)
+                json_loads(agent.settings)
                 if isinstance(agent.settings, str)
                 else agent.settings
             ),
