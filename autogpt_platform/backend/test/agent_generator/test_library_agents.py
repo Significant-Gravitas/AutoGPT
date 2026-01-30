@@ -637,5 +637,150 @@ class TestEnrichLibraryAgentsFromSteps:
         assert call_count == 3
 
 
+class TestExtractUuidsFromText:
+    """Test extract_uuids_from_text function."""
+
+    def test_extracts_single_uuid(self):
+        """Test extraction of a single UUID from text."""
+        text = "Use my agent 46631191-e8a8-486f-ad90-84f89738321d for this task"
+        result = core.extract_uuids_from_text(text)
+        assert len(result) == 1
+        assert "46631191-e8a8-486f-ad90-84f89738321d" in result
+
+    def test_extracts_multiple_uuids(self):
+        """Test extraction of multiple UUIDs from text."""
+        text = (
+            "Combine agents 11111111-1111-4111-8111-111111111111 "
+            "and 22222222-2222-4222-9222-222222222222"
+        )
+        result = core.extract_uuids_from_text(text)
+        assert len(result) == 2
+        assert "11111111-1111-4111-8111-111111111111" in result
+        assert "22222222-2222-4222-9222-222222222222" in result
+
+    def test_deduplicates_uuids(self):
+        """Test that duplicate UUIDs are deduplicated."""
+        text = (
+            "Use 46631191-e8a8-486f-ad90-84f89738321d twice: "
+            "46631191-e8a8-486f-ad90-84f89738321d"
+        )
+        result = core.extract_uuids_from_text(text)
+        assert len(result) == 1
+
+    def test_normalizes_to_lowercase(self):
+        """Test that UUIDs are normalized to lowercase."""
+        text = "Use 46631191-E8A8-486F-AD90-84F89738321D"
+        result = core.extract_uuids_from_text(text)
+        assert result[0] == "46631191-e8a8-486f-ad90-84f89738321d"
+
+    def test_returns_empty_for_no_uuids(self):
+        """Test that empty list is returned when no UUIDs found."""
+        text = "Create an email agent that sends notifications"
+        result = core.extract_uuids_from_text(text)
+        assert result == []
+
+    def test_ignores_invalid_uuids(self):
+        """Test that invalid UUID-like strings are ignored."""
+        text = "Not a valid UUID: 12345678-1234-1234-1234-123456789abc"
+        result = core.extract_uuids_from_text(text)
+        # UUID v4 requires specific patterns (4 in third group, 8/9/a/b in fourth)
+        assert len(result) == 0
+
+
+class TestGetLibraryAgentByGraphId:
+    """Test get_library_agent_by_graph_id function."""
+
+    @pytest.mark.asyncio
+    async def test_returns_agent_when_found(self):
+        """Test that agent is returned when found by graph_id."""
+        mock_agent = MagicMock()
+        mock_agent.graph_id = "agent-123"
+        mock_agent.graph_version = 1
+        mock_agent.name = "Test Agent"
+        mock_agent.description = "Test description"
+        mock_agent.input_schema = {"properties": {}}
+        mock_agent.output_schema = {"properties": {}}
+
+        with patch.object(
+            core.library_db,
+            "get_library_agent_by_graph_id",
+            new_callable=AsyncMock,
+            return_value=mock_agent,
+        ):
+            result = await core.get_library_agent_by_graph_id("user-123", "agent-123")
+
+        assert result is not None
+        assert result["graph_id"] == "agent-123"
+        assert result["name"] == "Test Agent"
+
+    @pytest.mark.asyncio
+    async def test_returns_none_when_not_found(self):
+        """Test that None is returned when agent not found."""
+        with patch.object(
+            core.library_db,
+            "get_library_agent_by_graph_id",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            result = await core.get_library_agent_by_graph_id("user-123", "nonexistent")
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_returns_none_on_exception(self):
+        """Test that None is returned when exception occurs."""
+        with patch.object(
+            core.library_db,
+            "get_library_agent_by_graph_id",
+            new_callable=AsyncMock,
+            side_effect=Exception("Database error"),
+        ):
+            result = await core.get_library_agent_by_graph_id("user-123", "agent-123")
+
+        assert result is None
+
+
+class TestGetAllRelevantAgentsWithUuids:
+    """Test UUID extraction in get_all_relevant_agents_for_generation."""
+
+    @pytest.mark.asyncio
+    async def test_fetches_explicitly_mentioned_agents(self):
+        """Test that agents mentioned by UUID are fetched directly."""
+        mock_agent = MagicMock()
+        mock_agent.graph_id = "46631191-e8a8-486f-ad90-84f89738321d"
+        mock_agent.graph_version = 1
+        mock_agent.name = "Mentioned Agent"
+        mock_agent.description = "Explicitly mentioned"
+        mock_agent.input_schema = {}
+        mock_agent.output_schema = {}
+
+        mock_response = MagicMock()
+        mock_response.agents = []
+
+        with (
+            patch.object(
+                core.library_db,
+                "get_library_agent_by_graph_id",
+                new_callable=AsyncMock,
+                return_value=mock_agent,
+            ),
+            patch.object(
+                core.library_db,
+                "list_library_agents",
+                new_callable=AsyncMock,
+                return_value=mock_response,
+            ),
+        ):
+            result = await core.get_all_relevant_agents_for_generation(
+                user_id="user-123",
+                search_query="Use agent 46631191-e8a8-486f-ad90-84f89738321d",
+                include_marketplace=False,
+            )
+
+        assert len(result) == 1
+        assert result[0].get("graph_id") == "46631191-e8a8-486f-ad90-84f89738321d"
+        assert result[0].get("name") == "Mentioned Agent"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

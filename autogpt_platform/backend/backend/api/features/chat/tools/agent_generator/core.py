@@ -1,6 +1,7 @@
 """Core agent generation functions."""
 
 import logging
+import re
 import uuid
 from typing import Any, TypedDict
 
@@ -102,6 +103,56 @@ def _check_service_configured() -> None:
             "Agent Generator service is not configured. "
             "Set AGENTGENERATOR_HOST environment variable to enable agent generation."
         )
+
+
+# UUID v4 pattern for extracting agent IDs from text
+_UUID_PATTERN = re.compile(
+    r"[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}",
+    re.IGNORECASE,
+)
+
+
+def extract_uuids_from_text(text: str) -> list[str]:
+    """Extract all UUID v4 strings from text.
+
+    Args:
+        text: Text that may contain UUIDs (e.g., user's goal description)
+
+    Returns:
+        List of unique UUIDs found in the text (lowercase)
+    """
+    matches = _UUID_PATTERN.findall(text)
+    # Deduplicate and normalize to lowercase
+    return list({m.lower() for m in matches})
+
+
+async def get_library_agent_by_graph_id(
+    user_id: str, graph_id: str
+) -> LibraryAgentSummary | None:
+    """Fetch a specific library agent by its graph_id.
+
+    Args:
+        user_id: The user ID
+        graph_id: The graph ID to look up
+
+    Returns:
+        LibraryAgentSummary if found, None otherwise
+    """
+    try:
+        agent = await library_db.get_library_agent_by_graph_id(user_id, graph_id)
+        if not agent:
+            return None
+        return LibraryAgentSummary(
+            graph_id=agent.graph_id,
+            graph_version=agent.graph_version,
+            name=agent.name,
+            description=agent.description,
+            input_schema=agent.input_schema,
+            output_schema=agent.output_schema,
+        )
+    except Exception as e:
+        logger.debug(f"Could not fetch library agent by graph_id {graph_id}: {e}")
+        return None
 
 
 async def get_library_agents_for_generation(
@@ -207,6 +258,9 @@ async def get_all_relevant_agents_for_generation(
     Combines search results from user's library and public marketplace,
     with library agents taking priority (they have full schemas).
 
+    Also extracts UUIDs from the search_query and fetches those agents
+    directly to ensure explicitly referenced agents are included.
+
     Args:
         user_id: The user ID
         search_query: Search term to find relevant agents (user's goal/description)
@@ -220,15 +274,32 @@ async def get_all_relevant_agents_for_generation(
         then marketplace agents (basic info only)
     """
     agents: list[AgentSummary] = []
+    seen_graph_ids: set[str] = set()
 
-    # Get library agents (these have full schemas)
+    # Extract UUIDs from search_query and fetch those agents directly
+    # This ensures explicitly referenced agents are always included
+    if search_query:
+        mentioned_uuids = extract_uuids_from_text(search_query)
+        for graph_id in mentioned_uuids:
+            if graph_id == exclude_graph_id:
+                continue
+            agent = await get_library_agent_by_graph_id(user_id, graph_id)
+            if agent and agent["graph_id"] not in seen_graph_ids:
+                agents.append(agent)
+                seen_graph_ids.add(agent["graph_id"])
+                logger.debug(f"Found explicitly mentioned agent: {agent['name']}")
+
+    # Get library agents via search (these have full schemas)
     library_agents = await get_library_agents_for_generation(
         user_id=user_id,
         search_query=search_query,
         exclude_graph_id=exclude_graph_id,
         max_results=max_library_results,
     )
-    agents.extend(library_agents)
+    for agent in library_agents:
+        if agent["graph_id"] not in seen_graph_ids:
+            agents.append(agent)
+            seen_graph_ids.add(agent["graph_id"])
 
     # Optionally add marketplace agents
     if include_marketplace and search_query:
@@ -237,10 +308,8 @@ async def get_all_relevant_agents_for_generation(
             max_results=max_marketplace_results,
         )
         # Add marketplace agents that aren't already in library (by name)
-        # LibraryAgentSummary always has 'name', so access directly
-        library_names = {a["name"].lower() for a in library_agents}
+        library_names = {a["name"].lower() for a in agents if "name" in a}
         for agent in marketplace_agents:
-            # MarketplaceAgentSummary always has 'name'
             if agent["name"].lower() not in library_names:
                 agents.append(agent)
 
