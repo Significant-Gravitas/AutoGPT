@@ -259,7 +259,7 @@ class EditAgentTool(BaseTool):
                 agent_id=created_graph.id,
                 agent_name=created_graph.name,
                 library_agent_id=library_agent.id,
-                library_agent_link=f"/library/{library_agent.id}",
+                library_agent_link=f"/library/agents/{library_agent.id}",
                 agent_page_link=f"/build?flowID={created_graph.id}",
                 session_id=session_id,
             )
