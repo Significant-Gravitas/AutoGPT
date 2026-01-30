@@ -5,7 +5,16 @@ import uuid
 from typing import Any, TypedDict
 
 from backend.api.features.library import db as library_db
-from backend.data.graph import Graph, Link, Node, create_graph
+from backend.api.features.store import db as store_db
+from backend.data.graph import (
+    Graph,
+    Link,
+    Node,
+    create_graph,
+    get_graph,
+    get_graph_all_versions,
+)
+from backend.util.exceptions import NotFoundError
 
 from .service import (
     decompose_goal_external,
@@ -161,8 +170,6 @@ async def search_marketplace_agents_for_generation(
     Returns:
         List of MarketplaceAgentSummary (without detailed schemas for now)
     """
-    from backend.api.features.store import db as store_db
-
     try:
         response = await store_db.get_store_agents(
             search_query=search_query,
@@ -519,8 +526,6 @@ async def save_agent_to_library(
     Returns:
         Tuple of (created Graph, LibraryAgent)
     """
-    from backend.data.graph import get_graph_all_versions
-
     graph = json_to_graph(agent_json)
 
     if is_update:
@@ -568,22 +573,18 @@ async def get_agent_as_json(
     Returns:
         Agent as JSON dict or None if not found
     """
-    from backend.data.graph import get_graph
-
     # First try to get the graph directly with the provided ID
     graph = await get_graph(agent_id, version=None, user_id=user_id)
 
     # If not found, try to resolve as a library agent ID
     if not graph and user_id:
         try:
-            from backend.api.features.library import db as library_db
-
             library_agent = await library_db.get_library_agent(agent_id, user_id)
             graph = await get_graph(
                 library_agent.graph_id, version=None, user_id=user_id
             )
-        except Exception:
-            # Library agent lookup failed, graph remains None
+        except NotFoundError:
+            # Library agent not found with this ID, graph remains None
             pass
 
     if not graph:
