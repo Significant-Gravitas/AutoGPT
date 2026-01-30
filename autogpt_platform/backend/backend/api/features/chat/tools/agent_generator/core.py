@@ -56,26 +56,30 @@ async def get_library_agents_for_generation(
     Returns:
         List of library agent dicts with schemas for sub-agent composition
     """
-    response = await library_db.list_library_agents(
-        user_id=user_id,
-        search_term=search_query,  # Use search API
-        page=1,
-        page_size=max_results,
-    )
+    try:
+        response = await library_db.list_library_agents(
+            user_id=user_id,
+            search_term=search_query,  # Use search API
+            page=1,
+            page_size=max_results,
+        )
 
-    return [
-        {
-            "graph_id": agent.graph_id,
-            "graph_version": agent.graph_version,
-            "name": agent.name,
-            "description": agent.description,
-            "input_schema": agent.input_schema,
-            "output_schema": agent.output_schema,
-        }
-        for agent in response.agents
-        # Exclude the agent being generated/edited to prevent circular references
-        if exclude_graph_id is None or agent.graph_id != exclude_graph_id
-    ]
+        return [
+            {
+                "graph_id": agent.graph_id,
+                "graph_version": agent.graph_version,
+                "name": agent.name,
+                "description": agent.description,
+                "input_schema": agent.input_schema,
+                "output_schema": agent.output_schema,
+            }
+            for agent in response.agents
+            # Exclude the agent being generated/edited to prevent circular references
+            if exclude_graph_id is None or agent.graph_id != exclude_graph_id
+        ]
+    except Exception as e:
+        logger.warning(f"Failed to fetch library agents: {e}")
+        return []
 
 
 async def search_marketplace_agents_for_generation(
@@ -163,9 +167,10 @@ async def get_all_relevant_agents_for_generation(
             max_results=max_marketplace_results,
         )
         # Add marketplace agents that aren't already in library (by name)
-        library_names = {a["name"].lower() for a in library_agents}
+        library_names = {a["name"].lower() for a in library_agents if a.get("name")}
         for agent in marketplace_agents:
-            if agent["name"].lower() not in library_names:
+            agent_name = agent.get("name")
+            if agent_name and agent_name.lower() not in library_names:
                 agents.append(agent)
 
     return agents
