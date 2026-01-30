@@ -20,6 +20,7 @@ interface Props {
   sessionId?: string;
   onSubmitAnswers: (answers: Record<string, string>) => void;
   onCancel?: () => void;
+  isAnswered?: boolean;
   className?: string;
 }
 
@@ -34,6 +35,7 @@ export function ClarificationQuestionsWidget({
   sessionId,
   onSubmitAnswers,
   onCancel,
+  isAnswered = false,
   className,
 }: Props) {
   const [answers, setAnswers] = useState<Record<string, string>>({});
@@ -54,11 +56,10 @@ export function ClarificationQuestionsWidget({
       if (saved) {
         const parsed = JSON.parse(saved) as Record<string, string>;
         setAnswers(parsed);
-        setIsSubmitted(false);
       } else {
         setAnswers({});
-        setIsSubmitted(false);
       }
+      setIsSubmitted(false);
     } catch {
       setAnswers({});
       setIsSubmitted(false);
@@ -96,16 +97,17 @@ export function ClarificationQuestionsWidget({
     onSubmitAnswers(answers);
 
     const storageKey = getStorageKey(sessionId);
-    if (storageKey) {
-      try {
+    try {
+      if (storageKey) {
         localStorage.removeItem(storageKey);
-      } catch {}
-    }
+      }
+    } catch {}
   }
 
   const allAnswered = questions.every((q) => answers[q.keyword]?.trim());
 
-  if (isSubmitted) {
+  // Show submitted state if answered from conversation or just submitted
+  if (isAnswered || isSubmitted) {
     return (
       <div
         className={cn(

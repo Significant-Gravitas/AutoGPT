@@ -156,12 +156,20 @@ export function ChatMessage({
   }
 
   if (isClarificationNeeded && message.type === "clarification_needed") {
+    // Check if user already replied after this clarification (answered)
+    const hasUserReplyAfter =
+      index >= 0 &&
+      messages
+        .slice(index + 1)
+        .some((m) => m.type === "message" && m.role === "user");
+
     return (
       <ClarificationQuestionsWidget
         questions={message.questions}
         message={message.message}
         sessionId={message.sessionId}
         onSubmitAnswers={handleClarificationAnswers}
+        isAnswered={hasUserReplyAfter}
         className={className}
       />
     );
