@@ -126,7 +126,9 @@ def library_agent_include(
         if include_executions:
             agent_graph_include["Executions"] = {
                 "where": {"userId": user_id},
-                "order_by": {"updatedAt": "desc"}, # Uses updatedAt because it reflects when the executioncompleted or last progressed
+                "order_by": {
+                    "updatedAt": "desc"
+                },  # Uses updatedAt because it reflects when the executioncompleted or last progressed
                 "take": execution_limit,
             }
 
