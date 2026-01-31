@@ -132,9 +132,6 @@ async def list_library_agents(
 
                 Agents WITH executions come first (sorted by most recent execution),
                 agents WITHOUT executions come last (sorted by creation date).
-
-                Uses updatedAt (not createdAt) because it reflects when the execution
-                completed or last progressed, showing recently-finished agents first.
                 """
                 graph = agent.AgentGraph
                 if graph and graph.Executions and len(graph.Executions) > 0:
