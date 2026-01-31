@@ -191,23 +191,35 @@ async def test_upload_media_webm_success(mock_settings, mock_storage_client):
     assert result.endswith(".webm")
 
 
-async def test_upload_media_mismatched_signature(mock_settings, mock_storage_client):
+async def test_upload_media_mismatched_signature_auto_corrects(
+    mock_settings, mock_storage_client
+):
+    """Test that mismatched content-type is auto-corrected based on file signature."""
     test_file = fastapi.UploadFile(
         filename="test.jpeg",
         file=io.BytesIO(b"\x89PNG\r\n\x1a\n"),  # PNG signature with JPEG content type
         headers=starlette.datastructures.Headers({"content-type": "image/jpeg"}),
     )
 
-    with pytest.raises(store_exceptions.InvalidFileTypeError):
-        await store_media.upload_media("test-user", test_file)
+    # Should auto-correct to PNG and succeed
+    result = await store_media.upload_media("test-user", test_file)
+    assert result.startswith(
+        "https://storage.googleapis.com/test-bucket/users/test-user/images/"
+    )
+    # File should be stored as PNG based on actual content
+    mock_storage_client.upload.assert_called_once()
 
 
 async def test_upload_media_invalid_signature(mock_settings, mock_storage_client):
+    """Test that files with unrecognized signatures are rejected."""
     test_file = fastapi.UploadFile(
         filename="test.jpeg",
         file=io.BytesIO(b"invalid signature"),
         headers=starlette.datastructures.Headers({"content-type": "image/jpeg"}),
     )
 
-    with pytest.raises(store_exceptions.InvalidFileTypeError):
+    with pytest.raises(store_exceptions.InvalidFileTypeError) as exc_info:
         await store_media.upload_media("test-user", test_file)
+    assert "Could not detect a valid image or video file signature" in str(
+        exc_info.value
+    )

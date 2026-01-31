@@ -180,3 +180,4 @@ autogpt_platform/backend/settings.py
 .claude/settings.local.json
 CLAUDE.local.md
 /autogpt_platform/backend/logs
+.next
