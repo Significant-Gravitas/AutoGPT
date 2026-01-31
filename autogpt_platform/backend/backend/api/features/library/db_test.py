@@ -521,4 +521,3 @@ async def test_list_library_agents_sort_by_last_executed(mocker):
     assert result.agents[1].id == "lib2", "Agent with older execution should be second"
     assert result.agents[2].id == "lib3", "Agent without executions (newer) should be third"
     assert result.agents[3].id == "lib4", "Agent without executions (older) should be last"
-
