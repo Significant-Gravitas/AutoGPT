@@ -14,7 +14,7 @@ from backend.data.graph import (
     create_graph,
     get_graph,
     get_graph_all_versions,
-    get_graphs_by_ids,
+    get_store_listed_graphs,
 )
 from backend.util.exceptions import DatabaseError, NotFoundError
 
@@ -295,7 +295,7 @@ async def search_marketplace_agents_for_generation(
             return []
 
         graph_ids = [agent.agent_graph_id for agent in agents_with_graphs]
-        graphs = await get_graphs_by_ids(*graph_ids)
+        graphs = await get_store_listed_graphs(*graph_ids)
 
         results: list[LibraryAgentSummary] = []
         for agent in agents_with_graphs:

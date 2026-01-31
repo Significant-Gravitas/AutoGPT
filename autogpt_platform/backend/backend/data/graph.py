@@ -1028,18 +1028,17 @@ async def get_graph(
     return GraphModel.from_db(graph, for_export)
 
 
-async def get_graphs_by_ids(*graph_ids: str) -> dict[str, GraphModel]:
-    """Batch-fetch multiple public/marketplace graphs by their IDs.
+async def get_store_listed_graphs(*graph_ids: str) -> dict[str, GraphModel]:
+    """Batch-fetch multiple store-listed graphs by their IDs.
 
-    This fetches graphs that are publicly available via approved store listings.
-    Used for marketplace agent schema lookups where we need multiple graphs
-    in a single query.
+    Only returns graphs that have approved store listings (publicly available).
+    Does not require permission checks since store-listed graphs are public.
 
     Args:
         *graph_ids: Variable number of graph IDs to fetch
 
     Returns:
-        Dict mapping graph_id to GraphModel for successfully fetched graphs
+        Dict mapping graph_id to GraphModel for graphs with approved store listings
     """
     if not graph_ids:
         return {}
