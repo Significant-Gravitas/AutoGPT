@@ -83,6 +83,10 @@ function getPostHogCredentials() {
   };
 }
 
+function getLaunchDarklyClientId() {
+  return process.env.NEXT_PUBLIC_LAUNCHDARKLY_CLIENT_ID;
+}
+
 function isProductionBuild() {
   return process.env.NODE_ENV === "production";
 }
@@ -120,7 +124,10 @@ function isVercelPreview() {
 }
 
 function areFeatureFlagsEnabled() {
-  return process.env.NEXT_PUBLIC_LAUNCHDARKLY_ENABLED === "enabled";
+  return (
+    process.env.NEXT_PUBLIC_LAUNCHDARKLY_ENABLED === "true" &&
+    Boolean(process.env.NEXT_PUBLIC_LAUNCHDARKLY_CLIENT_ID)
+  );
 }
 
 function isPostHogEnabled() {
@@ -143,6 +150,7 @@ export const environment = {
   getSupabaseAnonKey,
   getPreviewStealingDev,
   getPostHogCredentials,
+  getLaunchDarklyClientId,
   // Assertions
   isServerSide,
   isClientSide,

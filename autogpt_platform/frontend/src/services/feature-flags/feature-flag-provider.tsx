@@ -7,14 +7,12 @@ import type { ReactNode } from "react";
 import { useMemo } from "react";
 import { environment } from "../environment";
 
-const clientId = process.env.NEXT_PUBLIC_LAUNCHDARKLY_CLIENT_ID;
-const envEnabled = process.env.NEXT_PUBLIC_LAUNCHDARKLY_ENABLED === "true";
 const LAUNCHDARKLY_INIT_TIMEOUT_MS = 5000;
 
 export function LaunchDarklyProvider({ children }: { children: ReactNode }) {
   const { user, isUserLoading } = useSupabase();
-  const isCloud = environment.isCloud();
-  const isLaunchDarklyConfigured = isCloud && envEnabled && clientId;
+  const envEnabled = environment.areFeatureFlagsEnabled();
+  const clientId = environment.getLaunchDarklyClientId();
 
   const context = useMemo(() => {
     if (isUserLoading || !user) {
@@ -36,7 +34,7 @@ export function LaunchDarklyProvider({ children }: { children: ReactNode }) {
     };
   }, [user, isUserLoading]);
 
-  if (!isLaunchDarklyConfigured) {
+  if (!envEnabled) {
     return <>{children}</>;
   }
 
@@ -44,7 +42,7 @@ export function LaunchDarklyProvider({ children }: { children: ReactNode }) {
     <LDProvider
       // Add this key prop. It will be 'anonymous' when logged out,
       key={context.key}
-      clientSideID={clientId}
+      clientSideID={clientId ?? ""}
       context={context}
       timeout={LAUNCHDARKLY_INIT_TIMEOUT_MS}
       reactOptions={{ useCamelCaseFlagKeys: false }}
