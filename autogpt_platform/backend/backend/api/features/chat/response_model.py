@@ -113,7 +113,7 @@ class StreamToolOutputAvailable(StreamBaseResponse):
     type: ResponseType = ResponseType.TOOL_OUTPUT_AVAILABLE
     toolCallId: str = Field(..., description="Tool call ID this responds to")
     output: str | dict[str, Any] = Field(..., description="Tool execution output")
-    # Additional fields for internal use (not part of AI SDK spec but useful)
+    # Keep these for internal backend use
     toolName: str | None = Field(
         default=None, description="Name of the tool that was executed"
     )
@@ -121,6 +121,15 @@ class StreamToolOutputAvailable(StreamBaseResponse):
         default=True, description="Whether the tool execution succeeded"
     )
 
+    def to_sse(self) -> str:
+        """Convert to SSE format, excluding non-spec fields."""
+        import json
+        data = {
+            "type": self.type.value,
+            "toolCallId": self.toolCallId,
+            "output": self.output,
+        }
+        return f"data: {json.dumps(data)}\n\n"
 
 # ========== Other ==========
 
