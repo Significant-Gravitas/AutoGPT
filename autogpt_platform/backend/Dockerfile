@@ -52,14 +52,13 @@ COPY autogpt_platform/backend/gen_prisma_types_stub.py ./
 RUN poetry run prisma generate && poetry run gen-prisma-stub
 
 # Clean up build artifacts and caches to reduce layer size
-RUN find /app -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null; \
-    find /app -type d -name tests -exec rm -rf {} + 2>/dev/null; \
-    find /app -type d -name test -exec rm -rf {} + 2>/dev/null; \
+# Note: setuptools is kept as it's a direct dependency (used by aioclamd via pkg_resources)
+RUN find /app -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true; \
+    find /app -type d -name tests -exec rm -rf {} + 2>/dev/null || true; \
+    find /app -type d -name test -exec rm -rf {} + 2>/dev/null || true; \
     rm -rf /app/autogpt_platform/backend/.venv/lib/python*/site-packages/pip* \
-           /app/autogpt_platform/backend/.venv/lib/python*/site-packages/setuptools* \
            /root/.cache/pip \
-           /root/.cache/pypoetry; \
-    true
+           /root/.cache/pypoetry
 
 FROM debian:13-slim AS server_dependencies
 
@@ -94,9 +93,7 @@ COPY --from=builder /root/.cache/prisma-python/binaries /root/.cache/prisma-pyth
 
 ENV PATH="/app/autogpt_platform/backend/.venv/bin:$PATH"
 
-RUN mkdir -p /app/autogpt_platform/autogpt_libs
-RUN mkdir -p /app/autogpt_platform/backend
-
+# Copy fresh source from context (overwrites builder's copy with latest source)
 COPY autogpt_platform/autogpt_libs /app/autogpt_platform/autogpt_libs
 
 COPY autogpt_platform/backend/poetry.lock autogpt_platform/backend/pyproject.toml /app/autogpt_platform/backend/
