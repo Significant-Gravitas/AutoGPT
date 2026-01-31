@@ -38,6 +38,7 @@ class StoreAgent(pydantic.BaseModel):
     description: str
     runs: int
     rating: float
+    agent_graph_id: str | None = None  # Graph ID for sub-agent composition
 
 
 class StoreAgentsResponse(pydantic.BaseModel):

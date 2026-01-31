@@ -7,6 +7,7 @@ from typing import Any, NotRequired, TypedDict
 
 from backend.api.features.library import db as library_db
 from backend.api.features.store import db as store_db
+from backend.api.features.store import model as store_model
 from backend.data.graph import (
     Graph,
     Link,
@@ -266,18 +267,18 @@ async def get_library_agents_for_generation(
 async def search_marketplace_agents_for_generation(
     search_query: str,
     max_results: int = 10,
-) -> list[MarketplaceAgentSummary]:
+) -> list[LibraryAgentSummary]:
     """Search marketplace agents formatted for Agent Generator.
 
-    Note: This returns basic agent info. Full input/output schemas would require
-    additional graph fetches and is a potential future enhancement.
+    Fetches marketplace agents and their full schemas so they can be used
+    as sub-agents in generated workflows.
 
     Args:
         search_query: Search term to find relevant public agents
         max_results: Maximum number of agents to return (default 10)
 
     Returns:
-        List of MarketplaceAgentSummary (without detailed schemas for now)
+        List of LibraryAgentSummary with full input/output schemas
     """
     try:
         response = await store_db.get_store_agents(
@@ -286,18 +287,49 @@ async def search_marketplace_agents_for_generation(
             page_size=max_results,
         )
 
-        results: list[MarketplaceAgentSummary] = []
-        for agent in response.agents:
-            results.append(
-                MarketplaceAgentSummary(
-                    name=agent.agent_name,
-                    description=agent.description,
-                    sub_heading=agent.sub_heading,
-                    creator=agent.creator,
-                    is_marketplace_agent=True,
+        # Filter to agents that have a graph ID
+        agents_with_graphs = [
+            agent for agent in response.agents if agent.agent_graph_id
+        ]
+
+        if not agents_with_graphs:
+            return []
+
+        # Batch-fetch graphs to get input/output schemas
+        # Use get_graph with user_id=None for public marketplace graphs
+        import asyncio
+
+        async def fetch_graph_schema(
+            agent: store_model.StoreAgent,
+        ) -> LibraryAgentSummary | None:
+            try:
+                graph = await get_graph(
+                    graph_id=agent.agent_graph_id,  # type: ignore
+                    version=None,  # Get active version
+                    user_id=None,  # Public graph
                 )
-            )
-        return results
+                if graph:
+                    return LibraryAgentSummary(
+                        graph_id=graph.id,
+                        graph_version=graph.version,
+                        name=agent.agent_name,
+                        description=agent.description,
+                        input_schema=graph.input_schema,
+                        output_schema=graph.output_schema,
+                    )
+            except Exception as e:
+                logger.debug(
+                    f"Failed to fetch schema for marketplace agent {agent.agent_name}: {e}"
+                )
+            return None
+
+        # Fetch all schemas concurrently
+        results = await asyncio.gather(
+            *[fetch_graph_schema(agent) for agent in agents_with_graphs]
+        )
+
+        # Filter out None results
+        return [r for r in results if r is not None]
     except Exception as e:
         logger.warning(f"Failed to search marketplace agents: {e}")
         return []
@@ -327,8 +359,7 @@ async def get_all_relevant_agents_for_generation(
         max_marketplace_results: Max marketplace agents to return (default 10)
 
     Returns:
-        List of AgentSummary, library agents first (with full schemas),
-        then marketplace agents (basic info only)
+        List of AgentSummary with full schemas (both library and marketplace agents)
     """
     agents: list[AgentSummary] = []
     seen_graph_ids: set[str] = set()
@@ -365,16 +396,12 @@ async def get_all_relevant_agents_for_generation(
             search_query=search_query,
             max_results=max_marketplace_results,
         )
-        library_names: set[str] = set()
-        for a in agents:
-            name = a.get("name")
-            if name and isinstance(name, str):
-                library_names.add(name.lower())
+        # Deduplicate by graph_id (marketplace agents now have full schemas)
         for agent in marketplace_agents:
-            agent_name = agent.get("name")
-            if agent_name and isinstance(agent_name, str):
-                if agent_name.lower() not in library_names:
-                    agents.append(agent)
+            graph_id = agent.get("graph_id")
+            if graph_id and graph_id not in seen_graph_ids:
+                agents.append(agent)
+                seen_graph_ids.add(graph_id)
 
     return agents
 
