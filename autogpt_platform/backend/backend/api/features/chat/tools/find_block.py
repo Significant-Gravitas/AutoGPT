@@ -31,8 +31,10 @@ class FindBlockTool(BaseTool):
             "Search for available blocks by name or description. "
             "Blocks are reusable components that perform specific tasks like "
             "sending emails, making API calls, processing text, etc. "
-            "IMPORTANT: Use this tool FIRST to get the block's 'id' before calling run_block. "
-            "The response includes each block's id, required_inputs, and input_schema."
+            "IMPORTANT: Use this tool FIRST to get the block's 'id' "
+            "before calling run_block. "
+            "The response includes each block's id, required_inputs, "
+            "and input_schema."
         )
 
     @property
@@ -175,8 +177,9 @@ class FindBlockTool(BaseTool):
             return BlockListResponse(
                 message=(
                     f"Found {len(blocks)} block(s) matching '{query}'. "
-                    "To execute a block, use run_block with the block's 'id' field "
-                    "and provide 'input_data' matching the block's input_schema."
+                    "To execute a block, use run_block with the block's "
+                    "'id' and 'name' fields and provide 'input_data' "
+                    "matching the block's input_schema."
                 ),
                 blocks=blocks,
                 count=len(blocks),
