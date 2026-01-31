@@ -37,19 +37,29 @@ ENV POETRY_VIRTUALENVS_CREATE=true
 ENV POETRY_VIRTUALENVS_IN_PROJECT=true
 ENV PATH=/opt/poetry/bin:$PATH
 
-RUN pip3 install poetry --break-system-packages
+RUN pip3 install --no-cache-dir poetry --break-system-packages
 
 # Copy and install dependencies
 COPY autogpt_platform/autogpt_libs /app/autogpt_platform/autogpt_libs
 COPY autogpt_platform/backend/poetry.lock autogpt_platform/backend/pyproject.toml /app/autogpt_platform/backend/
 WORKDIR /app/autogpt_platform/backend
-RUN poetry install --no-ansi --no-root
+RUN poetry install --no-ansi --no-root --only main
 
 # Generate Prisma client
 COPY autogpt_platform/backend/schema.prisma ./
 COPY autogpt_platform/backend/backend/data/partial_types.py ./backend/data/partial_types.py
 COPY autogpt_platform/backend/gen_prisma_types_stub.py ./
 RUN poetry run prisma generate && poetry run gen-prisma-stub
+
+# Clean up build artifacts and caches to reduce layer size
+RUN find /app -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null; \
+    find /app -type d -name tests -exec rm -rf {} + 2>/dev/null; \
+    find /app -type d -name test -exec rm -rf {} + 2>/dev/null; \
+    rm -rf /app/autogpt_platform/backend/.venv/lib/python*/site-packages/pip* \
+           /app/autogpt_platform/backend/.venv/lib/python*/site-packages/setuptools* \
+           /root/.cache/pip \
+           /root/.cache/pypoetry; \
+    true
 
 FROM debian:13-slim AS server_dependencies
 
@@ -68,8 +78,11 @@ RUN apt-get update && apt-get install -y \
     python3-pip \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy only necessary files from builder
-COPY --from=builder /app /app
+# Copy only necessary files from builder (selective copying reduces image size)
+COPY --from=builder /app/autogpt_platform/backend/.venv /app/autogpt_platform/backend/.venv
+COPY --from=builder /app/autogpt_platform/autogpt_libs /app/autogpt_platform/autogpt_libs
+COPY --from=builder /app/autogpt_platform/backend/schema.prisma /app/autogpt_platform/backend/schema.prisma
+COPY --from=builder /app/autogpt_platform/backend/backend/data/partial_types.py /app/autogpt_platform/backend/backend/data/partial_types.py
 COPY --from=builder /usr/local/lib/python3* /usr/local/lib/python3*
 COPY --from=builder /usr/local/bin/poetry /usr/local/bin/poetry
 # Copy Node.js installation for Prisma
