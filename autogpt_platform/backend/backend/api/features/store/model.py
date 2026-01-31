@@ -38,7 +38,7 @@ class StoreAgent(pydantic.BaseModel):
     description: str
     runs: int
     rating: float
-    agent_graph_id: str | None = None
+    agent_graph_id: str = ""
 
 
 class StoreAgentsResponse(pydantic.BaseModel):
