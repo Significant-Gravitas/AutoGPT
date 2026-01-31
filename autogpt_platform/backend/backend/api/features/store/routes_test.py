@@ -379,7 +379,6 @@ def test_get_agent_details(
         categories=["category1", "category2"],
         runs=100,
         rating=4.5,
-        agent_graph_id="test-graph-1",
         versions=["1.0.0", "1.1.0"],
         agentGraphVersions=["1", "2"],
         agentGraphId="test-graph-id",
@@ -443,7 +442,6 @@ def test_get_creators_pagination(
                 avatar_url=f"avatar{i}.jpg",
                 num_agents=1,
                 agent_rating=4.5,
-                agent_graph_id="test-graph-1",
                 agent_runs=100,
                 is_featured=False,
             )

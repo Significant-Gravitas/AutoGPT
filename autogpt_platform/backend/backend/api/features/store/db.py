@@ -112,7 +112,7 @@ async def get_store_agents(
                             description=agent["description"],
                             runs=agent["runs"],
                             rating=agent["rating"],
-                            agent_graph_id=agent.get("agentGraphId"),
+                            agent_graph_id=agent.get("agentGraphId", ""),
                         )
                         store_agents.append(store_agent)
                     except Exception as e:
