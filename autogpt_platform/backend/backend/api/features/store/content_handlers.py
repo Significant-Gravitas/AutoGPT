@@ -13,9 +13,28 @@ from typing import Any
 
 from prisma.enums import ContentType
 
+from backend.data.block import BlockType
 from backend.data.db import query_raw_with_schema
 
 logger = logging.getLogger(__name__)
+
+# Blocks excluded from CoPilot standalone execution and search indexing
+# NOTE: This does NOT affect the Builder UI which uses load_all_blocks() directly
+EXCLUDED_BLOCK_TYPES = {
+    BlockType.INPUT,  # Graph interface definition - data enters via chat, not graph inputs
+    BlockType.OUTPUT,  # Graph interface definition - data exits via chat, not graph outputs
+    BlockType.WEBHOOK,  # Wait for external events - would hang forever in CoPilot
+    BlockType.WEBHOOK_MANUAL,  # Same as WEBHOOK
+    BlockType.NOTE,  # Visual annotation only - no runtime behavior
+    BlockType.HUMAN_IN_THE_LOOP,  # Pauses for human approval - CoPilot IS human-in-the-loop
+    BlockType.AGENT,  # AgentExecutorBlock requires execution_context - use run_agent tool
+}
+
+# Blocks that have STANDARD/other types but still require graph context
+EXCLUDED_BLOCK_IDS = {
+    # SmartDecisionMakerBlock - dynamically discovers downstream blocks via graph topology
+    "3b191d9f-356f-482d-8238-ba04b6d18381",
+}
 
 
 @dataclass
@@ -192,6 +211,13 @@ class BlockHandler(ContentHandler):
                 if block_instance.disabled:
                     continue
 
+                # Skip blocks excluded from CoPilot (graph-only blocks)
+                if (
+                    block_instance.block_type in EXCLUDED_BLOCK_TYPES
+                    or block_id in EXCLUDED_BLOCK_IDS
+                ):
+                    continue
+
                 # Build searchable text from block metadata
                 parts = []
                 if hasattr(block_instance, "name") and block_instance.name:
@@ -253,12 +279,18 @@ class BlockHandler(ContentHandler):
 
         all_blocks = get_blocks()
 
-        # Filter out disabled blocks - they're not indexed
-        enabled_block_ids = [
-            block_id
-            for block_id, block_cls in all_blocks.items()
-            if not block_cls().disabled
-        ]
+        # Filter out disabled blocks and excluded blocks - they're not indexed
+        enabled_block_ids = []
+        for block_id, block_cls in all_blocks.items():
+            block_instance = block_cls()
+            if block_instance.disabled:
+                continue
+            if (
+                block_instance.block_type in EXCLUDED_BLOCK_TYPES
+                or block_id in EXCLUDED_BLOCK_IDS
+            ):
+                continue
+            enabled_block_ids.append(block_id)
         total_blocks = len(enabled_block_ids)
 
         if total_blocks == 0:
