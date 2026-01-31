@@ -66,18 +66,24 @@ async def event_broadcaster(manager: ConnectionManager):
     execution_bus = AsyncRedisExecutionEventBus()
     notification_bus = AsyncRedisNotificationEventBus()
 
-    async def execution_worker():
-        async for event in execution_bus.listen("*"):
-            await manager.send_execution_update(event)
+    try:
 
-    async def notification_worker():
-        async for notification in notification_bus.listen("*"):
-            await manager.send_notification(
-                user_id=notification.user_id,
-                payload=notification.payload,
-            )
+        async def execution_worker():
+            async for event in execution_bus.listen("*"):
+                await manager.send_execution_update(event)
 
-    await asyncio.gather(execution_worker(), notification_worker())
+        async def notification_worker():
+            async for notification in notification_bus.listen("*"):
+                await manager.send_notification(
+                    user_id=notification.user_id,
+                    payload=notification.payload,
+                )
+
+        await asyncio.gather(execution_worker(), notification_worker())
+    finally:
+        # Ensure PubSub connections are closed on any exit to prevent leaks
+        await execution_bus.close()
+        await notification_bus.close()
 
 
 async def authenticate_websocket(websocket: WebSocket) -> str:
