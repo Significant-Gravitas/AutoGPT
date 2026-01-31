@@ -379,7 +379,6 @@ async def get_all_relevant_agents_for_generation(
             search_query=search_query,
             max_results=max_marketplace_results,
         )
-        # Deduplicate by graph_id (marketplace agents now have full schemas)
         for agent in marketplace_agents:
             graph_id = agent.get("graph_id")
             if graph_id and graph_id not in seen_graph_ids:
