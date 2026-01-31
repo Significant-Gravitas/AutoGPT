@@ -1,21 +1,24 @@
 """Core agent generation functions."""
 
-import asyncio
 import logging
 import re
 import uuid
 from typing import Any, NotRequired, TypedDict
 
+import prisma.models
+
 from backend.api.features.library import db as library_db
 from backend.api.features.store import db as store_db
 from backend.data.graph import (
     Graph,
+    GraphModel,
     Link,
     Node,
     create_graph,
     get_graph,
     get_graph_all_versions,
 )
+from backend.data.includes import AGENT_GRAPH_INCLUDE
 from backend.util.exceptions import DatabaseError, NotFoundError
 
 from .service import (
@@ -266,32 +269,27 @@ async def get_library_agents_for_generation(
 
 async def get_graphs_by_ids(
     *graph_ids: str,
-) -> dict[str, Graph]:
-    """Batch-fetch multiple graphs by their IDs.
+) -> dict[str, GraphModel]:
+    """Batch-fetch multiple graphs by their IDs using a single query.
 
     Args:
         *graph_ids: Variable number of graph IDs to fetch
 
     Returns:
-        Dict mapping graph_id to Graph for successfully fetched graphs
+        Dict mapping graph_id to GraphModel for successfully fetched graphs
     """
     if not graph_ids:
         return {}
 
-    async def fetch_one(graph_id: str) -> tuple[str, Graph | None]:
-        try:
-            graph = await get_graph(
-                graph_id=graph_id,
-                version=None,
-                user_id=None,
-            )
-            return (graph_id, graph)
-        except Exception as e:
-            logger.debug(f"Failed to fetch graph {graph_id}: {e}")
-            return (graph_id, None)
-
-    results = await asyncio.gather(*[fetch_one(gid) for gid in graph_ids])
-    return {gid: graph for gid, graph in results if graph is not None}
+    try:
+        graphs = await prisma.models.AgentGraph.prisma().find_many(
+            where={"id": {"in": list(graph_ids)}, "isActive": True},
+            include=AGENT_GRAPH_INCLUDE,
+        )
+        return {graph.id: GraphModel.from_db(graph) for graph in graphs}
+    except Exception as e:
+        logger.warning(f"Failed to batch fetch graphs: {e}")
+        return {}
 
 
 async def search_marketplace_agents_for_generation(
