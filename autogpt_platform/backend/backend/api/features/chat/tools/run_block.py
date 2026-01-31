@@ -4,6 +4,8 @@ import logging
 from collections import defaultdict
 from typing import Any
 
+from pydantic_core import PydanticUndefined
+
 from backend.api.features.chat.model import ChatSession
 from backend.data.block import get_block
 from backend.data.execution import ExecutionContext
@@ -103,7 +105,15 @@ class RunBlockTool(BaseTool):
         for field_name, field_info in credentials_fields_info.items():
             effective_field_info = field_info
             if field_info.discriminator and field_info.discriminator_mapping:
+                # Get discriminator from input, falling back to schema default
                 discriminator_value = input_data.get(field_info.discriminator)
+                if discriminator_value is None:
+                    field = block.input_schema.model_fields.get(
+                        field_info.discriminator
+                    )
+                    if field and field.default is not PydanticUndefined:
+                        discriminator_value = field.default
+
                 if (
                     discriminator_value
                     and discriminator_value in field_info.discriminator_mapping
