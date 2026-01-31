@@ -614,24 +614,19 @@ def is_rate_limit_error(error: Exception) -> tuple[bool, str | None, int | None]
     error_str = str(error).lower()
     error_code = getattr(error, "status_code", None) or getattr(error, "code", None)
 
-    if isinstance(error, openai.RateLimitError):
+    if error_code == 429:
         retry_after = None
         if hasattr(error, "response") and error.response:
-            retry_after = error.response.headers.get("retry-after")
-            if retry_after:
+            retry_after_val = error.response.headers.get("retry-after")
+            if retry_after_val:
                 try:
-                    retry_after = int(retry_after)
+                    retry_after = int(retry_after_val)
                 except ValueError:
                     retry_after = None
-        return True, "OpenAI", retry_after
+        if retry_after is None:
+            retry_after = getattr(error, "retry_after", None)
+        return True, None, retry_after
 
-    if isinstance(error, anthropic.RateLimitError):
-        return True, "Anthropic", None
-
-    if error_code == 429:
-        return True, None, getattr(error, "retry_after", None)
-
-    # Check error message for rate limit indicators
     rate_limit_indicators = [
         "rate limit",
         "rate_limit",
