@@ -1,10 +1,13 @@
 """Shared agent search functionality for find_agent and find_library_agent tools."""
 
+import asyncio
 import logging
 from typing import Literal
 
 from backend.api.features.library import db as library_db
 from backend.api.features.store import db as store_db
+from backend.data import graph as graph_db
+from backend.data.graph import GraphModel
 from backend.util.exceptions import DatabaseError, NotFoundError
 
 from .models import (
@@ -14,6 +17,7 @@ from .models import (
     NoResultsResponse,
     ToolResponseBase,
 )
+from .utils import fetch_graph_from_store_slug
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +58,28 @@ async def search_agents(
         if source == "marketplace":
             logger.info(f"Searching marketplace for: {query}")
             results = await store_db.get_store_agents(search_query=query, page_size=5)
-            for agent in results.agents:
+
+            # Fetch all graphs in parallel for better performance
+            async def fetch_marketplace_graph(
+                creator: str, slug: str
+            ) -> GraphModel | None:
+                try:
+                    graph, _ = await fetch_graph_from_store_slug(creator, slug)
+                    return graph
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to fetch input schema for {creator}/{slug}: {e}"
+                    )
+                    return None
+
+            graphs = await asyncio.gather(
+                *(
+                    fetch_marketplace_graph(agent.creator, agent.slug)
+                    for agent in results.agents
+                )
+            )
+
+            for agent, graph in zip(results.agents, graphs):
                 agents.append(
                     AgentInfo(
                         id=f"{agent.creator}/{agent.slug}",
@@ -67,6 +92,7 @@ async def search_agents(
                         rating=agent.rating,
                         runs=agent.runs,
                         is_featured=False,
+                        inputs=graph.input_schema if graph else None,
                     )
                 )
         else:  # library
@@ -76,7 +102,32 @@ async def search_agents(
                 search_term=query,
                 page_size=10,
             )
-            for agent in results.agents:
+
+            # Fetch all graphs in parallel for better performance
+            # (list_library_agents doesn't include nodes for performance)
+            async def fetch_library_graph(
+                graph_id: str, graph_version: int
+            ) -> GraphModel | None:
+                try:
+                    return await graph_db.get_graph(
+                        graph_id=graph_id,
+                        version=graph_version,
+                        user_id=user_id,
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to fetch input schema for graph {graph_id}: {e}"
+                    )
+                    return None
+
+            graphs = await asyncio.gather(
+                *(
+                    fetch_library_graph(agent.graph_id, agent.graph_version)
+                    for agent in results.agents
+                )
+            )
+
+            for agent, graph in zip(results.agents, graphs):
                 agents.append(
                     AgentInfo(
                         id=agent.id,
@@ -90,6 +141,7 @@ async def search_agents(
                         has_external_trigger=agent.has_external_trigger,
                         new_output=agent.new_output,
                         graph_id=agent.graph_id,
+                        inputs=graph.input_schema if graph else None,
                     )
                 )
         logger.info(f"Found {len(agents)} agents in {source}")
