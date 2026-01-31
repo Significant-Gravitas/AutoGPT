@@ -1883,84 +1883,125 @@ async def _generate_llm_continuation(
     This is called by background tasks to continue the conversation
     after a tool result is saved. The response is saved to the database
     so users see it when they refresh or poll.
+
+    Includes retry logic with exponential backoff for transient API errors.
     """
-    try:
-        # Load fresh session from DB (bypass cache to get the updated tool result)
-        await invalidate_session_cache(session_id)
-        session = await get_chat_session(session_id, user_id)
-        if not session:
-            logger.error(f"Session {session_id} not found for LLM continuation")
-            return
+    retry_count = 0
+    max_retries = 3
+    last_error: Exception | None = None
 
-        # Build system prompt
-        system_prompt, _ = await _build_system_prompt(user_id)
-
-        # Build messages in OpenAI format
-        messages = session.to_openai_messages()
-        if system_prompt:
-            from openai.types.chat import ChatCompletionSystemMessageParam
-
-            system_message = ChatCompletionSystemMessageParam(
-                role="system",
-                content=system_prompt,
-            )
-            messages = [system_message] + messages
-
-        # Build extra_body for tracing
-        extra_body: dict[str, Any] = {
-            "posthogProperties": {
-                "environment": settings.config.app_env.value,
-            },
-        }
-        if user_id:
-            extra_body["user"] = user_id[:128]
-            extra_body["posthogDistinctId"] = user_id
-        if session_id:
-            extra_body["session_id"] = session_id[:128]
-
-        # Make non-streaming LLM call (no tools - just text response)
-        from typing import cast
-
-        from openai.types.chat import ChatCompletionMessageParam
-
-        # No tools parameter = text-only response (no tool calls)
-        response = await client.chat.completions.create(
-            model=config.model,
-            messages=cast(list[ChatCompletionMessageParam], messages),
-            extra_body=extra_body,
-        )
-
-        if response.choices and response.choices[0].message.content:
-            assistant_content = response.choices[0].message.content
-
-            # Reload session from DB to avoid race condition with user messages
-            # that may have been sent while we were generating the LLM response
-            fresh_session = await get_chat_session(session_id, user_id)
-            if not fresh_session:
-                logger.error(
-                    f"Session {session_id} disappeared during LLM continuation"
-                )
+    while retry_count <= max_retries:
+        try:
+            # Load fresh session from DB (bypass cache to get the updated tool result)
+            await invalidate_session_cache(session_id)
+            session = await get_chat_session(session_id, user_id)
+            if not session:
+                logger.error(f"Session {session_id} not found for LLM continuation")
                 return
 
-            # Save assistant message to database
-            assistant_message = ChatMessage(
-                role="assistant",
-                content=assistant_content,
+            # Build system prompt
+            system_prompt, _ = await _build_system_prompt(user_id)
+
+            # Build messages in OpenAI format
+            messages = session.to_openai_messages()
+            if system_prompt:
+                from openai.types.chat import ChatCompletionSystemMessageParam
+
+                system_message = ChatCompletionSystemMessageParam(
+                    role="system",
+                    content=system_prompt,
+                )
+                messages = [system_message] + messages
+
+            # Build extra_body for tracing
+            extra_body: dict[str, Any] = {
+                "posthogProperties": {
+                    "environment": settings.config.app_env.value,
+                },
+            }
+            if user_id:
+                extra_body["user"] = user_id[:128]
+                extra_body["posthogDistinctId"] = user_id
+            if session_id:
+                extra_body["session_id"] = session_id[:128]
+
+            from typing import cast
+
+            from openai.types.chat import ChatCompletionMessageParam
+
+            # Include tools with tool_choice="none" to allow the provider to validate
+            # tool interactions in the message history without allowing new tool calls.
+            # Some providers (especially Anthropic via OpenRouter) require the tools
+            # schema to be present when the conversation contains tool_use/tool_result.
+            response = await client.chat.completions.create(
+                model=config.model,
+                messages=cast(list[ChatCompletionMessageParam], messages),
+                tools=tools,
+                tool_choice="none",
+                extra_body=extra_body,
             )
-            fresh_session.messages.append(assistant_message)
 
-            # Save to database (not cache) to persist the response
-            await upsert_chat_session(fresh_session)
+            if response.choices and response.choices[0].message.content:
+                assistant_content = response.choices[0].message.content
 
-            # Invalidate cache so next poll/refresh gets fresh data
-            await invalidate_session_cache(session_id)
+                # Reload session from DB to avoid race condition with user messages
+                # that may have been sent while we were generating the LLM response
+                fresh_session = await get_chat_session(session_id, user_id)
+                if not fresh_session:
+                    logger.error(
+                        f"Session {session_id} disappeared during LLM continuation"
+                    )
+                    return
 
-            logger.info(
-                f"Generated LLM continuation for session {session_id}, "
-                f"response length: {len(assistant_content)}"
-            )
-        else:
-            logger.warning(f"LLM continuation returned empty response for {session_id}")
+                # Save assistant message to database
+                assistant_message = ChatMessage(
+                    role="assistant",
+                    content=assistant_content,
+                )
+                fresh_session.messages.append(assistant_message)
 
-    except Exception as e:
-        logger.error(f"Failed to generate LLM continuation: {e}", exc_info=True)
+                # Save to database (not cache) to persist the response
+                await upsert_chat_session(fresh_session)
+
+                # Invalidate cache so next poll/refresh gets fresh data
+                await invalidate_session_cache(session_id)
+
+                logger.info(
+                    f"Generated LLM continuation for session {session_id}, "
+                    f"response length: {len(assistant_content)}"
+                )
+                return  # Success - exit the retry loop
+            else:
+                logger.warning(
+                    f"LLM continuation returned empty response for {session_id}"
+                )
+                return  # Empty response is not retryable
+
+        except Exception as e:
+            last_error = e
+            if _is_retryable_error(e) and retry_count < max_retries:
+                retry_count += 1
+                delay = min(
+                    BASE_DELAY_SECONDS * (2 ** (retry_count - 1)),
+                    MAX_DELAY_SECONDS,
+                )
+                logger.warning(
+                    f"Retryable error in LLM continuation for {session_id}: {e!s}. "
+                    f"Retrying in {delay:.1f}s (attempt {retry_count}/{max_retries})"
+                )
+                await asyncio.sleep(delay)
+                continue
+            else:
+                # Non-retryable error or max retries exceeded
+                logger.error(
+                    f"Failed to generate LLM continuation for {session_id}: {e!s}",
+                    exc_info=True,
+                )
+                break
+
+    # If we get here, all retries failed
+    if last_error:
+        logger.error(
+            f"LLM continuation failed after {retry_count} retries for {session_id}. "
+            f"Last error: {last_error!s}"
+        )
