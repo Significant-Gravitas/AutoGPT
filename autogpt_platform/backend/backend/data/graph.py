@@ -1028,6 +1028,40 @@ async def get_graph(
     return GraphModel.from_db(graph, for_export)
 
 
+async def get_graphs_by_ids(*graph_ids: str) -> dict[str, GraphModel]:
+    """Batch-fetch multiple public/marketplace graphs by their IDs.
+
+    This fetches graphs that are publicly available via approved store listings.
+    Used for marketplace agent schema lookups where we need multiple graphs
+    in a single query.
+
+    Args:
+        *graph_ids: Variable number of graph IDs to fetch
+
+    Returns:
+        Dict mapping graph_id to GraphModel for successfully fetched graphs
+    """
+    if not graph_ids:
+        return {}
+
+    store_listings = await StoreListingVersion.prisma().find_many(
+        where={
+            "agentGraphId": {"in": list(graph_ids)},
+            "submissionStatus": SubmissionStatus.APPROVED,
+            "isDeleted": False,
+        },
+        include={"AgentGraph": {"include": AGENT_GRAPH_INCLUDE}},
+        distinct=["agentGraphId"],
+        order={"agentGraphVersion": "desc"},
+    )
+
+    return {
+        listing.agentGraphId: GraphModel.from_db(listing.AgentGraph)
+        for listing in store_listings
+        if listing.AgentGraph
+    }
+
+
 async def get_graph_as_admin(
     graph_id: str,
     version: int | None = None,

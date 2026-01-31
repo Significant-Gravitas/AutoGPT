@@ -5,20 +5,17 @@ import re
 import uuid
 from typing import Any, NotRequired, TypedDict
 
-import prisma.models
-
 from backend.api.features.library import db as library_db
 from backend.api.features.store import db as store_db
 from backend.data.graph import (
     Graph,
-    GraphModel,
     Link,
     Node,
     create_graph,
     get_graph,
     get_graph_all_versions,
+    get_graphs_by_ids,
 )
-from backend.data.includes import AGENT_GRAPH_INCLUDE
 from backend.util.exceptions import DatabaseError, NotFoundError
 
 from .service import (
@@ -265,31 +262,6 @@ async def get_library_agents_for_generation(
     except Exception as e:
         logger.warning(f"Failed to fetch library agents: {e}")
         return []
-
-
-async def get_graphs_by_ids(
-    *graph_ids: str,
-) -> dict[str, GraphModel]:
-    """Batch-fetch multiple graphs by their IDs using a single query.
-
-    Args:
-        *graph_ids: Variable number of graph IDs to fetch
-
-    Returns:
-        Dict mapping graph_id to GraphModel for successfully fetched graphs
-    """
-    if not graph_ids:
-        return {}
-
-    try:
-        graphs = await prisma.models.AgentGraph.prisma().find_many(
-            where={"id": {"in": list(graph_ids)}, "isActive": True},
-            include=AGENT_GRAPH_INCLUDE,
-        )
-        return {graph.id: GraphModel.from_db(graph) for graph in graphs}
-    except Exception as e:
-        logger.warning(f"Failed to batch fetch graphs: {e}")
-        return {}
 
 
 async def search_marketplace_agents_for_generation(
