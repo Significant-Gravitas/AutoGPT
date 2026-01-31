@@ -193,6 +193,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Get Current Time](block-integrations/text.md#get-current-time) | This block outputs the current time |
 | [Match Text Pattern](block-integrations/text.md#match-text-pattern) | Matches text against a regex pattern and forwards data to positive or negative output based on the match |
 | [Text Decoder](block-integrations/text.md#text-decoder) | Decodes a string containing escape sequences into actual text |
+| [Text Encoder](block-integrations/text.md#text-encoder) | Encodes a string by converting special characters into escape sequences |
 | [Text Replace](block-integrations/text.md#text-replace) | This block is used to replace a text with a new text |
 | [Text Split](block-integrations/text.md#text-split) | This block is used to split a text into a list of strings |
 | [Word Character Count](block-integrations/text.md#word-character-count) | Counts the number of words and characters in a given text |
