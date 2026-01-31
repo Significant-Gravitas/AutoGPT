@@ -43,6 +43,8 @@ RUN pip3 install --no-cache-dir poetry --break-system-packages
 COPY autogpt_platform/autogpt_libs /app/autogpt_platform/autogpt_libs
 COPY autogpt_platform/backend/poetry.lock autogpt_platform/backend/pyproject.toml /app/autogpt_platform/backend/
 WORKDIR /app/autogpt_platform/backend
+# Production image only needs runtime deps; dev deps (pytest, black, ruff, etc.)
+# are installed locally via `poetry install --with dev` per the development docs
 RUN poetry install --no-ansi --no-root --only main
 
 # Generate Prisma client
@@ -77,11 +79,8 @@ RUN apt-get update && apt-get install -y \
     python3-pip \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy only necessary files from builder (selective copying reduces image size)
-COPY --from=builder /app/autogpt_platform/backend/.venv /app/autogpt_platform/backend/.venv
-COPY --from=builder /app/autogpt_platform/autogpt_libs /app/autogpt_platform/autogpt_libs
-COPY --from=builder /app/autogpt_platform/backend/schema.prisma /app/autogpt_platform/backend/schema.prisma
-COPY --from=builder /app/autogpt_platform/backend/backend/data/partial_types.py /app/autogpt_platform/backend/backend/data/partial_types.py
+# Copy built artifacts from builder (cleaned of caches, __pycache__, and test dirs)
+COPY --from=builder /app /app
 COPY --from=builder /usr/local/lib/python3* /usr/local/lib/python3*
 COPY --from=builder /usr/local/bin/poetry /usr/local/bin/poetry
 # Copy Node.js installation for Prisma
