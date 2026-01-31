@@ -9833,7 +9833,8 @@
           "sub_heading": { "type": "string", "title": "Sub Heading" },
           "description": { "type": "string", "title": "Description" },
           "runs": { "type": "integer", "title": "Runs" },
-          "rating": { "type": "number", "title": "Rating" }
+          "rating": { "type": "number", "title": "Rating" },
+          "agent_graph_id": { "type": "string", "title": "Agent Graph Id" }
         },
         "type": "object",
         "required": [
@@ -9845,7 +9846,8 @@
           "sub_heading",
           "description",
           "runs",
-          "rating"
+          "rating",
+          "agent_graph_id"
         ],
         "title": "StoreAgent"
       },

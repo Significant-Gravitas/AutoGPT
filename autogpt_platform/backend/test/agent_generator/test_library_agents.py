@@ -134,15 +134,28 @@ class TestSearchMarketplaceAgentsForGeneration:
                 description="A public agent",
                 sub_heading="Does something useful",
                 creator="creator-1",
+                agent_graph_id="graph-123",
             )
         ]
 
-        # The store_db is dynamically imported, so patch the import path
-        with patch(
-            "backend.api.features.store.db.get_store_agents",
-            new_callable=AsyncMock,
-            return_value=mock_response,
-        ) as mock_search:
+        mock_graph = MagicMock()
+        mock_graph.id = "graph-123"
+        mock_graph.version = 1
+        mock_graph.input_schema = {"type": "object"}
+        mock_graph.output_schema = {"type": "object"}
+
+        with (
+            patch(
+                "backend.api.features.store.db.get_store_agents",
+                new_callable=AsyncMock,
+                return_value=mock_response,
+            ) as mock_search,
+            patch(
+                "backend.api.features.chat.tools.agent_generator.core.get_store_listed_graphs",
+                new_callable=AsyncMock,
+                return_value={"graph-123": mock_graph},
+            ),
+        ):
             result = await core.search_marketplace_agents_for_generation(
                 search_query="automation",
                 max_results=10,
@@ -156,7 +169,7 @@ class TestSearchMarketplaceAgentsForGeneration:
 
         assert len(result) == 1
         assert result[0]["name"] == "Public Agent"
-        assert result[0]["is_marketplace_agent"] is True
+        assert result[0]["graph_id"] == "graph-123"
 
     @pytest.mark.asyncio
     async def test_handles_marketplace_error_gracefully(self):
@@ -193,11 +206,12 @@ class TestGetAllRelevantAgentsForGeneration:
 
         marketplace_agents = [
             {
+                "graph_id": "market-456",
+                "graph_version": 1,
                 "name": "Market Agent",
                 "description": "From marketplace",
-                "sub_heading": "Sub heading",
-                "creator": "creator-1",
-                "is_marketplace_agent": True,
+                "input_schema": {},
+                "output_schema": {},
             }
         ]
 
@@ -225,11 +239,11 @@ class TestGetAllRelevantAgentsForGeneration:
         assert result[1]["name"] == "Market Agent"
 
     @pytest.mark.asyncio
-    async def test_deduplicates_by_name(self):
-        """Test that marketplace agents with same name as library are excluded."""
+    async def test_deduplicates_by_graph_id(self):
+        """Test that marketplace agents with same graph_id as library are excluded."""
         library_agents = [
             {
-                "graph_id": "lib-123",
+                "graph_id": "shared-123",
                 "graph_version": 1,
                 "name": "Shared Agent",
                 "description": "From library",
@@ -240,18 +254,20 @@ class TestGetAllRelevantAgentsForGeneration:
 
         marketplace_agents = [
             {
-                "name": "Shared Agent",  # Same name, should be deduplicated
+                "graph_id": "shared-123",  # Same graph_id, should be deduplicated
+                "graph_version": 1,
+                "name": "Shared Agent",
                 "description": "From marketplace",
-                "sub_heading": "Sub heading",
-                "creator": "creator-1",
-                "is_marketplace_agent": True,
+                "input_schema": {},
+                "output_schema": {},
             },
             {
+                "graph_id": "unique-456",
+                "graph_version": 1,
                 "name": "Unique Agent",
                 "description": "Only in marketplace",
-                "sub_heading": "Sub heading",
-                "creator": "creator-2",
-                "is_marketplace_agent": True,
+                "input_schema": {},
+                "output_schema": {},
             },
         ]
 
@@ -273,7 +289,7 @@ class TestGetAllRelevantAgentsForGeneration:
                     include_marketplace=True,
                 )
 
-        # Shared Agent from marketplace should be excluded
+        # Shared Agent from marketplace should be excluded by graph_id
         assert len(result) == 2
         names = [a["name"] for a in result]
         assert "Shared Agent" in names
