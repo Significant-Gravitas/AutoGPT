@@ -354,7 +354,8 @@ def _credential_is_for_host(
     if not requirements.discriminator_values:
         return True
 
-    host = _extract_host_from_url(requirements.discriminator_values.pop())
+    # Host-scoped credential inputs are grouped by host, so any item from the set works.
+    host = _extract_host_from_url(list(requirements.discriminator_values)[0])
 
     # Check that credential host matches required host
     return credential.host == host

@@ -19,7 +19,6 @@ from typing import (
     cast,
     get_args,
 )
-from urllib.parse import urlparse
 from uuid import uuid4
 
 from prisma.enums import CreditTransactionType, OnboardingStep
@@ -398,11 +397,13 @@ class HostScopedCredentials(_BaseCredentials):
     def matches_url(self, url: str) -> bool:
         """Check if this credential should be applied to the given URL."""
 
-        parsed_url = urlparse(url)
-        # Extract hostname without port
-        request_host = parsed_url.hostname
+        request_host = _extract_host_from_url(url)
         if not request_host:
             return False
+
+        if ":" not in self.host:
+            # No port specified in credential host, ignore port from request host
+            request_host = request_host.rsplit(":", 1)[0]
 
         # Simple host matching - exact match or wildcard subdomain match
         if self.host == request_host:
