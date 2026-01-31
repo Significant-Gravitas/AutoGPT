@@ -1,0 +1,194 @@
+[tool.poetry]
+name = "autogpt-classic"
+version = "0.5.0"
+description = "AutoGPT Classic - autonomous agent framework"
+authors = ["Significant Gravitas <support@agpt.co>"]
+license = "MIT"
+readme = "README.md"
+homepage = "https://github.com/Significant-Gravitas/AutoGPT"
+keywords = ["autogpt", "ai", "agents", "autonomous", "llm", "gpt", "openai"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+packages = [
+    { include = "forge", from = "forge" },
+    { include = "autogpt", from = "original_autogpt" },
+    { include = "direct_benchmark", from = "direct_benchmark" },
+]
+
+[tool.poetry.urls]
+"Bug Tracker" = "https://github.com/Significant-Gravitas/AutoGPT/issues"
+"Documentation" = "https://docs.agpt.co"
+
+[tool.poetry.scripts]
+autogpt = "autogpt.app.cli:cli"
+serve = "autogpt.app.cli:serve"
+direct-benchmark = "direct_benchmark.__main__:main"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+
+# Core networking & web
+aiohttp = "^3.8.5"
+beautifulsoup4 = "^4.12.2"
+requests = "*"
+trafilatura = "^2.0"
+
+# LLM providers
+anthropic = "^0.45.0"
+groq = "^0.8.0"
+litellm = "^1.17.9"
+openai = "^1.50.0"
+tiktoken = ">=0.7.0,<1.0.0"
+
+# Web frameworks
+fastapi = "^0.109.1"
+hypercorn = "^0.14.4"
+uvicorn = { extras = ["standard"], version = ">=0.23.2,<1" }
+python-multipart = "^0.0.7"
+
+# Data processing
+charset-normalizer = "^3.1.0"
+demjson3 = "^3.0.0"
+jsonschema = "*"
+orjson = "^3.8.10"
+pydantic = "^2.7.2"
+pyyaml = "^6.0"
+toml = "^0.10.2"
+
+# Database & storage
+boto3 = "^1.33.6"
+chromadb = "^1.4.0"
+google-cloud-logging = "^3.8.0"
+google-cloud-storage = "^2.13.0"
+sqlalchemy = "^2.0.19"
+
+# CLI & UI
+click = "^8.0"
+colorama = "^0.4.6"
+prompt-toolkit = "^3.0.0"
+rich = "^13.0"
+
+# Document processing
+pypdf = "^3.1.0"
+python-docx = "*"
+pylatexenc = "*"
+Pillow = "*"
+
+# NLP
+en-core-web-sm = { url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl" }
+spacy = "^3.8.0"
+
+# Web automation & search
+ddgs = "^9.9"
+google-api-python-client = "^2.116"
+playwright = "^1.50.0"
+
+# Utilities
+distro = "^1.8.0"
+docker = "*"
+gitpython = "^3.1.32"
+gTTS = "^2.3.1"
+jinja2 = "^3.1.2"
+numpy = ">=2.0.0"
+playsound = "~1.2.2"
+python-dotenv = "^1.0.0"
+sentry-sdk = "^1.40.4"
+tenacity = "^8.2.2"
+watchdog = "^6.0.0"
+
+# Testing (needed for direct_benchmark challenge evaluation)
+pytest = "^8.0"
+
+
+[tool.poetry.group.dev.dependencies]
+# Formatting & linting
+black = "^24.10.0"
+flake8 = "^7.0.0"
+isort = "^5.13.1"
+pre-commit = "^3.3.3"
+pyright = "^1.1.364"
+
+# Type stubs
+boto3-stubs = { extras = ["s3"], version = "^1.33.6" }
+google-api-python-client-stubs = "^1.24"
+types-beautifulsoup4 = "*"
+types-colorama = "*"
+types-Pillow = "*"
+types-requests = "^2.31.0.2"
+
+# Testing
+pytest-asyncio = "^0.23.3"
+pytest-cov = "^5.0.0"
+pytest-mock = "*"
+pytest-recording = "*"
+pytest-xdist = "*"
+mock = "^5.1.0"
+aiohttp-retry = "^2.9.1"
+
+
+[tool.poetry.group.build]
+optional = true
+
+[tool.poetry.group.build.dependencies]
+cx-freeze = { git = "https://github.com/ntindle/cx_Freeze.git", rev = "main" }
+
+
+[tool.poetry.group.benchmarks]
+optional = true
+
+[tool.poetry.group.benchmarks.dependencies]
+# External benchmark adapters
+datasets = "^2.14"
+huggingface-hub = "^0.20"
+# SWE-bench evaluation (optional - requires Docker)
+# swebench = "^2.0"  # Install separately if needed
+# Modal for cloud evaluation (optional)
+# modal = "^0.70"  # Install separately if needed
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+
+[tool.black]
+line-length = 88
+target-version = ['py312']
+include = '\.pyi?$'
+
+
+[tool.isort]
+profile = "black"
+skip_glob = ["data"]
+
+
+[tool.pyright]
+pythonVersion = "3.12"
+exclude = [
+    "data/**",
+    "**/node_modules",
+    "**/__pycache__",
+    "**/.*",
+    "direct_benchmark/challenges/**",  # Legacy code with unavailable imports
+    "direct_benchmark/direct_benchmark/adapters/**",  # Optional deps (datasets, swebench, modal)
+]
+
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["forge/forge", "forge/tests", "original_autogpt/tests"]
+asyncio_mode = "auto"
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+    "requires_agent: marks tests that require a running agent with API keys",
+]

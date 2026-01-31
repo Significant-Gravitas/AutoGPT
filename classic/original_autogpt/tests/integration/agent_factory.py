@@ -1,12 +1,12 @@
 from pathlib import Path
 
 import pytest
+from autogpt.agents.agent import Agent, AgentConfiguration, AgentSettings
+from autogpt.app.config import AppConfig
+
 from forge.config.ai_profile import AIProfile
 from forge.file_storage import FileStorageBackendName, get_storage
 from forge.llm.providers import MultiProvider
-
-from autogpt.agents.agent import Agent, AgentConfiguration, AgentSettings
-from autogpt.app.config import AppConfig
 
 
 @pytest.fixture
@@ -26,7 +26,6 @@ def dummy_agent(config: AppConfig, llm_provider: MultiProvider):
         config=AgentConfiguration(
             fast_llm=config.fast_llm,
             smart_llm=config.smart_llm,
-            use_functions_api=config.openai_functions,
         ),
         history=Agent.default_settings.history.model_copy(deep=True),
     )

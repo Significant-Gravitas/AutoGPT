@@ -4,6 +4,7 @@ from typing import (
     Awaitable,
     Callable,
     ClassVar,
+    Literal,
     Mapping,
     Optional,
     ParamSpec,
@@ -22,6 +23,7 @@ from openai.types.chat import (
     ChatCompletionAssistantMessageParam,
     ChatCompletionMessage,
     ChatCompletionMessageParam,
+    ChatCompletionMessageToolCall,
     CompletionCreateParams,
 )
 from openai.types.shared_params import FunctionDefinition
@@ -46,7 +48,7 @@ from .schema import (
     _ModelName,
     _ModelProviderSettings,
 )
-from .utils import validate_tool_calls
+from .utils import InvalidFunctionCallError, validate_tool_calls
 
 _T = TypeVar("_T")
 _P = ParamSpec("_P")
@@ -233,8 +235,8 @@ class BaseOpenAIChatProvider(
                 self._logger.debug(
                     f"Parsing failed on response: '''{_assistant_msg}'''"
                 )
-                parse_errors_fmt = "\n\n".join(
-                    f"{e.__class__.__name__}: {e}" for e in parse_errors
+                parse_errors_fmt = self._format_parse_errors(
+                    parse_errors, tool_calls, functions
                 )
                 self._logger.warning(
                     f"Parsing attempt #{attempts} failed: {parse_errors_fmt}"
@@ -270,6 +272,7 @@ class BaseOpenAIChatProvider(
         model: _ModelName,
         functions: Optional[list[CompletionModelFunction]] = None,
         max_output_tokens: Optional[int] = None,
+        reasoning_effort: Optional[Literal["low", "medium", "high"]] = None,
         **kwargs,
     ) -> tuple[
         list[ChatCompletionMessageParam], CompletionCreateParams, dict[str, Any]
@@ -281,6 +284,7 @@ class BaseOpenAIChatProvider(
             model: The model to use
             functions (optional): List of functions available to the LLM
             max_output_tokens (optional): Maximum number of tokens to generate
+            reasoning_effort (optional): Reasoning effort for o-series and GPT-5 models
 
         Returns:
             list[ChatCompletionMessageParam]: Prompt messages for the API call
@@ -290,7 +294,23 @@ class BaseOpenAIChatProvider(
         kwargs = cast(CompletionCreateParams, kwargs)
 
         if max_output_tokens:
-            kwargs["max_tokens"] = max_output_tokens
+            # Newer models (o1, o3, o4, gpt-5, gpt-4.1, gpt-4o)
+            # use max_completion_tokens instead of max_tokens
+            if (
+                model.startswith("o1")
+                or model.startswith("o3")
+                or model.startswith("o4")
+                or model.startswith("gpt-5")
+                or model.startswith("gpt-4.1")
+                or model.startswith("gpt-4o")
+            ):
+                kwargs["max_completion_tokens"] = max_output_tokens  # type: ignore
+            else:
+                kwargs["max_tokens"] = max_output_tokens
+
+        # Add reasoning_effort for o-series and GPT-5 models
+        if reasoning_effort and str(model).startswith(("o1", "o3", "o4", "gpt-5")):
+            kwargs["reasoning_effort"] = reasoning_effort  # type: ignore
 
         if functions:
             kwargs["tools"] = [  # pyright: ignore - it fails to infer the dict type
@@ -372,6 +392,61 @@ class BaseOpenAIChatProvider(
         )
         return completion, cost, prompt_tokens_used, completion_tokens_used
 
+    def _format_parse_errors(
+        self,
+        errors: list[Exception],
+        tool_calls: Optional[list[AssistantToolCall]],
+        functions: Optional[list[CompletionModelFunction]],
+    ) -> str:
+        """Format parse errors with helpful context about what was provided vs expected.
+
+        Args:
+            errors: List of parsing/validation errors.
+            tool_calls: The tool calls that were parsed (may have validation errors).
+            functions: List of available functions for schema lookup.
+
+        Returns:
+            Formatted error string with context.
+        """
+        formatted_errors = []
+
+        for error in errors:
+            if isinstance(error, InvalidFunctionCallError):
+                # Build informative error message with context
+                error_parts = [str(error)]
+
+                # Show what arguments were provided
+                if error.arguments:
+                    args_str = ", ".join(
+                        f'"{k}": {repr(v)}' for k, v in error.arguments.items()
+                    )
+                    error_parts.append(f"\nYou provided: {{{args_str}}}")
+                else:
+                    error_parts.append("\nYou provided: (no arguments)")
+
+                # Show expected schema if we have the function definition
+                if functions:
+                    func = next(
+                        (f for f in functions if f.name == error.name),
+                        None,
+                    )
+                    if func and func.parameters:
+                        params_info = []
+                        for name, param in func.parameters.items():
+                            req = "required" if param.required else "optional"
+                            type_str = param.type.value if param.type else "any"
+                            params_info.append(f'"{name}": {type_str} ({req})')
+                        error_parts.append(
+                            f"\nExpected parameters: {{{', '.join(params_info)}}}"
+                        )
+
+                formatted_errors.append("".join(error_parts))
+            else:
+                # For non-tool-call errors, just use the standard format
+                formatted_errors.append(f"{error.__class__.__name__}: {error}")
+
+        return "\n\n".join(formatted_errors)
+
     def _parse_assistant_tool_calls(
         self, assistant_message: ChatCompletionMessage, **kwargs
     ) -> tuple[list[AssistantToolCall], list[Exception]]:
@@ -380,11 +455,13 @@ class BaseOpenAIChatProvider(
 
         if assistant_message.tool_calls:
             for _tc in assistant_message.tool_calls:
+                # Standard tool calls have a function attribute
+                tc = cast(ChatCompletionMessageToolCall, _tc)
                 try:
-                    parsed_arguments = json_loads(_tc.function.arguments)
+                    parsed_arguments = json_loads(tc.function.arguments)
                 except Exception as e:
                     err_message = (
-                        f"Decoding arguments for {_tc.function.name} failed: "
+                        f"Decoding arguments for {tc.function.name} failed: "
                         + str(e.args[0])
                     )
                     parse_errors.append(
@@ -396,10 +473,10 @@ class BaseOpenAIChatProvider(
 
                 tool_calls.append(
                     AssistantToolCall(
-                        id=_tc.id,
-                        type=_tc.type,
+                        id=tc.id,
+                        type=tc.type,
                         function=AssistantFunctionCall(
-                            name=_tc.function.name,
+                            name=tc.function.name,
                             arguments=parsed_arguments,
                         ),
                     )

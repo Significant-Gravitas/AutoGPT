@@ -23,29 +23,24 @@ class DirectiveProvider(AgentComponent):
 
 class CommandProvider(AgentComponent):
     @abstractmethod
-    def get_commands(self) -> Iterator["Command"]:
-        ...
+    def get_commands(self) -> Iterator["Command"]: ...
 
 
 class MessageProvider(AgentComponent):
     @abstractmethod
-    def get_messages(self) -> Iterator["ChatMessage"]:
-        ...
+    def get_messages(self) -> Iterator["ChatMessage"]: ...
 
 
 class AfterParse(AgentComponent, Generic[AnyProposal]):
     @abstractmethod
-    def after_parse(self, result: AnyProposal) -> None | Awaitable[None]:
-        ...
+    def after_parse(self, result: AnyProposal) -> None | Awaitable[None]: ...
 
 
 class ExecutionFailure(AgentComponent):
     @abstractmethod
-    def execution_failure(self, error: Exception) -> None | Awaitable[None]:
-        ...
+    def execution_failure(self, error: Exception) -> None | Awaitable[None]: ...
 
 
 class AfterExecute(AgentComponent):
     @abstractmethod
-    def after_execute(self, result: "ActionResult") -> None | Awaitable[None]:
-        ...
+    def after_execute(self, result: "ActionResult") -> None | Awaitable[None]: ...
