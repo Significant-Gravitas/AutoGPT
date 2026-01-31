@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 import prisma.enums
 import prisma.models
@@ -9,6 +9,7 @@ from backend.data.db import connect
 from backend.data.includes import library_agent_include
 
 from . import db
+from . import model as library_model
 
 
 @pytest.mark.asyncio
@@ -225,3 +226,183 @@ async def test_add_agent_to_library_not_found(mocker):
     mock_store_listing_version.return_value.find_unique.assert_called_once_with(
         where={"id": "version123"}, include={"AgentGraph": True}
     )
+
+
+@pytest.mark.asyncio
+async def test_list_library_agents_sort_by_last_executed(mocker):
+    """
+    Test LAST_EXECUTED sorting behavior:
+    - Agents WITH executions come first, sorted by most recent execution (updatedAt)
+    - Agents WITHOUT executions come last, sorted by creation date
+    """
+    now = datetime.now(timezone.utc)
+
+    # Agent 1: Has execution that finished 1 hour ago
+    agent1_execution = prisma.models.AgentGraphExecution(
+        id="exec1",
+        agentGraphId="agent1",
+        agentGraphVersion=1,
+        userId="test-user",
+        createdAt=now - timedelta(hours=2),
+        updatedAt=now - timedelta(hours=1),  # Finished 1 hour ago
+        executionStatus=prisma.enums.AgentExecutionStatus.COMPLETED,
+        isDeleted=False,
+        isShared=False,
+    )
+    agent1_graph = prisma.models.AgentGraph(
+        id="agent1",
+        version=1,
+        name="Agent With Recent Execution",
+        description="Has execution finished 1 hour ago",
+        userId="test-user",
+        isActive=True,
+        createdAt=now - timedelta(days=5),
+        Executions=[agent1_execution],
+    )
+    library_agent1 = prisma.models.LibraryAgent(
+        id="lib1",
+        userId="test-user",
+        agentGraphId="agent1",
+        agentGraphVersion=1,
+        settings="{}",  # type: ignore
+        isCreatedByUser=True,
+        isDeleted=False,
+        isArchived=False,
+        createdAt=now - timedelta(days=5),
+        updatedAt=now - timedelta(days=5),
+        isFavorite=False,
+        useGraphIsActiveVersion=True,
+        AgentGraph=agent1_graph,
+    )
+
+    # Agent 2: Has execution that finished 3 hours ago
+    agent2_execution = prisma.models.AgentGraphExecution(
+        id="exec2",
+        agentGraphId="agent2",
+        agentGraphVersion=1,
+        userId="test-user",
+        createdAt=now - timedelta(hours=5),
+        updatedAt=now - timedelta(hours=3),  # Finished 3 hours ago
+        executionStatus=prisma.enums.AgentExecutionStatus.COMPLETED,
+        isDeleted=False,
+        isShared=False,
+    )
+    agent2_graph = prisma.models.AgentGraph(
+        id="agent2",
+        version=1,
+        name="Agent With Older Execution",
+        description="Has execution finished 3 hours ago",
+        userId="test-user",
+        isActive=True,
+        createdAt=now - timedelta(days=3),
+        Executions=[agent2_execution],
+    )
+    library_agent2 = prisma.models.LibraryAgent(
+        id="lib2",
+        userId="test-user",
+        agentGraphId="agent2",
+        agentGraphVersion=1,
+        settings="{}",  # type: ignore
+        isCreatedByUser=True,
+        isDeleted=False,
+        isArchived=False,
+        createdAt=now - timedelta(days=3),
+        updatedAt=now - timedelta(days=3),
+        isFavorite=False,
+        useGraphIsActiveVersion=True,
+        AgentGraph=agent2_graph,
+    )
+
+    # Agent 3: No executions, created 1 day ago (should come after agents with executions)
+    agent3_graph = prisma.models.AgentGraph(
+        id="agent3",
+        version=1,
+        name="Agent Without Executions (Newer)",
+        description="No executions, created 1 day ago",
+        userId="test-user",
+        isActive=True,
+        createdAt=now - timedelta(days=1),
+        Executions=[],
+    )
+    library_agent3 = prisma.models.LibraryAgent(
+        id="lib3",
+        userId="test-user",
+        agentGraphId="agent3",
+        agentGraphVersion=1,
+        settings="{}",  # type: ignore
+        isCreatedByUser=True,
+        isDeleted=False,
+        isArchived=False,
+        createdAt=now - timedelta(days=1),
+        updatedAt=now - timedelta(days=1),
+        isFavorite=False,
+        useGraphIsActiveVersion=True,
+        AgentGraph=agent3_graph,
+    )
+
+    # Agent 4: No executions, created 2 days ago
+    agent4_graph = prisma.models.AgentGraph(
+        id="agent4",
+        version=1,
+        name="Agent Without Executions (Older)",
+        description="No executions, created 2 days ago",
+        userId="test-user",
+        isActive=True,
+        createdAt=now - timedelta(days=2),
+        Executions=[],
+    )
+    library_agent4 = prisma.models.LibraryAgent(
+        id="lib4",
+        userId="test-user",
+        agentGraphId="agent4",
+        agentGraphVersion=1,
+        settings="{}",  # type: ignore
+        isCreatedByUser=True,
+        isDeleted=False,
+        isArchived=False,
+        createdAt=now - timedelta(days=2),
+        updatedAt=now - timedelta(days=2),
+        isFavorite=False,
+        useGraphIsActiveVersion=True,
+        AgentGraph=agent4_graph,
+    )
+
+    # Return agents in random order to verify sorting works
+    mock_library_agents = [
+        library_agent3,
+        library_agent1,
+        library_agent4,
+        library_agent2,
+    ]
+
+    # Mock prisma calls
+    mock_agent_graph = mocker.patch("prisma.models.AgentGraph.prisma")
+    mock_agent_graph.return_value.find_many = mocker.AsyncMock(return_value=[])
+
+    mock_library_agent = mocker.patch("prisma.models.LibraryAgent.prisma")
+    mock_library_agent.return_value.find_many = mocker.AsyncMock(
+        return_value=mock_library_agents
+    )
+
+    # Call function with LAST_EXECUTED sort
+    result = await db.list_library_agents(
+        "test-user",
+        sort_by=library_model.LibraryAgentSort.LAST_EXECUTED,
+    )
+
+    # Verify sorting order:
+    # 1. Agent 1 (execution finished 1 hour ago) - most recent execution
+    # 2. Agent 2 (execution finished 3 hours ago) - older execution
+    # 3. Agent 3 (no executions, created 1 day ago) - newer creation
+    # 4. Agent 4 (no executions, created 2 days ago) - older creation
+    assert len(result.agents) == 4
+    assert (
+        result.agents[0].id == "lib1"
+    ), "Agent with most recent execution should be first"
+    assert result.agents[1].id == "lib2", "Agent with older execution should be second"
+    assert (
+        result.agents[2].id == "lib3"
+    ), "Agent without executions (newer) should be third"
+    assert (
+        result.agents[3].id == "lib4"
+    ), "Agent without executions (older) should be last"

@@ -612,6 +612,7 @@ export type LibraryAgentPresetUpdatable = Partial<
 export enum LibraryAgentSortEnum {
   CREATED_AT = "createdAt",
   UPDATED_AT = "updatedAt",
+  LAST_EXECUTED = "lastExecuted",
 }
 
 /* *** CREDENTIALS *** */
