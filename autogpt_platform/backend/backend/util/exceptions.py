@@ -151,3 +151,19 @@ class RedisError(Exception):
     """Raised when there is an error interacting with Redis"""
 
     pass
+
+
+class RateLimitError(BlockError):
+    """Raised when an LLM API returns a rate limit or quota exceeded error (HTTP 429)"""
+
+    def __init__(
+        self,
+        message: str,
+        block_name: str,
+        block_id: str,
+        provider: str | None = None,
+        retry_after: int | None = None,
+    ) -> None:
+        self.provider = provider
+        self.retry_after = retry_after
+        super().__init__(message, block_name, block_id)
