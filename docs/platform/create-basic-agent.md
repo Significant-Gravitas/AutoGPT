@@ -6,13 +6,11 @@ This guide walks through creating a simple question-answer AI agent using AutoGP
 
 ## **Prerequisites**
 
-Before building agents that use AI blocks (like the AI Text Generator), you'll need to set up API credentials.
+### **Cloud-Hosted AutoGPT**
+If you're using the cloud-hosted version at [agpt.co](https://agpt.co), you're ready to go! AI blocks come with **built-in credits** — no API keys required to get started. If you'd prefer to use your own API keys, you can add them via **Profile → Integrations**.
 
-### **Option 1: Cloud-Hosted AutoGPT**
-If you're using the cloud-hosted version at [agpt.co](https://agpt.co), go to **Profile → Integrations** and add your API keys there (e.g., OpenAI API key).
-
-### **Option 2: Self-Hosted (Docker)**
-If you're running AutoGPT locally with Docker, add your API keys to `autogpt_platform/backend/.env`:
+### **Self-Hosted (Docker)**
+If you're running AutoGPT locally with Docker, you'll need to add your own API keys to `autogpt_platform/backend/.env`:
 
 ```bash
 # Create or edit backend/.env
