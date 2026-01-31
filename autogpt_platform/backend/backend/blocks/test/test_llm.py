@@ -669,3 +669,253 @@ class TestAITextSummarizerValidation:
         error_message = str(exc_info.value)
         assert "Expected a string summary" in error_message
         assert "received dict" in error_message
+
+
+class TestRateLimitErrorHandling:
+    """Test rate limit error detection and handling."""
+
+    def test_is_rate_limit_error_openai(self):
+        """Test detection of OpenAI rate limit errors with retry-after header."""
+        import openai
+
+        import backend.blocks.llm as llm
+
+        mock_response = MagicMock()
+        mock_response.headers = {"retry-after": "30"}
+        error = openai.RateLimitError(
+            message="Rate limit exceeded",
+            response=mock_response,
+            body=None,
+        )
+
+        is_rate_limit, provider, retry_after = llm.is_rate_limit_error(error)
+
+        assert is_rate_limit is True
+        assert provider == "OpenAI"
+        assert retry_after == 30
+
+    def test_is_rate_limit_error_openai_no_retry_after(self):
+        """Test detection of OpenAI rate limit errors without retry-after header."""
+        import openai
+
+        import backend.blocks.llm as llm
+
+        mock_response = MagicMock()
+        mock_response.headers = {}
+        error = openai.RateLimitError(
+            message="Rate limit exceeded",
+            response=mock_response,
+            body=None,
+        )
+
+        is_rate_limit, provider, retry_after = llm.is_rate_limit_error(error)
+
+        assert is_rate_limit is True
+        assert provider == "OpenAI"
+        assert retry_after is None
+
+    def test_is_rate_limit_error_anthropic(self):
+        """Test detection of Anthropic rate limit errors."""
+        import anthropic
+
+        import backend.blocks.llm as llm
+
+        mock_response = MagicMock()
+        error = anthropic.RateLimitError(
+            message="Rate limit exceeded",
+            response=mock_response,
+            body=None,
+        )
+
+        is_rate_limit, provider, retry_after = llm.is_rate_limit_error(error)
+
+        assert is_rate_limit is True
+        assert provider == "Anthropic"
+        assert retry_after is None
+
+    def test_is_rate_limit_error_generic_429(self):
+        """Test detection of generic 429 errors."""
+        import backend.blocks.llm as llm
+
+        class GenericHTTPError(Exception):
+            status_code = 429
+
+        error = GenericHTTPError("Too many requests")
+
+        is_rate_limit, provider, retry_after = llm.is_rate_limit_error(error)
+
+        assert is_rate_limit is True
+        assert provider is None
+        assert retry_after is None
+
+    def test_is_rate_limit_error_string_detection(self):
+        """Test detection of rate limit errors via string matching."""
+        import backend.blocks.llm as llm
+
+        error = Exception("You have exceeded your current quota")
+
+        is_rate_limit, provider, retry_after = llm.is_rate_limit_error(error)
+
+        assert is_rate_limit is True
+        assert provider is None
+        assert retry_after is None
+
+    def test_is_rate_limit_error_not_rate_limit(self):
+        """Test that non-rate-limit errors are not detected as rate limit errors."""
+        import backend.blocks.llm as llm
+
+        error = Exception("Some other error")
+
+        is_rate_limit, provider, retry_after = llm.is_rate_limit_error(error)
+
+        assert is_rate_limit is False
+        assert provider is None
+        assert retry_after is None
+
+    def test_create_rate_limit_error_message_with_provider(self):
+        """Test error message creation with provider."""
+        import backend.blocks.llm as llm
+
+        message = llm.create_rate_limit_error_message("OpenAI", None)
+
+        assert "Rate limit or quota exceeded from OpenAI" in message
+        assert "API quota" in message
+
+    def test_create_rate_limit_error_message_with_retry_after(self):
+        """Test error message creation with retry_after."""
+        import backend.blocks.llm as llm
+
+        message = llm.create_rate_limit_error_message("OpenAI", 30)
+
+        assert "Retry after: 30 seconds" in message
+
+    def test_create_rate_limit_error_message_no_provider(self):
+        """Test error message creation without provider."""
+        import backend.blocks.llm as llm
+
+        message = llm.create_rate_limit_error_message(None, None)
+
+        assert "Rate limit or quota exceeded." in message
+        assert "from" not in message.split(".")[0]
+
+    @pytest.mark.asyncio
+    async def test_llm_call_raises_rate_limit_error_immediately_openai(self):
+        """Test that LLM call raises RateLimitError immediately for OpenAI rate limits."""
+        import openai
+
+        import backend.blocks.llm as llm
+        from backend.util.exceptions import RateLimitError
+
+        block = llm.AIStructuredResponseGeneratorBlock()
+
+        call_count = 0
+
+        async def mock_llm_call(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            mock_response = MagicMock()
+            mock_response.headers = {"retry-after": "60"}
+            raise openai.RateLimitError(
+                message="Rate limit exceeded",
+                response=mock_response,
+                body=None,
+            )
+
+        block.llm_call = mock_llm_call
+
+        input_data = llm.AIStructuredResponseGeneratorBlock.Input(
+            prompt="Test prompt",
+            expected_format={"key": "value"},
+            model=llm.DEFAULT_LLM_MODEL,
+            credentials=llm.TEST_CREDENTIALS_INPUT,
+            retry=3,
+        )
+
+        with pytest.raises(RateLimitError) as exc_info:
+            async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
+                pass
+
+        assert call_count == 1
+        assert exc_info.value.provider == "OpenAI"
+        assert exc_info.value.retry_after == 60
+        assert "Rate limit or quota exceeded from OpenAI" in str(exc_info.value)
+
+    @pytest.mark.asyncio
+    async def test_llm_call_raises_rate_limit_error_immediately_anthropic(self):
+        """Test that LLM call raises RateLimitError immediately for Anthropic rate limits."""
+        import anthropic
+
+        import backend.blocks.llm as llm
+        from backend.util.exceptions import RateLimitError
+
+        block = llm.AIStructuredResponseGeneratorBlock()
+
+        call_count = 0
+
+        async def mock_llm_call(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            mock_response = MagicMock()
+            raise anthropic.RateLimitError(
+                message="Rate limit exceeded",
+                response=mock_response,
+                body=None,
+            )
+
+        block.llm_call = mock_llm_call
+
+        input_data = llm.AIStructuredResponseGeneratorBlock.Input(
+            prompt="Test prompt",
+            expected_format={"key": "value"},
+            model=llm.DEFAULT_LLM_MODEL,
+            credentials=llm.TEST_CREDENTIALS_INPUT,
+            retry=3,
+        )
+
+        with pytest.raises(RateLimitError) as exc_info:
+            async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
+                pass
+
+        assert call_count == 1
+        assert exc_info.value.provider == "Anthropic"
+        assert "Rate limit or quota exceeded from Anthropic" in str(exc_info.value)
+
+    @pytest.mark.asyncio
+    async def test_llm_call_no_retry_on_rate_limit(self):
+        """Test that rate limit errors do not trigger retry logic."""
+        import openai
+
+        import backend.blocks.llm as llm
+        from backend.util.exceptions import RateLimitError
+
+        block = llm.AIStructuredResponseGeneratorBlock()
+
+        call_count = 0
+
+        async def mock_llm_call(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            mock_response = MagicMock()
+            mock_response.headers = {}
+            raise openai.RateLimitError(
+                message="Rate limit exceeded",
+                response=mock_response,
+                body=None,
+            )
+
+        block.llm_call = mock_llm_call
+
+        input_data = llm.AIStructuredResponseGeneratorBlock.Input(
+            prompt="Test prompt",
+            expected_format={"key": "value"},
+            model=llm.DEFAULT_LLM_MODEL,
+            credentials=llm.TEST_CREDENTIALS_INPUT,
+            retry=5,
+        )
+
+        with pytest.raises(RateLimitError):
+            async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
+                pass
+
+        assert call_count == 1
+        assert block.execution_stats.llm_retry_count == 0
