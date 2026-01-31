@@ -1,6 +1,5 @@
 "use server";
 
-import { getHomepageRoute } from "@/lib/constants";
 import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
 import { signupFormSchema } from "@/types/auth";
 import * as Sentry from "@sentry/nextjs";
@@ -59,10 +58,8 @@ export async function signup(
     }
 
     // Get onboarding status from backend (includes chat flag evaluated for this user)
-    const { shouldShowOnboarding, isChatEnabled } = await getOnboardingStatus();
-    const next = shouldShowOnboarding
-      ? "/onboarding"
-      : getHomepageRoute(isChatEnabled);
+    const { shouldShowOnboarding } = await getOnboardingStatus();
+    const next = shouldShowOnboarding ? "/onboarding" : "/";
 
     return { success: true, next };
   } catch (err) {

@@ -66,7 +66,7 @@ export default function useAgentGraph(
   >(null);
   const [xyNodes, setXYNodes] = useState<CustomNode[]>([]);
   const [xyEdges, setXYEdges] = useState<CustomEdge[]>([]);
-  const betaBlocks = useGetFlag(Flag.BETA_BLOCKS);
+  const betaBlocks = useGetFlag(Flag.BETA_BLOCKS) as string[];
 
   // Filter blocks based on beta flags
   const availableBlocks = useMemo(() => {

@@ -181,6 +181,5 @@ export async function getOnboardingStatus() {
   const isCompleted = onboarding.completedSteps.includes("CONGRATS");
   return {
     shouldShowOnboarding: status.is_onboarding_enabled && !isCompleted,
-    isChatEnabled: status.is_chat_enabled,
   };
 }
