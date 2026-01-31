@@ -1887,7 +1887,7 @@ async def _generate_llm_continuation(
     Includes retry logic with exponential backoff for transient API errors.
     """
     retry_count = 0
-    max_retries = 3
+    max_retries = MAX_RETRIES
     last_error: Exception | None = None
 
     while retry_count <= max_retries:
@@ -1945,7 +1945,9 @@ async def _generate_llm_continuation(
                 assistant_content = response.choices[0].message.content
 
                 # Reload session from DB to avoid race condition with user messages
-                # that may have been sent while we were generating the LLM response
+                # that may have been sent while we were generating the LLM response.
+                # Invalidate cache first to ensure we get fresh data from the database.
+                await invalidate_session_cache(session_id)
                 fresh_session = await get_chat_session(session_id, user_id)
                 if not fresh_session:
                     logger.error(
