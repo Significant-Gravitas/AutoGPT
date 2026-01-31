@@ -1,5 +1,6 @@
 """Core agent generation functions."""
 
+import asyncio
 import logging
 import re
 import uuid
@@ -7,7 +8,6 @@ from typing import Any, NotRequired, TypedDict
 
 from backend.api.features.library import db as library_db
 from backend.api.features.store import db as store_db
-from backend.api.features.store import model as store_model
 from backend.data.graph import (
     Graph,
     Link,
@@ -264,6 +264,36 @@ async def get_library_agents_for_generation(
         return []
 
 
+async def get_graphs_by_ids(
+    *graph_ids: str,
+) -> dict[str, Graph]:
+    """Batch-fetch multiple graphs by their IDs.
+
+    Args:
+        *graph_ids: Variable number of graph IDs to fetch
+
+    Returns:
+        Dict mapping graph_id to Graph for successfully fetched graphs
+    """
+    if not graph_ids:
+        return {}
+
+    async def fetch_one(graph_id: str) -> tuple[str, Graph | None]:
+        try:
+            graph = await get_graph(
+                graph_id=graph_id,
+                version=None,
+                user_id=None,
+            )
+            return (graph_id, graph)
+        except Exception as e:
+            logger.debug(f"Failed to fetch graph {graph_id}: {e}")
+            return (graph_id, None)
+
+    results = await asyncio.gather(*[fetch_one(gid) for gid in graph_ids])
+    return {gid: graph for gid, graph in results if graph is not None}
+
+
 async def search_marketplace_agents_for_generation(
     search_query: str,
     max_results: int = 10,
@@ -287,7 +317,6 @@ async def search_marketplace_agents_for_generation(
             page_size=max_results,
         )
 
-        # Filter to agents that have a graph ID
         agents_with_graphs = [
             agent for agent in response.agents if agent.agent_graph_id
         ]
@@ -295,21 +324,16 @@ async def search_marketplace_agents_for_generation(
         if not agents_with_graphs:
             return []
 
-        # Batch-fetch graphs to get input/output schemas
-        # Use get_graph with user_id=None for public marketplace graphs
-        import asyncio
+        graph_ids = [agent.agent_graph_id for agent in agents_with_graphs]
+        graphs = await get_graphs_by_ids(*graph_ids)
 
-        async def fetch_graph_schema(
-            agent: store_model.StoreAgent,
-        ) -> LibraryAgentSummary | None:
-            try:
-                graph = await get_graph(
-                    graph_id=agent.agent_graph_id,  # type: ignore
-                    version=None,  # Get active version
-                    user_id=None,  # Public graph
-                )
-                if graph:
-                    return LibraryAgentSummary(
+        results: list[LibraryAgentSummary] = []
+        for agent in agents_with_graphs:
+            graph_id = agent.agent_graph_id
+            if graph_id and graph_id in graphs:
+                graph = graphs[graph_id]
+                results.append(
+                    LibraryAgentSummary(
                         graph_id=graph.id,
                         graph_version=graph.version,
                         name=agent.agent_name,
@@ -317,19 +341,8 @@ async def search_marketplace_agents_for_generation(
                         input_schema=graph.input_schema,
                         output_schema=graph.output_schema,
                     )
-            except Exception as e:
-                logger.debug(
-                    f"Failed to fetch schema for marketplace agent {agent.agent_name}: {e}"
                 )
-            return None
-
-        # Fetch all schemas concurrently
-        results = await asyncio.gather(
-            *[fetch_graph_schema(agent) for agent in agents_with_graphs]
-        )
-
-        # Filter out None results
-        return [r for r in results if r is not None]
+        return results
     except Exception as e:
         logger.warning(f"Failed to search marketplace agents: {e}")
         return []
