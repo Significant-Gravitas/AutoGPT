@@ -368,7 +368,12 @@ async def test_list_library_agents_sort_by_last_executed(mocker):
     )
 
     # Return agents in random order to verify sorting works
-    mock_library_agents = [library_agent3, library_agent1, library_agent4, library_agent2]
+    mock_library_agents = [
+        library_agent3,
+        library_agent1,
+        library_agent4,
+        library_agent2,
+    ]
 
     # Mock prisma calls
     mock_agent_graph = mocker.patch("prisma.models.AgentGraph.prisma")
@@ -391,7 +396,13 @@ async def test_list_library_agents_sort_by_last_executed(mocker):
     # 3. Agent 3 (no executions, created 1 day ago) - newer creation
     # 4. Agent 4 (no executions, created 2 days ago) - older creation
     assert len(result.agents) == 4
-    assert result.agents[0].id == "lib1", "Agent with most recent execution should be first"
+    assert (
+        result.agents[0].id == "lib1"
+    ), "Agent with most recent execution should be first"
     assert result.agents[1].id == "lib2", "Agent with older execution should be second"
-    assert result.agents[2].id == "lib3", "Agent without executions (newer) should be third"
-    assert result.agents[3].id == "lib4", "Agent without executions (older) should be last"
+    assert (
+        result.agents[2].id == "lib3"
+    ), "Agent without executions (newer) should be third"
+    assert (
+        result.agents[3].id == "lib4"
+    ), "Agent without executions (older) should be last"
