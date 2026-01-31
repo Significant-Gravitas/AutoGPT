@@ -32,6 +32,8 @@ class ResponseType(str, Enum):
     OPERATION_STARTED = "operation_started"
     OPERATION_PENDING = "operation_pending"
     OPERATION_IN_PROGRESS = "operation_in_progress"
+    # Input validation
+    INPUT_VALIDATION_ERROR = "input_validation_error"
 
 
 # Base response model
@@ -62,6 +64,10 @@ class AgentInfo(BaseModel):
     has_external_trigger: bool | None = None
     new_output: bool | None = None
     graph_id: str | None = None
+    inputs: dict[str, Any] | None = Field(
+        default=None,
+        description="Input schema for the agent, including field names, types, and defaults",
+    )
 
 
 class AgentsFoundResponse(ToolResponseBase):
@@ -186,6 +192,20 @@ class ErrorResponse(ToolResponseBase):
     type: ResponseType = ResponseType.ERROR
     error: str | None = None
     details: dict[str, Any] | None = None
+
+
+class InputValidationErrorResponse(ToolResponseBase):
+    """Response when run_agent receives unknown input fields."""
+
+    type: ResponseType = ResponseType.INPUT_VALIDATION_ERROR
+    unrecognized_fields: list[str] = Field(
+        description="List of input field names that were not recognized"
+    )
+    inputs: dict[str, Any] = Field(
+        description="The agent's valid input schema for reference"
+    )
+    graph_id: str | None = None
+    graph_version: int | None = None
 
 
 # Agent output models

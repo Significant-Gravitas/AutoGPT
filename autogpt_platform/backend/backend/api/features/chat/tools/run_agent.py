@@ -30,6 +30,7 @@ from .models import (
     ErrorResponse,
     ExecutionOptions,
     ExecutionStartedResponse,
+    InputValidationErrorResponse,
     SetupInfo,
     SetupRequirementsResponse,
     ToolResponseBase,
@@ -273,6 +274,22 @@ class RunAgentTool(BaseTool):
             input_properties = graph.input_schema.get("properties", {})
             required_fields = set(graph.input_schema.get("required", []))
             provided_inputs = set(params.inputs.keys())
+            valid_fields = set(input_properties.keys())
+
+            # Check for unknown input fields
+            unrecognized_fields = provided_inputs - valid_fields
+            if unrecognized_fields:
+                return InputValidationErrorResponse(
+                    message=(
+                        f"Unknown input field(s) provided: {', '.join(sorted(unrecognized_fields))}. "
+                        f"Agent was not executed. Please use the correct field names from the schema."
+                    ),
+                    session_id=session_id,
+                    unrecognized_fields=sorted(unrecognized_fields),
+                    inputs=graph.input_schema,
+                    graph_id=graph.id,
+                    graph_version=graph.version,
+                )
 
             # If agent has inputs but none were provided AND use_defaults is not set,
             # always show what's available first so user can decide
