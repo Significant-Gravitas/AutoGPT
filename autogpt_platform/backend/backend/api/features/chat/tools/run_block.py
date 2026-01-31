@@ -101,9 +101,6 @@ class RunBlockTool(BaseTool):
         available_creds = await creds_manager.store.get_all_creds(user_id)
 
         for field_name, field_info in credentials_fields_info.items():
-            # Use discriminator to narrow down provider if available
-            # This ensures we match credentials for the correct provider based on
-            # the actual model/value selected (e.g., gpt-4o-mini -> openai)
             effective_field_info = field_info
             if field_info.discriminator and field_info.discriminator_mapping:
                 discriminator_value = input_data.get(field_info.discriminator)
@@ -117,8 +114,6 @@ class RunBlockTool(BaseTool):
                         f"{discriminator_value} -> {effective_field_info.provider}"
                     )
 
-            # effective_field_info.provider is a frozenset of acceptable providers
-            # effective_field_info.supported_types is a frozenset of acceptable types
             matching_cred = next(
                 (
                     cred
@@ -207,7 +202,6 @@ class RunBlockTool(BaseTool):
 
         logger.info(f"Executing block {block.name} ({block_id}) for user {user_id}")
 
-        # Check credentials (pass input_data to use discriminator for provider selection)
         creds_manager = IntegrationCredentialsManager()
         matched_credentials, missing_credentials = await self._check_block_credentials(
             user_id, block, input_data
