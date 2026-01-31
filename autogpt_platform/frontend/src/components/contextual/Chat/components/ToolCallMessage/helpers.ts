@@ -12,6 +12,7 @@ import {
   SquaresFourIcon,
   type Icon,
 } from "@phosphor-icons/react";
+import { beautifyString } from "@/lib/utils";
 
 /**
  * Maps internal tool names to human-friendly action phrases (present continuous).
@@ -108,6 +109,15 @@ export function formatToolArguments(
       break;
 
     case "run_block":
+      // Prefer block_name if provided, otherwise fall back to block_id
+      if (args.block_name) {
+        // Beautify and remove redundant "Block" suffix (same pattern as blocks menu)
+        const displayName = beautifyString(args.block_name as string).replace(
+          / Block$/,
+          "",
+        );
+        return ` "${displayName}"`;
+      }
       if (args.block_id) {
         return ` "${args.block_id as string}"`;
       }
