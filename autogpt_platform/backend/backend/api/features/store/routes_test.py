@@ -220,6 +220,7 @@ def test_get_agents_search(
                 description="Specific search term description",
                 runs=75,
                 rating=4.2,
+                agent_graph_id="test-graph-search",
             )
         ],
         pagination=store_model.Pagination(
@@ -265,6 +266,7 @@ def test_get_agents_category(
                 description="Category agent description",
                 runs=60,
                 rating=4.1,
+                agent_graph_id="test-graph-category",
             )
         ],
         pagination=store_model.Pagination(
