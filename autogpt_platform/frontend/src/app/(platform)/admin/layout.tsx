@@ -1,7 +1,12 @@
 import { Sidebar } from "@/components/__legacy__/Sidebar";
-import { Users, DollarSign, UserSearch, FileText } from "lucide-react";
-
-import { IconSliders } from "@/components/__legacy__/ui/icons";
+import {
+  Users,
+  CurrencyDollar,
+  UserFocus,
+  FileText,
+  Database,
+  Faders,
+} from "@phosphor-icons/react";
 
 const sidebarLinkGroups = [
   {
@@ -9,27 +14,32 @@ const sidebarLinkGroups = [
       {
         text: "Marketplace Management",
         href: "/admin/marketplace",
-        icon: <Users className="h-6 w-6" />,
+        icon: <Users size={24} />,
       },
       {
         text: "User Spending",
         href: "/admin/spending",
-        icon: <DollarSign className="h-6 w-6" />,
+        icon: <CurrencyDollar size={24} />,
       },
       {
         text: "User Impersonation",
         href: "/admin/impersonation",
-        icon: <UserSearch className="h-6 w-6" />,
+        icon: <UserFocus size={24} />,
       },
       {
         text: "Execution Analytics",
         href: "/admin/execution-analytics",
-        icon: <FileText className="h-6 w-6" />,
+        icon: <FileText size={24} />,
       },
       {
         text: "Admin User Management",
         href: "/admin/settings",
-        icon: <IconSliders className="h-6 w-6" />,
+        icon: <Faders size={24} />,
+      },
+      {
+        text: "Test Data",
+        href: "/admin/test-data",
+        icon: <Database size={24} />,
       },
     ],
   },
