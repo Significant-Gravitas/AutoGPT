@@ -1,9 +1,24 @@
 import Image from "next/image";
-import { StarRatingIcons } from "@/components/__legacy__/ui/icons";
+import { Star } from "@phosphor-icons/react";
 import Avatar, {
   AvatarFallback,
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
+
+function StarRating({ rating }: { rating: number }) {
+  const stars = [];
+  const clampedRating = Math.max(0, Math.min(5, rating));
+  for (let i = 1; i <= 5; i++) {
+    stars.push(
+      <Star
+        key={i}
+        weight={i <= clampedRating ? "fill" : "regular"}
+        className="h-4 w-4 text-neutral-900 dark:text-yellow-500"
+      />,
+    );
+  }
+  return <>{stars}</>;
+}
 
 interface StoreCardProps {
   agentName: string;
@@ -34,7 +49,7 @@ export const StoreCard: React.FC<StoreCardProps> = ({
 
   return (
     <div
-      className="flex h-[27rem] w-full max-w-md cursor-pointer flex-col items-start rounded-3xl bg-background transition-all duration-300 hover:shadow-lg dark:hover:shadow-gray-700"
+      className="flex h-[27rem] w-full max-w-md cursor-pointer flex-col items-start rounded-3xl bg-background transition-shadow duration-300 hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-950 focus-visible:ring-offset-2 dark:hover:shadow-gray-700 dark:focus-visible:ring-neutral-50"
       onClick={handleClick}
       data-testid="store-card"
       role="button"
@@ -76,7 +91,7 @@ export const StoreCard: React.FC<StoreCardProps> = ({
       <div className="mt-3 flex w-full flex-1 flex-col px-4">
         {/* Second Section: Agent Name and Creator Name */}
         <div className="flex w-full flex-col">
-          <h3 className="line-clamp-2 font-poppins text-2xl font-semibold text-[#272727] dark:text-neutral-100">
+          <h3 className="line-clamp-2 font-poppins text-2xl font-semibold text-neutral-800 dark:text-neutral-100">
             {agentName}
           </h3>
           {!hideAvatar && creatorName && (
@@ -107,11 +122,11 @@ export const StoreCard: React.FC<StoreCardProps> = ({
                 {rating.toFixed(1)}
               </span>
               <div
-                className="inline-flex items-center"
+                className="inline-flex items-center gap-0.5"
                 role="img"
                 aria-label={`Rating: ${rating.toFixed(1)} out of 5 stars`}
               >
-                {StarRatingIcons(rating)}
+                <StarRating rating={rating} />
               </div>
             </div>
           </div>
