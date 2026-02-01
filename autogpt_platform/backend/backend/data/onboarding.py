@@ -9,6 +9,8 @@ from prisma.enums import OnboardingStep
 from prisma.models import UserOnboarding
 from prisma.types import UserOnboardingCreateInput, UserOnboardingUpdateInput
 
+from backend.api.features.store.model import StoreAgentDetails
+from backend.api.model import OnboardingNotificationPayload
 from backend.data import execution as execution_db
 from backend.data.credit import get_user_credit_model
 from backend.data.notification_bus import (
@@ -16,8 +18,6 @@ from backend.data.notification_bus import (
     NotificationEvent,
 )
 from backend.data.user import get_user_by_id
-from backend.server.model import OnboardingNotificationPayload
-from backend.server.v2.store.model import StoreAgentDetails
 from backend.util.cache import cached
 from backend.util.json import SafeJson
 from backend.util.timezone_utils import get_user_timezone_or_utc
@@ -41,6 +41,7 @@ FrontendOnboardingStep = Literal[
     OnboardingStep.AGENT_NEW_RUN,
     OnboardingStep.AGENT_INPUT,
     OnboardingStep.CONGRATS,
+    OnboardingStep.VISIT_COPILOT,
     OnboardingStep.MARKETPLACE_VISIT,
     OnboardingStep.BUILDER_OPEN,
 ]
@@ -122,6 +123,9 @@ async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
 async def _reward_user(user_id: str, onboarding: UserOnboarding, step: OnboardingStep):
     reward = 0
     match step:
+        # Welcome bonus for visiting copilot ($5 = 500 credits)
+        case OnboardingStep.VISIT_COPILOT:
+            reward = 500
         # Reward user when they clicked New Run during onboarding
         # This is because they need credits before scheduling a run (next step)
         # This is seen as a reward for the GET_RESULTS step in the wallet
@@ -334,7 +338,7 @@ async def _get_user_timezone(user_id: str) -> str:
     return get_user_timezone_or_utc(user.timezone if user else None)
 
 
-async def increment_runs(user_id: str):
+async def increment_onboarding_runs(user_id: str):
     """
     Increment a user's run counters and trigger any onboarding milestones.
     """
@@ -442,6 +446,8 @@ async def get_recommended_agents(user_id: str) -> list[StoreAgentDetails]:
             runs=agent.runs,
             rating=agent.rating,
             versions=agent.versions,
+            agentGraphVersions=agent.agentGraphVersions,
+            agentGraphId=agent.agentGraphId,
             last_updated=agent.updated_at,
         )
         for agent in recommended_agents

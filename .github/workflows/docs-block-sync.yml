@@ -1,0 +1,78 @@
+name: Block Documentation Sync Check
+
+on:
+  push:
+    branches: [master, dev]
+    paths:
+      - "autogpt_platform/backend/backend/blocks/**"
+      - "docs/integrations/**"
+      - "autogpt_platform/backend/scripts/generate_block_docs.py"
+      - ".github/workflows/docs-block-sync.yml"
+  pull_request:
+    branches: [master, dev]
+    paths:
+      - "autogpt_platform/backend/backend/blocks/**"
+      - "docs/integrations/**"
+      - "autogpt_platform/backend/scripts/generate_block_docs.py"
+      - ".github/workflows/docs-block-sync.yml"
+
+jobs:
+  check-docs-sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up Python dependency cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pypoetry
+          key: poetry-${{ runner.os }}-${{ hashFiles('autogpt_platform/backend/poetry.lock') }}
+          restore-keys: |
+            poetry-${{ runner.os }}-
+
+      - name: Install Poetry
+        run: |
+          cd autogpt_platform/backend
+          HEAD_POETRY_VERSION=$(python3 ../../.github/workflows/scripts/get_package_version_from_lockfile.py poetry)
+          echo "Found Poetry version ${HEAD_POETRY_VERSION} in backend/poetry.lock"
+          curl -sSL https://install.python-poetry.org | POETRY_VERSION=$HEAD_POETRY_VERSION python3 -
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Install dependencies
+        working-directory: autogpt_platform/backend
+        run: |
+          poetry install --only main
+          poetry run prisma generate
+
+      - name: Check block documentation is in sync
+        working-directory: autogpt_platform/backend
+        run: |
+          echo "Checking if block documentation is in sync with code..."
+          poetry run python scripts/generate_block_docs.py --check
+
+      - name: Show diff if out of sync
+        if: failure()
+        working-directory: autogpt_platform/backend
+        run: |
+          echo "::error::Block documentation is out of sync with code!"
+          echo ""
+          echo "To fix this, run the following command locally:"
+          echo "  cd autogpt_platform/backend && poetry run python scripts/generate_block_docs.py"
+          echo ""
+          echo "Then commit the updated documentation files."
+          echo ""
+          echo "Regenerating docs to show diff..."
+          poetry run python scripts/generate_block_docs.py
+          echo ""
+          echo "Changes detected:"
+          git diff ../../docs/integrations/ || true

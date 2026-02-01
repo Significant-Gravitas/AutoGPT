@@ -27,7 +27,7 @@ class TestLLMStatsTracking:
 
             response = await llm.llm_call(
                 credentials=llm.TEST_CREDENTIALS,
-                llm_model=llm.LlmModel.GPT4O,
+                llm_model=llm.DEFAULT_LLM_MODEL,
                 prompt=[{"role": "user", "content": "Hello"}],
                 max_tokens=100,
             )
@@ -62,7 +62,7 @@ class TestLLMStatsTracking:
         input_data = llm.AIStructuredResponseGeneratorBlock.Input(
             prompt="Test prompt",
             expected_format={"key1": "desc1", "key2": "desc2"},
-            model=llm.LlmModel.GPT4O,
+            model=llm.DEFAULT_LLM_MODEL,
             credentials=llm.TEST_CREDENTIALS_INPUT,  # type: ignore  # type: ignore
         )
 
@@ -106,7 +106,7 @@ class TestLLMStatsTracking:
         # Run the block
         input_data = llm.AITextGeneratorBlock.Input(
             prompt="Generate text",
-            model=llm.LlmModel.GPT4O,
+            model=llm.DEFAULT_LLM_MODEL,
             credentials=llm.TEST_CREDENTIALS_INPUT,  # type: ignore
         )
 
@@ -167,7 +167,7 @@ class TestLLMStatsTracking:
         input_data = llm.AIStructuredResponseGeneratorBlock.Input(
             prompt="Test prompt",
             expected_format={"key1": "desc1", "key2": "desc2"},
-            model=llm.LlmModel.GPT4O,
+            model=llm.DEFAULT_LLM_MODEL,
             credentials=llm.TEST_CREDENTIALS_INPUT,  # type: ignore
             retry=2,
         )
@@ -225,7 +225,7 @@ class TestLLMStatsTracking:
 
         input_data = llm.AITextSummarizerBlock.Input(
             text=long_text,
-            model=llm.LlmModel.GPT4O,
+            model=llm.DEFAULT_LLM_MODEL,
             credentials=llm.TEST_CREDENTIALS_INPUT,  # type: ignore
             max_tokens=100,  # Small chunks
             chunk_overlap=10,
@@ -281,7 +281,7 @@ class TestLLMStatsTracking:
             # Test with very short text (should only need 1 chunk + 1 final summary)
             input_data = llm.AITextSummarizerBlock.Input(
                 text="This is a short text.",
-                model=llm.LlmModel.GPT4O,
+                model=llm.DEFAULT_LLM_MODEL,
                 credentials=llm.TEST_CREDENTIALS_INPUT,  # type: ignore
                 max_tokens=1000,  # Large enough to avoid chunking
             )
@@ -324,7 +324,7 @@ class TestLLMStatsTracking:
                 {"role": "assistant", "content": "Hi there!"},
                 {"role": "user", "content": "How are you?"},
             ],
-            model=llm.LlmModel.GPT4O,
+            model=llm.DEFAULT_LLM_MODEL,
             credentials=llm.TEST_CREDENTIALS_INPUT,  # type: ignore
         )
 
@@ -365,7 +365,7 @@ class TestLLMStatsTracking:
         # Run the block
         input_data = llm.AIListGeneratorBlock.Input(
             focus="test items",
-            model=llm.LlmModel.GPT4O,
+            model=llm.DEFAULT_LLM_MODEL,
             credentials=llm.TEST_CREDENTIALS_INPUT,  # type: ignore
             max_retries=3,
         )
@@ -447,7 +447,7 @@ class TestLLMStatsTracking:
         input_data = llm.AIStructuredResponseGeneratorBlock.Input(
             prompt="Test",
             expected_format={"result": "desc"},
-            model=llm.LlmModel.GPT4O,
+            model=llm.DEFAULT_LLM_MODEL,
             credentials=llm.TEST_CREDENTIALS_INPUT,  # type: ignore
         )
 
@@ -491,7 +491,7 @@ class TestAITextSummarizerValidation:
         # Create input data
         input_data = llm.AITextSummarizerBlock.Input(
             text="Some text to summarize",
-            model=llm.LlmModel.GPT4O,
+            model=llm.DEFAULT_LLM_MODEL,
             credentials=llm.TEST_CREDENTIALS_INPUT,  # type: ignore
             style=llm.SummaryStyle.BULLET_POINTS,
         )
@@ -536,7 +536,7 @@ class TestAITextSummarizerValidation:
         # Create input data
         input_data = llm.AITextSummarizerBlock.Input(
             text="Some text to summarize",
-            model=llm.LlmModel.GPT4O,
+            model=llm.DEFAULT_LLM_MODEL,
             credentials=llm.TEST_CREDENTIALS_INPUT,  # type: ignore
             style=llm.SummaryStyle.BULLET_POINTS,
             max_tokens=1000,
@@ -571,7 +571,7 @@ class TestAITextSummarizerValidation:
         # Create input data
         input_data = llm.AITextSummarizerBlock.Input(
             text="Some text to summarize",
-            model=llm.LlmModel.GPT4O,
+            model=llm.DEFAULT_LLM_MODEL,
             credentials=llm.TEST_CREDENTIALS_INPUT,  # type: ignore
         )
 
@@ -601,7 +601,7 @@ class TestAITextSummarizerValidation:
         # Create input data
         input_data = llm.AITextSummarizerBlock.Input(
             text="Some text to summarize",
-            model=llm.LlmModel.GPT4O,
+            model=llm.DEFAULT_LLM_MODEL,
             credentials=llm.TEST_CREDENTIALS_INPUT,  # type: ignore
             max_tokens=1000,
         )
@@ -632,7 +632,7 @@ class TestAITextSummarizerValidation:
         # Create input data
         input_data = llm.AITextSummarizerBlock.Input(
             text="Some text to summarize",
-            model=llm.LlmModel.GPT4O,
+            model=llm.DEFAULT_LLM_MODEL,
             credentials=llm.TEST_CREDENTIALS_INPUT,  # type: ignore
         )
 

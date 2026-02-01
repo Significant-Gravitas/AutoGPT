@@ -5,6 +5,7 @@ from enum import Enum
 from multiprocessing import Manager
 from queue import Empty
 from typing import (
+    TYPE_CHECKING,
     Annotated,
     Any,
     AsyncGenerator,
@@ -65,6 +66,9 @@ from .includes import (
 )
 from .model import CredentialsMetaInput, GraphExecutionStats, NodeExecutionStats
 
+if TYPE_CHECKING:
+    pass
+
 T = TypeVar("T")
 
 logger = logging.getLogger(__name__)
@@ -77,10 +81,30 @@ class ExecutionContext(BaseModel):
     This includes information needed by blocks, sub-graphs, and execution management.
     """
 
-    safe_mode: bool = True
+    model_config = {"extra": "ignore"}
+
+    # Execution identity
+    user_id: Optional[str] = None
+    graph_id: Optional[str] = None
+    graph_exec_id: Optional[str] = None
+    graph_version: Optional[int] = None
+    node_id: Optional[str] = None
+    node_exec_id: Optional[str] = None
+
+    # Safety settings
+    human_in_the_loop_safe_mode: bool = True
+    sensitive_action_safe_mode: bool = False
+
+    # User settings
     user_timezone: str = "UTC"
+
+    # Execution hierarchy
     root_execution_id: Optional[str] = None
     parent_execution_id: Optional[str] = None
+
+    # Workspace
+    workspace_id: Optional[str] = None
+    session_id: Optional[str] = None
 
 
 # -------------------------- Models -------------------------- #
@@ -149,8 +173,14 @@ class GraphExecutionMeta(BaseDbModel):
     nodes_input_masks: Optional[dict[str, BlockInput]]
     preset_id: Optional[str]
     status: ExecutionStatus
-    started_at: datetime
-    ended_at: datetime
+    started_at: Optional[datetime] = Field(
+        None,
+        description="When execution started running. Null if not yet started (QUEUED).",
+    )
+    ended_at: Optional[datetime] = Field(
+        None,
+        description="When execution finished. Null if not yet completed (QUEUED, RUNNING, INCOMPLETE, REVIEW).",
+    )
     is_shared: bool = False
     share_token: Optional[str] = None
 
@@ -225,10 +255,8 @@ class GraphExecutionMeta(BaseDbModel):
 
     @staticmethod
     def from_db(_graph_exec: AgentGraphExecution):
-        now = datetime.now(timezone.utc)
-        # TODO: make started_at and ended_at optional
-        start_time = _graph_exec.startedAt or _graph_exec.createdAt
-        end_time = _graph_exec.updatedAt or now
+        start_time = _graph_exec.startedAt
+        end_time = _graph_exec.endedAt
 
         try:
             stats = GraphExecutionStats.model_validate(_graph_exec.stats)
@@ -379,6 +407,7 @@ class GraphExecutionWithNodes(GraphExecution):
         self,
         execution_context: ExecutionContext,
         compiled_nodes_input_masks: Optional[NodesInputMasks] = None,
+        nodes_to_skip: Optional[set[str]] = None,
     ):
         return GraphExecutionEntry(
             user_id=self.user_id,
@@ -386,6 +415,7 @@ class GraphExecutionWithNodes(GraphExecution):
             graph_version=self.graph_version or 0,
             graph_exec_id=self.id,
             nodes_input_masks=compiled_nodes_input_masks,
+            nodes_to_skip=nodes_to_skip or set(),
             execution_context=execution_context,
         )
 
@@ -836,6 +866,30 @@ async def upsert_execution_output(
     await AgentNodeExecutionInputOutput.prisma().create(data=data)
 
 
+async def get_execution_outputs_by_node_exec_id(
+    node_exec_id: str,
+) -> dict[str, Any]:
+    """
+    Get all execution outputs for a specific node execution ID.
+
+    Args:
+        node_exec_id: The node execution ID to get outputs for
+
+    Returns:
+        Dictionary mapping output names to their data values
+    """
+    outputs = await AgentNodeExecutionInputOutput.prisma().find_many(
+        where={"referencedByOutputExecId": node_exec_id}
+    )
+
+    result = {}
+    for output in outputs:
+        if output.data is not None:
+            result[output.name] = type_utils.convert(output.data, JsonValue)
+
+    return result
+
+
 async def update_graph_execution_start_time(
     graph_exec_id: str,
 ) -> GraphExecution | None:
@@ -872,6 +926,14 @@ async def update_graph_execution_stats(
 
     if status:
         update_data["executionStatus"] = status
+        # Set endedAt when execution reaches a terminal status
+        terminal_statuses = [
+            ExecutionStatus.COMPLETED,
+            ExecutionStatus.FAILED,
+            ExecutionStatus.TERMINATED,
+        ]
+        if status in terminal_statuses:
+            update_data["endedAt"] = datetime.now(tz=timezone.utc)
 
     where_clause: AgentGraphExecutionWhereInput = {"id": graph_exec_id}
 
@@ -1117,6 +1179,8 @@ class GraphExecutionEntry(BaseModel):
     graph_id: str
     graph_version: int
     nodes_input_masks: Optional[NodesInputMasks] = None
+    nodes_to_skip: set[str] = Field(default_factory=set)
+    """Node IDs that should be skipped due to optional credentials not being configured."""
     execution_context: ExecutionContext = Field(default_factory=ExecutionContext)
 
 

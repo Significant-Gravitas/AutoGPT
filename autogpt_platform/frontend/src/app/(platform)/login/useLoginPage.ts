@@ -1,9 +1,11 @@
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import { getHomepageRoute } from "@/lib/constants";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { environment } from "@/services/environment";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { loginFormSchema, LoginProvider } from "@/types/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import z from "zod";
@@ -13,18 +15,24 @@ export function useLoginPage() {
   const { supabase, user, isUserLoading, isLoggedIn } = useSupabase();
   const [feedback, setFeedback] = useState<string | null>(null);
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [showNotAllowedModal, setShowNotAllowedModal] = useState(false);
   const isCloudEnv = environment.isCloud();
+  const isChatEnabled = useGetFlag(Flag.CHAT);
+  const homepageRoute = getHomepageRoute(isChatEnabled);
+
+  // Get redirect destination from 'next' query parameter
+  const nextUrl = searchParams.get("next");
 
   useEffect(() => {
     if (isLoggedIn && !isLoggingIn) {
-      router.push("/marketplace");
+      router.push(nextUrl || homepageRoute);
     }
-  }, [isLoggedIn, isLoggingIn]);
+  }, [homepageRoute, isLoggedIn, isLoggingIn, nextUrl, router]);
 
   const form = useForm<z.infer<typeof loginFormSchema>>({
     resolver: zodResolver(loginFormSchema),
@@ -39,10 +47,16 @@ export function useLoginPage() {
     setIsLoggingIn(true);
 
     try {
+      // Include next URL in OAuth flow if present
+      const callbackUrl = nextUrl
+        ? `/auth/callback?next=${encodeURIComponent(nextUrl)}`
+        : `/auth/callback`;
+      const fullCallbackUrl = `${window.location.origin}${callbackUrl}`;
+
       const response = await fetch("/api/auth/provider", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider }),
+        body: JSON.stringify({ provider, redirectTo: fullCallbackUrl }),
       });
 
       if (!response.ok) {
@@ -83,11 +97,8 @@ export function useLoginPage() {
         throw new Error(result.error || "Login failed");
       }
 
-      if (result.onboarding) {
-        router.replace("/onboarding");
-      } else {
-        router.replace("/marketplace");
-      }
+      // Prefer URL's next parameter, then use backend-determined route
+      router.replace(nextUrl || result.next || homepageRoute);
     } catch (error) {
       toast({
         title:
