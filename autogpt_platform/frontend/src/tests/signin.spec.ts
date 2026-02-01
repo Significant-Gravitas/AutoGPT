@@ -182,7 +182,7 @@ test("logged in user is redirected from /login to /library", async ({
   await hasUrl(page, "/marketplace");
 
   await page.goto("/login");
-  await hasUrl(page, "/library?sort=lastExecuted");
+  await hasUrl(page, "/library");
 });
 
 test("logged in user is redirected from /signup to /library", async ({
@@ -195,5 +195,5 @@ test("logged in user is redirected from /signup to /library", async ({
   await hasUrl(page, "/marketplace");
 
   await page.goto("/signup");
-  await hasUrl(page, "/library?sort=lastExecuted");
+  await hasUrl(page, "/library");
 });
