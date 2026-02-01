@@ -22,8 +22,8 @@ test("user can signup successfully", async ({ page }) => {
       "Bringing you AI agents designed by thinkers from around the world",
     ).first();
 
-    // Verify we're on marketplace and authenticated
-    await hasUrl(page, "/marketplace");
+    // Verify we're on homepage and authenticated (library when chat disabled)
+    await hasUrl(page, "/library");
     await isVisible(marketplaceText);
     await isVisible(getId("profile-popout-menu-trigger"));
   } catch (error) {
@@ -68,8 +68,8 @@ test("user can signup with custom credentials", async ({ page }) => {
     expect(testUser.email).toBe(customEmail);
     expect(testUser.password).toBe(customPassword);
 
-    // Verify successful signup
-    await hasUrl(page, "/marketplace");
+    // Verify successful signup (redirects to library when chat disabled)
+    await hasUrl(page, "/library");
     await isVisible(getId("profile-popout-menu-trigger"));
   } catch (error) {
     console.error("❌ Custom credentials signup test failed:", error);
