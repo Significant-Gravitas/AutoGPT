@@ -124,3 +124,4 @@ test("user can signup with existing email handling", async ({
     console.error("❌ Duplicate email handling test failed:", error);
   }
 });
+
