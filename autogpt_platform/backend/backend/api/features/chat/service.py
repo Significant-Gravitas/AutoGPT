@@ -1186,9 +1186,12 @@ async def _stream_chat_chunks(
                                 # Ensure tool pairs stay intact in the reduced slice
                                 # Note: Search in messages_dict (full conversation) not recent_messages
                                 # (already sliced), so we can find assistants outside the current slice.
-                                # Use slice_start (relative to messages_dict) for correct search range.
+                                # Calculate where reduced_recent starts in messages_dict
+                                reduced_start_in_dict = slice_start + max(
+                                    0, len(recent_messages) - keep_count
+                                )
                                 reduced_recent = _ensure_tool_pairs_intact(
-                                    reduced_recent, messages_dict, slice_start
+                                    reduced_recent, messages_dict, reduced_start_in_dict
                                 )
                                 if has_system_prompt:
                                     messages = [
