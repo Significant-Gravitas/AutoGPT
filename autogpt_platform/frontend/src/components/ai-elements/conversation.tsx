@@ -1,6 +1,5 @@
 "use client";
 
-import { MorphingTextAnimation } from "@/app/(platform)/copilot-2/components/MorphingTextAnimation/MorphingTextAnimation";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { ArrowDownIcon } from "lucide-react";
@@ -67,7 +66,6 @@ export const ConversationEmptyState = ({
               {description}
             </p>
           )}
-          <MorphingTextAnimation />
         </div>
       </>
     )}

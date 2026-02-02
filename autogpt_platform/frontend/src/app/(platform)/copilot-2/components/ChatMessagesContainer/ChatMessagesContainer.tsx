@@ -10,7 +10,7 @@ import {
   MessageResponse,
 } from "@/components/ai-elements/message";
 import { MessageSquareIcon } from "lucide-react";
-import { UIMessage, UIDataTypes, UITools } from "ai";
+import { UIMessage, UIDataTypes, UITools, ToolUIPart } from "ai";
 import { FindBlocksTool } from "../../tools/FindBlocks/FindBlocks";
 
 interface ChatMessagesContainerProps {
@@ -54,7 +54,10 @@ export const ChatMessagesContainer = ({
                         );
                       case "tool-find_block":
                         return (
-                          <FindBlocksTool message={message} i={i} part={part} />
+                          <FindBlocksTool
+                            key={`${message.id}-${i}`}
+                            part={part as ToolUIPart}
+                          />
                         );
                       default:
                         return null;
