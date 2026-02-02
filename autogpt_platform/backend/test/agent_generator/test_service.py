@@ -102,7 +102,7 @@ class TestDecomposeGoalExternal:
 
     @pytest.mark.asyncio
     async def test_decompose_goal_with_context(self):
-        """Test decomposition with additional context."""
+        """Test decomposition with additional context enriched into description."""
         mock_response = MagicMock()
         mock_response.json.return_value = {
             "success": True,
@@ -119,9 +119,12 @@ class TestDecomposeGoalExternal:
                 "Build a chatbot", context="Use Python"
             )
 
+        expected_description = (
+            "Build a chatbot\n\nAdditional context from user:\nUse Python"
+        )
         mock_client.post.assert_called_once_with(
             "/api/decompose-description",
-            json={"description": "Build a chatbot", "user_instruction": "Use Python"},
+            json={"description": expected_description},
         )
 
     @pytest.mark.asyncio

@@ -139,11 +139,10 @@ async def decompose_goal_external(
     """
     client = _get_client()
 
-    # Build the request payload
-    payload: dict[str, Any] = {"description": description}
     if context:
-        # The external service uses user_instruction for additional context
-        payload["user_instruction"] = context
+        description = f"{description}\n\nAdditional context from user:\n{context}"
+
+    payload: dict[str, Any] = {"description": description}
     if library_agents:
         payload["library_agents"] = library_agents
 
