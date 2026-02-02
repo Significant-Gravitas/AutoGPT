@@ -402,7 +402,7 @@ The block relies on the input schema to ensure the value is a string; non-string
 
 | Output | Description | Type |
 |--------|-------------|------|
-| error | Error message if the operation failed | str |
+| error | Error message if encoding fails | str |
 | encoded_text | The encoded text with special characters converted to escape sequences | str |
 
 ### Possible use case
