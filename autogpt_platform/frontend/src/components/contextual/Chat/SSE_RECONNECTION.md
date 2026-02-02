@@ -5,6 +5,7 @@ This document describes the client-side contract for handling SSE (Server-Sent E
 ## Overview
 
 When a user triggers a long-running operation (like agent generation), the backend:
+
 1. Spawns a background task that survives SSE disconnections
 2. Returns an `operation_started` response with a `task_id`
 3. Stores stream messages in Redis Streams for replay
@@ -63,7 +64,7 @@ if (activeTask) {
     (chunk) => {
       // Handle incoming chunks
       console.log("Received chunk:", chunk);
-    }
+    },
   );
 }
 ```
@@ -86,6 +87,7 @@ function handleChunk(chunk: StreamChunk) {
 ## API Endpoints
 
 ### Task Stream Reconnection
+
 ```
 GET /api/chat/tasks/{taskId}/stream?last_message_id={idx}
 ```
@@ -99,18 +101,19 @@ Returns: SSE stream of missed messages + live updates
 
 The reconnected stream follows the same Vercel AI SDK protocol:
 
-| Type | Description |
-|------|-------------|
-| `start` | Message lifecycle start |
-| `text-delta` | Streaming text content |
-| `text-end` | Text block completed |
-| `tool-output-available` | Tool result available |
-| `finish` | Stream completed |
-| `error` | Error occurred |
+| Type                    | Description             |
+| ----------------------- | ----------------------- |
+| `start`                 | Message lifecycle start |
+| `text-delta`            | Streaming text content  |
+| `text-end`              | Text block completed    |
+| `tool-output-available` | Tool result available   |
+| `finish`                | Stream completed        |
+| `error`                 | Error occurred          |
 
 ## Error Handling
 
 If reconnection fails:
+
 1. Check if task still exists (may have expired - default TTL: 1 hour)
 2. Fall back to polling the session for final state
 3. Show appropriate UI message to user
@@ -138,10 +141,10 @@ function loadPersistedTasks(): Record<string, ActiveTaskInfo> {
 
 The following backend settings affect reconnection behavior:
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `stream_ttl` | 3600s | How long streams are kept in Redis |
-| `stream_max_length` | 1000 | Max messages per stream |
+| Setting             | Default | Description                        |
+| ------------------- | ------- | ---------------------------------- |
+| `stream_ttl`        | 3600s   | How long streams are kept in Redis |
+| `stream_max_length` | 1000    | Max messages per stream            |
 
 ## Testing
 
