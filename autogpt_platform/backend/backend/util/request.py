@@ -218,12 +218,12 @@ async def validate_url(
 def parse_url(url: str) -> URL:
     """Canonicalizes and parses a URL string."""
     url = url.strip("/ ").replace("\\", "/")
-    parsed = urlparse(url)
-    if not parsed.scheme:
-        url = f"http://{url}"
-        parsed = urlparse(url)
 
-    return parsed
+    # Ensure scheme is present for proper parsing
+    if not re.match(r"[a-z0-9+.\-]+://", url):
+        url = f"http://{url}"
+
+    return urlparse(url)
 
 
 def pin_url(url: URL, ip_addresses: Optional[list[str]] = None) -> URL:
