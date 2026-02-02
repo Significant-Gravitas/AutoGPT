@@ -221,8 +221,10 @@ export function handleStreamEnd(
   _chunk: StreamChunk,
   deps: HandlerDependencies,
 ) {
+  console.info("[SSE-RECONNECT] handleStreamEnd called, resetting streaming state");
   const completedContent = deps.streamingChunksRef.current.join("");
   if (!completedContent.trim() && !deps.hasResponseRef.current) {
+    console.info("[SSE-RECONNECT] No content received, adding placeholder message");
     deps.setMessages((prev) => [
       ...prev,
       {
@@ -261,10 +263,14 @@ export function handleStreamEnd(
 
 export function handleError(chunk: StreamChunk, deps: HandlerDependencies) {
   const errorMessage = chunk.message || chunk.content || "An error occurred";
-  console.error("Stream error:", errorMessage);
+  console.error("[ChatStream] Stream error:", errorMessage, {
+    sessionId: deps.sessionId,
+    chunk,
+  });
   if (isRegionBlockedError(chunk)) {
     deps.setIsRegionBlockedModalOpen(true);
   }
+  console.info("[ChatStream] Resetting streaming state due to error");
   deps.setIsStreamingInitiated(false);
   deps.setHasTextChunks(false);
   deps.setStreamingChunks([]);

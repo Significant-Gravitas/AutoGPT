@@ -1,6 +1,7 @@
 """Chat API routes for chat session management and streaming via SSE."""
 
 import logging
+import uuid as uuid_module
 from collections.abc import AsyncGenerator
 from typing import Annotated
 
@@ -16,7 +17,7 @@ from . import service as chat_service
 from . import stream_registry
 from .config import ChatConfig
 from .model import ChatSession, create_chat_session, get_chat_session, get_user_sessions
-from .response_model import StreamFinish, StreamHeartbeat
+from .response_model import StreamFinish, StreamHeartbeat, StreamStart
 
 config = ChatConfig()
 
@@ -58,6 +59,13 @@ class CreateSessionResponse(BaseModel):
     user_id: str | None
 
 
+class ActiveStreamInfo(BaseModel):
+    """Information about an active stream for reconnection."""
+
+    task_id: str
+    last_message_id: str  # Redis Stream message ID for resumption
+
+
 class SessionDetailResponse(BaseModel):
     """Response model providing complete details for a chat session, including messages."""
 
@@ -66,6 +74,7 @@ class SessionDetailResponse(BaseModel):
     updated_at: str
     user_id: str | None
     messages: list[dict]
+    active_stream: ActiveStreamInfo | None = None  # Present if stream is still active
 
 
 class SessionSummaryResponse(BaseModel):
@@ -177,13 +186,14 @@ async def get_session(
     Retrieve the details of a specific chat session.
 
     Looks up a chat session by ID for the given user (if authenticated) and returns all session data including messages.
+    If there's an active stream for this session, returns the task_id for reconnection.
 
     Args:
         session_id: The unique identifier for the desired chat session.
         user_id: The optional authenticated user ID, or None for anonymous access.
 
     Returns:
-        SessionDetailResponse: Details for the requested session, or None if not found.
+        SessionDetailResponse: Details for the requested session, including active_stream info if applicable.
 
     """
     session = await get_chat_session(session_id, user_id)
@@ -191,10 +201,31 @@ async def get_session(
         raise NotFoundError(f"Session {session_id} not found.")
 
     messages = [message.model_dump() for message in session.messages]
+
+    # Check if there's an active stream for this session
+    active_stream_info = None
+    logger.info(f"[SSE-RECONNECT] Checking for active stream in session {session_id}")
+    active_task, last_message_id = await stream_registry.get_active_task_for_session(
+        session_id, user_id
+    )
+    if active_task:
+        active_stream_info = ActiveStreamInfo(
+            task_id=active_task.task_id,
+            last_message_id=last_message_id,
+        )
+        logger.info(
+            f"[SSE-RECONNECT] Session {session_id} HAS active stream: "
+            f"task_id={active_task.task_id}, status={active_task.status}, "
+            f"last_message_id={last_message_id}"
+        )
+    else:
+        logger.info(f"[SSE-RECONNECT] Session {session_id} has NO active stream")
+
     logger.info(
         f"Returning session {session_id}: "
         f"message_count={len(messages)}, "
-        f"roles={[m.get('role') for m in messages]}"
+        f"roles={[m.get('role') for m in messages]}, "
+        f"has_active_stream={active_stream_info is not None}"
     )
 
     return SessionDetailResponse(
@@ -203,6 +234,7 @@ async def get_session(
         updated_at=session.updated_at.isoformat(),
         user_id=session.user_id or None,
         messages=messages,
+        active_stream=active_stream_info,
     )
 
 
@@ -222,49 +254,136 @@ async def stream_chat_post(
       - Tool call UI elements (if invoked)
       - Tool execution results
 
+    The AI generation runs in a background task that continues even if the client disconnects.
+    All chunks are written to Redis for reconnection support. If the client disconnects,
+    they can reconnect using GET /tasks/{task_id}/stream to resume from where they left off.
+
     Args:
         session_id: The chat session identifier to associate with the streamed messages.
         request: Request body containing message, is_user_message, and optional context.
         user_id: Optional authenticated user ID.
     Returns:
-        StreamingResponse: SSE-formatted response chunks.
+        StreamingResponse: SSE-formatted response chunks. First chunk is a "start" event
+        containing the task_id for reconnection.
 
     """
+    import asyncio
+
     session = await _validate_and_get_session(session_id, user_id)
 
-    async def event_generator() -> AsyncGenerator[str, None]:
+    # Create a task in the stream registry for reconnection support
+    task_id = str(uuid_module.uuid4())
+    operation_id = str(uuid_module.uuid4())
+    await stream_registry.create_task(
+        task_id=task_id,
+        session_id=session_id,
+        user_id=user_id,
+        tool_call_id="chat_stream",  # Not a tool call, but needed for the model
+        tool_name="chat",
+        operation_id=operation_id,
+    )
+    logger.info(
+        f"[SSE-RECONNECT] Created stream task for reconnection support: "
+        f"task_id={task_id}, session_id={session_id}"
+    )
+
+    # Background task that runs the AI generation independently of SSE connection
+    async def run_ai_generation():
         chunk_count = 0
         first_chunk_type: str | None = None
-        async for chunk in chat_service.stream_chat_completion(
-            session_id,
-            request.message,
-            is_user_message=request.is_user_message,
-            user_id=user_id,
-            session=session,  # Pass pre-fetched session to avoid double-fetch
-            context=request.context,
-        ):
-            if chunk_count < 3:
-                logger.info(
-                    "Chat stream chunk",
-                    extra={
-                        "session_id": session_id,
-                        "chunk_type": str(chunk.type),
-                    },
-                )
-            if not first_chunk_type:
-                first_chunk_type = str(chunk.type)
-            chunk_count += 1
-            yield chunk.to_sse()
-        logger.info(
-            "Chat stream completed",
-            extra={
-                "session_id": session_id,
-                "chunk_count": chunk_count,
-                "first_chunk_type": first_chunk_type,
-            },
-        )
-        # AI SDK protocol termination
-        yield "data: [DONE]\n\n"
+        try:
+            # Emit a start event with task_id for reconnection
+            start_chunk = StreamStart(messageId=task_id, taskId=task_id)
+            await stream_registry.publish_chunk(task_id, start_chunk)
+
+            async for chunk in chat_service.stream_chat_completion(
+                session_id,
+                request.message,
+                is_user_message=request.is_user_message,
+                user_id=user_id,
+                session=session,  # Pass pre-fetched session to avoid double-fetch
+                context=request.context,
+            ):
+                if chunk_count < 3:
+                    logger.info(
+                        "Chat stream chunk",
+                        extra={
+                            "session_id": session_id,
+                            "chunk_type": str(chunk.type),
+                        },
+                    )
+                if not first_chunk_type:
+                    first_chunk_type = str(chunk.type)
+                chunk_count += 1
+                # Write to Redis (subscribers will receive via pub/sub or polling)
+                await stream_registry.publish_chunk(task_id, chunk)
+
+            # Mark task as completed
+            await stream_registry.mark_task_completed(task_id, "completed")
+            logger.info(
+                "[SSE-RECONNECT] Background AI generation completed",
+                extra={
+                    "session_id": session_id,
+                    "task_id": task_id,
+                    "chunk_count": chunk_count,
+                    "first_chunk_type": first_chunk_type,
+                },
+            )
+        except Exception as e:
+            logger.error(
+                f"[SSE-RECONNECT] Error in background AI generation for session "
+                f"{session_id}: {e}"
+            )
+            await stream_registry.mark_task_completed(task_id, "failed")
+
+    # Start the AI generation in a background task
+    bg_task = asyncio.create_task(run_ai_generation())
+    await stream_registry.set_task_asyncio_task(task_id, bg_task)
+    logger.info(f"[SSE-RECONNECT] Started background AI generation task for {task_id}")
+
+    # SSE endpoint that subscribes to the task's stream
+    async def event_generator() -> AsyncGenerator[str, None]:
+        try:
+            # Subscribe to the task stream (this replays existing messages + live updates)
+            subscriber_queue = await stream_registry.subscribe_to_task(
+                task_id=task_id,
+                user_id=user_id,
+                last_message_id="0-0",  # Get all messages from the beginning
+            )
+
+            if subscriber_queue is None:
+                logger.error(f"Failed to subscribe to task {task_id}")
+                yield StreamFinish().to_sse()
+                yield "data: [DONE]\n\n"
+                return
+
+            # Read from the subscriber queue and yield to SSE
+            while True:
+                try:
+                    chunk = await asyncio.wait_for(subscriber_queue.get(), timeout=30.0)
+                    yield chunk.to_sse()
+
+                    # Check for finish signal
+                    if isinstance(chunk, StreamFinish):
+                        logger.info(
+                            f"[SSE-RECONNECT] SSE subscriber received finish for task {task_id}"
+                        )
+                        break
+                except asyncio.TimeoutError:
+                    # Send heartbeat to keep connection alive
+                    yield StreamHeartbeat().to_sse()
+
+        except GeneratorExit:
+            # Client disconnected - that's fine, background task continues
+            logger.info(
+                f"[SSE-RECONNECT] SSE client disconnected for task {task_id}, "
+                f"background generation continues"
+            )
+        except Exception as e:
+            logger.error(f"Error in SSE stream for task {task_id}: {e}")
+        finally:
+            # AI SDK protocol termination
+            yield "data: [DONE]\n\n"
 
     return StreamingResponse(
         event_generator(),
@@ -409,6 +528,11 @@ async def stream_task(
     Raises:
         NotFoundError: If task_id is not found or user doesn't have access.
     """
+    logger.info(
+        f"[SSE-RECONNECT] Client reconnecting to task stream: "
+        f"task_id={task_id}, last_message_id={last_message_id}"
+    )
+
     # Get subscriber queue from stream registry
     subscriber_queue = await stream_registry.subscribe_to_task(
         task_id=task_id,
@@ -417,7 +541,14 @@ async def stream_task(
     )
 
     if subscriber_queue is None:
+        logger.warning(
+            f"[SSE-RECONNECT] Task not found or access denied: task_id={task_id}"
+        )
         raise NotFoundError(f"Task {task_id} not found or access denied.")
+
+    logger.info(
+        f"[SSE-RECONNECT] Successfully subscribed to task stream: task_id={task_id}"
+    )
 
     async def event_generator() -> AsyncGenerator[str, None]:
         import asyncio

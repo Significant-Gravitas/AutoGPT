@@ -25,6 +25,7 @@ export function Chat({
   const { urlSessionId } = useCopilotSessionId();
   const hasHandledNotFoundRef = useRef(false);
   const {
+    session,
     messages,
     isLoading,
     isCreating,
@@ -35,6 +36,21 @@ export function Chat({
     showLoader,
     startPollingForOperation,
   } = useChat({ urlSessionId });
+
+  // Extract active stream info for reconnection
+  const activeStream = (session as { active_stream?: { task_id: string; last_message_id: string } })?.active_stream;
+
+  // Debug logging for SSE reconnection
+  if (session) {
+    console.info("[SSE-RECONNECT] Session loaded:", {
+      sessionId,
+      hasActiveStream: !!activeStream,
+      activeStream: activeStream ? {
+        taskId: activeStream.task_id,
+        lastMessageId: activeStream.last_message_id,
+      } : null,
+    });
+  }
 
   useEffect(() => {
     if (!onSessionNotFound) return;
@@ -83,6 +99,10 @@ export function Chat({
             className="flex-1"
             onStreamingChange={onStreamingChange}
             onOperationStarted={startPollingForOperation}
+            activeStream={activeStream ? {
+              taskId: activeStream.task_id,
+              lastMessageId: activeStream.last_message_id,
+            } : undefined}
           />
         )}
       </main>

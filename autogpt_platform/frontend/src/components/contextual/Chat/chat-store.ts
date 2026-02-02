@@ -391,6 +391,12 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     lastMessageId = "0-0", // Redis Stream ID format
     onChunk,
   ) {
+    console.info("[SSE-RECONNECT] reconnectToTask called:", {
+      sessionId,
+      taskId,
+      lastMessageId,
+    });
+
     const state = get();
     const newActiveStreams = new Map(state.activeStreams);
     let newCompletedStreams = new Map(state.completedStreams);
@@ -435,8 +441,14 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       completedStreams: newCompletedStreams,
     });
 
+    console.info("[SSE-RECONNECT] Starting executeTaskReconnect...");
     try {
       await executeTaskReconnect(stream, taskId, lastMessageId);
+      console.info("[SSE-RECONNECT] executeTaskReconnect completed:", {
+        sessionId,
+        taskId,
+        streamStatus: stream.status,
+      });
     } finally {
       if (onChunk) stream.onChunkCallbacks.delete(onChunk);
       if (stream.status !== "streaming") {
@@ -468,9 +480,16 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             // Clear active task on completion
             const taskState = get();
             const newActiveTasks = new Map(taskState.activeTasks);
+            const hadActiveTask = newActiveTasks.has(sessionId);
             newActiveTasks.delete(sessionId);
             set({ activeTasks: newActiveTasks });
             persistTasks(newActiveTasks);
+            if (hadActiveTask) {
+              console.info(
+                `[ChatStore] Cleared active task for session ${sessionId} ` +
+                  `(stream status: ${stream.status})`,
+              );
+            }
           }
         }
       }

@@ -34,6 +34,22 @@ export function createStreamEventDispatcher(
     }
 
     switch (chunk.type) {
+      case "stream_start":
+        // Store task ID for SSE reconnection
+        if (chunk.taskId && deps.onActiveTaskStarted) {
+          console.info("[ChatStream] Stream started with task ID:", {
+            sessionId: deps.sessionId,
+            taskId: chunk.taskId,
+          });
+          deps.onActiveTaskStarted({
+            taskId: chunk.taskId,
+            operationId: chunk.taskId, // Use taskId as operationId for chat streams
+            toolName: "chat",
+            toolCallId: "chat_stream",
+          });
+        }
+        break;
+
       case "text_chunk":
         handleTextChunk(chunk, deps);
         break;
@@ -56,7 +72,8 @@ export function createStreamEventDispatcher(
         break;
 
       case "stream_end":
-        console.info("[ChatStream] Stream ended:", {
+        // Note: "finish" type from backend gets normalized to "stream_end" by normalizeStreamChunk
+        console.info("[SSE-RECONNECT] Stream ended:", {
           sessionId: deps.sessionId,
           hasResponse: deps.hasResponseRef.current,
           chunkCount: deps.streamingChunksRef.current.length,

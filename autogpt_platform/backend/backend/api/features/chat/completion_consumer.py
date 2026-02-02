@@ -3,12 +3,16 @@
 This module provides a consumer that listens for completion notifications
 from external services (like Agent Generator) and triggers the appropriate
 stream registry and chat service updates.
+
+The consumer initializes its own Prisma client to avoid async context issues.
 """
 
 import asyncio
 import logging
+import os
 
 import orjson
+from prisma import Prisma
 from pydantic import BaseModel
 
 from backend.data.rabbitmq import (
@@ -57,12 +61,17 @@ class OperationCompleteMessage(BaseModel):
 
 
 class ChatCompletionConsumer:
-    """Consumer for chat operation completion messages from RabbitMQ."""
+    """Consumer for chat operation completion messages from RabbitMQ.
+
+    This consumer initializes its own Prisma client in start() to ensure
+    database operations work correctly within this async context.
+    """
 
     def __init__(self):
         self._rabbitmq: AsyncRabbitMQ | None = None
         self._consumer_task: asyncio.Task | None = None
         self._running = False
+        self._prisma: Prisma | None = None
 
     async def start(self) -> None:
         """Start the completion consumer."""
@@ -70,12 +79,24 @@ class ChatCompletionConsumer:
             logger.warning("Completion consumer already running")
             return
 
+        # Don't initialize Prisma here - do it lazily on first message
+        # to ensure it's in the same async context as the message handler
+
         self._rabbitmq = AsyncRabbitMQ(RABBITMQ_CONFIG)
         await self._rabbitmq.connect()
 
         self._running = True
         self._consumer_task = asyncio.create_task(self._consume_messages())
         logger.info("Chat completion consumer started")
+
+    async def _ensure_prisma(self) -> Prisma:
+        """Lazily initialize Prisma client on first use."""
+        if self._prisma is None:
+            database_url = os.getenv("DATABASE_URL", "postgresql://localhost:5432")
+            self._prisma = Prisma(datasource={"url": database_url})
+            await self._prisma.connect()
+            logger.info("[COMPLETION] Consumer Prisma client connected (lazy init)")
+        return self._prisma
 
     async def stop(self) -> None:
         """Stop the completion consumer."""
@@ -92,6 +113,11 @@ class ChatCompletionConsumer:
         if self._rabbitmq:
             await self._rabbitmq.disconnect()
             self._rabbitmq = None
+
+        if self._prisma:
+            await self._prisma.disconnect()
+            self._prisma = None
+            logger.info("[COMPLETION] Consumer Prisma client disconnected")
 
         logger.info("Chat completion consumer stopped")
 
@@ -144,7 +170,7 @@ class ChatCompletionConsumer:
                     return
 
     async def _handle_message(self, body: bytes) -> None:
-        """Handle a single completion message."""
+        """Handle a completion message using our own Prisma client."""
         try:
             data = orjson.loads(body)
             message = OperationCompleteMessage(**data)
@@ -153,20 +179,33 @@ class ChatCompletionConsumer:
             return
 
         logger.info(
-            f"Received completion for operation {message.operation_id} "
+            f"[COMPLETION] Received completion for operation {message.operation_id} "
             f"(task_id={message.task_id}, success={message.success})"
         )
 
         # Find task in registry
         task = await stream_registry.find_task_by_operation_id(message.operation_id)
         if task is None:
-            # Try to look up by task_id directly
             task = await stream_registry.get_task(message.task_id)
 
         if task is None:
             logger.warning(
-                f"Task not found for operation {message.operation_id} "
+                f"[COMPLETION] Task not found for operation {message.operation_id} "
                 f"(task_id={message.task_id})"
+            )
+            return
+
+        logger.info(
+            f"[COMPLETION] Found task: task_id={task.task_id}, "
+            f"session_id={task.session_id}, tool_call_id={task.tool_call_id}"
+        )
+
+        # Guard against empty task fields
+        if not task.task_id or not task.session_id or not task.tool_call_id:
+            logger.error(
+                f"[COMPLETION] Task has empty critical fields! "
+                f"task_id={task.task_id!r}, session_id={task.session_id!r}, "
+                f"tool_call_id={task.tool_call_id!r}"
             )
             return
 
@@ -197,7 +236,7 @@ class ChatCompletionConsumer:
             ),
         )
 
-        # Update pending operation in database
+        # Update pending operation in database using our Prisma client
         result_str = (
             message.result
             if isinstance(message.result, str)
@@ -207,26 +246,45 @@ class ChatCompletionConsumer:
                 else '{"status": "completed"}'
             )
         )
-        await chat_service._update_pending_operation(
-            session_id=task.session_id,
-            tool_call_id=task.tool_call_id,
-            result=result_str,
-        )
+        try:
+            prisma = await self._ensure_prisma()
+            await prisma.chatmessage.update_many(
+                where={
+                    "sessionId": task.session_id,
+                    "toolCallId": task.tool_call_id,
+                },
+                data={"content": result_str},
+            )
+            logger.info(
+                f"[COMPLETION] Updated tool message for session {task.session_id}"
+            )
+        except Exception as e:
+            logger.error(
+                f"[COMPLETION] Failed to update tool message: {e}", exc_info=True
+            )
 
         # Generate LLM continuation with streaming
-        await chat_service._generate_llm_continuation_with_streaming(
-            session_id=task.session_id,
-            user_id=task.user_id,
-            task_id=task.task_id,
-        )
+        try:
+            await chat_service._generate_llm_continuation_with_streaming(
+                session_id=task.session_id,
+                user_id=task.user_id,
+                task_id=task.task_id,
+            )
+        except Exception as e:
+            logger.error(
+                f"[COMPLETION] Failed to generate LLM continuation: {e}",
+                exc_info=True,
+            )
 
         # Mark task as completed and release Redis lock
         await stream_registry.mark_task_completed(task.task_id, status="completed")
-        await chat_service._mark_operation_completed(task.tool_call_id)
+        try:
+            await chat_service._mark_operation_completed(task.tool_call_id)
+        except Exception as e:
+            logger.error(f"[COMPLETION] Failed to mark operation completed: {e}")
 
         logger.info(
-            f"Successfully processed completion for task {task.task_id} "
-            f"(operation {message.operation_id})"
+            f"[COMPLETION] Successfully processed completion for task {task.task_id}"
         )
 
     async def _handle_failure(
@@ -237,31 +295,44 @@ class ChatCompletionConsumer:
         """Handle failed operation completion."""
         error_msg = message.error or "Operation failed"
 
-        # Publish error to stream registry followed by finish event
+        # Publish error to stream registry
         await stream_registry.publish_chunk(
             task.task_id,
             StreamError(errorText=error_msg),
         )
         await stream_registry.publish_chunk(task.task_id, StreamFinish())
 
-        # Update pending operation with error
+        # Update pending operation with error using our Prisma client
         error_response = ErrorResponse(
             message=error_msg,
             error=message.error,
         )
-        await chat_service._update_pending_operation(
-            session_id=task.session_id,
-            tool_call_id=task.tool_call_id,
-            result=error_response.model_dump_json(),
-        )
+        try:
+            prisma = await self._ensure_prisma()
+            await prisma.chatmessage.update_many(
+                where={
+                    "sessionId": task.session_id,
+                    "toolCallId": task.tool_call_id,
+                },
+                data={"content": error_response.model_dump_json()},
+            )
+            logger.info(
+                f"[COMPLETION] Updated tool message with error for session {task.session_id}"
+            )
+        except Exception as e:
+            logger.error(
+                f"[COMPLETION] Failed to update tool message: {e}", exc_info=True
+            )
 
         # Mark task as failed and release Redis lock
         await stream_registry.mark_task_completed(task.task_id, status="failed")
-        await chat_service._mark_operation_completed(task.tool_call_id)
+        try:
+            await chat_service._mark_operation_completed(task.tool_call_id)
+        except Exception as e:
+            logger.error(f"[COMPLETION] Failed to mark operation completed: {e}")
 
         logger.info(
-            f"Processed failure for task {task.task_id} "
-            f"(operation {message.operation_id}): {error_msg}"
+            f"[COMPLETION] Processed failure for task {task.task_id}: {error_msg}"
         )
 
 
@@ -293,9 +364,6 @@ async def publish_operation_complete(
     error: str | None = None,
 ) -> None:
     """Publish an operation completion message.
-
-    This is a helper function for testing or for services that want to
-    publish completion messages directly.
 
     Args:
         operation_id: The operation ID that completed.

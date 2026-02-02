@@ -17,6 +17,11 @@ export interface ChatContainerProps {
   className?: string;
   onStreamingChange?: (isStreaming: boolean) => void;
   onOperationStarted?: () => void;
+  /** Active stream info from the server for reconnection */
+  activeStream?: {
+    taskId: string;
+    lastMessageId: string;
+  };
 }
 
 export function ChatContainer({
@@ -26,6 +31,7 @@ export function ChatContainer({
   className,
   onStreamingChange,
   onOperationStarted,
+  activeStream,
 }: ChatContainerProps) {
   const {
     messages,
@@ -41,6 +47,7 @@ export function ChatContainer({
     initialMessages,
     initialPrompt,
     onOperationStarted,
+    activeStream,
   });
 
   useEffect(() => {

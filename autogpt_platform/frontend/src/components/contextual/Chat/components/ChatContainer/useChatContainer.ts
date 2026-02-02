@@ -41,6 +41,11 @@ interface Args {
   initialMessages: SessionDetailResponse["messages"];
   initialPrompt?: string;
   onOperationStarted?: () => void;
+  /** Active stream info from the server for reconnection */
+  activeStream?: {
+    taskId: string;
+    lastMessageId: string;
+  };
 }
 
 export function useChatContainer({
@@ -48,6 +53,7 @@ export function useChatContainer({
   initialMessages,
   initialPrompt,
   onOperationStarted,
+  activeStream,
 }: Args) {
   const [messages, setMessages] = useState<ChatMessageData[]>([]);
   const [streamingChunks, setStreamingChunks] = useState<string[]>([]);
@@ -69,6 +75,8 @@ export function useChatContainer({
   const getActiveTask = useChatStore((s) => s.getActiveTask);
   const reconnectToTask = useChatStore((s) => s.reconnectToTask);
   const isStreaming = isStreamingInitiated || hasTextChunks;
+  // Track whether we've already connected to this activeStream to avoid duplicate connections
+  const connectedActiveStreamRef = useRef<string | null>(null);
 
   // Callback to store active task info for SSE reconnection
   function handleActiveTaskStarted(taskInfo: {
@@ -88,25 +96,131 @@ export function useChatContainer({
 
   useEffect(
     function handleSessionChange() {
-      if (sessionId === previousSessionIdRef.current) return;
+      const isSessionChange = sessionId !== previousSessionIdRef.current;
 
-      const prevSession = previousSessionIdRef.current;
-      if (prevSession) {
-        stopStreaming(prevSession);
+      console.info("[SSE-RECONNECT] handleSessionChange effect running:", {
+        sessionId,
+        previousSessionId: previousSessionIdRef.current,
+        isSessionChange,
+        hasActiveStream: !!activeStream,
+        activeStreamTaskId: activeStream?.taskId,
+        connectedActiveStream: connectedActiveStreamRef.current,
+      });
+
+      // Handle session change - reset state
+      if (isSessionChange) {
+        console.info("[SSE-RECONNECT] Session changed, resetting state");
+        const prevSession = previousSessionIdRef.current;
+        if (prevSession) {
+          stopStreaming(prevSession);
+        }
+        previousSessionIdRef.current = sessionId;
+        connectedActiveStreamRef.current = null; // Reset connected stream tracker
+        setMessages([]);
+        setStreamingChunks([]);
+        streamingChunksRef.current = [];
+        setHasTextChunks(false);
+        setIsStreamingInitiated(false);
+        hasResponseRef.current = false;
       }
-      previousSessionIdRef.current = sessionId;
-      setMessages([]);
-      setStreamingChunks([]);
-      streamingChunksRef.current = [];
-      setHasTextChunks(false);
-      setIsStreamingInitiated(false);
-      hasResponseRef.current = false;
 
-      if (!sessionId) return;
+      if (!sessionId) {
+        console.info("[SSE-RECONNECT] No sessionId, skipping reconnection check");
+        return;
+      }
 
-      // Check if there's an active task for this session that we should reconnect to
+      // Priority 1: Check if server told us there's an active stream (most authoritative)
+      // Also handles the case where activeStream arrives after initial session load
+      if (activeStream) {
+        // Skip if we've already connected to this exact stream
+        // Check and set immediately to prevent race conditions from effect re-runs
+        const streamKey = `${sessionId}:${activeStream.taskId}`;
+        if (connectedActiveStreamRef.current === streamKey) {
+          console.info(
+            "[SSE-RECONNECT] Already connected to this stream, skipping:",
+            { streamKey },
+          );
+          return;
+        }
+
+        // Also skip if there's already an active stream for this session in the store
+        // (handles case where effect re-runs due to activeStreams state change)
+        const existingStream = activeStreams.get(sessionId);
+        if (existingStream && existingStream.status === "streaming") {
+          console.info(
+            "[SSE-RECONNECT] Active stream already exists in store, skipping:",
+            { sessionId, status: existingStream.status },
+          );
+          connectedActiveStreamRef.current = streamKey;
+          return;
+        }
+
+        // Set immediately after check to prevent race conditions
+        connectedActiveStreamRef.current = streamKey;
+
+        console.info(
+          "[SSE-RECONNECT] Server reports active stream, initiating reconnection:",
+          {
+            sessionId,
+            taskId: activeStream.taskId,
+            lastMessageId: activeStream.lastMessageId,
+            streamKey,
+          },
+        );
+
+        const dispatcher = createStreamEventDispatcher({
+          setHasTextChunks,
+          setStreamingChunks,
+          streamingChunksRef,
+          hasResponseRef,
+          setMessages,
+          setIsRegionBlockedModalOpen,
+          sessionId,
+          setIsStreamingInitiated,
+          onOperationStarted,
+          onActiveTaskStarted: handleActiveTaskStarted,
+        });
+
+        setIsStreamingInitiated(true);
+        // Store this as the active task for future reconnects
+        setActiveTask(sessionId, {
+          taskId: activeStream.taskId,
+          operationId: activeStream.taskId,
+          toolName: "chat",
+          lastMessageId: activeStream.lastMessageId,
+        });
+        // Reconnect to the task stream
+        console.info("[SSE-RECONNECT] Calling reconnectToTask...");
+        reconnectToTask(
+          sessionId,
+          activeStream.taskId,
+          activeStream.lastMessageId,
+          dispatcher,
+        );
+        return;
+      }
+
+      // Only check localStorage/in-memory on session change, not on every render
+      if (!isSessionChange) {
+        console.info(
+          "[SSE-RECONNECT] No active stream and not a session change, skipping fallbacks",
+        );
+        return;
+      }
+
+      // Priority 2: Check localStorage for active task (client-side state)
+      console.info("[SSE-RECONNECT] Checking localStorage for active task...");
       const activeTask = getActiveTask(sessionId);
       if (activeTask) {
+        console.info(
+          "[SSE-RECONNECT] Found active task in localStorage, attempting reconnect:",
+          {
+            sessionId,
+            taskId: activeTask.taskId,
+            lastMessageId: activeTask.lastMessageId,
+          },
+        );
+
         const dispatcher = createStreamEventDispatcher({
           setHasTextChunks,
           setStreamingChunks,
@@ -122,6 +236,7 @@ export function useChatContainer({
 
         setIsStreamingInitiated(true);
         // Reconnect to the task stream
+        console.info("[SSE-RECONNECT] Calling reconnectToTask from localStorage...");
         reconnectToTask(
           sessionId,
           activeTask.taskId,
@@ -129,11 +244,20 @@ export function useChatContainer({
           dispatcher,
         );
         return;
+      } else {
+        console.info("[SSE-RECONNECT] No active task in localStorage");
       }
 
-      // Otherwise check for an in-memory active stream
-      const activeStream = activeStreams.get(sessionId);
-      if (!activeStream || activeStream.status !== "streaming") return;
+      // Priority 3: Check for an in-memory active stream (same-tab scenario)
+      console.info("[SSE-RECONNECT] Checking in-memory active streams...");
+      const inMemoryStream = activeStreams.get(sessionId);
+      if (!inMemoryStream || inMemoryStream.status !== "streaming") {
+        console.info("[SSE-RECONNECT] No in-memory active stream found:", {
+          hasStream: !!inMemoryStream,
+          status: inMemoryStream?.status,
+        });
+        return;
+      }
 
       const dispatcher = createStreamEventDispatcher({
         setHasTextChunks,
@@ -160,6 +284,8 @@ export function useChatContainer({
       onOperationStarted,
       getActiveTask,
       reconnectToTask,
+      activeStream,
+      setActiveTask,
     ],
   );
 

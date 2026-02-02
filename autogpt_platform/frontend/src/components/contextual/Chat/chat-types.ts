@@ -4,6 +4,7 @@ export type StreamStatus = "idle" | "streaming" | "completed" | "error";
 
 export interface StreamChunk {
   type:
+    | "stream_start"
     | "text_chunk"
     | "text_ended"
     | "tool_call"
@@ -15,6 +16,7 @@ export interface StreamChunk {
     | "error"
     | "usage"
     | "stream_end";
+  taskId?: string; // Task ID for SSE reconnection
   timestamp?: string;
   content?: string;
   message?: string;
@@ -41,7 +43,7 @@ export interface StreamChunk {
 }
 
 export type VercelStreamChunk =
-  | { type: "start"; messageId: string }
+  | { type: "start"; messageId: string; taskId?: string }
   | { type: "finish" }
   | { type: "text-start"; id: string }
   | { type: "text-delta"; id: string; delta: string }

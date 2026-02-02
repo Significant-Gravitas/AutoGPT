@@ -1079,7 +1079,7 @@
       "get": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Get Session",
-        "description": "Retrieve the details of a specific chat session.\n\nLooks up a chat session by ID for the given user (if authenticated) and returns all session data including messages.\n\nArgs:\n    session_id: The unique identifier for the desired chat session.\n    user_id: The optional authenticated user ID, or None for anonymous access.\n\nReturns:\n    SessionDetailResponse: Details for the requested session, or None if not found.",
+        "description": "Retrieve the details of a specific chat session.\n\nLooks up a chat session by ID for the given user (if authenticated) and returns all session data including messages.\nIf there's an active stream for this session, returns the task_id for reconnection.\n\nArgs:\n    session_id: The unique identifier for the desired chat session.\n    user_id: The optional authenticated user ID, or None for anonymous access.\n\nReturns:\n    SessionDetailResponse: Details for the requested session, including active_stream info if applicable.",
         "operationId": "getV2GetSession",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -1214,7 +1214,7 @@
       "post": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Stream Chat Post",
-        "description": "Stream chat responses for a session (POST with context support).\n\nStreams the AI/completion responses in real time over Server-Sent Events (SSE), including:\n  - Text fragments as they are generated\n  - Tool call UI elements (if invoked)\n  - Tool execution results\n\nArgs:\n    session_id: The chat session identifier to associate with the streamed messages.\n    request: Request body containing message, is_user_message, and optional context.\n    user_id: Optional authenticated user ID.\nReturns:\n    StreamingResponse: SSE-formatted response chunks.",
+        "description": "Stream chat responses for a session (POST with context support).\n\nStreams the AI/completion responses in real time over Server-Sent Events (SSE), including:\n  - Text fragments as they are generated\n  - Tool call UI elements (if invoked)\n  - Tool execution results\n\nThe AI generation runs in a background task that continues even if the client disconnects.\nAll chunks are written to Redis for reconnection support. If the client disconnects,\nthey can reconnect using GET /tasks/{task_id}/stream to resume from where they left off.\n\nArgs:\n    session_id: The chat session identifier to associate with the streamed messages.\n    request: Request body containing message, is_user_message, and optional context.\n    user_id: Optional authenticated user ID.\nReturns:\n    StreamingResponse: SSE-formatted response chunks. First chunk is a \"start\" event\n    containing the task_id for reconnection.",
         "operationId": "postV2StreamChatPost",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -6313,6 +6313,16 @@
         "title": "AccuracyTrendsResponse",
         "description": "Response model for accuracy trends and alerts."
       },
+      "ActiveStreamInfo": {
+        "properties": {
+          "task_id": { "type": "string", "title": "Task Id" },
+          "last_message_id": { "type": "string", "title": "Last Message Id" }
+        },
+        "type": "object",
+        "required": ["task_id", "last_message_id"],
+        "title": "ActiveStreamInfo",
+        "description": "Information about an active stream for reconnection."
+      },
       "AddUserCreditsResponse": {
         "properties": {
           "new_balance": { "type": "integer", "title": "New Balance" },
@@ -9808,6 +9818,12 @@
             "items": { "additionalProperties": true, "type": "object" },
             "type": "array",
             "title": "Messages"
+          },
+          "active_stream": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/ActiveStreamInfo" },
+              { "type": "null" }
+            ]
           }
         },
         "type": "object",
