@@ -57,11 +57,10 @@ export default function Page() {
   function handleMessageSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!input.trim() || !sessionId) return;
-    
+
     sendMessage({ text: input });
     setInput("");
   }
-
 
   return (
     <div className="flex h-full">
