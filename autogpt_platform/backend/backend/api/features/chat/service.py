@@ -1859,6 +1859,11 @@ async def _execute_long_running_tool(
             tool_call_id=tool_call_id,
             result=error_response.model_dump_json(),
         )
+        # Generate LLM continuation so user sees explanation even for errors
+        try:
+            await _generate_llm_continuation(session_id=session_id, user_id=user_id)
+        except Exception as llm_err:
+            logger.warning(f"Failed to generate LLM continuation for error: {llm_err}")
     finally:
         await _mark_operation_completed(tool_call_id)
 

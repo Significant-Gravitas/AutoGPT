@@ -117,13 +117,16 @@ def _get_client() -> httpx.AsyncClient:
 
 
 async def decompose_goal_external(
-    description: str, context: str = ""
+    description: str,
+    context: str = "",
+    library_agents: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any] | None:
     """Call the external service to decompose a goal.
 
     Args:
         description: Natural language goal description
         context: Additional context (e.g., answers to previous questions)
+        library_agents: User's library agents available for sub-agent composition
 
     Returns:
         Dict with either:
@@ -141,6 +144,8 @@ async def decompose_goal_external(
     if context:
         # The external service uses user_instruction for additional context
         payload["user_instruction"] = context
+    if library_agents:
+        payload["library_agents"] = library_agents
 
     try:
         response = await client.post("/api/decompose-description", json=payload)
@@ -207,6 +212,7 @@ async def decompose_goal_external(
 
 async def generate_agent_external(
     instructions: dict[str, Any],
+    library_agents: list[dict[str, Any]] | None = None,
     operation_id: str | None = None,
     task_id: str | None = None,
 ) -> dict[str, Any] | None:
@@ -214,6 +220,7 @@ async def generate_agent_external(
 
     Args:
         instructions: Structured instructions from decompose_goal
+        library_agents: User's library agents available for sub-agent composition
         operation_id: Operation ID for async processing (enables RabbitMQ callback)
         task_id: Task ID for async processing (enables RabbitMQ callback)
 
@@ -224,6 +231,8 @@ async def generate_agent_external(
 
     # Build request payload
     payload: dict[str, Any] = {"instructions": instructions}
+    if library_agents:
+        payload["library_agents"] = library_agents
     if operation_id and task_id:
         payload["operation_id"] = operation_id
         payload["task_id"] = task_id
@@ -250,8 +259,7 @@ async def generate_agent_external(
             error_msg = data.get("error", "Unknown error from Agent Generator")
             error_type = data.get("error_type", "unknown")
             logger.error(
-                f"Agent Generator generation failed: {error_msg} "
-                f"(type: {error_type})"
+                f"Agent Generator generation failed: {error_msg} (type: {error_type})"
             )
             return _create_error_response(error_msg, error_type)
 
@@ -274,6 +282,7 @@ async def generate_agent_external(
 async def generate_agent_patch_external(
     update_request: str,
     current_agent: dict[str, Any],
+    library_agents: list[dict[str, Any]] | None = None,
     operation_id: str | None = None,
     task_id: str | None = None,
 ) -> dict[str, Any] | None:
@@ -282,6 +291,7 @@ async def generate_agent_patch_external(
     Args:
         update_request: Natural language description of changes
         current_agent: Current agent JSON
+        library_agents: User's library agents available for sub-agent composition
         operation_id: Operation ID for async processing (enables RabbitMQ callback)
         task_id: Task ID for async processing (enables RabbitMQ callback)
 
@@ -295,6 +305,8 @@ async def generate_agent_patch_external(
         "update_request": update_request,
         "current_agent_json": current_agent,
     }
+    if library_agents:
+        payload["library_agents"] = library_agents
     if operation_id and task_id:
         payload["operation_id"] = operation_id
         payload["task_id"] = task_id

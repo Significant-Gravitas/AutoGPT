@@ -30,9 +30,9 @@ export function getErrorMessage(result: unknown): string {
   }
   if (typeof result === "object" && result !== null) {
     const response = result as Record<string, unknown>;
-    if (response.error) return stripInternalReasoning(String(response.error));
     if (response.message)
       return stripInternalReasoning(String(response.message));
+    if (response.error) return stripInternalReasoning(String(response.error));
   }
   return "An error occurred";
 }
@@ -363,8 +363,8 @@ export function formatToolResponse(result: unknown, toolName: string): string {
 
     case "error":
       const errorMsg =
-        (response.error as string) || response.message || "An error occurred";
-      return `Error: ${errorMsg}`;
+        (response.message as string) || response.error || "An error occurred";
+      return stripInternalReasoning(String(errorMsg));
 
     case "no_results":
       const suggestions = (response.suggestions as string[]) || [];

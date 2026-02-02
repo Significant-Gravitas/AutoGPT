@@ -600,6 +600,7 @@ async def hybrid_search(
                 sa.featured,
                 sa.is_available,
                 sa.updated_at,
+                sa."agentGraphId",
                 -- Searchable text for BM25 reranking
                 COALESCE(sa.agent_name, '') || ' ' || COALESCE(sa.sub_heading, '') || ' ' || COALESCE(sa.description, '') as searchable_text,
                 -- Semantic score
@@ -659,6 +660,7 @@ async def hybrid_search(
                 featured,
                 is_available,
                 updated_at,
+                "agentGraphId",
                 searchable_text,
                 semantic_score,
                 lexical_score,
