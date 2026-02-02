@@ -629,6 +629,9 @@ class Scheduler(AppService):
         super().run_service()
 
     def cleanup(self):
+        global _event_loop
+        global _event_loop_thread
+
         if self.scheduler:
             logger.info("⏳ Shutting down scheduler...")
             self.scheduler.shutdown(wait=True)
@@ -643,12 +646,10 @@ class Scheduler(AppService):
         except Exception:
             logger.warning("⚠️ Failed to disconnect Prisma during cleanup", exc_info=True)
 
-        global _event_loop
         if _event_loop:
             logger.info("⏳ Closing event loop...")
             _event_loop.call_soon_threadsafe(_event_loop.stop)
 
-        global _event_loop_thread
         if _event_loop_thread:
             logger.info("⏳ Waiting for event loop thread to finish...")
             _event_loop_thread.join(timeout=SCHEDULER_OPERATION_TIMEOUT_SECONDS)
