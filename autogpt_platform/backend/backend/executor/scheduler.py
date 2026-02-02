@@ -467,6 +467,17 @@ class Scheduler(AppService):
         )
         _event_loop_thread.start()
 
+        # Connect Prisma on the scheduler's event loop so that direct Prisma
+        # calls (e.g. increment_onboarding_runs, cleanup_expired_oauth_tokens)
+        # work correctly.  The connection must live on _event_loop because
+        # httpx's AsyncClient is event-loop-bound; connecting on Uvicorn's
+        # loop would not help queries dispatched via run_async().
+        from backend.data import db
+
+        logger.info("⏳ Connecting Prisma on scheduler event loop...")
+        run_async(db.connect())
+        logger.info("✅ Prisma connected on scheduler event loop")
+
         db_schema, db_url = _extract_schema_from_url(os.getenv("DIRECT_URL"))
         # Configure executors to limit concurrency without skipping jobs
         from apscheduler.executors.pool import ThreadPoolExecutor
@@ -621,6 +632,16 @@ class Scheduler(AppService):
         if self.scheduler:
             logger.info("⏳ Shutting down scheduler...")
             self.scheduler.shutdown(wait=True)
+
+        # Disconnect Prisma before stopping the event loop
+        from backend.data import db
+
+        try:
+            if _event_loop and db.is_connected():
+                logger.info("⏳ Disconnecting Prisma...")
+                run_async(db.disconnect())
+        except Exception:
+            logger.warning("⚠️ Failed to disconnect Prisma during cleanup", exc_info=True)
 
         global _event_loop
         if _event_loop:
