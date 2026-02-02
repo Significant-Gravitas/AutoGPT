@@ -140,14 +140,29 @@ async def execute_block_test(block: Block):
             setattr(block, mock_name, mock_obj)
 
     # Populate credentials argument(s)
+    # Generate IDs for execution context
+    graph_id = str(uuid.uuid4())
+    node_id = str(uuid.uuid4())
+    graph_exec_id = str(uuid.uuid4())
+    node_exec_id = str(uuid.uuid4())
+    user_id = str(uuid.uuid4())
+    graph_version = 1  # Default version for tests
+
     extra_exec_kwargs: dict = {
-        "graph_id": str(uuid.uuid4()),
-        "node_id": str(uuid.uuid4()),
-        "graph_exec_id": str(uuid.uuid4()),
-        "node_exec_id": str(uuid.uuid4()),
-        "user_id": str(uuid.uuid4()),
-        "graph_version": 1,  # Default version for tests
-        "execution_context": ExecutionContext(),
+        "graph_id": graph_id,
+        "node_id": node_id,
+        "graph_exec_id": graph_exec_id,
+        "node_exec_id": node_exec_id,
+        "user_id": user_id,
+        "graph_version": graph_version,
+        "execution_context": ExecutionContext(
+            user_id=user_id,
+            graph_id=graph_id,
+            graph_exec_id=graph_exec_id,
+            graph_version=graph_version,
+            node_id=node_id,
+            node_exec_id=node_exec_id,
+        ),
     }
     input_model = cast(type[BlockSchema], block.input_schema)
 

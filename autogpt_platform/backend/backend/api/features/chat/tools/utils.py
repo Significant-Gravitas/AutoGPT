@@ -8,7 +8,7 @@ from backend.api.features.library import model as library_model
 from backend.api.features.store import db as store_db
 from backend.data import graph as graph_db
 from backend.data.graph import GraphModel
-from backend.data.model import CredentialsFieldInfo, CredentialsMetaInput
+from backend.data.model import Credentials, CredentialsFieldInfo, CredentialsMetaInput
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util.exceptions import NotFoundError
 
@@ -266,13 +266,14 @@ async def match_user_credentials_to_graph(
         credential_requirements,
         _node_fields,
     ) in aggregated_creds.items():
-        # Find first matching credential by provider and type
+        # Find first matching credential by provider, type, and scopes
         matching_cred = next(
             (
                 cred
                 for cred in available_creds
                 if cred.provider in credential_requirements.provider
                 and cred.type in credential_requirements.supported_types
+                and _credential_has_required_scopes(cred, credential_requirements)
             ),
             None,
         )
@@ -296,10 +297,17 @@ async def match_user_credentials_to_graph(
                     f"{credential_field_name} (validation failed: {e})"
                 )
         else:
+            # Build a helpful error message including scope requirements
+            error_parts = [
+                f"provider in {list(credential_requirements.provider)}",
+                f"type in {list(credential_requirements.supported_types)}",
+            ]
+            if credential_requirements.required_scopes:
+                error_parts.append(
+                    f"scopes including {list(credential_requirements.required_scopes)}"
+                )
             missing_creds.append(
-                f"{credential_field_name} "
-                f"(requires provider in {list(credential_requirements.provider)}, "
-                f"type in {list(credential_requirements.supported_types)})"
+                f"{credential_field_name} (requires {', '.join(error_parts)})"
             )
 
     logger.info(
@@ -307,6 +315,28 @@ async def match_user_credentials_to_graph(
     )
 
     return graph_credentials_inputs, missing_creds
+
+
+def _credential_has_required_scopes(
+    credential: Credentials,
+    requirements: CredentialsFieldInfo,
+) -> bool:
+    """
+    Check if a credential has all the scopes required by the block.
+
+    For OAuth2 credentials, verifies that the credential's scopes are a superset
+    of the required scopes. For other credential types, returns True (no scope check).
+    """
+    # Only OAuth2 credentials have scopes to check
+    if credential.type != "oauth2":
+        return True
+
+    # If no scopes are required, any credential matches
+    if not requirements.required_scopes:
+        return True
+
+    # Check that credential scopes are a superset of required scopes
+    return set(credential.scopes).issuperset(requirements.required_scopes)
 
 
 async def check_user_has_required_credentials(
