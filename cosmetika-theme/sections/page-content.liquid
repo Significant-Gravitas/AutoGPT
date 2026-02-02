@@ -1,0 +1,20 @@
+{% comment %}
+  COSMETIKA — Generic Page Section
+{% endcomment %}
+
+<section class="cosmetika-page" data-section-id="{{ section.id }}">
+  <div class="cosmetika-page__container">
+    <h1 class="cosmetika-page__title" data-animate="fade-up">{{ page.title }}</h1>
+    <div class="cosmetika-page__content rte" data-animate="fade-up" data-delay="0.2">
+      {{ page.content }}
+    </div>
+  </div>
+</section>
+
+{% schema %}
+{
+  "name": "Page Content",
+  "tag": "section",
+  "class": "cosmetika-section cosmetika-section--page"
+}
+{% endschema %}

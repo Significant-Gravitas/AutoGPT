@@ -1,0 +1,68 @@
+{
+  "general": {
+    "search": "Search",
+    "close": "Close",
+    "menu": "Menu",
+    "cart": "Cart",
+    "account": "Account"
+  },
+  "products": {
+    "add_to_cart": "Add to Bag",
+    "sold_out": "Sold Out",
+    "choose_options": "Choose Options",
+    "from_price": "From {{ price }}",
+    "sale_badge": "Sale",
+    "quantity": "Quantity",
+    "vendor": "Vendor",
+    "share": "Share",
+    "reviews": "{{ count }} reviews"
+  },
+  "collections": {
+    "sort_by": "Sort by",
+    "product_count": "{{ count }} products",
+    "view_all": "View All"
+  },
+  "cart": {
+    "title": "Your Bag",
+    "empty": "Your bag is empty.",
+    "continue_shopping": "Continue Shopping",
+    "subtotal": "Subtotal",
+    "checkout": "Checkout",
+    "note": "Order Note",
+    "note_placeholder": "Special instructions...",
+    "shipping_disclaimer": "Shipping and taxes calculated at checkout.",
+    "remove": "Remove",
+    "product": "Product",
+    "price": "Price",
+    "quantity": "Quantity",
+    "total": "Total"
+  },
+  "newsletter": {
+    "heading": "Get 15% Off",
+    "text": "Sign up for exclusive access to new launches, offers, and beauty tips.",
+    "placeholder": "Enter your email",
+    "submit": "Subscribe",
+    "consent": "By signing up, you agree to receive marketing emails. Unsubscribe anytime.",
+    "success": "Thanks for subscribing!"
+  },
+  "blog": {
+    "read_more": "Read More",
+    "view_all": "View All Articles",
+    "back_to_blog": "Back to {{ title }}",
+    "comments": "Comments",
+    "leave_comment": "Leave a comment",
+    "post_comment": "Post Comment"
+  },
+  "accessibility": {
+    "skip_to_content": "Skip to content",
+    "previous": "Previous",
+    "next": "Next",
+    "close": "Close",
+    "star_rating": "{{ rating }} out of 5 stars"
+  },
+  "404": {
+    "title": "404",
+    "text": "The page you're looking for doesn't exist.",
+    "back_home": "Back to Home"
+  }
+}

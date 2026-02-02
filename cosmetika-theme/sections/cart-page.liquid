@@ -1,0 +1,121 @@
+{% comment %}
+  ============================================================
+  COSMETIKA — Cart Page
+  ============================================================
+  Clean cart with line items, quantity adjust, and checkout CTA.
+  ============================================================
+{% endcomment %}
+
+<section class="cosmetika-cart" data-section-id="{{ section.id }}">
+  <div class="cosmetika-cart__container">
+
+    <h1 class="cosmetika-cart__title" data-animate="fade-up">Your Bag</h1>
+
+    {% if cart.item_count > 0 %}
+      <form action="/cart" method="post" class="cosmetika-cart__form">
+        <table class="cosmetika-cart__table">
+          <thead>
+            <tr>
+              <th class="cosmetika-cart__th" colspan="2">Product</th>
+              <th class="cosmetika-cart__th">Price</th>
+              <th class="cosmetika-cart__th">Quantity</th>
+              <th class="cosmetika-cart__th cosmetika-cart__th--right">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in cart.items %}
+              <tr class="cosmetika-cart__item" data-animate="fade-up" data-delay="{{ forloop.index | times: 0.08 }}">
+                <td class="cosmetika-cart__item-image">
+                  <a href="{{ item.url }}">
+                    {% if item.image != blank %}
+                      <img
+                        src="{{ item.image | image_url: width: 120 }}"
+                        alt="{{ item.title | escape }}"
+                        loading="lazy"
+                        width="80"
+                        height="80"
+                      >
+                    {% endif %}
+                  </a>
+                </td>
+                <td class="cosmetika-cart__item-details">
+                  <a href="{{ item.url }}" class="cosmetika-cart__item-title">{{ item.product.title }}</a>
+                  {% if item.variant.title != 'Default Title' %}
+                    <p class="cosmetika-cart__item-variant">{{ item.variant.title }}</p>
+                  {% endif %}
+                  {% if item.selling_plan_allocation %}
+                    <p class="cosmetika-cart__item-variant">{{ item.selling_plan_allocation.selling_plan.name }}</p>
+                  {% endif %}
+                </td>
+                <td class="cosmetika-cart__item-price">
+                  {{ item.original_price | money }}
+                </td>
+                <td class="cosmetika-cart__item-quantity">
+                  <div class="cosmetika-product__quantity-selector">
+                    <button
+                      type="button"
+                      class="cosmetika-product__qty-btn"
+                      aria-label="Decrease"
+                      onclick="this.parentElement.querySelector('input').stepDown(); this.closest('form').submit();"
+                    >−</button>
+                    <input
+                      type="number"
+                      name="updates[]"
+                      value="{{ item.quantity }}"
+                      min="0"
+                      class="cosmetika-product__qty-input"
+                      aria-label="Quantity for {{ item.title }}"
+                    >
+                    <button
+                      type="button"
+                      class="cosmetika-product__qty-btn"
+                      aria-label="Increase"
+                      onclick="this.parentElement.querySelector('input').stepUp(); this.closest('form').submit();"
+                    >+</button>
+                  </div>
+                  <a href="/cart/change?id={{ item.key }}&quantity=0" class="cosmetika-cart__remove">Remove</a>
+                </td>
+                <td class="cosmetika-cart__item-total cosmetika-cart__th--right">
+                  {{ item.final_line_price | money }}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+
+        <div class="cosmetika-cart__footer">
+          <div class="cosmetika-cart__note">
+            <label for="CartNote" class="cosmetika-cart__note-label">Order Note</label>
+            <textarea id="CartNote" name="note" class="cosmetika-cart__note-input" rows="3" placeholder="Special instructions...">{{ cart.note }}</textarea>
+          </div>
+
+          <div class="cosmetika-cart__summary">
+            <div class="cosmetika-cart__subtotal">
+              <span>Subtotal</span>
+              <span class="cosmetika-cart__subtotal-price">{{ cart.total_price | money }}</span>
+            </div>
+            <p class="cosmetika-cart__disclaimer">Shipping and taxes calculated at checkout.</p>
+            <button type="submit" name="checkout" class="cosmetika-cart__checkout button button--primary">
+              Checkout
+            </button>
+          </div>
+        </div>
+      </form>
+
+    {% else %}
+      <div class="cosmetika-cart__empty" data-animate="fade-up">
+        <p class="cosmetika-cart__empty-text">Your bag is empty.</p>
+        <a href="/collections/all" class="button button--primary">Continue Shopping</a>
+      </div>
+    {% endif %}
+
+  </div>
+</section>
+
+{% schema %}
+{
+  "name": "Cart Page",
+  "tag": "section",
+  "class": "cosmetika-section cosmetika-section--cart"
+}
+{% endschema %}

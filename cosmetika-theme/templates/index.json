@@ -5,27 +5,143 @@
       "settings": {
         "subtitle": "The New Standard",
         "heading": "Beauty, Redefined.",
-        "description": "<p>Curated luxury beauty from the world's most sought-after brands.</p>",
-        "cta_text": "Shop Now",
+        "description": "<p>We blend artistry with science. Our curated marketplace brings together the world's most sought-after beauty brands — studied, structured, and refined for modern skin.</p>",
+        "cta_text": "Shop All",
         "cta_link": "/collections/all",
         "overlay_opacity": 30
+      }
+    },
+    "trending-carousel": {
+      "type": "featured-carousel",
+      "settings": {
+        "heading": "Trending Now",
+        "subheading": "Our most-loved beauty essentials",
+        "products_to_show": 6,
+        "show_vendor": true,
+        "show_reviews": true,
+        "show_quick_add": true
+      }
+    },
+    "brand-story": {
+      "type": "brand-story",
+      "settings": {
+        "subtitle": "Our Mission",
+        "heading": "Beauty With Purpose",
+        "text": "<p>Every product in the COSMETIKA marketplace is chosen for efficacy, elegance, and ethics. We believe luxury beauty should be accessible, transparent, and rooted in real results.</p>",
+        "cta_text": "Learn More",
+        "cta_link": "/pages/about"
+      }
+    },
+    "shop-kits": {
+      "type": "featured-carousel",
+      "settings": {
+        "heading": "Shop Kits",
+        "subheading": "Curated bundles for every routine",
+        "products_to_show": 4,
+        "show_vendor": false,
+        "show_reviews": true,
+        "show_quick_add": true
       }
     },
     "featured-products": {
       "type": "product-grid",
       "settings": {
         "heading": "Best Sellers",
-        "subheading": "Our most-loved beauty essentials",
+        "subheading": "Proven favorites from our community",
         "products_to_show": 8,
         "columns": "4",
         "show_vendor": true,
         "show_quick_add": true,
         "show_view_all": true
       }
+    },
+    "collections": {
+      "type": "collections-grid",
+      "settings": {
+        "heading": "Shop by Category"
+      },
+      "blocks": {
+        "col-1": {
+          "type": "collection_card",
+          "settings": {
+            "title": "Skincare",
+            "description": "Bioactive serums, moisturizers, and treatments for radiant, healthy skin."
+          }
+        },
+        "col-2": {
+          "type": "collection_card",
+          "settings": {
+            "title": "Makeup",
+            "description": "Clean, high-performance color cosmetics for every skin tone."
+          }
+        },
+        "col-3": {
+          "type": "collection_card",
+          "settings": {
+            "title": "Fragrance",
+            "description": "Rare small-batch perfumes crafted from the finest botanical essences."
+          }
+        },
+        "col-4": {
+          "type": "collection_card",
+          "settings": {
+            "title": "Wellness",
+            "description": "Beauty from within — supplements, tools, and rituals for total wellness."
+          }
+        }
+      },
+      "block_order": ["col-1", "col-2", "col-3", "col-4"]
+    },
+    "ingredients": {
+      "type": "ingredients-showcase",
+      "settings": {
+        "heading": "Key Ingredients",
+        "subheading": "Nature's most potent beauty actives, ethically sourced"
+      },
+      "blocks": {
+        "ing-1": { "type": "ingredient", "settings": { "name": "Hyaluronic Acid", "description": "Deep hydration and plumping for a youthful, dewy complexion." } },
+        "ing-2": { "type": "ingredient", "settings": { "name": "Niacinamide", "description": "Minimizes pores, brightens skin tone, and strengthens the barrier." } },
+        "ing-3": { "type": "ingredient", "settings": { "name": "Retinol", "description": "Accelerates cell turnover for smoother, firmer skin." } },
+        "ing-4": { "type": "ingredient", "settings": { "name": "Vitamin C", "description": "Powerful antioxidant that brightens and protects against free radicals." } },
+        "ing-5": { "type": "ingredient", "settings": { "name": "Squalane", "description": "Lightweight moisture that mimics skin's natural oils." } },
+        "ing-6": { "type": "ingredient", "settings": { "name": "Bakuchiol", "description": "Plant-based retinol alternative, gentle yet effective." } },
+        "ing-7": { "type": "ingredient", "settings": { "name": "Peptides", "description": "Signal skin to produce more collagen for anti-aging benefits." } },
+        "ing-8": { "type": "ingredient", "settings": { "name": "Centella Asiatica", "description": "Calms inflammation and accelerates wound healing." } },
+        "ing-9": { "type": "ingredient", "settings": { "name": "Rosehip Oil", "description": "Rich in vitamins A and C for regeneration and glow." } }
+      },
+      "block_order": ["ing-1", "ing-2", "ing-3", "ing-4", "ing-5", "ing-6", "ing-7", "ing-8", "ing-9"]
+    },
+    "journal": {
+      "type": "journal",
+      "settings": {
+        "heading": "Journal",
+        "posts_to_show": 3,
+        "columns": "3",
+        "show_view_all": true
+      }
+    },
+    "newsletter-popup": {
+      "type": "newsletter-popup",
+      "settings": {
+        "enabled": true,
+        "delay": 5,
+        "heading": "Get 15% Off",
+        "text": "Sign up for exclusive access to new launches, offers, and beauty tips.",
+        "placeholder": "Enter your email",
+        "button_text": "Subscribe",
+        "consent_text": "By signing up, you agree to receive marketing emails. Unsubscribe anytime."
+      }
     }
   },
   "order": [
     "hero",
-    "featured-products"
+    "trending-carousel",
+    "brand-story",
+    "shop-kits",
+    "featured-products",
+    "collections",
+    "ingredients",
+    "journal",
+    "newsletter-popup"
   ]
 }

@@ -5,21 +5,24 @@
    Notion Brand Config (hex codes, font families).
    ============================================================ */
 
-/* --- Design Tokens (UPDATE FROM NOTION) --- */
+/* --- Design Tokens --- */
+/* Derived from fractalforest.co reference palette.
+   TOMORROW: override with Notion Brand Config values. */
 :root {
-  /* Colors — REPLACE with brand hex codes */
+  /* Colors — earthy/warm base inspired by reference */
   --color-primary: #1a1a1a;
-  --color-secondary: #8b6f47;
-  --color-accent: #c9a96e;
-  --color-background: #faf9f7;
+  --color-secondary: #0E7A82;
+  --color-accent: #0E7A82;
+  --color-background: #E9E6DE;
   --color-surface: #ffffff;
   --color-text: #1a1a1a;
-  --color-text-muted: #6b6b6b;
-  --color-border: #e5e2de;
+  --color-text-muted: #676986;
+  --color-border: #E5E5EB;
   --color-error: #c0392b;
   --color-sale: #c0392b;
 
-  /* Typography — REPLACE with brand fonts */
+  /* Typography — REPLACE with Notion brand fonts.
+     Defaults: editorial serif heading + clean sans body */
   --font-heading: 'Playfair Display', Georgia, serif;
   --font-body: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   --font-weight-light: 300;
@@ -670,6 +673,1126 @@ h3 { font-size: clamp(1.25rem, 2.5vw, 1.75rem); }
 .cosmetika-footer__copyright {
   font-size: 0.75rem;
   opacity: 0.5;
+}
+
+/* --- Mission / Brand Story --- */
+.cosmetika-mission__container {
+  max-width: var(--container-max);
+  margin: 0 auto;
+  padding: 0 var(--container-padding);
+}
+
+.cosmetika-mission__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-xl);
+  align-items: center;
+}
+
+@media (max-width: 768px) {
+  .cosmetika-mission__grid {
+    grid-template-columns: 1fr;
+    gap: var(--space-lg);
+  }
+}
+
+.cosmetika-mission__media img {
+  width: 100%;
+  height: auto;
+  border-radius: var(--radius-md);
+}
+
+.cosmetika-mission__subtitle {
+  font-size: 0.75rem;
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--color-accent);
+  margin-bottom: var(--space-sm);
+}
+
+.cosmetika-mission__heading {
+  margin-bottom: var(--space-lg);
+}
+
+.cosmetika-mission__text {
+  color: var(--color-text-muted);
+  line-height: 1.8;
+  margin-bottom: var(--space-lg);
+}
+
+.cosmetika-mission__text p + p {
+  margin-top: var(--space-md);
+}
+
+/* --- Collections Grid --- */
+.cosmetika-collections-grid__container {
+  max-width: var(--container-max);
+  margin: 0 auto;
+  padding: 0 var(--container-padding);
+}
+
+.cosmetika-collections-grid__header {
+  text-align: center;
+  margin-bottom: var(--space-xl);
+}
+
+.cosmetika-collections-grid__subheading {
+  color: var(--color-text-muted);
+  margin-top: var(--space-sm);
+}
+
+.cosmetika-collection-card__link {
+  display: block;
+  text-align: center;
+}
+
+.cosmetika-collection-card__media {
+  position: relative;
+  overflow: hidden;
+  aspect-ratio: 1 / 1;
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-md);
+  background: var(--color-border);
+}
+
+.cosmetika-collection-card__image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform var(--duration-slow) var(--ease-out);
+}
+
+.cosmetika-collection-card:hover .cosmetika-collection-card__image {
+  transform: scale(1.05);
+}
+
+.cosmetika-collection-card__title {
+  font-family: var(--font-heading);
+  font-size: 1.125rem;
+  font-weight: var(--font-weight-semibold);
+  margin-bottom: var(--space-xs);
+}
+
+.cosmetika-collection-card__description {
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  line-height: 1.6;
+  margin-bottom: var(--space-sm);
+}
+
+.cosmetika-collection-card__cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.75rem;
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-primary);
+  transition: gap var(--duration-base) var(--ease-out);
+}
+
+.cosmetika-collection-card:hover .cosmetika-collection-card__cta {
+  gap: 8px;
+}
+
+/* --- Ingredients Showcase --- */
+.cosmetika-ingredients__container {
+  max-width: var(--container-max);
+  margin: 0 auto;
+  padding: 0 var(--container-padding);
+}
+
+.cosmetika-ingredients__header {
+  text-align: center;
+  margin-bottom: var(--space-xl);
+}
+
+.cosmetika-ingredients__subheading {
+  color: var(--color-text-muted);
+  margin-top: var(--space-sm);
+}
+
+.cosmetika-ingredients__grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-lg);
+}
+
+@media (max-width: 768px) {
+  .cosmetika-ingredients__grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 480px) {
+  .cosmetika-ingredients__grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.cosmetika-ingredient-card {
+  text-align: center;
+}
+
+.cosmetika-ingredient-card__media {
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
+  border-radius: var(--radius-full);
+  margin: 0 auto var(--space-md);
+  max-width: 160px;
+  background: var(--color-border);
+}
+
+.cosmetika-ingredient-card__image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform var(--duration-slow) var(--ease-out);
+}
+
+.cosmetika-ingredient-card:hover .cosmetika-ingredient-card__image {
+  transform: scale(1.1);
+}
+
+.cosmetika-ingredient-card__name {
+  font-family: var(--font-heading);
+  font-size: 1rem;
+  font-weight: var(--font-weight-semibold);
+  margin-bottom: var(--space-xs);
+}
+
+.cosmetika-ingredient-card__latin {
+  font-size: 0.75rem;
+  font-style: italic;
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-xs);
+}
+
+.cosmetika-ingredient-card__description {
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  line-height: 1.5;
+}
+
+/* --- Carousel --- */
+.cosmetika-carousel__container {
+  max-width: var(--container-max);
+  margin: 0 auto;
+  padding: 0 var(--container-padding);
+}
+
+.cosmetika-carousel__header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  margin-bottom: var(--space-xl);
+}
+
+.cosmetika-carousel__subheading {
+  color: var(--color-text-muted);
+  margin-top: var(--space-xs);
+}
+
+.cosmetika-carousel__nav-arrows {
+  display: flex;
+  gap: var(--space-sm);
+}
+
+.cosmetika-carousel__arrow {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  transition: all var(--duration-base) var(--ease-out);
+}
+
+.cosmetika-carousel__arrow:hover {
+  background: var(--color-primary);
+  color: var(--color-surface);
+  border-color: var(--color-primary);
+}
+
+.cosmetika-carousel__track {
+  display: flex;
+  gap: var(--space-lg);
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  cursor: grab;
+  padding-bottom: var(--space-sm);
+}
+
+.cosmetika-carousel__track::-webkit-scrollbar {
+  display: none;
+}
+
+.cosmetika-carousel__slide {
+  flex: 0 0 calc(33.333% - var(--space-lg) * 2 / 3);
+  scroll-snap-align: start;
+  min-width: 260px;
+}
+
+@media (max-width: 1024px) {
+  .cosmetika-carousel__slide {
+    flex: 0 0 calc(50% - var(--space-lg) / 2);
+  }
+}
+
+@media (max-width: 600px) {
+  .cosmetika-carousel__slide {
+    flex: 0 0 85%;
+  }
+}
+
+/* Star rating */
+.cosmetika-product-card__rating {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  margin-bottom: var(--space-xs);
+}
+
+.cosmetika-stars {
+  display: flex;
+  gap: 1px;
+  color: var(--color-accent);
+}
+
+.cosmetika-product-card__review-count {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+/* --- Journal / Blog --- */
+.cosmetika-journal__container {
+  max-width: var(--container-max);
+  margin: 0 auto;
+  padding: 0 var(--container-padding);
+}
+
+.cosmetika-journal__header {
+  text-align: center;
+  margin-bottom: var(--space-xl);
+}
+
+.cosmetika-journal__subheading {
+  color: var(--color-text-muted);
+  margin-top: var(--space-sm);
+}
+
+.cosmetika-journal__footer {
+  text-align: center;
+  margin-top: var(--space-xl);
+}
+
+.cosmetika-journal-card__link {
+  display: block;
+}
+
+.cosmetika-journal-card__media {
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  aspect-ratio: 16 / 10;
+  margin-bottom: var(--space-md);
+  background: var(--color-border);
+}
+
+.cosmetika-journal-card__image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform var(--duration-slow) var(--ease-out);
+}
+
+.cosmetika-journal-card:hover .cosmetika-journal-card__image {
+  transform: scale(1.04);
+}
+
+.cosmetika-journal-card__date {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  display: block;
+  margin-bottom: var(--space-xs);
+}
+
+.cosmetika-journal-card__title {
+  font-family: var(--font-heading);
+  font-size: 1.125rem;
+  font-weight: var(--font-weight-semibold);
+  margin-bottom: var(--space-sm);
+  line-height: 1.3;
+}
+
+.cosmetika-journal-card__excerpt {
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+  line-height: 1.6;
+  margin-bottom: var(--space-sm);
+}
+
+.cosmetika-journal-card__read-more {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.75rem;
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transition: gap var(--duration-base) var(--ease-out);
+}
+
+.cosmetika-journal-card:hover .cosmetika-journal-card__read-more {
+  gap: 8px;
+}
+
+/* --- Newsletter Popup --- */
+.cosmetika-popup {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity var(--duration-base) var(--ease-out),
+              visibility var(--duration-base);
+}
+
+.cosmetika-popup.is-active {
+  opacity: 1;
+  visibility: visible;
+}
+
+.cosmetika-popup__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+}
+
+.cosmetika-popup__content {
+  position: relative;
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  max-width: 480px;
+  width: 90%;
+  overflow: hidden;
+  transform: translateY(20px);
+  transition: transform var(--duration-base) var(--ease-out);
+}
+
+.cosmetika-popup.is-active .cosmetika-popup__content {
+  transform: translateY(0);
+}
+
+.cosmetika-popup__close {
+  position: absolute;
+  top: var(--space-md);
+  right: var(--space-md);
+  z-index: 1;
+  opacity: 0.6;
+  transition: opacity var(--duration-fast);
+}
+
+.cosmetika-popup__close:hover {
+  opacity: 1;
+}
+
+.cosmetika-popup__media {
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+}
+
+.cosmetika-popup__image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.cosmetika-popup__body {
+  padding: var(--space-xl) var(--space-lg);
+  text-align: center;
+}
+
+.cosmetika-popup__heading {
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  margin-bottom: var(--space-sm);
+}
+
+.cosmetika-popup__text {
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+  margin-bottom: var(--space-lg);
+}
+
+.cosmetika-popup__form {
+  display: flex;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-md);
+}
+
+.cosmetika-popup__input {
+  flex: 1;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-body);
+  font-size: 0.875rem;
+  outline: none;
+  transition: border-color var(--duration-fast);
+}
+
+.cosmetika-popup__input:focus {
+  border-color: var(--color-primary);
+}
+
+.cosmetika-popup__submit {
+  white-space: nowrap;
+}
+
+.cosmetika-popup__consent {
+  font-size: 0.6875rem;
+  color: var(--color-text-muted);
+  line-height: 1.4;
+}
+
+/* --- Product Page --- */
+.cosmetika-product__container {
+  max-width: var(--container-max);
+  margin: 0 auto;
+  padding: 0 var(--container-padding);
+}
+
+.cosmetika-product__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-xl);
+  align-items: start;
+}
+
+@media (max-width: 768px) {
+  .cosmetika-product__grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.cosmetika-product__main-image {
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--color-border);
+  margin-bottom: var(--space-md);
+}
+
+.cosmetika-product__main-image img {
+  width: 100%;
+  height: auto;
+}
+
+.cosmetika-product__thumbnails {
+  display: flex;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+}
+
+.cosmetika-product__thumbnail {
+  width: 80px;
+  height: 80px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  border: 2px solid transparent;
+  padding: 0;
+  cursor: pointer;
+  transition: border-color var(--duration-fast);
+}
+
+.cosmetika-product__thumbnail.is-active,
+.cosmetika-product__thumbnail:hover {
+  border-color: var(--color-primary);
+}
+
+.cosmetika-product__thumbnail img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.cosmetika-product__vendor {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: var(--space-xs);
+}
+
+.cosmetika-product__title {
+  font-size: clamp(1.5rem, 3vw, 2.25rem);
+  margin-bottom: var(--space-md);
+}
+
+.cosmetika-product__rating {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-md);
+}
+
+.cosmetika-product__review-count {
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+}
+
+.cosmetika-product__price {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-lg);
+  flex-wrap: wrap;
+}
+
+.cosmetika-product__price--compare {
+  text-decoration: line-through;
+  color: var(--color-text-muted);
+  font-size: 1rem;
+}
+
+.cosmetika-product__price--current {
+  font-size: 1.25rem;
+  font-weight: var(--font-weight-semibold);
+}
+
+.cosmetika-product__price--badge {
+  background: var(--color-sale);
+  color: var(--color-surface);
+  font-size: 0.6875rem;
+  font-weight: var(--font-weight-semibold);
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.cosmetika-product__description {
+  margin-bottom: var(--space-lg);
+  line-height: 1.7;
+  color: var(--color-text-muted);
+}
+
+.cosmetika-product__description p + p {
+  margin-top: var(--space-md);
+}
+
+.cosmetika-product__variants {
+  margin-bottom: var(--space-lg);
+}
+
+.cosmetika-product__option {
+  margin-bottom: var(--space-md);
+}
+
+.cosmetika-product__option-label {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: var(--space-xs);
+}
+
+.cosmetika-product__option-select {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-body);
+  font-size: 0.875rem;
+  background: var(--color-surface);
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%231a1a1a' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 1rem center;
+}
+
+.cosmetika-product__quantity {
+  margin-bottom: var(--space-lg);
+}
+
+.cosmetika-product__quantity-selector {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.cosmetika-product__qty-btn {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.125rem;
+  transition: background var(--duration-fast);
+}
+
+.cosmetika-product__qty-btn:hover {
+  background: var(--color-background);
+}
+
+.cosmetika-product__qty-input {
+  width: 50px;
+  text-align: center;
+  border: none;
+  border-left: 1px solid var(--color-border);
+  border-right: 1px solid var(--color-border);
+  font-family: var(--font-body);
+  font-size: 0.875rem;
+  height: 40px;
+  -moz-appearance: textfield;
+}
+
+.cosmetika-product__qty-input::-webkit-inner-spin-button,
+.cosmetika-product__qty-input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.cosmetika-product__add-to-cart {
+  width: 100%;
+  padding: 1rem;
+  font-size: 0.875rem;
+  margin-bottom: var(--space-lg);
+}
+
+.cosmetika-product__share {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  padding-top: var(--space-lg);
+  border-top: 1px solid var(--color-border);
+}
+
+.cosmetika-product__share-label {
+  font-size: 0.75rem;
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.cosmetika-product__share a {
+  opacity: 0.5;
+  transition: opacity var(--duration-fast);
+}
+
+.cosmetika-product__share a:hover {
+  opacity: 1;
+}
+
+/* --- Collection Page --- */
+.cosmetika-collection__container {
+  max-width: var(--container-max);
+  margin: 0 auto;
+  padding: 0 var(--container-padding);
+}
+
+.cosmetika-collection__header {
+  margin-bottom: var(--space-xl);
+}
+
+.cosmetika-collection__title {
+  margin-bottom: var(--space-sm);
+}
+
+.cosmetika-collection__description {
+  color: var(--color-text-muted);
+  max-width: 600px;
+  margin-bottom: var(--space-lg);
+}
+
+.cosmetika-collection__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: var(--space-md);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.cosmetika-collection__count {
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+}
+
+.cosmetika-collection__sort-select {
+  padding: 0.5rem 2rem 0.5rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-body);
+  font-size: 0.8125rem;
+  background: var(--color-surface);
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%231a1a1a' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.5rem center;
+}
+
+.cosmetika-collection__pagination {
+  text-align: center;
+  margin-top: var(--space-xl);
+  display: flex;
+  justify-content: center;
+  gap: var(--space-sm);
+}
+
+.cosmetika-collection__pagination a,
+.cosmetika-collection__pagination span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: 0.875rem;
+  transition: all var(--duration-fast);
+}
+
+.cosmetika-collection__pagination a:hover {
+  background: var(--color-primary);
+  color: var(--color-surface);
+  border-color: var(--color-primary);
+}
+
+.cosmetika-collection__pagination .current {
+  background: var(--color-primary);
+  color: var(--color-surface);
+  border-color: var(--color-primary);
+}
+
+/* --- Cart Page --- */
+.cosmetika-cart__container {
+  max-width: var(--container-max);
+  margin: 0 auto;
+  padding: 0 var(--container-padding);
+}
+
+.cosmetika-cart__title {
+  margin-bottom: var(--space-xl);
+}
+
+.cosmetika-cart__table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.cosmetika-cart__th {
+  font-size: 0.75rem;
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  padding-bottom: var(--space-md);
+  border-bottom: 1px solid var(--color-border);
+  text-align: left;
+}
+
+.cosmetika-cart__th--right {
+  text-align: right;
+}
+
+.cosmetika-cart__item {
+  border-bottom: 1px solid var(--color-border);
+}
+
+.cosmetika-cart__item td {
+  padding: var(--space-lg) 0;
+  vertical-align: middle;
+}
+
+.cosmetika-cart__item-image {
+  width: 80px;
+}
+
+.cosmetika-cart__item-image img {
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+}
+
+.cosmetika-cart__item-title {
+  font-weight: var(--font-weight-medium);
+  font-size: 0.9375rem;
+  display: block;
+}
+
+.cosmetika-cart__item-variant {
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  margin-top: var(--space-xs);
+}
+
+.cosmetika-cart__item-price {
+  font-size: 0.9375rem;
+}
+
+.cosmetika-cart__item-total {
+  font-size: 0.9375rem;
+  font-weight: var(--font-weight-medium);
+}
+
+.cosmetika-cart__remove {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  margin-top: var(--space-xs);
+  text-decoration: underline;
+}
+
+.cosmetika-cart__remove:hover {
+  color: var(--color-error);
+}
+
+@media (max-width: 768px) {
+  .cosmetika-cart__table thead { display: none; }
+  .cosmetika-cart__item { display: flex; flex-wrap: wrap; gap: var(--space-md); padding: var(--space-lg) 0; }
+  .cosmetika-cart__item td { padding: 0; border: none; }
+  .cosmetika-cart__item-image { width: 80px; }
+  .cosmetika-cart__item-details { flex: 1; }
+  .cosmetika-cart__item-price,
+  .cosmetika-cart__item-quantity,
+  .cosmetika-cart__item-total { width: auto; }
+}
+
+.cosmetika-cart__footer {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-xl);
+  margin-top: var(--space-xl);
+  align-items: start;
+}
+
+@media (max-width: 768px) {
+  .cosmetika-cart__footer {
+    grid-template-columns: 1fr;
+  }
+}
+
+.cosmetika-cart__note-label {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: var(--space-xs);
+}
+
+.cosmetika-cart__note-input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-body);
+  font-size: 0.875rem;
+  resize: vertical;
+}
+
+.cosmetika-cart__summary {
+  text-align: right;
+}
+
+.cosmetika-cart__subtotal {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-lg);
+  font-size: 1.125rem;
+  font-weight: var(--font-weight-semibold);
+  margin-bottom: var(--space-sm);
+}
+
+.cosmetika-cart__disclaimer {
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-lg);
+}
+
+.cosmetika-cart__checkout {
+  min-width: 240px;
+}
+
+.cosmetika-cart__empty {
+  text-align: center;
+  padding: var(--space-3xl) 0;
+}
+
+.cosmetika-cart__empty-text {
+  font-size: 1.125rem;
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-lg);
+}
+
+/* --- Generic Page --- */
+.cosmetika-page__container {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 0 var(--container-padding);
+}
+
+.cosmetika-page__title {
+  margin-bottom: var(--space-xl);
+}
+
+.cosmetika-page__content {
+  line-height: 1.8;
+}
+
+/* Rich text */
+.rte h2 { margin: var(--space-xl) 0 var(--space-md); }
+.rte h3 { margin: var(--space-lg) 0 var(--space-sm); }
+.rte p { margin-bottom: var(--space-md); }
+.rte ul, .rte ol { margin-bottom: var(--space-md); padding-left: var(--space-lg); }
+.rte ul { list-style: disc; }
+.rte ol { list-style: decimal; }
+.rte li { margin-bottom: var(--space-xs); }
+.rte img { border-radius: var(--radius-md); margin: var(--space-lg) 0; }
+.rte a { text-decoration: underline; }
+
+/* --- 404 Page --- */
+.cosmetika-404__container {
+  max-width: var(--container-max);
+  margin: 0 auto;
+  padding: var(--space-3xl) var(--container-padding);
+  text-align: center;
+}
+
+.cosmetika-404__heading {
+  font-size: clamp(4rem, 12vw, 10rem);
+  line-height: 1;
+  margin-bottom: var(--space-md);
+  opacity: 0.15;
+}
+
+.cosmetika-404__text {
+  font-size: 1.125rem;
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-xl);
+}
+
+/* --- Article Page --- */
+.cosmetika-article__container {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 0 var(--container-padding);
+}
+
+.cosmetika-article__header {
+  text-align: center;
+  margin-bottom: var(--space-xl);
+}
+
+.cosmetika-article__date {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  display: block;
+  margin-bottom: var(--space-sm);
+}
+
+.cosmetika-article__title {
+  font-size: clamp(1.75rem, 4vw, 2.75rem);
+}
+
+.cosmetika-article__author {
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+  margin-top: var(--space-sm);
+}
+
+.cosmetika-article__hero {
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  margin-bottom: var(--space-xl);
+}
+
+.cosmetika-article__image {
+  width: 100%;
+  height: auto;
+}
+
+.cosmetika-article__body {
+  line-height: 1.8;
+  margin-bottom: var(--space-xl);
+}
+
+.cosmetika-article__comments {
+  border-top: 1px solid var(--color-border);
+  padding-top: var(--space-xl);
+  margin-bottom: var(--space-xl);
+}
+
+.cosmetika-article__comments-title {
+  margin-bottom: var(--space-lg);
+}
+
+.cosmetika-article__comment {
+  padding: var(--space-md) 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.cosmetika-article__comment-author {
+  font-weight: var(--font-weight-semibold);
+  font-size: 0.875rem;
+}
+
+.cosmetika-article__comment-date {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  display: block;
+  margin-bottom: var(--space-xs);
+}
+
+.cosmetika-article__comment-body {
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+
+.cosmetika-article__comment-form h3 {
+  margin-bottom: var(--space-md);
+}
+
+.cosmetika-form__row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-sm);
+}
+
+.cosmetika-article__comment-form textarea {
+  margin-bottom: var(--space-md);
+}
+
+.cosmetika-article__back {
+  text-align: center;
+}
+
+/* --- Visually Hidden (a11y) --- */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 /* --- Utility --- */

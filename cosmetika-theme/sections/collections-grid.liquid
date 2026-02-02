@@ -1,0 +1,151 @@
+{% comment %}
+  ============================================================
+  COSMETIKA — Collections Grid
+  ============================================================
+  4-column collection cards matching Fractal Forest layout.
+  Each card: image, title, description, "Shop All" link.
+  ============================================================
+{% endcomment %}
+
+<section
+  class="cosmetika-collections-grid"
+  data-section-id="{{ section.id }}"
+  data-animate="stagger-grid"
+>
+  <div class="cosmetika-collections-grid__container">
+
+    {% if section.settings.heading != blank %}
+      <div class="cosmetika-collections-grid__header" data-animate="fade-up">
+        <h2 class="cosmetika-collections-grid__heading">{{ section.settings.heading }}</h2>
+        {% if section.settings.subheading != blank %}
+          <p class="cosmetika-collections-grid__subheading">{{ section.settings.subheading }}</p>
+        {% endif %}
+      </div>
+    {% endif %}
+
+    <div class="cosmetika-collections-grid__grid cosmetika-grid cosmetika-grid--{{ section.blocks.size | at_most: 4 }}">
+      {% for block in section.blocks %}
+        {% if block.type == 'collection_card' %}
+          {% assign coll = collections[block.settings.collection] %}
+
+          <div
+            class="cosmetika-collection-card"
+            data-animate="fade-up"
+            data-delay="{{ forloop.index | times: 0.15 }}"
+            {{ block.shopify_attributes }}
+          >
+            <a href="{{ coll.url | default: '#' }}" class="cosmetika-collection-card__link">
+              <div class="cosmetika-collection-card__media">
+                {% if block.settings.image != blank %}
+                  <img
+                    src="{{ block.settings.image | image_url: width: 600 }}"
+                    srcset="
+                      {{ block.settings.image | image_url: width: 400 }} 400w,
+                      {{ block.settings.image | image_url: width: 600 }} 600w
+                    "
+                    sizes="(min-width: 1200px) 25vw, (min-width: 768px) 50vw, 100vw"
+                    alt="{{ block.settings.title | escape }}"
+                    loading="lazy"
+                    class="cosmetika-collection-card__image"
+                  >
+                {% elsif coll.image != blank %}
+                  <img
+                    src="{{ coll.image | image_url: width: 600 }}"
+                    alt="{{ coll.title | escape }}"
+                    loading="lazy"
+                    class="cosmetika-collection-card__image"
+                  >
+                {% else %}
+                  <div class="cosmetika-collection-card__placeholder">
+                    {{ 'collection-1' | placeholder_svg_tag: 'placeholder-svg' }}
+                  </div>
+                {% endif %}
+              </div>
+
+              <div class="cosmetika-collection-card__info">
+                <h3 class="cosmetika-collection-card__title">
+                  {{ block.settings.title | default: coll.title | default: 'Collection' }}
+                </h3>
+
+                {% if block.settings.description != blank %}
+                  <p class="cosmetika-collection-card__description">{{ block.settings.description }}</p>
+                {% endif %}
+
+                <span class="cosmetika-collection-card__cta">
+                  Shop All
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M5 12h14M12 5l7 7-7 7"/>
+                  </svg>
+                </span>
+              </div>
+            </a>
+          </div>
+
+        {% endif %}
+      {% endfor %}
+    </div>
+
+  </div>
+</section>
+
+{% schema %}
+{
+  "name": "Collections Grid",
+  "tag": "section",
+  "class": "cosmetika-section cosmetika-section--collections-grid",
+  "settings": [
+    {
+      "type": "text",
+      "id": "heading",
+      "label": "Heading",
+      "default": "Shop by Category"
+    },
+    {
+      "type": "text",
+      "id": "subheading",
+      "label": "Subheading"
+    }
+  ],
+  "blocks": [
+    {
+      "type": "collection_card",
+      "name": "Collection",
+      "limit": 6,
+      "settings": [
+        {
+          "type": "collection",
+          "id": "collection",
+          "label": "Collection"
+        },
+        {
+          "type": "image_picker",
+          "id": "image",
+          "label": "Custom Image (overrides collection image)"
+        },
+        {
+          "type": "text",
+          "id": "title",
+          "label": "Custom Title (overrides collection title)"
+        },
+        {
+          "type": "textarea",
+          "id": "description",
+          "label": "Description",
+          "default": "Explore our curated selection of premium beauty products."
+        }
+      ]
+    }
+  ],
+  "presets": [
+    {
+      "name": "Collections Grid",
+      "blocks": [
+        { "type": "collection_card" },
+        { "type": "collection_card" },
+        { "type": "collection_card" },
+        { "type": "collection_card" }
+      ]
+    }
+  ]
+}
+{% endschema %}

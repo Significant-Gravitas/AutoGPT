@@ -1,0 +1,236 @@
+{% comment %}
+  ============================================================
+  COSMETIKA — Product Page (Main Section)
+  ============================================================
+  Split layout: gallery left, info right.
+  Includes variant selector, add-to-cart, and product meta.
+  TikTok Shop syncs from product data — keep schema clean.
+  ============================================================
+{% endcomment %}
+
+<section class="cosmetika-product" data-section-id="{{ section.id }}">
+  <div class="cosmetika-product__container">
+    <div class="cosmetika-product__grid">
+
+      <!-- Gallery -->
+      <div class="cosmetika-product__gallery" data-animate="fade-right">
+        {% if product.images.size > 0 %}
+          <div class="cosmetika-product__main-image">
+            <div class="cosmetika-img-reveal">
+              <img
+                id="ProductMainImage"
+                src="{{ product.featured_image | image_url: width: 900 }}"
+                srcset="
+                  {{ product.featured_image | image_url: width: 600 }} 600w,
+                  {{ product.featured_image | image_url: width: 900 }} 900w,
+                  {{ product.featured_image | image_url: width: 1200 }} 1200w
+                "
+                sizes="(min-width: 768px) 50vw, 100vw"
+                alt="{{ product.featured_image.alt | escape }}"
+                loading="eager"
+                fetchpriority="high"
+              >
+            </div>
+          </div>
+
+          {% if product.images.size > 1 %}
+            <div class="cosmetika-product__thumbnails">
+              {% for image in product.images %}
+                <button
+                  class="cosmetika-product__thumbnail {% if forloop.first %}is-active{% endif %}"
+                  data-image-url="{{ image | image_url: width: 900 }}"
+                  data-image-srcset="{{ image | image_url: width: 600 }} 600w, {{ image | image_url: width: 900 }} 900w, {{ image | image_url: width: 1200 }} 1200w"
+                  aria-label="View {{ image.alt | default: product.title }}"
+                >
+                  <img
+                    src="{{ image | image_url: width: 120 }}"
+                    alt="{{ image.alt | escape }}"
+                    loading="lazy"
+                    width="80"
+                    height="80"
+                  >
+                </button>
+              {% endfor %}
+            </div>
+          {% endif %}
+        {% else %}
+          <div class="cosmetika-product__main-image">
+            {{ 'product-1' | placeholder_svg_tag: 'placeholder-svg' }}
+          </div>
+        {% endif %}
+      </div>
+
+      <!-- Info -->
+      <div class="cosmetika-product__info" data-animate="fade-left" data-delay="0.2">
+        {% if section.settings.show_vendor and product.vendor != blank %}
+          <p class="cosmetika-product__vendor">{{ product.vendor }}</p>
+        {% endif %}
+
+        <h1 class="cosmetika-product__title">{{ product.title }}</h1>
+
+        {% comment %} Reviews placeholder — wire to Okendo {% endcomment %}
+        <div class="cosmetika-product__rating">
+          <div class="cosmetika-stars" aria-label="Rating">
+            {% for i in (1..5) %}
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+            {% endfor %}
+          </div>
+          <span class="cosmetika-product__review-count">{{ product.metafields.reviews.rating_count | default: '0' }} reviews</span>
+        </div>
+
+        <div class="cosmetika-product__price">
+          {% if product.compare_at_price > product.price %}
+            <span class="cosmetika-product__price--compare">{{ product.compare_at_price | money }}</span>
+          {% endif %}
+          <span class="cosmetika-product__price--current" id="ProductPrice">
+            {{ product.price | money }}
+          </span>
+          {% if product.compare_at_price > product.price %}
+            {% assign discount = product.compare_at_price | minus: product.price | times: 100.0 | divided_by: product.compare_at_price | round %}
+            <span class="cosmetika-product__price--badge">Save {{ discount }}%</span>
+          {% endif %}
+        </div>
+
+        {% if product.description != blank %}
+          <div class="cosmetika-product__description rte">
+            {{ product.description }}
+          </div>
+        {% endif %}
+
+        {% form 'product', product %}
+          {% if product.variants.size > 1 %}
+            <div class="cosmetika-product__variants">
+              {% for option in product.options_with_values %}
+                <div class="cosmetika-product__option">
+                  <label class="cosmetika-product__option-label" for="Option-{{ section.id }}-{{ forloop.index0 }}">
+                    {{ option.name }}
+                  </label>
+                  <select
+                    id="Option-{{ section.id }}-{{ forloop.index0 }}"
+                    class="cosmetika-product__option-select"
+                    name="options[{{ option.name }}]"
+                  >
+                    {% for value in option.values %}
+                      <option value="{{ value }}" {% if option.selected_value == value %}selected{% endif %}>
+                        {{ value }}
+                      </option>
+                    {% endfor %}
+                  </select>
+                </div>
+              {% endfor %}
+            </div>
+          {% endif %}
+
+          <select name="id" id="ProductSelect-{{ section.id }}" class="cosmetika-product__variant-select" style="display:none;">
+            {% for variant in product.variants %}
+              <option
+                value="{{ variant.id }}"
+                {% if variant == product.selected_or_first_available_variant %}selected{% endif %}
+                {% unless variant.available %}disabled{% endunless %}
+                data-price="{{ variant.price | money }}"
+              >
+                {{ variant.title }} — {{ variant.price | money }}
+              </option>
+            {% endfor %}
+          </select>
+
+          <div class="cosmetika-product__quantity">
+            <label class="cosmetika-product__option-label" for="Quantity-{{ section.id }}">Quantity</label>
+            <div class="cosmetika-product__quantity-selector">
+              <button type="button" class="cosmetika-product__qty-btn" data-qty-minus aria-label="Decrease quantity">−</button>
+              <input
+                type="number"
+                id="Quantity-{{ section.id }}"
+                name="quantity"
+                value="1"
+                min="1"
+                class="cosmetika-product__qty-input"
+              >
+              <button type="button" class="cosmetika-product__qty-btn" data-qty-plus aria-label="Increase quantity">+</button>
+            </div>
+          </div>
+
+          <button
+            type="submit"
+            class="cosmetika-product__add-to-cart button button--primary"
+            {% unless product.available %}disabled{% endunless %}
+          >
+            {% if product.available %}
+              Add to Bag
+            {% else %}
+              Sold Out
+            {% endif %}
+          </button>
+        {% endform %}
+
+        {% if section.settings.show_share %}
+          <div class="cosmetika-product__share">
+            <span class="cosmetika-product__share-label">Share</span>
+            <a href="https://www.facebook.com/sharer.php?u={{ shop.url }}{{ product.url }}" target="_blank" rel="noopener" aria-label="Share on Facebook">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></svg>
+            </a>
+            <a href="https://twitter.com/intent/tweet?url={{ shop.url }}{{ product.url }}&text={{ product.title | url_encode }}" target="_blank" rel="noopener" aria-label="Share on Twitter">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M23 3a10.9 10.9 0 0 1-3.14 1.53 4.48 4.48 0 0 0-7.86 3v1A10.66 10.66 0 0 1 3 4s-4 9 5 13a11.64 11.64 0 0 1-7 2c9 5 20 0 20-11.5a4.5 4.5 0 0 0-.08-.83A7.72 7.72 0 0 0 23 3z"/></svg>
+            </a>
+          </div>
+        {% endif %}
+
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<script>
+  (function() {
+    // Thumbnail gallery
+    var thumbnails = document.querySelectorAll('.cosmetika-product__thumbnail');
+    var mainImg = document.getElementById('ProductMainImage');
+    if (mainImg && thumbnails.length) {
+      thumbnails.forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          thumbnails.forEach(function(t) { t.classList.remove('is-active'); });
+          btn.classList.add('is-active');
+          mainImg.src = btn.dataset.imageUrl;
+          mainImg.srcset = btn.dataset.imageSrcset;
+        });
+      });
+    }
+
+    // Quantity buttons
+    document.querySelectorAll('[data-qty-minus]').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var input = btn.parentElement.querySelector('.cosmetika-product__qty-input');
+        if (input && parseInt(input.value) > 1) input.value = parseInt(input.value) - 1;
+      });
+    });
+    document.querySelectorAll('[data-qty-plus]').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var input = btn.parentElement.querySelector('.cosmetika-product__qty-input');
+        if (input) input.value = parseInt(input.value) + 1;
+      });
+    });
+  })();
+</script>
+
+{% schema %}
+{
+  "name": "Product Page",
+  "tag": "section",
+  "class": "cosmetika-section cosmetika-section--product",
+  "settings": [
+    {
+      "type": "checkbox",
+      "id": "show_vendor",
+      "label": "Show vendor",
+      "default": true
+    },
+    {
+      "type": "checkbox",
+      "id": "show_share",
+      "label": "Show share buttons",
+      "default": true
+    }
+  ]
+}
+{% endschema %}

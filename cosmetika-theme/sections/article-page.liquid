@@ -1,0 +1,82 @@
+{% comment %}
+  COSMETIKA — Article Page
+{% endcomment %}
+
+<article class="cosmetika-article" data-section-id="{{ section.id }}">
+  <div class="cosmetika-article__container">
+
+    <header class="cosmetika-article__header" data-animate="fade-up">
+      <time class="cosmetika-article__date" datetime="{{ article.published_at | date: '%Y-%m-%d' }}">
+        {{ article.published_at | date: '%B %d, %Y' }}
+      </time>
+      <h1 class="cosmetika-article__title">{{ article.title }}</h1>
+      {% if article.author != blank %}
+        <p class="cosmetika-article__author">By {{ article.author }}</p>
+      {% endif %}
+    </header>
+
+    {% if article.image != blank %}
+      <div class="cosmetika-article__hero" data-animate="fade-up" data-delay="0.2">
+        <img
+          src="{{ article.image | image_url: width: 1200 }}"
+          srcset="
+            {{ article.image | image_url: width: 600 }} 600w,
+            {{ article.image | image_url: width: 900 }} 900w,
+            {{ article.image | image_url: width: 1200 }} 1200w
+          "
+          sizes="(min-width: 768px) 800px, 100vw"
+          alt="{{ article.title | escape }}"
+          loading="eager"
+          class="cosmetika-article__image"
+        >
+      </div>
+    {% endif %}
+
+    <div class="cosmetika-article__body rte" data-animate="fade-up" data-delay="0.3">
+      {{ article.content }}
+    </div>
+
+    {% if blog.comments_enabled? %}
+      <div class="cosmetika-article__comments">
+        <h2 class="cosmetika-article__comments-title">Comments ({{ article.comments_count }})</h2>
+
+        {% for comment in article.comments %}
+          <div class="cosmetika-article__comment">
+            <p class="cosmetika-article__comment-author">{{ comment.author }}</p>
+            <time class="cosmetika-article__comment-date">{{ comment.created_at | date: '%B %d, %Y' }}</time>
+            <div class="cosmetika-article__comment-body">{{ comment.content }}</div>
+          </div>
+        {% endfor %}
+
+        {% form 'new_comment', article %}
+          <div class="cosmetika-article__comment-form">
+            <h3>Leave a comment</h3>
+            {{ form.errors | default_errors }}
+            <div class="cosmetika-form__row">
+              <input type="text" name="comment[author]" placeholder="Name" required class="cosmetika-popup__input">
+              <input type="email" name="comment[email]" placeholder="Email" required class="cosmetika-popup__input">
+            </div>
+            <textarea name="comment[body]" placeholder="Your comment..." required class="cosmetika-cart__note-input" rows="4"></textarea>
+            <button type="submit" class="button button--primary">Post Comment</button>
+          </div>
+        {% endform %}
+      </div>
+    {% endif %}
+
+    <div class="cosmetika-article__back">
+      <a href="{{ blog.url }}" class="button button--outline">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+        Back to {{ blog.title }}
+      </a>
+    </div>
+
+  </div>
+</article>
+
+{% schema %}
+{
+  "name": "Article Page",
+  "tag": "section",
+  "class": "cosmetika-section cosmetika-section--article"
+}
+{% endschema %}
