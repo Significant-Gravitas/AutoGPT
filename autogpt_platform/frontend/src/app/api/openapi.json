@@ -7981,6 +7981,25 @@
             ]
           },
           "new_output": { "type": "boolean", "title": "New Output" },
+          "execution_count": {
+            "type": "integer",
+            "title": "Execution Count",
+            "default": 0
+          },
+          "success_rate": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Success Rate"
+          },
+          "avg_correctness_score": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Avg Correctness Score"
+          },
+          "recent_executions": {
+            "items": { "$ref": "#/components/schemas/RecentExecution" },
+            "type": "array",
+            "title": "Recent Executions",
+            "description": "List of recent executions with status, score, and summary"
+          },
           "can_access_graph": {
             "type": "boolean",
             "title": "Can Access Graph"
@@ -9374,6 +9393,23 @@
         "required": ["providers", "pagination"],
         "title": "ProviderResponse"
       },
+      "RecentExecution": {
+        "properties": {
+          "status": { "type": "string", "title": "Status" },
+          "correctness_score": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Correctness Score"
+          },
+          "activity_summary": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Activity Summary"
+          }
+        },
+        "type": "object",
+        "required": ["status"],
+        "title": "RecentExecution",
+        "description": "Summary of a recent execution for quality assessment.\n\nUsed by the LLM to understand the agent's recent performance with specific examples\nrather than just aggregate statistics."
+      },
       "RefundRequest": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -9797,7 +9833,8 @@
           "sub_heading": { "type": "string", "title": "Sub Heading" },
           "description": { "type": "string", "title": "Description" },
           "runs": { "type": "integer", "title": "Runs" },
-          "rating": { "type": "number", "title": "Rating" }
+          "rating": { "type": "number", "title": "Rating" },
+          "agent_graph_id": { "type": "string", "title": "Agent Graph Id" }
         },
         "type": "object",
         "required": [
@@ -9809,7 +9846,8 @@
           "sub_heading",
           "description",
           "runs",
-          "rating"
+          "rating",
+          "agent_graph_id"
         ],
         "title": "StoreAgent"
       },
