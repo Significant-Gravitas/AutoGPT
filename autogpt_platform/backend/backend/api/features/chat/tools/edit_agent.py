@@ -4,6 +4,7 @@ import logging
 from typing import Any
 
 from backend.api.features.chat.model import ChatSession
+from backend.api.features.library import db as library_db
 
 from .agent_generator import (
     AgentGeneratorNotConfiguredError,
@@ -119,6 +120,18 @@ class EditAgentTool(BaseTool):
             )
 
         current_agent = await get_agent_as_json(agent_id, user_id)
+
+        # If not found by graph_id, try resolving as library_agent_id
+        if current_agent is None and user_id:
+            try:
+                library_agent = await library_db.get_library_agent(agent_id, user_id)
+                logger.debug(
+                    f"Resolved library_agent_id '{agent_id}' to graph_id "
+                    f"'{library_agent.graph_id}'"
+                )
+                current_agent = await get_agent_as_json(library_agent.graph_id, user_id)
+            except Exception as e:
+                logger.debug(f"Could not resolve '{agent_id}' as library_agent_id: {e}")
 
         if current_agent is None:
             return ErrorResponse(
