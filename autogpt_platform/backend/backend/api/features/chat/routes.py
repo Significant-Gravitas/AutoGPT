@@ -5,7 +5,6 @@ import uuid as uuid_module
 from collections.abc import AsyncGenerator
 from typing import Annotated
 
-import orjson
 from autogpt_libs import auth
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Security
 from fastapi.responses import StreamingResponse
@@ -15,6 +14,7 @@ from backend.util.exceptions import NotFoundError
 
 from . import service as chat_service
 from . import stream_registry
+from .completion_handler import process_operation_failure, process_operation_success
 from .config import ChatConfig
 from .model import ChatSession, create_chat_session, get_chat_session, get_user_sessions
 from .response_model import StreamFinish, StreamHeartbeat, StreamStart
@@ -704,81 +704,9 @@ async def complete_operation(
     )
 
     if request.success:
-        # Publish result to stream registry
-        from .response_model import StreamToolOutputAvailable
-
-        result_output = request.result if request.result else {"status": "completed"}
-        await stream_registry.publish_chunk(
-            task.task_id,
-            StreamToolOutputAvailable(
-                toolCallId=task.tool_call_id,
-                toolName=task.tool_name,
-                output=(
-                    result_output
-                    if isinstance(result_output, str)
-                    else orjson.dumps(result_output).decode("utf-8")
-                ),
-                success=True,
-            ),
-        )
-
-        # Update pending operation in database
-        from . import service as svc
-
-        result_str = (
-            request.result
-            if isinstance(request.result, str)
-            else (
-                orjson.dumps(request.result).decode("utf-8")
-                if request.result
-                else '{"status": "completed"}'
-            )
-        )
-        await svc._update_pending_operation(
-            session_id=task.session_id,
-            tool_call_id=task.tool_call_id,
-            result=result_str,
-        )
-
-        # Generate LLM continuation with streaming
-        await svc._generate_llm_continuation_with_streaming(
-            session_id=task.session_id,
-            user_id=task.user_id,
-            task_id=task.task_id,
-        )
-
-        # Mark task as completed and release Redis lock
-        await stream_registry.mark_task_completed(task.task_id, status="completed")
-        await svc._mark_operation_completed(task.tool_call_id)
+        await process_operation_success(task, request.result)
     else:
-        # Publish error to stream registry
-        from .response_model import StreamError
-
-        error_msg = request.error or "Operation failed"
-        await stream_registry.publish_chunk(
-            task.task_id,
-            StreamError(errorText=error_msg),
-        )
-        # Send finish event to end the stream
-        await stream_registry.publish_chunk(task.task_id, StreamFinish())
-
-        # Update pending operation with error
-        from . import service as svc
-        from .tools.models import ErrorResponse
-
-        error_response = ErrorResponse(
-            message=error_msg,
-            error=request.error,
-        )
-        await svc._update_pending_operation(
-            session_id=task.session_id,
-            tool_call_id=task.tool_call_id,
-            result=error_response.model_dump_json(),
-        )
-
-        # Mark task as failed and release Redis lock
-        await stream_registry.mark_task_completed(task.task_id, status="failed")
-        await svc._mark_operation_completed(task.tool_call_id)
+        await process_operation_failure(task, request.error)
 
     return {"status": "ok", "task_id": task.task_id}
 

@@ -1,6 +1,12 @@
 "use client";
 
 import { create } from "zustand";
+import {
+  ACTIVE_TASK_TTL_MS,
+  COMPLETED_STREAM_TTL_MS,
+  INITIAL_STREAM_ID,
+  STORAGE_KEY_ACTIVE_TASKS,
+} from "./chat-constants";
 import type {
   ActiveStream,
   StreamChunk,
@@ -9,10 +15,6 @@ import type {
   StreamStatus,
 } from "./chat-types";
 import { executeStream, executeTaskReconnect } from "./stream-executor";
-
-const COMPLETED_STREAM_TTL = 5 * 60 * 1000; // 5 minutes
-const ACTIVE_TASKS_STORAGE_KEY = "chat_active_tasks";
-const TASK_TTL = 60 * 60 * 1000; // 1 hour - tasks expire after this
 
 /**
  * Tracks active task info for SSE reconnection.
@@ -32,14 +34,14 @@ export interface ActiveTaskInfo {
 function loadPersistedTasks(): Map<string, ActiveTaskInfo> {
   if (typeof window === "undefined") return new Map();
   try {
-    const stored = localStorage.getItem(ACTIVE_TASKS_STORAGE_KEY);
+    const stored = localStorage.getItem(STORAGE_KEY_ACTIVE_TASKS);
     if (!stored) return new Map();
     const parsed = JSON.parse(stored) as Record<string, ActiveTaskInfo>;
     const now = Date.now();
     const tasks = new Map<string, ActiveTaskInfo>();
     // Filter out expired tasks
     for (const [sessionId, task] of Object.entries(parsed)) {
-      if (now - task.startedAt < TASK_TTL) {
+      if (now - task.startedAt < ACTIVE_TASK_TTL_MS) {
         tasks.set(sessionId, task);
       }
     }
@@ -57,7 +59,7 @@ function persistTasks(tasks: Map<string, ActiveTaskInfo>): void {
     for (const [sessionId, task] of tasks) {
       obj[sessionId] = task;
     }
-    localStorage.setItem(ACTIVE_TASKS_STORAGE_KEY, JSON.stringify(obj));
+    localStorage.setItem(STORAGE_KEY_ACTIVE_TASKS, JSON.stringify(obj));
   } catch {
     // Ignore storage errors
   }
@@ -135,11 +137,71 @@ function cleanupExpiredStreams(
   const now = Date.now();
   const cleaned = new Map(completedStreams);
   for (const [sessionId, result] of cleaned) {
-    if (now - result.completedAt > COMPLETED_STREAM_TTL) {
+    if (now - result.completedAt > COMPLETED_STREAM_TTL_MS) {
       cleaned.delete(sessionId);
     }
   }
   return cleaned;
+}
+
+/**
+ * Clean up an existing stream for a session and move it to completed streams.
+ * Returns updated maps for both active and completed streams.
+ */
+function cleanupExistingStream(
+  sessionId: string,
+  activeStreams: Map<string, ActiveStream>,
+  completedStreams: Map<string, StreamResult>,
+  callbacks: Set<StreamCompleteCallback>,
+): {
+  activeStreams: Map<string, ActiveStream>;
+  completedStreams: Map<string, StreamResult>;
+} {
+  const newActiveStreams = new Map(activeStreams);
+  let newCompletedStreams = new Map(completedStreams);
+
+  const existingStream = newActiveStreams.get(sessionId);
+  if (existingStream) {
+    existingStream.abortController.abort();
+    const normalizedStatus =
+      existingStream.status === "streaming" ? "completed" : existingStream.status;
+    const result: StreamResult = {
+      sessionId,
+      status: normalizedStatus,
+      chunks: existingStream.chunks,
+      completedAt: Date.now(),
+      error: existingStream.error,
+    };
+    newCompletedStreams.set(sessionId, result);
+    newActiveStreams.delete(sessionId);
+    newCompletedStreams = cleanupExpiredStreams(newCompletedStreams);
+    if (normalizedStatus === "completed" || normalizedStatus === "error") {
+      notifyStreamComplete(callbacks, sessionId);
+    }
+  }
+
+  return { activeStreams: newActiveStreams, completedStreams: newCompletedStreams };
+}
+
+/**
+ * Create a new active stream with initial state.
+ */
+function createActiveStream(
+  sessionId: string,
+  onChunk?: (chunk: StreamChunk) => void,
+): ActiveStream {
+  const abortController = new AbortController();
+  const initialCallbacks = new Set<(chunk: StreamChunk) => void>();
+  if (onChunk) initialCallbacks.add(onChunk);
+
+  return {
+    sessionId,
+    abortController,
+    status: "streaming",
+    startedAt: Date.now(),
+    chunks: [],
+    onChunkCallbacks: initialCallbacks,
+  };
 }
 
 export const useChatStore = create<ChatStore>((set, get) => ({
@@ -157,45 +219,19 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     onChunk,
   ) {
     const state = get();
-    const newActiveStreams = new Map(state.activeStreams);
-    let newCompletedStreams = new Map(state.completedStreams);
     const callbacks = state.streamCompleteCallbacks;
 
-    const existingStream = newActiveStreams.get(sessionId);
-    if (existingStream) {
-      existingStream.abortController.abort();
-      const normalizedStatus =
-        existingStream.status === "streaming"
-          ? "completed"
-          : existingStream.status;
-      const result: StreamResult = {
+    // Clean up any existing stream for this session
+    const { activeStreams: newActiveStreams, completedStreams: newCompletedStreams } =
+      cleanupExistingStream(
         sessionId,
-        status: normalizedStatus,
-        chunks: existingStream.chunks,
-        completedAt: Date.now(),
-        error: existingStream.error,
-      };
-      newCompletedStreams.set(sessionId, result);
-      newActiveStreams.delete(sessionId);
-      newCompletedStreams = cleanupExpiredStreams(newCompletedStreams);
-      if (normalizedStatus === "completed" || normalizedStatus === "error") {
-        notifyStreamComplete(callbacks, sessionId);
-      }
-    }
+        state.activeStreams,
+        state.completedStreams,
+        callbacks,
+      );
 
-    const abortController = new AbortController();
-    const initialCallbacks = new Set<(chunk: StreamChunk) => void>();
-    if (onChunk) initialCallbacks.add(onChunk);
-
-    const stream: ActiveStream = {
-      sessionId,
-      abortController,
-      status: "streaming",
-      startedAt: Date.now(),
-      chunks: [],
-      onChunkCallbacks: initialCallbacks,
-    };
-
+    // Create new stream
+    const stream = createActiveStream(sessionId, onChunk);
     newActiveStreams.set(sessionId, stream);
     set({
       activeStreams: newActiveStreams,
@@ -388,7 +424,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   reconnectToTask: async function reconnectToTask(
     sessionId,
     taskId,
-    lastMessageId = "0-0", // Redis Stream ID format
+    lastMessageId = INITIAL_STREAM_ID,
     onChunk,
   ) {
     console.info("[SSE-RECONNECT] reconnectToTask called:", {
@@ -398,43 +434,19 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     });
 
     const state = get();
-    const newActiveStreams = new Map(state.activeStreams);
-    let newCompletedStreams = new Map(state.completedStreams);
     const callbacks = state.streamCompleteCallbacks;
 
     // Clean up any existing stream for this session
-    const existingStream = newActiveStreams.get(sessionId);
-    if (existingStream) {
-      existingStream.abortController.abort();
-      const normalizedStatus =
-        existingStream.status === "streaming"
-          ? "completed"
-          : existingStream.status;
-      const result: StreamResult = {
+    const { activeStreams: newActiveStreams, completedStreams: newCompletedStreams } =
+      cleanupExistingStream(
         sessionId,
-        status: normalizedStatus,
-        chunks: existingStream.chunks,
-        completedAt: Date.now(),
-        error: existingStream.error,
-      };
-      newCompletedStreams.set(sessionId, result);
-      newActiveStreams.delete(sessionId);
-      newCompletedStreams = cleanupExpiredStreams(newCompletedStreams);
-    }
+        state.activeStreams,
+        state.completedStreams,
+        callbacks,
+      );
 
-    const abortController = new AbortController();
-    const initialCallbacks = new Set<(chunk: StreamChunk) => void>();
-    if (onChunk) initialCallbacks.add(onChunk);
-
-    const stream: ActiveStream = {
-      sessionId,
-      abortController,
-      status: "streaming",
-      startedAt: Date.now(),
-      chunks: [],
-      onChunkCallbacks: initialCallbacks,
-    };
-
+    // Create new stream for reconnection
+    const stream = createActiveStream(sessionId, onChunk);
     newActiveStreams.set(sessionId, stream);
     set({
       activeStreams: newActiveStreams,

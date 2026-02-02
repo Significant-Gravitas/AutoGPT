@@ -50,8 +50,36 @@ class ChatConfig(BaseSettings):
         description="TTL in seconds for stream data in Redis (1 hour)",
     )
     stream_max_length: int = Field(
-        default=1000,
+        default=10000,
         description="Maximum number of messages to store per stream",
+    )
+
+    # Redis Streams configuration for completion consumer
+    stream_completion_name: str = Field(
+        default="chat:completions",
+        description="Redis Stream name for operation completions",
+    )
+    stream_consumer_group: str = Field(
+        default="chat_consumers",
+        description="Consumer group name for completion stream",
+    )
+
+    # Redis key prefixes for stream registry
+    task_meta_prefix: str = Field(
+        default="chat:task:meta:",
+        description="Prefix for task metadata hash keys",
+    )
+    task_stream_prefix: str = Field(
+        default="chat:stream:",
+        description="Prefix for task message stream keys",
+    )
+    task_op_prefix: str = Field(
+        default="chat:task:op:",
+        description="Prefix for operation ID to task ID mapping keys",
+    )
+    task_pubsub_prefix: str = Field(
+        default="chat:task:pubsub:",
+        description="Prefix for task pub/sub channel names",
     )
     internal_api_key: str | None = Field(
         default=None,

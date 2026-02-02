@@ -20,17 +20,12 @@ from redis.exceptions import ResponseError
 
 from backend.data.redis_client import get_redis_async
 
-from . import service as chat_service
 from . import stream_registry
-from .response_model import StreamError, StreamFinish, StreamToolOutputAvailable
-from .tools.models import ErrorResponse
+from .completion_handler import process_operation_failure, process_operation_success
+from .config import ChatConfig
 
 logger = logging.getLogger(__name__)
-
-# Stream configuration
-COMPLETION_STREAM = "chat:completions"
-CONSUMER_GROUP = "chat_consumers"
-STREAM_MAX_LENGTH = 10000
+config = ChatConfig()
 
 
 class OperationCompleteMessage(BaseModel):
@@ -69,17 +64,20 @@ class ChatCompletionConsumer:
         try:
             redis = await get_redis_async()
             await redis.xgroup_create(
-                COMPLETION_STREAM,
-                CONSUMER_GROUP,
+                config.stream_completion_name,
+                config.stream_consumer_group,
                 id="0",
                 mkstream=True,
             )
             logger.info(
-                f"Created consumer group '{CONSUMER_GROUP}' on stream '{COMPLETION_STREAM}'"
+                f"Created consumer group '{config.stream_consumer_group}' "
+                f"on stream '{config.stream_completion_name}'"
             )
         except ResponseError as e:
             if "BUSYGROUP" in str(e):
-                logger.debug(f"Consumer group '{CONSUMER_GROUP}' already exists")
+                logger.debug(
+                    f"Consumer group '{config.stream_consumer_group}' already exists"
+                )
             else:
                 raise
 
@@ -134,9 +132,9 @@ class ChatCompletionConsumer:
                 while self._running:
                     # Read new messages from the stream
                     messages = await redis.xreadgroup(
-                        groupname=CONSUMER_GROUP,
+                        groupname=config.stream_consumer_group,
                         consumername=self._consumer_name,
-                        streams={COMPLETION_STREAM: ">"},
+                        streams={config.stream_completion_name: ">"},
                         block=block_timeout,
                         count=10,
                     )
@@ -161,7 +159,9 @@ class ChatCompletionConsumer:
 
                                 # Acknowledge the message
                                 await redis.xack(
-                                    COMPLETION_STREAM, CONSUMER_GROUP, entry_id
+                                    config.stream_completion_name,
+                                    config.stream_consumer_group,
+                                    entry_id,
                                 )
                             except Exception as e:
                                 logger.error(
@@ -237,72 +237,8 @@ class ChatCompletionConsumer:
         message: OperationCompleteMessage,
     ) -> None:
         """Handle successful operation completion."""
-        # Publish result to stream registry
-        result_output = message.result if message.result else {"status": "completed"}
-        await stream_registry.publish_chunk(
-            task.task_id,
-            StreamToolOutputAvailable(
-                toolCallId=task.tool_call_id,
-                toolName=task.tool_name,
-                output=(
-                    result_output
-                    if isinstance(result_output, str)
-                    else orjson.dumps(result_output).decode("utf-8")
-                ),
-                success=True,
-            ),
-        )
-
-        # Update pending operation in database using our Prisma client
-        result_str = (
-            message.result
-            if isinstance(message.result, str)
-            else (
-                orjson.dumps(message.result).decode("utf-8")
-                if message.result
-                else '{"status": "completed"}'
-            )
-        )
-        try:
-            prisma = await self._ensure_prisma()
-            await prisma.chatmessage.update_many(
-                where={
-                    "sessionId": task.session_id,
-                    "toolCallId": task.tool_call_id,
-                },
-                data={"content": result_str},
-            )
-            logger.info(
-                f"[COMPLETION] Updated tool message for session {task.session_id}"
-            )
-        except Exception as e:
-            logger.error(
-                f"[COMPLETION] Failed to update tool message: {e}", exc_info=True
-            )
-
-        # Generate LLM continuation with streaming
-        try:
-            await chat_service._generate_llm_continuation_with_streaming(
-                session_id=task.session_id,
-                user_id=task.user_id,
-                task_id=task.task_id,
-            )
-        except Exception as e:
-            logger.error(
-                f"[COMPLETION] Failed to generate LLM continuation: {e}",
-                exc_info=True,
-            )
-
-        # Mark task as completed and release Redis lock
-        await stream_registry.mark_task_completed(task.task_id, status="completed")
-        try:
-            await chat_service._mark_operation_completed(task.tool_call_id)
-        except Exception as e:
-            logger.error(f"[COMPLETION] Failed to mark operation completed: {e}")
-
-        logger.info(
-            f"[COMPLETION] Successfully processed completion for task {task.task_id}"
-        )
+        prisma = await self._ensure_prisma()
+        await process_operation_success(task, message.result, prisma)
 
     async def _handle_failure(
         self,
@@ -310,47 +246,8 @@ class ChatCompletionConsumer:
         message: OperationCompleteMessage,
     ) -> None:
         """Handle failed operation completion."""
-        error_msg = message.error or "Operation failed"
-
-        # Publish error to stream registry
-        await stream_registry.publish_chunk(
-            task.task_id,
-            StreamError(errorText=error_msg),
-        )
-        await stream_registry.publish_chunk(task.task_id, StreamFinish())
-
-        # Update pending operation with error using our Prisma client
-        error_response = ErrorResponse(
-            message=error_msg,
-            error=message.error,
-        )
-        try:
-            prisma = await self._ensure_prisma()
-            await prisma.chatmessage.update_many(
-                where={
-                    "sessionId": task.session_id,
-                    "toolCallId": task.tool_call_id,
-                },
-                data={"content": error_response.model_dump_json()},
-            )
-            logger.info(
-                f"[COMPLETION] Updated tool message with error for session {task.session_id}"
-            )
-        except Exception as e:
-            logger.error(
-                f"[COMPLETION] Failed to update tool message: {e}", exc_info=True
-            )
-
-        # Mark task as failed and release Redis lock
-        await stream_registry.mark_task_completed(task.task_id, status="failed")
-        try:
-            await chat_service._mark_operation_completed(task.tool_call_id)
-        except Exception as e:
-            logger.error(f"[COMPLETION] Failed to mark operation completed: {e}")
-
-        logger.info(
-            f"[COMPLETION] Processed failure for task {task.task_id}: {error_msg}"
-        )
+        prisma = await self._ensure_prisma()
+        await process_operation_failure(task, message.error, prisma)
 
 
 # Module-level consumer instance
@@ -399,8 +296,8 @@ async def publish_operation_complete(
 
     redis = await get_redis_async()
     await redis.xadd(
-        COMPLETION_STREAM,
+        config.stream_completion_name,
         {"data": message.model_dump_json()},
-        maxlen=STREAM_MAX_LENGTH,
+        maxlen=config.stream_max_length,
     )
     logger.info(f"Published completion for operation {operation_id}")

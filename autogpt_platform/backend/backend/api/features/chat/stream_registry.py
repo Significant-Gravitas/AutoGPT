@@ -31,6 +31,9 @@ from .response_model import StreamBaseResponse, StreamFinish
 logger = logging.getLogger(__name__)
 config = ChatConfig()
 
+# Track background tasks for this pod (just the asyncio.Task reference, not subscribers)
+_local_tasks: dict[str, asyncio.Task] = {}
+
 
 @dataclass
 class ActiveTask:
@@ -47,34 +50,24 @@ class ActiveTask:
     asyncio_task: asyncio.Task | None = None
 
 
-# Redis key patterns
-TASK_META_PREFIX = "chat:task:meta:"  # Hash for task metadata
-TASK_STREAM_PREFIX = "chat:stream:"  # Redis Stream for messages
-TASK_OP_PREFIX = "chat:task:op:"  # Operation ID -> task_id mapping
-TASK_PUBSUB_PREFIX = "chat:task:pubsub:"  # Pub/sub channel for real-time delivery
-
-# Track background tasks for this pod (just the asyncio.Task reference, not subscribers)
-_local_tasks: dict[str, asyncio.Task] = {}
-
-
 def _get_task_meta_key(task_id: str) -> str:
     """Get Redis key for task metadata."""
-    return f"{TASK_META_PREFIX}{task_id}"
+    return f"{config.task_meta_prefix}{task_id}"
 
 
 def _get_task_stream_key(task_id: str) -> str:
     """Get Redis key for task message stream."""
-    return f"{TASK_STREAM_PREFIX}{task_id}"
+    return f"{config.task_stream_prefix}{task_id}"
 
 
 def _get_operation_mapping_key(operation_id: str) -> str:
     """Get Redis key for operation_id to task_id mapping."""
-    return f"{TASK_OP_PREFIX}{operation_id}"
+    return f"{config.task_op_prefix}{operation_id}"
 
 
 def _get_task_pubsub_channel(task_id: str) -> str:
     """Get Redis pub/sub channel for task real-time delivery."""
-    return f"{TASK_PUBSUB_PREFIX}{task_id}"
+    return f"{config.task_pubsub_prefix}{task_id}"
 
 
 async def create_task(
@@ -466,7 +459,9 @@ async def get_active_task_for_session(
     tasks_checked = 0
 
     while True:
-        cursor, keys = await redis.scan(cursor, match=f"{TASK_META_PREFIX}*", count=100)
+        cursor, keys = await redis.scan(
+            cursor, match=f"{config.task_meta_prefix}*", count=100
+        )
 
         for key in keys:
             tasks_checked += 1

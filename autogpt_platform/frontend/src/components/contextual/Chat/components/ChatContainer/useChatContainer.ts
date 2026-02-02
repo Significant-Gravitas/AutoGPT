@@ -1,10 +1,16 @@
 import type { SessionDetailResponse } from "@/app/api/__generated__/models/sessionDetailResponse";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { INITIAL_STREAM_ID } from "../../chat-constants";
 import { useChatStore } from "../../chat-store";
 import { toast } from "sonner";
 import { useChatStream } from "../../useChatStream";
 import { usePageContext } from "../../usePageContext";
 import type { ChatMessageData } from "../ChatMessage/useChatMessage";
+import {
+  getToolIdFromMessage,
+  hasToolId,
+  isOperationMessage,
+} from "../../chat-types";
 import { createStreamEventDispatcher } from "./createStreamEventDispatcher";
 import {
   createUserMessage,
@@ -13,6 +19,46 @@ import {
   markInitialPromptSent,
   processInitialMessages,
 } from "./helpers";
+
+/**
+ * Dependencies for creating a stream event dispatcher.
+ * Extracted to allow helper function creation.
+ */
+interface DispatcherDeps {
+  setHasTextChunks: React.Dispatch<React.SetStateAction<boolean>>;
+  setStreamingChunks: React.Dispatch<React.SetStateAction<string[]>>;
+  streamingChunksRef: React.MutableRefObject<string[]>;
+  hasResponseRef: React.MutableRefObject<boolean>;
+  setMessages: React.Dispatch<React.SetStateAction<ChatMessageData[]>>;
+  setIsRegionBlockedModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  sessionId: string;
+  setIsStreamingInitiated: React.Dispatch<React.SetStateAction<boolean>>;
+  onOperationStarted?: () => void;
+  onActiveTaskStarted: (taskInfo: {
+    taskId: string;
+    operationId: string;
+    toolName: string;
+    toolCallId: string;
+  }) => void;
+}
+
+/**
+ * Create a stream event dispatcher with the given dependencies.
+ */
+function createDispatcher(deps: DispatcherDeps) {
+  return createStreamEventDispatcher({
+    setHasTextChunks: deps.setHasTextChunks,
+    setStreamingChunks: deps.setStreamingChunks,
+    streamingChunksRef: deps.streamingChunksRef,
+    hasResponseRef: deps.hasResponseRef,
+    setMessages: deps.setMessages,
+    setIsRegionBlockedModalOpen: deps.setIsRegionBlockedModalOpen,
+    sessionId: deps.sessionId,
+    setIsStreamingInitiated: deps.setIsStreamingInitiated,
+    onOperationStarted: deps.onOperationStarted,
+    onActiveTaskStarted: deps.onActiveTaskStarted,
+  });
+}
 
 // Helper to generate deduplication key for a message
 function getMessageKey(msg: ChatMessageData): string {
@@ -24,13 +70,11 @@ function getMessageKey(msg: ChatMessageData): string {
   } else if (msg.type === "tool_call") {
     return `toolcall:${msg.toolId}`;
   } else if (msg.type === "tool_response") {
-    return `toolresponse:${(msg as any).toolId}`;
-  } else if (
-    msg.type === "operation_started" ||
-    msg.type === "operation_pending" ||
-    msg.type === "operation_in_progress"
-  ) {
-    return `op:${(msg as any).toolId || (msg as any).operationId || (msg as any).toolCallId || ""}:${msg.toolName}`;
+    const toolId = hasToolId(msg) ? msg.toolId : "";
+    return `toolresponse:${toolId}`;
+  } else if (isOperationMessage(msg)) {
+    const toolId = getToolIdFromMessage(msg) || "";
+    return `op:${toolId}:${msg.toolName}`;
   } else {
     return `${msg.type}:${JSON.stringify(msg).slice(0, 100)}`;
   }
@@ -90,7 +134,7 @@ export function useChatContainer({
       taskId: taskInfo.taskId,
       operationId: taskInfo.operationId,
       toolName: taskInfo.toolName,
-      lastMessageId: "0-0", // Redis Stream ID format for full replay
+      lastMessageId: INITIAL_STREAM_ID,
     });
   }
 
@@ -168,7 +212,7 @@ export function useChatContainer({
           },
         );
 
-        const dispatcher = createStreamEventDispatcher({
+        const dispatcher = createDispatcher({
           setHasTextChunks,
           setStreamingChunks,
           streamingChunksRef,
@@ -221,7 +265,7 @@ export function useChatContainer({
           },
         );
 
-        const dispatcher = createStreamEventDispatcher({
+        const dispatcher = createDispatcher({
           setHasTextChunks,
           setStreamingChunks,
           streamingChunksRef,
@@ -259,7 +303,7 @@ export function useChatContainer({
         return;
       }
 
-      const dispatcher = createStreamEventDispatcher({
+      const dispatcher = createDispatcher({
         setHasTextChunks,
         setStreamingChunks,
         streamingChunksRef,
@@ -300,7 +344,7 @@ export function useChatContainer({
         msg.type === "agent_carousel" ||
         msg.type === "execution_started"
       ) {
-        const toolId = (msg as any).toolId;
+        const toolId = hasToolId(msg) ? msg.toolId : undefined;
         if (toolId) {
           ids.add(toolId);
         }
@@ -317,12 +361,8 @@ export function useChatContainer({
 
       setMessages((prev) => {
         const filtered = prev.filter((msg) => {
-          if (
-            msg.type === "operation_started" ||
-            msg.type === "operation_pending" ||
-            msg.type === "operation_in_progress"
-          ) {
-            const toolId = (msg as any).toolId || (msg as any).toolCallId;
+          if (isOperationMessage(msg)) {
+            const toolId = getToolIdFromMessage(msg);
             if (toolId && completedToolIds.has(toolId)) {
               return false; // Remove - operation completed
             }
@@ -350,12 +390,8 @@ export function useChatContainer({
     // Filter local messages: remove duplicates and completed operation messages
     const newLocalMessages = messages.filter((msg) => {
       // Remove operation messages for completed tools
-      if (
-        msg.type === "operation_started" ||
-        msg.type === "operation_pending" ||
-        msg.type === "operation_in_progress"
-      ) {
-        const toolId = (msg as any).toolId || (msg as any).toolCallId;
+      if (isOperationMessage(msg)) {
+        const toolId = getToolIdFromMessage(msg);
         if (toolId && completedToolIds.has(toolId)) {
           return false;
         }
@@ -391,7 +427,7 @@ export function useChatContainer({
     setIsStreamingInitiated(true);
     hasResponseRef.current = false;
 
-    const dispatcher = createStreamEventDispatcher({
+    const dispatcher = createDispatcher({
       setHasTextChunks,
       setStreamingChunks,
       streamingChunksRef,
