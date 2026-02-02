@@ -607,6 +607,9 @@ async def stream_chat_completion(
                         total_tokens=chunk.totalTokens,
                     )
                 )
+            elif isinstance(chunk, StreamHeartbeat):
+                # Pass through heartbeat to keep SSE connection alive
+                yield chunk
             else:
                 logger.error(f"Unknown chunk type: {type(chunk)}", exc_info=True)
 
