@@ -1,11 +1,6 @@
-import {
-  getGetV2ListSessionsQueryKey,
-  useGetV2ListSessions,
-} from "@/app/api/__generated__/endpoints/chat/chat";
+import { useGetV2ListSessions } from "@/app/api/__generated__/endpoints/chat/chat";
 import type { SessionSummaryResponse } from "@/app/api/__generated__/models/sessionSummaryResponse";
 import { okData } from "@/app/api/helpers";
-import { useChatStore } from "@/components/contextual/Chat/chat-store";
-import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 
 const PAGE_SIZE = 50;
@@ -16,12 +11,12 @@ export interface UseSessionsPaginationArgs {
 
 export function useSessionsPagination({ enabled }: UseSessionsPaginationArgs) {
   const [offset, setOffset] = useState(0);
+
   const [accumulatedSessions, setAccumulatedSessions] = useState<
     SessionSummaryResponse[]
   >([]);
+
   const [totalCount, setTotalCount] = useState<number | null>(null);
-  const queryClient = useQueryClient();
-  const onStreamComplete = useChatStore((state) => state.onStreamComplete);
 
   const { data, isLoading, isFetching, isError } = useGetV2ListSessions(
     { limit: PAGE_SIZE, offset },
@@ -32,38 +27,23 @@ export function useSessionsPagination({ enabled }: UseSessionsPaginationArgs) {
     },
   );
 
-  useEffect(function refreshOnStreamComplete() {
-    const unsubscribe = onStreamComplete(function handleStreamComplete() {
-      setOffset(0);
+  useEffect(() => {
+    const responseData = okData(data);
+    if (responseData) {
+      const newSessions = responseData.sessions;
+      const total = responseData.total;
+      setTotalCount(total);
+
+      if (offset === 0) {
+        setAccumulatedSessions(newSessions);
+      } else {
+        setAccumulatedSessions((prev) => [...prev, ...newSessions]);
+      }
+    } else if (!enabled) {
       setAccumulatedSessions([]);
       setTotalCount(null);
-      queryClient.invalidateQueries({
-        queryKey: getGetV2ListSessionsQueryKey(),
-      });
-    });
-    return unsubscribe;
-  }, []);
-
-  useEffect(
-    function updateSessionsFromResponse() {
-      const responseData = okData(data);
-      if (responseData) {
-        const newSessions = responseData.sessions;
-        const total = responseData.total;
-        setTotalCount(total);
-
-        if (offset === 0) {
-          setAccumulatedSessions(newSessions);
-        } else {
-          setAccumulatedSessions((prev) => [...prev, ...newSessions]);
-        }
-      } else if (!enabled) {
-        setAccumulatedSessions([]);
-        setTotalCount(null);
-      }
-    },
-    [data, offset, enabled],
-  );
+    }
+  }, [data, offset, enabled]);
 
   const hasNextPage =
     totalCount !== null && accumulatedSessions.length < totalCount;
@@ -86,17 +66,17 @@ export function useSessionsPagination({ enabled }: UseSessionsPaginationArgs) {
     }
   }, [hasNextPage, isFetching, isLoading, isError, totalCount]);
 
-  function fetchNextPage() {
+  const fetchNextPage = () => {
     if (hasNextPage && !isFetching) {
       setOffset((prev) => prev + PAGE_SIZE);
     }
-  }
+  };
 
-  function reset() {
+  const reset = () => {
+    // Only reset the offset - keep existing sessions visible during refetch
+    // The effect will replace sessions when new data arrives at offset 0
     setOffset(0);
-    setAccumulatedSessions([]);
-    setTotalCount(null);
-  }
+  };
 
   return {
     sessions: accumulatedSessions,

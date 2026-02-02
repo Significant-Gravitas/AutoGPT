@@ -4,51 +4,53 @@ import { create } from "zustand";
 
 interface CopilotStoreState {
   isStreaming: boolean;
-  isNewChatModalOpen: boolean;
-  newChatHandler: (() => void) | null;
+  isSwitchingSession: boolean;
+  isCreatingSession: boolean;
+  isInterruptModalOpen: boolean;
+  pendingAction: (() => void) | null;
 }
 
 interface CopilotStoreActions {
   setIsStreaming: (isStreaming: boolean) => void;
-  setNewChatHandler: (handler: (() => void) | null) => void;
-  requestNewChat: () => void;
-  confirmNewChat: () => void;
-  cancelNewChat: () => void;
+  setIsSwitchingSession: (isSwitchingSession: boolean) => void;
+  setIsCreatingSession: (isCreating: boolean) => void;
+  openInterruptModal: (onConfirm: () => void) => void;
+  confirmInterrupt: () => void;
+  cancelInterrupt: () => void;
 }
 
 type CopilotStore = CopilotStoreState & CopilotStoreActions;
 
 export const useCopilotStore = create<CopilotStore>((set, get) => ({
   isStreaming: false,
-  isNewChatModalOpen: false,
-  newChatHandler: null,
+  isSwitchingSession: false,
+  isCreatingSession: false,
+  isInterruptModalOpen: false,
+  pendingAction: null,
 
   setIsStreaming(isStreaming) {
     set({ isStreaming });
   },
 
-  setNewChatHandler(handler) {
-    set({ newChatHandler: handler });
+  setIsSwitchingSession(isSwitchingSession) {
+    set({ isSwitchingSession });
   },
 
-  requestNewChat() {
-    const { isStreaming, newChatHandler } = get();
-    if (isStreaming) {
-      set({ isNewChatModalOpen: true });
-    } else if (newChatHandler) {
-      newChatHandler();
-    }
+  setIsCreatingSession(isCreatingSession) {
+    set({ isCreatingSession });
   },
 
-  confirmNewChat() {
-    const { newChatHandler } = get();
-    set({ isNewChatModalOpen: false });
-    if (newChatHandler) {
-      newChatHandler();
-    }
+  openInterruptModal(onConfirm) {
+    set({ isInterruptModalOpen: true, pendingAction: onConfirm });
   },
 
-  cancelNewChat() {
-    set({ isNewChatModalOpen: false });
+  confirmInterrupt() {
+    const { pendingAction } = get();
+    set({ isInterruptModalOpen: false, pendingAction: null });
+    if (pendingAction) pendingAction();
+  },
+
+  cancelInterrupt() {
+    set({ isInterruptModalOpen: false, pendingAction: null });
   },
 }));
