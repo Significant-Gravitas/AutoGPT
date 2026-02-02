@@ -1,0 +1,146 @@
+{% comment %}
+  ============================================================
+  COSMETIKA — Journal / Blog Section
+  ============================================================
+  Matches Fractal Forest "Journal" section.
+  Pulls latest articles from a blog.
+  ============================================================
+{% endcomment %}
+
+<section
+  class="cosmetika-journal"
+  data-section-id="{{ section.id }}"
+>
+  <div class="cosmetika-journal__container">
+
+    {% if section.settings.heading != blank %}
+      <div class="cosmetika-journal__header" data-animate="fade-up">
+        <h2 class="cosmetika-journal__heading">{{ section.settings.heading }}</h2>
+        {% if section.settings.subheading != blank %}
+          <p class="cosmetika-journal__subheading">{{ section.settings.subheading }}</p>
+        {% endif %}
+      </div>
+    {% endif %}
+
+    {% assign blog = blogs[section.settings.blog] %}
+    {% assign limit = section.settings.posts_to_show %}
+
+    <div class="cosmetika-journal__grid cosmetika-grid cosmetika-grid--{{ section.settings.columns }}" data-animate="stagger-grid">
+      {% if blog != blank %}
+        {% for article in blog.articles limit: limit %}
+          <article class="cosmetika-journal-card" data-animate="fade-up" data-delay="{{ forloop.index | times: 0.12 }}">
+            <a href="{{ article.url }}" class="cosmetika-journal-card__link">
+              {% if article.image != blank %}
+                <div class="cosmetika-journal-card__media">
+                  <img
+                    src="{{ article.image | image_url: width: 600 }}"
+                    srcset="
+                      {{ article.image | image_url: width: 400 }} 400w,
+                      {{ article.image | image_url: width: 600 }} 600w
+                    "
+                    sizes="(min-width: 1024px) 33vw, (min-width: 600px) 50vw, 100vw"
+                    alt="{{ article.title | escape }}"
+                    loading="lazy"
+                    class="cosmetika-journal-card__image"
+                  >
+                </div>
+              {% endif %}
+
+              <div class="cosmetika-journal-card__info">
+                <time class="cosmetika-journal-card__date" datetime="{{ article.published_at | date: '%Y-%m-%d' }}">
+                  {{ article.published_at | date: '%B %d, %Y' }}
+                </time>
+                <h3 class="cosmetika-journal-card__title">{{ article.title }}</h3>
+                {% if article.excerpt != blank %}
+                  <p class="cosmetika-journal-card__excerpt">{{ article.excerpt | strip_html | truncate: 120 }}</p>
+                {% endif %}
+                <span class="cosmetika-journal-card__read-more">
+                  Read More
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M5 12h14M12 5l7 7-7 7"/>
+                  </svg>
+                </span>
+              </div>
+            </a>
+          </article>
+        {% endfor %}
+      {% else %}
+        {% for i in (1..3) %}
+          <article class="cosmetika-journal-card">
+            <div class="cosmetika-journal-card__media">
+              {{ 'lifestyle-1' | placeholder_svg_tag: 'placeholder-svg' }}
+            </div>
+            <div class="cosmetika-journal-card__info">
+              <time class="cosmetika-journal-card__date">January 01, 2026</time>
+              <h3 class="cosmetika-journal-card__title">Journal Article Title</h3>
+              <p class="cosmetika-journal-card__excerpt">A preview of this article will appear here once you connect a blog.</p>
+            </div>
+          </article>
+        {% endfor %}
+      {% endif %}
+    </div>
+
+    {% if section.settings.show_view_all and blog != blank %}
+      <div class="cosmetika-journal__footer" data-animate="fade-up">
+        <a href="{{ blog.url }}" class="button button--outline">View All Articles</a>
+      </div>
+    {% endif %}
+
+  </div>
+</section>
+
+{% schema %}
+{
+  "name": "Journal",
+  "tag": "section",
+  "class": "cosmetika-section cosmetika-section--journal",
+  "settings": [
+    {
+      "type": "text",
+      "id": "heading",
+      "label": "Heading",
+      "default": "Journal"
+    },
+    {
+      "type": "text",
+      "id": "subheading",
+      "label": "Subheading"
+    },
+    {
+      "type": "blog",
+      "id": "blog",
+      "label": "Blog"
+    },
+    {
+      "type": "range",
+      "id": "posts_to_show",
+      "label": "Posts to show",
+      "min": 1,
+      "max": 6,
+      "step": 1,
+      "default": 3
+    },
+    {
+      "type": "select",
+      "id": "columns",
+      "label": "Columns",
+      "options": [
+        { "value": "2", "label": "2" },
+        { "value": "3", "label": "3" }
+      ],
+      "default": "3"
+    },
+    {
+      "type": "checkbox",
+      "id": "show_view_all",
+      "label": "Show 'View All' link",
+      "default": true
+    }
+  ],
+  "presets": [
+    {
+      "name": "Journal"
+    }
+  ]
+}
+{% endschema %}

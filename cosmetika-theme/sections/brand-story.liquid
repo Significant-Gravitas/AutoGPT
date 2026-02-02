@@ -1,0 +1,116 @@
+{% comment %}
+  ============================================================
+  COSMETIKA — Mission / Brand Story Section
+  ============================================================
+  Matches Fractal Forest "Our Mission" layout.
+  Full-width split: image left, text right.
+  ============================================================
+{% endcomment %}
+
+<section
+  class="cosmetika-mission"
+  data-section-id="{{ section.id }}"
+  data-animate="fade-in"
+>
+  <div class="cosmetika-mission__container">
+    <div class="cosmetika-mission__grid">
+
+      <div class="cosmetika-mission__media" data-animate="fade-right" data-delay="0.2">
+        {% if section.settings.image != blank %}
+          <div class="cosmetika-img-reveal">
+            <img
+              src="{{ section.settings.image | image_url: width: 900 }}"
+              srcset="
+                {{ section.settings.image | image_url: width: 600 }} 600w,
+                {{ section.settings.image | image_url: width: 900 }} 900w
+              "
+              sizes="(min-width: 768px) 50vw, 100vw"
+              alt="{{ section.settings.image.alt | escape }}"
+              loading="lazy"
+            >
+          </div>
+        {% else %}
+          <div class="cosmetika-mission__placeholder">
+            {{ 'lifestyle-2' | placeholder_svg_tag: 'placeholder-svg' }}
+          </div>
+        {% endif %}
+      </div>
+
+      <div class="cosmetika-mission__content" data-animate="fade-left" data-delay="0.4">
+        {% if section.settings.subtitle != blank %}
+          <p class="cosmetika-mission__subtitle">{{ section.settings.subtitle }}</p>
+        {% endif %}
+
+        {% if section.settings.heading != blank %}
+          <h2 class="cosmetika-mission__heading">{{ section.settings.heading }}</h2>
+        {% endif %}
+
+        {% if section.settings.text != blank %}
+          <div class="cosmetika-mission__text">{{ section.settings.text }}</div>
+        {% endif %}
+
+        {% if section.settings.cta_text != blank %}
+          <a href="{{ section.settings.cta_link }}" class="cosmetika-mission__cta button button--outline">
+            {{ section.settings.cta_text }}
+          </a>
+        {% endif %}
+      </div>
+
+    </div>
+  </div>
+</section>
+
+{% schema %}
+{
+  "name": "Brand Story",
+  "tag": "section",
+  "class": "cosmetika-section cosmetika-section--mission",
+  "settings": [
+    {
+      "type": "image_picker",
+      "id": "image",
+      "label": "Image"
+    },
+    {
+      "type": "text",
+      "id": "subtitle",
+      "label": "Subtitle",
+      "default": "Our Story"
+    },
+    {
+      "type": "text",
+      "id": "heading",
+      "label": "Heading",
+      "default": "Beauty With Purpose"
+    },
+    {
+      "type": "richtext",
+      "id": "text",
+      "label": "Body Text",
+      "default": "<p>We blend artistry with science, curating the world's finest beauty products for women who demand more. Every product in our collection is chosen for efficacy, elegance, and ethics.</p>"
+    },
+    {
+      "type": "text",
+      "id": "cta_text",
+      "label": "Button Text",
+      "default": "Learn More"
+    },
+    {
+      "type": "url",
+      "id": "cta_link",
+      "label": "Button Link"
+    },
+    {
+      "type": "checkbox",
+      "id": "reverse_layout",
+      "label": "Reverse layout (text left, image right)",
+      "default": false
+    }
+  ],
+  "presets": [
+    {
+      "name": "Brand Story"
+    }
+  ]
+}
+{% endschema %}

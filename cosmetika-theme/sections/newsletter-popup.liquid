@@ -1,0 +1,165 @@
+{% comment %}
+  ============================================================
+  COSMETIKA — Newsletter Popup
+  ============================================================
+  Matches Fractal Forest discount popup (15% off).
+  Delay-triggered modal with email capture.
+  ============================================================
+{% endcomment %}
+
+{% if section.settings.enabled %}
+<div
+  class="cosmetika-popup"
+  data-section-id="{{ section.id }}"
+  data-popup
+  data-popup-delay="{{ section.settings.delay }}"
+  role="dialog"
+  aria-modal="true"
+  aria-label="{{ section.settings.heading }}"
+  style="display: none;"
+>
+  <div class="cosmetika-popup__backdrop" data-popup-close></div>
+
+  <div class="cosmetika-popup__content">
+    <button class="cosmetika-popup__close" data-popup-close aria-label="Close">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M18 6 6 18M6 6l12 12"/>
+      </svg>
+    </button>
+
+    {% if section.settings.image != blank %}
+      <div class="cosmetika-popup__media">
+        <img
+          src="{{ section.settings.image | image_url: width: 500 }}"
+          alt=""
+          loading="lazy"
+          class="cosmetika-popup__image"
+        >
+      </div>
+    {% endif %}
+
+    <div class="cosmetika-popup__body">
+      {% if section.settings.heading != blank %}
+        <h2 class="cosmetika-popup__heading">{{ section.settings.heading }}</h2>
+      {% endif %}
+
+      {% if section.settings.text != blank %}
+        <p class="cosmetika-popup__text">{{ section.settings.text }}</p>
+      {% endif %}
+
+      {% form 'customer', id: 'newsletter-popup' %}
+        <input type="hidden" name="contact[tags]" value="newsletter,popup">
+        <div class="cosmetika-popup__form">
+          <input
+            type="email"
+            name="contact[email]"
+            placeholder="{{ section.settings.placeholder }}"
+            required
+            class="cosmetika-popup__input"
+            autocomplete="email"
+          >
+          <button type="submit" class="cosmetika-popup__submit button button--primary">
+            {{ section.settings.button_text }}
+          </button>
+        </div>
+
+        {% if section.settings.consent_text != blank %}
+          <p class="cosmetika-popup__consent">{{ section.settings.consent_text }}</p>
+        {% endif %}
+      {% endform %}
+    </div>
+  </div>
+</div>
+
+<script>
+  (function() {
+    var popup = document.querySelector('[data-popup]');
+    if (!popup) return;
+
+    var delay = parseInt(popup.dataset.popupDelay, 10) * 1000;
+    var storageKey = 'cosmetika_popup_dismissed';
+
+    if (sessionStorage.getItem(storageKey)) return;
+
+    setTimeout(function() {
+      popup.style.display = '';
+      popup.classList.add('is-active');
+      document.body.style.overflow = 'hidden';
+    }, delay);
+
+    popup.querySelectorAll('[data-popup-close]').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        popup.classList.remove('is-active');
+        document.body.style.overflow = '';
+        sessionStorage.setItem(storageKey, '1');
+        setTimeout(function() { popup.style.display = 'none'; }, 400);
+      });
+    });
+  })();
+</script>
+{% endif %}
+
+{% schema %}
+{
+  "name": "Newsletter Popup",
+  "tag": "section",
+  "class": "cosmetika-section cosmetika-section--popup",
+  "settings": [
+    {
+      "type": "checkbox",
+      "id": "enabled",
+      "label": "Enable popup",
+      "default": true
+    },
+    {
+      "type": "range",
+      "id": "delay",
+      "label": "Delay (seconds)",
+      "min": 1,
+      "max": 30,
+      "step": 1,
+      "default": 5
+    },
+    {
+      "type": "image_picker",
+      "id": "image",
+      "label": "Image"
+    },
+    {
+      "type": "text",
+      "id": "heading",
+      "label": "Heading",
+      "default": "Get 15% Off"
+    },
+    {
+      "type": "textarea",
+      "id": "text",
+      "label": "Body Text",
+      "default": "Sign up for exclusive access to new launches, offers, and beauty tips."
+    },
+    {
+      "type": "text",
+      "id": "placeholder",
+      "label": "Email Placeholder",
+      "default": "Enter your email"
+    },
+    {
+      "type": "text",
+      "id": "button_text",
+      "label": "Button Text",
+      "default": "Subscribe"
+    },
+    {
+      "type": "textarea",
+      "id": "consent_text",
+      "label": "Consent Text",
+      "default": "By signing up, you agree to receive marketing emails. Unsubscribe anytime."
+    }
+  ],
+  "presets": [
+    {
+      "name": "Newsletter Popup"
+    }
+  ]
+}
+{% endschema %}

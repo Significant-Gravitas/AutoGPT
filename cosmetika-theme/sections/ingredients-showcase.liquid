@@ -1,0 +1,134 @@
+{% comment %}
+  ============================================================
+  COSMETIKA — Ingredients Showcase
+  ============================================================
+  Matches Fractal Forest "Ingredients" grid (9 botanicals).
+  Adapted: beauty ingredients with image + name + benefit.
+  3-column grid with staggered scroll reveal.
+  ============================================================
+{% endcomment %}
+
+<section
+  class="cosmetika-ingredients"
+  data-section-id="{{ section.id }}"
+>
+  <div class="cosmetika-ingredients__container">
+
+    {% if section.settings.heading != blank %}
+      <div class="cosmetika-ingredients__header" data-animate="fade-up">
+        <h2 class="cosmetika-ingredients__heading">{{ section.settings.heading }}</h2>
+        {% if section.settings.subheading != blank %}
+          <p class="cosmetika-ingredients__subheading">{{ section.settings.subheading }}</p>
+        {% endif %}
+      </div>
+    {% endif %}
+
+    <div class="cosmetika-ingredients__grid" data-animate="stagger-grid">
+      {% for block in section.blocks %}
+        {% if block.type == 'ingredient' %}
+          <div
+            class="cosmetika-ingredient-card"
+            data-animate="fade-up"
+            data-delay="{{ forloop.index | times: 0.08 }}"
+            {{ block.shopify_attributes }}
+          >
+            <div class="cosmetika-ingredient-card__media">
+              {% if block.settings.image != blank %}
+                <img
+                  src="{{ block.settings.image | image_url: width: 400 }}"
+                  alt="{{ block.settings.name | escape }}"
+                  loading="lazy"
+                  class="cosmetika-ingredient-card__image"
+                >
+              {% else %}
+                <div class="cosmetika-ingredient-card__placeholder">
+                  {{ 'product-1' | placeholder_svg_tag: 'placeholder-svg' }}
+                </div>
+              {% endif %}
+            </div>
+
+            <div class="cosmetika-ingredient-card__info">
+              <h3 class="cosmetika-ingredient-card__name">{{ block.settings.name }}</h3>
+              {% if block.settings.latin_name != blank %}
+                <p class="cosmetika-ingredient-card__latin">{{ block.settings.latin_name }}</p>
+              {% endif %}
+              {% if block.settings.description != blank %}
+                <p class="cosmetika-ingredient-card__description">{{ block.settings.description }}</p>
+              {% endif %}
+            </div>
+          </div>
+        {% endif %}
+      {% endfor %}
+    </div>
+
+  </div>
+</section>
+
+{% schema %}
+{
+  "name": "Ingredients Showcase",
+  "tag": "section",
+  "class": "cosmetika-section cosmetika-section--ingredients",
+  "settings": [
+    {
+      "type": "text",
+      "id": "heading",
+      "label": "Heading",
+      "default": "Key Ingredients"
+    },
+    {
+      "type": "text",
+      "id": "subheading",
+      "label": "Subheading",
+      "default": "Nature's most potent beauty actives, ethically sourced"
+    }
+  ],
+  "blocks": [
+    {
+      "type": "ingredient",
+      "name": "Ingredient",
+      "limit": 12,
+      "settings": [
+        {
+          "type": "image_picker",
+          "id": "image",
+          "label": "Image"
+        },
+        {
+          "type": "text",
+          "id": "name",
+          "label": "Name",
+          "default": "Hyaluronic Acid"
+        },
+        {
+          "type": "text",
+          "id": "latin_name",
+          "label": "Scientific / Latin Name"
+        },
+        {
+          "type": "textarea",
+          "id": "description",
+          "label": "Benefit Description",
+          "default": "Deep hydration and plumping for a youthful, dewy complexion."
+        }
+      ]
+    }
+  ],
+  "presets": [
+    {
+      "name": "Ingredients Showcase",
+      "blocks": [
+        { "type": "ingredient", "settings": { "name": "Hyaluronic Acid", "description": "Deep hydration and plumping for a youthful, dewy complexion." } },
+        { "type": "ingredient", "settings": { "name": "Niacinamide", "description": "Minimizes pores, brightens skin tone, and strengthens the barrier." } },
+        { "type": "ingredient", "settings": { "name": "Retinol", "description": "Accelerates cell turnover for smoother, firmer skin." } },
+        { "type": "ingredient", "settings": { "name": "Vitamin C", "description": "Powerful antioxidant that brightens and protects against free radicals." } },
+        { "type": "ingredient", "settings": { "name": "Squalane", "description": "Lightweight moisture that mimics skin's natural oils." } },
+        { "type": "ingredient", "settings": { "name": "Bakuchiol", "description": "Plant-based retinol alternative, gentle yet effective." } },
+        { "type": "ingredient", "settings": { "name": "Peptides", "description": "Signal skin to produce more collagen for anti-aging benefits." } },
+        { "type": "ingredient", "settings": { "name": "Centella Asiatica", "description": "Calms inflammation and accelerates wound healing." } },
+        { "type": "ingredient", "settings": { "name": "Rosehip Oil", "description": "Rich in vitamins A and C for regeneration and glow." } }
+      ]
+    }
+  ]
+}
+{% endschema %}

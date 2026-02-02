@@ -34,22 +34,6 @@
     triggerEnd: 'bottom 20%',
   };
 
-  // ---- GUARD: wait for GSAP ----
-  function init() {
-    if (typeof gsap === 'undefined' || typeof ScrollTrigger === 'undefined') {
-      return;
-    }
-
-    gsap.registerPlugin(ScrollTrigger);
-
-    initFadeAnimations();
-    initHeroAnimation();
-    initStaggerGrids();
-    initParallax();
-    initHeaderScroll();
-    initImageReveals();
-  }
-
   // ---- FADE ANIMATIONS (fade-up, fade-in, fade-left, fade-right, scale-in) ----
   function initFadeAnimations() {
     const animTypes = {
@@ -207,7 +191,74 @@
     });
   }
 
+  // ---- CAROUSEL (prev/next arrows + drag scroll) ----
+  function initCarousels() {
+    document.querySelectorAll('[data-carousel-track]').forEach(function(track) {
+      var section = track.closest('.cosmetika-carousel');
+      if (!section) return;
+
+      var prevBtn = section.querySelector('[data-carousel-prev]');
+      var nextBtn = section.querySelector('[data-carousel-next]');
+      var slideWidth = function() {
+        var slide = track.querySelector('.cosmetika-carousel__slide');
+        if (!slide) return 300;
+        var style = getComputedStyle(track);
+        var gap = parseFloat(style.gap) || 0;
+        return slide.offsetWidth + gap;
+      };
+
+      if (nextBtn) {
+        nextBtn.addEventListener('click', function() {
+          track.scrollBy({ left: slideWidth(), behavior: 'smooth' });
+        });
+      }
+      if (prevBtn) {
+        prevBtn.addEventListener('click', function() {
+          track.scrollBy({ left: -slideWidth(), behavior: 'smooth' });
+        });
+      }
+
+      // Touch / drag scroll
+      var isDown = false, startX, scrollLeft;
+      track.addEventListener('mousedown', function(e) {
+        isDown = true; startX = e.pageX - track.offsetLeft; scrollLeft = track.scrollLeft;
+        track.style.cursor = 'grabbing';
+      });
+      track.addEventListener('mouseleave', function() { isDown = false; track.style.cursor = ''; });
+      track.addEventListener('mouseup', function() { isDown = false; track.style.cursor = ''; });
+      track.addEventListener('mousemove', function(e) {
+        if (!isDown) return;
+        e.preventDefault();
+        var x = e.pageX - track.offsetLeft;
+        track.scrollLeft = scrollLeft - (x - startX);
+      });
+    });
+  }
+
+  // ---- POPUP ----
+  function initPopup() {
+    // Popup logic is inline in the section for portability
+  }
+
   // ---- BOOT ----
+  function init() {
+    if (typeof gsap === 'undefined' || typeof ScrollTrigger === 'undefined') {
+      // Still init non-GSAP features
+      initCarousels();
+      return;
+    }
+
+    gsap.registerPlugin(ScrollTrigger);
+
+    initFadeAnimations();
+    initHeroAnimation();
+    initStaggerGrids();
+    initParallax();
+    initHeaderScroll();
+    initImageReveals();
+    initCarousels();
+  }
+
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
   } else {
