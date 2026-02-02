@@ -13,7 +13,6 @@ from backend.data.model import (
     CredentialsMetaInput,
     HostScopedCredentials,
     OAuth2Credentials,
-    _extract_host_from_url,
 )
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util.exceptions import NotFoundError
@@ -354,11 +353,9 @@ def _credential_is_for_host(
     if not requirements.discriminator_values:
         return True
 
+    # Check that credential host matches required host.
     # Host-scoped credential inputs are grouped by host, so any item from the set works.
-    host = _extract_host_from_url(list(requirements.discriminator_values)[0])
-
-    # Check that credential host matches required host
-    return credential.host == host
+    return credential.matches_url(list(requirements.discriminator_values)[0])
 
 
 async def check_user_has_required_credentials(
