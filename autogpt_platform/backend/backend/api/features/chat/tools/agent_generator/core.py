@@ -842,5 +842,9 @@ async def generate_agent_patch(
     _check_service_configured()
     logger.info("Calling external Agent Generator service for generate_agent_patch")
     return await generate_agent_patch_external(
-        update_request, current_agent, _to_dict_list(library_agents), operation_id, task_id
+        update_request,
+        current_agent,
+        _to_dict_list(library_agents),
+        operation_id,
+        task_id,
     )

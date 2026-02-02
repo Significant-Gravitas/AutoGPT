@@ -209,14 +209,28 @@ async def get_session(
         session_id, user_id
     )
     if active_task:
+        # Filter out the in-progress assistant message from the session response.
+        # The client will receive the complete assistant response through the SSE
+        # stream replay instead, preventing duplicate content.
+        if messages and messages[-1].get("role") == "assistant":
+            original_count = len(messages)
+            messages = messages[:-1]
+            logger.info(
+                f"[SSE-RECONNECT] Filtered out in-progress assistant message "
+                f"(was {original_count} messages, now {len(messages)})"
+            )
+
+        # Use "0-0" as last_message_id to replay the stream from the beginning.
+        # Since we filtered out the cached assistant message, the client needs
+        # the full stream to reconstruct the response.
         active_stream_info = ActiveStreamInfo(
             task_id=active_task.task_id,
-            last_message_id=last_message_id,
+            last_message_id="0-0",
         )
         logger.info(
             f"[SSE-RECONNECT] Session {session_id} HAS active stream: "
             f"task_id={active_task.task_id}, status={active_task.status}, "
-            f"last_message_id={last_message_id}"
+            f"last_message_id=0-0 (replay from start)"
         )
     else:
         logger.info(f"[SSE-RECONNECT] Session {session_id} has NO active stream")

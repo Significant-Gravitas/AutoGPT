@@ -211,9 +211,7 @@ async def subscribe_to_task(
     task_status = meta.get("status", "")
     task_user_id = meta.get("user_id", "") or None
 
-    logger.info(
-        f"[SSE-RECONNECT] Subscribing to task {task_id}: status={task_status}"
-    )
+    logger.info(f"[SSE-RECONNECT] Subscribing to task {task_id}: status={task_status}")
 
     # Validate ownership
     if user_id and task_user_id and task_user_id != user_id:
@@ -256,9 +254,7 @@ async def subscribe_to_task(
         logger.info(
             f"[SSE-RECONNECT] Task {task_id} is running, starting stream listener"
         )
-        asyncio.create_task(
-            _stream_listener(task_id, subscriber_queue, replay_last_id)
-        )
+        asyncio.create_task(_stream_listener(task_id, subscriber_queue, replay_last_id))
     else:
         # Task is completed/failed - add finish marker
         logger.info(
@@ -470,9 +466,7 @@ async def get_active_task_for_session(
     tasks_checked = 0
 
     while True:
-        cursor, keys = await redis.scan(
-            cursor, match=f"{TASK_META_PREFIX}*", count=100
-        )
+        cursor, keys = await redis.scan(cursor, match=f"{TASK_META_PREFIX}*", count=100)
 
         for key in keys:
             tasks_checked += 1
