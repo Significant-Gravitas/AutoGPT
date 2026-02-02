@@ -1,0 +1,61 @@
+{% comment %}
+  COSMETIKA — Blog / Journal Listing Page
+{% endcomment %}
+
+<section class="cosmetika-blog" data-section-id="{{ section.id }}">
+  <div class="cosmetika-journal__container">
+
+    <div class="cosmetika-journal__header" data-animate="fade-up">
+      <h1 class="cosmetika-journal__heading">{{ blog.title }}</h1>
+    </div>
+
+    {% paginate blog.articles by 9 %}
+      <div class="cosmetika-journal__grid cosmetika-grid cosmetika-grid--3" data-animate="stagger-grid">
+        {% for article in blog.articles %}
+          <article class="cosmetika-journal-card" data-animate="fade-up" data-delay="{{ forloop.index | times: 0.08 }}">
+            <a href="{{ article.url }}" class="cosmetika-journal-card__link">
+              {% if article.image != blank %}
+                <div class="cosmetika-journal-card__media">
+                  <img
+                    src="{{ article.image | image_url: width: 600 }}"
+                    alt="{{ article.title | escape }}"
+                    loading="lazy"
+                    class="cosmetika-journal-card__image"
+                  >
+                </div>
+              {% endif %}
+              <div class="cosmetika-journal-card__info">
+                <time class="cosmetika-journal-card__date" datetime="{{ article.published_at | date: '%Y-%m-%d' }}">
+                  {{ article.published_at | date: '%B %d, %Y' }}
+                </time>
+                <h2 class="cosmetika-journal-card__title">{{ article.title }}</h2>
+                {% if article.excerpt != blank %}
+                  <p class="cosmetika-journal-card__excerpt">{{ article.excerpt | strip_html | truncate: 120 }}</p>
+                {% endif %}
+                <span class="cosmetika-journal-card__read-more">
+                  Read More
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                </span>
+              </div>
+            </a>
+          </article>
+        {% endfor %}
+      </div>
+
+      {% if paginate.pages > 1 %}
+        <nav class="cosmetika-collection__pagination" aria-label="Pagination">
+          {{ paginate | default_pagination: next: 'Next', previous: 'Previous' }}
+        </nav>
+      {% endif %}
+    {% endpaginate %}
+
+  </div>
+</section>
+
+{% schema %}
+{
+  "name": "Blog Page",
+  "tag": "section",
+  "class": "cosmetika-section cosmetika-section--blog"
+}
+{% endschema %}

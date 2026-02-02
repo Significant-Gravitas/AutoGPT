@@ -1,0 +1,27 @@
+{
+  "sections": {
+    "main-product": {
+      "type": "product-page",
+      "settings": {
+        "show_vendor": true,
+        "show_share": true
+      }
+    },
+    "related-products": {
+      "type": "product-grid",
+      "settings": {
+        "heading": "You May Also Like",
+        "subheading": "",
+        "products_to_show": 4,
+        "columns": "4",
+        "show_vendor": true,
+        "show_quick_add": true,
+        "show_view_all": false
+      }
+    }
+  },
+  "order": [
+    "main-product",
+    "related-products"
+  ]
+}

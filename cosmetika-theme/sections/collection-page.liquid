@@ -1,0 +1,158 @@
+{% comment %}
+  ============================================================
+  COSMETIKA — Collection Page
+  ============================================================
+  Grid layout with sorting. Reuses product card styles.
+  ============================================================
+{% endcomment %}
+
+<section class="cosmetika-collection" data-section-id="{{ section.id }}">
+  <div class="cosmetika-collection__container">
+
+    <div class="cosmetika-collection__header" data-animate="fade-up">
+      <h1 class="cosmetika-collection__title">{{ collection.title }}</h1>
+      {% if collection.description != blank %}
+        <div class="cosmetika-collection__description rte">{{ collection.description }}</div>
+      {% endif %}
+
+      <div class="cosmetika-collection__toolbar">
+        <p class="cosmetika-collection__count">{{ collection.products_count }} products</p>
+        <div class="cosmetika-collection__sort">
+          <label for="SortBy" class="visually-hidden">Sort by</label>
+          <select id="SortBy" class="cosmetika-collection__sort-select" data-sort-select>
+            {% for option in collection.sort_options %}
+              <option value="{{ option.value }}" {% if collection.sort_by == option.value %}selected{% endif %}>
+                {{ option.name }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+    </div>
+
+    {% paginate collection.products by section.settings.products_per_page %}
+      <div class="cosmetika-collection__grid cosmetika-grid cosmetika-grid--{{ section.settings.columns }}" data-animate="stagger-grid">
+        {% for product in collection.products %}
+          <div
+            class="cosmetika-product-card"
+            data-animate="fade-up"
+            data-delay="{{ forloop.index | times: 0.08 }}"
+          >
+            <a href="{{ product.url }}" class="cosmetika-product-card__link">
+              <div class="cosmetika-product-card__media">
+                {% if product.featured_image != blank %}
+                  <img
+                    class="cosmetika-product-card__image cosmetika-product-card__image--primary"
+                    src="{{ product.featured_image | image_url: width: 600 }}"
+                    srcset="
+                      {{ product.featured_image | image_url: width: 300 }} 300w,
+                      {{ product.featured_image | image_url: width: 450 }} 450w,
+                      {{ product.featured_image | image_url: width: 600 }} 600w
+                    "
+                    sizes="(min-width: 1200px) 25vw, (min-width: 768px) 33vw, 50vw"
+                    alt="{{ product.featured_image.alt | escape }}"
+                    loading="lazy"
+                    width="{{ product.featured_image.width }}"
+                    height="{{ product.featured_image.height }}"
+                  >
+                  {% if product.images[1] != blank %}
+                    <img
+                      class="cosmetika-product-card__image cosmetika-product-card__image--hover"
+                      src="{{ product.images[1] | image_url: width: 600 }}"
+                      alt="{{ product.images[1].alt | escape }}"
+                      loading="lazy"
+                    >
+                  {% endif %}
+                {% else %}
+                  <div class="cosmetika-product-card__placeholder">
+                    {{ 'product-1' | placeholder_svg_tag: 'placeholder-svg' }}
+                  </div>
+                {% endif %}
+
+                {% if product.compare_at_price > product.price %}
+                  <span class="cosmetika-product-card__badge cosmetika-product-card__badge--sale">Sale</span>
+                {% endif %}
+              </div>
+
+              <div class="cosmetika-product-card__info">
+                {% if section.settings.show_vendor %}
+                  <p class="cosmetika-product-card__vendor">{{ product.vendor }}</p>
+                {% endif %}
+                <h3 class="cosmetika-product-card__title">{{ product.title }}</h3>
+                <div class="cosmetika-product-card__price">
+                  {% if product.compare_at_price > product.price %}
+                    <span class="cosmetika-product-card__price--compare">{{ product.compare_at_price | money }}</span>
+                  {% endif %}
+                  <span class="cosmetika-product-card__price--current">{{ product.price | money }}</span>
+                </div>
+              </div>
+            </a>
+
+            {% if product.available and product.variants.size == 1 %}
+              <form method="post" action="/cart/add" class="cosmetika-product-card__quick-add">
+                <input type="hidden" name="id" value="{{ product.variants.first.id }}">
+                <button type="submit" class="cosmetika-product-card__quick-add-btn button button--secondary">Add to Bag</button>
+              </form>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+
+      {% if paginate.pages > 1 %}
+        <nav class="cosmetika-collection__pagination" aria-label="Pagination">
+          {{ paginate | default_pagination: next: 'Next', previous: 'Previous' }}
+        </nav>
+      {% endif %}
+    {% endpaginate %}
+
+  </div>
+</section>
+
+<script>
+  (function() {
+    var sortSelect = document.querySelector('[data-sort-select]');
+    if (sortSelect) {
+      sortSelect.addEventListener('change', function() {
+        var url = new URL(window.location.href);
+        url.searchParams.set('sort_by', this.value);
+        window.location.href = url.toString();
+      });
+    }
+  })();
+</script>
+
+{% schema %}
+{
+  "name": "Collection Page",
+  "tag": "section",
+  "class": "cosmetika-section cosmetika-section--collection",
+  "settings": [
+    {
+      "type": "range",
+      "id": "products_per_page",
+      "label": "Products per page",
+      "min": 8,
+      "max": 48,
+      "step": 4,
+      "default": 16
+    },
+    {
+      "type": "select",
+      "id": "columns",
+      "label": "Columns",
+      "options": [
+        { "value": "2", "label": "2" },
+        { "value": "3", "label": "3" },
+        { "value": "4", "label": "4" }
+      ],
+      "default": "4"
+    },
+    {
+      "type": "checkbox",
+      "id": "show_vendor",
+      "label": "Show vendor",
+      "default": true
+    }
+  ]
+}
+{% endschema %}
