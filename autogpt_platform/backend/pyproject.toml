@@ -100,6 +100,7 @@ pytest-mock = "^3.15.1"
 pytest-watcher = "^0.4.2"
 requests = "^2.32.5"
 ruff = "^0.14.5"
+runledger = "^0.1.1"
 # NOTE: please insert new dependencies in their alphabetical location
 
 [build-system]

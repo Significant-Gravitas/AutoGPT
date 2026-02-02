@@ -1,0 +1,12 @@
+id: docs-format-text-red
+description: "Google Docs format_text parses #FF0000 into RGB floats"
+input:
+  document_id: "doc_1"
+  start_index: 1
+  end_index: 2
+  bold: false
+  italic: false
+  underline: false
+  font_size: 0
+  foreground_color: "#FF0000"
+cassette: cassettes/docs-format-text.jsonl

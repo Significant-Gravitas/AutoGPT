@@ -1,0 +1,16 @@
+{
+  "type": "object",
+  "properties": {
+    "success": { "const": true },
+    "rgb": {
+      "type": "object",
+      "properties": {
+        "red": { "const": 1.0 },
+        "green": { "const": 0.0 },
+        "blue": { "const": 0.0 }
+      },
+      "required": ["red", "green", "blue"]
+    }
+  },
+  "required": ["success", "rgb"]
+}

@@ -1,0 +1,16 @@
+suite_name: autogpt-backend-blocks-runledger
+agent_command: ["python", "agent.py"]
+mode: live
+cases_path: cases
+tool_registry:
+  - format_docs_text
+tool_module: test.runledger.tools
+
+assertions:
+  - type: json_schema
+    schema_path: schema.json
+
+budgets:
+  max_wall_ms: 20000
+  max_tool_calls: 1
+  max_tool_errors: 0
