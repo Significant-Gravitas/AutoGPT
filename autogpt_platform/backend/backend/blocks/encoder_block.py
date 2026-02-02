@@ -35,6 +35,7 @@ class TextEncoderBlock(Block):
         encoded_text: str = SchemaField(
             description="The encoded text with special characters converted to escape sequences"
         )
+        error: str = SchemaField(description="Error message if encoding fails")
 
     def __init__(self):
         super().__init__(
@@ -65,7 +66,12 @@ This is a "quoted" string."""
             **kwargs: Additional keyword arguments (unused).
 
         Yields:
-            The encoded text with escape sequences.
+            The encoded text with escape sequences, or an error message if encoding fails.
         """
-        encoded_text = codecs.encode(input_data.text, "unicode_escape").decode("utf-8")
-        yield "encoded_text", encoded_text
+        try:
+            encoded_text = codecs.encode(input_data.text, "unicode_escape").decode(
+                "utf-8"
+            )
+            yield "encoded_text", encoded_text
+        except Exception as e:
+            yield "error", f"Encoding error: {str(e)}"
