@@ -644,7 +644,9 @@ class Scheduler(AppService):
                 logger.info("⏳ Disconnecting Prisma...")
                 run_async(db.disconnect())
         except Exception:
-            logger.warning("⚠️ Failed to disconnect Prisma during cleanup", exc_info=True)
+            logger.warning(
+                "⚠️ Failed to disconnect Prisma during cleanup", exc_info=True
+            )
 
         if _event_loop:
             logger.info("⏳ Closing event loop...")
