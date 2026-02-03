@@ -109,7 +109,7 @@ export function FileInput(props: Props) {
     if (val && typeof val === "object") {
       const obj = val as Record<string, unknown>;
       if (typeof obj.name === "string") {
-        return getFileLabel(obj.name, (obj.type as string) || "");
+        return getFileLabel(obj.name, typeof obj.type === "string" ? obj.type : "");
       }
       if (typeof obj.type === "string") {
         const mimeParts = obj.type.split("/");
