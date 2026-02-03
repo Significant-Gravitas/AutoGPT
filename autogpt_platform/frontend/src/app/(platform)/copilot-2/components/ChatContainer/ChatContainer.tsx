@@ -35,10 +35,10 @@ export const ChatContainer = ({messages, status, error, input, setInput, handleM
           setIsCreating(false);
         }
       }
-    
+
 
     return (
-        <div className="mx-auto h-[calc(100vh-60px)] w-full max-w-3xl pb-6">
+        <div className="mx-auto h-full w-full max-w-3xl pb-6">
         <div className="flex h-full flex-col">
           {sessionId ? (
             <ChatMessagesContainer

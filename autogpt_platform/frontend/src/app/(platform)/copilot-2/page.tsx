@@ -5,18 +5,22 @@ import { DefaultChatTransport } from "ai";
 import { useState, useMemo } from "react";
 import { parseAsString, useQueryState } from "nuqs";
 import { ChatSidebar } from "./components/ChatSidebar/ChatSidebar";
-import { EmptySession } from "./components/EmptySession/EmptySession";
-import { ChatMessagesContainer } from "./components/ChatMessagesContainer/ChatMessagesContainer";
-import { postV2CreateSession } from "@/app/api/__generated__/endpoints/chat/chat";
-import { ChatInput } from "@/components/contextual/Chat/components/ChatInput/ChatInput";
-import { useSearchParams } from "next/navigation";
 import { ChatContainer } from "./components/ChatContainer/ChatContainer";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
+import { Button } from "@/components/ui/button";
+import { CopyIcon, CheckIcon } from "@phosphor-icons/react";
 
 export default function Page() {
   const [input, setInput] = useState("");
-  const searchParams = useSearchParams();
-  const sessionId = searchParams.get("sessionId") ?? undefined;
+  const [copied, setCopied] = useState(false);
+  const [sessionId] = useQueryState("sessionId", parseAsString);
+
+  function handleCopySessionId() {
+    if (!sessionId) return;
+    navigator.clipboard.writeText(sessionId);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
 
   const transport = useMemo(() => {
     if (!sessionId) return null;
@@ -56,18 +60,39 @@ export default function Page() {
   }
 
   return (
-    <SidebarProvider className="min-h-0 h-[calc(100vh-60px)]">
+    <SidebarProvider defaultOpen={false} className="min-h-0 h-[calc(100vh-72px)]">
       <ChatSidebar />
-      <SidebarInset className="h-[calc(100vh-60px)]">
-        <ChatContainer
-          messages={messages}
-          status={status}
-          error={error}
-          input={input}
-          setInput={setInput}
-          handleMessageSubmit={handleMessageSubmit}
-          onSend={onSend}
-        />
+      <SidebarInset className="flex h-[calc(100vh-80px)] flex-col relative">
+        {sessionId && (
+          <div className="flex items-center px-4 py-4 absolute">
+            <div className="flex items-center gap-2 rounded-3xl border border-neutral-400 bg-neutral-100 px-3 py-1.5 text-sm text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400">
+              <span className=" text-xs">{sessionId.slice(0, 8)}...</span>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6"
+                onClick={handleCopySessionId}
+              >
+                {copied ? (
+                  <CheckIcon className="h-3.5 w-3.5 text-green-500" />
+                ) : (
+                  <CopyIcon className="h-3.5 w-3.5" />
+                )}
+              </Button>
+            </div>
+          </div>
+        )}
+        <div className="flex-1 overflow-hidden">
+          <ChatContainer
+            messages={messages}
+            status={status}
+            error={error}
+            input={input}
+            setInput={setInput}
+            handleMessageSubmit={handleMessageSubmit}
+            onSend={onSend}
+          />
+        </div>
       </SidebarInset>
     </SidebarProvider>
   );
