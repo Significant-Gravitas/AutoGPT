@@ -13,7 +13,7 @@ from prisma import Prisma
 
 from . import service as chat_service
 from . import stream_registry
-from .response_model import StreamError, StreamFinish, StreamToolOutputAvailable
+from .response_model import StreamError, StreamToolOutputAvailable
 from .tools.models import ErrorResponse
 
 logger = logging.getLogger(__name__)
@@ -89,13 +89,18 @@ async def _update_tool_message(
     try:
         if prisma_client:
             # Use provided Prisma client (for consumer with its own connection)
-            await prisma_client.chatmessage.update_many(
+            updated_count = await prisma_client.chatmessage.update_many(
                 where={
                     "sessionId": session_id,
                     "toolCallId": tool_call_id,
                 },
                 data={"content": content},
             )
+            # Check if any rows were updated - 0 means message not found
+            if updated_count == 0:
+                raise ToolMessageUpdateError(
+                    f"No message found with tool_call_id={tool_call_id} in session {session_id}"
+                )
         else:
             # Use service function (for webhook endpoint)
             await chat_service._update_pending_operation(
@@ -103,6 +108,8 @@ async def _update_tool_message(
                 tool_call_id=tool_call_id,
                 result=content,
             )
+    except ToolMessageUpdateError:
+        raise
     except Exception as e:
         logger.error(f"[COMPLETION] Failed to update tool message: {e}", exc_info=True)
         raise ToolMessageUpdateError(
@@ -216,8 +223,8 @@ async def process_operation_success(
     if task.tool_name in AGENT_GENERATION_TOOLS and isinstance(result, dict):
         result = await _save_agent_from_result(result, task.user_id, task.tool_name)
 
-    # Serialize result for output
-    result_output = result if result else {"status": "completed"}
+    # Serialize result for output (only substitute default when result is exactly None)
+    result_output = result if result is not None else {"status": "completed"}
     output_str = (
         result_output
         if isinstance(result_output, str)
@@ -306,7 +313,6 @@ async def process_operation_failure(
         task.task_id,
         StreamError(errorText=error_msg),
     )
-    await stream_registry.publish_chunk(task.task_id, StreamFinish())
 
     # Update pending operation with error
     # If this fails, we still continue to mark the task as failed

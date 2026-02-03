@@ -16,17 +16,12 @@ import type {
 } from "./chat-types";
 import { executeStream, executeTaskReconnect } from "./stream-executor";
 
-/**
- * Tracks active task info for SSE reconnection.
- * When a long-running operation starts, we store this so clients can reconnect
- * if the browser tab is closed and reopened.
- */
 export interface ActiveTaskInfo {
   taskId: string;
   sessionId: string;
   operationId: string;
   toolName: string;
-  lastMessageId: string; // Last processed message ID for replay (Redis Stream format: "0-0")
+  lastMessageId: string;
   startedAt: number;
 }
 

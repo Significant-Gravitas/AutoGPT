@@ -21,7 +21,6 @@ import {
   processInitialMessages,
 } from "./helpers";
 
-// Types that represent a tool result/response and should be deduplicated by toolId
 const TOOL_RESULT_TYPES = new Set([
   "tool_response",
   "agent_carousel",

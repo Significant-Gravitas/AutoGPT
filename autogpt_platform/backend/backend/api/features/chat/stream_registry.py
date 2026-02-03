@@ -170,6 +170,9 @@ async def publish_chunk(
             maxlen=config.stream_max_length,
         )
         message_id = raw_id if isinstance(raw_id, str) else raw_id.decode()
+
+        # Set TTL on stream to match task metadata TTL
+        await redis.expire(stream_key, config.stream_ttl)
     except Exception as e:
         logger.error(
             f"Failed to publish chunk for task {task_id}: {e}",

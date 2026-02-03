@@ -560,10 +560,15 @@ async def stream_task(
             logger.error(f"Error in task stream {task_id}: {e}", exc_info=True)
         finally:
             # Unsubscribe when client disconnects or stream ends
-            await stream_registry.unsubscribe_from_task(task_id, subscriber_queue)
-
-        # AI SDK protocol termination
-        yield "data: [DONE]\n\n"
+            try:
+                await stream_registry.unsubscribe_from_task(task_id, subscriber_queue)
+            except Exception as unsub_err:
+                logger.error(
+                    f"Error unsubscribing from task {task_id}: {unsub_err}",
+                    exc_info=True,
+                )
+            # AI SDK protocol termination - always yield even if unsubscribe fails
+            yield "data: [DONE]\n\n"
 
     return StreamingResponse(
         event_generator(),

@@ -28,40 +28,17 @@ function notifySubscribers(
   }
 }
 
-/**
- * Options for stream execution.
- */
 interface StreamExecutionOptions {
-  /** The active stream state object */
   stream: ActiveStream;
-  /** Execution mode: 'new' for new stream, 'reconnect' for task reconnection */
   mode: "new" | "reconnect";
-  /** Message content (required for 'new' mode) */
   message?: string;
-  /** Whether this is a user message (for 'new' mode) */
   isUserMessage?: boolean;
-  /** Optional context for the message (for 'new' mode) */
   context?: { url: string; content: string };
-  /** Task ID (required for 'reconnect' mode) */
   taskId?: string;
-  /** Last message ID for replay (for 'reconnect' mode) */
   lastMessageId?: string;
-  /** Current retry count (internal use) */
   retryCount?: number;
 }
 
-/**
- * Unified stream execution function that handles both new streams and task reconnection.
- *
- * For new streams:
- * - Posts a message to create a new chat stream
- * - Reads SSE chunks and notifies subscribers
- *
- * For reconnection:
- * - Connects to an existing task stream
- * - Replays messages from lastMessageId position
- * - Allows resumption of long-running operations
- */
 async function executeStreamInternal(
   options: StreamExecutionOptions,
 ): Promise<void> {
@@ -79,8 +56,23 @@ async function executeStreamInternal(
   const { sessionId, abortController } = stream;
   const isReconnect = mode === "reconnect";
 
+  if (isReconnect) {
+    if (!taskId) {
+      throw new Error("taskId is required for reconnect mode");
+    }
+    if (lastMessageId === null || lastMessageId === undefined) {
+      throw new Error("lastMessageId is required for reconnect mode");
+    }
+  } else {
+    if (!message) {
+      throw new Error("message is required for new stream mode");
+    }
+    if (isUserMessage === undefined) {
+      throw new Error("isUserMessage is required for new stream mode");
+    }
+  }
+
   try {
-    // Build URL and request options based on mode
     let url: string;
     let fetchOptions: RequestInit;
 
@@ -114,7 +106,6 @@ async function executeStreamInternal(
 
     if (!response.ok) {
       const errorText = await response.text();
-      // Parse error details from response body if JSON
       let errorCode: string | undefined;
       let errorMessage = errorText || `HTTP ${response.status}`;
       try {
@@ -129,10 +120,8 @@ async function executeStreamInternal(
             typeof parsed.detail === "object" ? parsed.detail.code : undefined;
         }
       } catch {
-        // Not JSON, use raw text
       }
 
-      // For reconnect: don't retry on permanent errors (404/403/410)
       const isPermanentError =
         isReconnect &&
         (response.status === 404 ||
@@ -201,9 +190,7 @@ async function executeStreamInternal(
               );
               return;
             }
-          } catch {
-            // Failed to parse SSE chunk - continue to next
-          }
+          } catch {}
         }
       }
     }
@@ -214,7 +201,6 @@ async function executeStreamInternal(
       return;
     }
 
-    // Check if this is a permanent error (404/403) that shouldn't be retried
     const isPermanentError =
       err instanceof Error &&
       (err as Error & { isPermanent?: boolean }).isPermanent;
@@ -237,11 +223,6 @@ async function executeStreamInternal(
   }
 }
 
-/**
- * Execute a new chat stream.
- *
- * Posts a message to create a new stream and reads SSE responses.
- */
 export async function executeStream(
   stream: ActiveStream,
   message: string,
@@ -259,18 +240,6 @@ export async function executeStream(
   });
 }
 
-/**
- * Reconnect to an existing task stream.
- *
- * This is used when a client wants to resume receiving updates from a
- * long-running background task. Messages are replayed from the last_message_id
- * position, allowing clients to catch up on missed events.
- *
- * @param stream - The active stream state
- * @param taskId - The task ID to reconnect to
- * @param lastMessageId - The last message ID received (for replay)
- * @param retryCount - Current retry count
- */
 export async function executeTaskReconnect(
   stream: ActiveStream,
   taskId: string,

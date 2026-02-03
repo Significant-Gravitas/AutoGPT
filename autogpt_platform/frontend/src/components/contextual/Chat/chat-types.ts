@@ -16,7 +16,7 @@ export interface StreamChunk {
     | "error"
     | "usage"
     | "stream_end";
-  taskId?: string; // Task ID for SSE reconnection
+  taskId?: string;
   timestamp?: string;
   content?: string;
   message?: string;

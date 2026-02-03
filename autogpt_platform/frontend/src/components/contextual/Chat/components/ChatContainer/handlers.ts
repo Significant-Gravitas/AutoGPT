@@ -18,9 +18,7 @@ export interface HandlerDependencies {
   setStreamingChunks: Dispatch<SetStateAction<string[]>>;
   streamingChunksRef: MutableRefObject<string[]>;
   hasResponseRef: MutableRefObject<boolean>;
-  /** Tracks if text has been finalized (to prevent duplicate messages from handleTextEnded and handleStreamEnd) */
   textFinalizedRef: MutableRefObject<boolean>;
-  /** Tracks if stream has ended (to handle duplicate StreamFinish events during reconnection) */
   streamEndedRef: MutableRefObject<boolean>;
   setMessages: Dispatch<SetStateAction<ChatMessageData[]>>;
   setIsStreamingInitiated: Dispatch<SetStateAction<boolean>>;
@@ -42,10 +40,6 @@ export function isRegionBlockedError(chunk: StreamChunk): boolean {
   return message.toLowerCase().includes("not available in your region");
 }
 
-/**
- * Get a user-friendly error message based on the error code.
- * Returns undefined if the code should use the default message.
- */
 export function getUserFriendlyErrorMessage(
   code: string | undefined,
 ): string | undefined {
@@ -79,19 +73,16 @@ export function handleTextEnded(
   _chunk: StreamChunk,
   deps: HandlerDependencies,
 ) {
-  // Check if text was already finalized to prevent duplicate messages
   if (deps.textFinalizedRef.current) {
     return;
   }
 
   const completedText = deps.streamingChunksRef.current.join("");
   if (completedText.trim()) {
-    // Mark text as finalized before adding message
     deps.textFinalizedRef.current = true;
 
     deps.setMessages((prev) => {
-      // Check if this exact message already exists to prevent duplicates
-      const exists = prev.some(
+            const exists = prev.some(
         (msg) =>
           msg.type === "message" &&
           msg.role === "assistant" &&
@@ -157,7 +148,6 @@ export function handleToolCallStart(
   deps.setMessages(updateToolCallMessages);
 }
 
-// Types that represent a tool response and should be deduplicated by toolId
 const TOOL_RESPONSE_TYPES = new Set([
   "tool_response",
   "operation_started",
@@ -174,7 +164,6 @@ function hasResponseForTool(
 ): boolean {
   return messages.some((msg) => {
     if (!TOOL_RESPONSE_TYPES.has(msg.type)) return false;
-    // Check various toolId field names used by different response types
     const msgToolId =
       (msg as { toolId?: string }).toolId ||
       (msg as { toolCallId?: string }).toolCallId;
@@ -245,10 +234,8 @@ export function handleToolResponse(
     }
     return;
   }
-  // Trigger polling and store task info when operation_started is received
   if (responseMessage.type === "operation_started") {
     deps.onOperationStarted?.();
-    // Store task info for SSE reconnection if taskId is present
     const taskId = (responseMessage as { taskId?: string }).taskId;
     if (taskId && deps.onActiveTaskStarted) {
       deps.onActiveTaskStarted({
@@ -265,7 +252,6 @@ export function handleToolResponse(
     const toolCallIndex = prev.findIndex(
       (msg) => msg.type === "tool_call" && msg.toolId === chunk.tool_id,
     );
-    // Check if any response type already exists for this tool
     if (hasResponseForTool(prev, chunk.tool_id!)) {
       return prev;
     }
@@ -302,7 +288,6 @@ export function handleStreamEnd(
   _chunk: StreamChunk,
   deps: HandlerDependencies,
 ) {
-  // Idempotent check - ignore duplicate finish events (can happen during reconnection)
   if (deps.streamEndedRef.current) {
     return;
   }
@@ -311,7 +296,6 @@ export function handleStreamEnd(
   const completedContent = deps.streamingChunksRef.current.join("");
   if (!completedContent.trim() && !deps.hasResponseRef.current) {
     deps.setMessages((prev) => {
-      // Check for duplicate "No response" message
       const exists = prev.some(
         (msg) =>
           msg.type === "message" &&
@@ -330,14 +314,11 @@ export function handleStreamEnd(
       ];
     });
   }
-  // Only add message if text wasn't already finalized by handleTextEnded
   if (completedContent.trim() && !deps.textFinalizedRef.current) {
-    // Mark as finalized BEFORE adding to prevent handleTextEnded from duplicating
     deps.textFinalizedRef.current = true;
 
     deps.setMessages((prev) => {
-      // Check if this exact message already exists to prevent duplicates
-      const exists = prev.some(
+            const exists = prev.some(
         (msg) =>
           msg.type === "message" &&
           msg.role === "assistant" &&
@@ -368,15 +349,10 @@ export function handleError(chunk: StreamChunk, deps: HandlerDependencies) {
   deps.setHasTextChunks(false);
   deps.setStreamingChunks([]);
   deps.streamingChunksRef.current = [];
-  // Reset flags since stream ended with error
   deps.textFinalizedRef.current = false;
-  deps.streamEndedRef.current = true; // Mark as ended to prevent duplicate processing
+  deps.streamEndedRef.current = true;
 }
 
-/**
- * Get the display message for an error chunk, using user-friendly messages
- * for known error codes.
- */
 export function getErrorDisplayMessage(chunk: StreamChunk): string {
   const friendlyMessage = getUserFriendlyErrorMessage(chunk.code);
   if (friendlyMessage) {
