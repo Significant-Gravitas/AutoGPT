@@ -238,5 +238,28 @@ def serve(
     )
 
 
+@cli.command()
+@click.option(
+    "-e",
+    "--env-file",
+    type=click.Path(dir_okay=False, resolve_path=True, path_type=Path),
+    default=None,
+    help="Path to .env file (default: ~/.autogpt/.env)",
+)
+def config(env_file: Optional[Path]) -> None:
+    """Interactive settings configuration browser.
+
+    Opens a tabbed UI to browse and edit AutoGPT settings. Settings are
+    saved to a .env file that AutoGPT reads on startup.
+
+    Use Tab or 1-9 to switch categories, arrow keys to navigate settings,
+    Enter to edit a setting, S to save, and Q to quit.
+    """
+    from autogpt.app.settings import SettingsUI
+
+    ui = SettingsUI()
+    ui.run(env_file)
+
+
 if __name__ == "__main__":
     cli()
