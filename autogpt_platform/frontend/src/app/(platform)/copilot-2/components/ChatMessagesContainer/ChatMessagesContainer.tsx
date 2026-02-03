@@ -13,6 +13,7 @@ import { MessageSquareIcon } from "lucide-react";
 import { UIMessage, UIDataTypes, UITools, ToolUIPart } from "ai";
 import { FindBlocksTool } from "../../tools/FindBlocks/FindBlocks";
 import { FindAgentsTool } from "../../tools/FindAgents/FindAgents";
+import { SearchDocsTool } from "../../tools/SearchDocs/SearchDocs";
 
 interface ChatMessagesContainerProps {
   messages: UIMessage<unknown, UIDataTypes, UITools>[];
@@ -66,6 +67,14 @@ export const ChatMessagesContainer = ({
                     case "tool-find_library_agent":
                       return (
                         <FindAgentsTool
+                          key={`${message.id}-${i}`}
+                          part={part as ToolUIPart}
+                        />
+                      );
+                    case "tool-search_docs":
+                    case "tool-get_doc_page":
+                      return (
+                        <SearchDocsTool
                           key={`${message.id}-${i}`}
                           part={part as ToolUIPart}
                         />
