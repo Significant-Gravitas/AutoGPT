@@ -884,7 +884,9 @@ async def _manage_context_window(
             f"Token counting failed for model {token_count_model}: {token_error}. "
             "Using gpt-4o approximation."
         )
-        token_count = estimate_token_count(messages_dict, model="gpt-4o")
+        # Update token_count_model so subsequent recounts also use the fallback
+        token_count_model = "gpt-4o"
+        token_count = estimate_token_count(messages_dict, model=token_count_model)
 
     # If under threshold, return unchanged
     if token_count <= TOKEN_THRESHOLD:
