@@ -24,12 +24,11 @@ from dotenv import load_dotenv
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import MetaData, create_engine
 
-from backend.data.auth.oauth import cleanup_expired_oauth_tokens
 from backend.data.block import BlockInput
 from backend.data.execution import GraphExecutionWithNodes
 from backend.data.model import CredentialsMetaInput
-from backend.data.onboarding import increment_onboarding_runs
 from backend.executor import utils as execution_utils
+from backend.executor.database import get_database_manager_async_client
 from backend.monitoring import (
     NotificationJobArgs,
     process_existing_batches,
@@ -148,6 +147,7 @@ def execute_graph(**kwargs):
 async def _execute_graph(**kwargs):
     args = GraphExecutionJobArgs(**kwargs)
     start_time = asyncio.get_event_loop().time()
+    db = get_database_manager_async_client()
     try:
         logger.info(f"Executing recurring job for graph #{args.graph_id}")
         graph_exec: GraphExecutionWithNodes = await execution_utils.add_graph_execution(
@@ -157,7 +157,7 @@ async def _execute_graph(**kwargs):
             inputs=args.input_data,
             graph_credentials_inputs=args.input_credentials,
         )
-        await increment_onboarding_runs(args.user_id)
+        await db.increment_onboarding_runs(args.user_id)
         elapsed = asyncio.get_event_loop().time() - start_time
         logger.info(
             f"Graph execution started with ID {graph_exec.id} for graph {args.graph_id} "
@@ -246,8 +246,13 @@ def cleanup_expired_files():
 
 def cleanup_oauth_tokens():
     """Clean up expired OAuth tokens from the database."""
+
     # Wait for completion
-    run_async(cleanup_expired_oauth_tokens())
+    async def _cleanup():
+        db = get_database_manager_async_client()
+        return await db.cleanup_expired_oauth_tokens()
+
+    run_async(_cleanup())
 
 
 def execution_accuracy_alerts():
