@@ -2,6 +2,7 @@ import { toast } from "sonner";
 import type { StreamChunk } from "../../chat-types";
 import type { HandlerDependencies } from "./handlers";
 import {
+  getErrorDisplayMessage,
   handleError,
   handleLoginNeeded,
   handleStreamEnd,
@@ -72,7 +73,7 @@ export function createStreamEventDispatcher(
         // Show toast at dispatcher level to avoid circular dependencies
         if (!isRegionBlocked) {
           toast.error("Chat Error", {
-            description: chunk.message || chunk.content || "An error occurred",
+            description: getErrorDisplayMessage(chunk),
           });
         }
         break;

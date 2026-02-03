@@ -917,6 +917,28 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/chat/config/ttl": {
+      "get": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Get Ttl Config",
+        "description": "Get the stream TTL configuration.\n\nReturns the Time-To-Live settings for chat streams, which determines\nhow long clients can reconnect to an active stream.\n\nReturns:\n    dict: TTL configuration with seconds and milliseconds values.",
+        "operationId": "getV2GetTtlConfig",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Getv2Getttlconfig"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/chat/health": {
       "get": {
         "tags": ["v2", "chat", "chat"],
@@ -1298,7 +1320,7 @@
       "get": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Stream Task",
-        "description": "Reconnect to a long-running task's SSE stream.\n\nWhen a long-running operation (like agent generation) starts, the client\nreceives a task_id. If the connection drops, the client can reconnect\nusing this endpoint to resume receiving updates.\n\nArgs:\n    task_id: The task ID from the operation_started response.\n    user_id: Authenticated user ID for ownership validation.\n    last_message_id: Last Redis Stream message ID received (\"0-0\" for full replay).\n\nReturns:\n    StreamingResponse: SSE-formatted response chunks starting after last_message_id.\n\nRaises:\n    NotFoundError: If task_id is not found or user doesn't have access.",
+        "description": "Reconnect to a long-running task's SSE stream.\n\nWhen a long-running operation (like agent generation) starts, the client\nreceives a task_id. If the connection drops, the client can reconnect\nusing this endpoint to resume receiving updates.\n\nArgs:\n    task_id: The task ID from the operation_started response.\n    user_id: Authenticated user ID for ownership validation.\n    last_message_id: Last Redis Stream message ID received (\"0-0\" for full replay).\n\nReturns:\n    StreamingResponse: SSE-formatted response chunks starting after last_message_id.\n\nRaises:\n    HTTPException: 404 if task not found, 410 if task expired, 403 if access denied.",
         "operationId": "getV2StreamTask",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -6316,10 +6338,12 @@
       "ActiveStreamInfo": {
         "properties": {
           "task_id": { "type": "string", "title": "Task Id" },
-          "last_message_id": { "type": "string", "title": "Last Message Id" }
+          "last_message_id": { "type": "string", "title": "Last Message Id" },
+          "operation_id": { "type": "string", "title": "Operation Id" },
+          "tool_name": { "type": "string", "title": "Tool Name" }
         },
         "type": "object",
-        "required": ["task_id", "last_message_id"],
+        "required": ["task_id", "last_message_id", "operation_id", "tool_name"],
         "title": "ActiveStreamInfo",
         "description": "Information about an active stream for reconnection."
       },

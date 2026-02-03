@@ -41,6 +41,17 @@ _listener_tasks: dict[int, tuple[str, asyncio.Task]] = {}
 # If the queue is full and doesn't drain within this time, send an overflow error
 QUEUE_PUT_TIMEOUT = 5.0
 
+# Lua script for atomic compare-and-swap status update (idempotent completion)
+# Returns 1 if status was updated, 0 if already completed/failed
+COMPLETE_TASK_SCRIPT = """
+local current = redis.call("HGET", KEYS[1], "status")
+if current == "running" then
+    redis.call("HSET", KEYS[1], "status", ARGV[1])
+    return 1
+end
+return 0
+"""
+
 
 @dataclass
 class ActiveTask:
@@ -198,13 +209,14 @@ async def subscribe_to_task(
     task_status = meta.get("status", "")
     task_user_id = meta.get("user_id", "") or None
 
-    # Validate ownership
-    if user_id and task_user_id and task_user_id != user_id:
-        logger.warning(
-            f"User {user_id} attempted to subscribe to task {task_id} "
-            f"owned by {task_user_id}"
-        )
-        return None
+    # Validate ownership - if task has an owner, requester must match
+    if task_user_id:
+        if user_id != task_user_id:
+            logger.warning(
+                f"User {user_id} denied access to task {task_id} "
+                f"owned by {task_user_id}"
+            )
+            return None
 
     subscriber_queue: asyncio.Queue[StreamBaseResponse] = asyncio.Queue()
     stream_key = _get_task_stream_key(task_id)
@@ -261,6 +273,9 @@ async def _stream_listener(
         last_replayed_id: Last message ID from replay (continue from here)
     """
     queue_id = id(subscriber_queue)
+    # Track the last successfully delivered message ID for recovery hints
+    last_delivered_id = last_replayed_id
+
     try:
         redis = await get_redis_async()
         stream_key = _get_task_stream_key(task_id)
@@ -306,16 +321,22 @@ async def _stream_listener(
                                     subscriber_queue.put(chunk),
                                     timeout=QUEUE_PUT_TIMEOUT,
                                 )
+                                # Update last delivered ID on successful delivery
+                                last_delivered_id = current_id
                             except asyncio.TimeoutError:
                                 logger.warning(
                                     f"Subscriber queue full for task {task_id}, "
                                     f"message delivery timed out after {QUEUE_PUT_TIMEOUT}s"
                                 )
-                                # Send overflow error to notify client of missed messages
+                                # Send overflow error with recovery info
                                 try:
                                     overflow_error = StreamError(
                                         errorText="Message delivery timeout - some messages may have been missed",
                                         code="QUEUE_OVERFLOW",
+                                        details={
+                                            "last_delivered_id": last_delivered_id,
+                                            "recovery_hint": f"Reconnect with last_message_id={last_delivered_id}",
+                                        },
                                     )
                                     subscriber_queue.put_nowait(overflow_error)
                                 except asyncio.QueueFull:
@@ -354,23 +375,43 @@ async def _stream_listener(
 async def mark_task_completed(
     task_id: str,
     status: Literal["completed", "failed"] = "completed",
-) -> None:
+) -> bool:
     """Mark a task as completed and publish finish event.
+
+    This is idempotent - calling multiple times with the same task_id is safe.
+    Uses atomic compare-and-swap via Lua script to prevent race conditions.
+    Status is updated first (source of truth), then finish event is published (best-effort).
 
     Args:
         task_id: Task ID to mark as completed
         status: Final status ("completed" or "failed")
-    """
-    # Publish finish event (goes to Redis Stream + pub/sub)
-    await publish_chunk(task_id, StreamFinish())
 
-    # Update Redis metadata
+    Returns:
+        True if task was newly marked completed, False if already completed/failed
+    """
     redis = await get_redis_async()
     meta_key = _get_task_meta_key(task_id)
-    await redis.hset(meta_key, "status", status)  # type: ignore[misc]
+
+    # Atomic compare-and-swap: only update if status is "running"
+    # This prevents race conditions when multiple callers try to complete simultaneously
+    result = await redis.eval(COMPLETE_TASK_SCRIPT, 1, meta_key, status)  # type: ignore[misc]
+
+    if result == 0:
+        logger.debug(f"Task {task_id} already completed/failed, skipping")
+        return False
+
+    # THEN publish finish event (best-effort - listeners can detect via status polling)
+    try:
+        await publish_chunk(task_id, StreamFinish())
+    except Exception as e:
+        logger.error(
+            f"Failed to publish finish event for task {task_id}: {e}. "
+            "Listeners will detect completion via status polling."
+        )
 
     # Clean up local task reference if exists
     _local_tasks.pop(task_id, None)
+    return True
 
 
 async def find_task_by_operation_id(operation_id: str) -> ActiveTask | None:
@@ -423,6 +464,50 @@ async def get_task(task_id: str) -> ActiveTask | None:
     )
 
 
+async def get_task_with_expiry_info(
+    task_id: str,
+) -> tuple[ActiveTask | None, str | None]:
+    """Get a task by its ID with expiration detection.
+
+    Returns (task, error_code) where error_code is:
+    - None if task found
+    - "TASK_EXPIRED" if stream exists but metadata is gone (TTL expired)
+    - "TASK_NOT_FOUND" if neither exists
+
+    Args:
+        task_id: Task ID to look up
+
+    Returns:
+        Tuple of (ActiveTask or None, error_code or None)
+    """
+    redis = await get_redis_async()
+    meta_key = _get_task_meta_key(task_id)
+    stream_key = _get_task_stream_key(task_id)
+
+    meta: dict[Any, Any] = await redis.hgetall(meta_key)  # type: ignore[misc]
+
+    if not meta:
+        # Check if stream still has data (metadata expired but stream hasn't)
+        stream_len = await redis.xlen(stream_key)
+        if stream_len > 0:
+            return None, "TASK_EXPIRED"
+        return None, "TASK_NOT_FOUND"
+
+    # Note: Redis client uses decode_responses=True, so keys/values are strings
+    return (
+        ActiveTask(
+            task_id=meta.get("task_id", ""),
+            session_id=meta.get("session_id", ""),
+            user_id=meta.get("user_id", "") or None,
+            tool_call_id=meta.get("tool_call_id", ""),
+            tool_name=meta.get("tool_name", ""),
+            operation_id=meta.get("operation_id", ""),
+            status=meta.get("status", "running"),  # type: ignore[arg-type]
+        ),
+        None,
+    )
+
+
 async def get_active_task_for_session(
     session_id: str,
     user_id: str | None = None,
@@ -463,8 +548,8 @@ async def get_active_task_for_session(
             task_id = meta.get("task_id", "")
 
             if task_session_id == session_id and task_status == "running":
-                # Validate ownership
-                if user_id and task_user_id and task_user_id != user_id:
+                # Validate ownership - if task has an owner, requester must match
+                if task_user_id and user_id != task_user_id:
                     continue
 
                 # Get the last message ID from Redis Stream

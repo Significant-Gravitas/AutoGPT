@@ -49,22 +49,6 @@ export function Chat({
     }
   )?.active_stream;
 
-  // Debug logging for SSE reconnection
-  if (session) {
-    console.info("[SSE-RECONNECT] Session loaded:", {
-      sessionId,
-      hasActiveStream: !!activeStream,
-      activeStream: activeStream
-        ? {
-            taskId: activeStream.task_id,
-            lastMessageId: activeStream.last_message_id,
-            operationId: activeStream.operation_id,
-            toolName: activeStream.tool_name,
-          }
-        : null,
-    });
-  }
-
   useEffect(() => {
     if (!onSessionNotFound) return;
     if (!urlSessionId) return;

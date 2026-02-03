@@ -10,6 +10,7 @@ import {
   getToolIdFromMessage,
   hasToolId,
   isOperationMessage,
+  type StreamChunk,
 } from "../../chat-types";
 import { createStreamEventDispatcher } from "./createStreamEventDispatcher";
 import {
@@ -20,6 +21,14 @@ import {
   processInitialMessages,
 } from "./helpers";
 
+// Types that represent a tool result/response and should be deduplicated by toolId
+const TOOL_RESULT_TYPES = new Set([
+  "tool_response",
+  "agent_carousel",
+  "execution_started",
+  "clarification_needed",
+]);
+
 // Helper to generate deduplication key for a message
 function getMessageKey(msg: ChatMessageData): string {
   if (msg.type === "message") {
@@ -29,9 +38,15 @@ function getMessageKey(msg: ChatMessageData): string {
     return `msg:${msg.role}:${msg.content}`;
   } else if (msg.type === "tool_call") {
     return `toolcall:${msg.toolId}`;
-  } else if (msg.type === "tool_response") {
-    const toolId = hasToolId(msg) ? msg.toolId : "";
-    return `toolresponse:${toolId}`;
+  } else if (TOOL_RESULT_TYPES.has(msg.type)) {
+    // Unified key for all tool result types - same toolId with different types
+    // (tool_response vs agent_carousel) should deduplicate to the same key
+    const toolId = getToolIdFromMessage(msg);
+    // If no toolId, fall back to content-based key to avoid empty key collisions
+    if (!toolId) {
+      return `toolresult:content:${JSON.stringify(msg).slice(0, 200)}`;
+    }
+    return `toolresult:${toolId}`;
   } else if (isOperationMessage(msg)) {
     const toolId = getToolIdFromMessage(msg) || "";
     return `op:${toolId}:${msg.toolName}`;
@@ -69,6 +84,8 @@ export function useChatContainer({
     useState(false);
   const hasResponseRef = useRef(false);
   const streamingChunksRef = useRef<string[]>([]);
+  const textFinalizedRef = useRef(false);
+  const streamEndedRef = useRef(false);
   const previousSessionIdRef = useRef<string | null>(null);
   const {
     error,
@@ -83,6 +100,18 @@ export function useChatContainer({
   const isStreaming = isStreamingInitiated || hasTextChunks;
   // Track whether we've already connected to this activeStream to avoid duplicate connections
   const connectedActiveStreamRef = useRef<string | null>(null);
+  // Track if component is mounted to prevent state updates after unmount
+  const isMountedRef = useRef(true);
+  // Track current dispatcher to prevent multiple dispatchers from adding messages
+  const currentDispatcherIdRef = useRef(0);
+
+  // Set mounted flag - reset on every mount, cleanup on unmount
+  useEffect(function trackMountedState() {
+    isMountedRef.current = true;
+    return function cleanup() {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   // Callback to store active task info for SSE reconnection
   function handleActiveTaskStarted(taskInfo: {
@@ -101,13 +130,19 @@ export function useChatContainer({
   }
 
   // Create dispatcher for stream events - stable reference for current sessionId
+  // Each dispatcher gets a unique ID to prevent stale dispatchers from updating state
   function createDispatcher() {
     if (!sessionId) return () => {};
-    return createStreamEventDispatcher({
+    // Increment dispatcher ID - only the most recent dispatcher should update state
+    const dispatcherId = ++currentDispatcherIdRef.current;
+
+    const baseDispatcher = createStreamEventDispatcher({
       setHasTextChunks,
       setStreamingChunks,
       streamingChunksRef,
       hasResponseRef,
+      textFinalizedRef,
+      streamEndedRef,
       setMessages,
       setIsRegionBlockedModalOpen,
       sessionId,
@@ -115,6 +150,18 @@ export function useChatContainer({
       onOperationStarted,
       onActiveTaskStarted: handleActiveTaskStarted,
     });
+
+    // Wrap dispatcher to check if it's still the current one
+    return function guardedDispatcher(chunk: StreamChunk) {
+      // Skip if component unmounted or this is a stale dispatcher
+      if (!isMountedRef.current) {
+        return;
+      }
+      if (dispatcherId !== currentDispatcherIdRef.current) {
+        return;
+      }
+      baseDispatcher(chunk);
+    };
   }
 
   useEffect(
@@ -135,6 +182,8 @@ export function useChatContainer({
         setHasTextChunks(false);
         setIsStreamingInitiated(false);
         hasResponseRef.current = false;
+        textFinalizedRef.current = false;
+        streamEndedRef.current = false;
       }
 
       if (!sessionId) return;
@@ -142,7 +191,10 @@ export function useChatContainer({
       // Priority 1: Check if server told us there's an active stream (most authoritative)
       if (activeStream) {
         const streamKey = `${sessionId}:${activeStream.taskId}`;
-        if (connectedActiveStreamRef.current === streamKey) return;
+
+        if (connectedActiveStreamRef.current === streamKey) {
+          return;
+        }
 
         // Skip if there's already an active stream for this session in the store
         const existingStream = activeStreams.get(sessionId);
@@ -152,6 +204,16 @@ export function useChatContainer({
         }
 
         connectedActiveStreamRef.current = streamKey;
+
+        // Clear all state before reconnection to prevent duplicates
+        // Server's initialMessages is authoritative; local state will be rebuilt from SSE replay
+        setMessages([]);
+        setStreamingChunks([]);
+        streamingChunksRef.current = [];
+        setHasTextChunks(false);
+        textFinalizedRef.current = false;
+        streamEndedRef.current = false;
+        hasResponseRef.current = false;
 
         setIsStreamingInitiated(true);
         setActiveTask(sessionId, {
@@ -166,6 +228,9 @@ export function useChatContainer({
           activeStream.lastMessageId,
           createDispatcher(),
         );
+        // Don't return cleanup here - the guarded dispatcher handles stale events
+        // and the stream will complete naturally. Cleanup would prematurely stop
+        // the stream when effect re-runs due to activeStreams changing.
         return;
       }
 
@@ -175,6 +240,16 @@ export function useChatContainer({
       // Priority 2: Check localStorage for active task
       const activeTask = getActiveTask(sessionId);
       if (activeTask) {
+        // Clear all state before reconnection to prevent duplicates
+        // Server's initialMessages is authoritative; local state will be rebuilt from SSE replay
+        setMessages([]);
+        setStreamingChunks([]);
+        streamingChunksRef.current = [];
+        setHasTextChunks(false);
+        textFinalizedRef.current = false;
+        streamEndedRef.current = false;
+        hasResponseRef.current = false;
+
         setIsStreamingInitiated(true);
         reconnectToTask(
           sessionId,
@@ -182,12 +257,15 @@ export function useChatContainer({
           activeTask.lastMessageId,
           createDispatcher(),
         );
+        // Don't return cleanup here - the guarded dispatcher handles stale events
         return;
       }
 
       // Priority 3: Check for an in-memory active stream (same-tab scenario)
       const inMemoryStream = activeStreams.get(sessionId);
-      if (!inMemoryStream || inMemoryStream.status !== "streaming") return;
+      if (!inMemoryStream || inMemoryStream.status !== "streaming") {
+        return;
+      }
 
       setIsStreamingInitiated(true);
       const skipReplay = initialMessages.length > 0;
@@ -275,7 +353,70 @@ export function useChatContainer({
     });
 
     // Server messages first (correct order), then new local messages
-    return [...processedInitial, ...newLocalMessages];
+    const combined = [...processedInitial, ...newLocalMessages];
+
+    // Post-processing: Remove duplicate assistant messages that can occur during
+    // race conditions (e.g., rapid screen switching during SSE reconnection).
+    // Two assistant messages are considered duplicates if:
+    // - They are both text messages with role "assistant"
+    // - One message's content starts with the other's content (partial vs complete)
+    // - Or they have very similar content (>80% overlap at the start)
+    const deduplicated: ChatMessageData[] = [];
+    for (let i = 0; i < combined.length; i++) {
+      const current = combined[i];
+
+      // Check if this is an assistant text message
+      if (current.type !== "message" || current.role !== "assistant") {
+        deduplicated.push(current);
+        continue;
+      }
+
+      // Look for duplicate assistant messages in the rest of the array
+      let dominated = false;
+      for (let j = 0; j < combined.length; j++) {
+        if (i === j) continue;
+        const other = combined[j];
+        if (other.type !== "message" || other.role !== "assistant") continue;
+
+        const currentContent = current.content || "";
+        const otherContent = other.content || "";
+
+        // Skip empty messages
+        if (!currentContent.trim() || !otherContent.trim()) continue;
+
+        // Check if current is a prefix of other (current is incomplete version)
+        if (
+          otherContent.length > currentContent.length &&
+          otherContent.startsWith(currentContent.slice(0, 100))
+        ) {
+          // Current is a shorter/incomplete version of other - skip it
+          dominated = true;
+          break;
+        }
+
+        // Check if messages are nearly identical (within a small difference)
+        // This catches cases where content differs only slightly
+        const minLen = Math.min(currentContent.length, otherContent.length);
+        const compareLen = Math.min(minLen, 200); // Compare first 200 chars
+        if (
+          compareLen > 50 &&
+          currentContent.slice(0, compareLen) ===
+            otherContent.slice(0, compareLen)
+        ) {
+          // Same prefix - keep the longer one
+          if (otherContent.length > currentContent.length) {
+            dominated = true;
+            break;
+          }
+        }
+      }
+
+      if (!dominated) {
+        deduplicated.push(current);
+      }
+    }
+
+    return deduplicated;
   }, [initialMessages, messages, completedToolIds]);
 
   async function sendMessage(
@@ -297,6 +438,8 @@ export function useChatContainer({
     setHasTextChunks(false);
     setIsStreamingInitiated(true);
     hasResponseRef.current = false;
+    textFinalizedRef.current = false;
+    streamEndedRef.current = false;
 
     try {
       await sendStreamMessage(

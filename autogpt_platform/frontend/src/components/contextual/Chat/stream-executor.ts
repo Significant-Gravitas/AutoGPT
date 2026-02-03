@@ -114,13 +114,39 @@ async function executeStreamInternal(
 
     if (!response.ok) {
       const errorText = await response.text();
-      // For reconnect: don't retry on 404/403 (permanent errors)
+      // Parse error details from response body if JSON
+      let errorCode: string | undefined;
+      let errorMessage = errorText || `HTTP ${response.status}`;
+      try {
+        const parsed = JSON.parse(errorText);
+        if (parsed.detail) {
+          const detail =
+            typeof parsed.detail === "string"
+              ? parsed.detail
+              : parsed.detail.message || JSON.stringify(parsed.detail);
+          errorMessage = detail;
+          errorCode =
+            typeof parsed.detail === "object" ? parsed.detail.code : undefined;
+        }
+      } catch {
+        // Not JSON, use raw text
+      }
+
+      // For reconnect: don't retry on permanent errors (404/403/410)
       const isPermanentError =
-        isReconnect && (response.status === 404 || response.status === 403);
-      const error = new Error(errorText || `HTTP ${response.status}`);
-      (error as Error & { status?: number }).status = response.status;
-      (error as Error & { isPermanent?: boolean }).isPermanent =
-        isPermanentError;
+        isReconnect &&
+        (response.status === 404 ||
+          response.status === 403 ||
+          response.status === 410);
+
+      const error = new Error(errorMessage) as Error & {
+        status?: number;
+        isPermanent?: boolean;
+        taskErrorCode?: string;
+      };
+      error.status = response.status;
+      error.isPermanent = isPermanentError;
+      error.taskErrorCode = errorCode;
       throw error;
     }
 

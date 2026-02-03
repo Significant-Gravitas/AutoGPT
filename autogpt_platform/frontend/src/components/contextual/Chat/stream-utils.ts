@@ -28,8 +28,8 @@ export function normalizeStreamChunk(
 
   switch (chunk.type) {
     case "text-delta":
-      // Backend sends "content", Vercel AI SDK sends "delta"
-      return { type: "text_chunk", content: chunk.delta || chunk.content };
+      // Vercel AI SDK sends "delta" for text content
+      return { type: "text_chunk", content: chunk.delta };
     case "text-end":
       return { type: "text_ended" };
     case "tool-input-available":

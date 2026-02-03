@@ -488,8 +488,39 @@ async def stream_task(
         StreamingResponse: SSE-formatted response chunks starting after last_message_id.
 
     Raises:
-        NotFoundError: If task_id is not found or user doesn't have access.
+        HTTPException: 404 if task not found, 410 if task expired, 403 if access denied.
     """
+    # Check task existence and expiry before subscribing
+    task, error_code = await stream_registry.get_task_with_expiry_info(task_id)
+
+    if error_code == "TASK_EXPIRED":
+        raise HTTPException(
+            status_code=410,
+            detail={
+                "code": "TASK_EXPIRED",
+                "message": "This operation has expired. Please try again.",
+            },
+        )
+
+    if error_code == "TASK_NOT_FOUND":
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "code": "TASK_NOT_FOUND",
+                "message": f"Task {task_id} not found.",
+            },
+        )
+
+    # Validate ownership if task has an owner
+    if task and task.user_id and user_id != task.user_id:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "ACCESS_DENIED",
+                "message": "You do not have access to this task.",
+            },
+        )
+
     # Get subscriber queue from stream registry
     subscriber_queue = await stream_registry.subscribe_to_task(
         task_id=task_id,
@@ -498,7 +529,13 @@ async def stream_task(
     )
 
     if subscriber_queue is None:
-        raise NotFoundError(f"Task {task_id} not found or access denied.")
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "code": "TASK_NOT_FOUND",
+                "message": f"Task {task_id} not found or access denied.",
+            },
+        )
 
     async def event_generator() -> AsyncGenerator[str, None]:
         import asyncio
@@ -565,8 +602,8 @@ async def get_task_status(
     if task is None:
         raise NotFoundError(f"Task {task_id} not found.")
 
-    # Validate ownership
-    if user_id and task.user_id and task.user_id != user_id:
+    # Validate ownership - if task has an owner, requester must match
+    if task.user_id and user_id != task.user_id:
         raise NotFoundError(f"Task {task_id} not found.")
 
     return {
@@ -639,6 +676,26 @@ async def complete_operation(
         await process_operation_failure(task, request.error)
 
     return {"status": "ok", "task_id": task.task_id}
+
+
+# ========== Configuration ==========
+
+
+@router.get("/config/ttl", status_code=200)
+async def get_ttl_config() -> dict:
+    """
+    Get the stream TTL configuration.
+
+    Returns the Time-To-Live settings for chat streams, which determines
+    how long clients can reconnect to an active stream.
+
+    Returns:
+        dict: TTL configuration with seconds and milliseconds values.
+    """
+    return {
+        "stream_ttl_seconds": config.stream_ttl,
+        "stream_ttl_ms": config.stream_ttl * 1000,
+    }
 
 
 # ========== Health Check ==========

@@ -18,6 +18,10 @@ export interface HandlerDependencies {
   setStreamingChunks: Dispatch<SetStateAction<string[]>>;
   streamingChunksRef: MutableRefObject<string[]>;
   hasResponseRef: MutableRefObject<boolean>;
+  /** Tracks if text has been finalized (to prevent duplicate messages from handleTextEnded and handleStreamEnd) */
+  textFinalizedRef: MutableRefObject<boolean>;
+  /** Tracks if stream has ended (to handle duplicate StreamFinish events during reconnection) */
+  streamEndedRef: MutableRefObject<boolean>;
   setMessages: Dispatch<SetStateAction<ChatMessageData[]>>;
   setIsStreamingInitiated: Dispatch<SetStateAction<boolean>>;
   setIsRegionBlockedModalOpen: Dispatch<SetStateAction<boolean>>;
@@ -38,6 +42,29 @@ export function isRegionBlockedError(chunk: StreamChunk): boolean {
   return message.toLowerCase().includes("not available in your region");
 }
 
+/**
+ * Get a user-friendly error message based on the error code.
+ * Returns undefined if the code should use the default message.
+ */
+export function getUserFriendlyErrorMessage(
+  code: string | undefined,
+): string | undefined {
+  switch (code) {
+    case "TASK_EXPIRED":
+      return "This operation has expired. Please try again.";
+    case "TASK_NOT_FOUND":
+      return "Could not find the requested operation.";
+    case "ACCESS_DENIED":
+      return "You do not have access to this operation.";
+    case "QUEUE_OVERFLOW":
+      return "Connection was interrupted. Please refresh to continue.";
+    case "MODEL_NOT_AVAILABLE_REGION":
+      return "This model is not available in your region.";
+    default:
+      return undefined;
+  }
+}
+
 export function handleTextChunk(chunk: StreamChunk, deps: HandlerDependencies) {
   if (!chunk.content) return;
   deps.setHasTextChunks(true);
@@ -52,8 +79,16 @@ export function handleTextEnded(
   _chunk: StreamChunk,
   deps: HandlerDependencies,
 ) {
+  // Check if text was already finalized to prevent duplicate messages
+  if (deps.textFinalizedRef.current) {
+    return;
+  }
+
   const completedText = deps.streamingChunksRef.current.join("");
   if (completedText.trim()) {
+    // Mark text as finalized before adding message
+    deps.textFinalizedRef.current = true;
+
     deps.setMessages((prev) => {
       // Check if this exact message already exists to prevent duplicates
       const exists = prev.some(
@@ -82,9 +117,14 @@ export function handleToolCallStart(
   chunk: StreamChunk,
   deps: HandlerDependencies,
 ) {
+  // Use deterministic fallback instead of Date.now() to ensure same ID on replay
+  const toolId =
+    chunk.tool_id ||
+    `tool-${deps.sessionId}-${chunk.idx ?? "unknown"}-${chunk.tool_name || "unknown"}`;
+
   const toolCallMessage: Extract<ChatMessageData, { type: "tool_call" }> = {
     type: "tool_call",
-    toolId: chunk.tool_id || `tool-${Date.now()}-${chunk.idx || 0}`,
+    toolId,
     toolName: chunk.tool_name || "Executing",
     arguments: chunk.arguments || {},
     timestamp: new Date(),
@@ -262,6 +302,12 @@ export function handleStreamEnd(
   _chunk: StreamChunk,
   deps: HandlerDependencies,
 ) {
+  // Idempotent check - ignore duplicate finish events (can happen during reconnection)
+  if (deps.streamEndedRef.current) {
+    return;
+  }
+  deps.streamEndedRef.current = true;
+
   const completedContent = deps.streamingChunksRef.current.join("");
   if (!completedContent.trim() && !deps.hasResponseRef.current) {
     deps.setMessages((prev) => {
@@ -284,7 +330,11 @@ export function handleStreamEnd(
       ];
     });
   }
-  if (completedContent.trim()) {
+  // Only add message if text wasn't already finalized by handleTextEnded
+  if (completedContent.trim() && !deps.textFinalizedRef.current) {
+    // Mark as finalized BEFORE adding to prevent handleTextEnded from duplicating
+    deps.textFinalizedRef.current = true;
+
     deps.setMessages((prev) => {
       // Check if this exact message already exists to prevent duplicates
       const exists = prev.some(
@@ -318,4 +368,19 @@ export function handleError(chunk: StreamChunk, deps: HandlerDependencies) {
   deps.setHasTextChunks(false);
   deps.setStreamingChunks([]);
   deps.streamingChunksRef.current = [];
+  // Reset flags since stream ended with error
+  deps.textFinalizedRef.current = false;
+  deps.streamEndedRef.current = true; // Mark as ended to prevent duplicate processing
+}
+
+/**
+ * Get the display message for an error chunk, using user-friendly messages
+ * for known error codes.
+ */
+export function getErrorDisplayMessage(chunk: StreamChunk): string {
+  const friendlyMessage = getUserFriendlyErrorMessage(chunk.code);
+  if (friendlyMessage) {
+    return friendlyMessage;
+  }
+  return chunk.message || chunk.content || "An error occurred";
 }
