@@ -90,7 +90,7 @@ export default function CopilotPage() {
           </div>
         ) : (
           <>
-            <div className="mx-auto max-w-2xl">
+            <div className="mx-auto max-w-3xl">
               <Text
                 variant="h3"
                 className="mb-3 !text-[1.375rem] text-zinc-700"
@@ -98,13 +98,13 @@ export default function CopilotPage() {
                 Hey, <span className="text-violet-600">{greetingName}</span>
               </Text>
               <Text variant="h3" className="mb-8 !font-normal">
-                What do you want to automate?
+                Tell me about your work — I&apos;ll find what to automate.
               </Text>
 
               <div className="mb-6">
                 <ChatInput
                   onSend={startChatWithPrompt}
-                  placeholder='You can search or just ask - e.g. "create a blog post outline"'
+                  placeholder="What's your role and what eats up most of your day? e.g. 'I'm a real estate agent and I hate...'"
                 />
               </div>
             </div>

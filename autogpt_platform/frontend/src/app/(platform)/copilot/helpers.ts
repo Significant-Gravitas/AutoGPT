@@ -26,8 +26,8 @@ export function buildCopilotChatUrl(prompt: string): string {
 
 export function getQuickActions(): string[] {
   return [
-    "Show me what I can automate",
-    "Design a custom workflow",
-    "Help me with content creation",
+    "I don't know where to start, just ask me stuff",
+    "I do the same thing every week and it's killing me",
+    "Help me find where I'm wasting my time",
   ];
 }
