@@ -34,6 +34,10 @@ def get_inputs_from_schema(
     Returns:
         List of dicts with field info (name, title, type, description, required, default)
     """
+    # Safety check: original code returned [] if input_schema wasn't a dict
+    if not isinstance(input_schema, dict):
+        return []
+
     exclude = exclude_fields or set()
     properties = input_schema.get("properties", {})
     required = set(input_schema.get("required", []))
