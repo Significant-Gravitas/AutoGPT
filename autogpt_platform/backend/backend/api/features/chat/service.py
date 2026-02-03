@@ -3,10 +3,13 @@ import logging
 import time
 from asyncio import CancelledError
 from collections.abc import AsyncGenerator
-from dataclasses import dataclass
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import openai
+
+if TYPE_CHECKING:
+    from backend.util.prompt import CompressResult
+
 import orjson
 from langfuse import get_client
 from openai import (
@@ -17,7 +20,6 @@ from openai import (
     RateLimitError,
 )
 from openai.types.chat import (
-    ChatCompletionAssistantMessageParam,
     ChatCompletionChunk,
     ChatCompletionMessageParam,
     ChatCompletionStreamOptionsParam,
@@ -31,7 +33,6 @@ from backend.data.understanding import (
     get_business_understanding,
 )
 from backend.util.exceptions import NotFoundError
-from backend.util.prompt import estimate_token_count
 from backend.util.settings import Settings
 
 from . import db as chat_db
@@ -803,402 +804,58 @@ def _is_region_blocked_error(error: Exception) -> bool:
     return "not available in your region" in str(error).lower()
 
 
-# Context window management constants
-TOKEN_THRESHOLD = 120_000
-KEEP_RECENT_MESSAGES = 15
-
-
-@dataclass
-class ContextWindowResult:
-    """Result of context window management."""
-
-    messages: list[dict[str, Any]]
-    token_count: int
-    was_compacted: bool
-    error: str | None = None
-
-
-def _messages_to_dicts(messages: list) -> list[dict[str, Any]]:
-    """Convert message objects to dicts, filtering None values.
-
-    Handles both TypedDict (dict-like) and other message formats.
-    """
-    result = []
-    for msg in messages:
-        if msg is None:
-            continue
-        if isinstance(msg, dict):
-            msg_dict = {k: v for k, v in msg.items() if v is not None}
-        else:
-            msg_dict = dict(msg)
-        result.append(msg_dict)
-    return result
-
-
 async def _manage_context_window(
     messages: list,
     model: str,
     api_key: str | None = None,
     base_url: str | None = None,
-) -> ContextWindowResult:
+) -> "CompressResult":
     """
-    Manage context window by summarizing old messages if token count exceeds threshold.
+    Manage context window using the unified compress_context function.
 
-    This function handles context compaction for LLM calls by:
-    1. Counting tokens in the message list
-    2. If over threshold, summarizing old messages while keeping recent ones
-    3. Ensuring tool_call/tool_response pairs stay intact
-    4. Progressively reducing message count if still over limit
+    This is a thin wrapper that creates an OpenAI client for summarization
+    and delegates to the shared compression logic in prompt.py.
 
     Args:
-        messages: List of messages in OpenAI format (with system prompt if present)
-        model: Model name for token counting
+        messages: List of messages in OpenAI format
+        model: Model name for token counting and summarization
         api_key: API key for summarization calls
         base_url: Base URL for summarization calls
 
     Returns:
-        ContextWindowResult with compacted messages and metadata
+        CompressResult with compacted messages and metadata
     """
-    if not messages:
-        return ContextWindowResult([], 0, False, "No messages to compact")
-
-    messages_dict = _messages_to_dicts(messages)
-
-    # Normalize model name for token counting (tiktoken only supports OpenAI models)
-    token_count_model = model.split("/")[-1] if "/" in model else model
-    if "claude" in token_count_model.lower() or not any(
-        known in token_count_model.lower()
-        for known in ["gpt", "o1", "chatgpt", "text-"]
-    ):
-        token_count_model = "gpt-4o"
-
-    try:
-        token_count = estimate_token_count(messages_dict, model=token_count_model)
-    except Exception as e:
-        logger.warning(f"Token counting failed: {e}. Using gpt-4o approximation.")
-        token_count_model = "gpt-4o"
-        token_count = estimate_token_count(messages_dict, model=token_count_model)
-
-    if token_count <= TOKEN_THRESHOLD:
-        return ContextWindowResult(messages, token_count, False)
-
-    has_system_prompt = messages[0].get("role") == "system"
-    slice_start = max(0, len(messages_dict) - KEEP_RECENT_MESSAGES)
-    recent_messages = _ensure_tool_pairs_intact(
-        messages_dict[-KEEP_RECENT_MESSAGES:], messages_dict, slice_start
-    )
-
-    # Determine old messages to summarize (explicit bounds to avoid slice edge cases)
-    system_msg = messages[0] if has_system_prompt else None
-    if has_system_prompt:
-        old_messages_dict = (
-            messages_dict[1:-KEEP_RECENT_MESSAGES]
-            if len(messages_dict) > KEEP_RECENT_MESSAGES + 1
-            else []
-        )
-    else:
-        old_messages_dict = (
-            messages_dict[:-KEEP_RECENT_MESSAGES]
-            if len(messages_dict) > KEEP_RECENT_MESSAGES
-            else []
-        )
-
-    # Try to summarize old messages, fall back to truncation on failure
-    summary_msg = None
-    if old_messages_dict:
-        try:
-            summary_text = await _summarize_messages(
-                old_messages_dict, model=model, api_key=api_key, base_url=base_url
-            )
-            summary_msg = ChatCompletionAssistantMessageParam(
-                role="assistant",
-                content=f"[Previous conversation summary — for context only]: {summary_text}",
-            )
-            base = [system_msg, summary_msg] if has_system_prompt else [summary_msg]
-            messages = base + recent_messages
-            logger.info(
-                f"Context summarized: {token_count} tokens, "
-                f"summarized {len(old_messages_dict)} msgs, kept {KEEP_RECENT_MESSAGES}"
-            )
-        except Exception as e:
-            logger.warning(f"Summarization failed, falling back to truncation: {e}")
-            messages = (
-                [system_msg] + recent_messages if has_system_prompt else recent_messages
-            )
-    else:
-        logger.warning(
-            f"Token count {token_count} exceeds threshold but no old messages to summarize"
-        )
-
-    new_token_count = estimate_token_count(
-        _messages_to_dicts(messages), model=token_count_model
-    )
-
-    # Progressive truncation if still over limit
-    if new_token_count > TOKEN_THRESHOLD:
-        logger.warning(
-            f"Still over limit: {new_token_count} tokens. Reducing messages."
-        )
-        base_msgs = (
-            recent_messages
-            if old_messages_dict
-            else (messages_dict[1:] if has_system_prompt else messages_dict)
-        )
-
-        def build_messages(recent: list) -> list:
-            """Build message list with optional system prompt and summary."""
-            prefix = []
-            if has_system_prompt and system_msg:
-                prefix.append(system_msg)
-            if summary_msg:
-                prefix.append(summary_msg)
-            return prefix + recent
-
-        for keep_count in [12, 10, 8, 5, 3, 2, 1, 0]:
-            if keep_count == 0:
-                messages = build_messages([])
-                if not messages:
-                    continue
-            elif len(base_msgs) < keep_count:
-                continue
-            else:
-                reduced = _ensure_tool_pairs_intact(
-                    base_msgs[-keep_count:],
-                    base_msgs,
-                    max(0, len(base_msgs) - keep_count),
-                )
-                messages = build_messages(reduced)
-
-            new_token_count = estimate_token_count(
-                _messages_to_dicts(messages), model=token_count_model
-            )
-            if new_token_count <= TOKEN_THRESHOLD:
-                logger.info(
-                    f"Reduced to {keep_count} messages, {new_token_count} tokens"
-                )
-                break
-        else:
-            logger.error(
-                f"Cannot reduce below threshold. Final: {new_token_count} tokens"
-            )
-            if has_system_prompt and len(messages) > 1:
-                messages = messages[1:]
-                logger.critical("Dropped system prompt as last resort")
-                return ContextWindowResult(
-                    messages, new_token_count, True, "System prompt dropped"
-                )
-            # No system prompt to drop - return error so callers don't proceed with oversized context
-            return ContextWindowResult(
-                messages,
-                new_token_count,
-                True,
-                "Unable to reduce context below token limit",
-            )
-
-    return ContextWindowResult(messages, new_token_count, True)
-
-
-async def _summarize_messages(
-    messages: list,
-    model: str,
-    api_key: str | None = None,
-    base_url: str | None = None,
-    timeout: float = 30.0,
-) -> str:
-    """Summarize a list of messages into concise context.
-
-    Uses the same model as the chat for higher quality summaries.
-
-    Args:
-        messages: List of message dicts to summarize
-        model: Model to use for summarization (same as chat model)
-        api_key: API key for OpenAI client
-        base_url: Base URL for OpenAI client
-        timeout: Request timeout in seconds (default: 30.0)
-
-    Returns:
-        Summarized text
-    """
-    # Format messages for summarization
-    conversation = []
-    for msg in messages:
-        role = msg.get("role", "")
-        content = msg.get("content", "")
-        # Include user, assistant, and tool messages (tool outputs are important context)
-        if content and role in ("user", "assistant", "tool"):
-            conversation.append(f"{role.upper()}: {content}")
-
-    conversation_text = "\n\n".join(conversation)
-
-    # Handle empty conversation
-    if not conversation_text:
-        return "No conversation history available."
-
-    # Truncate conversation to fit within summarization model's context
-    # gpt-4o-mini has 128k context, but we limit to ~25k tokens (~100k chars) for safety
-    MAX_CHARS = 100_000
-    if len(conversation_text) > MAX_CHARS:
-        conversation_text = conversation_text[:MAX_CHARS] + "\n\n[truncated]"
-
-    # Call LLM to summarize
     import openai
 
-    summarization_client = openai.AsyncOpenAI(
-        api_key=api_key, base_url=base_url, timeout=timeout
-    )
+    from backend.util.prompt import compress_context
 
-    response = await summarization_client.chat.completions.create(
-        model=model,
-        messages=[
-            {
-                "role": "system",
-                "content": (
-                    "Create a detailed summary of the conversation so far. "
-                    "This summary will be used as context when continuing the conversation.\n\n"
-                    "Before writing the summary, analyze each message chronologically to identify:\n"
-                    "- User requests and their explicit goals\n"
-                    "- Your approach and key decisions made\n"
-                    "- Technical specifics (file names, tool outputs, function signatures)\n"
-                    "- Errors encountered and resolutions applied\n\n"
-                    "You MUST include ALL of the following sections:\n\n"
-                    "## 1. Primary Request and Intent\n"
-                    "The user's explicit goals and what they are trying to accomplish.\n\n"
-                    "## 2. Key Technical Concepts\n"
-                    "Technologies, frameworks, tools, and patterns being used or discussed.\n\n"
-                    "## 3. Files and Resources Involved\n"
-                    "Specific files examined or modified, with relevant snippets and identifiers.\n\n"
-                    "## 4. Errors and Fixes\n"
-                    "Problems encountered, error messages, and their resolutions. "
-                    "Include any user feedback on fixes.\n\n"
-                    "## 5. Problem Solving\n"
-                    "Issues that have been resolved and how they were addressed.\n\n"
-                    "## 6. All User Messages\n"
-                    "A complete list of all user inputs (excluding tool outputs) to preserve their exact requests.\n\n"
-                    "## 7. Pending Tasks\n"
-                    "Work items the user explicitly requested that have not yet been completed.\n\n"
-                    "## 8. Current Work\n"
-                    "Precise description of what was being worked on most recently, including relevant context.\n\n"
-                    "## 9. Next Steps\n"
-                    "What should happen next, aligned with the user's most recent requests. "
-                    "Include verbatim quotes of recent instructions if relevant."
-                ),
-            },
-            {"role": "user", "content": f"Summarize:\n\n{conversation_text}"},
-        ],
-        max_tokens=1500,
-        temperature=0.3,
-    )
+    # Convert messages to dict format
+    messages_dict = []
+    for msg in messages:
+        if isinstance(msg, dict):
+            msg_dict = {k: v for k, v in msg.items() if v is not None}
+        else:
+            msg_dict = dict(msg)
+        messages_dict.append(msg_dict)
 
-    summary = response.choices[0].message.content
-    return summary or "No summary available."
-
-
-def _ensure_tool_pairs_intact(
-    recent_messages: list[dict],
-    all_messages: list[dict],
-    start_index: int,
-) -> list[dict]:
-    """
-    Ensure tool_call/tool_response pairs stay together after slicing.
-
-    When slicing messages for context compaction, a naive slice can separate
-    an assistant message containing tool_calls from its corresponding tool
-    response messages. This causes API validation errors (e.g., Anthropic's
-    "unexpected tool_use_id found in tool_result blocks").
-
-    This function checks for orphan tool responses in the slice and extends
-    backwards to include their corresponding assistant messages.
-
-    Args:
-        recent_messages: The sliced messages to validate
-        all_messages: The complete message list (for looking up missing assistants)
-        start_index: The index in all_messages where recent_messages begins
-
-    Returns:
-        A potentially extended list of messages with tool pairs intact
-    """
-    if not recent_messages:
-        return recent_messages
-
-    # Collect all tool_call_ids from assistant messages in the slice
-    available_tool_call_ids: set[str] = set()
-    for msg in recent_messages:
-        if msg.get("role") == "assistant" and msg.get("tool_calls"):
-            for tc in msg["tool_calls"]:
-                tc_id = tc.get("id")
-                if tc_id:
-                    available_tool_call_ids.add(tc_id)
-
-    # Find orphan tool responses (tool messages whose tool_call_id is missing)
-    orphan_tool_call_ids: set[str] = set()
-    for msg in recent_messages:
-        if msg.get("role") == "tool":
-            tc_id = msg.get("tool_call_id")
-            if tc_id and tc_id not in available_tool_call_ids:
-                orphan_tool_call_ids.add(tc_id)
-
-    if not orphan_tool_call_ids:
-        # No orphans, slice is valid
-        return recent_messages
-
-    # Find the assistant messages that contain the orphan tool_call_ids
-    # Search backwards from start_index in all_messages
-    messages_to_prepend: list[dict] = []
-    for i in range(start_index - 1, -1, -1):
-        msg = all_messages[i]
-        if msg.get("role") == "assistant" and msg.get("tool_calls"):
-            msg_tool_ids = {tc.get("id") for tc in msg["tool_calls"] if tc.get("id")}
-            if msg_tool_ids & orphan_tool_call_ids:
-                # This assistant message has tool_calls we need
-                # Also collect its contiguous tool responses that follow it
-                assistant_and_responses: list[dict] = [msg]
-
-                # Scan forward from this assistant to collect tool responses
-                for j in range(i + 1, start_index):
-                    following_msg = all_messages[j]
-                    if following_msg.get("role") == "tool":
-                        tool_id = following_msg.get("tool_call_id")
-                        if tool_id and tool_id in msg_tool_ids:
-                            assistant_and_responses.append(following_msg)
-                    else:
-                        # Stop at first non-tool message
-                        break
-
-                # Prepend the assistant and its tool responses (maintain order)
-                messages_to_prepend = assistant_and_responses + messages_to_prepend
-                # Mark these as found
-                orphan_tool_call_ids -= msg_tool_ids
-                # Also add this assistant's tool_call_ids to available set
-                available_tool_call_ids |= msg_tool_ids
-
-        if not orphan_tool_call_ids:
-            # Found all missing assistants
-            break
-
-    if orphan_tool_call_ids:
-        # Some tool_call_ids couldn't be resolved - remove those tool responses
-        # This shouldn't happen in normal operation but handles edge cases
-        logger.warning(
-            f"Could not find assistant messages for tool_call_ids: {orphan_tool_call_ids}. "
-            "Removing orphan tool responses."
-        )
-        recent_messages = [
-            msg
-            for msg in recent_messages
-            if not (
-                msg.get("role") == "tool"
-                and msg.get("tool_call_id") in orphan_tool_call_ids
+    # Only create client if api_key is provided (enables summarization)
+    # Use context manager to avoid socket leaks
+    if api_key:
+        async with openai.AsyncOpenAI(
+            api_key=api_key, base_url=base_url, timeout=30.0
+        ) as client:
+            return await compress_context(
+                messages=messages_dict,
+                model=model,
+                client=client,
             )
-        ]
-
-    if messages_to_prepend:
-        logger.info(
-            f"Extended recent messages by {len(messages_to_prepend)} to preserve "
-            f"tool_call/tool_response pairs"
+    else:
+        # No API key - use truncation-only mode
+        return await compress_context(
+            messages=messages_dict,
+            model=model,
+            client=None,
         )
-        return messages_to_prepend + recent_messages
-
-    return recent_messages
 
 
 async def _stream_chat_chunks(
