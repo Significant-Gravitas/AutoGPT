@@ -225,30 +225,43 @@ async def get_or_create_library_agent(
     return library_agents[0]
 
 
-async def get_user_credentials(user_id: str) -> list:
+async def get_user_credentials(user_id: str) -> list[Credentials]:
     """Get all available credentials for a user."""
     creds_manager = IntegrationCredentialsManager()
     return await creds_manager.store.get_all_creds(user_id)
 
 
+def _credential_has_required_scopes(
+    credential: Credentials,
+    requirements: CredentialsFieldInfo,
+) -> bool:
+    """Check if a credential has all the scopes required by the block."""
+    if credential.type != "oauth2":
+        return True
+    if not requirements.required_scopes:
+        return True
+    return set(credential.scopes).issuperset(requirements.required_scopes)
+
+
 def find_matching_credential(
-    available_creds: list,
+    available_creds: list[Credentials],
     field_info: CredentialsFieldInfo,
-    check_scopes: bool = True,
-):
-    """Find a credential that matches the required provider, type, and optionally scopes."""
+) -> Credentials | None:
+    """Find a credential that matches the required provider, type, and scopes."""
     for cred in available_creds:
         if cred.provider not in field_info.provider:
             continue
         if cred.type not in field_info.supported_types:
             continue
-        if check_scopes and not _credential_has_required_scopes(cred, field_info):
+        if not _credential_has_required_scopes(cred, field_info):
             continue
         return cred
     return None
 
 
-def create_credential_meta_from_match(matching_cred) -> CredentialsMetaInput:
+def create_credential_meta_from_match(
+    matching_cred: Credentials,
+) -> CredentialsMetaInput:
     """Create a CredentialsMetaInput from a matched credential."""
     return CredentialsMetaInput(
         id=matching_cred.id,
@@ -261,18 +274,11 @@ def create_credential_meta_from_match(matching_cred) -> CredentialsMetaInput:
 async def match_credentials_to_requirements(
     user_id: str,
     requirements: dict[str, CredentialsFieldInfo],
-    check_scopes: bool = True,
 ) -> tuple[dict[str, CredentialsMetaInput], list[CredentialsMetaInput]]:
     """
     Match user's credentials against a dictionary of credential requirements.
 
     This is the core matching logic shared by both graph and block credential matching.
-
-    Args:
-        user_id: User ID to fetch credentials for
-        requirements: Dict mapping field names to CredentialsFieldInfo
-        check_scopes: Whether to verify OAuth2 scopes match requirements (default True).
-            Set to False to preserve original run_block behavior which didn't check scopes.
     """
     matched: dict[str, CredentialsMetaInput] = {}
     missing: list[CredentialsMetaInput] = []
@@ -283,9 +289,7 @@ async def match_credentials_to_requirements(
     available_creds = await get_user_credentials(user_id)
 
     for field_name, field_info in requirements.items():
-        matching_cred = find_matching_credential(
-            available_creds, field_info, check_scopes=check_scopes
-        )
+        matching_cred = find_matching_credential(available_creds, field_info)
 
         if matching_cred:
             try:
@@ -412,28 +416,6 @@ async def match_user_credentials_to_graph(
     )
 
     return graph_credentials_inputs, missing_creds
-
-
-def _credential_has_required_scopes(
-    credential: Credentials,
-    requirements: CredentialsFieldInfo,
-) -> bool:
-    """
-    Check if a credential has all the scopes required by the block.
-
-    For OAuth2 credentials, verifies that the credential's scopes are a superset
-    of the required scopes. For other credential types, returns True (no scope check).
-    """
-    # Only OAuth2 credentials have scopes to check
-    if credential.type != "oauth2":
-        return True
-
-    # If no scopes are required, any credential matches
-    if not requirements.required_scopes:
-        return True
-
-    # Check that credential scopes are a superset of required scopes
-    return set(credential.scopes).issuperset(requirements.required_scopes)
 
 
 async def check_user_has_required_credentials(
