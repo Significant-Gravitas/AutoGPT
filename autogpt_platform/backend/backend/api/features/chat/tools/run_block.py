@@ -23,7 +23,10 @@ from .models import (
     ToolResponseBase,
     UserReadiness,
 )
-from .utils import build_missing_credentials_from_field_info, match_credentials_to_requirements
+from .utils import (
+    build_missing_credentials_from_field_info,
+    match_credentials_to_requirements,
+)
 
 logger = logging.getLogger(__name__)
 

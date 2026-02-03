@@ -259,8 +259,7 @@ def find_matching_credential(
         (
             cred
             for cred in available_creds
-            if cred.provider in required_providers
-            and cred.type in required_types
+            if cred.provider in required_providers and cred.type in required_types
         ),
         None,
     )
@@ -387,7 +386,9 @@ async def match_user_credentials_to_graph(
     }
 
     # Use shared matching logic
-    matched, missing_list = await match_credentials_to_requirements(user_id, requirements)
+    matched, missing_list = await match_credentials_to_requirements(
+        user_id, requirements
+    )
 
     # Convert missing list to string descriptions for backward compatibility
     missing_descriptions = [
