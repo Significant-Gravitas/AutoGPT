@@ -1952,6 +1952,7 @@ async def _generate_llm_continuation(
                     messages=cast(list[ChatCompletionMessageParam], messages),
                     extra_body=extra_body,
                 )
+                last_error = None  # Clear any previous error on success
                 break  # Success, exit retry loop
             except Exception as e:
                 last_error = e
