@@ -38,9 +38,8 @@ export function ToolAccordion({
   return (
     <div
       className={cn(
-        "mt-2 rounded-2xl border bg-background px-3 py-2",
+        "mt-2 w-full rounded-2xl border bg-background px-3 py-2",
         className,
-        
       )}
     >
       <button
