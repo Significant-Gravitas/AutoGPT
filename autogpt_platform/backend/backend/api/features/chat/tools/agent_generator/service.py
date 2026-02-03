@@ -221,8 +221,8 @@ async def generate_agent_external(
     Args:
         instructions: Structured instructions from decompose_goal
         library_agents: User's library agents available for sub-agent composition
-        operation_id: Operation ID for async processing (enables RabbitMQ callback)
-        task_id: Task ID for async processing (enables RabbitMQ callback)
+        operation_id: Operation ID for async processing (enables Redis Streams callback)
+        task_id: Task ID for async processing (enables Redis Streams callback)
 
     Returns:
         Agent JSON dict, {"status": "accepted"} for async, or error dict {"type": "error", ...} on error
@@ -292,8 +292,8 @@ async def generate_agent_patch_external(
         update_request: Natural language description of changes
         current_agent: Current agent JSON
         library_agents: User's library agents available for sub-agent composition
-        operation_id: Operation ID for async processing (enables RabbitMQ callback)
-        task_id: Task ID for async processing (enables RabbitMQ callback)
+        operation_id: Operation ID for async processing (enables Redis Streams callback)
+        task_id: Task ID for async processing (enables Redis Streams callback)
 
     Returns:
         Updated agent JSON, clarifying questions dict, {"status": "accepted"} for async, or error dict on error

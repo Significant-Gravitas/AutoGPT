@@ -145,6 +145,48 @@ function cleanupExpiredStreams(
 }
 
 /**
+ * Finalize a stream by moving it from activeStreams to completedStreams.
+ * Also handles cleanup and notifications.
+ */
+function finalizeStream(
+  sessionId: string,
+  stream: ActiveStream,
+  onChunk: ((chunk: StreamChunk) => void) | undefined,
+  get: () => ChatStoreState & ChatStoreActions,
+  set: (state: Partial<ChatStoreState>) => void,
+): void {
+  if (onChunk) stream.onChunkCallbacks.delete(onChunk);
+
+  if (stream.status !== "streaming") {
+    const currentState = get();
+    const finalActiveStreams = new Map(currentState.activeStreams);
+    let finalCompletedStreams = new Map(currentState.completedStreams);
+
+    const storedStream = finalActiveStreams.get(sessionId);
+    if (storedStream === stream) {
+      const result: StreamResult = {
+        sessionId,
+        status: stream.status,
+        chunks: stream.chunks,
+        completedAt: Date.now(),
+        error: stream.error,
+      };
+      finalCompletedStreams.set(sessionId, result);
+      finalActiveStreams.delete(sessionId);
+      finalCompletedStreams = cleanupExpiredStreams(finalCompletedStreams);
+      set({
+        activeStreams: finalActiveStreams,
+        completedStreams: finalCompletedStreams,
+      });
+
+      if (stream.status === "completed" || stream.status === "error") {
+        notifyStreamComplete(currentState.streamCompleteCallbacks, sessionId);
+      }
+    }
+  }
+}
+
+/**
  * Clean up an existing stream for a session and move it to completed streams.
  * Returns updated maps for both active and completed streams.
  */
@@ -164,7 +206,9 @@ function cleanupExistingStream(
   if (existingStream) {
     existingStream.abortController.abort();
     const normalizedStatus =
-      existingStream.status === "streaming" ? "completed" : existingStream.status;
+      existingStream.status === "streaming"
+        ? "completed"
+        : existingStream.status;
     const result: StreamResult = {
       sessionId,
       status: normalizedStatus,
@@ -180,7 +224,10 @@ function cleanupExistingStream(
     }
   }
 
-  return { activeStreams: newActiveStreams, completedStreams: newCompletedStreams };
+  return {
+    activeStreams: newActiveStreams,
+    completedStreams: newCompletedStreams,
+  };
 }
 
 /**
@@ -222,13 +269,15 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const callbacks = state.streamCompleteCallbacks;
 
     // Clean up any existing stream for this session
-    const { activeStreams: newActiveStreams, completedStreams: newCompletedStreams } =
-      cleanupExistingStream(
-        sessionId,
-        state.activeStreams,
-        state.completedStreams,
-        callbacks,
-      );
+    const {
+      activeStreams: newActiveStreams,
+      completedStreams: newCompletedStreams,
+    } = cleanupExistingStream(
+      sessionId,
+      state.activeStreams,
+      state.completedStreams,
+      callbacks,
+    );
 
     // Create new stream
     const stream = createActiveStream(sessionId, onChunk);
@@ -241,36 +290,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     try {
       await executeStream(stream, message, isUserMessage, context);
     } finally {
-      if (onChunk) stream.onChunkCallbacks.delete(onChunk);
-      if (stream.status !== "streaming") {
-        const currentState = get();
-        const finalActiveStreams = new Map(currentState.activeStreams);
-        let finalCompletedStreams = new Map(currentState.completedStreams);
-
-        const storedStream = finalActiveStreams.get(sessionId);
-        if (storedStream === stream) {
-          const result: StreamResult = {
-            sessionId,
-            status: stream.status,
-            chunks: stream.chunks,
-            completedAt: Date.now(),
-            error: stream.error,
-          };
-          finalCompletedStreams.set(sessionId, result);
-          finalActiveStreams.delete(sessionId);
-          finalCompletedStreams = cleanupExpiredStreams(finalCompletedStreams);
-          set({
-            activeStreams: finalActiveStreams,
-            completedStreams: finalCompletedStreams,
-          });
-          if (stream.status === "completed" || stream.status === "error") {
-            notifyStreamComplete(
-              currentState.streamCompleteCallbacks,
-              sessionId,
-            );
-          }
-        }
-      }
+      finalizeStream(sessionId, stream, onChunk, get, set);
     }
   },
 
@@ -427,23 +447,19 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     lastMessageId = INITIAL_STREAM_ID,
     onChunk,
   ) {
-    console.info("[SSE-RECONNECT] reconnectToTask called:", {
-      sessionId,
-      taskId,
-      lastMessageId,
-    });
-
     const state = get();
     const callbacks = state.streamCompleteCallbacks;
 
     // Clean up any existing stream for this session
-    const { activeStreams: newActiveStreams, completedStreams: newCompletedStreams } =
-      cleanupExistingStream(
-        sessionId,
-        state.activeStreams,
-        state.completedStreams,
-        callbacks,
-      );
+    const {
+      activeStreams: newActiveStreams,
+      completedStreams: newCompletedStreams,
+    } = cleanupExistingStream(
+      sessionId,
+      state.activeStreams,
+      state.completedStreams,
+      callbacks,
+    );
 
     // Create new stream for reconnection
     const stream = createActiveStream(sessionId, onChunk);
@@ -453,56 +469,19 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       completedStreams: newCompletedStreams,
     });
 
-    console.info("[SSE-RECONNECT] Starting executeTaskReconnect...");
     try {
       await executeTaskReconnect(stream, taskId, lastMessageId);
-      console.info("[SSE-RECONNECT] executeTaskReconnect completed:", {
-        sessionId,
-        taskId,
-        streamStatus: stream.status,
-      });
     } finally {
-      if (onChunk) stream.onChunkCallbacks.delete(onChunk);
-      if (stream.status !== "streaming") {
-        const currentState = get();
-        const finalActiveStreams = new Map(currentState.activeStreams);
-        let finalCompletedStreams = new Map(currentState.completedStreams);
+      finalizeStream(sessionId, stream, onChunk, get, set);
 
-        const storedStream = finalActiveStreams.get(sessionId);
-        if (storedStream === stream) {
-          const result: StreamResult = {
-            sessionId,
-            status: stream.status,
-            chunks: stream.chunks,
-            completedAt: Date.now(),
-            error: stream.error,
-          };
-          finalCompletedStreams.set(sessionId, result);
-          finalActiveStreams.delete(sessionId);
-          finalCompletedStreams = cleanupExpiredStreams(finalCompletedStreams);
-          set({
-            activeStreams: finalActiveStreams,
-            completedStreams: finalCompletedStreams,
-          });
-          if (stream.status === "completed" || stream.status === "error") {
-            notifyStreamComplete(
-              currentState.streamCompleteCallbacks,
-              sessionId,
-            );
-            // Clear active task on completion
-            const taskState = get();
-            const newActiveTasks = new Map(taskState.activeTasks);
-            const hadActiveTask = newActiveTasks.has(sessionId);
-            newActiveTasks.delete(sessionId);
-            set({ activeTasks: newActiveTasks });
-            persistTasks(newActiveTasks);
-            if (hadActiveTask) {
-              console.info(
-                `[ChatStore] Cleared active task for session ${sessionId} ` +
-                  `(stream status: ${stream.status})`,
-              );
-            }
-          }
+      // Clear active task on completion
+      if (stream.status === "completed" || stream.status === "error") {
+        const taskState = get();
+        if (taskState.activeTasks.has(sessionId)) {
+          const newActiveTasks = new Map(taskState.activeTasks);
+          newActiveTasks.delete(sessionId);
+          set({ activeTasks: newActiveTasks });
+          persistTasks(newActiveTasks);
         }
       }
     }

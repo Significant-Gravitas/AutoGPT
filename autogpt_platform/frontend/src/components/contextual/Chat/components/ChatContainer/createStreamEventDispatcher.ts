@@ -24,12 +24,6 @@ export function createStreamEventDispatcher(
       chunk.type === "need_login" ||
       chunk.type === "error"
     ) {
-      if (!deps.hasResponseRef.current) {
-        console.info("[ChatStream] First response chunk:", {
-          type: chunk.type,
-          sessionId: deps.sessionId,
-        });
-      }
       deps.hasResponseRef.current = true;
     }
 
@@ -37,13 +31,9 @@ export function createStreamEventDispatcher(
       case "stream_start":
         // Store task ID for SSE reconnection
         if (chunk.taskId && deps.onActiveTaskStarted) {
-          console.info("[ChatStream] Stream started with task ID:", {
-            sessionId: deps.sessionId,
-            taskId: chunk.taskId,
-          });
           deps.onActiveTaskStarted({
             taskId: chunk.taskId,
-            operationId: chunk.taskId, // Use taskId as operationId for chat streams
+            operationId: chunk.taskId,
             toolName: "chat",
             toolCallId: "chat_stream",
           });
@@ -73,11 +63,6 @@ export function createStreamEventDispatcher(
 
       case "stream_end":
         // Note: "finish" type from backend gets normalized to "stream_end" by normalizeStreamChunk
-        console.info("[SSE-RECONNECT] Stream ended:", {
-          sessionId: deps.sessionId,
-          hasResponse: deps.hasResponseRef.current,
-          chunkCount: deps.streamingChunksRef.current.length,
-        });
         handleStreamEnd(chunk, deps);
         break;
 

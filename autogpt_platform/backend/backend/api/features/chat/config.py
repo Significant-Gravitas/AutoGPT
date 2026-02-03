@@ -63,6 +63,10 @@ class ChatConfig(BaseSettings):
         default="chat_consumers",
         description="Consumer group name for completion stream",
     )
+    stream_claim_min_idle_ms: int = Field(
+        default=60000,
+        description="Minimum idle time in milliseconds before claiming pending messages from dead consumers",
+    )
 
     # Redis key prefixes for stream registry
     task_meta_prefix: str = Field(
@@ -76,10 +80,6 @@ class ChatConfig(BaseSettings):
     task_op_prefix: str = Field(
         default="chat:task:op:",
         description="Prefix for operation ID to task ID mapping keys",
-    )
-    task_pubsub_prefix: str = Field(
-        default="chat:task:pubsub:",
-        description="Prefix for task pub/sub channel names",
     )
     internal_api_key: str | None = Field(
         default=None,

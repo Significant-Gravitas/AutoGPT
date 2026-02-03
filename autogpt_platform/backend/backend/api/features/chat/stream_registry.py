@@ -5,13 +5,12 @@ messages. It uses Redis for all state management (no in-memory state), making
 pods stateless and horizontally scalable.
 
 Architecture:
-- Redis Stream: Persists all messages for replay
-- Redis Pub/Sub: Real-time delivery to subscribers
+- Redis Stream: Persists all messages for replay and real-time delivery
 - Redis Hash: Task metadata (status, session_id, etc.)
 
 Subscribers:
-1. Replay missed messages from Redis Stream
-2. Subscribe to pub/sub channel for live updates
+1. Replay missed messages from Redis Stream (XREAD)
+2. Listen for live updates via blocking XREAD
 3. No in-memory state required on the subscribing pod
 """
 
@@ -26,13 +25,21 @@ import orjson
 from backend.data.redis_client import get_redis_async
 
 from .config import ChatConfig
-from .response_model import StreamBaseResponse, StreamFinish
+from .response_model import StreamBaseResponse, StreamError, StreamFinish
 
 logger = logging.getLogger(__name__)
 config = ChatConfig()
 
 # Track background tasks for this pod (just the asyncio.Task reference, not subscribers)
 _local_tasks: dict[str, asyncio.Task] = {}
+
+# Track listener tasks per subscriber queue for cleanup
+# Maps queue id() to (task_id, asyncio.Task) for proper cleanup on unsubscribe
+_listener_tasks: dict[int, tuple[str, asyncio.Task]] = {}
+
+# Timeout for putting chunks into subscriber queues (seconds)
+# If the queue is full and doesn't drain within this time, send an overflow error
+QUEUE_PUT_TIMEOUT = 5.0
 
 
 @dataclass
@@ -63,11 +70,6 @@ def _get_task_stream_key(task_id: str) -> str:
 def _get_operation_mapping_key(operation_id: str) -> str:
     """Get Redis key for operation_id to task_id mapping."""
     return f"{config.task_op_prefix}{operation_id}"
-
-
-def _get_task_pubsub_channel(task_id: str) -> str:
-    """Get Redis pub/sub channel for task real-time delivery."""
-    return f"{config.task_pubsub_prefix}{task_id}"
 
 
 async def create_task(
@@ -123,9 +125,7 @@ async def create_task(
     # Create operation_id -> task_id mapping for webhook lookups
     await redis.set(op_key, task_id, ex=config.stream_ttl)
 
-    logger.info(
-        f"[SSE-RECONNECT] Created task {task_id} for session {session_id} in Redis"
-    )
+    logger.debug(f"Created task {task_id} for session {session_id}")
 
     return task
 
@@ -134,9 +134,9 @@ async def publish_chunk(
     task_id: str,
     chunk: StreamBaseResponse,
 ) -> str:
-    """Publish a chunk to Redis Stream and pub/sub channel.
+    """Publish a chunk to Redis Stream.
 
-    All delivery is via Redis - no in-memory state.
+    All delivery is via Redis Streams - no in-memory state.
 
     Args:
         task_id: Task ID to publish to
@@ -151,20 +151,14 @@ async def publish_chunk(
     try:
         redis = await get_redis_async()
         stream_key = _get_task_stream_key(task_id)
-        pubsub_channel = _get_task_pubsub_channel(task_id)
 
-        # Write to Redis Stream for persistence/replay
+        # Write to Redis Stream for persistence and real-time delivery
         raw_id = await redis.xadd(
             stream_key,
             {"data": chunk_json},
             maxlen=config.stream_max_length,
         )
         message_id = raw_id if isinstance(raw_id, str) else raw_id.decode()
-
-        # Publish to pub/sub for real-time delivery
-        await redis.publish(pubsub_channel, chunk_json)
-
-        logger.debug(f"Published chunk to task {task_id}, message_id={message_id}")
     except Exception as e:
         logger.error(
             f"Failed to publish chunk for task {task_id}: {e}",
@@ -197,14 +191,12 @@ async def subscribe_to_task(
     meta: dict[Any, Any] = await redis.hgetall(meta_key)  # type: ignore[misc]
 
     if not meta:
-        logger.warning(f"[SSE-RECONNECT] Task {task_id} not found in Redis")
+        logger.debug(f"Task {task_id} not found in Redis")
         return None
 
     # Note: Redis client uses decode_responses=True, so keys are strings
     task_status = meta.get("status", "")
     task_user_id = meta.get("user_id", "") or None
-
-    logger.info(f"[SSE-RECONNECT] Subscribing to task {task_id}: status={task_status}")
 
     # Validate ownership
     if user_id and task_user_id and task_user_id != user_id:
@@ -237,22 +229,17 @@ async def subscribe_to_task(
                     except Exception as e:
                         logger.warning(f"Failed to replay message: {e}")
 
-    logger.info(
-        f"[SSE-RECONNECT] Task {task_id}: replayed {replayed_count} messages "
-        f"(last_id={replay_last_id})"
-    )
+    logger.debug(f"Task {task_id}: replayed {replayed_count} messages")
 
     # Step 2: If task is still running, start stream listener for live updates
     if task_status == "running":
-        logger.info(
-            f"[SSE-RECONNECT] Task {task_id} is running, starting stream listener"
+        listener_task = asyncio.create_task(
+            _stream_listener(task_id, subscriber_queue, replay_last_id)
         )
-        asyncio.create_task(_stream_listener(task_id, subscriber_queue, replay_last_id))
+        # Track listener task for cleanup on unsubscribe
+        _listener_tasks[id(subscriber_queue)] = (task_id, listener_task)
     else:
         # Task is completed/failed - add finish marker
-        logger.info(
-            f"[SSE-RECONNECT] Task {task_id} is {task_status}, adding finish marker"
-        )
         await subscriber_queue.put(StreamFinish())
 
     return subscriber_queue
@@ -273,15 +260,11 @@ async def _stream_listener(
         subscriber_queue: Queue to deliver messages to
         last_replayed_id: Last message ID from replay (continue from here)
     """
+    queue_id = id(subscriber_queue)
     try:
         redis = await get_redis_async()
         stream_key = _get_task_stream_key(task_id)
         current_id = last_replayed_id
-
-        logger.debug(
-            f"[SSE-RECONNECT] Stream listener started for task {task_id}, "
-            f"from ID {current_id}"
-        )
 
         while True:
             # Block for up to 30 seconds waiting for new messages
@@ -295,11 +278,15 @@ async def _stream_listener(
                 meta_key = _get_task_meta_key(task_id)
                 status = await redis.hget(meta_key, "status")  # type: ignore[misc]
                 if status and status != "running":
-                    logger.info(
-                        f"[SSE-RECONNECT] Task {task_id} no longer running "
-                        f"(status={status}), stopping listener"
-                    )
-                    subscriber_queue.put_nowait(StreamFinish())
+                    try:
+                        await asyncio.wait_for(
+                            subscriber_queue.put(StreamFinish()),
+                            timeout=QUEUE_PUT_TIMEOUT,
+                        )
+                    except asyncio.TimeoutError:
+                        logger.warning(
+                            f"Timeout delivering finish event for task {task_id}"
+                        )
                     break
                 continue
 
@@ -315,31 +302,53 @@ async def _stream_listener(
                         chunk = _reconstruct_chunk(chunk_data)
                         if chunk:
                             try:
-                                subscriber_queue.put_nowait(chunk)
-                            except asyncio.QueueFull:
-                                logger.warning(
-                                    f"Subscriber queue full for task {task_id}"
+                                await asyncio.wait_for(
+                                    subscriber_queue.put(chunk),
+                                    timeout=QUEUE_PUT_TIMEOUT,
                                 )
+                            except asyncio.TimeoutError:
+                                logger.warning(
+                                    f"Subscriber queue full for task {task_id}, "
+                                    f"message delivery timed out after {QUEUE_PUT_TIMEOUT}s"
+                                )
+                                # Send overflow error to notify client of missed messages
+                                try:
+                                    overflow_error = StreamError(
+                                        errorText="Message delivery timeout - some messages may have been missed",
+                                        code="QUEUE_OVERFLOW",
+                                    )
+                                    subscriber_queue.put_nowait(overflow_error)
+                                except asyncio.QueueFull:
+                                    # Queue is completely stuck, nothing more we can do
+                                    logger.error(
+                                        f"Cannot deliver overflow error for task {task_id}, "
+                                        "queue completely blocked"
+                                    )
 
                             # Stop listening on finish
                             if isinstance(chunk, StreamFinish):
-                                logger.info(
-                                    f"[SSE-RECONNECT] Task {task_id} finished "
-                                    "via stream"
-                                )
                                 return
                     except Exception as e:
                         logger.warning(f"Error processing stream message: {e}")
 
     except asyncio.CancelledError:
-        logger.debug(f"[SSE-RECONNECT] Stream listener cancelled for task {task_id}")
+        logger.debug(f"Stream listener cancelled for task {task_id}")
+        raise  # Re-raise to propagate cancellation
     except Exception as e:
         logger.error(f"Stream listener error for task {task_id}: {e}")
         # On error, send finish to unblock subscriber
         try:
-            subscriber_queue.put_nowait(StreamFinish())
-        except asyncio.QueueFull:
-            pass
+            await asyncio.wait_for(
+                subscriber_queue.put(StreamFinish()),
+                timeout=QUEUE_PUT_TIMEOUT,
+            )
+        except (asyncio.TimeoutError, asyncio.QueueFull):
+            logger.warning(
+                f"Could not deliver finish event for task {task_id} after error"
+            )
+    finally:
+        # Clean up listener task mapping on exit
+        _listener_tasks.pop(queue_id, None)
 
 
 async def mark_task_completed(
@@ -363,8 +372,6 @@ async def mark_task_completed(
     # Clean up local task reference if exists
     _local_tasks.pop(task_id, None)
 
-    logger.info(f"[SSE-RECONNECT] Marked task {task_id} as {status}")
-
 
 async def find_task_by_operation_id(operation_id: str) -> ActiveTask | None:
     """Find a task by its operation ID.
@@ -381,17 +388,10 @@ async def find_task_by_operation_id(operation_id: str) -> ActiveTask | None:
     op_key = _get_operation_mapping_key(operation_id)
     task_id = await redis.get(op_key)
 
-    logger.info(
-        f"[SSE-RECONNECT] find_task_by_operation_id: "
-        f"op_key={op_key}, task_id_from_redis={task_id!r}"
-    )
-
     if not task_id:
-        logger.info(f"[SSE-RECONNECT] No task_id found for operation {operation_id}")
         return None
 
     task_id_str = task_id.decode() if isinstance(task_id, bytes) else task_id
-    logger.info(f"[SSE-RECONNECT] Looking up task by task_id={task_id_str}")
     return await get_task(task_id_str)
 
 
@@ -408,18 +408,11 @@ async def get_task(task_id: str) -> ActiveTask | None:
     meta_key = _get_task_meta_key(task_id)
     meta: dict[Any, Any] = await redis.hgetall(meta_key)  # type: ignore[misc]
 
-    logger.info(
-        f"[SSE-RECONNECT] get_task: meta_key={meta_key}, "
-        f"meta_keys={list(meta.keys()) if meta else 'empty'}, "
-        f"meta={meta}"
-    )
-
     if not meta:
-        logger.info(f"[SSE-RECONNECT] No metadata found for task {task_id}")
         return None
 
     # Note: Redis client uses decode_responses=True, so keys/values are strings
-    task = ActiveTask(
+    return ActiveTask(
         task_id=meta.get("task_id", ""),
         session_id=meta.get("session_id", ""),
         user_id=meta.get("user_id", "") or None,
@@ -428,11 +421,6 @@ async def get_task(task_id: str) -> ActiveTask | None:
         operation_id=meta.get("operation_id", ""),
         status=meta.get("status", "running"),  # type: ignore[arg-type]
     )
-    logger.info(
-        f"[SSE-RECONNECT] get_task returning: task_id={task.task_id}, "
-        f"session_id={task.session_id}, operation_id={task.operation_id}"
-    )
-    return task
 
 
 async def get_active_task_for_session(
@@ -450,7 +438,6 @@ async def get_active_task_for_session(
     Returns:
         Tuple of (ActiveTask if found and running, last_message_id from Redis Stream)
     """
-    logger.info(f"[SSE-RECONNECT] Looking for active task for session {session_id}")
 
     redis = await get_redis_async()
 
@@ -475,17 +462,9 @@ async def get_active_task_for_session(
             task_user_id = meta.get("user_id", "") or None
             task_id = meta.get("task_id", "")
 
-            # Log tasks found for this session
-            if task_session_id == session_id:
-                logger.info(
-                    f"[SSE-RECONNECT] Found task for session: "
-                    f"task_id={task_id}, status={task_status}"
-                )
-
             if task_session_id == session_id and task_status == "running":
                 # Validate ownership
                 if user_id and task_user_id and task_user_id != user_id:
-                    logger.info(f"[SSE-RECONNECT] Task {task_id} ownership mismatch")
                     continue
 
                 # Get the last message ID from Redis Stream
@@ -498,11 +477,6 @@ async def get_active_task_for_session(
                         last_id = msg_id if isinstance(msg_id, str) else msg_id.decode()
                 except Exception as e:
                     logger.warning(f"Failed to get last message ID: {e}")
-
-                logger.info(
-                    f"[SSE-RECONNECT] Found active task: task_id={task_id}, "
-                    f"last_message_id={last_id}"
-                )
 
                 return (
                     ActiveTask(
@@ -520,10 +494,6 @@ async def get_active_task_for_session(
         if cursor == 0:
             break
 
-    logger.info(
-        f"[SSE-RECONNECT] No active task found for session {session_id} "
-        f"(checked {tasks_checked} tasks)"
-    )
     return None, "0-0"
 
 
@@ -551,34 +521,30 @@ def _reconstruct_chunk(chunk_data: dict) -> StreamBaseResponse | None:
         StreamUsage,
     )
 
+    # Map response types to their corresponding classes
+    type_to_class: dict[str, type[StreamBaseResponse]] = {
+        ResponseType.START.value: StreamStart,
+        ResponseType.FINISH.value: StreamFinish,
+        ResponseType.TEXT_START.value: StreamTextStart,
+        ResponseType.TEXT_DELTA.value: StreamTextDelta,
+        ResponseType.TEXT_END.value: StreamTextEnd,
+        ResponseType.TOOL_INPUT_START.value: StreamToolInputStart,
+        ResponseType.TOOL_INPUT_AVAILABLE.value: StreamToolInputAvailable,
+        ResponseType.TOOL_OUTPUT_AVAILABLE.value: StreamToolOutputAvailable,
+        ResponseType.ERROR.value: StreamError,
+        ResponseType.USAGE.value: StreamUsage,
+        ResponseType.HEARTBEAT.value: StreamHeartbeat,
+    }
+
     chunk_type = chunk_data.get("type")
+    chunk_class = type_to_class.get(chunk_type)  # type: ignore[arg-type]
+
+    if chunk_class is None:
+        logger.warning(f"Unknown chunk type: {chunk_type}")
+        return None
 
     try:
-        if chunk_type == ResponseType.START.value:
-            return StreamStart(**chunk_data)
-        elif chunk_type == ResponseType.FINISH.value:
-            return StreamFinish(**chunk_data)
-        elif chunk_type == ResponseType.TEXT_START.value:
-            return StreamTextStart(**chunk_data)
-        elif chunk_type == ResponseType.TEXT_DELTA.value:
-            return StreamTextDelta(**chunk_data)
-        elif chunk_type == ResponseType.TEXT_END.value:
-            return StreamTextEnd(**chunk_data)
-        elif chunk_type == ResponseType.TOOL_INPUT_START.value:
-            return StreamToolInputStart(**chunk_data)
-        elif chunk_type == ResponseType.TOOL_INPUT_AVAILABLE.value:
-            return StreamToolInputAvailable(**chunk_data)
-        elif chunk_type == ResponseType.TOOL_OUTPUT_AVAILABLE.value:
-            return StreamToolOutputAvailable(**chunk_data)
-        elif chunk_type == ResponseType.ERROR.value:
-            return StreamError(**chunk_data)
-        elif chunk_type == ResponseType.USAGE.value:
-            return StreamUsage(**chunk_data)
-        elif chunk_type == ResponseType.HEARTBEAT.value:
-            return StreamHeartbeat(**chunk_data)
-        else:
-            logger.warning(f"Unknown chunk type: {chunk_type}")
-            return None
+        return chunk_class(**chunk_data)
     except Exception as e:
         logger.warning(f"Failed to reconstruct chunk of type {chunk_type}: {e}")
         return None
@@ -602,13 +568,49 @@ async def unsubscribe_from_task(
 ) -> None:
     """Clean up when a subscriber disconnects.
 
-    With Redis-based pub/sub, there's no explicit unsubscription needed.
-    The pub/sub listener task will be garbage collected when the subscriber
-    stops reading from the queue.
+    Cancels the XREAD-based listener task associated with this subscriber queue
+    to prevent resource leaks.
 
     Args:
         task_id: Task ID
-        subscriber_queue: The subscriber's queue (unused, kept for API compat)
+        subscriber_queue: The subscriber's queue used to look up the listener task
     """
-    # No-op - pub/sub listener cleans up automatically
-    logger.debug(f"[SSE-RECONNECT] Subscriber disconnected from task {task_id}")
+    queue_id = id(subscriber_queue)
+    listener_entry = _listener_tasks.pop(queue_id, None)
+
+    if listener_entry is None:
+        logger.debug(
+            f"No listener task found for task {task_id} queue {queue_id} "
+            "(may have already completed)"
+        )
+        return
+
+    stored_task_id, listener_task = listener_entry
+
+    if stored_task_id != task_id:
+        logger.warning(
+            f"Task ID mismatch in unsubscribe: expected {task_id}, "
+            f"found {stored_task_id}"
+        )
+
+    if listener_task.done():
+        logger.debug(f"Listener task for task {task_id} already completed")
+        return
+
+    # Cancel the listener task
+    listener_task.cancel()
+
+    try:
+        # Wait for the task to be cancelled with a timeout
+        await asyncio.wait_for(listener_task, timeout=5.0)
+    except asyncio.CancelledError:
+        # Expected - the task was successfully cancelled
+        pass
+    except asyncio.TimeoutError:
+        logger.warning(
+            f"Timeout waiting for listener task cancellation for task {task_id}"
+        )
+    except Exception as e:
+        logger.error(f"Error during listener task cancellation for task {task_id}: {e}")
+
+    logger.debug(f"Successfully unsubscribed from task {task_id}")

@@ -20,46 +20,6 @@ import {
   processInitialMessages,
 } from "./helpers";
 
-/**
- * Dependencies for creating a stream event dispatcher.
- * Extracted to allow helper function creation.
- */
-interface DispatcherDeps {
-  setHasTextChunks: React.Dispatch<React.SetStateAction<boolean>>;
-  setStreamingChunks: React.Dispatch<React.SetStateAction<string[]>>;
-  streamingChunksRef: React.MutableRefObject<string[]>;
-  hasResponseRef: React.MutableRefObject<boolean>;
-  setMessages: React.Dispatch<React.SetStateAction<ChatMessageData[]>>;
-  setIsRegionBlockedModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
-  sessionId: string;
-  setIsStreamingInitiated: React.Dispatch<React.SetStateAction<boolean>>;
-  onOperationStarted?: () => void;
-  onActiveTaskStarted: (taskInfo: {
-    taskId: string;
-    operationId: string;
-    toolName: string;
-    toolCallId: string;
-  }) => void;
-}
-
-/**
- * Create a stream event dispatcher with the given dependencies.
- */
-function createDispatcher(deps: DispatcherDeps) {
-  return createStreamEventDispatcher({
-    setHasTextChunks: deps.setHasTextChunks,
-    setStreamingChunks: deps.setStreamingChunks,
-    streamingChunksRef: deps.streamingChunksRef,
-    hasResponseRef: deps.hasResponseRef,
-    setMessages: deps.setMessages,
-    setIsRegionBlockedModalOpen: deps.setIsRegionBlockedModalOpen,
-    sessionId: deps.sessionId,
-    setIsStreamingInitiated: deps.setIsStreamingInitiated,
-    onOperationStarted: deps.onOperationStarted,
-    onActiveTaskStarted: deps.onActiveTaskStarted,
-  });
-}
-
 // Helper to generate deduplication key for a message
 function getMessageKey(msg: ChatMessageData): string {
   if (msg.type === "message") {
@@ -89,6 +49,8 @@ interface Args {
   activeStream?: {
     taskId: string;
     lastMessageId: string;
+    operationId: string;
+    toolName: string;
   };
 }
 
@@ -138,28 +100,35 @@ export function useChatContainer({
     });
   }
 
+  // Create dispatcher for stream events - stable reference for current sessionId
+  function createDispatcher() {
+    if (!sessionId) return () => {};
+    return createStreamEventDispatcher({
+      setHasTextChunks,
+      setStreamingChunks,
+      streamingChunksRef,
+      hasResponseRef,
+      setMessages,
+      setIsRegionBlockedModalOpen,
+      sessionId,
+      setIsStreamingInitiated,
+      onOperationStarted,
+      onActiveTaskStarted: handleActiveTaskStarted,
+    });
+  }
+
   useEffect(
     function handleSessionChange() {
       const isSessionChange = sessionId !== previousSessionIdRef.current;
 
-      console.info("[SSE-RECONNECT] handleSessionChange effect running:", {
-        sessionId,
-        previousSessionId: previousSessionIdRef.current,
-        isSessionChange,
-        hasActiveStream: !!activeStream,
-        activeStreamTaskId: activeStream?.taskId,
-        connectedActiveStream: connectedActiveStreamRef.current,
-      });
-
       // Handle session change - reset state
       if (isSessionChange) {
-        console.info("[SSE-RECONNECT] Session changed, resetting state");
         const prevSession = previousSessionIdRef.current;
         if (prevSession) {
           stopStreaming(prevSession);
         }
         previousSessionIdRef.current = sessionId;
-        connectedActiveStreamRef.current = null; // Reset connected stream tracker
+        connectedActiveStreamRef.current = null;
         setMessages([]);
         setStreamingChunks([]);
         streamingChunksRef.current = [];
@@ -168,157 +137,61 @@ export function useChatContainer({
         hasResponseRef.current = false;
       }
 
-      if (!sessionId) {
-        console.info("[SSE-RECONNECT] No sessionId, skipping reconnection check");
-        return;
-      }
+      if (!sessionId) return;
 
       // Priority 1: Check if server told us there's an active stream (most authoritative)
-      // Also handles the case where activeStream arrives after initial session load
       if (activeStream) {
-        // Skip if we've already connected to this exact stream
-        // Check and set immediately to prevent race conditions from effect re-runs
         const streamKey = `${sessionId}:${activeStream.taskId}`;
-        if (connectedActiveStreamRef.current === streamKey) {
-          console.info(
-            "[SSE-RECONNECT] Already connected to this stream, skipping:",
-            { streamKey },
-          );
-          return;
-        }
+        if (connectedActiveStreamRef.current === streamKey) return;
 
-        // Also skip if there's already an active stream for this session in the store
-        // (handles case where effect re-runs due to activeStreams state change)
+        // Skip if there's already an active stream for this session in the store
         const existingStream = activeStreams.get(sessionId);
         if (existingStream && existingStream.status === "streaming") {
-          console.info(
-            "[SSE-RECONNECT] Active stream already exists in store, skipping:",
-            { sessionId, status: existingStream.status },
-          );
           connectedActiveStreamRef.current = streamKey;
           return;
         }
 
-        // Set immediately after check to prevent race conditions
         connectedActiveStreamRef.current = streamKey;
 
-        console.info(
-          "[SSE-RECONNECT] Server reports active stream, initiating reconnection:",
-          {
-            sessionId,
-            taskId: activeStream.taskId,
-            lastMessageId: activeStream.lastMessageId,
-            streamKey,
-          },
-        );
-
-        const dispatcher = createDispatcher({
-          setHasTextChunks,
-          setStreamingChunks,
-          streamingChunksRef,
-          hasResponseRef,
-          setMessages,
-          setIsRegionBlockedModalOpen,
-          sessionId,
-          setIsStreamingInitiated,
-          onOperationStarted,
-          onActiveTaskStarted: handleActiveTaskStarted,
-        });
-
         setIsStreamingInitiated(true);
-        // Store this as the active task for future reconnects
         setActiveTask(sessionId, {
           taskId: activeStream.taskId,
-          operationId: activeStream.taskId,
-          toolName: "chat",
+          operationId: activeStream.operationId,
+          toolName: activeStream.toolName,
           lastMessageId: activeStream.lastMessageId,
         });
-        // Reconnect to the task stream
-        console.info("[SSE-RECONNECT] Calling reconnectToTask...");
         reconnectToTask(
           sessionId,
           activeStream.taskId,
           activeStream.lastMessageId,
-          dispatcher,
+          createDispatcher(),
         );
         return;
       }
 
-      // Only check localStorage/in-memory on session change, not on every render
-      if (!isSessionChange) {
-        console.info(
-          "[SSE-RECONNECT] No active stream and not a session change, skipping fallbacks",
-        );
-        return;
-      }
+      // Only check localStorage/in-memory on session change
+      if (!isSessionChange) return;
 
-      // Priority 2: Check localStorage for active task (client-side state)
-      console.info("[SSE-RECONNECT] Checking localStorage for active task...");
+      // Priority 2: Check localStorage for active task
       const activeTask = getActiveTask(sessionId);
       if (activeTask) {
-        console.info(
-          "[SSE-RECONNECT] Found active task in localStorage, attempting reconnect:",
-          {
-            sessionId,
-            taskId: activeTask.taskId,
-            lastMessageId: activeTask.lastMessageId,
-          },
-        );
-
-        const dispatcher = createDispatcher({
-          setHasTextChunks,
-          setStreamingChunks,
-          streamingChunksRef,
-          hasResponseRef,
-          setMessages,
-          setIsRegionBlockedModalOpen,
-          sessionId,
-          setIsStreamingInitiated,
-          onOperationStarted,
-          onActiveTaskStarted: handleActiveTaskStarted,
-        });
-
         setIsStreamingInitiated(true);
-        // Reconnect to the task stream
-        console.info("[SSE-RECONNECT] Calling reconnectToTask from localStorage...");
         reconnectToTask(
           sessionId,
           activeTask.taskId,
           activeTask.lastMessageId,
-          dispatcher,
+          createDispatcher(),
         );
         return;
-      } else {
-        console.info("[SSE-RECONNECT] No active task in localStorage");
       }
 
       // Priority 3: Check for an in-memory active stream (same-tab scenario)
-      console.info("[SSE-RECONNECT] Checking in-memory active streams...");
       const inMemoryStream = activeStreams.get(sessionId);
-      if (!inMemoryStream || inMemoryStream.status !== "streaming") {
-        console.info("[SSE-RECONNECT] No in-memory active stream found:", {
-          hasStream: !!inMemoryStream,
-          status: inMemoryStream?.status,
-        });
-        return;
-      }
-
-      const dispatcher = createDispatcher({
-        setHasTextChunks,
-        setStreamingChunks,
-        streamingChunksRef,
-        hasResponseRef,
-        setMessages,
-        setIsRegionBlockedModalOpen,
-        sessionId,
-        setIsStreamingInitiated,
-        onOperationStarted,
-        onActiveTaskStarted: handleActiveTaskStarted,
-      });
+      if (!inMemoryStream || inMemoryStream.status !== "streaming") return;
 
       setIsStreamingInitiated(true);
       const skipReplay = initialMessages.length > 0;
-      return subscribeToStream(sessionId, dispatcher, skipReplay);
+      return subscribeToStream(sessionId, createDispatcher(), skipReplay);
     },
     [
       sessionId,
@@ -410,10 +283,8 @@ export function useChatContainer({
     isUserMessage: boolean = true,
     context?: { url: string; content: string },
   ) {
-    if (!sessionId) {
-      console.error("[useChatContainer] Cannot send message: no session ID");
-      return;
-    }
+    if (!sessionId) return;
+
     setIsRegionBlockedModalOpen(false);
     if (isUserMessage) {
       const userMessage = createUserMessage(content);
@@ -427,31 +298,16 @@ export function useChatContainer({
     setIsStreamingInitiated(true);
     hasResponseRef.current = false;
 
-    const dispatcher = createDispatcher({
-      setHasTextChunks,
-      setStreamingChunks,
-      streamingChunksRef,
-      hasResponseRef,
-      setMessages,
-      setIsRegionBlockedModalOpen,
-      sessionId,
-      setIsStreamingInitiated,
-      onOperationStarted,
-      onActiveTaskStarted: handleActiveTaskStarted,
-    });
-
     try {
       await sendStreamMessage(
         sessionId,
         content,
-        dispatcher,
+        createDispatcher(),
         isUserMessage,
         context,
       );
     } catch (err) {
-      console.error("[useChatContainer] Failed to send message:", err);
       setIsStreamingInitiated(false);
-
       if (err instanceof Error && err.name === "AbortError") return;
 
       const errorMessage =

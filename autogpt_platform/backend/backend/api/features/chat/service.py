@@ -1884,10 +1884,10 @@ async def _execute_long_running_tool_with_streaming(
     Clients can reconnect via GET /chat/tasks/{task_id}/stream to resume streaming.
 
     If the external service returns a 202 Accepted (async), this function exits
-    early and lets the RabbitMQ completion consumer handle the rest.
+    early and lets the Redis Streams completion consumer handle the rest.
     """
-    # Track whether we delegated to async processing - if so, the RabbitMQ
-    # completion consumer will handle cleanup, not us
+    # Track whether we delegated to async processing - if so, the Redis Streams
+    # completion consumer (stream_registry / completion_consumer) will handle cleanup, not us
     delegated_to_async = False
 
     try:
@@ -1917,16 +1917,21 @@ async def _execute_long_running_tool_with_streaming(
         # Check if the tool result indicates async processing
         # (e.g., Agent Generator returned 202 Accepted)
         try:
-            result_data = orjson.loads(result.output) if result.output else {}
+            if isinstance(result.output, dict):
+                result_data = result.output
+            elif result.output:
+                result_data = orjson.loads(result.output)
+            else:
+                result_data = {}
             if result_data.get("status") == "accepted":
                 logger.info(
                     f"Tool {tool_name} delegated to async processing "
                     f"(operation_id={operation_id}, task_id={task_id}). "
-                    f"RabbitMQ completion consumer will handle the rest."
+                    f"Redis Streams completion consumer will handle the rest."
                 )
                 # Don't publish result, don't continue with LLM, and don't cleanup
-                # The RabbitMQ consumer will handle everything when the external
-                # service completes and publishes to the queue
+                # The Redis Streams consumer (completion_consumer) will handle
+                # everything when the external service completes via webhook
                 delegated_to_async = True
                 return
         except (orjson.JSONDecodeError, TypeError):
@@ -1985,7 +1990,7 @@ async def _execute_long_running_tool_with_streaming(
         await stream_registry.mark_task_completed(task_id, status="failed")
     finally:
         # Only cleanup if we didn't delegate to async processing
-        # For async path, the RabbitMQ completion consumer handles cleanup
+        # For async path, the Redis Streams completion consumer handles cleanup
         if not delegated_to_async:
             await _mark_operation_completed(tool_call_id)
 

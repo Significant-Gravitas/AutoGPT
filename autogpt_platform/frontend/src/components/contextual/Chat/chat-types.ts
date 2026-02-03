@@ -103,7 +103,10 @@ export type StreamCompleteCallback = (sessionId: string) => void;
 export function hasToolId<T extends { type: string }>(
   msg: T,
 ): msg is T & { toolId: string } {
-  return "toolId" in msg && typeof (msg as Record<string, unknown>).toolId === "string";
+  return (
+    "toolId" in msg &&
+    typeof (msg as Record<string, unknown>).toolId === "string"
+  );
 }
 
 /**

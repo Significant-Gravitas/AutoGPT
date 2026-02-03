@@ -117,6 +117,31 @@ export function handleToolCallStart(
   deps.setMessages(updateToolCallMessages);
 }
 
+// Types that represent a tool response and should be deduplicated by toolId
+const TOOL_RESPONSE_TYPES = new Set([
+  "tool_response",
+  "operation_started",
+  "operation_pending",
+  "operation_in_progress",
+  "execution_started",
+  "agent_carousel",
+  "clarification_needed",
+]);
+
+function hasResponseForTool(
+  messages: ChatMessageData[],
+  toolId: string,
+): boolean {
+  return messages.some((msg) => {
+    if (!TOOL_RESPONSE_TYPES.has(msg.type)) return false;
+    // Check various toolId field names used by different response types
+    const msgToolId =
+      (msg as { toolId?: string }).toolId ||
+      (msg as { toolCallId?: string }).toolCallId;
+    return msgToolId === toolId;
+  });
+}
+
 export function handleToolResponse(
   chunk: StreamChunk,
   deps: HandlerDependencies,
@@ -158,14 +183,24 @@ export function handleToolResponse(
     ) {
       const inputsMessage = extractInputsNeeded(parsedResult, chunk.tool_name);
       if (inputsMessage) {
-        deps.setMessages((prev) => [...prev, inputsMessage]);
+        deps.setMessages((prev) => {
+          // Check for duplicate inputs_needed message
+          const exists = prev.some((msg) => msg.type === "inputs_needed");
+          if (exists) return prev;
+          return [...prev, inputsMessage];
+        });
       }
       const credentialsMessage = extractCredentialsNeeded(
         parsedResult,
         chunk.tool_name,
       );
       if (credentialsMessage) {
-        deps.setMessages((prev) => [...prev, credentialsMessage]);
+        deps.setMessages((prev) => {
+          // Check for duplicate credentials_needed message
+          const exists = prev.some((msg) => msg.type === "credentials_needed");
+          if (exists) return prev;
+          return [...prev, credentialsMessage];
+        });
       }
     }
     return;
@@ -174,13 +209,14 @@ export function handleToolResponse(
   if (responseMessage.type === "operation_started") {
     deps.onOperationStarted?.();
     // Store task info for SSE reconnection if taskId is present
-    const taskId = (responseMessage as any).taskId;
+    const taskId = (responseMessage as { taskId?: string }).taskId;
     if (taskId && deps.onActiveTaskStarted) {
       deps.onActiveTaskStarted({
         taskId,
-        operationId: (responseMessage as any).operationId || "",
-        toolName: (responseMessage as any).toolName || "",
-        toolCallId: (responseMessage as any).toolId || "",
+        operationId:
+          (responseMessage as { operationId?: string }).operationId || "",
+        toolName: (responseMessage as { toolName?: string }).toolName || "",
+        toolCallId: (responseMessage as { toolId?: string }).toolId || "",
       });
     }
   }
@@ -189,10 +225,10 @@ export function handleToolResponse(
     const toolCallIndex = prev.findIndex(
       (msg) => msg.type === "tool_call" && msg.toolId === chunk.tool_id,
     );
-    const hasResponse = prev.some(
-      (msg) => msg.type === "tool_response" && msg.toolId === chunk.tool_id,
-    );
-    if (hasResponse) return prev;
+    // Check if any response type already exists for this tool
+    if (hasResponseForTool(prev, chunk.tool_id!)) {
+      return prev;
+    }
     if (toolCallIndex !== -1) {
       const newMessages = [...prev];
       newMessages.splice(toolCallIndex + 1, 0, responseMessage);
@@ -214,26 +250,39 @@ export function handleLoginNeeded(
     agentInfo: chunk.agent_info,
     timestamp: new Date(),
   };
-  deps.setMessages((prev) => [...prev, loginNeededMessage]);
+  deps.setMessages((prev) => {
+    // Check for duplicate login_needed message
+    const exists = prev.some((msg) => msg.type === "login_needed");
+    if (exists) return prev;
+    return [...prev, loginNeededMessage];
+  });
 }
 
 export function handleStreamEnd(
   _chunk: StreamChunk,
   deps: HandlerDependencies,
 ) {
-  console.info("[SSE-RECONNECT] handleStreamEnd called, resetting streaming state");
   const completedContent = deps.streamingChunksRef.current.join("");
   if (!completedContent.trim() && !deps.hasResponseRef.current) {
-    console.info("[SSE-RECONNECT] No content received, adding placeholder message");
-    deps.setMessages((prev) => [
-      ...prev,
-      {
-        type: "message",
-        role: "assistant",
-        content: "No response received. Please try again.",
-        timestamp: new Date(),
-      },
-    ]);
+    deps.setMessages((prev) => {
+      // Check for duplicate "No response" message
+      const exists = prev.some(
+        (msg) =>
+          msg.type === "message" &&
+          msg.role === "assistant" &&
+          msg.content === "No response received. Please try again.",
+      );
+      if (exists) return prev;
+      return [
+        ...prev,
+        {
+          type: "message",
+          role: "assistant",
+          content: "No response received. Please try again.",
+          timestamp: new Date(),
+        },
+      ];
+    });
   }
   if (completedContent.trim()) {
     deps.setMessages((prev) => {
@@ -262,15 +311,9 @@ export function handleStreamEnd(
 }
 
 export function handleError(chunk: StreamChunk, deps: HandlerDependencies) {
-  const errorMessage = chunk.message || chunk.content || "An error occurred";
-  console.error("[ChatStream] Stream error:", errorMessage, {
-    sessionId: deps.sessionId,
-    chunk,
-  });
   if (isRegionBlockedError(chunk)) {
     deps.setIsRegionBlockedModalOpen(true);
   }
-  console.info("[ChatStream] Resetting streaming state due to error");
   deps.setIsStreamingInitiated(false);
   deps.setHasTextChunks(false);
   deps.setStreamingChunks([]);

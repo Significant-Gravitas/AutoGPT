@@ -21,6 +21,8 @@ export interface ChatContainerProps {
   activeStream?: {
     taskId: string;
     lastMessageId: string;
+    operationId: string;
+    toolName: string;
   };
 }
 

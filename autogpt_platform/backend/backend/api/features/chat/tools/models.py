@@ -390,8 +390,8 @@ class AsyncProcessingResponse(ToolResponseBase):
     """Response when an operation has been delegated to async processing.
 
     This is returned by tools when the external service accepts the request
-    for async processing (HTTP 202 Accepted). The RabbitMQ completion consumer
-    will handle the result when the external service completes.
+    for async processing (HTTP 202 Accepted). The Redis Streams completion
+    consumer will handle the result when the external service completes.
 
     The status field is specifically "accepted" to allow the long-running tool
     handler to detect this response and skip LLM continuation.

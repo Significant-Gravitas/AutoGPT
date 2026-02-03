@@ -1,17 +1,45 @@
 """Redis Streams consumer for operation completion messages.
 
-This module provides a consumer that listens for completion notifications
-from external services (like Agent Generator) and triggers the appropriate
-stream registry and chat service updates.
+This module provides a consumer (ChatCompletionConsumer) that listens for
+completion notifications (OperationCompleteMessage) from external services
+(like Agent Generator) and triggers the appropriate stream registry and
+chat service updates via process_operation_success/process_operation_failure.
+
+Why Redis Streams instead of RabbitMQ?
+--------------------------------------
+While the project typically uses RabbitMQ for async task queues (e.g., execution
+queue), Redis Streams was chosen for chat completion notifications because:
+
+1. **Unified Infrastructure**: The SSE reconnection feature already uses Redis
+   Streams (via stream_registry) for message persistence and replay. Using Redis
+   Streams for completion notifications keeps all chat streaming infrastructure
+   in one system, simplifying operations and reducing cross-system coordination.
+
+2. **Message Replay**: Redis Streams support XREAD with arbitrary message IDs,
+   allowing consumers to replay missed messages after reconnection. This aligns
+   with the SSE reconnection pattern where clients can resume from last_message_id.
+
+3. **Consumer Groups with XAUTOCLAIM**: Redis consumer groups provide automatic
+   load balancing across pods with explicit message claiming (XAUTOCLAIM) for
+   recovering from dead consumers - ideal for the completion callback pattern.
+
+4. **Lower Latency**: For real-time SSE updates, Redis (already in-memory for
+   stream_registry) provides lower latency than an additional RabbitMQ hop.
+
+5. **Atomicity with Task State**: Completion processing often needs to update
+   task metadata stored in Redis. Keeping both in Redis enables simpler
+   transactional semantics without distributed coordination.
 
 The consumer uses Redis Streams with consumer groups for reliable message
-processing across multiple platform pods.
+processing across multiple platform pods, with XAUTOCLAIM for reclaiming
+stale pending messages from dead consumers.
 """
 
 import asyncio
 import logging
 import os
 import uuid
+from typing import Any
 
 import orjson
 from prisma import Prisma
@@ -130,6 +158,32 @@ class ChatCompletionConsumer:
                 retry_count = 0
 
                 while self._running:
+                    # First, claim any stale pending messages from dead consumers
+                    # Redis does NOT auto-redeliver pending messages; we must explicitly
+                    # claim them using XAUTOCLAIM
+                    try:
+                        claimed_result = await redis.xautoclaim(
+                            name=config.stream_completion_name,
+                            groupname=config.stream_consumer_group,
+                            consumername=self._consumer_name,
+                            min_idle_time=config.stream_claim_min_idle_ms,
+                            start_id="0-0",
+                            count=10,
+                        )
+                        # xautoclaim returns: (next_start_id, [(id, data), ...], [deleted_ids])
+                        if claimed_result and len(claimed_result) >= 2:
+                            claimed_entries = claimed_result[1]
+                            if claimed_entries:
+                                logger.info(
+                                    f"Claimed {len(claimed_entries)} stale pending messages"
+                                )
+                                for entry_id, data in claimed_entries:
+                                    if not self._running:
+                                        return
+                                    await self._process_entry(redis, entry_id, data)
+                    except Exception as e:
+                        logger.warning(f"XAUTOCLAIM failed (non-fatal): {e}")
+
                     # Read new messages from the stream
                     messages = await redis.xreadgroup(
                         groupname=config.stream_consumer_group,
@@ -146,30 +200,7 @@ class ChatCompletionConsumer:
                         for entry_id, data in entries:
                             if not self._running:
                                 return
-
-                            try:
-                                # Handle the message
-                                message_data = data.get("data")
-                                if message_data:
-                                    await self._handle_message(
-                                        message_data.encode()
-                                        if isinstance(message_data, str)
-                                        else message_data
-                                    )
-
-                                # Acknowledge the message
-                                await redis.xack(
-                                    config.stream_completion_name,
-                                    config.stream_consumer_group,
-                                    entry_id,
-                                )
-                            except Exception as e:
-                                logger.error(
-                                    f"Error processing completion message {entry_id}: {e}",
-                                    exc_info=True,
-                                )
-                                # Message will be redelivered to another consumer
-                                # or can be claimed after timeout
+                            await self._process_entry(redis, entry_id, data)
 
             except asyncio.CancelledError:
                 logger.info("Consumer cancelled")
@@ -185,6 +216,40 @@ class ChatCompletionConsumer:
                 else:
                     logger.error("Max retries reached, stopping consumer")
                     return
+
+    async def _process_entry(
+        self, redis: Any, entry_id: str, data: dict[str, Any]
+    ) -> None:
+        """Process a single stream entry and acknowledge it on success.
+
+        Args:
+            redis: Redis client connection
+            entry_id: The stream entry ID
+            data: The entry data dict
+        """
+        try:
+            # Handle the message
+            message_data = data.get("data")
+            if message_data:
+                await self._handle_message(
+                    message_data.encode()
+                    if isinstance(message_data, str)
+                    else message_data
+                )
+
+            # Acknowledge the message after successful processing
+            await redis.xack(
+                config.stream_completion_name,
+                config.stream_consumer_group,
+                entry_id,
+            )
+        except Exception as e:
+            logger.error(
+                f"Error processing completion message {entry_id}: {e}",
+                exc_info=True,
+            )
+            # Message remains in pending state and will be claimed by
+            # XAUTOCLAIM after min_idle_time expires
 
     async def _handle_message(self, body: bytes) -> None:
         """Handle a completion message using our own Prisma client."""

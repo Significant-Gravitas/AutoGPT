@@ -38,17 +38,30 @@ export function Chat({
   } = useChat({ urlSessionId });
 
   // Extract active stream info for reconnection
-  const activeStream = (session as { active_stream?: { task_id: string; last_message_id: string } })?.active_stream;
+  const activeStream = (
+    session as {
+      active_stream?: {
+        task_id: string;
+        last_message_id: string;
+        operation_id: string;
+        tool_name: string;
+      };
+    }
+  )?.active_stream;
 
   // Debug logging for SSE reconnection
   if (session) {
     console.info("[SSE-RECONNECT] Session loaded:", {
       sessionId,
       hasActiveStream: !!activeStream,
-      activeStream: activeStream ? {
-        taskId: activeStream.task_id,
-        lastMessageId: activeStream.last_message_id,
-      } : null,
+      activeStream: activeStream
+        ? {
+            taskId: activeStream.task_id,
+            lastMessageId: activeStream.last_message_id,
+            operationId: activeStream.operation_id,
+            toolName: activeStream.tool_name,
+          }
+        : null,
     });
   }
 
@@ -99,10 +112,16 @@ export function Chat({
             className="flex-1"
             onStreamingChange={onStreamingChange}
             onOperationStarted={startPollingForOperation}
-            activeStream={activeStream ? {
-              taskId: activeStream.task_id,
-              lastMessageId: activeStream.last_message_id,
-            } : undefined}
+            activeStream={
+              activeStream
+                ? {
+                    taskId: activeStream.task_id,
+                    lastMessageId: activeStream.last_message_id,
+                    operationId: activeStream.operation_id,
+                    toolName: activeStream.tool_name,
+                  }
+                : undefined
+            }
           />
         )}
       </main>

@@ -1,4 +1,4 @@
-import { INITIAL_MESSAGE_ID } from "./chat-constants";
+import { INITIAL_STREAM_ID } from "./chat-constants";
 import type {
   ActiveStream,
   StreamChunk,
@@ -72,21 +72,12 @@ async function executeStreamInternal(
     isUserMessage,
     context,
     taskId,
-    lastMessageId = INITIAL_MESSAGE_ID,
+    lastMessageId = INITIAL_STREAM_ID,
     retryCount = 0,
   } = options;
 
   const { sessionId, abortController } = stream;
   const isReconnect = mode === "reconnect";
-  const logPrefix = isReconnect ? "[SSE-RECONNECT]" : "[StreamExecutor]";
-
-  if (isReconnect) {
-    console.info(`${logPrefix} executeStream starting:`, {
-      taskId,
-      lastMessageId,
-      retryCount,
-    });
-  }
 
   try {
     // Build URL and request options based on mode
@@ -102,7 +93,6 @@ async function executeStreamInternal(
         },
         signal: abortController.signal,
       };
-      console.info(`${logPrefix} Fetching task stream:`, { url });
     } else {
       url = `/api/chat/sessions/${sessionId}/stream`;
       fetchOptions = {
@@ -122,21 +112,8 @@ async function executeStreamInternal(
 
     const response = await fetch(url, fetchOptions);
 
-    if (isReconnect) {
-      console.info(`${logPrefix} Task stream response:`, {
-        status: response.status,
-        ok: response.ok,
-      });
-    }
-
     if (!response.ok) {
       const errorText = await response.text();
-      if (isReconnect) {
-        console.error(`${logPrefix} Task stream error response:`, {
-          status: response.status,
-          errorText,
-        });
-      }
       // For reconnect: don't retry on 404/403 (permanent errors)
       const isPermanentError =
         isReconnect && (response.status === 404 || response.status === 403);
@@ -151,10 +128,6 @@ async function executeStreamInternal(
       throw new Error("Response body is null");
     }
 
-    if (isReconnect) {
-      console.info(`${logPrefix} Task stream connected, reading chunks...`);
-    }
-
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
@@ -163,11 +136,6 @@ async function executeStreamInternal(
       const { done, value } = await reader.read();
 
       if (done) {
-        if (isReconnect) {
-          console.info(
-            `${logPrefix} Task stream reader done (connection closed)`,
-          );
-        }
         notifySubscribers(stream, { type: "stream_end" });
         stream.status = "completed";
         return;
@@ -181,9 +149,6 @@ async function executeStreamInternal(
         const data = parseSSELine(line);
         if (data !== null) {
           if (data === "[DONE]") {
-            if (isReconnect) {
-              console.info(`${logPrefix} Task stream received [DONE] signal`);
-            }
             notifySubscribers(stream, { type: "stream_end" });
             stream.status = "completed";
             return;
@@ -196,38 +161,22 @@ async function executeStreamInternal(
             const chunk = normalizeStreamChunk(rawChunk);
             if (!chunk) continue;
 
-            // Log first few chunks for debugging (reconnect mode only)
-            if (isReconnect && stream.chunks.length < 3) {
-              console.info(`${logPrefix} Task stream chunk received:`, {
-                type: chunk.type,
-                chunkIndex: stream.chunks.length,
-              });
-            }
-
             notifySubscribers(stream, chunk);
 
             if (chunk.type === "stream_end") {
-              if (isReconnect) {
-                console.info(
-                  `${logPrefix} Task stream completed via stream_end chunk`,
-                );
-              }
               stream.status = "completed";
               return;
             }
 
             if (chunk.type === "error") {
-              if (isReconnect) {
-                console.error(`${logPrefix} Task stream error chunk:`, chunk);
-              }
               stream.status = "error";
               stream.error = new Error(
                 chunk.message || chunk.content || "Stream error",
               );
               return;
             }
-          } catch (err) {
-            console.warn(`${logPrefix} Failed to parse SSE chunk:`, err);
+          } catch {
+            // Failed to parse SSE chunk - continue to next
           }
         }
       }
@@ -246,21 +195,11 @@ async function executeStreamInternal(
 
     if (!isPermanentError && retryCount < MAX_RETRIES) {
       const retryDelay = INITIAL_RETRY_DELAY * Math.pow(2, retryCount);
-      console.log(
-        `${logPrefix} Retrying in ${retryDelay}ms (attempt ${retryCount + 1}/${MAX_RETRIES})`,
-      );
       await new Promise((resolve) => setTimeout(resolve, retryDelay));
       return executeStreamInternal({
         ...options,
         retryCount: retryCount + 1,
       });
-    }
-
-    // Log permanent errors differently for debugging
-    if (isPermanentError) {
-      console.log(
-        `${logPrefix} Stream failed permanently (task not found or access denied): ${(err as Error).message}`,
-      );
     }
 
     stream.status = "error";
@@ -309,7 +248,7 @@ export async function executeStream(
 export async function executeTaskReconnect(
   stream: ActiveStream,
   taskId: string,
-  lastMessageId: string = INITIAL_MESSAGE_ID,
+  lastMessageId: string = INITIAL_STREAM_ID,
   retryCount: number = 0,
 ): Promise<void> {
   return executeStreamInternal({

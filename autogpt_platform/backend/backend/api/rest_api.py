@@ -122,7 +122,7 @@ async def lifespan_context(app: fastapi.FastAPI):
     await backend.data.graph.migrate_llm_models(DEFAULT_LLM_MODEL)
     await backend.integrations.webhooks.utils.migrate_legacy_triggered_graphs()
 
-    # Start chat completion consumer for RabbitMQ notifications
+    # Start chat completion consumer for Redis Streams notifications
     try:
         await start_completion_consumer()
     except Exception as e:
