@@ -3528,7 +3528,7 @@
             "schema": {
               "$ref": "#/components/schemas/LibraryAgentSort",
               "description": "Criteria to sort results by",
-              "default": "lastExecuted"
+              "default": "updatedAt"
             },
             "description": "Criteria to sort results by"
           },

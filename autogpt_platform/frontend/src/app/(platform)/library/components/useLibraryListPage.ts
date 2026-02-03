@@ -2,7 +2,7 @@
 
 import { LibraryAgentSort } from "@/app/api/__generated__/models/libraryAgentSort";
 import { parseAsStringEnum, useQueryState } from "nuqs";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 const sortParser = parseAsStringEnum(Object.values(LibraryAgentSort));
 
@@ -11,7 +11,14 @@ export function useLibraryListPage() {
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [librarySortRaw, setLibrarySortRaw] = useQueryState("sort", sortParser);
 
-  const librarySort = librarySortRaw || LibraryAgentSort.lastExecuted;
+  // Ensure sort param is always present in URL (even if default)
+  useEffect(() => {
+    if (!librarySortRaw) {
+      setLibrarySortRaw(LibraryAgentSort.updatedAt, { shallow: false });
+    }
+  }, [librarySortRaw, setLibrarySortRaw]);
+
+  const librarySort = librarySortRaw || LibraryAgentSort.updatedAt;
 
   const setLibrarySort = useCallback(
     (value: LibraryAgentSort) => {
