@@ -922,7 +922,9 @@ async def _manage_context_window(
             )
         except Exception as e:
             logger.warning(f"Summarization failed, falling back to truncation: {e}")
-            messages = [system_msg] + recent_messages if has_system_prompt else recent_messages
+            messages = (
+                [system_msg] + recent_messages if has_system_prompt else recent_messages
+            )
     else:
         logger.warning(
             f"Token count {token_count} exceeds threshold but no old messages to summarize"
@@ -934,7 +936,9 @@ async def _manage_context_window(
 
     # Progressive truncation if still over limit
     if new_token_count > TOKEN_THRESHOLD:
-        logger.warning(f"Still over limit: {new_token_count} tokens. Reducing messages.")
+        logger.warning(
+            f"Still over limit: {new_token_count} tokens. Reducing messages."
+        )
         base_msgs = (
             recent_messages
             if old_messages_dict
@@ -959,7 +963,9 @@ async def _manage_context_window(
                 continue
             else:
                 reduced = _ensure_tool_pairs_intact(
-                    base_msgs[-keep_count:], base_msgs, max(0, len(base_msgs) - keep_count)
+                    base_msgs[-keep_count:],
+                    base_msgs,
+                    max(0, len(base_msgs) - keep_count),
                 )
                 messages = build_messages(reduced)
 
@@ -967,10 +973,14 @@ async def _manage_context_window(
                 _messages_to_dicts(messages), model=token_count_model
             )
             if new_token_count <= TOKEN_THRESHOLD:
-                logger.info(f"Reduced to {keep_count} messages, {new_token_count} tokens")
+                logger.info(
+                    f"Reduced to {keep_count} messages, {new_token_count} tokens"
+                )
                 break
         else:
-            logger.error(f"Cannot reduce below threshold. Final: {new_token_count} tokens")
+            logger.error(
+                f"Cannot reduce below threshold. Final: {new_token_count} tokens"
+            )
             if has_system_prompt and len(messages) > 1:
                 messages = messages[1:]
                 logger.critical("Dropped system prompt as last resort")
@@ -979,7 +989,10 @@ async def _manage_context_window(
                 )
             # No system prompt to drop - return error so callers don't proceed with oversized context
             return ContextWindowResult(
-                messages, new_token_count, True, "Unable to reduce context below token limit"
+                messages,
+                new_token_count,
+                True,
+                "Unable to reduce context below token limit",
             )
 
     return ContextWindowResult(messages, new_token_count, True)
