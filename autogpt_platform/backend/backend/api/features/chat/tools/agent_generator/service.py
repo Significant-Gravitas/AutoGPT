@@ -326,6 +326,77 @@ async def generate_agent_patch_external(
         return _create_error_response(error_msg, "unexpected_error")
 
 
+async def customize_template_external(
+    template_agent: dict[str, Any],
+    modification_request: str,
+    context: str = "",
+) -> dict[str, Any] | None:
+    """Call the external service to customize a template/marketplace agent.
+
+    Args:
+        template_agent: The template agent JSON to customize
+        modification_request: Natural language description of customizations
+        context: Additional context (e.g., answers to previous questions)
+
+    Returns:
+        Customized agent JSON, clarifying questions dict, or error dict on error
+    """
+    client = _get_client()
+
+    request = modification_request
+    if context:
+        request = f"{modification_request}\n\nAdditional context from user:\n{context}"
+
+    payload: dict[str, Any] = {
+        "template_agent_json": template_agent,
+        "modification_request": request,
+    }
+
+    try:
+        response = await client.post("/api/template-modification", json=payload)
+        response.raise_for_status()
+        data = response.json()
+
+        if not data.get("success"):
+            error_msg = data.get("error", "Unknown error from Agent Generator")
+            error_type = data.get("error_type", "unknown")
+            logger.error(
+                f"Agent Generator template customization failed: {error_msg} "
+                f"(type: {error_type})"
+            )
+            return _create_error_response(error_msg, error_type)
+
+        # Check if it's clarifying questions
+        if data.get("type") == "clarifying_questions":
+            return {
+                "type": "clarifying_questions",
+                "questions": data.get("questions", []),
+            }
+
+        # Check if it's an error passed through
+        if data.get("type") == "error":
+            return _create_error_response(
+                data.get("error", "Unknown error"),
+                data.get("error_type", "unknown"),
+            )
+
+        # Otherwise return the customized agent JSON
+        return data.get("agent_json")
+
+    except httpx.HTTPStatusError as e:
+        error_type, error_msg = _classify_http_error(e)
+        logger.error(error_msg)
+        return _create_error_response(error_msg, error_type)
+    except httpx.RequestError as e:
+        error_type, error_msg = _classify_request_error(e)
+        logger.error(error_msg)
+        return _create_error_response(error_msg, error_type)
+    except Exception as e:
+        error_msg = f"Unexpected error calling Agent Generator: {e}"
+        logger.error(error_msg)
+        return _create_error_response(error_msg, "unexpected_error")
+
+
 async def get_blocks_external() -> list[dict[str, Any]] | None:
     """Get available blocks from the external service.
 
