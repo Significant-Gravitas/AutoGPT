@@ -62,7 +62,7 @@ export function Navbar() {
           <PreviewBanner branchName={previewBranchName} />
         ) : null}
         <nav
-          className="border-none inline-flex w-full items-center border  bg-[#FAFAFA] p-3 backdrop-blur-[26px]"
+          className="inline-flex w-full items-center border border-none bg-[#FAFAFA] p-3 backdrop-blur-[26px]"
           style={{ height: NAVBAR_HEIGHT_PX }}
         >
           {/* Left section */}

@@ -39,11 +39,13 @@ export const ChatMessagesContainer = ({
         ) : (
           messages.map((message) => (
             <Message from={message.role} key={message.id}>
-              <MessageContent   className={
-    "border rounded-xl px-3 py-2 " +
-    "group-[.is-user]:bg-purple-100 group-[.is-user]:rounded-2xl group-[.is-user]:border-purple-200 group-[.is-user]:text-slate-900 " +
-    "group-[.is-assistant]:bg-slate-50/20  group-[.is-assistant]:border-none group-[.is-assistant]:text-slate-900"
-  }>
+              <MessageContent
+                className={
+                  "rounded-xl border px-3 py-2 " +
+                  "group-[.is-user]:rounded-2xl group-[.is-user]:border-purple-200 group-[.is-user]:bg-purple-100 group-[.is-user]:text-slate-900 " +
+                  "group-[.is-assistant]:border-none group-[.is-assistant]:bg-slate-50/20 group-[.is-assistant]:text-slate-900"
+                }
+              >
                 {message.parts.map((part, i) => {
                   switch (part.type) {
                     case "text":

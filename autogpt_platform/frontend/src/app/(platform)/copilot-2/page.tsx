@@ -46,7 +46,6 @@ export default function Page() {
     transport: transport ?? undefined,
   });
 
-
   function handleMessageSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!input.trim() || !sessionId) return;
@@ -60,13 +59,16 @@ export default function Page() {
   }
 
   return (
-    <SidebarProvider defaultOpen={false} className="min-h-0 h-[calc(100vh-72px)]">
+    <SidebarProvider
+      defaultOpen={false}
+      className="h-[calc(100vh-72px)] min-h-0"
+    >
       <ChatSidebar />
-      <SidebarInset className="flex h-[calc(100vh-80px)] flex-col relative">
+      <SidebarInset className="relative flex h-[calc(100vh-80px)] flex-col">
         {sessionId && (
-          <div className="flex items-center px-4 py-4 absolute">
+          <div className="absolute flex items-center px-4 py-4">
             <div className="flex items-center gap-2 rounded-3xl border border-neutral-400 bg-neutral-100 px-3 py-1.5 text-sm text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400">
-              <span className=" text-xs">{sessionId.slice(0, 8)}...</span>
+              <span className="text-xs">{sessionId.slice(0, 8)}...</span>
               <Button
                 variant="ghost"
                 size="icon"
