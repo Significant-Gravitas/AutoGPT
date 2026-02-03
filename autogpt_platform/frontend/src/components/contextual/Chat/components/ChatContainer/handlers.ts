@@ -18,11 +18,19 @@ export interface HandlerDependencies {
   setStreamingChunks: Dispatch<SetStateAction<string[]>>;
   streamingChunksRef: MutableRefObject<string[]>;
   hasResponseRef: MutableRefObject<boolean>;
+  textFinalizedRef: MutableRefObject<boolean>;
+  streamEndedRef: MutableRefObject<boolean>;
   setMessages: Dispatch<SetStateAction<ChatMessageData[]>>;
   setIsStreamingInitiated: Dispatch<SetStateAction<boolean>>;
   setIsRegionBlockedModalOpen: Dispatch<SetStateAction<boolean>>;
   sessionId: string;
   onOperationStarted?: () => void;
+  onActiveTaskStarted?: (taskInfo: {
+    taskId: string;
+    operationId: string;
+    toolName: string;
+    toolCallId: string;
+  }) => void;
 }
 
 export function isRegionBlockedError(chunk: StreamChunk): boolean {
@@ -30,6 +38,25 @@ export function isRegionBlockedError(chunk: StreamChunk): boolean {
   const message = chunk.message || chunk.content;
   if (typeof message !== "string") return false;
   return message.toLowerCase().includes("not available in your region");
+}
+
+export function getUserFriendlyErrorMessage(
+  code: string | undefined,
+): string | undefined {
+  switch (code) {
+    case "TASK_EXPIRED":
+      return "This operation has expired. Please try again.";
+    case "TASK_NOT_FOUND":
+      return "Could not find the requested operation.";
+    case "ACCESS_DENIED":
+      return "You do not have access to this operation.";
+    case "QUEUE_OVERFLOW":
+      return "Connection was interrupted. Please refresh to continue.";
+    case "MODEL_NOT_AVAILABLE_REGION":
+      return "This model is not available in your region.";
+    default:
+      return undefined;
+  }
 }
 
 export function handleTextChunk(chunk: StreamChunk, deps: HandlerDependencies) {
@@ -46,10 +73,15 @@ export function handleTextEnded(
   _chunk: StreamChunk,
   deps: HandlerDependencies,
 ) {
+  if (deps.textFinalizedRef.current) {
+    return;
+  }
+
   const completedText = deps.streamingChunksRef.current.join("");
   if (completedText.trim()) {
+    deps.textFinalizedRef.current = true;
+
     deps.setMessages((prev) => {
-      // Check if this exact message already exists to prevent duplicates
       const exists = prev.some(
         (msg) =>
           msg.type === "message" &&
@@ -76,9 +108,14 @@ export function handleToolCallStart(
   chunk: StreamChunk,
   deps: HandlerDependencies,
 ) {
+  // Use deterministic fallback instead of Date.now() to ensure same ID on replay
+  const toolId =
+    chunk.tool_id ||
+    `tool-${deps.sessionId}-${chunk.idx ?? "unknown"}-${chunk.tool_name || "unknown"}`;
+
   const toolCallMessage: Extract<ChatMessageData, { type: "tool_call" }> = {
     type: "tool_call",
-    toolId: chunk.tool_id || `tool-${Date.now()}-${chunk.idx || 0}`,
+    toolId,
     toolName: chunk.tool_name || "Executing",
     arguments: chunk.arguments || {},
     timestamp: new Date(),
@@ -109,6 +146,29 @@ export function handleToolCallStart(
   }
 
   deps.setMessages(updateToolCallMessages);
+}
+
+const TOOL_RESPONSE_TYPES = new Set([
+  "tool_response",
+  "operation_started",
+  "operation_pending",
+  "operation_in_progress",
+  "execution_started",
+  "agent_carousel",
+  "clarification_needed",
+]);
+
+function hasResponseForTool(
+  messages: ChatMessageData[],
+  toolId: string,
+): boolean {
+  return messages.some((msg) => {
+    if (!TOOL_RESPONSE_TYPES.has(msg.type)) return false;
+    const msgToolId =
+      (msg as { toolId?: string }).toolId ||
+      (msg as { toolCallId?: string }).toolCallId;
+    return msgToolId === toolId;
+  });
 }
 
 export function handleToolResponse(
@@ -152,31 +212,49 @@ export function handleToolResponse(
     ) {
       const inputsMessage = extractInputsNeeded(parsedResult, chunk.tool_name);
       if (inputsMessage) {
-        deps.setMessages((prev) => [...prev, inputsMessage]);
+        deps.setMessages((prev) => {
+          // Check for duplicate inputs_needed message
+          const exists = prev.some((msg) => msg.type === "inputs_needed");
+          if (exists) return prev;
+          return [...prev, inputsMessage];
+        });
       }
       const credentialsMessage = extractCredentialsNeeded(
         parsedResult,
         chunk.tool_name,
       );
       if (credentialsMessage) {
-        deps.setMessages((prev) => [...prev, credentialsMessage]);
+        deps.setMessages((prev) => {
+          // Check for duplicate credentials_needed message
+          const exists = prev.some((msg) => msg.type === "credentials_needed");
+          if (exists) return prev;
+          return [...prev, credentialsMessage];
+        });
       }
     }
     return;
   }
-  // Trigger polling when operation_started is received
   if (responseMessage.type === "operation_started") {
     deps.onOperationStarted?.();
+    const taskId = (responseMessage as { taskId?: string }).taskId;
+    if (taskId && deps.onActiveTaskStarted) {
+      deps.onActiveTaskStarted({
+        taskId,
+        operationId:
+          (responseMessage as { operationId?: string }).operationId || "",
+        toolName: (responseMessage as { toolName?: string }).toolName || "",
+        toolCallId: (responseMessage as { toolId?: string }).toolId || "",
+      });
+    }
   }
 
   deps.setMessages((prev) => {
     const toolCallIndex = prev.findIndex(
       (msg) => msg.type === "tool_call" && msg.toolId === chunk.tool_id,
     );
-    const hasResponse = prev.some(
-      (msg) => msg.type === "tool_response" && msg.toolId === chunk.tool_id,
-    );
-    if (hasResponse) return prev;
+    if (hasResponseForTool(prev, chunk.tool_id!)) {
+      return prev;
+    }
     if (toolCallIndex !== -1) {
       const newMessages = [...prev];
       newMessages.splice(toolCallIndex + 1, 0, responseMessage);
@@ -198,28 +276,48 @@ export function handleLoginNeeded(
     agentInfo: chunk.agent_info,
     timestamp: new Date(),
   };
-  deps.setMessages((prev) => [...prev, loginNeededMessage]);
+  deps.setMessages((prev) => {
+    // Check for duplicate login_needed message
+    const exists = prev.some((msg) => msg.type === "login_needed");
+    if (exists) return prev;
+    return [...prev, loginNeededMessage];
+  });
 }
 
 export function handleStreamEnd(
   _chunk: StreamChunk,
   deps: HandlerDependencies,
 ) {
+  if (deps.streamEndedRef.current) {
+    return;
+  }
+  deps.streamEndedRef.current = true;
+
   const completedContent = deps.streamingChunksRef.current.join("");
   if (!completedContent.trim() && !deps.hasResponseRef.current) {
-    deps.setMessages((prev) => [
-      ...prev,
-      {
-        type: "message",
-        role: "assistant",
-        content: "No response received. Please try again.",
-        timestamp: new Date(),
-      },
-    ]);
-  }
-  if (completedContent.trim()) {
     deps.setMessages((prev) => {
-      // Check if this exact message already exists to prevent duplicates
+      const exists = prev.some(
+        (msg) =>
+          msg.type === "message" &&
+          msg.role === "assistant" &&
+          msg.content === "No response received. Please try again.",
+      );
+      if (exists) return prev;
+      return [
+        ...prev,
+        {
+          type: "message",
+          role: "assistant",
+          content: "No response received. Please try again.",
+          timestamp: new Date(),
+        },
+      ];
+    });
+  }
+  if (completedContent.trim() && !deps.textFinalizedRef.current) {
+    deps.textFinalizedRef.current = true;
+
+    deps.setMessages((prev) => {
       const exists = prev.some(
         (msg) =>
           msg.type === "message" &&
@@ -244,8 +342,6 @@ export function handleStreamEnd(
 }
 
 export function handleError(chunk: StreamChunk, deps: HandlerDependencies) {
-  const errorMessage = chunk.message || chunk.content || "An error occurred";
-  console.error("Stream error:", errorMessage);
   if (isRegionBlockedError(chunk)) {
     deps.setIsRegionBlockedModalOpen(true);
   }
@@ -253,4 +349,14 @@ export function handleError(chunk: StreamChunk, deps: HandlerDependencies) {
   deps.setHasTextChunks(false);
   deps.setStreamingChunks([]);
   deps.streamingChunksRef.current = [];
+  deps.textFinalizedRef.current = false;
+  deps.streamEndedRef.current = true;
+}
+
+export function getErrorDisplayMessage(chunk: StreamChunk): string {
+  const friendlyMessage = getUserFriendlyErrorMessage(chunk.code);
+  if (friendlyMessage) {
+    return friendlyMessage;
+  }
+  return chunk.message || chunk.content || "An error occurred";
 }
