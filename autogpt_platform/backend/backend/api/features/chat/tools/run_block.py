@@ -14,6 +14,7 @@ from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util.exceptions import BlockError
 
 from .base import BaseTool
+from .helpers import get_inputs_from_schema
 from .models import (
     BlockOutputResponse,
     ErrorResponse,
@@ -308,27 +309,7 @@ class RunBlockTool(BaseTool):
 
     def _get_inputs_list(self, block: Any) -> list[dict[str, Any]]:
         """Extract non-credential inputs from block schema."""
-        inputs_list = []
         schema = block.input_schema.jsonschema()
-        properties = schema.get("properties", {})
-        required_fields = set(schema.get("required", []))
-
         # Get credential field names to exclude
         credentials_fields = set(block.input_schema.get_credentials_fields().keys())
-
-        for field_name, field_schema in properties.items():
-            # Skip credential fields
-            if field_name in credentials_fields:
-                continue
-
-            inputs_list.append(
-                {
-                    "name": field_name,
-                    "title": field_schema.get("title", field_name),
-                    "type": field_schema.get("type", "string"),
-                    "description": field_schema.get("description", ""),
-                    "required": field_name in required_fields,
-                }
-            )
-
-        return inputs_list
+        return get_inputs_from_schema(schema, exclude_fields=credentials_fields)

@@ -24,6 +24,7 @@ from backend.util.timezone_utils import (
 )
 
 from .base import BaseTool
+from .helpers import get_inputs_from_schema
 from .models import (
     AgentDetails,
     AgentDetailsResponse,
@@ -371,19 +372,7 @@ class RunAgentTool(BaseTool):
 
     def _get_inputs_list(self, input_schema: dict[str, Any]) -> list[dict[str, Any]]:
         """Extract inputs list from schema."""
-        inputs_list = []
-        if isinstance(input_schema, dict) and "properties" in input_schema:
-            for field_name, field_schema in input_schema["properties"].items():
-                inputs_list.append(
-                    {
-                        "name": field_name,
-                        "title": field_schema.get("title", field_name),
-                        "type": field_schema.get("type", "string"),
-                        "description": field_schema.get("description", ""),
-                        "required": field_name in input_schema.get("required", []),
-                    }
-                )
-        return inputs_list
+        return get_inputs_from_schema(input_schema)
 
     def _get_execution_modes(self, graph: GraphModel) -> list[str]:
         """Get available execution modes for the graph."""
