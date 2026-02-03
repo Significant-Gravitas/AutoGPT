@@ -876,11 +876,23 @@ async def initialize_blocks() -> None:
     # First, sync all provider costs to blocks
     # Imported here to avoid circular import
     from backend.sdk.cost_integration import sync_all_provider_costs
+    from backend.util.retry import create_retry_decorator
 
     sync_all_provider_costs()
 
-    for cls in get_blocks().values():
-        block = cls()
+    # Retry decorator for DB operations - don't reraise so we can continue on failure
+    db_retry = create_retry_decorator(
+        max_attempts=3,
+        max_wait=5.0,
+        context="block_init",
+        reraise=False,
+    )
+
+    async def sync_block_to_db(block: Block) -> bool:
+        """
+        Sync a single block to the database.
+        Returns True on success, False on failure.
+        """
         existing_block = await AgentBlock.prisma().find_first(
             where={"OR": [{"id": block.id}, {"name": block.name}]}
         )
@@ -893,7 +905,7 @@ async def initialize_blocks() -> None:
                     outputSchema=json.dumps(block.output_schema.jsonschema()),
                 )
             )
-            continue
+            return True
 
         input_schema = json.dumps(block.input_schema.jsonschema())
         output_schema = json.dumps(block.output_schema.jsonschema())
@@ -912,6 +924,30 @@ async def initialize_blocks() -> None:
                     "outputSchema": output_schema,
                 },
             )
+        return True
+
+    failed_blocks: list[str] = []
+    for cls in get_blocks().values():
+        block = cls()
+        try:
+            # Apply retry decorator and call
+            result = await db_retry(sync_block_to_db)(block)
+            if result is None:
+                # Retry decorator returns None when reraise=False and all retries failed
+                failed_blocks.append(block.name)
+        except Exception as e:
+            # Catch any unexpected errors not handled by retry
+            logger.warning(
+                f"Failed to sync block {block.name} to database: {e}. "
+                "Block is still available in memory."
+            )
+            failed_blocks.append(block.name)
+
+    if failed_blocks:
+        logger.warning(
+            f"Failed to sync {len(failed_blocks)} block(s) to database: "
+            f"{', '.join(failed_blocks)}. These blocks are still available in memory."
+        )
 
 
 # Note on the return type annotation: https://github.com/microsoft/pyright/issues/10281
