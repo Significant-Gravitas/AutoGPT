@@ -241,28 +241,27 @@ async def get_user_credentials(user_id: str) -> list:
 
 def find_matching_credential(
     available_creds: list,
-    required_providers: frozenset[str] | set[str],
-    required_types: frozenset[str] | set[str],
+    field_info: CredentialsFieldInfo,
 ):
     """
-    Find a credential that matches the required provider and type.
+    Find a credential that matches the required provider, type, and scopes.
 
     Args:
         available_creds: List of user's available credentials
-        required_providers: Set of acceptable provider names
-        required_types: Set of acceptable credential types
+        field_info: CredentialsFieldInfo with provider, type, and scope requirements
 
     Returns:
         Matching credential or None
     """
-    return next(
-        (
-            cred
-            for cred in available_creds
-            if cred.provider in required_providers and cred.type in required_types
-        ),
-        None,
-    )
+    for cred in available_creds:
+        if cred.provider not in field_info.provider:
+            continue
+        if cred.type not in field_info.supported_types:
+            continue
+        if not _credential_has_required_scopes(cred, field_info):
+            continue
+        return cred
+    return None
 
 
 def create_credential_meta_from_match(
@@ -310,11 +309,7 @@ async def match_credentials_to_requirements(
     available_creds = await get_user_credentials(user_id)
 
     for field_name, field_info in requirements.items():
-        matching_cred = find_matching_credential(
-            available_creds,
-            field_info.provider,
-            field_info.supported_types,
-        )
+        matching_cred = find_matching_credential(available_creds, field_info)
 
         if matching_cred:
             try:
@@ -326,7 +321,6 @@ async def match_credentials_to_requirements(
                     f"credential_id={matching_cred.id}",
                     exc_info=True,
                 )
-                # Add to missing with validation error
                 provider = next(iter(field_info.provider), "unknown")
                 cred_type = next(iter(field_info.supported_types), "api_key")
                 missing.append(
@@ -338,7 +332,6 @@ async def match_credentials_to_requirements(
                     )
                 )
         else:
-            # Create a placeholder for the missing credential
             provider = next(iter(field_info.provider), "unknown")
             cred_type = next(iter(field_info.supported_types), "api_key")
             missing.append(

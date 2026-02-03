@@ -102,13 +102,11 @@ class RunBlockTool(BaseTool):
         Returns:
             tuple[matched_credentials, missing_credentials]
         """
-        # Get credential requirements from block
         requirements = self._get_credentials_requirements(block)
 
         if not requirements:
             return {}, []
 
-        # Use shared matching logic
         return await match_credentials_to_requirements(user_id, requirements)
 
     async def _execute(

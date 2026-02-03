@@ -21,8 +21,8 @@ config = ChatConfig()
 SSE_RESPONSE_HEADERS = {
     "Cache-Control": "no-cache",
     "Connection": "keep-alive",
-    "X-Accel-Buffering": "no",  # Disable nginx buffering
-    "x-vercel-ai-ui-message-stream": "v1",  # AI SDK protocol header
+    "X-Accel-Buffering": "no",
+    "x-vercel-ai-ui-message-stream": "v1",
 }
 
 
@@ -91,7 +91,6 @@ async def _create_stream_generator(
             "first_chunk_type": first_chunk_type,
         },
     )
-    # AI SDK protocol termination
     yield "data: [DONE]\n\n"
 
 
