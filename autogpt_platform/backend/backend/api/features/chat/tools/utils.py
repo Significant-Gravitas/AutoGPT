@@ -225,6 +225,135 @@ async def get_or_create_library_agent(
     return library_agents[0]
 
 
+async def get_user_credentials(user_id: str) -> list:
+    """
+    Get all available credentials for a user.
+
+    Args:
+        user_id: The user's ID
+
+    Returns:
+        List of user's credentials
+    """
+    creds_manager = IntegrationCredentialsManager()
+    return await creds_manager.store.get_all_creds(user_id)
+
+
+def find_matching_credential(
+    available_creds: list,
+    required_providers: frozenset[str] | set[str],
+    required_types: frozenset[str] | set[str],
+):
+    """
+    Find a credential that matches the required provider and type.
+
+    Args:
+        available_creds: List of user's available credentials
+        required_providers: Set of acceptable provider names
+        required_types: Set of acceptable credential types
+
+    Returns:
+        Matching credential or None
+    """
+    return next(
+        (
+            cred
+            for cred in available_creds
+            if cred.provider in required_providers
+            and cred.type in required_types
+        ),
+        None,
+    )
+
+
+def create_credential_meta_from_match(
+    matching_cred,
+) -> CredentialsMetaInput:
+    """
+    Create a CredentialsMetaInput from a matched credential.
+
+    Args:
+        matching_cred: The matched credential object
+
+    Returns:
+        CredentialsMetaInput instance
+    """
+    return CredentialsMetaInput(
+        id=matching_cred.id,
+        provider=matching_cred.provider,  # type: ignore
+        type=matching_cred.type,
+        title=matching_cred.title,
+    )
+
+
+async def match_credentials_to_requirements(
+    user_id: str,
+    requirements: dict[str, CredentialsFieldInfo],
+) -> tuple[dict[str, CredentialsMetaInput], list[CredentialsMetaInput]]:
+    """
+    Match user's credentials against a dictionary of credential requirements.
+
+    This is the core matching logic shared by both graph and block credential matching.
+
+    Args:
+        user_id: The user's ID
+        requirements: Dict mapping field names to CredentialsFieldInfo
+
+    Returns:
+        tuple[matched_credentials dict, missing_credentials list]
+    """
+    matched: dict[str, CredentialsMetaInput] = {}
+    missing: list[CredentialsMetaInput] = []
+
+    if not requirements:
+        return matched, missing
+
+    available_creds = await get_user_credentials(user_id)
+
+    for field_name, field_info in requirements.items():
+        matching_cred = find_matching_credential(
+            available_creds,
+            field_info.provider,
+            field_info.supported_types,
+        )
+
+        if matching_cred:
+            try:
+                matched[field_name] = create_credential_meta_from_match(matching_cred)
+            except Exception as e:
+                logger.error(
+                    f"Failed to create CredentialsMetaInput for field '{field_name}': "
+                    f"provider={matching_cred.provider}, type={matching_cred.type}, "
+                    f"credential_id={matching_cred.id}",
+                    exc_info=True,
+                )
+                # Add to missing with validation error
+                provider = next(iter(field_info.provider), "unknown")
+                cred_type = next(iter(field_info.supported_types), "api_key")
+                missing.append(
+                    CredentialsMetaInput(
+                        id=field_name,
+                        provider=provider,  # type: ignore
+                        type=cred_type,  # type: ignore
+                        title=f"{field_name} (validation failed: {e})",
+                    )
+                )
+        else:
+            # Create a placeholder for the missing credential
+            provider = next(iter(field_info.provider), "unknown")
+            cred_type = next(iter(field_info.supported_types), "api_key")
+            missing.append(
+                CredentialsMetaInput(
+                    id=field_name,
+                    provider=provider,  # type: ignore
+                    type=cred_type,  # type: ignore
+                    title=field_name.replace("_", " ").title(),
+                )
+            )
+
+    return matched, missing
+
+
 async def match_user_credentials_to_graph(
     user_id: str,
     graph: GraphModel,
@@ -242,9 +371,6 @@ async def match_user_credentials_to_graph(
     Returns:
         tuple[matched_credentials dict, missing_credential_descriptions list]
     """
-    graph_credentials_inputs: dict[str, CredentialsMetaInput] = {}
-    missing_creds: list[str] = []
-
     # Get aggregated credentials requirements from the graph
     aggregated_creds = graph.aggregate_credentials_inputs()
     logger.debug(
@@ -252,69 +378,28 @@ async def match_user_credentials_to_graph(
     )
 
     if not aggregated_creds:
-        return graph_credentials_inputs, missing_creds
+        return {}, []
 
-    # Get all available credentials for the user
-    creds_manager = IntegrationCredentialsManager()
-    available_creds = await creds_manager.store.get_all_creds(user_id)
+    # Convert aggregated format to simple requirements dict
+    requirements = {
+        field_name: field_info
+        for field_name, (field_info, _node_fields) in aggregated_creds.items()
+    }
 
-    # For each required credential field, find a matching user credential
-    # field_info.provider is a frozenset because aggregate_credentials_inputs()
-    # combines requirements from multiple nodes. A credential matches if its
-    # provider is in the set of acceptable providers.
-    for credential_field_name, (
-        credential_requirements,
-        _node_fields,
-    ) in aggregated_creds.items():
-        # Find first matching credential by provider, type, and scopes
-        matching_cred = next(
-            (
-                cred
-                for cred in available_creds
-                if cred.provider in credential_requirements.provider
-                and cred.type in credential_requirements.supported_types
-                and _credential_has_required_scopes(cred, credential_requirements)
-            ),
-            None,
-        )
+    # Use shared matching logic
+    matched, missing_list = await match_credentials_to_requirements(user_id, requirements)
 
-        if matching_cred:
-            try:
-                graph_credentials_inputs[credential_field_name] = CredentialsMetaInput(
-                    id=matching_cred.id,
-                    provider=matching_cred.provider,  # type: ignore
-                    type=matching_cred.type,
-                    title=matching_cred.title,
-                )
-            except Exception as e:
-                logger.error(
-                    f"Failed to create CredentialsMetaInput for field '{credential_field_name}': "
-                    f"provider={matching_cred.provider}, type={matching_cred.type}, "
-                    f"credential_id={matching_cred.id}",
-                    exc_info=True,
-                )
-                missing_creds.append(
-                    f"{credential_field_name} (validation failed: {e})"
-                )
-        else:
-            # Build a helpful error message including scope requirements
-            error_parts = [
-                f"provider in {list(credential_requirements.provider)}",
-                f"type in {list(credential_requirements.supported_types)}",
-            ]
-            if credential_requirements.required_scopes:
-                error_parts.append(
-                    f"scopes including {list(credential_requirements.required_scopes)}"
-                )
-            missing_creds.append(
-                f"{credential_field_name} (requires {', '.join(error_parts)})"
-            )
+    # Convert missing list to string descriptions for backward compatibility
+    missing_descriptions = [
+        f"{cred.id} (requires provider={cred.provider}, type={cred.type})"
+        for cred in missing_list
+    ]
 
     logger.info(
-        f"Credential matching complete: {len(graph_credentials_inputs)}/{len(aggregated_creds)} matched"
+        f"Credential matching complete: {len(matched)}/{len(aggregated_creds)} matched"
     )
 
-    return graph_credentials_inputs, missing_creds
+    return matched, missing_descriptions
 
 
 def _credential_has_required_scopes(

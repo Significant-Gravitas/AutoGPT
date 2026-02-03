@@ -8,12 +8,13 @@ from typing import Any
 from backend.api.features.chat.model import ChatSession
 from backend.data.block import get_block
 from backend.data.execution import ExecutionContext
-from backend.data.model import CredentialsMetaInput
+from backend.data.model import CredentialsFieldInfo, CredentialsMetaInput
 from backend.data.workspace import get_or_create_workspace
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util.exceptions import BlockError
 
 from .base import BaseTool
+from .helpers import get_inputs_from_schema
 from .models import (
     BlockOutputResponse,
     ErrorResponse,
@@ -22,7 +23,7 @@ from .models import (
     ToolResponseBase,
     UserReadiness,
 )
-from .utils import build_missing_credentials_from_field_info
+from .utils import build_missing_credentials_from_field_info, match_credentials_to_requirements
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +72,22 @@ class RunBlockTool(BaseTool):
     def requires_auth(self) -> bool:
         return True
 
+    def _get_credentials_requirements(
+        self,
+        block: Any,
+    ) -> dict[str, CredentialsFieldInfo]:
+        """
+        Get credential requirements from block's input schema.
+
+        Args:
+            block: Block to get credentials for
+
+        Returns:
+            Dict mapping field names to CredentialsFieldInfo
+        """
+        credentials_fields_info = block.input_schema.get_credentials_fields_info()
+        return credentials_fields_info if credentials_fields_info else {}
+
     async def _check_block_credentials(
         self,
         user_id: str,
@@ -82,53 +99,14 @@ class RunBlockTool(BaseTool):
         Returns:
             tuple[matched_credentials, missing_credentials]
         """
-        matched_credentials: dict[str, CredentialsMetaInput] = {}
-        missing_credentials: list[CredentialsMetaInput] = []
+        # Get credential requirements from block
+        requirements = self._get_credentials_requirements(block)
 
-        # Get credential field info from block's input schema
-        credentials_fields_info = block.input_schema.get_credentials_fields_info()
+        if not requirements:
+            return {}, []
 
-        if not credentials_fields_info:
-            return matched_credentials, missing_credentials
-
-        # Get user's available credentials
-        creds_manager = IntegrationCredentialsManager()
-        available_creds = await creds_manager.store.get_all_creds(user_id)
-
-        for field_name, field_info in credentials_fields_info.items():
-            # field_info.provider is a frozenset of acceptable providers
-            # field_info.supported_types is a frozenset of acceptable types
-            matching_cred = next(
-                (
-                    cred
-                    for cred in available_creds
-                    if cred.provider in field_info.provider
-                    and cred.type in field_info.supported_types
-                ),
-                None,
-            )
-
-            if matching_cred:
-                matched_credentials[field_name] = CredentialsMetaInput(
-                    id=matching_cred.id,
-                    provider=matching_cred.provider,  # type: ignore
-                    type=matching_cred.type,
-                    title=matching_cred.title,
-                )
-            else:
-                # Create a placeholder for the missing credential
-                provider = next(iter(field_info.provider), "unknown")
-                cred_type = next(iter(field_info.supported_types), "api_key")
-                missing_credentials.append(
-                    CredentialsMetaInput(
-                        id=field_name,
-                        provider=provider,  # type: ignore
-                        type=cred_type,  # type: ignore
-                        title=field_name.replace("_", " ").title(),
-                    )
-                )
-
-        return matched_credentials, missing_credentials
+        # Use shared matching logic
+        return await match_credentials_to_requirements(user_id, requirements)
 
     async def _execute(
         self,
@@ -320,27 +298,7 @@ class RunBlockTool(BaseTool):
 
     def _get_inputs_list(self, block: Any) -> list[dict[str, Any]]:
         """Extract non-credential inputs from block schema."""
-        inputs_list = []
         schema = block.input_schema.jsonschema()
-        properties = schema.get("properties", {})
-        required_fields = set(schema.get("required", []))
-
         # Get credential field names to exclude
         credentials_fields = set(block.input_schema.get_credentials_fields().keys())
-
-        for field_name, field_schema in properties.items():
-            # Skip credential fields
-            if field_name in credentials_fields:
-                continue
-
-            inputs_list.append(
-                {
-                    "name": field_name,
-                    "title": field_schema.get("title", field_name),
-                    "type": field_schema.get("type", "string"),
-                    "description": field_schema.get("description", ""),
-                    "required": field_name in required_fields,
-                }
-            )
-
-        return inputs_list
+        return get_inputs_from_schema(schema, exclude_fields=credentials_fields)
