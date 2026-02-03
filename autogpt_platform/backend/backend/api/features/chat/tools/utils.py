@@ -225,6 +225,93 @@ async def get_or_create_library_agent(
     return library_agents[0]
 
 
+async def get_user_credentials(user_id: str) -> list:
+    """Get all available credentials for a user."""
+    creds_manager = IntegrationCredentialsManager()
+    return await creds_manager.store.get_all_creds(user_id)
+
+
+def find_matching_credential(
+    available_creds: list,
+    field_info: CredentialsFieldInfo,
+):
+    """Find a credential that matches the required provider, type, and scopes."""
+    for cred in available_creds:
+        if cred.provider not in field_info.provider:
+            continue
+        if cred.type not in field_info.supported_types:
+            continue
+        if not _credential_has_required_scopes(cred, field_info):
+            continue
+        return cred
+    return None
+
+
+def create_credential_meta_from_match(matching_cred) -> CredentialsMetaInput:
+    """Create a CredentialsMetaInput from a matched credential."""
+    return CredentialsMetaInput(
+        id=matching_cred.id,
+        provider=matching_cred.provider,  # type: ignore
+        type=matching_cred.type,
+        title=matching_cred.title,
+    )
+
+
+async def match_credentials_to_requirements(
+    user_id: str,
+    requirements: dict[str, CredentialsFieldInfo],
+) -> tuple[dict[str, CredentialsMetaInput], list[CredentialsMetaInput]]:
+    """
+    Match user's credentials against a dictionary of credential requirements.
+
+    This is the core matching logic shared by both graph and block credential matching.
+    """
+    matched: dict[str, CredentialsMetaInput] = {}
+    missing: list[CredentialsMetaInput] = []
+
+    if not requirements:
+        return matched, missing
+
+    available_creds = await get_user_credentials(user_id)
+
+    for field_name, field_info in requirements.items():
+        matching_cred = find_matching_credential(available_creds, field_info)
+
+        if matching_cred:
+            try:
+                matched[field_name] = create_credential_meta_from_match(matching_cred)
+            except Exception as e:
+                logger.error(
+                    f"Failed to create CredentialsMetaInput for field '{field_name}': "
+                    f"provider={matching_cred.provider}, type={matching_cred.type}, "
+                    f"credential_id={matching_cred.id}",
+                    exc_info=True,
+                )
+                provider = next(iter(field_info.provider), "unknown")
+                cred_type = next(iter(field_info.supported_types), "api_key")
+                missing.append(
+                    CredentialsMetaInput(
+                        id=field_name,
+                        provider=provider,  # type: ignore
+                        type=cred_type,  # type: ignore
+                        title=f"{field_name} (validation failed: {e})",
+                    )
+                )
+        else:
+            provider = next(iter(field_info.provider), "unknown")
+            cred_type = next(iter(field_info.supported_types), "api_key")
+            missing.append(
+                CredentialsMetaInput(
+                    id=field_name,
+                    provider=provider,  # type: ignore
+                    type=cred_type,  # type: ignore
+                    title=field_name.replace("_", " ").title(),
+                )
+            )
+
+    return matched, missing
+
+
 async def match_user_credentials_to_graph(
     user_id: str,
     graph: GraphModel,

@@ -17,6 +17,13 @@ from .model import ChatSession, create_chat_session, get_chat_session, get_user_
 
 config = ChatConfig()
 
+SSE_RESPONSE_HEADERS = {
+    "Cache-Control": "no-cache",
+    "Connection": "keep-alive",
+    "X-Accel-Buffering": "no",
+    "x-vercel-ai-ui-message-stream": "v1",
+}
+
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +37,48 @@ async def _validate_and_get_session(
     if not session:
         raise NotFoundError(f"Session {session_id} not found.")
     return session
+
+
+async def _create_stream_generator(
+    session_id: str,
+    message: str,
+    user_id: str | None,
+    session: ChatSession,
+    is_user_message: bool = True,
+    context: dict[str, str] | None = None,
+) -> AsyncGenerator[str, None]:
+    """Create SSE event generator for chat streaming."""
+    chunk_count = 0
+    first_chunk_type: str | None = None
+    async for chunk in chat_service.stream_chat_completion(
+        session_id,
+        message,
+        is_user_message=is_user_message,
+        user_id=user_id,
+        session=session,
+        context=context,
+    ):
+        if chunk_count < 3:
+            logger.info(
+                "Chat stream chunk",
+                extra={
+                    "session_id": session_id,
+                    "chunk_type": str(chunk.type),
+                },
+            )
+        if not first_chunk_type:
+            first_chunk_type = str(chunk.type)
+        chunk_count += 1
+        yield chunk.to_sse()
+    logger.info(
+        "Chat stream completed",
+        extra={
+            "session_id": session_id,
+            "chunk_count": chunk_count,
+            "first_chunk_type": first_chunk_type,
+        },
+    )
+    yield "data: [DONE]\n\n"
 
 
 router = APIRouter(
@@ -221,49 +270,17 @@ async def stream_chat_post(
     """
     session = await _validate_and_get_session(session_id, user_id)
 
-    async def event_generator() -> AsyncGenerator[str, None]:
-        chunk_count = 0
-        first_chunk_type: str | None = None
-        async for chunk in chat_service.stream_chat_completion(
-            session_id,
-            request.message,
-            is_user_message=request.is_user_message,
-            user_id=user_id,
-            session=session,  # Pass pre-fetched session to avoid double-fetch
-            context=request.context,
-        ):
-            if chunk_count < 3:
-                logger.info(
-                    "Chat stream chunk",
-                    extra={
-                        "session_id": session_id,
-                        "chunk_type": str(chunk.type),
-                    },
-                )
-            if not first_chunk_type:
-                first_chunk_type = str(chunk.type)
-            chunk_count += 1
-            yield chunk.to_sse()
-        logger.info(
-            "Chat stream completed",
-            extra={
-                "session_id": session_id,
-                "chunk_count": chunk_count,
-                "first_chunk_type": first_chunk_type,
-            },
-        )
-        # AI SDK protocol termination
-        yield "data: [DONE]\n\n"
-
     return StreamingResponse(
-        event_generator(),
+        _create_stream_generator(
+            session_id=session_id,
+            message=request.message,
+            user_id=user_id,
+            session=session,
+            is_user_message=request.is_user_message,
+            context=request.context,
+        ),
         media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",  # Disable nginx buffering
-            "x-vercel-ai-ui-message-stream": "v1",  # AI SDK protocol header
-        },
+        headers=SSE_RESPONSE_HEADERS,
     )
 
 
@@ -295,48 +312,16 @@ async def stream_chat_get(
     """
     session = await _validate_and_get_session(session_id, user_id)
 
-    async def event_generator() -> AsyncGenerator[str, None]:
-        chunk_count = 0
-        first_chunk_type: str | None = None
-        async for chunk in chat_service.stream_chat_completion(
-            session_id,
-            message,
-            is_user_message=is_user_message,
-            user_id=user_id,
-            session=session,  # Pass pre-fetched session to avoid double-fetch
-        ):
-            if chunk_count < 3:
-                logger.info(
-                    "Chat stream chunk",
-                    extra={
-                        "session_id": session_id,
-                        "chunk_type": str(chunk.type),
-                    },
-                )
-            if not first_chunk_type:
-                first_chunk_type = str(chunk.type)
-            chunk_count += 1
-            yield chunk.to_sse()
-        logger.info(
-            "Chat stream completed",
-            extra={
-                "session_id": session_id,
-                "chunk_count": chunk_count,
-                "first_chunk_type": first_chunk_type,
-            },
-        )
-        # AI SDK protocol termination
-        yield "data: [DONE]\n\n"
-
     return StreamingResponse(
-        event_generator(),
+        _create_stream_generator(
+            session_id=session_id,
+            message=message,
+            user_id=user_id,
+            session=session,
+            is_user_message=is_user_message,
+        ),
         media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",  # Disable nginx buffering
-            "x-vercel-ai-ui-message-stream": "v1",  # AI SDK protocol header
-        },
+        headers=SSE_RESPONSE_HEADERS,
     )
 
 
