@@ -70,8 +70,8 @@ def get_block_categories(category_blocks: int = 3) -> list[BlockCategoryResponse
 
     for block_type in load_all_blocks().values():
         block: AnyBlockSchema = block_type()
-        # Skip disabled blocks
-        if block.disabled:
+        # Skip disabled and excluded blocks
+        if block.disabled or block.id in EXCLUDED_BLOCK_IDS:
             continue
         # Skip blocks that don't have categories (all should have at least one)
         if not block.categories:
