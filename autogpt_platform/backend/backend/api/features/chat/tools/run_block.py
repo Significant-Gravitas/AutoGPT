@@ -9,7 +9,7 @@ from pydantic_core import PydanticUndefined
 from backend.api.features.chat.model import ChatSession
 from backend.data.block import get_block
 from backend.data.execution import ExecutionContext
-from backend.data.model import CredentialsMetaInput
+from backend.data.model import CredentialsFieldInfo, CredentialsMetaInput
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util.exceptions import BlockError
 
@@ -23,7 +23,7 @@ from .models import (
     ToolResponseBase,
     UserReadiness,
 )
-from .utils import build_missing_credentials_from_field_info
+from .utils import build_missing_credentials_from_field_info, match_credentials_to_requirements
 
 logger = logging.getLogger(__name__)
 
@@ -72,39 +72,31 @@ class RunBlockTool(BaseTool):
     def requires_auth(self) -> bool:
         return True
 
-    async def _check_block_credentials(
+    def _resolve_discriminated_credentials(
         self,
-        user_id: str,
         block: Any,
-        input_data: dict[str, Any] | None = None,
-    ) -> tuple[dict[str, CredentialsMetaInput], list[CredentialsMetaInput]]:
+        input_data: dict[str, Any],
+    ) -> dict[str, CredentialsFieldInfo]:
         """
-        Check if user has required credentials for a block.
+        Resolve credential requirements, applying discriminator logic where needed.
 
         Args:
-            user_id: User ID
-            block: Block to check credentials for
-            input_data: Input data for the block (used to determine provider via discriminator)
+            block: Block to get credentials for
+            input_data: Input data for discriminator resolution
 
         Returns:
-            tuple[matched_credentials, missing_credentials]
+            Dict mapping field names to resolved CredentialsFieldInfo
         """
-        matched_credentials: dict[str, CredentialsMetaInput] = {}
-        missing_credentials: list[CredentialsMetaInput] = []
-        input_data = input_data or {}
-
-        # Get credential field info from block's input schema
         credentials_fields_info = block.input_schema.get_credentials_fields_info()
-
         if not credentials_fields_info:
-            return matched_credentials, missing_credentials
+            return {}
 
-        # Get user's available credentials
-        creds_manager = IntegrationCredentialsManager()
-        available_creds = await creds_manager.store.get_all_creds(user_id)
+        resolved: dict[str, CredentialsFieldInfo] = {}
 
         for field_name, field_info in credentials_fields_info.items():
             effective_field_info = field_info
+
+            # Apply discriminator if present
             if field_info.discriminator and field_info.discriminator_mapping:
                 # Get discriminator from input, falling back to schema default
                 discriminator_value = input_data.get(field_info.discriminator)
@@ -125,37 +117,37 @@ class RunBlockTool(BaseTool):
                         f"{discriminator_value} -> {effective_field_info.provider}"
                     )
 
-            matching_cred = next(
-                (
-                    cred
-                    for cred in available_creds
-                    if cred.provider in effective_field_info.provider
-                    and cred.type in effective_field_info.supported_types
-                ),
-                None,
-            )
+            resolved[field_name] = effective_field_info
 
-            if matching_cred:
-                matched_credentials[field_name] = CredentialsMetaInput(
-                    id=matching_cred.id,
-                    provider=matching_cred.provider,  # type: ignore
-                    type=matching_cred.type,
-                    title=matching_cred.title,
-                )
-            else:
-                # Create a placeholder for the missing credential
-                provider = next(iter(effective_field_info.provider), "unknown")
-                cred_type = next(iter(effective_field_info.supported_types), "api_key")
-                missing_credentials.append(
-                    CredentialsMetaInput(
-                        id=field_name,
-                        provider=provider,  # type: ignore
-                        type=cred_type,  # type: ignore
-                        title=field_name.replace("_", " ").title(),
-                    )
-                )
+        return resolved
 
-        return matched_credentials, missing_credentials
+    async def _check_block_credentials(
+        self,
+        user_id: str,
+        block: Any,
+        input_data: dict[str, Any] | None = None,
+    ) -> tuple[dict[str, CredentialsMetaInput], list[CredentialsMetaInput]]:
+        """
+        Check if user has required credentials for a block.
+
+        Args:
+            user_id: User ID
+            block: Block to check credentials for
+            input_data: Input data for the block (used to determine provider via discriminator)
+
+        Returns:
+            tuple[matched_credentials, missing_credentials]
+        """
+        input_data = input_data or {}
+
+        # Resolve credential requirements with discriminator logic
+        requirements = self._resolve_discriminated_credentials(block, input_data)
+
+        if not requirements:
+            return {}, []
+
+        # Use shared matching logic
+        return await match_credentials_to_requirements(user_id, requirements)
 
     async def _execute(
         self,
