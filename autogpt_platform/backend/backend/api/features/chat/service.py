@@ -1230,23 +1230,24 @@ async def _stream_chat_chunks(
     )
 
     if context_result.error:
-        if context_result.token_count > TOKEN_THRESHOLD:
-            yield StreamError(
-                errorText=(
-                    f"Unable to manage context window (token limit exceeded: "
-                    f"{context_result.token_count} tokens). "
-                    f"{context_result.error}. Please start a new conversation."
-                )
-            )
-            yield StreamFinish()
-            return
-        elif "System prompt dropped" in (context_result.error or ""):
+        if "System prompt dropped" in context_result.error:
+            # Warning only - continue with reduced context
             yield StreamError(
                 errorText=(
                     "Warning: System prompt dropped due to size constraints. "
                     "Assistant behavior may be affected."
                 )
             )
+        else:
+            # Any other error - abort to prevent failed LLM calls
+            yield StreamError(
+                errorText=(
+                    f"Context window management failed: {context_result.error}. "
+                    "Please start a new conversation."
+                )
+            )
+            yield StreamFinish()
+            return
 
     messages = context_result.messages
     if context_result.was_compacted:
@@ -1819,10 +1820,10 @@ async def _generate_llm_continuation(
             base_url=config.base_url,
         )
 
-        if context_result.error and context_result.token_count > TOKEN_THRESHOLD:
+        if context_result.error and "System prompt dropped" not in context_result.error:
             logger.error(
                 f"Context window management failed for session {session_id}: "
-                f"{context_result.error}"
+                f"{context_result.error} (tokens={context_result.token_count})"
             )
             return
 
