@@ -4,7 +4,7 @@ import time
 from asyncio import CancelledError
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 import openai
 import orjson
@@ -16,7 +16,14 @@ from openai import (
     PermissionDeniedError,
     RateLimitError,
 )
-from openai.types.chat import ChatCompletionChunk, ChatCompletionToolParam
+from openai.types.chat import (
+    ChatCompletionAssistantMessageParam,
+    ChatCompletionChunk,
+    ChatCompletionMessageParam,
+    ChatCompletionStreamOptionsParam,
+    ChatCompletionSystemMessageParam,
+    ChatCompletionToolParam,
+)
 
 from backend.data.redis_client import get_redis_async
 from backend.data.understanding import (
@@ -24,6 +31,7 @@ from backend.data.understanding import (
     get_business_understanding,
 )
 from backend.util.exceptions import NotFoundError
+from backend.util.prompt import estimate_token_count
 from backend.util.settings import Settings
 
 from . import db as chat_db
@@ -851,210 +859,126 @@ async def _manage_context_window(
     Returns:
         ContextWindowResult with compacted messages and metadata
     """
-    from backend.util.prompt import estimate_token_count
-
-    # Early return for empty messages
     if not messages:
-        return ContextWindowResult(
-            messages=messages,
-            token_count=0,
-            was_compacted=False,
-            error="No messages to compact",
-        )
+        return ContextWindowResult([], 0, False, "No messages to compact")
 
-    # Convert to dict for token counting
     messages_dict = _messages_to_dicts(messages)
 
-    # Normalize model name for token counting
-    token_count_model = model
-    if "/" in model:
-        token_count_model = model.split("/")[-1]
-
+    # Normalize model name for token counting (tiktoken only supports OpenAI models)
+    token_count_model = model.split("/")[-1] if "/" in model else model
     if "claude" in token_count_model.lower() or not any(
         known in token_count_model.lower()
         for known in ["gpt", "o1", "chatgpt", "text-"]
     ):
         token_count_model = "gpt-4o"
 
-    # Attempt token counting with error handling
     try:
         token_count = estimate_token_count(messages_dict, model=token_count_model)
-    except Exception as token_error:
-        logger.warning(
-            f"Token counting failed for model {token_count_model}: {token_error}. "
-            "Using gpt-4o approximation."
-        )
-        # Update token_count_model so subsequent recounts also use the fallback
+    except Exception as e:
+        logger.warning(f"Token counting failed: {e}. Using gpt-4o approximation.")
         token_count_model = "gpt-4o"
         token_count = estimate_token_count(messages_dict, model=token_count_model)
 
-    # If under threshold, return unchanged
     if token_count <= TOKEN_THRESHOLD:
-        return ContextWindowResult(
-            messages=messages,
-            token_count=token_count,
-            was_compacted=False,
-        )
+        return ContextWindowResult(messages, token_count, False)
 
-    # Check if we have a system prompt at the start
     has_system_prompt = messages[0].get("role") == "system"
-
-    # Split messages based on whether system prompt exists
     slice_start = max(0, len(messages_dict) - KEEP_RECENT_MESSAGES)
-    recent_messages = messages_dict[-KEEP_RECENT_MESSAGES:]
-
-    # Ensure tool_call/tool_response pairs stay together
     recent_messages = _ensure_tool_pairs_intact(
-        recent_messages, messages_dict, slice_start
+        messages_dict[-KEEP_RECENT_MESSAGES:], messages_dict, slice_start
     )
 
+    # Determine old messages to summarize (explicit bounds to avoid slice edge cases)
+    system_msg = messages[0] if has_system_prompt else None
     if has_system_prompt:
-        system_msg = messages[0]
-        # Explicit bounds check to avoid negative slicing edge cases
-        if len(messages_dict) > KEEP_RECENT_MESSAGES + 1:
-            old_messages_dict = messages_dict[1:-KEEP_RECENT_MESSAGES]
-        else:
-            old_messages_dict = []
+        old_messages_dict = (
+            messages_dict[1:-KEEP_RECENT_MESSAGES]
+            if len(messages_dict) > KEEP_RECENT_MESSAGES + 1
+            else []
+        )
     else:
-        system_msg = None
-        if len(messages_dict) > KEEP_RECENT_MESSAGES:
-            old_messages_dict = messages_dict[:-KEEP_RECENT_MESSAGES]
-        else:
-            old_messages_dict = []
+        old_messages_dict = (
+            messages_dict[:-KEEP_RECENT_MESSAGES]
+            if len(messages_dict) > KEEP_RECENT_MESSAGES
+            else []
+        )
 
-    # Summarize old messages if we have any
+    # Try to summarize old messages, fall back to truncation on failure
     summary_msg = None
     if old_messages_dict:
         try:
             summary_text = await _summarize_messages(
-                old_messages_dict,
-                model=model,
-                api_key=api_key,
-                base_url=base_url,
+                old_messages_dict, model=model, api_key=api_key, base_url=base_url
             )
-
-            from openai.types.chat import ChatCompletionAssistantMessageParam
-
             summary_msg = ChatCompletionAssistantMessageParam(
                 role="assistant",
-                content=(
-                    "[Previous conversation summary — for context only]: "
-                    f"{summary_text}"
-                ),
+                content=f"[Previous conversation summary — for context only]: {summary_text}",
             )
-
-            if has_system_prompt:
-                messages = [system_msg, summary_msg] + recent_messages
-            else:
-                messages = [summary_msg] + recent_messages
-
+            base = [system_msg, summary_msg] if has_system_prompt else [summary_msg]
+            messages = base + recent_messages
             logger.info(
                 f"Context summarized: {token_count} tokens, "
-                f"summarized {len(old_messages_dict)} old messages, "
-                f"kept last {KEEP_RECENT_MESSAGES} messages"
+                f"summarized {len(old_messages_dict)} msgs, kept {KEEP_RECENT_MESSAGES}"
             )
         except Exception as e:
-            # Summarization failed - fall back to truncation-only approach
-            logger.warning(
-                f"Context summarization failed, falling back to truncation: {e}"
-            )
-            # Keep only recent messages without summary
-            if has_system_prompt:
-                messages = [system_msg] + recent_messages
-            else:
-                messages = recent_messages
+            logger.warning(f"Summarization failed, falling back to truncation: {e}")
+            messages = [system_msg] + recent_messages if has_system_prompt else recent_messages
     else:
-        # No old messages to summarize - all messages are "recent"
         logger.warning(
-            f"Token count {token_count} exceeds threshold but no old messages to "
-            "summarize. Applying progressive truncation."
+            f"Token count {token_count} exceeds threshold but no old messages to summarize"
         )
 
-    # Recount tokens after summarization
-    new_messages_dict = _messages_to_dicts(messages)
-    new_token_count = estimate_token_count(new_messages_dict, model=token_count_model)
+    new_token_count = estimate_token_count(
+        _messages_to_dicts(messages), model=token_count_model
+    )
 
-    # If still over limit, progressively reduce recent messages
+    # Progressive truncation if still over limit
     if new_token_count > TOKEN_THRESHOLD:
-        logger.warning(
-            f"Still over limit after summarization: {new_token_count} tokens. "
-            "Reducing number of recent messages kept."
-        )
-
+        logger.warning(f"Still over limit: {new_token_count} tokens. Reducing messages.")
         base_msgs = (
             recent_messages
             if old_messages_dict
             else (messages_dict[1:] if has_system_prompt else messages_dict)
         )
 
+        def build_messages(recent: list) -> list:
+            """Build message list with optional system prompt and summary."""
+            prefix = []
+            if has_system_prompt and system_msg:
+                prefix.append(system_msg)
+            if summary_msg:
+                prefix.append(summary_msg)
+            return prefix + recent
+
         for keep_count in [12, 10, 8, 5, 3, 2, 1, 0]:
             if keep_count == 0:
-                if has_system_prompt:
-                    if summary_msg:
-                        messages = [system_msg, summary_msg]
-                    else:
-                        messages = [system_msg]
-                else:
-                    if summary_msg:
-                        messages = [summary_msg]
-                    else:
-                        continue
-            else:
-                if len(base_msgs) < keep_count:
+                messages = build_messages([])
+                if not messages:
                     continue
-
-                reduced_recent = base_msgs[-keep_count:]
-                reduced_slice_start = max(0, len(base_msgs) - keep_count)
-                reduced_recent = _ensure_tool_pairs_intact(
-                    reduced_recent, base_msgs, reduced_slice_start
+            elif len(base_msgs) < keep_count:
+                continue
+            else:
+                reduced = _ensure_tool_pairs_intact(
+                    base_msgs[-keep_count:], base_msgs, max(0, len(base_msgs) - keep_count)
                 )
+                messages = build_messages(reduced)
 
-                if has_system_prompt:
-                    if summary_msg:
-                        messages = [system_msg, summary_msg] + reduced_recent
-                    else:
-                        messages = [system_msg] + reduced_recent
-                else:
-                    if summary_msg:
-                        messages = [summary_msg] + reduced_recent
-                    else:
-                        messages = reduced_recent
-
-            new_messages_dict = _messages_to_dicts(messages)
             new_token_count = estimate_token_count(
-                new_messages_dict, model=token_count_model
+                _messages_to_dicts(messages), model=token_count_model
             )
-
             if new_token_count <= TOKEN_THRESHOLD:
-                logger.info(
-                    f"Reduced to {keep_count} recent messages, "
-                    f"now {new_token_count} tokens"
-                )
+                logger.info(f"Reduced to {keep_count} messages, {new_token_count} tokens")
                 break
         else:
-            # Even with 0 messages still over limit - drop system prompt as last resort
-            logger.error(
-                f"Unable to reduce token count below threshold even with 0 messages. "
-                f"Final count: {new_token_count} tokens."
-            )
+            logger.error(f"Cannot reduce below threshold. Final: {new_token_count} tokens")
             if has_system_prompt and len(messages) > 1:
                 messages = messages[1:]
-                logger.critical(
-                    "CRITICAL: Dropped system prompt as absolute last resort. "
-                    "Behavioral consistency may be affected."
-                )
+                logger.critical("Dropped system prompt as last resort")
                 return ContextWindowResult(
-                    messages=messages,
-                    token_count=new_token_count,
-                    was_compacted=True,
-                    error="System prompt dropped due to size constraints",
+                    messages, new_token_count, True, "System prompt dropped"
                 )
 
-    return ContextWindowResult(
-        messages=messages,
-        token_count=new_token_count,
-        was_compacted=True,
-    )
+    return ContextWindowResult(messages, new_token_count, True)
 
 
 async def _summarize_messages(
@@ -1285,11 +1209,8 @@ async def _stream_chat_chunks(
 
     logger.info("Starting pure chat stream")
 
-    # Build messages with system prompt prepended
     messages = session.to_openai_messages()
     if system_prompt:
-        from openai.types.chat import ChatCompletionSystemMessageParam
-
         system_message = ChatCompletionSystemMessageParam(
             role="system",
             content=system_prompt,
@@ -1354,14 +1275,6 @@ async def _stream_chat_chunks(
                     extra_body["session_id"] = session.session_id[
                         :128
                     ]  # OpenRouter limit
-
-                # Create the stream with proper types
-                from typing import cast
-
-                from openai.types.chat import (
-                    ChatCompletionMessageParam,
-                    ChatCompletionStreamOptionsParam,
-                )
 
                 stream = await client.chat.completions.create(
                     model=model,
@@ -1886,11 +1799,8 @@ async def _generate_llm_continuation(
         # Build system prompt
         system_prompt, _ = await _build_system_prompt(user_id)
 
-        # Build messages in OpenAI format
         messages = session.to_openai_messages()
         if system_prompt:
-            from openai.types.chat import ChatCompletionSystemMessageParam
-
             system_message = ChatCompletionSystemMessageParam(
                 role="system",
                 content=system_prompt,
@@ -1930,11 +1840,6 @@ async def _generate_llm_continuation(
             extra_body["posthogDistinctId"] = user_id
         if session_id:
             extra_body["session_id"] = session_id[:128]
-
-        # Make non-streaming LLM call with retry logic
-        from typing import cast
-
-        from openai.types.chat import ChatCompletionMessageParam
 
         retry_count = 0
         last_error: Exception | None = None
