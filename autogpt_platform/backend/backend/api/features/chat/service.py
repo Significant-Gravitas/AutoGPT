@@ -977,6 +977,10 @@ async def _manage_context_window(
                 return ContextWindowResult(
                     messages, new_token_count, True, "System prompt dropped"
                 )
+            # No system prompt to drop - return error so callers don't proceed with oversized context
+            return ContextWindowResult(
+                messages, new_token_count, True, "Unable to reduce context below token limit"
+            )
 
     return ContextWindowResult(messages, new_token_count, True)
 
