@@ -3,6 +3,7 @@ import logging
 import time
 from asyncio import CancelledError
 from collections.abc import AsyncGenerator
+from dataclasses import dataclass
 from typing import Any
 
 import openai
@@ -799,20 +800,31 @@ TOKEN_THRESHOLD = 120_000
 KEEP_RECENT_MESSAGES = 15
 
 
+@dataclass
 class ContextWindowResult:
     """Result of context window management."""
 
-    def __init__(
-        self,
-        messages: list,
-        token_count: int,
-        was_compacted: bool,
-        error: str | None = None,
-    ):
-        self.messages = messages
-        self.token_count = token_count
-        self.was_compacted = was_compacted
-        self.error = error
+    messages: list[dict[str, Any]]
+    token_count: int
+    was_compacted: bool
+    error: str | None = None
+
+
+def _messages_to_dicts(messages: list) -> list[dict[str, Any]]:
+    """Convert message objects to dicts, filtering None values.
+
+    Handles both TypedDict (dict-like) and other message formats.
+    """
+    result = []
+    for msg in messages:
+        if msg is None:
+            continue
+        if isinstance(msg, dict):
+            msg_dict = {k: v for k, v in msg.items() if v is not None}
+        else:
+            msg_dict = dict(msg)
+        result.append(msg_dict)
+    return result
 
 
 async def _manage_context_window(
@@ -841,14 +853,17 @@ async def _manage_context_window(
     """
     from backend.util.prompt import estimate_token_count
 
+    # Early return for empty messages
+    if not messages:
+        return ContextWindowResult(
+            messages=messages,
+            token_count=0,
+            was_compacted=False,
+            error="No messages to compact",
+        )
+
     # Convert to dict for token counting
-    messages_dict = []
-    for msg in messages:
-        if isinstance(msg, dict):
-            msg_dict = {k: v for k, v in msg.items() if v is not None}
-        else:
-            msg_dict = dict(msg)
-        messages_dict.append(msg_dict)
+    messages_dict = _messages_to_dicts(messages)
 
     # Normalize model name for token counting
     token_count_model = model
@@ -880,15 +895,7 @@ async def _manage_context_window(
         )
 
     # Check if we have a system prompt at the start
-    has_system_prompt = len(messages) > 0 and messages[0].get("role") == "system"
-
-    if not messages:
-        return ContextWindowResult(
-            messages=messages,
-            token_count=token_count,
-            was_compacted=False,
-            error="No messages to compact",
-        )
+    has_system_prompt = messages[0].get("role") == "system"
 
     # Split messages based on whether system prompt exists
     slice_start = max(0, len(messages_dict) - KEEP_RECENT_MESSAGES)
@@ -962,14 +969,7 @@ async def _manage_context_window(
         )
 
     # Recount tokens after summarization
-    new_messages_dict = []
-    for msg in messages:
-        if isinstance(msg, dict):
-            msg_dict = {k: v for k, v in msg.items() if v is not None}
-        else:
-            msg_dict = dict(msg)
-        new_messages_dict.append(msg_dict)
-
+    new_messages_dict = _messages_to_dicts(messages)
     new_token_count = estimate_token_count(new_messages_dict, model=token_count_model)
 
     # If still over limit, progressively reduce recent messages
@@ -1018,16 +1018,7 @@ async def _manage_context_window(
                     else:
                         messages = reduced_recent
 
-            new_messages_dict = []
-            for msg in messages:
-                if msg is None:
-                    continue
-                if isinstance(msg, dict):
-                    msg_dict = {k: v for k, v in msg.items() if v is not None}
-                else:
-                    msg_dict = dict(msg)
-                new_messages_dict.append(msg_dict)
-
+            new_messages_dict = _messages_to_dicts(messages)
             new_token_count = estimate_token_count(
                 new_messages_dict, model=token_count_model
             )
