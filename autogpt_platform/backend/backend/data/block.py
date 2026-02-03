@@ -926,20 +926,22 @@ async def initialize_blocks() -> None:
             )
         return True
 
+    # Wrap once outside loop to avoid creating new wrapper each iteration
+    sync_block_with_retry = db_retry(sync_block_to_db)
+
     failed_blocks: list[str] = []
     for cls in get_blocks().values():
         block = cls()
         try:
-            # Apply retry decorator and call
-            result = await db_retry(sync_block_to_db)(block)
+            result = await sync_block_with_retry(block)
             if result is None:
                 # Retry decorator returns None when reraise=False and all retries failed
                 failed_blocks.append(block.name)
         except Exception as e:
-            # Catch any unexpected errors not handled by retry
             logger.warning(
                 f"Failed to sync block {block.name} to database: {e}. "
-                "Block is still available in memory."
+                "Block is still available in memory.",
+                exc_info=True,
             )
             failed_blocks.append(block.name)
 
