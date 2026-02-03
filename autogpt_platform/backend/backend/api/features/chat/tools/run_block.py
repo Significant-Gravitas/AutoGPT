@@ -138,7 +138,11 @@ class RunBlockTool(BaseTool):
         if not requirements:
             return {}, []
 
-        return await match_credentials_to_requirements(user_id, requirements)
+        # Note: check_scopes=False preserves original run_block behavior which
+        # didn't verify OAuth2 scopes. Graph matching (run_agent) does check scopes.
+        return await match_credentials_to_requirements(
+            user_id, requirements, check_scopes=False
+        )
 
     async def _execute(
         self,

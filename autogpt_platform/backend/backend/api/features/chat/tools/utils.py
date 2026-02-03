@@ -234,14 +234,15 @@ async def get_user_credentials(user_id: str) -> list:
 def find_matching_credential(
     available_creds: list,
     field_info: CredentialsFieldInfo,
+    check_scopes: bool = True,
 ):
-    """Find a credential that matches the required provider, type, and scopes."""
+    """Find a credential that matches the required provider, type, and optionally scopes."""
     for cred in available_creds:
         if cred.provider not in field_info.provider:
             continue
         if cred.type not in field_info.supported_types:
             continue
-        if not _credential_has_required_scopes(cred, field_info):
+        if check_scopes and not _credential_has_required_scopes(cred, field_info):
             continue
         return cred
     return None
@@ -260,11 +261,18 @@ def create_credential_meta_from_match(matching_cred) -> CredentialsMetaInput:
 async def match_credentials_to_requirements(
     user_id: str,
     requirements: dict[str, CredentialsFieldInfo],
+    check_scopes: bool = True,
 ) -> tuple[dict[str, CredentialsMetaInput], list[CredentialsMetaInput]]:
     """
     Match user's credentials against a dictionary of credential requirements.
 
     This is the core matching logic shared by both graph and block credential matching.
+
+    Args:
+        user_id: User ID to fetch credentials for
+        requirements: Dict mapping field names to CredentialsFieldInfo
+        check_scopes: Whether to verify OAuth2 scopes match requirements (default True).
+            Set to False to preserve original run_block behavior which didn't check scopes.
     """
     matched: dict[str, CredentialsMetaInput] = {}
     missing: list[CredentialsMetaInput] = []
@@ -275,7 +283,9 @@ async def match_credentials_to_requirements(
     available_creds = await get_user_credentials(user_id)
 
     for field_name, field_info in requirements.items():
-        matching_cred = find_matching_credential(available_creds, field_info)
+        matching_cred = find_matching_credential(
+            available_creds, field_info, check_scopes=check_scopes
+        )
 
         if matching_cred:
             try:
