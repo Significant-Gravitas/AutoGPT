@@ -873,26 +873,13 @@ def is_block_auth_configured(
 
 
 async def initialize_blocks() -> None:
-    # First, sync all provider costs to blocks
-    # Imported here to avoid circular import
     from backend.sdk.cost_integration import sync_all_provider_costs
-    from backend.util.retry import create_retry_decorator
+    from backend.util.retry import func_retry
 
     sync_all_provider_costs()
 
-    # Retry decorator for DB operations - don't reraise so we can continue on failure
-    db_retry = create_retry_decorator(
-        max_attempts=3,
-        max_wait=5.0,
-        context="block_init",
-        reraise=False,
-    )
-
-    async def sync_block_to_db(block: Block) -> bool:
-        """
-        Sync a single block to the database.
-        Returns True on success, False on failure.
-        """
+    @func_retry
+    async def sync_block_to_db(block: Block) -> None:
         existing_block = await AgentBlock.prisma().find_first(
             where={"OR": [{"id": block.id}, {"name": block.name}]}
         )
@@ -905,7 +892,7 @@ async def initialize_blocks() -> None:
                     outputSchema=json.dumps(block.output_schema.jsonschema()),
                 )
             )
-            return True
+            return
 
         input_schema = json.dumps(block.input_schema.jsonschema())
         output_schema = json.dumps(block.output_schema.jsonschema())
@@ -924,19 +911,12 @@ async def initialize_blocks() -> None:
                     "outputSchema": output_schema,
                 },
             )
-        return True
-
-    # Wrap once outside loop to avoid creating new wrapper each iteration
-    sync_block_with_retry = db_retry(sync_block_to_db)
 
     failed_blocks: list[str] = []
     for cls in get_blocks().values():
         block = cls()
         try:
-            result = await sync_block_with_retry(block)
-            if result is None:
-                # Retry decorator returns None when reraise=False and all retries failed
-                failed_blocks.append(block.name)
+            await sync_block_to_db(block)
         except Exception as e:
             logger.warning(
                 f"Failed to sync block {block.name} to database: {e}. "
