@@ -28,7 +28,6 @@ from backend.data.block import BlockInput
 from backend.data.execution import GraphExecutionWithNodes
 from backend.data.model import CredentialsMetaInput
 from backend.executor import utils as execution_utils
-from backend.executor.database import get_database_manager_async_client
 from backend.monitoring import (
     NotificationJobArgs,
     process_existing_batches,
@@ -37,7 +36,11 @@ from backend.monitoring import (
     report_execution_accuracy_alerts,
     report_late_executions,
 )
-from backend.util.clients import get_database_manager_client, get_scheduler_client
+from backend.util.clients import (
+    get_database_manager_async_client,
+    get_database_manager_client,
+    get_scheduler_client,
+)
 from backend.util.cloud_storage import cleanup_expired_files_async
 from backend.util.exceptions import (
     GraphNotFoundError,
