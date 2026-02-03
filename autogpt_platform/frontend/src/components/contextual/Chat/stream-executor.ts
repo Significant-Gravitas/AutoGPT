@@ -119,8 +119,7 @@ async function executeStreamInternal(
           errorCode =
             typeof parsed.detail === "object" ? parsed.detail.code : undefined;
         }
-      } catch {
-      }
+      } catch {}
 
       const isPermanentError =
         isReconnect &&

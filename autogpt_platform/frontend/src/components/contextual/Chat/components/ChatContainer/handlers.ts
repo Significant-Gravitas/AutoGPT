@@ -82,7 +82,7 @@ export function handleTextEnded(
     deps.textFinalizedRef.current = true;
 
     deps.setMessages((prev) => {
-            const exists = prev.some(
+      const exists = prev.some(
         (msg) =>
           msg.type === "message" &&
           msg.role === "assistant" &&
@@ -318,7 +318,7 @@ export function handleStreamEnd(
     deps.textFinalizedRef.current = true;
 
     deps.setMessages((prev) => {
-            const exists = prev.some(
+      const exists = prev.some(
         (msg) =>
           msg.type === "message" &&
           msg.role === "assistant" &&
