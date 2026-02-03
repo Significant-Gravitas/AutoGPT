@@ -13,8 +13,11 @@ export interface RunBlockInput {
 export interface CredentialsMeta {
   id: string;
   provider: string;
+  provider_name?: string;
   type: string;
+  types?: string[];
   title: string;
+  scopes?: string[];
 }
 
 export interface SetupInfo {

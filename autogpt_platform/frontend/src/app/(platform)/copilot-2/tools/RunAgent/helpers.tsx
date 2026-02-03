@@ -18,8 +18,11 @@ export interface RunAgentInput {
 export interface CredentialsMeta {
   id: string;
   provider: string;
+  provider_name?: string;
   type: string;
+  types?: string[];
   title: string;
+  scopes?: string[];
 }
 
 export interface SetupInfo {
@@ -78,9 +81,31 @@ export interface NeedLoginOutput {
   session_id?: string;
 }
 
+export interface AgentDetailsOutput {
+  type: "agent_details";
+  message: string;
+  session_id?: string;
+  agent: {
+    id: string;
+    name: string;
+    description: string;
+    inputs: Record<string, unknown>;
+    credentials: CredentialsMeta[];
+    execution_options?: {
+      manual?: boolean;
+      scheduled?: boolean;
+      webhook?: boolean;
+    };
+  };
+  user_authenticated?: boolean;
+  graph_id?: string | null;
+  graph_version?: number | null;
+}
+
 export type RunAgentToolOutput =
   | SetupRequirementsOutput
   | ExecutionStartedOutput
+  | AgentDetailsOutput
   | NeedLoginOutput
   | ErrorOutput;
 
@@ -142,6 +167,9 @@ export function getAnimationText(part: {
       if (!output) return "Agent run updated";
       if (output.type === "execution_started") {
         return `Started: ${output.graph_name}`;
+      }
+      if (output.type === "agent_details") {
+        return `Agent inputs: ${output.agent.name}`;
       }
       if (output.type === "setup_requirements") {
         return `Needs setup: ${output.setup_info.agent_name}`;

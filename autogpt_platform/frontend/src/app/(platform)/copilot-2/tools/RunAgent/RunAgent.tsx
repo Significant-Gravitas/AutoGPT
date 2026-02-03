@@ -4,6 +4,8 @@ import type { ToolUIPart } from "ai";
 import Link from "next/link";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
+import { useCopilotChatActions } from "../../components/CopilotChatActionsProvider/useCopilotChatActions";
+import { ChatCredentialsSetup } from "@/components/contextual/Chat/components/ChatCredentialsSetup/ChatCredentialsSetup";
 import {
   formatMaybeJson,
   getAnimationText,
@@ -37,6 +39,14 @@ function getAccordionMeta(output: RunAgentToolOutput): {
     };
   }
 
+  if (output.type === "agent_details") {
+    return {
+      badgeText: "Run agent",
+      title: output.agent.name,
+      description: "Inputs required",
+    };
+  }
+
   if (output.type === "setup_requirements") {
     const missingCredsCount = Object.keys(
       output.setup_info.user_readiness.missing_credentials ?? {},
@@ -60,15 +70,23 @@ function getAccordionMeta(output: RunAgentToolOutput): {
 
 export function RunAgentTool({ part }: Props) {
   const text = getAnimationText(part);
+  const { onSend } = useCopilotChatActions();
 
   const output = getRunAgentToolOutput(part);
   const hasExpandableContent =
     part.state === "output-available" &&
     !!output &&
     (output.type === "execution_started" ||
+      output.type === "agent_details" ||
       output.type === "setup_requirements" ||
       output.type === "need_login" ||
       output.type === "error");
+
+  function handleAllCredentialsComplete() {
+    onSend(
+      "I've configured the required credentials. Please check if everything is ready and proceed with running the agent.",
+    );
+  }
 
   return (
     <div className="py-2">
@@ -78,7 +96,13 @@ export function RunAgentTool({ part }: Props) {
       </div>
 
       {hasExpandableContent && output && (
-        <ToolAccordion {...getAccordionMeta(output)}>
+        <ToolAccordion
+          {...getAccordionMeta(output)}
+          defaultExpanded={
+            output.type === "setup_requirements" ||
+            output.type === "agent_details"
+          }
+        >
           {output.type === "execution_started" && (
             <div className="grid gap-2">
               <div className="rounded-2xl border bg-background p-3">
@@ -107,6 +131,28 @@ export function RunAgentTool({ part }: Props) {
             </div>
           )}
 
+          {output.type === "agent_details" && (
+            <div className="grid gap-2">
+              <p className="text-sm text-foreground">{output.message}</p>
+
+              {output.agent.description?.trim() && (
+                <p className="text-xs text-muted-foreground">
+                  {output.agent.description}
+                </p>
+              )}
+
+              <div className="rounded-2xl border bg-background p-3">
+                <p className="text-xs font-medium text-foreground">Inputs</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Provide required inputs in chat, or ask to run with defaults.
+                </p>
+                <pre className="mt-2 whitespace-pre-wrap text-xs text-muted-foreground">
+                  {formatMaybeJson(output.agent.inputs)}
+                </pre>
+              </div>
+            </div>
+          )}
+
           {output.type === "setup_requirements" && (
             <div className="grid gap-2">
               <p className="text-sm text-foreground">{output.message}</p>
@@ -114,21 +160,24 @@ export function RunAgentTool({ part }: Props) {
               {Object.keys(
                 output.setup_info.user_readiness.missing_credentials ?? {},
               ).length > 0 && (
-                <div className="rounded-2xl border bg-background p-3">
-                  <p className="text-xs font-medium text-foreground">
-                    Missing credentials
-                  </p>
-                  <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-muted-foreground">
-                    {Object.entries(
-                      output.setup_info.user_readiness.missing_credentials ??
-                        {},
-                    ).map(([field, cred]) => (
-                      <li key={field}>
-                        {cred.title} ({cred.provider})
-                      </li>
-                    ))}
-                  </ul>
-                </div>
+                <ChatCredentialsSetup
+                  credentials={Object.values(
+                    output.setup_info.user_readiness.missing_credentials ?? {},
+                  ).map((cred) => ({
+                    provider: cred.provider,
+                    providerName:
+                      cred.provider_name ?? cred.provider.replace(/_/g, " "),
+                    credentialTypes: (cred.types ?? [cred.type]) as Array<
+                      "api_key" | "oauth2" | "user_password" | "host_scoped"
+                    >,
+                    title: cred.title,
+                    scopes: cred.scopes,
+                  }))}
+                  agentName={output.setup_info.agent_name}
+                  message={output.message}
+                  onAllCredentialsComplete={handleAllCredentialsComplete}
+                  onCancel={() => {}}
+                />
               )}
 
               {output.setup_info.requirements.inputs?.length > 0 && (

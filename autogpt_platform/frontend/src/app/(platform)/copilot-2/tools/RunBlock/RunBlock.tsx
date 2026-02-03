@@ -3,6 +3,8 @@
 import type { ToolUIPart } from "ai";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
+import { useCopilotChatActions } from "../../components/CopilotChatActionsProvider/useCopilotChatActions";
+import { ChatCredentialsSetup } from "@/components/contextual/Chat/components/ChatCredentialsSetup/ChatCredentialsSetup";
 import {
   formatMaybeJson,
   getAnimationText,
@@ -59,6 +61,7 @@ function getAccordionMeta(output: RunBlockToolOutput): {
 
 export function RunBlockTool({ part }: Props) {
   const text = getAnimationText(part);
+  const { onSend } = useCopilotChatActions();
 
   const output = getRunBlockToolOutput(part);
   const hasExpandableContent =
@@ -68,6 +71,12 @@ export function RunBlockTool({ part }: Props) {
       output.type === "setup_requirements" ||
       output.type === "error");
 
+  function handleAllCredentialsComplete() {
+    onSend(
+      "I've configured the required credentials. Please re-run the block now.",
+    );
+  }
+
   return (
     <div className="py-2">
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -76,7 +85,10 @@ export function RunBlockTool({ part }: Props) {
       </div>
 
       {hasExpandableContent && output && (
-        <ToolAccordion {...getAccordionMeta(output)}>
+        <ToolAccordion
+          {...getAccordionMeta(output)}
+          defaultExpanded={output.type === "setup_requirements"}
+        >
           {output.type === "block_output" && (
             <div className="grid gap-2">
               <p className="text-sm text-foreground">{output.message}</p>
@@ -106,21 +118,24 @@ export function RunBlockTool({ part }: Props) {
               {Object.keys(
                 output.setup_info.user_readiness.missing_credentials ?? {},
               ).length > 0 && (
-                <div className="rounded-2xl border bg-background p-3">
-                  <p className="text-xs font-medium text-foreground">
-                    Missing credentials
-                  </p>
-                  <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-muted-foreground">
-                    {Object.entries(
-                      output.setup_info.user_readiness.missing_credentials ??
-                        {},
-                    ).map(([field, cred]) => (
-                      <li key={field}>
-                        {cred.title} ({cred.provider})
-                      </li>
-                    ))}
-                  </ul>
-                </div>
+                <ChatCredentialsSetup
+                  credentials={Object.values(
+                    output.setup_info.user_readiness.missing_credentials ?? {},
+                  ).map((cred) => ({
+                    provider: cred.provider,
+                    providerName:
+                      cred.provider_name ?? cred.provider.replace(/_/g, " "),
+                    credentialTypes: (cred.types ?? [cred.type]) as Array<
+                      "api_key" | "oauth2" | "user_password" | "host_scoped"
+                    >,
+                    title: cred.title,
+                    scopes: cred.scopes,
+                  }))}
+                  agentName={output.setup_info.agent_name}
+                  message={output.message}
+                  onAllCredentialsComplete={handleAllCredentialsComplete}
+                  onCancel={() => {}}
+                />
               )}
 
               {output.setup_info.requirements.inputs?.length > 0 && (

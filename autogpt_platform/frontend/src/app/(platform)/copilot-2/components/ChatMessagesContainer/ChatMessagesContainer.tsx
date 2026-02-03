@@ -17,6 +17,8 @@ import { SearchDocsTool } from "../../tools/SearchDocs/SearchDocs";
 import { RunBlockTool } from "../../tools/RunBlock/RunBlock";
 import { RunAgentTool } from "../../tools/RunAgent/RunAgent";
 import { ViewAgentOutputTool } from "../../tools/ViewAgentOutput/ViewAgentOutput";
+import { CreateAgentTool } from "../../tools/CreateAgent/CreateAgent";
+import { EditAgentTool } from "../../tools/EditAgent/EditAgent";
 
 interface ChatMessagesContainerProps {
   messages: UIMessage<unknown, UIDataTypes, UITools>[];
@@ -90,8 +92,23 @@ export const ChatMessagesContainer = ({
                         />
                       );
                     case "tool-run_agent":
+                    case "tool-schedule_agent":
                       return (
                         <RunAgentTool
+                          key={`${message.id}-${i}`}
+                          part={part as ToolUIPart}
+                        />
+                      );
+                    case "tool-create_agent":
+                      return (
+                        <CreateAgentTool
+                          key={`${message.id}-${i}`}
+                          part={part as ToolUIPart}
+                        />
+                      );
+                    case "tool-edit_agent":
+                      return (
+                        <EditAgentTool
                           key={`${message.id}-${i}`}
                           part={part as ToolUIPart}
                         />

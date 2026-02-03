@@ -6,6 +6,7 @@ import { ChatInput } from "@/components/contextual/Chat/components/ChatInput/Cha
 import { postV2CreateSession } from "@/app/api/__generated__/endpoints/chat/chat";
 import { useState } from "react";
 import { parseAsString, useQueryState } from "nuqs";
+import { CopilotChatActionsProvider } from "../CopilotChatActionsProvider/CopilotChatActionsProvider";
 
 export interface ChatContainerProps {
   messages: UIMessage<unknown, UIDataTypes, UITools>[];
@@ -45,34 +46,36 @@ export const ChatContainer = ({
   }
 
   return (
-    <div className="mx-auto h-full w-full max-w-3xl pb-6">
-      <div className="flex h-full flex-col">
-        {sessionId ? (
-          <ChatMessagesContainer
-            messages={messages}
-            status={status}
-            error={error}
-            handleSubmit={handleMessageSubmit}
-            input={input}
-            setInput={setInput}
-          />
-        ) : (
-          <EmptySession
-            isCreating={isCreating}
-            onCreateSession={createSession}
-          />
-        )}
-        <div className="relative px-3 pt-2">
-          <div className="pointer-events-none absolute top-[-18px] z-10 h-6 w-full bg-gradient-to-b from-transparent to-[#f8f8f9]" />
-          <ChatInput
-            onSend={onSend}
-            disabled={status === "streaming" || !sessionId}
-            isStreaming={status === "streaming"}
-            onStop={() => {}}
-            placeholder="You can search or just ask"
-          />
+    <CopilotChatActionsProvider onSend={onSend}>
+      <div className="mx-auto h-full w-full max-w-3xl pb-6">
+        <div className="flex h-full flex-col">
+          {sessionId ? (
+            <ChatMessagesContainer
+              messages={messages}
+              status={status}
+              error={error}
+              handleSubmit={handleMessageSubmit}
+              input={input}
+              setInput={setInput}
+            />
+          ) : (
+            <EmptySession
+              isCreating={isCreating}
+              onCreateSession={createSession}
+            />
+          )}
+          <div className="relative px-3 pt-2">
+            <div className="pointer-events-none absolute top-[-18px] z-10 h-6 w-full bg-gradient-to-b from-transparent to-[#f8f8f9]" />
+            <ChatInput
+              onSend={onSend}
+              disabled={status === "streaming" || !sessionId}
+              isStreaming={status === "streaming"}
+              onStop={() => {}}
+              placeholder="You can search or just ask"
+            />
+          </div>
         </div>
       </div>
-    </div>
+    </CopilotChatActionsProvider>
   );
 };
