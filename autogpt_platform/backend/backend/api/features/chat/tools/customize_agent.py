@@ -111,20 +111,20 @@ class CustomizeAgentTool(BaseTool):
         if not agent_id:
             return ErrorResponse(
                 message="Please provide the marketplace agent ID (e.g., 'creator/agent-name').",
-                error="Missing agent_id parameter",
+                error="missing_agent_id",
                 session_id=session_id,
             )
 
         if not modifications:
             return ErrorResponse(
                 message="Please describe how you want to customize this agent.",
-                error="Missing modifications parameter",
+                error="missing_modifications",
                 session_id=session_id,
             )
 
         # Parse agent_id in format "creator/slug"
-        parts = agent_id.split("/")
-        if len(parts) != 2:
+        parts = [p.strip() for p in agent_id.split("/")]
+        if len(parts) != 2 or not parts[0] or not parts[1]:
             return ErrorResponse(
                 message=(
                     f"Invalid agent ID format: '{agent_id}'. "
@@ -156,7 +156,6 @@ class CustomizeAgentTool(BaseTool):
             return ErrorResponse(
                 message="Failed to fetch the marketplace agent. Please try again.",
                 error="fetch_error",
-                details={"exception": str(e)},
                 session_id=session_id,
             )
 
@@ -179,7 +178,6 @@ class CustomizeAgentTool(BaseTool):
             return ErrorResponse(
                 message="Failed to fetch the agent configuration. Please try again.",
                 error="graph_fetch_error",
-                details={"exception": str(e)},
                 session_id=session_id,
             )
 
@@ -199,6 +197,16 @@ class CustomizeAgentTool(BaseTool):
                 error="service_not_configured",
                 session_id=session_id,
             )
+        except Exception as e:
+            logger.error(f"Error calling customize_template for {agent_id}: {e}")
+            return ErrorResponse(
+                message=(
+                    "Failed to customize the agent due to a service error. "
+                    "Please try again."
+                ),
+                error="customization_service_error",
+                session_id=session_id,
+            )
 
         if result is None:
             return ErrorResponse(
@@ -208,7 +216,6 @@ class CustomizeAgentTool(BaseTool):
                     "Please try again."
                 ),
                 error="customization_failed",
-                details={"agent_id": agent_id, "modifications": modifications[:100]},
                 session_id=session_id,
             )
 
@@ -232,18 +239,17 @@ class CustomizeAgentTool(BaseTool):
             return ErrorResponse(
                 message=user_message,
                 error=f"customization_failed:{error_type}",
-                details={
-                    "agent_id": agent_id,
-                    "modifications": modifications[:100],
-                    "service_error": error_msg,
-                    "error_type": error_type,
-                },
                 session_id=session_id,
             )
 
         # Handle clarifying questions
         if isinstance(result, dict) and result.get("type") == "clarifying_questions":
-            questions = result.get("questions", [])
+            questions = result.get("questions") or []
+            if not isinstance(questions, list):
+                logger.error(
+                    f"Unexpected clarifying questions format: {type(questions)}"
+                )
+                questions = []
             return ClarificationNeededResponse(
                 message=(
                     "I need some more information to customize this agent. "
@@ -256,19 +262,30 @@ class CustomizeAgentTool(BaseTool):
                         example=q.get("example"),
                     )
                     for q in questions
+                    if isinstance(q, dict)
                 ],
                 session_id=session_id,
             )
 
         # Result should be the customized agent JSON
+        if not isinstance(result, dict):
+            logger.error(f"Unexpected customize_template response type: {type(result)}")
+            return ErrorResponse(
+                message="Failed to customize the agent due to an unexpected response.",
+                error="unexpected_response_type",
+                session_id=session_id,
+            )
+
         customized_agent = result
 
         agent_name = customized_agent.get(
             "name", f"Customized {agent_details.agent_name}"
         )
         agent_description = customized_agent.get("description", "")
-        node_count = len(customized_agent.get("nodes", []))
-        link_count = len(customized_agent.get("links", []))
+        nodes = customized_agent.get("nodes")
+        links = customized_agent.get("links")
+        node_count = len(nodes) if isinstance(nodes, list) else 0
+        link_count = len(links) if isinstance(links, list) else 0
 
         if not save:
             return AgentPreviewResponse(
@@ -312,9 +329,9 @@ class CustomizeAgentTool(BaseTool):
                 session_id=session_id,
             )
         except Exception as e:
+            logger.error(f"Error saving customized agent: {e}")
             return ErrorResponse(
-                message=f"Failed to save the customized agent: {str(e)}",
+                message="Failed to save the customized agent. Please try again.",
                 error="save_failed",
-                details={"exception": str(e)},
                 session_id=session_id,
             )
