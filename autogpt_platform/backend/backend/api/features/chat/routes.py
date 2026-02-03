@@ -313,6 +313,7 @@ async def stream_chat_post(
 
     # SSE endpoint that subscribes to the task's stream
     async def event_generator() -> AsyncGenerator[str, None]:
+        subscriber_queue = None
         try:
             # Subscribe to the task stream (this replays existing messages + live updates)
             subscriber_queue = await stream_registry.subscribe_to_task(
@@ -344,7 +345,18 @@ async def stream_chat_post(
         except Exception as e:
             logger.error(f"Error in SSE stream for task {task_id}: {e}")
         finally:
-            # AI SDK protocol termination
+            # Unsubscribe when client disconnects or stream ends to prevent resource leak
+            if subscriber_queue is not None:
+                try:
+                    await stream_registry.unsubscribe_from_task(
+                        task_id, subscriber_queue
+                    )
+                except Exception as unsub_err:
+                    logger.error(
+                        f"Error unsubscribing from task {task_id}: {unsub_err}",
+                        exc_info=True,
+                    )
+            # AI SDK protocol termination - always yield even if unsubscribe fails
             yield "data: [DONE]\n\n"
 
     return StreamingResponse(
