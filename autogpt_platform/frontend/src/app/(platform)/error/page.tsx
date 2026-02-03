@@ -1,8 +1,6 @@
 "use client";
 
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
-import { getHomepageRoute } from "@/lib/constants";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { getErrorDetails } from "./helpers";
@@ -11,8 +9,6 @@ function ErrorPageContent() {
   const searchParams = useSearchParams();
   const errorMessage = searchParams.get("message");
   const errorDetails = getErrorDetails(errorMessage);
-  const isChatEnabled = useGetFlag(Flag.CHAT);
-  const homepageRoute = getHomepageRoute(isChatEnabled);
 
   function handleRetry() {
     // Auth-related errors should redirect to login
@@ -30,7 +26,7 @@ function ErrorPageContent() {
       }, 2000);
     } else {
       // For server/network errors, go to home
-      window.location.href = homepageRoute;
+      window.location.href = "/";
     }
   }
 
