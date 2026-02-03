@@ -32,7 +32,7 @@ from backend.data.model import (
 from backend.integrations.providers import ProviderName
 from backend.util import json
 from backend.util.logging import TruncatedLogger
-from backend.util.prompt import compress_prompt, estimate_token_count
+from backend.util.prompt import compress_context, estimate_token_count
 from backend.util.text import TextFormatter
 
 logger = TruncatedLogger(logging.getLogger(__name__), "[LLM-Block]")
@@ -634,11 +634,18 @@ async def llm_call(
     context_window = llm_model.context_window
 
     if compress_prompt_to_fit:
-        prompt = compress_prompt(
+        result = await compress_context(
             messages=prompt,
             target_tokens=llm_model.context_window // 2,
-            lossy_ok=True,
+            client=None,  # Truncation-only, no LLM summarization
+            reserve=0,  # Caller handles response token budget separately
         )
+        if result.error:
+            logger.warning(
+                f"Prompt compression did not meet target: {result.error}. "
+                f"Proceeding with {result.token_count} tokens."
+            )
+        prompt = result.messages
 
     # Calculate available tokens based on context window and input length
     estimated_input_tokens = estimate_token_count(prompt)
