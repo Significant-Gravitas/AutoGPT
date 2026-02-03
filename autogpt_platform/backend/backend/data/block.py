@@ -926,7 +926,7 @@ async def initialize_blocks() -> None:
             failed_blocks.append(block.name)
 
     if failed_blocks:
-        logger.warning(
+        logger.error(
             f"Failed to sync {len(failed_blocks)} block(s) to database: "
             f"{', '.join(failed_blocks)}. These blocks are still available in memory."
         )
