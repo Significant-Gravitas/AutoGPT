@@ -9,7 +9,6 @@ import {
 } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 import {
-  SparkleIcon,
   PlusIcon,
   SpinnerGapIcon,
   ChatCircleIcon,
