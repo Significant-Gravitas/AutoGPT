@@ -40,6 +40,7 @@ export function ToolAccordion({
       className={cn(
         "mt-2 rounded-2xl border bg-background px-3 py-2",
         className,
+        
       )}
     >
       <button

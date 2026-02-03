@@ -14,6 +14,9 @@ import { UIMessage, UIDataTypes, UITools, ToolUIPart } from "ai";
 import { FindBlocksTool } from "../../tools/FindBlocks/FindBlocks";
 import { FindAgentsTool } from "../../tools/FindAgents/FindAgents";
 import { SearchDocsTool } from "../../tools/SearchDocs/SearchDocs";
+import { RunBlockTool } from "../../tools/RunBlock/RunBlock";
+import { RunAgentTool } from "../../tools/RunAgent/RunAgent";
+import { ViewAgentOutputTool } from "../../tools/ViewAgentOutput/ViewAgentOutput";
 
 interface ChatMessagesContainerProps {
   messages: UIMessage<unknown, UIDataTypes, UITools>[];
@@ -75,6 +78,27 @@ export const ChatMessagesContainer = ({
                     case "tool-get_doc_page":
                       return (
                         <SearchDocsTool
+                          key={`${message.id}-${i}`}
+                          part={part as ToolUIPart}
+                        />
+                      );
+                    case "tool-run_block":
+                      return (
+                        <RunBlockTool
+                          key={`${message.id}-${i}`}
+                          part={part as ToolUIPart}
+                        />
+                      );
+                    case "tool-run_agent":
+                      return (
+                        <RunAgentTool
+                          key={`${message.id}-${i}`}
+                          part={part as ToolUIPart}
+                        />
+                      );
+                    case "tool-view_agent_output":
+                      return (
+                        <ViewAgentOutputTool
                           key={`${message.id}-${i}`}
                           part={part as ToolUIPart}
                         />
