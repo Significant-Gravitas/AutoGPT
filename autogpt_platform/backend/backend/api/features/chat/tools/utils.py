@@ -314,18 +314,6 @@ def create_credential_meta_from_match(
     )
 
 
-def _credential_has_required_scopes(
-    credential: Credentials,
-    requirements: CredentialsFieldInfo,
-) -> bool:
-    """Check if a credential has all the scopes required by the block."""
-    if credential.type != "oauth2":
-        return True
-    if not requirements.required_scopes:
-        return True
-    return set(credential.scopes).issuperset(requirements.required_scopes)
-
-
 async def match_user_credentials_to_graph(
     user_id: str,
     graph: GraphModel,
@@ -416,6 +404,18 @@ async def match_user_credentials_to_graph(
     )
 
     return graph_credentials_inputs, missing_creds
+
+
+def _credential_has_required_scopes(
+    credential: Credentials,
+    requirements: CredentialsFieldInfo,
+) -> bool:
+    """Check if a credential has all the scopes required by the block."""
+    if credential.type != "oauth2":
+        return True
+    if not requirements.required_scopes:
+        return True
+    return set(credential.scopes).issuperset(requirements.required_scopes)
 
 
 async def check_user_has_required_credentials(
