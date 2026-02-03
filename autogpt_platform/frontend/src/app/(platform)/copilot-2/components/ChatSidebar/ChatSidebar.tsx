@@ -93,9 +93,9 @@ export function ChatSidebar() {
               "flex items-center gap-2",
               isCollapsed ? "flex-row md:flex-col-reverse" : "flex-row",
             )}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.8 }}
+            initial={{ opacity: 0, filter: "blur(3px)" }}
+            animate={{ opacity: 1, filter: "blur(0px)" }}
+            transition={{ type: "spring", bounce: 0.2 }}
           >
             {isCollapsed && (
               <div className="h-fit rounded-3xl border border-neutral-400 bg-secondary p-1">
