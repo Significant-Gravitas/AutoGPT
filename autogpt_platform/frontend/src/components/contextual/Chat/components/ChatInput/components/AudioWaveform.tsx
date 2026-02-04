@@ -77,8 +77,7 @@ export function AudioWaveform({
         const normalized = maxAmplitude / 128;
         // Apply sensitivity boost (multiply by 4) and use sqrt curve to amplify quiet sounds
         const boosted = Math.min(1, Math.sqrt(normalized) * 4);
-        const height =
-          minBarHeight + boosted * (maxBarHeight - minBarHeight);
+        const height = minBarHeight + boosted * (maxBarHeight - minBarHeight);
         newBars.push(height);
       }
 
