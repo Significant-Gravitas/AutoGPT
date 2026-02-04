@@ -2,7 +2,6 @@ import type { SessionDetailResponse } from "@/app/api/__generated__/models/sessi
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import { useBreakpoint } from "@/lib/hooks/useBreakpoint";
 import { cn } from "@/lib/utils";
 import { GlobeHemisphereEastIcon } from "@phosphor-icons/react";
 import { useEffect } from "react";
@@ -46,10 +45,6 @@ export function ChatContainer({
   useEffect(() => {
     onStreamingChange?.(isStreaming);
   }, [isStreaming, onStreamingChange]);
-
-  const breakpoint = useBreakpoint();
-  const isMobile =
-    breakpoint === "base" || breakpoint === "sm" || breakpoint === "md";
 
   return (
     <div
@@ -118,11 +113,7 @@ export function ChatContainer({
           disabled={isStreaming || !sessionId}
           isStreaming={isStreaming}
           onStop={stopStreaming}
-          placeholder={
-            isMobile
-              ? "You can search or just ask"
-              : 'You can search or just ask — e.g. "create a blog post outline"'
-          }
+          placeholder="What else can I help with?"
         />
       </div>
     </div>

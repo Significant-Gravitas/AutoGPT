@@ -40,21 +40,28 @@ export function ChatInput({
             hasMultipleLines ? "rounded-xlarge" : "rounded-full",
           )}
         >
+          {!value && (
+            <div
+              className="pointer-events-none absolute inset-0 top-0.5 flex items-center justify-start pl-6 text-[1rem] text-zinc-400"
+              aria-hidden="true"
+            >
+              {placeholder}
+            </div>
+          )}
           <textarea
             id={inputId}
             aria-label="Chat message input"
             value={value}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
-            placeholder={placeholder}
             disabled={disabled || isStreaming}
             rows={1}
             className={cn(
               "w-full resize-none overflow-y-auto border-0 bg-transparent text-[1rem] leading-6 text-black",
-              "placeholder:text-zinc-400",
+              "placeholder:text-center placeholder:text-zinc-400",
               "focus:outline-none focus:ring-0",
               "disabled:text-zinc-500",
-              hasMultipleLines ? "pb-6 pl-4 pr-4 pt-2" : "pb-4 pl-4 pr-14 pt-4",
+              hasMultipleLines ? "pb-6 pl-4 pr-4 pt-2" : "pb-4 pl-6 pr-14 pt-4",
             )}
           />
         </div>
