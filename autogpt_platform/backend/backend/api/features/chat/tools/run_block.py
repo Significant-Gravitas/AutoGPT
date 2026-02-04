@@ -8,12 +8,16 @@ from typing import Any
 from pydantic_core import PydanticUndefined
 
 from backend.api.features.chat.model import ChatSession
+from backend.api.features.chat.tools.binary_output_processor import (
+    process_binary_outputs,
+)
 from backend.data.block import get_block
 from backend.data.execution import ExecutionContext
 from backend.data.model import CredentialsMetaInput
 from backend.data.workspace import get_or_create_workspace
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util.exceptions import BlockError
+from backend.util.workspace import WorkspaceManager
 
 from .base import BaseTool
 from .models import (
@@ -321,11 +325,19 @@ class RunBlockTool(BaseTool):
             ):
                 outputs[output_name].append(output_data)
 
+            # Save binary outputs to workspace to prevent context bloat
+            workspace_manager = WorkspaceManager(
+                user_id, workspace.id, session.session_id
+            )
+            processed_outputs = await process_binary_outputs(
+                dict(outputs), workspace_manager, block.name
+            )
+
             return BlockOutputResponse(
                 message=f"Block '{block.name}' executed successfully",
                 block_id=block_id,
                 block_name=block.name,
-                outputs=dict(outputs),
+                outputs=processed_outputs,
                 success=True,
                 session_id=session_id,
             )
