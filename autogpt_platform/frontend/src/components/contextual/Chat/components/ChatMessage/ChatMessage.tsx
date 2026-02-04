@@ -24,6 +24,9 @@ import { ToolResponseMessage } from "../ToolResponseMessage/ToolResponseMessage"
 import { UserChatBubble } from "../UserChatBubble/UserChatBubble";
 import { useChatMessage, type ChatMessageData } from "./useChatMessage";
 
+/** Map from toolId to tool_response for linking tool calls to their responses */
+type ToolResponseMap = Map<string, ChatMessageData & { type: "tool_response" }>;
+
 function stripInternalReasoning(content: string): string {
   const cleaned = content.replace(
     /<internal_reasoning>[\s\S]*?<\/internal_reasoning>/gi,
@@ -49,6 +52,8 @@ export interface ChatMessageProps {
   onSendMessage?: (content: string, isUserMessage?: boolean) => void;
   agentOutput?: ChatMessageData;
   isFinalMessage?: boolean;
+  /** Map from toolId to tool_response for linking tool calls to their responses */
+  toolResponseMap?: ToolResponseMap;
 }
 
 export function ChatMessage({
@@ -61,6 +66,7 @@ export function ChatMessage({
   onSendMessage,
   agentOutput,
   isFinalMessage = true,
+  toolResponseMap,
 }: ChatMessageProps) {
   const { user } = useSupabase();
   const router = useRouter();
@@ -250,6 +256,9 @@ export function ChatMessage({
         return false;
       })();
 
+    // Get the corresponding tool response for this tool call
+    const toolResponse = toolResponseMap?.get(message.toolId);
+
     return (
       <div className={cn("px-4 py-2", className)}>
         <ToolCallMessage
@@ -257,6 +266,7 @@ export function ChatMessage({
           toolName={message.toolName}
           arguments={message.arguments}
           isStreaming={isToolCallStreaming}
+          toolResponse={toolResponse}
         />
       </div>
     );

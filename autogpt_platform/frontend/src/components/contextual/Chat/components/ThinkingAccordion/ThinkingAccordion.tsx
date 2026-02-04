@@ -1,159 +1,60 @@
 "use client";
 
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
+import { Dialog } from "@/components/molecules/Dialog/Dialog";
+import { TypeWriter } from "@/components/molecules/Typewriter/Typewriter";
 import { cn } from "@/lib/utils";
-import { ChevronDown } from "lucide-react";
 import { useEffect, useState } from "react";
 import { MarkdownContent } from "../MarkdownContent/MarkdownContent";
+import { ThinkingAccordionAnimation } from "./components/ThinkingAccordionAnimation";
 
-/**
- * Rotating status labels shown in the accordion trigger during streaming.
- */
 const THINKING_LABELS = [
-  "Thinking…",
-  "Reasoning…",
-  "Analyzing…",
-  "Working it out…",
-  "Cooking…",
+  "Hmm, let me think…",
+  "Cooking up something good…",
   "Connecting the dots…",
-  "Mulling it over…",
-  "Brewing some ideas…",
-  "Putting pieces together…",
+  "Brewing ideas…",
   "Down the rabbit hole…",
-  "Crunching possibilities…",
   "Following the thread…",
   "Almost there, maybe…",
+  "One sec, got an idea…",
+  "Piecing it together…",
+  "Digging deeper…",
+  "Let me check that…",
+  "Working on it…",
+  "Hold that thought…",
+  "Getting there…",
 ] as const;
 
-/** Rotation interval for status labels in milliseconds */
 const LABEL_ROTATION_INTERVAL = 4000;
 
-/** Typing speed in milliseconds per character */
-const TYPING_SPEED = 50;
-
-/**
- * TypeWriter component - reveals text character by character
- */
-function TypeWriter({ text, className }: { text: string; className?: string }) {
-  const [displayedText, setDisplayedText] = useState("");
-
-  useEffect(() => {
-    setDisplayedText("");
-    let currentIndex = 0;
-
-    const interval = setInterval(() => {
-      if (currentIndex < text.length) {
-        setDisplayedText(text.slice(0, currentIndex + 1));
-        currentIndex++;
-      } else {
-        clearInterval(interval);
-      }
-    }, TYPING_SPEED);
-
-    return () => clearInterval(interval);
-  }, [text]);
-
-  return (
-    <span className={className}>
-      {displayedText}
-      <span className="animate-pulse">|</span>
-    </span>
-  );
-}
-
-/**
- * Pulsing loader animation - shows concentric circles pulsing in/out.
- * Size is relative to the text (double the text-sm size = ~1.75rem).
- */
-function PulseLoader() {
-  return (
-    <span
-      className="relative flex shrink-0 items-center justify-center"
-      style={{ width: "1.75rem", height: "1.75rem" }}
-    >
-      {/* Inner pulse - shrinks inward */}
-      <span
-        className="absolute rounded-full"
-        style={{
-          width: "100%",
-          height: "100%",
-          boxShadow: "inset 0 0 0 0.25rem #737373",
-          animation: "pulseIn 1.8s ease-in-out infinite",
-        }}
-      />
-      {/* Outer pulse - expands outward */}
-      <span
-        className="absolute rounded-full"
-        style={{
-          width: "calc(100% - 0.5rem)",
-          height: "calc(100% - 0.5rem)",
-          boxShadow: "0 0 0 0 #737373",
-          animation: "pulseOut 1.8s ease-in-out infinite",
-        }}
-      />
-      {/* Keyframes injected via style tag */}
-      <style jsx>{`
-        @keyframes pulseIn {
-          0% {
-            box-shadow: inset 0 0 0 0.25rem #737373;
-            opacity: 1;
-          }
-          50%,
-          100% {
-            box-shadow: inset 0 0 0 0 #737373;
-            opacity: 0;
-          }
-        }
-        @keyframes pulseOut {
-          0%,
-          50% {
-            box-shadow: 0 0 0 0 #737373;
-            opacity: 0;
-          }
-          100% {
-            box-shadow: 0 0 0 0.25rem #737373;
-            opacity: 1;
-          }
-        }
-      `}</style>
-    </span>
-  );
-}
-
-export interface ThinkingAccordionProps {
-  /** Array of reasoning/thinking chunks to display inside the accordion */
+export interface Props {
   chunks: string[];
-  /** Optional className for the container */
   className?: string;
 }
 
 /**
- * ThinkingAccordion displays a collapsible "Thinking..." accordion during streaming.
+ * ThinkingIndicator displays a "Thinking..." indicator during streaming.
+ * Clicking opens a Dialog to view reasoning chunks.
  *
  * ChatGPT-style UX:
- * - During streaming: Shows collapsed by default with rotating status label
- * - User can click to expand and see live-updating reasoning chunks
- * - After streaming ends: This component should be unmounted (reasoning hidden)
+ * - During streaming: Shows indicator with rotating status label
+ * - User can click to open a dialog and see live-updating reasoning
+ * - Tool responses are shown separately via clickable tool_call messages
+ * - After streaming ends: This component should be unmounted
  */
-export function ThinkingAccordion({
-  chunks,
-  className,
-}: ThinkingAccordionProps) {
-  const [labelIndex, setLabelIndex] = useState(() =>
-    Math.floor(Math.random() * THINKING_LABELS.length),
+export function ThinkingAccordion({ chunks, className }: Props) {
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [currentLabel, setCurrentLabel] = useState<string>(
+    () => THINKING_LABELS[Math.floor(Math.random() * THINKING_LABELS.length)],
   );
 
+  // Rotate labels randomly
   useEffect(() => {
     const interval = setInterval(() => {
-      setLabelIndex((prev) => {
-        let next: number;
+      setCurrentLabel((prev) => {
+        let next: string;
         do {
-          next = Math.floor(Math.random() * THINKING_LABELS.length);
+          next =
+            THINKING_LABELS[Math.floor(Math.random() * THINKING_LABELS.length)];
         } while (next === prev);
         return next;
       });
@@ -161,8 +62,6 @@ export function ThinkingAccordion({
 
     return () => clearInterval(interval);
   }, []);
-
-  const currentLabel = THINKING_LABELS[labelIndex];
   const displayText = chunks.join("");
 
   return (
@@ -174,32 +73,48 @@ export function ThinkingAccordion({
     >
       <div className="flex w-full max-w-3xl gap-3">
         <div className="flex min-w-0 flex-1 flex-col">
-          <Accordion type="single" collapsible className="w-full">
-            <AccordionItem value="thinking" className="group/accordion border-none">
-              {/* Hide the built-in chevron with [&>svg]:hidden, use our own with proper rotation */}
-              <AccordionTrigger className="gap-2 py-2 hover:no-underline [&>svg]:hidden">
-                <span className="inline-flex items-center gap-2">
-                  <PulseLoader />
-                  <TypeWriter
-                    text={currentLabel}
-                    className="inline-block animate-shimmer bg-gradient-to-r from-neutral-400 via-neutral-600 to-neutral-400 bg-[length:200%_100%] bg-clip-text text-sm font-medium text-transparent"
-                  />
-                  <ChevronDown className="h-4 w-4 shrink-0 text-neutral-500 transition-transform duration-200 group-data-[state=open]/accordion:rotate-180" />
+          {/* Clickable thinking indicator */}
+          <button
+            type="button"
+            onClick={() => setIsDialogOpen(true)}
+            className="inline-flex w-fit cursor-pointer items-center gap-2 rounded-md px-1 py-2 transition-colors hover:bg-neutral-100"
+          >
+            <ThinkingAccordionAnimation />
+            <TypeWriter
+              text={currentLabel}
+              className="inline-block animate-shimmer bg-gradient-to-r from-neutral-400 via-neutral-600 to-neutral-400 bg-[length:200%_100%] bg-clip-text text-sm font-medium text-transparent"
+            />
+          </button>
+
+          {/* Dialog for viewing reasoning content */}
+          <Dialog
+            title={
+              <span className="inline-flex items-center gap-2">
+                <ThinkingAccordionAnimation />
+                <span className="text-sm font-medium text-neutral-600">
+                  Reasoning
                 </span>
-              </AccordionTrigger>
-              <AccordionContent className="pb-0">
-                <div className="text-left text-[1rem] leading-relaxed">
-                  {displayText ? (
-                    <MarkdownContent content={displayText} />
-                  ) : (
-                    <span className="text-neutral-400">
-                      Gathering thoughts...
-                    </span>
-                  )}
-                </div>
-              </AccordionContent>
-            </AccordionItem>
-          </Accordion>
+              </span>
+            }
+            controlled={{
+              isOpen: isDialogOpen,
+              set: setIsDialogOpen,
+            }}
+            onClose={() => setIsDialogOpen(false)}
+            styling={{ maxWidth: 600, width: "100%", minWidth: "auto" }}
+          >
+            <Dialog.Content>
+              <div className="max-h-[60vh] overflow-y-auto text-left text-[1rem] leading-relaxed">
+                {displayText ? (
+                  <MarkdownContent content={displayText} />
+                ) : (
+                  <span className="text-neutral-400">
+                    Gathering thoughts...
+                  </span>
+                )}
+              </div>
+            </Dialog.Content>
+          </Dialog>
         </div>
       </div>
     </div>

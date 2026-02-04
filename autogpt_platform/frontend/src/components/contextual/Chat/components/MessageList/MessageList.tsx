@@ -5,7 +5,12 @@ import type { ChatMessageData } from "../ChatMessage/useChatMessage";
 import { ThinkingAccordion } from "../ThinkingAccordion/ThinkingAccordion";
 import { LastToolResponse } from "./components/LastToolResponse/LastToolResponse";
 import { MessageItem } from "./components/MessageItem/MessageItem";
-import { findLastMessageIndex, shouldSkipAgentOutput } from "./helpers";
+import {
+  createToolResponseMap,
+  filterMessagesForDisplay,
+  findLastMessageIndex,
+  shouldSkipAgentOutput,
+} from "./helpers";
 import { useMessageList } from "./useMessageList";
 
 export interface MessageListProps {
@@ -28,6 +33,17 @@ export function MessageList({
     isStreaming,
   });
 
+  // ChatGPT-style UX for tool messages:
+  // - tool_call: Visible during streaming (icon + small grey text), hidden after final answer
+  //   - Clicking a tool_call opens a dialog showing its corresponding tool_response
+  // - tool_response: Always hidden from main list
+  // - operation_*: Visible during streaming, hidden after final answer
+  // - After streaming without final answer (error/cancel): Keep everything visible for debugging
+  const displayMessages = filterMessagesForDisplay(messages, isStreaming);
+
+  // Create a map from toolId -> tool_response for linking tool calls to their responses
+  const toolResponseMap = createToolResponseMap(messages);
+
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
       {/* Top fade shadow */}
@@ -42,25 +58,25 @@ export function MessageList({
         )}
       >
         <div className="mx-auto flex min-w-0 flex-col hyphens-auto break-words py-4">
-          {/* Render all persisted messages */}
+          {/* Render filtered messages (tool chatter hidden after streaming completes) */}
           {(() => {
             const lastAssistantMessageIndex = findLastMessageIndex(
-              messages,
+              displayMessages,
               (msg) => msg.type === "message" && msg.role === "assistant",
             );
 
             const lastToolResponseIndex = findLastMessageIndex(
-              messages,
+              displayMessages,
               (msg) => msg.type === "tool_response",
             );
 
-            return messages.map((message, index) => {
+            return displayMessages.map((message, index) => {
               // Skip agent_output tool_responses that should be rendered inside assistant messages
-              if (shouldSkipAgentOutput(message, messages[index - 1])) {
+              if (shouldSkipAgentOutput(message, displayMessages[index - 1])) {
                 return null;
               }
 
-              // Render last tool_response as AIChatBubble
+              // Render last tool_response as AIChatBubble (only during streaming)
               if (
                 message.type === "tool_response" &&
                 index === lastToolResponseIndex
@@ -69,7 +85,7 @@ export function MessageList({
                   <LastToolResponse
                     key={index}
                     message={message}
-                    prevMessage={messages[index - 1]}
+                    prevMessage={displayMessages[index - 1]}
                   />
                 );
               }
@@ -78,11 +94,12 @@ export function MessageList({
                 <MessageItem
                   key={index}
                   message={message}
-                  messages={messages}
+                  messages={displayMessages}
                   index={index}
                   lastAssistantMessageIndex={lastAssistantMessageIndex}
                   isStreaming={isStreaming}
                   onSendMessage={onSendMessage}
+                  toolResponseMap={toolResponseMap}
                 />
               );
             });
@@ -90,11 +107,10 @@ export function MessageList({
 
           {/*
            * ChatGPT-style "Thinking" UX:
-           * - During streaming: Show a single collapsible ThinkingAccordion
-           *   - Default: collapsed
-           *   - Trigger: rotating status labels
-           *   - Content: live-updating reasoning chunks
-           * - After streaming: Accordion is removed entirely, only final answer remains
+           * - During streaming: Show thinking indicator with rotating status labels
+           *   - Click to open dialog with reasoning chunks
+           *   - Tool responses are shown via clickable tool_call messages instead
+           * - After streaming: Indicator is removed, only final answer remains
            */}
           {isStreaming && <ThinkingAccordion chunks={streamingChunks} />}
 

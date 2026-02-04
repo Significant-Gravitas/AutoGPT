@@ -1,3 +1,4 @@
+import type { ToolResponseMap } from "../../helpers";
 import { ChatMessage } from "../../../ChatMessage/ChatMessage";
 import type { ChatMessageData } from "../../../ChatMessage/useChatMessage";
 import { useMessageItem } from "./useMessageItem";
@@ -9,6 +10,8 @@ export interface MessageItemProps {
   lastAssistantMessageIndex: number;
   isStreaming?: boolean;
   onSendMessage?: (content: string) => void;
+  /** Map from toolId to tool_response for linking tool calls to their responses */
+  toolResponseMap?: ToolResponseMap;
 }
 
 export function MessageItem({
@@ -18,6 +21,7 @@ export function MessageItem({
   lastAssistantMessageIndex,
   isStreaming = false,
   onSendMessage,
+  toolResponseMap,
 }: MessageItemProps) {
   const { messageToRender, agentOutput, isFinalMessage } = useMessageItem({
     message,
@@ -35,6 +39,7 @@ export function MessageItem({
       onSendMessage={onSendMessage}
       agentOutput={agentOutput}
       isFinalMessage={isFinalMessage}
+      toolResponseMap={toolResponseMap}
     />
   );
 }

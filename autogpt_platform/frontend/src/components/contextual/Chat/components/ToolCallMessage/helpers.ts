@@ -1,4 +1,4 @@
-import type { ToolArguments } from "@/types/chat";
+import type { ToolArguments, ToolResult } from "@/types/chat";
 import {
   BrainIcon,
   EyeIcon,
@@ -55,17 +55,35 @@ export function getToolActionPhrase(toolName: string): string {
   );
 }
 
+/** Parse tool result to extract structured data */
+function parseToolResult(result: ToolResult): Record<string, unknown> | null {
+  if (!result) return null;
+  if (typeof result === "string") {
+    try {
+      return JSON.parse(result);
+    } catch {
+      return null;
+    }
+  }
+  if (typeof result === "object") {
+    return result as Record<string, unknown>;
+  }
+  return null;
+}
+
 /**
  * Formats tool call arguments into user-friendly text.
  * Handles different tool types and formats their arguments nicely.
  *
  * @param toolName - The tool name
  * @param args - The tool arguments
+ * @param toolResponse - Optional tool response to extract additional info (e.g., block_name)
  * @returns Formatted user-friendly text to append to action phrase
  */
 export function formatToolArguments(
   toolName: string,
   args: ToolArguments | undefined,
+  toolResponse?: { result: ToolResult } | null,
 ): string {
   if (!args || Object.keys(args).length === 0) {
     return "";
@@ -107,11 +125,29 @@ export function formatToolArguments(
       }
       break;
 
-    case "run_block":
+    case "run_block": {
+      // Prefer block_name from tool response (BlockOutputResponse includes it)
+      const blockResult = toolResponse
+        ? parseToolResult(toolResponse.result)
+        : null;
+      if (
+        blockResult?.block_name &&
+        typeof blockResult.block_name === "string"
+      ) {
+        return ` "${blockResult.block_name}"`;
+      }
+      // Fallback to args if response not available
+      if (args.block_name) {
+        return ` "${args.block_name as string}"`;
+      }
+      if (args.name) {
+        return ` "${args.name as string}"`;
+      }
       if (args.block_id) {
         return ` "${args.block_id as string}"`;
       }
       break;
+    }
 
     case "view_agent_output":
       if (args.library_agent_id) {
