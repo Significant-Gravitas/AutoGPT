@@ -41,5 +41,5 @@ export function getInputPlaceholder(width?: number) {
   if (width <= 1080) {
     return "What's your role and what eats up most of your day?";
   }
-  return "What's your role and what eats up most of your day? e.g. 'I'm a real estate agent and I hate...'";
+  return "What's your role and what eats up most of your day? e.g. 'I'm a recruiter and I hate...'";
 }
