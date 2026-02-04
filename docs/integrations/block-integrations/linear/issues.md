@@ -90,9 +90,9 @@ Searches for issues on Linear
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block searches for issues in Linear using a text query. It searches across issue titles, descriptions, and other fields to find matching issues.
+This block searches for issues in Linear using a text query. It searches across issue titles, descriptions, and other fields to find matching issues. You can limit the number of results returned using the `max_results` parameter (default: 10, max: 100) to control token consumption and response size.
 
-Returns a list of issues matching the search term.
+Optionally filter results by team name to narrow searches to specific workspaces. If a team name is provided, the block resolves it to a team ID before searching. Returns matching issues with their state, creation date, project, and assignee information. If the search or team resolution fails, an error message is returned.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -100,7 +100,7 @@ Returns a list of issues matching the search term.
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | term | Term to search for issues | str | Yes |
-| max_results | Maximum number of results to return | int | No |
+| max_results | Maximum number of results to return (default: 10, range: 1-100) | int | No |
 | team_name | Optional team name to filter results (e.g., 'Internal', 'Open Source') | str | No |
 
 ### Outputs
