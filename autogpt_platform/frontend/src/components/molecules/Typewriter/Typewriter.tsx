@@ -1,3 +1,5 @@
+"use client";
+
 import { useEffect, useState } from "react";
 
 const TYPING_SPEED = 30;
