@@ -2,8 +2,7 @@
 
 import { cn } from "@/lib/utils";
 import type { ChatMessageData } from "../ChatMessage/useChatMessage";
-import { StreamingMessage } from "../StreamingMessage/StreamingMessage";
-import { ThinkingMessage } from "../ThinkingMessage/ThinkingMessage";
+import { ThinkingAccordion } from "../ThinkingAccordion/ThinkingAccordion";
 import { LastToolResponse } from "./components/LastToolResponse/LastToolResponse";
 import { MessageItem } from "./components/MessageItem/MessageItem";
 import { findLastMessageIndex, shouldSkipAgentOutput } from "./helpers";
@@ -14,7 +13,6 @@ export interface MessageListProps {
   streamingChunks?: string[];
   isStreaming?: boolean;
   className?: string;
-  onStreamComplete?: () => void;
   onSendMessage?: (content: string) => void;
 }
 
@@ -23,7 +21,6 @@ export function MessageList({
   streamingChunks = [],
   isStreaming = false,
   className,
-  onStreamComplete,
   onSendMessage,
 }: MessageListProps) {
   const { messagesEndRef, messagesContainerRef } = useMessageList({
@@ -91,16 +88,15 @@ export function MessageList({
             });
           })()}
 
-          {/* Render thinking message when streaming but no chunks yet */}
-          {isStreaming && streamingChunks.length === 0 && <ThinkingMessage />}
-
-          {/* Render streaming message if active */}
-          {isStreaming && streamingChunks.length > 0 && (
-            <StreamingMessage
-              chunks={streamingChunks}
-              onComplete={onStreamComplete}
-            />
-          )}
+          {/*
+           * ChatGPT-style "Thinking" UX:
+           * - During streaming: Show a single collapsible ThinkingAccordion
+           *   - Default: collapsed
+           *   - Trigger: rotating status labels
+           *   - Content: live-updating reasoning chunks
+           * - After streaming: Accordion is removed entirely, only final answer remains
+           */}
+          {isStreaming && <ThinkingAccordion chunks={streamingChunks} />}
 
           {/* Invisible div to scroll to */}
           <div ref={messagesEndRef} />

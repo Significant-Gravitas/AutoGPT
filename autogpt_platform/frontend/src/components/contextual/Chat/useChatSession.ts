@@ -60,6 +60,10 @@ export function useChatSession({
       enabled: !!sessionId,
       select: okData,
       staleTime: 0,
+      // Disable automatic refetch on window focus to prevent race conditions
+      // with local state that could cause user messages to disappear.
+      // Explicit polling (for pending operations) will still work.
+      refetchOnWindowFocus: false,
       retry: shouldRetrySessionLoad,
       retryDelay: getSessionRetryDelay,
     },
