@@ -1,6 +1,17 @@
 import { OAuthPopupResultMessage } from "./types";
 import { NextResponse } from "next/server";
 
+/**
+ * Safely encode a value as JSON for embedding in a script tag.
+ * Escapes characters that could break out of the script context to prevent XSS.
+ */
+function safeJsonStringify(value: unknown): string {
+  return JSON.stringify(value)
+    .replace(/</g, "\\u003c")
+    .replace(/>/g, "\\u003e")
+    .replace(/&/g, "\\u0026");
+}
+
 // This route is intended to be used as the callback for integration OAuth flows,
 // controlled by the CredentialsInput component. The CredentialsInput opens the login
 // page in a pop-up window, which then redirects to this route to close the loop.
@@ -23,12 +34,13 @@ export async function GET(request: Request) {
   console.debug("Sending message to opener:", message);
 
   // Return a response with the message as JSON and a script to close the window
+  // Use safeJsonStringify to prevent XSS by escaping <, >, and & characters
   return new NextResponse(
     `
     <html>
       <body>
         <script>
-          window.opener.postMessage(${JSON.stringify(message)});
+          window.opener.postMessage(${safeJsonStringify(message)});
           window.close();
         </script>
       </body>
