@@ -63,7 +63,11 @@ class VideoDownloadBlock(Block):
                 ("source_url", str),
             ],
             test_mock={
-                "_download_video": lambda *args: ("video.mp4", 212.0, "Test Video"),
+                "_download_video": lambda *args: (
+                    "video.mp4",
+                    212.0,
+                    "Test Video",
+                ),
                 "_store_output_video": lambda *args, **kwargs: "video.mp4",
             },
         )
@@ -102,7 +106,7 @@ class VideoDownloadBlock(Block):
         )
 
         ydl_opts: "_Params" = {
-            "format": self._get_format_string(quality),
+            "format": f"{self._get_format_string(quality)}/best",
             "outtmpl": output_template,
             "merge_output_format": output_format,
             "quiet": True,
