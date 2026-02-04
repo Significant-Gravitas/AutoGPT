@@ -34,30 +34,29 @@ BEGIN
     END IF;
 END $$;
 
--- Step 3: Update database default search_path to include the application schema
--- and extensions schema. This is a permanent database-level setting that applies
--- to all new connections.
+-- Step 3: Update role-level search_path to include the application schema
+-- and extensions schema. Role-level settings take precedence over database-level
+-- settings, which is important for managed platforms like Supabase that may
+-- have existing role-level search_path configurations.
 -- The default PostgreSQL search_path is: "$user", public
 -- We add the current application schema and extensions so that:
 --   - ::vector type casts resolve (via extensions schema)
 --   - Application tables/types resolve in raw queries (via application schema)
 DO $$
 DECLARE
-    app_schema text;
+    app_schema text := current_schema();
 BEGIN
-    SELECT current_schema() INTO app_schema;
-
     IF app_schema = 'public' THEN
         -- In CI/local with public schema, extensions is the only addition needed
         EXECUTE format(
-            'ALTER DATABASE %I SET search_path TO "$user", public, extensions',
-            current_database()
+            'ALTER ROLE %I SET search_path TO "$user", public, extensions',
+            current_user
         );
     ELSE
         -- In production with a custom schema (e.g. platform), include it
         EXECUTE format(
-            'ALTER DATABASE %I SET search_path TO "$user", public, extensions, %I',
-            current_database(), app_schema
+            'ALTER ROLE %I SET search_path TO "$user", public, extensions, %I',
+            current_user, app_schema
         );
     END IF;
 END $$;
