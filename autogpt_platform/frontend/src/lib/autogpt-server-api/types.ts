@@ -516,7 +516,7 @@ export type GraphValidationErrorResponse = {
 
 /* *** LIBRARY *** */
 
-/* Mirror of backend/server/v2/library/model.py:LibraryAgent */
+/* Mirror of backend/api/features/library/model.py:LibraryAgent */
 export type LibraryAgent = {
   id: LibraryAgentID;
   graph_id: GraphID;
@@ -616,7 +616,7 @@ export enum LibraryAgentSortEnum {
 
 /* *** CREDENTIALS *** */
 
-/* Mirror of backend/server/integrations/router.py:CredentialsMetaResponse */
+/* Mirror of backend/api/features/integrations/router.py:CredentialsMetaResponse */
 export type CredentialsMetaResponse = {
   id: string;
   provider: CredentialsProviderName;
@@ -628,13 +628,13 @@ export type CredentialsMetaResponse = {
   is_system?: boolean;
 };
 
-/* Mirror of backend/server/integrations/router.py:CredentialsDeletionResponse */
+/* Mirror of backend/api/features/integrations/router.py:CredentialsDeletionResponse */
 export type CredentialsDeleteResponse = {
   deleted: true;
   revoked: boolean | null;
 };
 
-/* Mirror of backend/server/integrations/router.py:CredentialsDeletionNeedsConfirmationResponse */
+/* Mirror of backend/api/features/integrations/router.py:CredentialsDeletionNeedsConfirmationResponse */
 export type CredentialsDeleteNeedConfirmationResponse = {
   deleted: false;
   need_confirmation: true;
@@ -888,7 +888,7 @@ export type Schedule = {
 
 export type ScheduleID = Brand<string, "ScheduleID">;
 
-/* Mirror of backend/server/routers/v1.py:ScheduleCreationRequest */
+/* Mirror of backend/api/features/v1.py:ScheduleCreationRequest */
 export type ScheduleCreatable = {
   graph_id: GraphID;
   graph_version: number;

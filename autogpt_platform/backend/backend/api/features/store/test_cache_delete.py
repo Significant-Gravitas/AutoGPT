@@ -33,6 +33,7 @@ class TestCacheDeletion:
                     description="Test description",
                     runs=100,
                     rating=4.5,
+                    agent_graph_id="test-graph-id",
                 )
             ],
             pagination=Pagination(
