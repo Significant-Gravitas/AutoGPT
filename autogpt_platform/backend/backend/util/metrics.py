@@ -6,6 +6,8 @@ from pydantic import SecretStr
 from sentry_sdk.integrations import DidNotEnable
 from sentry_sdk.integrations.anthropic import AnthropicIntegration
 from sentry_sdk.integrations.asyncio import AsyncioIntegration
+from sentry_sdk.integrations.fastapi import FastApiIntegration
+from sentry_sdk.integrations.httpx import HttpxIntegration
 from sentry_sdk.integrations.launchdarkly import LaunchDarklyIntegration
 from sentry_sdk.integrations.logging import LoggingIntegration
 
@@ -37,6 +39,8 @@ def sentry_init():
         _experiments={"enable_logs": True},
         integrations=[
             AsyncioIntegration(),
+            FastApiIntegration(),  # Traces FastAPI requests with detailed spans
+            HttpxIntegration(),  # Traces outgoing HTTP calls (OpenAI, external APIs)
             LoggingIntegration(sentry_logs_level=logging.INFO),
             AnthropicIntegration(
                 include_prompts=False,
