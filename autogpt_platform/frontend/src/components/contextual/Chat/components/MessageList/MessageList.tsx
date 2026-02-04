@@ -15,7 +15,6 @@ import { useMessageList } from "./useMessageList";
 
 export interface MessageListProps {
   messages: ChatMessageData[];
-  streamingChunks?: string[];
   isStreaming?: boolean;
   className?: string;
   onSendMessage?: (content: string) => void;
@@ -23,7 +22,6 @@ export interface MessageListProps {
 
 export function MessageList({
   messages,
-  streamingChunks = [],
   isStreaming = false,
   className,
   onSendMessage,
@@ -108,11 +106,10 @@ export function MessageList({
           {/*
            * ChatGPT-style "Thinking" UX:
            * - During streaming: Show thinking indicator with rotating status labels
-           *   - Click to open dialog with reasoning chunks
-           *   - Tool responses are shown via clickable tool_call messages instead
+           * - Tool responses are shown via clickable tool_call messages
            * - After streaming: Indicator is removed, only final answer remains
            */}
-          {isStreaming && <ThinkingAccordion chunks={streamingChunks} />}
+          {isStreaming && <ThinkingAccordion />}
 
           {/* Invisible div to scroll to */}
           <div ref={messagesEndRef} />

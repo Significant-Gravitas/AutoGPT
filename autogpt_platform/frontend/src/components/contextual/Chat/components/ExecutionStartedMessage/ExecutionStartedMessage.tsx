@@ -3,7 +3,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import { ArrowSquareOut, CheckCircle, Play } from "@phosphor-icons/react";
 
-export interface ExecutionStartedMessageProps {
+export interface Props {
   executionId: string;
   agentName?: string;
   message?: string;
@@ -17,7 +17,7 @@ export function ExecutionStartedMessage({
   message = "Agent execution started successfully",
   onViewExecution,
   className,
-}: ExecutionStartedMessageProps) {
+}: Props) {
   return (
     <div
       className={cn(

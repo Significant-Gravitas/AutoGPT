@@ -36,7 +36,6 @@ export function ChatContainer({
 }: ChatContainerProps) {
   const {
     messages,
-    streamingChunks,
     isStreaming,
     stopStreaming,
     isRegionBlockedModalOpen,
@@ -106,7 +105,6 @@ export function ChatContainer({
         <div className="flex min-h-full flex-col justify-end">
           <MessageList
             messages={messages}
-            streamingChunks={streamingChunks}
             isStreaming={isStreaming}
             onSendMessage={sendMessageWithContext}
             className="flex-1"

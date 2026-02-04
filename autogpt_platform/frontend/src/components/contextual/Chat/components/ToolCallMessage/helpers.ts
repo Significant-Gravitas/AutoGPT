@@ -218,3 +218,35 @@ export function getToolIcon(toolName: string): Icon {
 
   return iconMap[toolName] || SquaresFourIcon;
 }
+
+/** Extract the message field from tool result, or format the whole result */
+export function getToolResultMessage(result: ToolResult) {
+  const parsed = parseToolResult(result);
+  if (parsed) {
+    // For agent_output, return the output field
+    if (parsed.type === "agent_output" && "output" in parsed) {
+      return String(parsed.output);
+    }
+    // Return the message field if it exists
+    if (typeof parsed.message === "string") {
+      return parsed.message;
+    }
+  }
+  // Fallback to string representation
+  if (typeof result === "string") {
+    return result;
+  }
+  return String(result ?? "");
+}
+
+/** Format tool result as JSON for debug view */
+export function formatToolResultAsJson(result: ToolResult) {
+  const parsed = parseToolResult(result);
+  if (parsed) {
+    return JSON.stringify(parsed, null, 2);
+  }
+  if (typeof result === "string") {
+    return result;
+  }
+  return String(result ?? "");
+}

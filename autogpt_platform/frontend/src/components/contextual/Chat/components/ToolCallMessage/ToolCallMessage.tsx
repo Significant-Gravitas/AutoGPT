@@ -9,8 +9,10 @@ import { AIChatBubble } from "../AIChatBubble/AIChatBubble";
 import { MarkdownContent } from "../MarkdownContent/MarkdownContent";
 import {
   formatToolArguments,
+  formatToolResultAsJson,
   getToolActionPhrase,
   getToolIcon,
+  getToolResultMessage,
 } from "./helpers";
 
 /** Tool response data passed from parent */
@@ -21,7 +23,7 @@ interface ToolResponseData {
   success?: boolean;
 }
 
-export interface ToolCallMessageProps {
+export interface Props {
   toolId?: string;
   toolName: string;
   arguments?: ToolArguments;
@@ -31,61 +33,13 @@ export interface ToolCallMessageProps {
   toolResponse?: ToolResponseData;
 }
 
-/** Parse tool result to extract structured data */
-function parseToolResult(result: ToolResult): Record<string, unknown> | null {
-  if (!result) return null;
-  if (typeof result === "string") {
-    try {
-      return JSON.parse(result);
-    } catch {
-      return null;
-    }
-  }
-  if (typeof result === "object") {
-    return result as Record<string, unknown>;
-  }
-  return null;
-}
-
-/** Extract the message field from tool result, or format the whole result */
-function getToolResultMessage(result: ToolResult): string {
-  const parsed = parseToolResult(result);
-  if (parsed) {
-    // For agent_output, return the output field
-    if (parsed.type === "agent_output" && "output" in parsed) {
-      return String(parsed.output);
-    }
-    // Return the message field if it exists
-    if (typeof parsed.message === "string") {
-      return parsed.message;
-    }
-  }
-  // Fallback to string representation
-  if (typeof result === "string") {
-    return result;
-  }
-  return String(result ?? "");
-}
-
-/** Format tool result as JSON for debug view */
-function formatToolResultAsJson(result: ToolResult): string {
-  const parsed = parseToolResult(result);
-  if (parsed) {
-    return JSON.stringify(parsed, null, 2);
-  }
-  if (typeof result === "string") {
-    return result;
-  }
-  return String(result ?? "");
-}
-
 export function ToolCallMessage({
   toolName,
   arguments: toolArguments,
   isStreaming = false,
   className,
   toolResponse,
-}: ToolCallMessageProps) {
+}: Props) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [showDebug, setShowDebug] = useState(false);
   const actionPhrase = getToolActionPhrase(toolName);
