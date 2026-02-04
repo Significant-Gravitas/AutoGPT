@@ -114,6 +114,8 @@ def _decode_base64(value: str) -> bytes | None:
     try:
         if value.startswith("data:"):
             value = value.split(",", 1)[1] if "," in value else value
-        return base64.b64decode(value)
+        # Normalize padding and use strict validation to prevent corrupted data
+        padded = value + "=" * (-len(value) % 4)
+        return base64.b64decode(padded, validate=True)
     except (binascii.Error, ValueError):
         return None
