@@ -12,7 +12,9 @@ import {
   formatToolResultAsJson,
   getToolActionPhrase,
   getToolIcon,
+  getToolResultErrorMessage,
   getToolResultMessage,
+  isToolResultError,
 } from "./helpers";
 
 /** Tool response data passed from parent */
@@ -51,30 +53,49 @@ export function ToolCallMessage({
   const displayText = `${actionPhrase}${argumentsText}`;
   const IconComponent = getToolIcon(toolName);
 
-  // Only make clickable if there's a tool response to show
-  const isClickable = !!toolResponse && !isStreaming;
+  // Check if there's an error in the tool response
+  const hasError = toolResponse && isToolResultError(toolResponse.result);
+  const errorMessage = hasError
+    ? getToolResultErrorMessage(toolResponse.result)
+    : null;
+
+  // Only make clickable if there's a tool response to show (and not an error)
+  const isClickable = !!toolResponse && !isStreaming && !hasError;
 
   const content = (
-    <div className="flex items-center gap-2">
-      <IconComponent
-        size={14}
-        weight="regular"
-        className={cn(
-          "shrink-0",
-          isStreaming ? "text-neutral-500" : "text-neutral-400",
-        )}
-      />
-      <Text
-        variant="small"
-        className={cn(
-          "text-xs",
-          isStreaming
-            ? "bg-gradient-to-r from-neutral-600 via-neutral-500 to-neutral-600 bg-[length:200%_100%] bg-clip-text text-transparent [animation:shimmer_2s_ease-in-out_infinite]"
-            : "text-neutral-500",
-        )}
-      >
-        {displayText}
-      </Text>
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center gap-2">
+        <IconComponent
+          size={14}
+          weight="regular"
+          className={cn(
+            "shrink-0",
+            hasError
+              ? "text-red-400"
+              : isStreaming
+                ? "text-neutral-500"
+                : "text-neutral-400",
+          )}
+        />
+        <Text
+          variant="small"
+          className={cn(
+            "text-xs",
+            hasError
+              ? "text-red-500"
+              : isStreaming
+                ? "bg-gradient-to-r from-neutral-600 via-neutral-500 to-neutral-600 bg-[length:200%_100%] bg-clip-text text-transparent [animation:shimmer_2s_ease-in-out_infinite]"
+                : "text-neutral-500",
+          )}
+        >
+          {displayText}
+        </Text>
+      </div>
+      {errorMessage && (
+        <Text variant="body-medium" className="text-md ml-6 text-red-500">
+          {errorMessage}
+        </Text>
+      )}
     </div>
   );
 

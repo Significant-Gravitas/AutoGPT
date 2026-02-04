@@ -33,6 +33,7 @@ export function Chat({
     isSessionNotFound,
     sessionId,
     createSession,
+    refreshSession,
     showLoader,
     startPollingForOperation,
   } = useChat({ urlSessionId });
@@ -96,6 +97,7 @@ export function Chat({
             className="flex-1"
             onStreamingChange={onStreamingChange}
             onOperationStarted={startPollingForOperation}
+            onStreamEnd={refreshSession}
             activeStream={
               activeStream
                 ? {

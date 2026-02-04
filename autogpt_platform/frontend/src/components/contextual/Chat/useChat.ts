@@ -26,6 +26,7 @@ export function useChat({ urlSessionId }: UseChatArgs = {}) {
     claimSession,
     clearSession: clearSessionBase,
     loadSession,
+    refreshSession,
     startPollingForOperation,
   } = useChatSession({
     urlSessionId,
@@ -93,6 +94,7 @@ export function useChat({ urlSessionId }: UseChatArgs = {}) {
     createSession,
     clearSession,
     loadSession,
+    refreshSession,
     sessionId: sessionIdFromHook,
     showLoader,
     startPollingForOperation,

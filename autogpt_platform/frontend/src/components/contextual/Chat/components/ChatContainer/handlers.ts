@@ -25,6 +25,7 @@ export interface HandlerDependencies {
   setIsRegionBlockedModalOpen: Dispatch<SetStateAction<boolean>>;
   sessionId: string;
   onOperationStarted?: () => void;
+  onStreamEnd?: () => void;
   onActiveTaskStarted?: (taskInfo: {
     taskId: string;
     operationId: string;
@@ -73,11 +74,20 @@ export function handleTextEnded(
   _chunk: StreamChunk,
   deps: HandlerDependencies,
 ) {
+  console.log("[handleTextEnded] Called", {
+    textFinalizedRef: deps.textFinalizedRef.current,
+    streamEndedRef: deps.streamEndedRef.current,
+    chunksLength: deps.streamingChunksRef.current.length,
+  });
+
   if (deps.textFinalizedRef.current) {
+    console.log("[handleTextEnded] Skipped - already finalized");
     return;
   }
 
   const completedText = deps.streamingChunksRef.current.join("");
+  console.log("[handleTextEnded] Completed text length:", completedText.length);
+
   if (completedText.trim()) {
     deps.textFinalizedRef.current = true;
 
@@ -88,6 +98,11 @@ export function handleTextEnded(
           msg.role === "assistant" &&
           msg.content === completedText,
       );
+      console.log("[handleTextEnded] Adding message", {
+        exists,
+        prevLength: prev.length,
+        contentPreview: completedText.slice(0, 100),
+      });
       if (exists) return prev;
 
       const assistantMessage: ChatMessageData = {
@@ -288,13 +303,26 @@ export function handleStreamEnd(
   _chunk: StreamChunk,
   deps: HandlerDependencies,
 ) {
+  console.log("[handleStreamEnd] Called", {
+    streamEndedRef: deps.streamEndedRef.current,
+    textFinalizedRef: deps.textFinalizedRef.current,
+    hasResponseRef: deps.hasResponseRef.current,
+    chunksLength: deps.streamingChunksRef.current.length,
+  });
+
   if (deps.streamEndedRef.current) {
+    console.log("[handleStreamEnd] Skipped - already ended");
     return;
   }
   deps.streamEndedRef.current = true;
 
   const completedContent = deps.streamingChunksRef.current.join("");
+  console.log("[handleStreamEnd] Content length:", completedContent.length);
+
   if (!completedContent.trim() && !deps.hasResponseRef.current) {
+    console.log(
+      "[handleStreamEnd] No content and no response - adding error message",
+    );
     deps.setMessages((prev) => {
       const exists = prev.some(
         (msg) =>
@@ -315,6 +343,7 @@ export function handleStreamEnd(
     });
   }
   if (completedContent.trim() && !deps.textFinalizedRef.current) {
+    console.log("[handleStreamEnd] Finalizing text from stream_end");
     deps.textFinalizedRef.current = true;
 
     deps.setMessages((prev) => {
@@ -324,6 +353,10 @@ export function handleStreamEnd(
           msg.role === "assistant" &&
           msg.content === completedContent,
       );
+      console.log("[handleStreamEnd] Adding message", {
+        exists,
+        prevLength: prev.length,
+      });
       if (exists) return prev;
 
       const assistantMessage: ChatMessageData = {
@@ -339,6 +372,20 @@ export function handleStreamEnd(
   deps.streamingChunksRef.current = [];
   deps.setHasTextChunks(false);
   deps.setIsStreamingInitiated(false);
+  console.log("[handleStreamEnd] Completed - streaming state cleared");
+
+  // Trigger refetch from API to get authoritative message list
+  // This ensures we have all messages including any that may have been
+  // missed during streaming (e.g., multiple text_ended events)
+  if (deps.onStreamEnd) {
+    console.log(
+      "[handleStreamEnd] Triggering onStreamEnd callback for API refetch",
+    );
+    // Clear local messages before refetch - server data will be authoritative
+    // This prevents duplicates when server returns the same messages
+    deps.setMessages([]);
+    deps.onStreamEnd();
+  }
 }
 
 export function handleError(chunk: StreamChunk, deps: HandlerDependencies) {

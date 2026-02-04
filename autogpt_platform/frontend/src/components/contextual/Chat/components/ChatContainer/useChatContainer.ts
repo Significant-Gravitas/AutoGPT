@@ -59,6 +59,8 @@ interface Args {
   initialMessages: SessionDetailResponse["messages"];
   initialPrompt?: string;
   onOperationStarted?: () => void;
+  /** Called when streaming ends - use this to refetch messages from API */
+  onStreamEnd?: () => void;
   /** Active stream info from the server for reconnection */
   activeStream?: {
     taskId: string;
@@ -73,6 +75,7 @@ export function useChatContainer({
   initialMessages,
   initialPrompt,
   onOperationStarted,
+  onStreamEnd,
   activeStream,
 }: Args) {
   const [messages, setMessages] = useState<ChatMessageData[]>([]);
@@ -147,6 +150,7 @@ export function useChatContainer({
       sessionId,
       setIsStreamingInitiated,
       onOperationStarted,
+      onStreamEnd,
       onActiveTaskStarted: handleActiveTaskStarted,
     });
 
@@ -154,10 +158,24 @@ export function useChatContainer({
     return function guardedDispatcher(chunk: StreamChunk) {
       // Skip if component unmounted or this is a stale dispatcher
       if (!isMountedRef.current) {
+        console.log("[guardedDispatcher] Skipped - unmounted", {
+          chunkType: chunk.type,
+        });
         return;
       }
       if (dispatcherId !== currentDispatcherIdRef.current) {
+        console.log("[guardedDispatcher] Skipped - stale dispatcher", {
+          dispatcherId,
+          currentId: currentDispatcherIdRef.current,
+          chunkType: chunk.type,
+        });
         return;
+      }
+      if (chunk.type === "text_ended" || chunk.type === "stream_end") {
+        console.log("[guardedDispatcher] Processing critical event", {
+          chunkType: chunk.type,
+          dispatcherId,
+        });
       }
       baseDispatcher(chunk);
     };
@@ -167,8 +185,17 @@ export function useChatContainer({
     function handleSessionChange() {
       const isSessionChange = sessionId !== previousSessionIdRef.current;
 
+      console.log("[handleSessionChange] Effect running", {
+        sessionId,
+        isSessionChange,
+        activeStream: activeStream?.taskId,
+        streamEndedRef: streamEndedRef.current,
+        textFinalizedRef: textFinalizedRef.current,
+      });
+
       // Handle session change - reset state
       if (isSessionChange) {
+        console.log("[handleSessionChange] Session changed - resetting state");
         const prevSession = previousSessionIdRef.current;
         if (prevSession) {
           stopStreaming(prevSession);
@@ -192,12 +219,19 @@ export function useChatContainer({
         const streamKey = `${sessionId}:${activeStream.taskId}`;
 
         if (connectedActiveStreamRef.current === streamKey) {
+          console.log("[handleSessionChange] Already connected to this stream");
           return;
         }
 
         // Skip if there's already an active stream for this session in the store
         const existingStream = activeStreams.get(sessionId);
         if (existingStream && existingStream.status === "streaming") {
+          console.log(
+            "[handleSessionChange] Active stream in store - skipping",
+            {
+              existingStatus: existingStream.status,
+            },
+          );
           connectedActiveStreamRef.current = streamKey;
           return;
         }
@@ -206,10 +240,24 @@ export function useChatContainer({
         // This prevents a race condition where server's active_stream hasn't been cleared yet
         // but the client has already received stream_end and finalized the message
         if (streamEndedRef.current || textFinalizedRef.current) {
+          console.log(
+            "[handleSessionChange] Stream ended locally - skipping reconnection",
+            {
+              streamEndedRef: streamEndedRef.current,
+              textFinalizedRef: textFinalizedRef.current,
+            },
+          );
           connectedActiveStreamRef.current = streamKey;
           return;
         }
 
+        console.log(
+          "[handleSessionChange] RECONNECTING TO STREAM - clearing messages",
+          {
+            streamKey,
+            existingStreamStatus: existingStream?.status,
+          },
+        );
         connectedActiveStreamRef.current = streamKey;
 
         // Clear all state before reconnection to prevent duplicates
@@ -328,6 +376,16 @@ export function useChatContainer({
           return true;
         });
         // Only update state if something was actually filtered
+        if (filtered.length !== prev.length) {
+          console.log(
+            "[cleanupCompletedOperations] Removed operation messages",
+            {
+              before: prev.length,
+              after: filtered.length,
+              completedToolIds: Array.from(completedToolIds),
+            },
+          );
+        }
         return filtered.length === prev.length ? prev : filtered;
       });
     },
@@ -361,6 +419,29 @@ export function useChatContainer({
 
     // Server messages first (correct order), then new local messages
     const combined = [...processedInitial, ...newLocalMessages];
+
+    // Debug logging for message computation
+    const localAssistantMsgs = messages.filter(
+      (m) => m.type === "message" && m.role === "assistant",
+    );
+    const serverAssistantMsgs = processedInitial.filter(
+      (m) => m.type === "message" && m.role === "assistant",
+    );
+    const combinedAssistantMsgs = combined.filter(
+      (m) => m.type === "message" && m.role === "assistant",
+    );
+
+    if (localAssistantMsgs.length > 0 || serverAssistantMsgs.length > 0) {
+      console.log("[allMessages] Computing messages", {
+        localTotal: messages.length,
+        localAssistant: localAssistantMsgs.length,
+        serverTotal: processedInitial.length,
+        serverAssistant: serverAssistantMsgs.length,
+        newLocalTotal: newLocalMessages.length,
+        combinedTotal: combined.length,
+        combinedAssistant: combinedAssistantMsgs.length,
+      });
+    }
 
     // Post-processing: Remove duplicate assistant messages that can occur during
     // race conditions (e.g., rapid screen switching during SSE reconnection).
@@ -397,6 +478,10 @@ export function useChatContainer({
           otherContent.startsWith(currentContent.slice(0, 100))
         ) {
           // Current is a shorter/incomplete version of other - skip it
+          console.log("[allMessages] Dedup: message dominated (prefix)", {
+            currentLen: currentContent.length,
+            otherLen: otherContent.length,
+          });
           dominated = true;
           break;
         }
@@ -412,6 +497,10 @@ export function useChatContainer({
         ) {
           // Same prefix - keep the longer one
           if (otherContent.length > currentContent.length) {
+            console.log("[allMessages] Dedup: message dominated (similar)", {
+              currentLen: currentContent.length,
+              otherLen: otherContent.length,
+            });
             dominated = true;
             break;
           }
@@ -421,6 +510,16 @@ export function useChatContainer({
       if (!dominated) {
         deduplicated.push(current);
       }
+    }
+
+    const finalAssistantMsgs = deduplicated.filter(
+      (m) => m.type === "message" && m.role === "assistant",
+    );
+    if (combinedAssistantMsgs.length !== finalAssistantMsgs.length) {
+      console.log("[allMessages] Deduplication removed assistant messages", {
+        before: combinedAssistantMsgs.length,
+        after: finalAssistantMsgs.length,
+      });
     }
 
     return deduplicated;

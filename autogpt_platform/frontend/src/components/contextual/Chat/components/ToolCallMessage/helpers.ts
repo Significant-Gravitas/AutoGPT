@@ -250,3 +250,22 @@ export function formatToolResultAsJson(result: ToolResult) {
   }
   return String(result ?? "");
 }
+
+/** Check if a tool result is an error response */
+export function isToolResultError(result: ToolResult): boolean {
+  const parsed = parseToolResult(result);
+  return parsed?.type === "error";
+}
+
+/** Get error message from a tool result */
+export function getToolResultErrorMessage(result: ToolResult): string | null {
+  const parsed = parseToolResult(result);
+  if (parsed?.type === "error") {
+    return (
+      (parsed.message as string) ||
+      (parsed.error as string) ||
+      "An error occurred"
+    );
+  }
+  return null;
+}

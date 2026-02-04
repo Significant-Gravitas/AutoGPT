@@ -82,42 +82,99 @@ export function hasFinalAssistantMessage(messages: ChatMessageData[]): boolean {
 }
 
 /**
+ * Deduplicate consecutive tool_call messages with the same toolName.
+ * Shows only the last one from each consecutive group.
+ */
+function deduplicateConsecutiveToolCalls(
+  messages: ChatMessageData[],
+): ChatMessageData[] {
+  const result: ChatMessageData[] = [];
+
+  for (let i = 0; i < messages.length; i++) {
+    const current = messages[i];
+
+    // If not a tool_call, just add it
+    if (current.type !== "tool_call") {
+      result.push(current);
+      continue;
+    }
+
+    // Check if there's a next message that's also a tool_call with the same toolName
+    const next = messages[i + 1];
+    if (
+      next &&
+      next.type === "tool_call" &&
+      "toolName" in current &&
+      "toolName" in next &&
+      current.toolName === next.toolName
+    ) {
+      // Skip this one, the next one (or a later one) will be shown
+      continue;
+    }
+
+    // This is the last in a consecutive group (or standalone), add it
+    result.push(current);
+  }
+
+  return result;
+}
+
+/**
  * Filter messages for display in the main message list.
  *
  * Behavior:
- * - tool_response: ALWAYS hidden from main list (shown in ThinkingAccordion during streaming)
+ * - tool_response: ALWAYS hidden from main list (errors shown inline in tool_call)
  * - tool_call: ALWAYS visible (shows with icon and small grey text)
+ *   EXCEPT: Consecutive tool_calls with same toolName are deduplicated (show only last)
  * - operation_*: Hidden after streaming completes with a final answer
  * - Other messages: Always visible
  *
  * This creates a ChatGPT-style UX where:
  * - Tool invocations (tool_call) are always visible (clickable to show response in dialog)
  * - Tool outputs (tool_response) are hidden but viewable via tool_call click
+ * - Tool errors are shown inline below the tool_call message
  * - After streaming, user messages, tool calls, and final assistant response remain
  */
 export function filterMessagesForDisplay(
   messages: ChatMessageData[],
   isStreaming: boolean,
 ): ChatMessageData[] {
-  // Always filter out tool_response - it's shown in the ThinkingAccordion during streaming
+  // Always filter out tool_response - errors are shown inline in tool_call
   const filtered = messages.filter((msg) => !isToolResponseMessage(msg));
+
+  // Deduplicate consecutive tool_call messages with the same toolName
+  const deduplicated = deduplicateConsecutiveToolCalls(filtered);
 
   // During streaming, keep operation messages visible
   if (isStreaming) {
-    return filtered;
+    return deduplicated;
   }
 
   // Check if we have a final assistant message
   const hasFinalAnswer = hasFinalAssistantMessage(messages);
 
+  const assistantMsgCount = messages.filter(
+    (m) => m.type === "message" && m.role === "assistant",
+  ).length;
+
+  console.log("[filterMessagesForDisplay] Post-streaming filter", {
+    isStreaming,
+    hasFinalAnswer,
+    totalMessages: messages.length,
+    assistantMessages: assistantMsgCount,
+  });
+
   // If no final answer (error/cancel case), keep operation messages visible for debugging
   if (!hasFinalAnswer) {
-    return filtered;
+    console.log(
+      "[filterMessagesForDisplay] No final answer - keeping operation messages",
+    );
+    return deduplicated;
   }
 
   // Filter out operation messages now that we have a final answer
   // Note: tool_call messages are kept visible (clickable to show tool response)
-  return filtered.filter((msg) => !isPostStreamHiddenMessage(msg));
+  return deduplicated.filter((msg) => !isPostStreamHiddenMessage(msg));
 }
 
 export function parseToolResult(

@@ -5,6 +5,8 @@ import { cn } from "@/lib/utils";
 import { useEffect, useState } from "react";
 import { ThinkingAccordionAnimation } from "./components/ThinkingAccordionAnimation";
 
+const INITIAL_LABELS = ["Thinking…", "Pondering…", "Reflecting…"] as const;
+
 const THINKING_LABELS = [
   "Hmm, let me think…",
   "Cooking up something good…",
@@ -22,6 +24,7 @@ const THINKING_LABELS = [
   "Getting there…",
 ] as const;
 
+const INITIAL_PHASE_DURATION = 5000;
 const LABEL_ROTATION_INTERVAL = 4000;
 
 export interface Props {
@@ -29,12 +32,27 @@ export interface Props {
 }
 
 export function ThinkingAccordion({ className }: Props) {
+  const [isInitialPhase, setIsInitialPhase] = useState(true);
   const [currentLabel, setCurrentLabel] = useState<string>(
-    () => THINKING_LABELS[Math.floor(Math.random() * THINKING_LABELS.length)],
+    () => INITIAL_LABELS[Math.floor(Math.random() * INITIAL_LABELS.length)],
   );
 
-  // Rotate labels randomly
+  // Transition from initial phase to rotating labels after 5 seconds
   useEffect(() => {
+    const timeout = setTimeout(() => {
+      setIsInitialPhase(false);
+      setCurrentLabel(
+        THINKING_LABELS[Math.floor(Math.random() * THINKING_LABELS.length)],
+      );
+    }, INITIAL_PHASE_DURATION);
+
+    return () => clearTimeout(timeout);
+  }, []);
+
+  // Rotate labels randomly (only after initial phase)
+  useEffect(() => {
+    if (isInitialPhase) return;
+
     const interval = setInterval(() => {
       setCurrentLabel((prev) => {
         let next: string;
@@ -47,7 +65,7 @@ export function ThinkingAccordion({ className }: Props) {
     }, LABEL_ROTATION_INTERVAL);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [isInitialPhase]);
 
   return (
     <div
