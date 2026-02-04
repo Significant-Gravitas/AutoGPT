@@ -464,6 +464,11 @@ class Agent(BaseAgent[AnyActionProposal], Configurable[AgentSettings]):
 
         await self.run_pipeline(AfterExecute.after_execute, result)
 
+        # Store feedback so it also appears as a prominent user message
+        # in the next prompt (in addition to the tool result)
+        if user_feedback:
+            self.event_history.append_user_feedback(user_feedback)
+
         logger.debug("\n".join(self.trace))
 
         return result

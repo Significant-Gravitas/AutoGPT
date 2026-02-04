@@ -102,13 +102,16 @@ class ActionHistoryComponent(
 
         yield from messages
 
-        # Include any pending user feedback (from approval + feedback scenarios)
-        # This feedback was provided when the user approved the command, so the
-        # command was executed successfully. Make this explicit to the agent.
+        # Include any pending user feedback as a prominent user message.
+        # This ensures the agent pays attention to what the user said,
+        # whether they approved a command with feedback or denied it.
         pending_feedback = self.event_history.pop_pending_feedback()
-        for feedback in pending_feedback:
+        if pending_feedback:
+            feedback_text = "\n".join(f"- {feedback}" for feedback in pending_feedback)
             yield ChatMessage.user(
-                f"Command executed successfully. User feedback: {feedback}"
+                f"[USER FEEDBACK] The user provided the following feedback. "
+                f"Read it carefully and adjust your approach accordingly:\n"
+                f"{feedback_text}"
             )
 
     def after_parse(self, result: AnyProposal) -> None:
