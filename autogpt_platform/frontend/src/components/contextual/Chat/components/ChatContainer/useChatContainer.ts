@@ -202,6 +202,14 @@ export function useChatContainer({
           return;
         }
 
+        // Skip reconnection if stream already ended locally - the message is already in local state
+        // This prevents a race condition where server's active_stream hasn't been cleared yet
+        // but the client has already received stream_end and finalized the message
+        if (streamEndedRef.current || textFinalizedRef.current) {
+          connectedActiveStreamRef.current = streamKey;
+          return;
+        }
+
         connectedActiveStreamRef.current = streamKey;
 
         // Clear all state before reconnection to prevent duplicates
