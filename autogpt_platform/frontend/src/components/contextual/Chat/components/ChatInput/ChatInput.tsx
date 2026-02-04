@@ -58,7 +58,7 @@ export function ChatInput({
             rows={1}
             className={cn(
               "w-full resize-none overflow-y-auto border-0 bg-transparent text-[1rem] leading-6 text-black",
-              "placeholder:text-center placeholder:text-zinc-400",
+              "placeholder:text-zinc-400",
               "focus:outline-none focus:ring-0",
               "disabled:text-zinc-500",
               hasMultipleLines ? "pb-6 pl-4 pr-4 pt-2" : "pb-4 pl-6 pr-14 pt-4",
