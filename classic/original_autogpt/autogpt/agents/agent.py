@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import logging
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Optional
 
 import sentry_sdk
@@ -37,6 +38,7 @@ from forge.components.http_client import HTTPClientComponent
 from forge.components.image_gen import ImageGeneratorComponent
 from forge.components.math_utils import MathUtilsComponent
 from forge.components.platform_blocks import PlatformBlocksComponent
+from forge.components.skills import SkillComponent, SkillConfiguration
 from forge.components.system import SystemComponent
 from forge.components.text_utils import TextUtilsComponent
 from forge.components.todo import TodoComponent
@@ -214,6 +216,16 @@ class Agent(BaseAgent[AnyActionProposal], Configurable[AgentSettings]):
         )
         # Platform blocks (enabled only if PLATFORM_API_KEY is set)
         self.platform_blocks = PlatformBlocksComponent()
+
+        # Skills (SKILL.md support)
+        self.skills = SkillComponent(
+            SkillConfiguration(
+                skill_directories=[
+                    app_config.workspace / ".autogpt/skills",
+                    Path.home() / ".autogpt/skills",
+                ]
+            )
+        )
 
         self.event_history = settings.history
 
