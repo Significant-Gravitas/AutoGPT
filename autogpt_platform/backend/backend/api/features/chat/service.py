@@ -1,11 +1,14 @@
 import asyncio
 import logging
 import time
+import uuid as uuid_module
 from asyncio import CancelledError
 from collections.abc import AsyncGenerator
 from typing import TYPE_CHECKING, Any, cast
 
 import openai
+
+from backend.util.prompt import compress_context
 
 if TYPE_CHECKING:
     from backend.util.prompt import CompressResult
@@ -467,8 +470,6 @@ async def stream_chat_completion(
     should_retry = False
 
     # Generate unique IDs for AI SDK protocol
-    import uuid as uuid_module
-
     message_id = str(uuid_module.uuid4())
     text_block_id = str(uuid_module.uuid4())
 
@@ -826,10 +827,6 @@ async def _manage_context_window(
     Returns:
         CompressResult with compacted messages and metadata
     """
-    import openai
-
-    from backend.util.prompt import compress_context
-
     # Convert messages to dict format
     messages_dict = []
     for msg in messages:
@@ -1140,8 +1137,6 @@ async def _yield_tool_call(
         KeyError: If expected tool call fields are missing
         TypeError: If tool call structure is invalid
     """
-    import uuid as uuid_module
-
     tool_name = tool_calls[yield_idx]["function"]["name"]
     tool_call_id = tool_calls[yield_idx]["id"]
 
@@ -1762,8 +1757,6 @@ async def _generate_llm_continuation_with_streaming(
     after a tool result is saved. Chunks are published to the stream registry
     so reconnecting clients can receive them.
     """
-    import uuid as uuid_module
-
     try:
         # Load fresh session from DB (bypass cache to get the updated tool result)
         await invalidate_session_cache(session_id)
@@ -1799,10 +1792,6 @@ async def _generate_llm_continuation_with_streaming(
             extra_body["session_id"] = session_id[:128]
 
         # Make streaming LLM call (no tools - just text response)
-        from typing import cast
-
-        from openai.types.chat import ChatCompletionMessageParam
-
         # Generate unique IDs for AI SDK protocol
         message_id = str(uuid_module.uuid4())
         text_block_id = str(uuid_module.uuid4())
