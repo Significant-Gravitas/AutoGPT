@@ -100,7 +100,7 @@ Optionally filter results by team name to narrow searches to specific workspaces
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | term | Term to search for issues | str | Yes |
-| max_results | Maximum number of results to return (default: 10, range: 1-100) | int | No |
+| max_results | Maximum number of results to return | int | No |
 | team_name | Optional team name to filter results (e.g., 'Internal', 'Open Source') | str | No |
 
 ### Outputs
