@@ -246,7 +246,7 @@ If you encounter any issues, verify that:
   ```bash
   ollama pull llama3.2
   ```
-- If using a custom model, ensure it's added to the model list in `backend/server/model.py`
+- If using a custom model, ensure it's added to the model list in `backend/api/model.py`
 
 #### Docker Issues
 - Ensure Docker daemon is running:

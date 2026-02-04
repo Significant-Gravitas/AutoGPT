@@ -917,6 +917,28 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/chat/config/ttl": {
+      "get": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Get Ttl Config",
+        "description": "Get the stream TTL configuration.\n\nReturns the Time-To-Live settings for chat streams, which determines\nhow long clients can reconnect to an active stream.\n\nReturns:\n    dict: TTL configuration with seconds and milliseconds values.",
+        "operationId": "getV2GetTtlConfig",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Getv2Getttlconfig"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/chat/health": {
       "get": {
         "tags": ["v2", "chat", "chat"],
@@ -933,6 +955,63 @@
                   "type": "object",
                   "title": "Response Getv2Healthcheck"
                 }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/chat/operations/{operation_id}/complete": {
+      "post": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Complete Operation",
+        "description": "External completion webhook for long-running operations.\n\nCalled by Agent Generator (or other services) when an operation completes.\nThis triggers the stream registry to publish completion and continue LLM generation.\n\nArgs:\n    operation_id: The operation ID to complete.\n    request: Completion payload with success status and result/error.\n    x_api_key: Internal API key for authentication.\n\nReturns:\n    dict: Status of the completion.\n\nRaises:\n    HTTPException: If API key is invalid or operation not found.",
+        "operationId": "postV2CompleteOperation",
+        "parameters": [
+          {
+            "name": "operation_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Operation Id" }
+          },
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OperationCompleteRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Postv2Completeoperation"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
           }
@@ -1022,7 +1101,7 @@
       "get": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Get Session",
-        "description": "Retrieve the details of a specific chat session.\n\nLooks up a chat session by ID for the given user (if authenticated) and returns all session data including messages.\n\nArgs:\n    session_id: The unique identifier for the desired chat session.\n    user_id: The optional authenticated user ID, or None for anonymous access.\n\nReturns:\n    SessionDetailResponse: Details for the requested session, or None if not found.",
+        "description": "Retrieve the details of a specific chat session.\n\nLooks up a chat session by ID for the given user (if authenticated) and returns all session data including messages.\nIf there's an active stream for this session, returns the task_id for reconnection.\n\nArgs:\n    session_id: The unique identifier for the desired chat session.\n    user_id: The optional authenticated user ID, or None for anonymous access.\n\nReturns:\n    SessionDetailResponse: Details for the requested session, including active_stream info if applicable.",
         "operationId": "getV2GetSession",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -1157,7 +1236,7 @@
       "post": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Stream Chat Post",
-        "description": "Stream chat responses for a session (POST with context support).\n\nStreams the AI/completion responses in real time over Server-Sent Events (SSE), including:\n  - Text fragments as they are generated\n  - Tool call UI elements (if invoked)\n  - Tool execution results\n\nArgs:\n    session_id: The chat session identifier to associate with the streamed messages.\n    request: Request body containing message, is_user_message, and optional context.\n    user_id: Optional authenticated user ID.\nReturns:\n    StreamingResponse: SSE-formatted response chunks.",
+        "description": "Stream chat responses for a session (POST with context support).\n\nStreams the AI/completion responses in real time over Server-Sent Events (SSE), including:\n  - Text fragments as they are generated\n  - Tool call UI elements (if invoked)\n  - Tool execution results\n\nThe AI generation runs in a background task that continues even if the client disconnects.\nAll chunks are written to Redis for reconnection support. If the client disconnects,\nthey can reconnect using GET /tasks/{task_id}/stream to resume from where they left off.\n\nArgs:\n    session_id: The chat session identifier to associate with the streamed messages.\n    request: Request body containing message, is_user_message, and optional context.\n    user_id: Optional authenticated user ID.\nReturns:\n    StreamingResponse: SSE-formatted response chunks. First chunk is a \"start\" event\n    containing the task_id for reconnection.",
         "operationId": "postV2StreamChatPost",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -1176,6 +1255,94 @@
             }
           }
         },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/chat/tasks/{task_id}": {
+      "get": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Get Task Status",
+        "description": "Get the status of a long-running task.\n\nArgs:\n    task_id: The task ID to check.\n    user_id: Authenticated user ID for ownership validation.\n\nReturns:\n    dict: Task status including task_id, status, tool_name, and operation_id.\n\nRaises:\n    NotFoundError: If task_id is not found or user doesn't have access.",
+        "operationId": "getV2GetTaskStatus",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Task Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Getv2Gettaskstatus"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/chat/tasks/{task_id}/stream": {
+      "get": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Stream Task",
+        "description": "Reconnect to a long-running task's SSE stream.\n\nWhen a long-running operation (like agent generation) starts, the client\nreceives a task_id. If the connection drops, the client can reconnect\nusing this endpoint to resume receiving updates.\n\nArgs:\n    task_id: The task ID from the operation_started response.\n    user_id: Authenticated user ID for ownership validation.\n    last_message_id: Last Redis Stream message ID received (\"0-0\" for full replay).\n\nReturns:\n    StreamingResponse: SSE-formatted response chunks starting after last_message_id.\n\nRaises:\n    HTTPException: 404 if task not found, 410 if task expired, 403 if access denied.",
+        "operationId": "getV2StreamTask",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Task Id" }
+          },
+          {
+            "name": "last_message_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Last Redis Stream message ID received (e.g., '1706540123456-0'). Use '0-0' for full replay.",
+              "default": "0-0",
+              "title": "Last Message Id"
+            },
+            "description": "Last Redis Stream message ID received (e.g., '1706540123456-0'). Use '0-0' for full replay."
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -5912,6 +6079,40 @@
         }
       }
     },
+    "/api/workspace/files/{file_id}/download": {
+      "get": {
+        "tags": ["workspace"],
+        "summary": "Download file by ID",
+        "description": "Download a file by its ID.\n\nReturns the file content directly or redirects to a signed URL for GCS.",
+        "operationId": "getWorkspaceDownload file by id",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "file_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "File Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health": {
       "get": {
         "tags": ["health"],
@@ -6133,6 +6334,18 @@
         "required": ["latest_data", "alert"],
         "title": "AccuracyTrendsResponse",
         "description": "Response model for accuracy trends and alerts."
+      },
+      "ActiveStreamInfo": {
+        "properties": {
+          "task_id": { "type": "string", "title": "Task Id" },
+          "last_message_id": { "type": "string", "title": "Last Message Id" },
+          "operation_id": { "type": "string", "title": "Operation Id" },
+          "tool_name": { "type": "string", "title": "Tool Name" }
+        },
+        "type": "object",
+        "required": ["task_id", "last_message_id", "operation_id", "tool_name"],
+        "title": "ActiveStreamInfo",
+        "description": "Information about an active stream for reconnection."
       },
       "AddUserCreditsResponse": {
         "properties": {
@@ -7947,6 +8160,25 @@
             ]
           },
           "new_output": { "type": "boolean", "title": "New Output" },
+          "execution_count": {
+            "type": "integer",
+            "title": "Execution Count",
+            "default": 0
+          },
+          "success_rate": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Success Rate"
+          },
+          "avg_correctness_score": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Avg Correctness Score"
+          },
+          "recent_executions": {
+            "items": { "$ref": "#/components/schemas/RecentExecution" },
+            "type": "array",
+            "title": "Recent Executions",
+            "description": "List of recent executions with status, score, and summary"
+          },
           "can_access_graph": {
             "type": "boolean",
             "title": "Can Access Graph"
@@ -8770,6 +9002,27 @@
         ],
         "title": "OnboardingStep"
       },
+      "OperationCompleteRequest": {
+        "properties": {
+          "success": { "type": "boolean", "title": "Success" },
+          "result": {
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "string" },
+              { "type": "null" }
+            ],
+            "title": "Result"
+          },
+          "error": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": ["success"],
+        "title": "OperationCompleteRequest",
+        "description": "Request model for external completion webhook."
+      },
       "Pagination": {
         "properties": {
           "total_items": {
@@ -9340,6 +9593,23 @@
         "required": ["providers", "pagination"],
         "title": "ProviderResponse"
       },
+      "RecentExecution": {
+        "properties": {
+          "status": { "type": "string", "title": "Status" },
+          "correctness_score": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Correctness Score"
+          },
+          "activity_summary": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Activity Summary"
+          }
+        },
+        "type": "object",
+        "required": ["status"],
+        "title": "RecentExecution",
+        "description": "Summary of a recent execution for quality assessment.\n\nUsed by the LLM to understand the agent's recent performance with specific examples\nrather than just aggregate statistics."
+      },
       "RefundRequest": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -9608,6 +9878,12 @@
             "items": { "additionalProperties": true, "type": "object" },
             "type": "array",
             "title": "Messages"
+          },
+          "active_stream": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/ActiveStreamInfo" },
+              { "type": "null" }
+            ]
           }
         },
         "type": "object",
@@ -9763,7 +10039,8 @@
           "sub_heading": { "type": "string", "title": "Sub Heading" },
           "description": { "type": "string", "title": "Description" },
           "runs": { "type": "integer", "title": "Runs" },
-          "rating": { "type": "number", "title": "Rating" }
+          "rating": { "type": "number", "title": "Rating" },
+          "agent_graph_id": { "type": "string", "title": "Agent Graph Id" }
         },
         "type": "object",
         "required": [
@@ -9775,7 +10052,8 @@
           "sub_heading",
           "description",
           "runs",
-          "rating"
+          "rating",
+          "agent_graph_id"
         ],
         "title": "StoreAgent"
       },

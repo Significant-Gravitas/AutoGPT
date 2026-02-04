@@ -2,6 +2,7 @@ import { toast } from "sonner";
 import type { StreamChunk } from "../../chat-types";
 import type { HandlerDependencies } from "./handlers";
 import {
+  getErrorDisplayMessage,
   handleError,
   handleLoginNeeded,
   handleStreamEnd,
@@ -24,16 +25,22 @@ export function createStreamEventDispatcher(
       chunk.type === "need_login" ||
       chunk.type === "error"
     ) {
-      if (!deps.hasResponseRef.current) {
-        console.info("[ChatStream] First response chunk:", {
-          type: chunk.type,
-          sessionId: deps.sessionId,
-        });
-      }
       deps.hasResponseRef.current = true;
     }
 
     switch (chunk.type) {
+      case "stream_start":
+        // Store task ID for SSE reconnection
+        if (chunk.taskId && deps.onActiveTaskStarted) {
+          deps.onActiveTaskStarted({
+            taskId: chunk.taskId,
+            operationId: chunk.taskId,
+            toolName: "chat",
+            toolCallId: "chat_stream",
+          });
+        }
+        break;
+
       case "text_chunk":
         handleTextChunk(chunk, deps);
         break;
@@ -56,11 +63,7 @@ export function createStreamEventDispatcher(
         break;
 
       case "stream_end":
-        console.info("[ChatStream] Stream ended:", {
-          sessionId: deps.sessionId,
-          hasResponse: deps.hasResponseRef.current,
-          chunkCount: deps.streamingChunksRef.current.length,
-        });
+        // Note: "finish" type from backend gets normalized to "stream_end" by normalizeStreamChunk
         handleStreamEnd(chunk, deps);
         break;
 
@@ -70,7 +73,7 @@ export function createStreamEventDispatcher(
         // Show toast at dispatcher level to avoid circular dependencies
         if (!isRegionBlocked) {
           toast.error("Chat Error", {
-            description: chunk.message || chunk.content || "An error occurred",
+            description: getErrorDisplayMessage(chunk),
           });
         }
         break;

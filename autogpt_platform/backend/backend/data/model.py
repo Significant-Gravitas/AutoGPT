@@ -666,10 +666,16 @@ class CredentialsFieldInfo(BaseModel, Generic[CP, CT]):
         if not (self.discriminator and self.discriminator_mapping):
             return self
 
+        try:
+            provider = self.discriminator_mapping[discriminator_value]
+        except KeyError:
+            raise ValueError(
+                f"Model '{discriminator_value}' is not supported. "
+                "It may have been deprecated. Please update your agent configuration."
+            )
+
         return CredentialsFieldInfo(
-            credentials_provider=frozenset(
-                [self.discriminator_mapping[discriminator_value]]
-            ),
+            credentials_provider=frozenset([provider]),
             credentials_types=self.supported_types,
             credentials_scopes=self.required_scopes,
             discriminator=self.discriminator,

@@ -63,6 +63,7 @@ model User {
   IntegrationWebhooks   IntegrationWebhook[]
   NotificationBatches   UserNotificationBatch[]
   PendingHumanReviews   PendingHumanReview[]
+  Workspace             UserWorkspace?
 
   // OAuth Provider relations
   OAuthApplications       OAuthApplication[]
@@ -135,6 +136,53 @@ model CoPilotUnderstanding {
   data Json?
 
   @@index([userId])
+}
+
+////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////
+////////////////   USER WORKSPACE TABLES   /////////////////
+////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////
+
+// User's persistent file storage workspace
+model UserWorkspace {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId String @unique
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  Files UserWorkspaceFile[]
+
+  @@index([userId])
+}
+
+// Individual files in a user's workspace
+model UserWorkspaceFile {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workspaceId String
+  Workspace   UserWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  // File metadata
+  name        String // User-visible filename
+  path        String // Virtual path (e.g., "/documents/report.pdf")
+  storagePath String // Actual GCS or local storage path
+  mimeType    String
+  sizeBytes   BigInt
+  checksum    String? // SHA256 for integrity
+
+  // File state
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
+
+  metadata Json @default("{}")
+
+  @@unique([workspaceId, path])
+  @@index([workspaceId, isDeleted])
 }
 
 model BuilderSearchHistory {

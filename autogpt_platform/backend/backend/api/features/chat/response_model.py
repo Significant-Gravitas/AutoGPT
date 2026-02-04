@@ -52,6 +52,10 @@ class StreamStart(StreamBaseResponse):
 
     type: ResponseType = ResponseType.START
     messageId: str = Field(..., description="Unique message ID")
+    taskId: str | None = Field(
+        default=None,
+        description="Task ID for SSE reconnection. Clients can reconnect using GET /tasks/{taskId}/stream",
+    )
 
 
 class StreamFinish(StreamBaseResponse):
