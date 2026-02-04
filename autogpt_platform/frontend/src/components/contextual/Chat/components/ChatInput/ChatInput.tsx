@@ -29,7 +29,6 @@ export function ChatInput({
   className,
   inputId = "chat-input",
 }: Props) {
-  const inputId = "chat-input";
   const {
     value,
     setValue,

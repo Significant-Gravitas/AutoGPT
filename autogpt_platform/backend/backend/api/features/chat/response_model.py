@@ -57,6 +57,16 @@ class StreamStart(StreamBaseResponse):
         description="Task ID for SSE reconnection. Clients can reconnect using GET /tasks/{taskId}/stream",
     )
 
+    def to_sse(self) -> str:
+        """Convert to SSE format, excluding non-protocol fields like taskId."""
+        import json
+
+        data: dict[str, Any] = {
+            "type": self.type.value,
+            "messageId": self.messageId,
+        }
+        return f"data: {json.dumps(data)}\n\n"
+
 
 class StreamFinish(StreamBaseResponse):
     """End of message/stream."""
