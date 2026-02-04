@@ -2,6 +2,7 @@ import logging
 from typing import Any
 
 from prisma.enums import ContentType
+from pydantic import BaseModel, field_validator
 
 from backend.api.features.chat.model import ChatSession
 from backend.api.features.chat.tools.base import BaseTool, ToolResponseBase
@@ -16,6 +17,18 @@ from backend.api.features.store.hybrid_search import unified_hybrid_search
 from backend.data.block import get_block
 
 logger = logging.getLogger(__name__)
+
+
+class FindBlockInput(BaseModel):
+    """Input parameters for the find_block tool."""
+
+    query: str = ""
+
+    @field_validator("query", mode="before")
+    @classmethod
+    def strip_string(cls, v: Any) -> str:
+        """Strip whitespace from query."""
+        return v.strip() if isinstance(v, str) else (v if v is not None else "")
 
 
 class FindBlockTool(BaseTool):
@@ -59,24 +72,24 @@ class FindBlockTool(BaseTool):
         self,
         user_id: str | None,
         session: ChatSession,
-        **kwargs,
+        **kwargs: Any,
     ) -> ToolResponseBase:
         """Search for blocks matching the query.
 
         Args:
             user_id: User ID (required)
             session: Chat session
-            query: Search query
+            **kwargs: Tool parameters
 
         Returns:
             BlockListResponse: List of matching blocks
             NoResultsResponse: No blocks found
             ErrorResponse: Error message
         """
-        query = kwargs.get("query", "").strip()
+        params = FindBlockInput(**kwargs)
         session_id = session.session_id
 
-        if not query:
+        if not params.query:
             return ErrorResponse(
                 message="Please provide a search query",
                 session_id=session_id,
@@ -85,7 +98,7 @@ class FindBlockTool(BaseTool):
         try:
             # Search for blocks using hybrid search
             results, total = await unified_hybrid_search(
-                query=query,
+                query=params.query,
                 content_types=[ContentType.BLOCK],
                 page=1,
                 page_size=10,
@@ -93,7 +106,7 @@ class FindBlockTool(BaseTool):
 
             if not results:
                 return NoResultsResponse(
-                    message=f"No blocks found for '{query}'",
+                    message=f"No blocks found for '{params.query}'",
                     suggestions=[
                         "Try broader keywords like 'email', 'http', 'text', 'ai'",
                         "Check spelling of technical terms",
@@ -165,7 +178,7 @@ class FindBlockTool(BaseTool):
 
             if not blocks:
                 return NoResultsResponse(
-                    message=f"No blocks found for '{query}'",
+                    message=f"No blocks found for '{params.query}'",
                     suggestions=[
                         "Try broader keywords like 'email', 'http', 'text', 'ai'",
                     ],
@@ -174,13 +187,13 @@ class FindBlockTool(BaseTool):
 
             return BlockListResponse(
                 message=(
-                    f"Found {len(blocks)} block(s) matching '{query}'. "
+                    f"Found {len(blocks)} block(s) matching '{params.query}'. "
                     "To execute a block, use run_block with the block's 'id' field "
                     "and provide 'input_data' matching the block's input_schema."
                 ),
                 blocks=blocks,
                 count=len(blocks),
-                query=query,
+                query=params.query,
                 session_id=session_id,
             )
 

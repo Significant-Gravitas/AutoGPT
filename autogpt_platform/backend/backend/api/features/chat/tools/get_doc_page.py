@@ -4,6 +4,8 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from pydantic import BaseModel, field_validator
+
 from backend.api.features.chat.model import ChatSession
 from backend.api.features.chat.tools.base import BaseTool
 from backend.api.features.chat.tools.models import (
@@ -16,6 +18,18 @@ logger = logging.getLogger(__name__)
 
 # Base URL for documentation (can be configured)
 DOCS_BASE_URL = "https://docs.agpt.co"
+
+
+class GetDocPageInput(BaseModel):
+    """Input parameters for the get_doc_page tool."""
+
+    path: str = ""
+
+    @field_validator("path", mode="before")
+    @classmethod
+    def strip_string(cls, v: Any) -> str:
+        """Strip whitespace from path."""
+        return v.strip() if isinstance(v, str) else (v if v is not None else "")
 
 
 class GetDocPageTool(BaseTool):
@@ -75,23 +89,23 @@ class GetDocPageTool(BaseTool):
         self,
         user_id: str | None,
         session: ChatSession,
-        **kwargs,
+        **kwargs: Any,
     ) -> ToolResponseBase:
         """Fetch full content of a documentation page.
 
         Args:
             user_id: User ID (not required for docs)
             session: Chat session
-            path: Path to the documentation file
+            **kwargs: Tool parameters
 
         Returns:
             DocPageResponse: Full document content
             ErrorResponse: Error message
         """
-        path = kwargs.get("path", "").strip()
+        params = GetDocPageInput(**kwargs)
         session_id = session.session_id if session else None
 
-        if not path:
+        if not params.path:
             return ErrorResponse(
                 message="Please provide a documentation path.",
                 error="Missing path parameter",
@@ -99,7 +113,7 @@ class GetDocPageTool(BaseTool):
             )
 
         # Sanitize path to prevent directory traversal
-        if ".." in path or path.startswith("/"):
+        if ".." in params.path or params.path.startswith("/"):
             return ErrorResponse(
                 message="Invalid documentation path.",
                 error="invalid_path",
@@ -107,11 +121,11 @@ class GetDocPageTool(BaseTool):
             )
 
         docs_root = self._get_docs_root()
-        full_path = docs_root / path
+        full_path = docs_root / params.path
 
         if not full_path.exists():
             return ErrorResponse(
-                message=f"Documentation page not found: {path}",
+                message=f"Documentation page not found: {params.path}",
                 error="not_found",
                 session_id=session_id,
             )
@@ -128,19 +142,19 @@ class GetDocPageTool(BaseTool):
 
         try:
             content = full_path.read_text(encoding="utf-8")
-            title = self._extract_title(content, path)
+            title = self._extract_title(content, params.path)
 
             return DocPageResponse(
                 message=f"Retrieved documentation page: {title}",
                 title=title,
-                path=path,
+                path=params.path,
                 content=content,
                 doc_url=self._make_doc_url(path),
                 session_id=session_id,
             )
 
         except Exception as e:
-            logger.error(f"Failed to read documentation page {path}: {e}")
+            logger.error(f"Failed to read documentation page {params.path}: {e}")
             return ErrorResponse(
                 message=f"Failed to read documentation page: {str(e)}",
                 error="read_failed",

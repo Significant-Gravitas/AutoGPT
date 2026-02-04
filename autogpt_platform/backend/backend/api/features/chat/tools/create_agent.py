@@ -3,6 +3,8 @@
 import logging
 from typing import Any
 
+from pydantic import BaseModel, field_validator
+
 from backend.api.features.chat.model import ChatSession
 
 from .agent_generator import (
@@ -26,6 +28,26 @@ from .models import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class CreateAgentInput(BaseModel):
+    """Input parameters for the create_agent tool."""
+
+    description: str = ""
+    context: str = ""
+    save: bool = True
+    # Internal async processing params (passed by long-running tool handler)
+    _operation_id: str | None = None
+    _task_id: str | None = None
+
+    @field_validator("description", "context", mode="before")
+    @classmethod
+    def strip_strings(cls, v: Any) -> str:
+        """Strip whitespace from string fields."""
+        return v.strip() if isinstance(v, str) else (v if v is not None else "")
+
+    class Config:
+        extra = "allow"  # Allow _operation_id, _task_id from kwargs
 
 
 class CreateAgentTool(BaseTool):
@@ -85,7 +107,7 @@ class CreateAgentTool(BaseTool):
         self,
         user_id: str | None,
         session: ChatSession,
-        **kwargs,
+        **kwargs: Any,
     ) -> ToolResponseBase:
         """Execute the create_agent tool.
 
@@ -94,16 +116,14 @@ class CreateAgentTool(BaseTool):
         2. Generate agent JSON (external service handles fixing and validation)
         3. Preview or save based on the save parameter
         """
-        description = kwargs.get("description", "").strip()
-        context = kwargs.get("context", "")
-        save = kwargs.get("save", True)
+        params = CreateAgentInput(**kwargs)
         session_id = session.session_id if session else None
 
-        # Extract async processing params (passed by long-running tool handler)
+        # Extract async processing params
         operation_id = kwargs.get("_operation_id")
         task_id = kwargs.get("_task_id")
 
-        if not description:
+        if not params.description:
             return ErrorResponse(
                 message="Please provide a description of what the agent should do.",
                 error="Missing description parameter",
@@ -115,7 +135,7 @@ class CreateAgentTool(BaseTool):
             try:
                 library_agents = await get_all_relevant_agents_for_generation(
                     user_id=user_id,
-                    search_query=description,
+                    search_query=params.description,
                     include_marketplace=True,
                 )
                 logger.debug(
@@ -126,7 +146,7 @@ class CreateAgentTool(BaseTool):
 
         try:
             decomposition_result = await decompose_goal(
-                description, context, library_agents
+                params.description, params.context, library_agents
             )
         except AgentGeneratorNotConfiguredError:
             return ErrorResponse(
@@ -142,7 +162,7 @@ class CreateAgentTool(BaseTool):
             return ErrorResponse(
                 message="Failed to analyze the goal. The agent generation service may be unavailable. Please try again.",
                 error="decomposition_failed",
-                details={"description": description[:100]},
+                details={"description": params.description[:100]},
                 session_id=session_id,
             )
 
@@ -158,7 +178,7 @@ class CreateAgentTool(BaseTool):
                 message=user_message,
                 error=f"decomposition_failed:{error_type}",
                 details={
-                    "description": description[:100],
+                    "description": params.description[:100],
                     "service_error": error_msg,
                     "error_type": error_type,
                 },
@@ -244,7 +264,7 @@ class CreateAgentTool(BaseTool):
             return ErrorResponse(
                 message="Failed to generate the agent. The agent generation service may be unavailable. Please try again.",
                 error="generation_failed",
-                details={"description": description[:100]},
+                details={"description": params.description[:100]},
                 session_id=session_id,
             )
 
@@ -266,7 +286,7 @@ class CreateAgentTool(BaseTool):
                 message=user_message,
                 error=f"generation_failed:{error_type}",
                 details={
-                    "description": description[:100],
+                    "description": params.description[:100],
                     "service_error": error_msg,
                     "error_type": error_type,
                 },
@@ -291,7 +311,7 @@ class CreateAgentTool(BaseTool):
         node_count = len(agent_json.get("nodes", []))
         link_count = len(agent_json.get("links", []))
 
-        if not save:
+        if not params.save:
             return AgentPreviewResponse(
                 message=(
                     f"I've generated an agent called '{agent_name}' with {node_count} blocks. "
