@@ -2,7 +2,7 @@
 
 import base64
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from pydantic import BaseModel, field_validator
 
@@ -229,7 +229,9 @@ class ListWorkspaceFilesTool(BaseTool):
                 for f in files
             ]
 
-            scope_msg = "all sessions" if include_all_sessions else "current session"
+            scope_msg = (
+                "all sessions" if params.include_all_sessions else "current session"
+            )
             return WorkspaceFileListResponse(
                 files=file_infos,
                 total_count=total,

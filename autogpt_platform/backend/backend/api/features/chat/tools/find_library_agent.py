@@ -12,14 +12,11 @@ from .models import ToolResponseBase
 
 
 class FindLibraryAgentInput(BaseModel):
-    """Input parameters for the find_library_agent tool."""
-
     query: str = ""
 
     @field_validator("query", mode="before")
     @classmethod
     def strip_string(cls, v: Any) -> str:
-        """Strip whitespace from query."""
         return v.strip() if isinstance(v, str) else (v if v is not None else "")
 
 

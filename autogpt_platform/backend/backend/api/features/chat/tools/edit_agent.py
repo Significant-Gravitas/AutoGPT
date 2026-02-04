@@ -3,7 +3,7 @@
 import logging
 from typing import Any
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator
 
 from backend.api.features.chat.model import ChatSession
 
@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 
 class EditAgentInput(BaseModel):
-    """Input parameters for the edit_agent tool."""
+    model_config = ConfigDict(extra="allow")
 
     agent_id: str = ""
     changes: str = ""
@@ -40,11 +40,7 @@ class EditAgentInput(BaseModel):
     @field_validator("agent_id", "changes", "context", mode="before")
     @classmethod
     def strip_strings(cls, v: Any) -> str:
-        """Strip whitespace from string fields."""
         return v.strip() if isinstance(v, str) else (v if v is not None else "")
-
-    class Config:
-        extra = "allow"  # Allow _operation_id, _task_id
 
 
 class EditAgentTool(BaseTool):
@@ -193,7 +189,7 @@ class EditAgentTool(BaseTool):
             return ErrorResponse(
                 message="Failed to generate changes. The agent generation service may be unavailable or timed out. Please try again.",
                 error="update_generation_failed",
-                details={"agent_id": agent_id, "changes": changes[:100]},
+                details={"agent_id": params.agent_id, "changes": params.changes[:100]},
                 session_id=session_id,
             )
 
@@ -225,8 +221,8 @@ class EditAgentTool(BaseTool):
                 message=user_message,
                 error=f"update_generation_failed:{error_type}",
                 details={
-                    "agent_id": agent_id,
-                    "changes": changes[:100],
+                    "agent_id": params.agent_id,
+                    "changes": params.changes[:100],
                     "service_error": error_msg,
                     "error_type": error_type,
                 },

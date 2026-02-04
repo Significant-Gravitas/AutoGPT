@@ -149,7 +149,7 @@ class GetDocPageTool(BaseTool):
                 title=title,
                 path=params.path,
                 content=content,
-                doc_url=self._make_doc_url(path),
+                doc_url=self._make_doc_url(params.path),
                 session_id=session_id,
             )
 

@@ -248,7 +248,7 @@ class RunBlockTool(BaseTool):
                 ),
                 session_id=session_id,
                 setup_info=SetupInfo(
-                    agent_id=block_id,
+                    agent_id=params.block_id,
                     agent_name=block.name,
                     user_readiness=UserReadiness(
                         has_all_credentials=False,
@@ -277,7 +277,7 @@ class RunBlockTool(BaseTool):
             # - node_exec_id = unique per block execution
             synthetic_graph_id = f"copilot-session-{session.session_id}"
             synthetic_graph_exec_id = f"copilot-session-{session.session_id}"
-            synthetic_node_id = f"copilot-node-{block_id}"
+            synthetic_node_id = f"copilot-node-{params.block_id}"
             synthetic_node_exec_id = (
                 f"copilot-{session.session_id}-{uuid.uuid4().hex[:8]}"
             )

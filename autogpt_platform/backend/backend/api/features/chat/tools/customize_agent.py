@@ -139,7 +139,7 @@ class CustomizeAgentTool(BaseTool):
             )
 
         # Parse agent_id in format "creator/slug"
-        parts = params.agent_id.split("/")
+        parts = [p.strip() for p in params.agent_id.split("/")]
         if len(parts) != 2 or not parts[0] or not parts[1]:
             return ErrorResponse(
                 message=(
