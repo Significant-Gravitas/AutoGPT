@@ -1,6 +1,12 @@
 """Shared utilities for video blocks."""
 
+from __future__ import annotations
+
+import logging
 import os
+import subprocess
+
+logger = logging.getLogger(__name__)
 
 
 def get_video_codecs(output_path: str) -> tuple[str, str]:
@@ -32,3 +38,46 @@ def get_video_codecs(output_path: str) -> tuple[str, str]:
     }
 
     return codec_map.get(ext, ("libx264", "aac"))
+
+
+def strip_chapters_inplace(video_path: str) -> None:
+    """Strip chapter metadata from a media file in-place using ffmpeg.
+
+    MoviePy 2.x crashes with IndexError when parsing files with embedded
+    chapter metadata (https://github.com/Zulko/moviepy/issues/2419).
+    This strips chapters without re-encoding.
+
+    Args:
+        video_path: Absolute path to the media file to strip chapters from.
+    """
+    base, ext = os.path.splitext(video_path)
+    tmp_path = base + ".tmp" + ext
+    try:
+        result = subprocess.run(
+            [
+                "ffmpeg",
+                "-y",
+                "-i",
+                video_path,
+                "-map_chapters",
+                "-1",
+                "-codec",
+                "copy",
+                tmp_path,
+            ],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            logger.warning(
+                "ffmpeg chapter strip failed (rc=%d): %s",
+                result.returncode,
+                result.stderr,
+            )
+            return
+        os.replace(tmp_path, video_path)
+    except FileNotFoundError:
+        logger.warning("ffmpeg not found; skipping chapter strip")
+    finally:
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)

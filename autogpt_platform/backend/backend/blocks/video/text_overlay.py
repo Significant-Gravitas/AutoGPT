@@ -6,7 +6,7 @@ from typing import Literal
 from moviepy import CompositeVideoClip, TextClip
 from moviepy.video.io.VideoFileClip import VideoFileClip
 
-from backend.blocks.video._utils import get_video_codecs
+from backend.blocks.video._utils import get_video_codecs, strip_chapters_inplace
 from backend.data.block import (
     Block,
     BlockCategory,
@@ -117,6 +117,7 @@ class VideoTextOverlayBlock(Block):
         final = None
         txt_clip = None
         try:
+            strip_chapters_inplace(video_abspath)
             video = VideoFileClip(video_abspath)
 
             txt_clip = TextClip(

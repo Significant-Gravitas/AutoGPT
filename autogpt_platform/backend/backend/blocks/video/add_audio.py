@@ -6,6 +6,7 @@ import tempfile
 from moviepy.audio.io.AudioFileClip import AudioFileClip
 from moviepy.video.io.VideoFileClip import VideoFileClip
 
+from backend.blocks.video._utils import strip_chapters_inplace
 from backend.data.block import (
     Block,
     BlockCategory,
@@ -76,6 +77,7 @@ class AddAudioToVideoBlock(Block):
         audio_abspath = os.path.join(abs_temp_dir, local_audio_path)
 
         # 2) Load video + audio with moviepy
+        strip_chapters_inplace(video_abspath)
         video_clip = VideoFileClip(video_abspath)
         audio_clip = AudioFileClip(audio_abspath)
         # Optionally scale volume

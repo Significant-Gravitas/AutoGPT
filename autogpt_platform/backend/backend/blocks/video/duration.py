@@ -3,6 +3,7 @@
 from moviepy.audio.io.AudioFileClip import AudioFileClip
 from moviepy.video.io.VideoFileClip import VideoFileClip
 
+from backend.blocks.video._utils import strip_chapters_inplace
 from backend.data.block import (
     Block,
     BlockCategory,
@@ -59,7 +60,8 @@ class MediaDurationBlock(Block):
             execution_context.graph_exec_id, local_media_path
         )
 
-        # 2) Load the clip
+        # 2) Strip chapters to avoid MoviePy crash, then load the clip
+        strip_chapters_inplace(media_abspath)
         if input_data.is_video:
             clip = VideoFileClip(media_abspath)
         else:

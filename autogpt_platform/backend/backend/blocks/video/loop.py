@@ -6,6 +6,7 @@ from typing import Optional
 from moviepy.video.fx.Loop import Loop
 from moviepy.video.io.VideoFileClip import VideoFileClip
 
+from backend.blocks.video._utils import strip_chapters_inplace
 from backend.data.block import (
     Block,
     BlockCategory,
@@ -71,6 +72,7 @@ class LoopVideoBlock(Block):
         input_abspath = get_exec_file_path(graph_exec_id, local_video_path)
 
         # 2) Load the clip
+        strip_chapters_inplace(input_abspath)
         clip = VideoFileClip(input_abspath)
 
         # 3) Apply the loop effect

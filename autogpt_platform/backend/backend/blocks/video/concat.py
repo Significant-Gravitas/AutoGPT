@@ -6,7 +6,7 @@ from moviepy import concatenate_videoclips
 from moviepy.video.fx import CrossFadeIn, CrossFadeOut, FadeIn, FadeOut
 from moviepy.video.io.VideoFileClip import VideoFileClip
 
-from backend.blocks.video._utils import get_video_codecs
+from backend.blocks.video._utils import get_video_codecs, strip_chapters_inplace
 from backend.data.block import (
     Block,
     BlockCategory,
@@ -53,8 +53,13 @@ class VideoConcatBlock(Block):
             categories={BlockCategory.MULTIMEDIA},
             input_schema=self.Input,
             output_schema=self.Output,
-            test_input={"videos": ["/tmp/a.mp4", "/tmp/b.mp4"]},
-            test_output=[("video_out", str), ("total_duration", float)],
+            test_input={
+                "videos": ["/tmp/a.mp4", "/tmp/b.mp4"],
+            },
+            test_output=[
+                ("video_out", str),
+                ("total_duration", float),
+            ],
             test_mock={
                 "_concat_videos": lambda *args: 20.0,
                 "_store_input_video": lambda *args, **kwargs: "test.mp4",
@@ -89,13 +94,18 @@ class VideoConcatBlock(Block):
         transition: str,
         transition_duration: int,
     ) -> float:
-        """Concatenate videos. Extracted for testability."""
+        """Concatenate videos. Extracted for testability.
+
+        Returns:
+            Total duration of the concatenated video.
+        """
         clips = []
         faded_clips = []
         final = None
         try:
             # Load clips
             for v in video_abspaths:
+                strip_chapters_inplace(v)
                 clips.append(VideoFileClip(v))
 
             if transition == "crossfade":

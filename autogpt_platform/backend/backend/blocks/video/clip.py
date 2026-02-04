@@ -5,7 +5,7 @@ from typing import Literal
 
 from moviepy.video.io.VideoFileClip import VideoFileClip
 
-from backend.blocks.video._utils import get_video_codecs
+from backend.blocks.video._utils import get_video_codecs, strip_chapters_inplace
 from backend.data.block import (
     Block,
     BlockCategory,
@@ -89,6 +89,7 @@ class VideoClipBlock(Block):
         clip = None
         subclip = None
         try:
+            strip_chapters_inplace(video_abspath)
             clip = VideoFileClip(video_abspath)
             subclip = clip.subclipped(start_time, end_time)
             video_codec, audio_codec = get_video_codecs(output_abspath)

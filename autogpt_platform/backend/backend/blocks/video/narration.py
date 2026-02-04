@@ -14,7 +14,7 @@ from backend.blocks.elevenlabs._auth import (
     ElevenLabsCredentials,
     ElevenLabsCredentialsInput,
 )
-from backend.blocks.video._utils import get_video_codecs
+from backend.blocks.video._utils import get_video_codecs, strip_chapters_inplace
 from backend.data.block import (
     Block,
     BlockCategory,
@@ -150,6 +150,7 @@ class VideoNarrationBlock(Block):
         original = None
 
         try:
+            strip_chapters_inplace(video_abspath)
             video = VideoFileClip(video_abspath)
             narration_original = AudioFileClip(audio_abspath)
             narration_scaled = narration_original.with_volume_scaled(narration_volume)
