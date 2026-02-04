@@ -44,6 +44,7 @@ async def process_binary_outputs(
 async def _process_item(
     item: Any, wm: WorkspaceManager, block: str, cache: dict
 ) -> Any:
+    """Recursively process an item, handling dicts and lists."""
     if isinstance(item, dict):
         return await _process_dict(item, wm, block, cache)
     if isinstance(item, list):
@@ -57,6 +58,7 @@ async def _process_item(
 async def _process_dict(
     data: dict, wm: WorkspaceManager, block: str, cache: dict
 ) -> dict:
+    """Process a dict, saving binary fields and recursing into nested structures."""
     result: dict[str, Any] = {}
 
     for key, value in data.items():
