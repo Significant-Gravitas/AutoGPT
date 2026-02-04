@@ -59,8 +59,6 @@ interface Args {
   initialMessages: SessionDetailResponse["messages"];
   initialPrompt?: string;
   onOperationStarted?: () => void;
-  /** Called when streaming ends - use this to refetch messages from API */
-  onStreamEnd?: () => void;
   /** Active stream info from the server for reconnection */
   activeStream?: {
     taskId: string;
@@ -75,7 +73,6 @@ export function useChatContainer({
   initialMessages,
   initialPrompt,
   onOperationStarted,
-  onStreamEnd,
   activeStream,
 }: Args) {
   const [messages, setMessages] = useState<ChatMessageData[]>([]);
@@ -150,7 +147,6 @@ export function useChatContainer({
       sessionId,
       setIsStreamingInitiated,
       onOperationStarted,
-      onStreamEnd,
       onActiveTaskStarted: handleActiveTaskStarted,
     });
 

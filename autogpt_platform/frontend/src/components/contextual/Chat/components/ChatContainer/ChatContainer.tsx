@@ -16,8 +16,6 @@ export interface ChatContainerProps {
   className?: string;
   onStreamingChange?: (isStreaming: boolean) => void;
   onOperationStarted?: () => void;
-  /** Called when streaming ends - use this to refetch messages from API */
-  onStreamEnd?: () => void;
   /** Active stream info from the server for reconnection */
   activeStream?: {
     taskId: string;
@@ -34,7 +32,6 @@ export function ChatContainer({
   className,
   onStreamingChange,
   onOperationStarted,
-  onStreamEnd,
   activeStream,
 }: ChatContainerProps) {
   const {
@@ -50,7 +47,6 @@ export function ChatContainer({
     initialMessages,
     initialPrompt,
     onOperationStarted,
-    onStreamEnd,
     activeStream,
   });
 

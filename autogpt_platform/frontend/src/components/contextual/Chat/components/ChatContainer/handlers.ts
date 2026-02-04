@@ -25,7 +25,6 @@ export interface HandlerDependencies {
   setIsRegionBlockedModalOpen: Dispatch<SetStateAction<boolean>>;
   sessionId: string;
   onOperationStarted?: () => void;
-  onStreamEnd?: () => void;
   onActiveTaskStarted?: (taskInfo: {
     taskId: string;
     operationId: string;
@@ -373,19 +372,6 @@ export function handleStreamEnd(
   deps.setHasTextChunks(false);
   deps.setIsStreamingInitiated(false);
   console.log("[handleStreamEnd] Completed - streaming state cleared");
-
-  // Trigger refetch from API to get authoritative message list
-  // This ensures we have all messages including any that may have been
-  // missed during streaming (e.g., multiple text_ended events)
-  if (deps.onStreamEnd) {
-    console.log(
-      "[handleStreamEnd] Triggering onStreamEnd callback for API refetch",
-    );
-    // Clear local messages before refetch - server data will be authoritative
-    // This prevents duplicates when server returns the same messages
-    deps.setMessages([]);
-    deps.onStreamEnd();
-  }
 }
 
 export function handleError(chunk: StreamChunk, deps: HandlerDependencies) {

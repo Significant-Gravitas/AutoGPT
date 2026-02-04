@@ -97,7 +97,6 @@ export function Chat({
             className="flex-1"
             onStreamingChange={onStreamingChange}
             onOperationStarted={startPollingForOperation}
-            onStreamEnd={refreshSession}
             activeStream={
               activeStream
                 ? {
