@@ -2,18 +2,21 @@
 
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
-import { useState, useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { parseAsString, useQueryState } from "nuqs";
 import { ChatSidebar } from "./components/ChatSidebar/ChatSidebar";
 import { ChatContainer } from "./components/ChatContainer/ChatContainer";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { CopyIcon, CheckIcon } from "@phosphor-icons/react";
+import { getV2GetSession } from "@/app/api/__generated__/endpoints/chat/chat";
+import { convertChatSessionMessagesToUiMessages } from "./helpers/convertChatSessionToUiMessages";
 
 export default function Page() {
   const [input, setInput] = useState("");
   const [copied, setCopied] = useState(false);
   const [sessionId] = useQueryState("sessionId", parseAsString);
+  const hydrationSeq = useRef(0);
 
   function handleCopySessionId() {
     if (!sessionId) return;
@@ -41,10 +44,47 @@ export default function Page() {
     });
   }, [sessionId]);
 
-  const { messages, sendMessage, status, error } = useChat({
+  const { messages, sendMessage, status, error, setMessages } = useChat({
     id: sessionId ?? undefined,
     transport: transport ?? undefined,
   });
+
+  useEffect(() => {
+    hydrationSeq.current += 1;
+    const seq = hydrationSeq.current;
+    const controller = new AbortController();
+
+    if (!sessionId) {
+      setMessages([]);
+      return;
+    }
+
+    const currentSessionId = sessionId;
+
+    async function hydrate() {
+      try {
+        const response = await getV2GetSession(currentSessionId, {
+          signal: controller.signal,
+        });
+        if (response.status !== 200) return;
+
+        const uiMessages = convertChatSessionMessagesToUiMessages(
+          currentSessionId,
+          response.data.messages ?? [],
+        );
+        if (controller.signal.aborted) return;
+        if (hydrationSeq.current !== seq) return;
+        setMessages(uiMessages);
+      } catch (error) {
+        if ((error as { name?: string } | null)?.name === "AbortError") return;
+        console.warn("Failed to hydrate chat session:", error);
+      }
+    }
+
+    void hydrate();
+
+    return () => controller.abort();
+  }, [sessionId, setMessages]);
 
   function handleMessageSubmit(e: React.FormEvent) {
     e.preventDefault();

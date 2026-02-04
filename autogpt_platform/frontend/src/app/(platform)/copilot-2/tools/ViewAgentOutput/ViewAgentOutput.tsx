@@ -8,6 +8,9 @@ import {
   formatMaybeJson,
   getAnimationText,
   getViewAgentOutputToolOutput,
+  isAgentOutputResponse,
+  isErrorResponse,
+  isNoResultsResponse,
   StateIcon,
   type ViewAgentOutputToolOutput,
 } from "./helpers";
@@ -29,7 +32,7 @@ function getAccordionMeta(output: ViewAgentOutputToolOutput): {
   title: string;
   description?: string;
 } {
-  if (output.type === "agent_output") {
+  if (isAgentOutputResponse(output)) {
     const status = output.execution?.status;
     return {
       badgeText: "Agent output",
@@ -37,7 +40,7 @@ function getAccordionMeta(output: ViewAgentOutputToolOutput): {
       description: status ? `Status: ${status}` : output.message,
     };
   }
-  if (output.type === "no_results") {
+  if (isNoResultsResponse(output)) {
     return { badgeText: "Agent output", title: "No results" };
   }
   return { badgeText: "Agent output", title: "Error" };
@@ -50,9 +53,9 @@ export function ViewAgentOutputTool({ part }: Props) {
   const hasExpandableContent =
     part.state === "output-available" &&
     !!output &&
-    (output.type === "agent_output" ||
-      output.type === "no_results" ||
-      output.type === "error");
+    (isAgentOutputResponse(output) ||
+      isNoResultsResponse(output) ||
+      isErrorResponse(output));
 
   return (
     <div className="py-2">
@@ -63,7 +66,7 @@ export function ViewAgentOutputTool({ part }: Props) {
 
       {hasExpandableContent && output && (
         <ToolAccordion {...getAccordionMeta(output)}>
-          {output.type === "agent_output" && (
+          {isAgentOutputResponse(output) && (
             <div className="grid gap-2">
               <div className="flex items-start justify-between gap-3">
                 <p className="text-sm text-foreground">{output.message}</p>
@@ -136,7 +139,7 @@ export function ViewAgentOutputTool({ part }: Props) {
             </div>
           )}
 
-          {output.type === "no_results" && (
+          {isNoResultsResponse(output) && (
             <div className="grid gap-2">
               <p className="text-sm text-foreground">{output.message}</p>
               {output.suggestions && output.suggestions.length > 0 && (
@@ -149,7 +152,7 @@ export function ViewAgentOutputTool({ part }: Props) {
             </div>
           )}
 
-          {output.type === "error" && (
+          {isErrorResponse(output) && (
             <div className="grid gap-2">
               <p className="text-sm text-foreground">{output.message}</p>
               {output.error && (

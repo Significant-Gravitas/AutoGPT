@@ -4,45 +4,20 @@ import {
   CircleNotchIcon,
   XCircleIcon,
 } from "@phosphor-icons/react";
+import type { AgentInfo } from "@/app/api/__generated__/models/agentInfo";
+import type { AgentsFoundResponse } from "@/app/api/__generated__/models/agentsFoundResponse";
+import type { ErrorResponse } from "@/app/api/__generated__/models/errorResponse";
+import type { NoResultsResponse } from "@/app/api/__generated__/models/noResultsResponse";
+import { ResponseType } from "@/app/api/__generated__/models/responseType";
 
 export interface FindAgentInput {
   query: string;
 }
 
-export interface AgentInfo {
-  id: string;
-  name: string;
-  description: string;
-  source?: "marketplace" | "library" | string;
-}
-
-export interface AgentsFoundOutput {
-  type: "agents_found";
-  title?: string;
-  message?: string;
-  session_id?: string;
-  agents: AgentInfo[];
-  count: number;
-}
-
-export interface NoResultsOutput {
-  type: "no_results";
-  message: string;
-  suggestions?: string[];
-  session_id?: string;
-}
-
-export interface ErrorOutput {
-  type: "error";
-  message: string;
-  error?: string;
-  session_id?: string;
-}
-
 export type FindAgentsOutput =
-  | AgentsFoundOutput
-  | NoResultsOutput
-  | ErrorOutput;
+  | AgentsFoundResponse
+  | NoResultsResponse
+  | ErrorResponse;
 
 export type FindAgentsToolType =
   | "tool-find_agent"
@@ -55,13 +30,26 @@ function parseOutput(output: unknown): FindAgentsOutput | null {
     const trimmed = output.trim();
     if (!trimmed) return null;
     try {
-      return JSON.parse(trimmed) as FindAgentsOutput;
+      return parseOutput(JSON.parse(trimmed) as unknown);
     } catch {
       return null;
     }
   }
   if (typeof output === "object") {
-    return output as FindAgentsOutput;
+    const type = (output as { type?: unknown }).type;
+    if (
+      type === ResponseType.agents_found ||
+      type === ResponseType.no_results ||
+      type === ResponseType.error
+    ) {
+      return output as FindAgentsOutput;
+    }
+    if ("agents" in output && "count" in output)
+      return output as AgentsFoundResponse;
+    if ("suggestions" in output && !("error" in output))
+      return output as NoResultsResponse;
+    if ("error" in output || "details" in output)
+      return output as ErrorResponse;
   }
   return null;
 }
@@ -69,6 +57,27 @@ function parseOutput(output: unknown): FindAgentsOutput | null {
 export function getFindAgentsOutput(part: unknown): FindAgentsOutput | null {
   if (!part || typeof part !== "object") return null;
   return parseOutput((part as { output?: unknown }).output);
+}
+
+export function isAgentsFoundOutput(
+  output: FindAgentsOutput,
+): output is AgentsFoundResponse {
+  return output.type === ResponseType.agents_found || "agents" in output;
+}
+
+export function isNoResultsOutput(
+  output: FindAgentsOutput,
+): output is NoResultsResponse {
+  return (
+    output.type === ResponseType.no_results ||
+    ("suggestions" in output && !("error" in output))
+  );
+}
+
+export function isErrorOutput(
+  output: FindAgentsOutput,
+): output is ErrorResponse {
+  return output.type === ResponseType.error || "error" in output;
 }
 
 export function getSourceLabelFromToolType(toolType?: FindAgentsToolType): {
@@ -112,18 +121,18 @@ export function getAnimationText(part: {
       if (!output) {
         return query ? `Found agents ${scope} for "${query}"` : "Found agents";
       }
-      if (output.type === "no_results") {
+      if (isNoResultsOutput(output)) {
         return query
           ? `No agents found ${scope} for "${query}"`
           : `No agents found ${scope}`;
       }
-      if (output.type === "agents_found") {
+      if (isAgentsFoundOutput(output)) {
         const count = output.count ?? output.agents?.length ?? 0;
         const countText = `Found ${count} agent${count === 1 ? "" : "s"}`;
         if (query) return `${countText} ${scope} for "${query}"`;
         return `${countText} ${scope}`;
       }
-      if (output.type === "error") {
+      if (isErrorOutput(output)) {
         return `Error finding agents ${scope}`;
       }
       return `Found agents ${scope}`;

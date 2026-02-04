@@ -1,5 +1,5 @@
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
-import { BlockInfo } from "@/app/api/__generated__/models/blockInfo";
+import type { BlockListResponse } from "@/app/api/__generated__/models/blockListResponse";
 import { ToolUIPart } from "ai";
 import { getAnimationText, StateIcon } from "./helpers";
 
@@ -7,15 +7,7 @@ export interface FindBlockInput {
   query: string;
 }
 
-export interface FindBlockOutput {
-  type: "block_list";
-  message: string;
-  session_id: string;
-  blocks: BlockInfo[];
-  count: number;
-  query: string;
-  usage_hint: string;
-}
+export type FindBlockOutput = BlockListResponse;
 
 export interface FindBlockToolPart {
   type: string;

@@ -4,6 +4,12 @@ import {
   CircleNotchIcon,
   XCircleIcon,
 } from "@phosphor-icons/react";
+import type { AgentDetailsResponse } from "@/app/api/__generated__/models/agentDetailsResponse";
+import type { ErrorResponse } from "@/app/api/__generated__/models/errorResponse";
+import type { ExecutionStartedResponse } from "@/app/api/__generated__/models/executionStartedResponse";
+import type { NeedLoginResponse } from "@/app/api/__generated__/models/needLoginResponse";
+import { ResponseType } from "@/app/api/__generated__/models/responseType";
+import type { SetupRequirementsResponse } from "@/app/api/__generated__/models/setupRequirementsResponse";
 
 export interface RunAgentInput {
   username_agent_slug?: string;
@@ -15,99 +21,55 @@ export interface RunAgentInput {
   timezone?: string;
 }
 
-export interface CredentialsMeta {
-  id: string;
-  provider: string;
-  provider_name?: string;
-  type: string;
-  types?: string[];
-  title: string;
-  scopes?: string[];
-}
-
-export interface SetupInfo {
-  agent_id: string;
-  agent_name: string;
-  requirements: {
-    credentials: CredentialsMeta[];
-    inputs: Array<{
-      name: string;
-      title: string;
-      type: string;
-      description: string;
-      required: boolean;
-    }>;
-    execution_modes: string[];
-  };
-  user_readiness: {
-    has_all_credentials: boolean;
-    missing_credentials: Record<string, CredentialsMeta>;
-    ready_to_run: boolean;
-  };
-}
-
-export interface SetupRequirementsOutput {
-  type: "setup_requirements";
-  message: string;
-  session_id?: string;
-  setup_info: SetupInfo;
-  graph_id?: string | null;
-  graph_version?: number | null;
-}
-
-export interface ExecutionStartedOutput {
-  type: "execution_started";
-  message: string;
-  session_id?: string;
-  execution_id: string;
-  graph_id: string;
-  graph_name: string;
-  library_agent_id?: string | null;
-  library_agent_link?: string | null;
-  status: string;
-}
-
-export interface ErrorOutput {
-  type: "error";
-  message: string;
-  session_id?: string;
-  error?: string | null;
-  details?: Record<string, unknown> | null;
-}
-
-export interface NeedLoginOutput {
-  type: "need_login";
-  message: string;
-  session_id?: string;
-}
-
-export interface AgentDetailsOutput {
-  type: "agent_details";
-  message: string;
-  session_id?: string;
-  agent: {
-    id: string;
-    name: string;
-    description: string;
-    inputs: Record<string, unknown>;
-    credentials: CredentialsMeta[];
-    execution_options?: {
-      manual?: boolean;
-      scheduled?: boolean;
-      webhook?: boolean;
-    };
-  };
-  user_authenticated?: boolean;
-  graph_id?: string | null;
-  graph_version?: number | null;
-}
-
 export type RunAgentToolOutput =
-  | SetupRequirementsOutput
-  | ExecutionStartedOutput
-  | AgentDetailsOutput
-  | NeedLoginOutput
-  | ErrorOutput;
+  | SetupRequirementsResponse
+  | ExecutionStartedResponse
+  | AgentDetailsResponse
+  | NeedLoginResponse
+  | ErrorResponse;
+
+const RUN_AGENT_OUTPUT_TYPES = new Set<string>([
+  ResponseType.setup_requirements,
+  ResponseType.execution_started,
+  ResponseType.agent_details,
+  ResponseType.need_login,
+  ResponseType.error,
+]);
+
+export function isRunAgentSetupRequirementsOutput(
+  output: RunAgentToolOutput,
+): output is SetupRequirementsResponse {
+  return (
+    output.type === ResponseType.setup_requirements ||
+    ("setup_info" in output && typeof output.setup_info === "object")
+  );
+}
+
+export function isRunAgentExecutionStartedOutput(
+  output: RunAgentToolOutput,
+): output is ExecutionStartedResponse {
+  return (
+    output.type === ResponseType.execution_started || "execution_id" in output
+  );
+}
+
+export function isRunAgentAgentDetailsOutput(
+  output: RunAgentToolOutput,
+): output is AgentDetailsResponse {
+  return output.type === ResponseType.agent_details || "agent" in output;
+}
+
+export function isRunAgentNeedLoginOutput(
+  output: RunAgentToolOutput,
+): output is NeedLoginResponse {
+  return output.type === ResponseType.need_login;
+}
+
+export function isRunAgentErrorOutput(
+  output: RunAgentToolOutput,
+): output is ErrorResponse {
+  return output.type === ResponseType.error || "error" in output;
+}
 
 function parseOutput(output: unknown): RunAgentToolOutput | null {
   if (!output) return null;
@@ -115,12 +77,23 @@ function parseOutput(output: unknown): RunAgentToolOutput | null {
     const trimmed = output.trim();
     if (!trimmed) return null;
     try {
-      return JSON.parse(trimmed) as RunAgentToolOutput;
+      return parseOutput(JSON.parse(trimmed) as unknown);
     } catch {
       return null;
     }
   }
-  if (typeof output === "object") return output as RunAgentToolOutput;
+  if (typeof output === "object") {
+    const type = (output as { type?: unknown }).type;
+    if (typeof type === "string" && RUN_AGENT_OUTPUT_TYPES.has(type)) {
+      return output as RunAgentToolOutput;
+    }
+    if ("execution_id" in output) return output as ExecutionStartedResponse;
+    if ("setup_info" in output) return output as SetupRequirementsResponse;
+    if ("agent" in output) return output as AgentDetailsResponse;
+    if ("error" in output || "details" in output)
+      return output as ErrorResponse;
+    if (type === ResponseType.need_login) return output as NeedLoginResponse;
+  }
   return null;
 }
 
@@ -165,16 +138,17 @@ export function getAnimationText(part: {
     case "output-available": {
       const output = parseOutput(part.output);
       if (!output) return "Agent run updated";
-      if (output.type === "execution_started") {
+      if (isRunAgentExecutionStartedOutput(output)) {
         return `Started: ${output.graph_name}`;
       }
-      if (output.type === "agent_details") {
+      if (isRunAgentAgentDetailsOutput(output)) {
         return `Agent inputs: ${output.agent.name}`;
       }
-      if (output.type === "setup_requirements") {
+      if (isRunAgentSetupRequirementsOutput(output)) {
         return `Needs setup: ${output.setup_info.agent_name}`;
       }
-      if (output.type === "need_login") return "Sign in required to run agent";
+      if (isRunAgentNeedLoginOutput(output))
+        return "Sign in required to run agent";
       return "Error running agent";
     }
     case "output-error":

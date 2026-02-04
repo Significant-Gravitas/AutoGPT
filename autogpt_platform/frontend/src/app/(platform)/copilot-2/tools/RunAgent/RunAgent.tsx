@@ -5,11 +5,19 @@ import Link from "next/link";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
 import { useCopilotChatActions } from "../../components/CopilotChatActionsProvider/useCopilotChatActions";
-import { ChatCredentialsSetup } from "@/components/contextual/Chat/components/ChatCredentialsSetup/ChatCredentialsSetup";
+import {
+  ChatCredentialsSetup,
+  type CredentialInfo,
+} from "@/components/contextual/Chat/components/ChatCredentialsSetup/ChatCredentialsSetup";
 import {
   formatMaybeJson,
   getAnimationText,
   getRunAgentToolOutput,
+  isRunAgentAgentDetailsOutput,
+  isRunAgentErrorOutput,
+  isRunAgentExecutionStartedOutput,
+  isRunAgentNeedLoginOutput,
+  isRunAgentSetupRequirementsOutput,
   StateIcon,
   type RunAgentToolOutput,
 } from "./helpers";
@@ -31,15 +39,19 @@ function getAccordionMeta(output: RunAgentToolOutput): {
   title: string;
   description?: string;
 } {
-  if (output.type === "execution_started") {
+  if (isRunAgentExecutionStartedOutput(output)) {
+    const statusText =
+      typeof output.status === "string" && output.status.trim()
+        ? output.status.trim()
+        : "started";
     return {
       badgeText: "Run agent",
       title: output.graph_name,
-      description: `Status: ${output.status}`,
+      description: `Status: ${statusText}`,
     };
   }
 
-  if (output.type === "agent_details") {
+  if (isRunAgentAgentDetailsOutput(output)) {
     return {
       badgeText: "Run agent",
       title: output.agent.name,
@@ -47,9 +59,12 @@ function getAccordionMeta(output: RunAgentToolOutput): {
     };
   }
 
-  if (output.type === "setup_requirements") {
+  if (isRunAgentSetupRequirementsOutput(output)) {
     const missingCredsCount = Object.keys(
-      output.setup_info.user_readiness.missing_credentials ?? {},
+      (output.setup_info.user_readiness?.missing_credentials ?? {}) as Record<
+        string,
+        unknown
+      >,
     ).length;
     return {
       badgeText: "Run agent",
@@ -61,11 +76,130 @@ function getAccordionMeta(output: RunAgentToolOutput): {
     };
   }
 
-  if (output.type === "need_login") {
+  if (isRunAgentNeedLoginOutput(output)) {
     return { badgeText: "Run agent", title: "Sign in required" };
   }
 
   return { badgeText: "Run agent", title: "Error" };
+}
+
+function coerceMissingCredentials(
+  rawMissingCredentials: unknown,
+): CredentialInfo[] {
+  const missing =
+    rawMissingCredentials && typeof rawMissingCredentials === "object"
+      ? (rawMissingCredentials as Record<string, unknown>)
+      : {};
+
+  const validTypes = new Set([
+    "api_key",
+    "oauth2",
+    "user_password",
+    "host_scoped",
+  ]);
+
+  const results: CredentialInfo[] = [];
+
+  Object.values(missing).forEach((value) => {
+    if (!value || typeof value !== "object") return;
+    const cred = value as Record<string, unknown>;
+
+    const provider =
+      typeof cred.provider === "string" ? cred.provider.trim() : "";
+    if (!provider) return;
+
+    const providerName =
+      typeof cred.provider_name === "string" && cred.provider_name.trim()
+        ? cred.provider_name.trim()
+        : provider.replace(/_/g, " ");
+
+    const title =
+      typeof cred.title === "string" && cred.title.trim()
+        ? cred.title.trim()
+        : providerName;
+
+    const types =
+      Array.isArray(cred.types) && cred.types.length > 0
+        ? cred.types
+        : typeof cred.type === "string"
+          ? [cred.type]
+          : [];
+
+    const credentialTypes = types
+      .map((t) => (typeof t === "string" ? t.trim() : ""))
+      .filter(
+        (t): t is "api_key" | "oauth2" | "user_password" | "host_scoped" =>
+          validTypes.has(t),
+      );
+
+    if (credentialTypes.length === 0) return;
+
+    const scopes = Array.isArray(cred.scopes)
+      ? cred.scopes.filter((s): s is string => typeof s === "string")
+      : undefined;
+
+    const item: CredentialInfo = {
+      provider,
+      providerName,
+      credentialTypes,
+      title,
+    };
+    if (scopes && scopes.length > 0) {
+      item.scopes = scopes;
+    }
+    results.push(item);
+  });
+
+  return results;
+}
+
+function coerceExpectedInputs(rawInputs: unknown): Array<{
+  name: string;
+  title: string;
+  type: string;
+  description?: string;
+  required: boolean;
+}> {
+  if (!Array.isArray(rawInputs)) return [];
+  const results: Array<{
+    name: string;
+    title: string;
+    type: string;
+    description?: string;
+    required: boolean;
+  }> = [];
+
+  rawInputs.forEach((value, index) => {
+    if (!value || typeof value !== "object") return;
+    const input = value as Record<string, unknown>;
+
+    const name =
+      typeof input.name === "string" && input.name.trim()
+        ? input.name.trim()
+        : `input-${index}`;
+    const title =
+      typeof input.title === "string" && input.title.trim()
+        ? input.title.trim()
+        : name;
+    const type = typeof input.type === "string" ? input.type : "unknown";
+    const description =
+      typeof input.description === "string" && input.description.trim()
+        ? input.description.trim()
+        : undefined;
+    const required = Boolean(input.required);
+
+    const item: {
+      name: string;
+      title: string;
+      type: string;
+      description?: string;
+      required: boolean;
+    } = { name, title, type, required };
+    if (description) item.description = description;
+    results.push(item);
+  });
+
+  return results;
 }
 
 export function RunAgentTool({ part }: Props) {
@@ -76,11 +210,11 @@ export function RunAgentTool({ part }: Props) {
   const hasExpandableContent =
     part.state === "output-available" &&
     !!output &&
-    (output.type === "execution_started" ||
-      output.type === "agent_details" ||
-      output.type === "setup_requirements" ||
-      output.type === "need_login" ||
-      output.type === "error");
+    (isRunAgentExecutionStartedOutput(output) ||
+      isRunAgentAgentDetailsOutput(output) ||
+      isRunAgentSetupRequirementsOutput(output) ||
+      isRunAgentNeedLoginOutput(output) ||
+      isRunAgentErrorOutput(output));
 
   function handleAllCredentialsComplete() {
     onSend(
@@ -99,11 +233,11 @@ export function RunAgentTool({ part }: Props) {
         <ToolAccordion
           {...getAccordionMeta(output)}
           defaultExpanded={
-            output.type === "setup_requirements" ||
-            output.type === "agent_details"
+            isRunAgentSetupRequirementsOutput(output) ||
+            isRunAgentAgentDetailsOutput(output)
           }
         >
-          {output.type === "execution_started" && (
+          {isRunAgentExecutionStartedOutput(output) && (
             <div className="grid gap-2">
               <div className="rounded-2xl border bg-background p-3">
                 <div className="flex items-start justify-between gap-3">
@@ -131,7 +265,7 @@ export function RunAgentTool({ part }: Props) {
             </div>
           )}
 
-          {output.type === "agent_details" && (
+          {isRunAgentAgentDetailsOutput(output) && (
             <div className="grid gap-2">
               <p className="text-sm text-foreground">{output.message}</p>
 
@@ -153,26 +287,17 @@ export function RunAgentTool({ part }: Props) {
             </div>
           )}
 
-          {output.type === "setup_requirements" && (
+          {isRunAgentSetupRequirementsOutput(output) && (
             <div className="grid gap-2">
               <p className="text-sm text-foreground">{output.message}</p>
 
-              {Object.keys(
-                output.setup_info.user_readiness.missing_credentials ?? {},
+              {coerceMissingCredentials(
+                output.setup_info.user_readiness?.missing_credentials,
               ).length > 0 && (
                 <ChatCredentialsSetup
-                  credentials={Object.values(
-                    output.setup_info.user_readiness.missing_credentials ?? {},
-                  ).map((cred) => ({
-                    provider: cred.provider,
-                    providerName:
-                      cred.provider_name ?? cred.provider.replace(/_/g, " "),
-                    credentialTypes: (cred.types ?? [cred.type]) as Array<
-                      "api_key" | "oauth2" | "user_password" | "host_scoped"
-                    >,
-                    title: cred.title,
-                    scopes: cred.scopes,
-                  }))}
+                  credentials={coerceMissingCredentials(
+                    output.setup_info.user_readiness?.missing_credentials,
+                  )}
                   agentName={output.setup_info.agent_name}
                   message={output.message}
                   onAllCredentialsComplete={handleAllCredentialsComplete}
@@ -180,13 +305,23 @@ export function RunAgentTool({ part }: Props) {
                 />
               )}
 
-              {output.setup_info.requirements.inputs?.length > 0 && (
+              {coerceExpectedInputs(
+                (output.setup_info.requirements as Record<string, unknown>)
+                  ?.inputs,
+              ).length > 0 && (
                 <div className="rounded-2xl border bg-background p-3">
                   <p className="text-xs font-medium text-foreground">
                     Expected inputs
                   </p>
                   <div className="mt-2 grid gap-2">
-                    {output.setup_info.requirements.inputs.map((input) => (
+                    {coerceExpectedInputs(
+                      (
+                        output.setup_info.requirements as Record<
+                          string,
+                          unknown
+                        >
+                      )?.inputs,
+                    ).map((input) => (
                       <div key={input.name} className="rounded-xl border p-2">
                         <div className="flex items-center justify-between gap-2">
                           <p className="truncate text-xs font-medium text-foreground">
@@ -208,11 +343,11 @@ export function RunAgentTool({ part }: Props) {
             </div>
           )}
 
-          {output.type === "need_login" && (
+          {isRunAgentNeedLoginOutput(output) && (
             <p className="text-sm text-foreground">{output.message}</p>
           )}
 
-          {output.type === "error" && (
+          {isRunAgentErrorOutput(output) && (
             <div className="grid gap-2">
               <p className="text-sm text-foreground">{output.message}</p>
               {output.error && (

@@ -8,6 +8,7 @@ import {
   getAnimationText,
   getFindAgentsOutput,
   getSourceLabelFromToolType,
+  isAgentsFoundOutput,
   StateIcon,
 } from "./helpers";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
@@ -33,13 +34,17 @@ export function FindAgentsTool({ part }: Props) {
       ? String((part.input as { query?: unknown }).query ?? "").trim()
       : "";
 
-  const isAgentsFound =
-    part.state === "output-available" && output?.type === "agents_found";
+  const agentsFoundOutput =
+    part.state === "output-available" && output && isAgentsFoundOutput(output)
+      ? output
+      : null;
+
   const hasAgents =
-    isAgentsFound &&
-    output.agents.length > 0 &&
-    (typeof output.count !== "number" || output.count > 0);
-  const totalCount = isAgentsFound ? output.count : 0;
+    !!agentsFoundOutput &&
+    agentsFoundOutput.agents.length > 0 &&
+    (typeof agentsFoundOutput.count !== "number" ||
+      agentsFoundOutput.count > 0);
+  const totalCount = agentsFoundOutput ? agentsFoundOutput.count : 0;
   const { label: sourceLabel, source } = getSourceLabelFromToolType(part.type);
   const scopeText =
     source === "library"
@@ -58,14 +63,14 @@ export function FindAgentsTool({ part }: Props) {
         <MorphingTextAnimation text={text} />
       </div>
 
-      {hasAgents && (
+      {hasAgents && agentsFoundOutput && (
         <ToolAccordion
           badgeText={sourceLabel}
           title="Agent results"
           description={accordionDescription}
         >
           <div className="grid gap-2 sm:grid-cols-2">
-            {output.agents.map((agent) => {
+            {agentsFoundOutput.agents.map((agent) => {
               const href = getAgentHref(agent);
               const agentSource =
                 agent.source === "library"

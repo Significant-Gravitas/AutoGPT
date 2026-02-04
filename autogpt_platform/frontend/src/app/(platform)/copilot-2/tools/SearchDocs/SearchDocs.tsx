@@ -10,6 +10,10 @@ import {
   getDocsToolTitle,
   getToolLabel,
   getAnimationText,
+  isDocPageOutput,
+  isDocSearchResultsOutput,
+  isErrorOutput,
+  isNoResultsOutput,
   StateIcon,
   toDocsUrl,
   type DocsToolType,
@@ -46,21 +50,32 @@ export function SearchDocsTool({ part }: Props) {
 
   const isOutputAvailable = part.state === "output-available" && !!output;
 
+  const docSearchOutput =
+    isOutputAvailable && output && isDocSearchResultsOutput(output)
+      ? output
+      : null;
+  const docPageOutput =
+    isOutputAvailable && output && isDocPageOutput(output) ? output : null;
+  const noResultsOutput =
+    isOutputAvailable && output && isNoResultsOutput(output) ? output : null;
+  const errorOutput =
+    isOutputAvailable && output && isErrorOutput(output) ? output : null;
+
   const hasExpandableContent =
     isOutputAvailable &&
-    ((output.type === "doc_search_results" && output.count > 0) ||
-      output.type === "doc_page" ||
-      output.type === "no_results" ||
-      output.type === "error");
+    ((!!docSearchOutput && docSearchOutput.count > 0) ||
+      !!docPageOutput ||
+      !!noResultsOutput ||
+      !!errorOutput);
 
   const accordionDescription =
-    hasExpandableContent && output
-      ? output.type === "doc_search_results"
-        ? `Found ${output.count} result${output.count === 1 ? "" : "s"} for "${output.query}"`
-        : output.type === "doc_page"
-          ? output.path
-          : output.message
-      : null;
+    hasExpandableContent && docSearchOutput
+      ? `Found ${docSearchOutput.count} result${docSearchOutput.count === 1 ? "" : "s"} for "${docSearchOutput.query}"`
+      : hasExpandableContent && docPageOutput
+        ? docPageOutput.path
+        : hasExpandableContent && (noResultsOutput || errorOutput)
+          ? ((noResultsOutput ?? errorOutput)?.message ?? null)
+          : null;
 
   return (
     <div className="py-2">
@@ -75,9 +90,9 @@ export function SearchDocsTool({ part }: Props) {
           title={normalized.title}
           description={accordionDescription}
         >
-          {output.type === "doc_search_results" && (
+          {docSearchOutput && (
             <div className="grid gap-2">
-              {output.results.map((r) => {
+              {docSearchOutput.results.map((r) => {
                 const href = r.doc_url ?? toDocsUrl(r.path);
                 return (
                   <div
@@ -112,19 +127,19 @@ export function SearchDocsTool({ part }: Props) {
             </div>
           )}
 
-          {output.type === "doc_page" && (
+          {docPageOutput && (
             <div>
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium text-foreground">
-                    {output.title}
+                    {docPageOutput.title}
                   </p>
                   <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                    {output.path}
+                    {docPageOutput.path}
                   </p>
                 </div>
                 <Link
-                  href={output.doc_url ?? toDocsUrl(output.path)}
+                  href={docPageOutput.doc_url ?? toDocsUrl(docPageOutput.path)}
                   target="_blank"
                   rel="noreferrer"
                   className="shrink-0 text-xs font-medium text-purple-600 hover:text-purple-700"
@@ -133,30 +148,33 @@ export function SearchDocsTool({ part }: Props) {
                 </Link>
               </div>
               <p className="mt-2 whitespace-pre-wrap text-xs text-muted-foreground">
-                {truncate(output.content, 800)}
+                {truncate(docPageOutput.content, 800)}
               </p>
             </div>
           )}
 
-          {output.type === "no_results" && (
+          {noResultsOutput && (
             <div>
-              <p className="text-sm text-foreground">{output.message}</p>
-              {output.suggestions && output.suggestions.length > 0 && (
-                <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-muted-foreground">
-                  {output.suggestions.slice(0, 5).map((s) => (
-                    <li key={s}>{s}</li>
-                  ))}
-                </ul>
-              )}
+              <p className="text-sm text-foreground">
+                {noResultsOutput.message}
+              </p>
+              {noResultsOutput.suggestions &&
+                noResultsOutput.suggestions.length > 0 && (
+                  <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-muted-foreground">
+                    {noResultsOutput.suggestions.slice(0, 5).map((s) => (
+                      <li key={s}>{s}</li>
+                    ))}
+                  </ul>
+                )}
             </div>
           )}
 
-          {output.type === "error" && (
+          {errorOutput && (
             <div>
-              <p className="text-sm text-foreground">{output.message}</p>
-              {output.error && (
+              <p className="text-sm text-foreground">{errorOutput.message}</p>
+              {errorOutput.error && (
                 <p className="mt-2 text-xs text-muted-foreground">
-                  {output.error}
+                  {errorOutput.error}
                 </p>
               )}
             </div>

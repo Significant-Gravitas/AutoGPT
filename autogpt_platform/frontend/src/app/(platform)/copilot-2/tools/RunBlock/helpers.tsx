@@ -4,72 +4,47 @@ import {
   CircleNotchIcon,
   XCircleIcon,
 } from "@phosphor-icons/react";
+import type { BlockOutputResponse } from "@/app/api/__generated__/models/blockOutputResponse";
+import type { ErrorResponse } from "@/app/api/__generated__/models/errorResponse";
+import { ResponseType } from "@/app/api/__generated__/models/responseType";
+import type { SetupRequirementsResponse } from "@/app/api/__generated__/models/setupRequirementsResponse";
 
 export interface RunBlockInput {
   block_id?: string;
   input_data?: Record<string, unknown>;
 }
 
-export interface CredentialsMeta {
-  id: string;
-  provider: string;
-  provider_name?: string;
-  type: string;
-  types?: string[];
-  title: string;
-  scopes?: string[];
-}
-
-export interface SetupInfo {
-  agent_id: string;
-  agent_name: string;
-  requirements: {
-    credentials: CredentialsMeta[];
-    inputs: Array<{
-      name: string;
-      title: string;
-      type: string;
-      description: string;
-      required: boolean;
-    }>;
-    execution_modes: string[];
-  };
-  user_readiness: {
-    has_all_credentials: boolean;
-    missing_credentials: Record<string, CredentialsMeta>;
-    ready_to_run: boolean;
-  };
-}
-
-export interface SetupRequirementsOutput {
-  type: "setup_requirements";
-  message: string;
-  session_id?: string;
-  setup_info: SetupInfo;
-}
-
-export interface BlockOutput {
-  type: "block_output";
-  message: string;
-  session_id?: string;
-  block_id: string;
-  block_name: string;
-  outputs: Record<string, unknown[]>;
-  success: boolean;
-}
-
-export interface ErrorOutput {
-  type: "error";
-  message: string;
-  session_id?: string;
-  error?: string | null;
-  details?: Record<string, unknown> | null;
-}
-
 export type RunBlockToolOutput =
-  | SetupRequirementsOutput
-  | BlockOutput
-  | ErrorOutput;
+  | SetupRequirementsResponse
+  | BlockOutputResponse
+  | ErrorResponse;
+
+const RUN_BLOCK_OUTPUT_TYPES = new Set<string>([
+  ResponseType.setup_requirements,
+  ResponseType.block_output,
+  ResponseType.error,
+]);
+
+export function isRunBlockSetupRequirementsOutput(
+  output: RunBlockToolOutput,
+): output is SetupRequirementsResponse {
+  return (
+    output.type === ResponseType.setup_requirements ||
+    ("setup_info" in output && typeof output.setup_info === "object")
+  );
+}
+
+export function isRunBlockBlockOutput(
+  output: RunBlockToolOutput,
+): output is BlockOutputResponse {
+  return output.type === ResponseType.block_output || "block_id" in output;
+}
+
+export function isRunBlockErrorOutput(
+  output: RunBlockToolOutput,
+): output is ErrorResponse {
+  return output.type === ResponseType.error || "error" in output;
+}
 
 function parseOutput(output: unknown): RunBlockToolOutput | null {
   if (!output) return null;
@@ -77,12 +52,21 @@ function parseOutput(output: unknown): RunBlockToolOutput | null {
     const trimmed = output.trim();
     if (!trimmed) return null;
     try {
-      return JSON.parse(trimmed) as RunBlockToolOutput;
+      return parseOutput(JSON.parse(trimmed) as unknown);
     } catch {
       return null;
     }
   }
-  if (typeof output === "object") return output as RunBlockToolOutput;
+  if (typeof output === "object") {
+    const type = (output as { type?: unknown }).type;
+    if (typeof type === "string" && RUN_BLOCK_OUTPUT_TYPES.has(type)) {
+      return output as RunBlockToolOutput;
+    }
+    if ("block_id" in output) return output as BlockOutputResponse;
+    if ("setup_info" in output) return output as SetupRequirementsResponse;
+    if ("error" in output || "details" in output)
+      return output as ErrorResponse;
+  }
   return null;
 }
 
@@ -115,9 +99,9 @@ export function getAnimationText(part: {
     case "output-available": {
       const output = parseOutput(part.output);
       if (!output) return "Block run updated";
-      if (output.type === "block_output")
+      if (isRunBlockBlockOutput(output))
         return `Block ran: ${output.block_name}`;
-      if (output.type === "setup_requirements") {
+      if (isRunBlockSetupRequirementsOutput(output)) {
         return `Needs setup: ${output.setup_info.agent_name}`;
       }
       return "Error running block";

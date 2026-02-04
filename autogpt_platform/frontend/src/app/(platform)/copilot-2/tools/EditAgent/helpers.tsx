@@ -4,81 +4,23 @@ import {
   CircleNotchIcon,
   XCircleIcon,
 } from "@phosphor-icons/react";
-
-export interface ClarifyingQuestion {
-  question: string;
-  keyword: string;
-  example?: string;
-}
-
-export interface OperationStartedOutput {
-  type: "operation_started";
-  message: string;
-  session_id?: string;
-  operation_id: string;
-  tool_name: string;
-}
-
-export interface OperationPendingOutput {
-  type: "operation_pending";
-  message: string;
-  session_id?: string;
-  operation_id: string;
-  tool_name: string;
-}
-
-export interface OperationInProgressOutput {
-  type: "operation_in_progress";
-  message: string;
-  session_id?: string;
-  tool_call_id: string;
-}
-
-export interface AgentPreviewOutput {
-  type: "agent_preview";
-  message: string;
-  session_id?: string;
-  agent_json: Record<string, unknown>;
-  agent_name: string;
-  description: string;
-  node_count: number;
-  link_count: number;
-}
-
-export interface AgentSavedOutput {
-  type: "agent_saved";
-  message: string;
-  session_id?: string;
-  agent_id: string;
-  agent_name: string;
-  library_agent_id: string;
-  library_agent_link: string;
-  agent_page_link: string;
-}
-
-export interface ClarificationNeededOutput {
-  type: "clarification_needed";
-  message: string;
-  session_id?: string;
-  questions: ClarifyingQuestion[];
-}
-
-export interface ErrorOutput {
-  type: "error";
-  message: string;
-  session_id?: string;
-  error?: string | null;
-  details?: Record<string, unknown> | null;
-}
+import type { AgentPreviewResponse } from "@/app/api/__generated__/models/agentPreviewResponse";
+import type { AgentSavedResponse } from "@/app/api/__generated__/models/agentSavedResponse";
+import type { ClarificationNeededResponse } from "@/app/api/__generated__/models/clarificationNeededResponse";
+import type { ErrorResponse } from "@/app/api/__generated__/models/errorResponse";
+import type { OperationInProgressResponse } from "@/app/api/__generated__/models/operationInProgressResponse";
+import type { OperationPendingResponse } from "@/app/api/__generated__/models/operationPendingResponse";
+import type { OperationStartedResponse } from "@/app/api/__generated__/models/operationStartedResponse";
+import { ResponseType } from "@/app/api/__generated__/models/responseType";
 
 export type EditAgentToolOutput =
-  | OperationStartedOutput
-  | OperationPendingOutput
-  | OperationInProgressOutput
-  | AgentPreviewOutput
-  | AgentSavedOutput
-  | ClarificationNeededOutput
-  | ErrorOutput;
+  | OperationStartedResponse
+  | OperationPendingResponse
+  | OperationInProgressResponse
+  | AgentPreviewResponse
+  | AgentSavedResponse
+  | ClarificationNeededResponse
+  | ErrorResponse;
 
 function parseOutput(output: unknown): EditAgentToolOutput | null {
   if (!output) return null;
@@ -86,12 +28,35 @@ function parseOutput(output: unknown): EditAgentToolOutput | null {
     const trimmed = output.trim();
     if (!trimmed) return null;
     try {
-      return JSON.parse(trimmed) as EditAgentToolOutput;
+      return parseOutput(JSON.parse(trimmed) as unknown);
     } catch {
       return null;
     }
   }
-  if (typeof output === "object") return output as EditAgentToolOutput;
+  if (typeof output === "object") {
+    const type = (output as { type?: unknown }).type;
+    if (
+      type === ResponseType.operation_started ||
+      type === ResponseType.operation_pending ||
+      type === ResponseType.operation_in_progress ||
+      type === ResponseType.agent_preview ||
+      type === ResponseType.agent_saved ||
+      type === ResponseType.clarification_needed ||
+      type === ResponseType.error
+    ) {
+      return output as EditAgentToolOutput;
+    }
+    if ("operation_id" in output && "tool_name" in output)
+      return output as OperationStartedResponse | OperationPendingResponse;
+    if ("tool_call_id" in output) return output as OperationInProgressResponse;
+    if ("agent_json" in output && "agent_name" in output)
+      return output as AgentPreviewResponse;
+    if ("agent_id" in output && "library_agent_id" in output)
+      return output as AgentSavedResponse;
+    if ("questions" in output) return output as ClarificationNeededResponse;
+    if ("error" in output || "details" in output)
+      return output as ErrorResponse;
+  }
   return null;
 }
 
@@ -100,6 +65,58 @@ export function getEditAgentToolOutput(
 ): EditAgentToolOutput | null {
   if (!part || typeof part !== "object") return null;
   return parseOutput((part as { output?: unknown }).output);
+}
+
+export function isOperationStartedOutput(
+  output: EditAgentToolOutput,
+): output is OperationStartedResponse {
+  return (
+    output.type === ResponseType.operation_started ||
+    ("operation_id" in output && "tool_name" in output)
+  );
+}
+
+export function isOperationPendingOutput(
+  output: EditAgentToolOutput,
+): output is OperationPendingResponse {
+  return output.type === ResponseType.operation_pending;
+}
+
+export function isOperationInProgressOutput(
+  output: EditAgentToolOutput,
+): output is OperationInProgressResponse {
+  return (
+    output.type === ResponseType.operation_in_progress ||
+    "tool_call_id" in output
+  );
+}
+
+export function isAgentPreviewOutput(
+  output: EditAgentToolOutput,
+): output is AgentPreviewResponse {
+  return output.type === ResponseType.agent_preview || "agent_json" in output;
+}
+
+export function isAgentSavedOutput(
+  output: EditAgentToolOutput,
+): output is AgentSavedResponse {
+  return (
+    output.type === ResponseType.agent_saved || "agent_page_link" in output
+  );
+}
+
+export function isClarificationNeededOutput(
+  output: EditAgentToolOutput,
+): output is ClarificationNeededResponse {
+  return (
+    output.type === ResponseType.clarification_needed || "questions" in output
+  );
+}
+
+export function isErrorOutput(
+  output: EditAgentToolOutput,
+): output is ErrorResponse {
+  return output.type === ResponseType.error || "error" in output;
 }
 
 export function getAnimationText(part: {
@@ -115,15 +132,13 @@ export function getAnimationText(part: {
     case "output-available": {
       const output = parseOutput(part.output);
       if (!output) return "Agent updated";
-      if (output.type === "operation_started") return "Agent update started";
-      if (output.type === "operation_pending")
-        return "Agent update in progress";
-      if (output.type === "operation_in_progress")
+      if (isOperationStartedOutput(output)) return "Agent update started";
+      if (isOperationPendingOutput(output)) return "Agent update in progress";
+      if (isOperationInProgressOutput(output))
         return "Agent update already in progress";
-      if (output.type === "agent_saved") return `Saved: ${output.agent_name}`;
-      if (output.type === "agent_preview")
-        return `Preview: ${output.agent_name}`;
-      if (output.type === "clarification_needed") return "Needs clarification";
+      if (isAgentSavedOutput(output)) return `Saved: ${output.agent_name}`;
+      if (isAgentPreviewOutput(output)) return `Preview: ${output.agent_name}`;
+      if (isClarificationNeededOutput(output)) return "Needs clarification";
       return "Error editing agent";
     }
     case "output-error":

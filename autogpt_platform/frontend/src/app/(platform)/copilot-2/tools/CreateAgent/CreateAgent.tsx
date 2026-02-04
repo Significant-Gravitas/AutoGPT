@@ -5,11 +5,21 @@ import Link from "next/link";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
 import { useCopilotChatActions } from "../../components/CopilotChatActionsProvider/useCopilotChatActions";
-import { ClarificationQuestionsWidget } from "@/components/contextual/Chat/components/ClarificationQuestionsWidget/ClarificationQuestionsWidget";
+import {
+  ClarificationQuestionsWidget,
+  type ClarifyingQuestion as WidgetClarifyingQuestion,
+} from "@/components/contextual/Chat/components/ClarificationQuestionsWidget/ClarificationQuestionsWidget";
 import {
   formatMaybeJson,
   getAnimationText,
   getCreateAgentToolOutput,
+  isAgentPreviewOutput,
+  isAgentSavedOutput,
+  isClarificationNeededOutput,
+  isErrorOutput,
+  isOperationInProgressOutput,
+  isOperationPendingOutput,
+  isOperationStartedOutput,
   StateIcon,
   truncateText,
   type CreateAgentToolOutput,
@@ -32,27 +42,28 @@ function getAccordionMeta(output: CreateAgentToolOutput): {
   title: string;
   description?: string;
 } {
-  if (output.type === "agent_saved") {
+  if (isAgentSavedOutput(output)) {
     return { badgeText: "Create agent", title: output.agent_name };
   }
-  if (output.type === "agent_preview") {
+  if (isAgentPreviewOutput(output)) {
     return {
       badgeText: "Create agent",
       title: output.agent_name,
       description: `${output.node_count} block${output.node_count === 1 ? "" : "s"}`,
     };
   }
-  if (output.type === "clarification_needed") {
+  if (isClarificationNeededOutput(output)) {
+    const questions = output.questions ?? [];
     return {
       badgeText: "Create agent",
       title: "Needs clarification",
-      description: `${output.questions.length} question${output.questions.length === 1 ? "" : "s"}`,
+      description: `${questions.length} question${questions.length === 1 ? "" : "s"}`,
     };
   }
   if (
-    output.type === "operation_started" ||
-    output.type === "operation_pending" ||
-    output.type === "operation_in_progress"
+    isOperationStartedOutput(output) ||
+    isOperationPendingOutput(output) ||
+    isOperationInProgressOutput(output)
   ) {
     return { badgeText: "Create agent", title: "Creating agent" };
   }
@@ -67,13 +78,13 @@ export function CreateAgentTool({ part }: Props) {
   const hasExpandableContent =
     part.state === "output-available" &&
     !!output &&
-    (output.type === "operation_started" ||
-      output.type === "operation_pending" ||
-      output.type === "operation_in_progress" ||
-      output.type === "agent_preview" ||
-      output.type === "agent_saved" ||
-      output.type === "clarification_needed" ||
-      output.type === "error");
+    (isOperationStartedOutput(output) ||
+      isOperationPendingOutput(output) ||
+      isOperationInProgressOutput(output) ||
+      isAgentPreviewOutput(output) ||
+      isAgentSavedOutput(output) ||
+      isClarificationNeededOutput(output) ||
+      isErrorOutput(output));
 
   function handleClarificationAnswers(answers: Record<string, string>) {
     const contextMessage = Object.entries(answers)
@@ -95,10 +106,10 @@ export function CreateAgentTool({ part }: Props) {
       {hasExpandableContent && output && (
         <ToolAccordion
           {...getAccordionMeta(output)}
-          defaultExpanded={output.type === "clarification_needed"}
+          defaultExpanded={isClarificationNeededOutput(output)}
         >
-          {(output.type === "operation_started" ||
-            output.type === "operation_pending") && (
+          {(isOperationStartedOutput(output) ||
+            isOperationPendingOutput(output)) && (
             <div className="grid gap-2">
               <p className="text-sm text-foreground">{output.message}</p>
               <p className="text-xs text-muted-foreground">
@@ -110,7 +121,7 @@ export function CreateAgentTool({ part }: Props) {
             </div>
           )}
 
-          {output.type === "operation_in_progress" && (
+          {isOperationInProgressOutput(output) && (
             <div className="grid gap-2">
               <p className="text-sm text-foreground">{output.message}</p>
               <p className="text-xs italic text-muted-foreground">
@@ -119,7 +130,7 @@ export function CreateAgentTool({ part }: Props) {
             </div>
           )}
 
-          {output.type === "agent_saved" && (
+          {isAgentSavedOutput(output) && (
             <div className="grid gap-2">
               <p className="text-sm text-foreground">{output.message}</p>
               <div className="flex flex-wrap gap-2">
@@ -145,7 +156,7 @@ export function CreateAgentTool({ part }: Props) {
             </div>
           )}
 
-          {output.type === "agent_preview" && (
+          {isAgentPreviewOutput(output) && (
             <div className="grid gap-2">
               <p className="text-sm text-foreground">{output.message}</p>
               {output.description?.trim() && (
@@ -159,15 +170,26 @@ export function CreateAgentTool({ part }: Props) {
             </div>
           )}
 
-          {output.type === "clarification_needed" && (
+          {isClarificationNeededOutput(output) && (
             <ClarificationQuestionsWidget
-              questions={output.questions}
+              questions={(output.questions ?? []).map((q) => {
+                const item: WidgetClarifyingQuestion = {
+                  question: q.question,
+                  keyword: q.keyword,
+                };
+                const example =
+                  typeof q.example === "string" && q.example.trim()
+                    ? q.example.trim()
+                    : null;
+                if (example) item.example = example;
+                return item;
+              })}
               message={output.message}
               onSubmitAnswers={handleClarificationAnswers}
             />
           )}
 
-          {output.type === "error" && (
+          {isErrorOutput(output) && (
             <div className="grid gap-2">
               <p className="text-sm text-foreground">{output.message}</p>
               {output.error && (

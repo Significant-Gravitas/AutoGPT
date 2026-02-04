@@ -1,16 +1,34 @@
 import { ToolUIPart } from "ai";
-import {
-  FindBlockInput,
-  FindBlockOutput,
-  FindBlockToolPart,
-} from "./FindBlocks";
+import type { BlockListResponse } from "@/app/api/__generated__/models/blockListResponse";
+import { ResponseType } from "@/app/api/__generated__/models/responseType";
+import { FindBlockInput, FindBlockToolPart } from "./FindBlocks";
 import {
   CheckCircleIcon,
   CircleNotchIcon,
   XCircleIcon,
 } from "@phosphor-icons/react";
 
-export const getAnimationText = (part: FindBlockToolPart): string => {
+function parseOutput(output: unknown): BlockListResponse | null {
+  if (!output) return null;
+  if (typeof output === "string") {
+    const trimmed = output.trim();
+    if (!trimmed) return null;
+    try {
+      return parseOutput(JSON.parse(trimmed) as unknown);
+    } catch {
+      return null;
+    }
+  }
+  if (typeof output === "object") {
+    const type = (output as { type?: unknown }).type;
+    if (type === ResponseType.block_list || "blocks" in output) {
+      return output as BlockListResponse;
+    }
+  }
+  return null;
+}
+
+export function getAnimationText(part: FindBlockToolPart): string {
   switch (part.state) {
     case "input-streaming":
       return "Searching blocks for you";
@@ -21,7 +39,7 @@ export const getAnimationText = (part: FindBlockToolPart): string => {
     }
 
     case "output-available": {
-      const parsed = JSON.parse(part.output as string) as FindBlockOutput;
+      const parsed = parseOutput(part.output);
       if (parsed) {
         return `Found ${parsed.count} "${(part.input as FindBlockInput).query}" blocks`;
       }
@@ -34,9 +52,9 @@ export const getAnimationText = (part: FindBlockToolPart): string => {
     default:
       return "Processing";
   }
-};
+}
 
-export const StateIcon = ({ state }: { state: ToolUIPart["state"] }) => {
+export function StateIcon({ state }: { state: ToolUIPart["state"] }) {
   switch (state) {
     case "input-streaming":
     case "input-available":
@@ -53,4 +71,4 @@ export const StateIcon = ({ state }: { state: ToolUIPart["state"] }) => {
     default:
       return null;
   }
-};
+}

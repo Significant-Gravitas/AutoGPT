@@ -4,6 +4,10 @@ import {
   CircleNotchIcon,
   XCircleIcon,
 } from "@phosphor-icons/react";
+import type { AgentOutputResponse } from "@/app/api/__generated__/models/agentOutputResponse";
+import type { ErrorResponse } from "@/app/api/__generated__/models/errorResponse";
+import type { NoResultsResponse } from "@/app/api/__generated__/models/noResultsResponse";
+import { ResponseType } from "@/app/api/__generated__/models/responseType";
 
 export interface ViewAgentOutputInput {
   agent_name?: string;
@@ -13,47 +17,10 @@ export interface ViewAgentOutputInput {
   run_time?: string;
 }
 
-export interface ExecutionOutputInfo {
-  execution_id: string;
-  status: string;
-  started_at?: string | null;
-  ended_at?: string | null;
-  outputs: Record<string, unknown[]>;
-  inputs_summary?: Record<string, unknown> | null;
-}
-
-export interface AgentOutputOutput {
-  type: "agent_output";
-  message: string;
-  session_id?: string;
-  agent_name: string;
-  agent_id: string;
-  library_agent_id?: string | null;
-  library_agent_link?: string | null;
-  execution?: ExecutionOutputInfo | null;
-  available_executions?: Array<Record<string, unknown>> | null;
-  total_executions: number;
-}
-
-export interface NoResultsOutput {
-  type: "no_results";
-  message: string;
-  session_id?: string;
-  suggestions?: string[];
-}
-
-export interface ErrorOutput {
-  type: "error";
-  message: string;
-  session_id?: string;
-  error?: string | null;
-  details?: Record<string, unknown> | null;
-}
-
 export type ViewAgentOutputToolOutput =
-  | AgentOutputOutput
-  | NoResultsOutput
-  | ErrorOutput;
+  | AgentOutputResponse
+  | NoResultsResponse
+  | ErrorResponse;
 
 function parseOutput(output: unknown): ViewAgentOutputToolOutput | null {
   if (!output) return null;
@@ -61,13 +28,51 @@ function parseOutput(output: unknown): ViewAgentOutputToolOutput | null {
     const trimmed = output.trim();
     if (!trimmed) return null;
     try {
-      return JSON.parse(trimmed) as ViewAgentOutputToolOutput;
+      return parseOutput(JSON.parse(trimmed) as unknown);
     } catch {
       return null;
     }
   }
-  if (typeof output === "object") return output as ViewAgentOutputToolOutput;
+  if (typeof output === "object") {
+    const type = (output as { type?: unknown }).type;
+    if (
+      type === ResponseType.agent_output ||
+      type === ResponseType.no_results ||
+      type === ResponseType.error
+    ) {
+      return output as ViewAgentOutputToolOutput;
+    }
+    if ("agent_id" in output && "agent_name" in output) {
+      return output as AgentOutputResponse;
+    }
+    if ("suggestions" in output && !("error" in output)) {
+      return output as NoResultsResponse;
+    }
+    if ("error" in output || "details" in output)
+      return output as ErrorResponse;
+  }
   return null;
+}
+
+export function isAgentOutputResponse(
+  output: ViewAgentOutputToolOutput,
+): output is AgentOutputResponse {
+  return output.type === ResponseType.agent_output || "agent_id" in output;
+}
+
+export function isNoResultsResponse(
+  output: ViewAgentOutputToolOutput,
+): output is NoResultsResponse {
+  return (
+    output.type === ResponseType.no_results ||
+    ("suggestions" in output && !("error" in output))
+  );
+}
+
+export function isErrorResponse(
+  output: ViewAgentOutputToolOutput,
+): output is ErrorResponse {
+  return output.type === ResponseType.error || "error" in output;
 }
 
 export function getViewAgentOutputToolOutput(
@@ -106,12 +111,12 @@ export function getAnimationText(part: {
     case "output-available": {
       const output = parseOutput(part.output);
       if (!output) return "Loaded agent outputs";
-      if (output.type === "agent_output") {
+      if (isAgentOutputResponse(output)) {
         if (output.execution)
           return `Loaded output (${output.execution.status})`;
         return "Loaded agent outputs";
       }
-      if (output.type === "no_results") return "No outputs found";
+      if (isNoResultsResponse(output)) return "No outputs found";
       return "Error loading agent output";
     }
     case "output-error":

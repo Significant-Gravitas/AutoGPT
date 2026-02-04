@@ -4,6 +4,11 @@ import {
   CircleNotchIcon,
   XCircleIcon,
 } from "@phosphor-icons/react";
+import type { DocPageResponse } from "@/app/api/__generated__/models/docPageResponse";
+import type { DocSearchResultsResponse } from "@/app/api/__generated__/models/docSearchResultsResponse";
+import type { ErrorResponse } from "@/app/api/__generated__/models/errorResponse";
+import type { NoResultsResponse } from "@/app/api/__generated__/models/noResultsResponse";
+import { ResponseType } from "@/app/api/__generated__/models/responseType";
 
 export interface SearchDocsInput {
   query: string;
@@ -13,53 +18,11 @@ export interface GetDocPageInput {
   path: string;
 }
 
-export interface DocSearchResult {
-  title: string;
-  path: string;
-  section: string;
-  snippet: string;
-  score: number;
-  doc_url?: string | null;
-}
-
-export interface DocSearchResultsOutput {
-  type: "doc_search_results";
-  message: string;
-  session_id?: string;
-  results: DocSearchResult[];
-  count: number;
-  query: string;
-}
-
-export interface DocPageOutput {
-  type: "doc_page";
-  message: string;
-  session_id?: string;
-  title: string;
-  path: string;
-  content: string;
-  doc_url?: string | null;
-}
-
-export interface NoResultsOutput {
-  type: "no_results";
-  message: string;
-  suggestions?: string[];
-  session_id?: string;
-}
-
-export interface ErrorOutput {
-  type: "error";
-  message: string;
-  error?: string;
-  session_id?: string;
-}
-
 export type DocsToolOutput =
-  | DocSearchResultsOutput
-  | DocPageOutput
-  | NoResultsOutput
-  | ErrorOutput;
+  | DocSearchResultsResponse
+  | DocPageResponse
+  | NoResultsResponse
+  | ErrorResponse;
 
 export type DocsToolType = "tool-search_docs" | "tool-get_doc_page" | string;
 
@@ -80,13 +43,29 @@ function parseOutput(output: unknown): DocsToolOutput | null {
     const trimmed = output.trim();
     if (!trimmed) return null;
     try {
-      return JSON.parse(trimmed) as DocsToolOutput;
+      return parseOutput(JSON.parse(trimmed) as unknown);
     } catch {
       return null;
     }
   }
   if (typeof output === "object") {
-    return output as DocsToolOutput;
+    const type = (output as { type?: unknown }).type;
+    if (
+      type === ResponseType.doc_search_results ||
+      type === ResponseType.doc_page ||
+      type === ResponseType.no_results ||
+      type === ResponseType.error
+    ) {
+      return output as DocsToolOutput;
+    }
+    if ("results" in output && "query" in output)
+      return output as DocSearchResultsResponse;
+    if ("content" in output && "path" in output)
+      return output as DocPageResponse;
+    if ("suggestions" in output && !("error" in output))
+      return output as NoResultsResponse;
+    if ("error" in output || "details" in output)
+      return output as ErrorResponse;
   }
   return null;
 }
@@ -96,18 +75,43 @@ export function getDocsToolOutput(part: unknown): DocsToolOutput | null {
   return parseOutput((part as { output?: unknown }).output);
 }
 
+export function isDocSearchResultsOutput(
+  output: DocsToolOutput,
+): output is DocSearchResultsResponse {
+  return output.type === ResponseType.doc_search_results || "results" in output;
+}
+
+export function isDocPageOutput(
+  output: DocsToolOutput,
+): output is DocPageResponse {
+  return output.type === ResponseType.doc_page || "content" in output;
+}
+
+export function isNoResultsOutput(
+  output: DocsToolOutput,
+): output is NoResultsResponse {
+  return (
+    output.type === ResponseType.no_results ||
+    ("suggestions" in output && !("error" in output))
+  );
+}
+
+export function isErrorOutput(output: DocsToolOutput): output is ErrorResponse {
+  return output.type === ResponseType.error || "error" in output;
+}
+
 export function getDocsToolTitle(
   toolType: DocsToolType,
   output: DocsToolOutput,
 ): string {
   if (toolType === "tool-search_docs") {
-    if (output.type === "doc_search_results") return "Documentation results";
-    if (output.type === "no_results") return "No documentation found";
+    if (isDocSearchResultsOutput(output)) return "Documentation results";
+    if (isNoResultsOutput(output)) return "No documentation found";
     return "Documentation search error";
   }
 
-  if (output.type === "doc_page") return "Documentation page";
-  if (output.type === "no_results") return "No documentation found";
+  if (isDocPageOutput(output)) return "Documentation page";
+  if (isNoResultsOutput(output)) return "No documentation found";
   return "Documentation page error";
 }
 
@@ -134,13 +138,13 @@ export function getAnimationText(part: {
             part.input as SearchDocsInput | undefined
           )?.query?.trim();
           if (!output) return "Found documentation";
-          if (output.type === "doc_search_results") {
+          if (isDocSearchResultsOutput(output)) {
             const count = output.count ?? output.results.length;
             return query
               ? `Found ${count} doc result${count === 1 ? "" : "s"} for "${query}"`
               : `Found ${count} doc result${count === 1 ? "" : "s"}`;
           }
-          if (output.type === "no_results") {
+          if (isNoResultsOutput(output)) {
             return query ? `No docs found for "${query}"` : "No docs found";
           }
           return "Error searching docs";
@@ -164,9 +168,8 @@ export function getAnimationText(part: {
         case "output-available": {
           const output = parseOutput(part.output);
           if (!output) return "Loaded documentation page";
-          if (output.type === "doc_page") return `Loaded "${output.title}"`;
-          if (output.type === "no_results")
-            return "Documentation page not found";
+          if (isDocPageOutput(output)) return `Loaded "${output.title}"`;
+          if (isNoResultsOutput(output)) return "Documentation page not found";
           return "Error loading documentation page";
         }
         case "output-error":
