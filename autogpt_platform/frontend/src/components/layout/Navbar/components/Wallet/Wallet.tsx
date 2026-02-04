@@ -15,7 +15,6 @@ import {
 import { cn } from "@/lib/utils";
 import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-import { storage, Key as StorageKey } from "@/services/storage/local-storage";
 import { WalletIcon } from "@phosphor-icons/react";
 import { PopoverClose } from "@radix-ui/react-popover";
 import { X } from "lucide-react";
@@ -175,7 +174,6 @@ export function Wallet() {
   const [prevCredits, setPrevCredits] = useState<number | null>(credits);
   const [flash, setFlash] = useState(false);
   const [walletOpen, setWalletOpen] = useState(false);
-  const [lastSeenCredits, setLastSeenCredits] = useState<number | null>(null);
 
   const totalCount = useMemo(() => {
     return groups.reduce((acc, group) => acc + group.tasks.length, 0);
@@ -199,38 +197,6 @@ export function Wallet() {
     );
     setCompletedCount(completed);
   }, [groups, state?.completedSteps]);
-
-  // Load last seen credits from localStorage once on mount
-  useEffect(() => {
-    const stored = storage.get(StorageKey.WALLET_LAST_SEEN_CREDITS);
-    if (stored !== undefined && stored !== null) {
-      const parsed = parseFloat(stored);
-      if (!Number.isNaN(parsed)) setLastSeenCredits(parsed);
-      else setLastSeenCredits(0);
-    } else {
-      setLastSeenCredits(0);
-    }
-  }, []);
-
-  // Auto-open once if never shown, otherwise open only when credits increase beyond last seen
-  useEffect(() => {
-    if (typeof credits !== "number") return;
-    // Open once for first-time users
-    if (state && state.walletShown === false) {
-      requestAnimationFrame(() => setWalletOpen(true));
-      // Mark as shown so it won't reopen on every reload
-      updateState({ walletShown: true });
-      return;
-    }
-    // Open if user gained more credits than last acknowledged
-    if (
-      lastSeenCredits !== null &&
-      credits > lastSeenCredits &&
-      walletOpen === false
-    ) {
-      requestAnimationFrame(() => setWalletOpen(true));
-    }
-  }, [credits, lastSeenCredits, state?.walletShown, updateState, walletOpen]);
 
   const onWalletOpen = useCallback(async () => {
     if (!state?.walletShown) {
@@ -324,19 +290,7 @@ export function Wallet() {
   if (credits === null || !state) return null;
 
   return (
-    <Popover
-      open={walletOpen}
-      onOpenChange={(open) => {
-        setWalletOpen(open);
-        if (!open) {
-          // Persist the latest acknowledged credits so we only auto-open on future gains
-          if (typeof credits === "number") {
-            storage.set(StorageKey.WALLET_LAST_SEEN_CREDITS, String(credits));
-            setLastSeenCredits(credits);
-          }
-        }
-      }}
-    >
+    <Popover open={walletOpen} onOpenChange={(open) => setWalletOpen(open)}>
       <PopoverTrigger asChild>
         <div className="relative inline-block">
           <button
