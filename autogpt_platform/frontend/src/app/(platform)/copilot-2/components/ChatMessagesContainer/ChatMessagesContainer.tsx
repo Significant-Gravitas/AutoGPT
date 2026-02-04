@@ -24,9 +24,6 @@ interface ChatMessagesContainerProps {
   messages: UIMessage<unknown, UIDataTypes, UITools>[];
   status: string;
   error: Error | undefined;
-  handleSubmit: (e: React.FormEvent) => void;
-  input: string;
-  setInput: (input: string) => void;
 }
 
 export const ChatMessagesContainer = ({

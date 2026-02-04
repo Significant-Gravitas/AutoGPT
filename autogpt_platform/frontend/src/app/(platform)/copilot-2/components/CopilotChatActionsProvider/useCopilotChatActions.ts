@@ -3,7 +3,7 @@
 import { createContext, useContext } from "react";
 
 interface CopilotChatActions {
-  onSend: (message: string) => void;
+  onSend: (message: string) => void | Promise<void>;
 }
 
 const CopilotChatActionsContext = createContext<CopilotChatActions | null>(

@@ -21,6 +21,7 @@ export function useChatInput({
 }: Args) {
   const [value, setValue] = useState("");
   const [hasMultipleLines, setHasMultipleLines] = useState(false);
+  const [isSending, setIsSending] = useState(false);
 
   useEffect(
     function focusOnMount() {
@@ -100,34 +101,40 @@ export function useChatInput({
     }
   }, [value, maxRows, inputId]);
 
-  const handleSend = () => {
-    if (disabled || !value.trim()) return;
-    onSend(value.trim());
-    setValue("");
-    setHasMultipleLines(false);
-    const textarea = document.getElementById(inputId) as HTMLTextAreaElement;
-    const wrapper = document.getElementById(
-      `${inputId}-wrapper`,
-    ) as HTMLDivElement;
-    if (textarea) {
-      textarea.style.height = "auto";
+  async function handleSend() {
+    if (disabled || isSending || !value.trim()) return;
+
+    setIsSending(true);
+    try {
+      await onSend(value.trim());
+      setValue("");
+      setHasMultipleLines(false);
+      const textarea = document.getElementById(inputId) as HTMLTextAreaElement;
+      const wrapper = document.getElementById(
+        `${inputId}-wrapper`,
+      ) as HTMLDivElement;
+      if (textarea) {
+        textarea.style.height = "auto";
+      }
+      if (wrapper) {
+        wrapper.style.height = "";
+        wrapper.style.maxHeight = "";
+      }
+    } finally {
+      setIsSending(false);
     }
-    if (wrapper) {
-      wrapper.style.height = "";
-      wrapper.style.maxHeight = "";
-    }
-  };
+  }
 
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
-      handleSend();
+      void handleSend();
     }
   }
 
   function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    handleSend();
+    void handleSend();
   }
 
   function handleChange(e: ChangeEvent<HTMLTextAreaElement>) {
@@ -142,5 +149,6 @@ export function useChatInput({
     handleSubmit,
     handleChange,
     hasMultipleLines,
+    isSending,
   };
 }

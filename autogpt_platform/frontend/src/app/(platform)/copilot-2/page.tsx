@@ -9,14 +9,24 @@ import { ChatContainer } from "./components/ChatContainer/ChatContainer";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { CopyIcon, CheckIcon } from "@phosphor-icons/react";
-import { getV2GetSession } from "@/app/api/__generated__/endpoints/chat/chat";
+import {
+  getGetV2ListSessionsQueryKey,
+  getV2GetSession,
+  postV2CreateSession,
+} from "@/app/api/__generated__/endpoints/chat/chat";
 import { convertChatSessionMessagesToUiMessages } from "./helpers/convertChatSessionToUiMessages";
+import { useQueryClient } from "@tanstack/react-query";
 
 export default function Page() {
-  const [input, setInput] = useState("");
   const [copied, setCopied] = useState(false);
-  const [sessionId] = useQueryState("sessionId", parseAsString);
+  const [isCreatingSession, setIsCreatingSession] = useState(false);
+  const [sessionId, setSessionId] = useQueryState("sessionId", parseAsString);
   const hydrationSeq = useRef(0);
+  const lastHydratedSessionIdRef = useRef<string | null>(null);
+  const createSessionPromiseRef = useRef<Promise<string> | null>(null);
+  const queuedFirstMessageRef = useRef<string | null>(null);
+  const queuedFirstMessageResolverRef = useRef<(() => void) | null>(null);
+  const queryClient = useQueryClient();
 
   function handleCopySessionId() {
     if (!sessionId) return;
@@ -49,6 +59,41 @@ export default function Page() {
     transport: transport ?? undefined,
   });
 
+  const messagesRef = useRef(messages);
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
+  async function createSession(): Promise<string> {
+    if (sessionId) return sessionId;
+    if (createSessionPromiseRef.current) return createSessionPromiseRef.current;
+
+    setIsCreatingSession(true);
+    const promise = (async () => {
+      const response = await postV2CreateSession({
+        body: JSON.stringify({}),
+      });
+      if (response.status !== 200 || !response.data?.id) {
+        throw new Error("Failed to create chat session");
+      }
+      setSessionId(response.data.id);
+      queryClient.invalidateQueries({
+        queryKey: getGetV2ListSessionsQueryKey(),
+      });
+      return response.data.id;
+    })();
+
+    createSessionPromiseRef.current = promise;
+
+    try {
+      return await promise;
+    } finally {
+      createSessionPromiseRef.current = null;
+      setIsCreatingSession(false);
+    }
+  }
+
   useEffect(() => {
     hydrationSeq.current += 1;
     const seq = hydrationSeq.current;
@@ -56,10 +101,16 @@ export default function Page() {
 
     if (!sessionId) {
       setMessages([]);
+      lastHydratedSessionIdRef.current = null;
       return;
     }
 
     const currentSessionId = sessionId;
+
+    if (lastHydratedSessionIdRef.current !== currentSessionId) {
+      setMessages([]);
+      lastHydratedSessionIdRef.current = currentSessionId;
+    }
 
     async function hydrate() {
       try {
@@ -74,6 +125,13 @@ export default function Page() {
         );
         if (controller.signal.aborted) return;
         if (hydrationSeq.current !== seq) return;
+
+        const localMessagesCount = messagesRef.current.length;
+        const remoteMessagesCount = uiMessages.length;
+
+        if (remoteMessagesCount === 0) return;
+        if (localMessagesCount > remoteMessagesCount) return;
+
         setMessages(uiMessages);
       } catch (error) {
         if ((error as { name?: string } | null)?.name === "AbortError") return;
@@ -86,16 +144,33 @@ export default function Page() {
     return () => controller.abort();
   }, [sessionId, setMessages]);
 
-  function handleMessageSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!input.trim() || !sessionId) return;
+  useEffect(() => {
+    if (!sessionId) return;
+    const firstMessage = queuedFirstMessageRef.current;
+    if (!firstMessage) return;
 
-    sendMessage({ text: input });
-    setInput("");
-  }
+    queuedFirstMessageRef.current = null;
+    sendMessage({ text: firstMessage });
+    queuedFirstMessageResolverRef.current?.();
+    queuedFirstMessageResolverRef.current = null;
+  }, [sendMessage, sessionId]);
 
-  function onSend(message: string) {
-    sendMessage({ text: message });
+  async function onSend(message: string) {
+    const trimmed = message.trim();
+    if (!trimmed) return;
+
+    if (sessionId) {
+      sendMessage({ text: trimmed });
+      return;
+    }
+
+    queuedFirstMessageRef.current = trimmed;
+    const sentPromise = new Promise<void>((resolve) => {
+      queuedFirstMessageResolverRef.current = resolve;
+    });
+
+    await createSession();
+    await sentPromise;
   }
 
   return (
@@ -104,7 +179,7 @@ export default function Page() {
       className="h-[calc(100vh-72px)] min-h-0"
     >
       <ChatSidebar />
-      <SidebarInset className="relative flex h-[calc(100vh-80px)] flex-col">
+      <SidebarInset className="relative flex h-[calc(100vh-80px)] flex-col overflow-hidden ring-1 ring-zinc-300">
         {sessionId && (
           <div className="absolute flex items-center px-4 py-4">
             <div className="flex items-center gap-2 rounded-3xl border border-neutral-400 bg-neutral-100 px-3 py-1.5 text-sm text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400">
@@ -129,9 +204,9 @@ export default function Page() {
             messages={messages}
             status={status}
             error={error}
-            input={input}
-            setInput={setInput}
-            handleMessageSubmit={handleMessageSubmit}
+            sessionId={sessionId}
+            isCreatingSession={isCreatingSession}
+            onCreateSession={createSession}
             onSend={onSend}
           />
         </div>

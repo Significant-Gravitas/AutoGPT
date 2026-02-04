@@ -11,12 +11,13 @@ import { useChatInput } from "./useChatInput";
 import { useVoiceRecording } from "./useVoiceRecording";
 
 export interface Props {
-  onSend: (message: string) => void;
+  onSend: (message: string) => void | Promise<void>;
   disabled?: boolean;
   isStreaming?: boolean;
   onStop?: () => void;
   placeholder?: string;
   className?: string;
+  inputId?: string;
 }
 
 export function ChatInput({
@@ -26,6 +27,7 @@ export function ChatInput({
   onStop,
   placeholder = "Type your message...",
   className,
+  inputId = "chat-input",
 }: Props) {
   const inputId = "chat-input";
   const {

@@ -3,7 +3,7 @@
 import { CopilotChatActionsContext } from "./useCopilotChatActions";
 
 interface Props {
-  onSend: (message: string) => void;
+  onSend: (message: string) => void | Promise<void>;
   children: React.ReactNode;
 }
 
