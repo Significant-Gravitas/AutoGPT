@@ -1,7 +1,6 @@
 "use client";
 
 import { useCopilotSessionId } from "@/app/(platform)/copilot/useCopilotSessionId";
-import { useCopilotStore } from "@/app/(platform)/copilot/copilot-page-store";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
@@ -25,8 +24,8 @@ export function Chat({
 }: ChatProps) {
   const { urlSessionId } = useCopilotSessionId();
   const hasHandledNotFoundRef = useRef(false);
-  const isSwitchingSession = useCopilotStore((s) => s.isSwitchingSession);
   const {
+    session,
     messages,
     isLoading,
     isCreating,
@@ -37,6 +36,18 @@ export function Chat({
     showLoader,
     startPollingForOperation,
   } = useChat({ urlSessionId });
+
+  // Extract active stream info for reconnection
+  const activeStream = (
+    session as {
+      active_stream?: {
+        task_id: string;
+        last_message_id: string;
+        operation_id: string;
+        tool_name: string;
+      };
+    }
+  )?.active_stream;
 
   useEffect(() => {
     if (!onSessionNotFound) return;
@@ -53,8 +64,7 @@ export function Chat({
     isCreating,
   ]);
 
-  const shouldShowLoader =
-    (showLoader && (isLoading || isCreating)) || isSwitchingSession;
+  const shouldShowLoader = showLoader && (isLoading || isCreating);
 
   return (
     <div className={cn("flex h-full flex-col", className)}>
@@ -66,21 +76,19 @@ export function Chat({
             <div className="flex flex-col items-center gap-3">
               <LoadingSpinner size="large" className="text-neutral-400" />
               <Text variant="body" className="text-zinc-500">
-                {isSwitchingSession
-                  ? "Switching chat..."
-                  : "Loading your chat..."}
+                Loading your chat...
               </Text>
             </div>
           </div>
         )}
 
         {/* Error State */}
-        {error && !isLoading && !isSwitchingSession && (
+        {error && !isLoading && (
           <ChatErrorState error={error} onRetry={createSession} />
         )}
 
         {/* Session Content */}
-        {sessionId && !isLoading && !error && !isSwitchingSession && (
+        {sessionId && !isLoading && !error && (
           <ChatContainer
             sessionId={sessionId}
             initialMessages={messages}
@@ -88,6 +96,16 @@ export function Chat({
             className="flex-1"
             onStreamingChange={onStreamingChange}
             onOperationStarted={startPollingForOperation}
+            activeStream={
+              activeStream
+                ? {
+                    taskId: activeStream.task_id,
+                    lastMessageId: activeStream.last_message_id,
+                    operationId: activeStream.operation_id,
+                    toolName: activeStream.tool_name,
+                  }
+                : undefined
+            }
           />
         )}
       </main>

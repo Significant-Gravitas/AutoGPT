@@ -112,7 +112,7 @@ export default function CopilotPage() {
             <div className="mx-auto max-w-3xl">
               <Text
                 variant="h3"
-                className="mb-3 !text-[1.375rem] text-zinc-700"
+                className="mb-1 !text-[1.375rem] text-zinc-700"
               >
                 Hey, <span className="text-violet-600">{greetingName}</span>
               </Text>
@@ -135,7 +135,7 @@ export default function CopilotPage() {
                   variant="outline"
                   size="small"
                   onClick={() => handleQuickAction(action)}
-                  className="shrink-0 border-zinc-600 text-zinc-600"
+                  className="h-auto shrink-0 border-zinc-300 px-3 py-2 text-[.9rem] text-zinc-600"
                 >
                   {action}
                 </Button>

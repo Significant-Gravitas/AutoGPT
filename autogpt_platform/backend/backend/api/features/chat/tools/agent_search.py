@@ -1,13 +1,11 @@
 """Shared agent search functionality for find_agent and find_library_agent tools."""
 
-import asyncio
 import logging
+import re
 from typing import Literal
 
 from backend.api.features.library import db as library_db
 from backend.api.features.store import db as store_db
-from backend.data import graph as graph_db
-from backend.data.graph import GraphModel
 from backend.util.exceptions import DatabaseError, NotFoundError
 
 from .models import (
@@ -17,11 +15,89 @@ from .models import (
     NoResultsResponse,
     ToolResponseBase,
 )
-from .utils import fetch_graph_from_store_slug
 
 logger = logging.getLogger(__name__)
 
 SearchSource = Literal["marketplace", "library"]
+
+_UUID_PATTERN = re.compile(
+    r"^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$",
+    re.IGNORECASE,
+)
+
+
+def _is_uuid(text: str) -> bool:
+    """Check if text is a valid UUID v4."""
+    return bool(_UUID_PATTERN.match(text.strip()))
+
+
+async def _get_library_agent_by_id(user_id: str, agent_id: str) -> AgentInfo | None:
+    """Fetch a library agent by ID (library agent ID or graph_id).
+
+    Tries multiple lookup strategies:
+    1. First by graph_id (AgentGraph primary key)
+    2. Then by library agent ID (LibraryAgent primary key)
+
+    Args:
+        user_id: The user ID
+        agent_id: The ID to look up (can be graph_id or library agent ID)
+
+    Returns:
+        AgentInfo if found, None otherwise
+    """
+    try:
+        agent = await library_db.get_library_agent_by_graph_id(user_id, agent_id)
+        if agent:
+            logger.debug(f"Found library agent by graph_id: {agent.name}")
+            return AgentInfo(
+                id=agent.id,
+                name=agent.name,
+                description=agent.description or "",
+                source="library",
+                in_library=True,
+                creator=agent.creator_name,
+                status=agent.status.value,
+                can_access_graph=agent.can_access_graph,
+                has_external_trigger=agent.has_external_trigger,
+                new_output=agent.new_output,
+                graph_id=agent.graph_id,
+            )
+    except DatabaseError:
+        raise
+    except Exception as e:
+        logger.warning(
+            f"Could not fetch library agent by graph_id {agent_id}: {e}",
+            exc_info=True,
+        )
+
+    try:
+        agent = await library_db.get_library_agent(agent_id, user_id)
+        if agent:
+            logger.debug(f"Found library agent by library_id: {agent.name}")
+            return AgentInfo(
+                id=agent.id,
+                name=agent.name,
+                description=agent.description or "",
+                source="library",
+                in_library=True,
+                creator=agent.creator_name,
+                status=agent.status.value,
+                can_access_graph=agent.can_access_graph,
+                has_external_trigger=agent.has_external_trigger,
+                new_output=agent.new_output,
+                graph_id=agent.graph_id,
+            )
+    except NotFoundError:
+        logger.debug(f"Library agent not found by library_id: {agent_id}")
+    except DatabaseError:
+        raise
+    except Exception as e:
+        logger.warning(
+            f"Could not fetch library agent by library_id {agent_id}: {e}",
+            exc_info=True,
+        )
+
+    return None
 
 
 async def search_agents(
@@ -58,28 +134,7 @@ async def search_agents(
         if source == "marketplace":
             logger.info(f"Searching marketplace for: {query}")
             results = await store_db.get_store_agents(search_query=query, page_size=5)
-
-            # Fetch all graphs in parallel for better performance
-            async def fetch_marketplace_graph(
-                creator: str, slug: str
-            ) -> GraphModel | None:
-                try:
-                    graph, _ = await fetch_graph_from_store_slug(creator, slug)
-                    return graph
-                except Exception as e:
-                    logger.warning(
-                        f"Failed to fetch input schema for {creator}/{slug}: {e}"
-                    )
-                    return None
-
-            graphs = await asyncio.gather(
-                *(
-                    fetch_marketplace_graph(agent.creator, agent.slug)
-                    for agent in results.agents
-                )
-            )
-
-            for agent, graph in zip(results.agents, graphs):
+            for agent in results.agents:
                 agents.append(
                     AgentInfo(
                         id=f"{agent.creator}/{agent.slug}",
@@ -92,58 +147,39 @@ async def search_agents(
                         rating=agent.rating,
                         runs=agent.runs,
                         is_featured=False,
-                        inputs=graph.input_schema if graph else None,
                     )
                 )
-        else:  # library
-            logger.info(f"Searching user library for: {query}")
-            results = await library_db.list_library_agents(
-                user_id=user_id,  # type: ignore[arg-type]
-                search_term=query,
-                page_size=10,
-            )
+        else:
+            if _is_uuid(query):
+                logger.info(f"Query looks like UUID, trying direct lookup: {query}")
+                agent = await _get_library_agent_by_id(user_id, query)  # type: ignore[arg-type]
+                if agent:
+                    agents.append(agent)
+                    logger.info(f"Found agent by direct ID lookup: {agent.name}")
 
-            # Fetch all graphs in parallel for better performance
-            # (list_library_agents doesn't include nodes for performance)
-            async def fetch_library_graph(
-                graph_id: str, graph_version: int
-            ) -> GraphModel | None:
-                try:
-                    return await graph_db.get_graph(
-                        graph_id=graph_id,
-                        version=graph_version,
-                        user_id=user_id,
-                    )
-                except Exception as e:
-                    logger.warning(
-                        f"Failed to fetch input schema for graph {graph_id}: {e}"
-                    )
-                    return None
-
-            graphs = await asyncio.gather(
-                *(
-                    fetch_library_graph(agent.graph_id, agent.graph_version)
-                    for agent in results.agents
+            if not agents:
+                logger.info(f"Searching user library for: {query}")
+                results = await library_db.list_library_agents(
+                    user_id=user_id,  # type: ignore[arg-type]
+                    search_term=query,
+                    page_size=10,
                 )
-            )
-
-            for agent, graph in zip(results.agents, graphs):
-                agents.append(
-                    AgentInfo(
-                        id=agent.id,
-                        name=agent.name,
-                        description=agent.description or "",
-                        source="library",
-                        in_library=True,
-                        creator=agent.creator_name,
-                        status=agent.status.value,
-                        can_access_graph=agent.can_access_graph,
-                        has_external_trigger=agent.has_external_trigger,
-                        new_output=agent.new_output,
-                        graph_id=agent.graph_id,
-                        inputs=graph.input_schema if graph else None,
+                for agent in results.agents:
+                    agents.append(
+                        AgentInfo(
+                            id=agent.id,
+                            name=agent.name,
+                            description=agent.description or "",
+                            source="library",
+                            in_library=True,
+                            creator=agent.creator_name,
+                            status=agent.status.value,
+                            can_access_graph=agent.can_access_graph,
+                            has_external_trigger=agent.has_external_trigger,
+                            new_output=agent.new_output,
+                            graph_id=agent.graph_id,
+                        )
                     )
-                )
         logger.info(f"Found {len(agents)} agents in {source}")
     except NotFoundError:
         pass

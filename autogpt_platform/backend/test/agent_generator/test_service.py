@@ -102,7 +102,7 @@ class TestDecomposeGoalExternal:
 
     @pytest.mark.asyncio
     async def test_decompose_goal_with_context(self):
-        """Test decomposition with additional context."""
+        """Test decomposition with additional context enriched into description."""
         mock_response = MagicMock()
         mock_response.json.return_value = {
             "success": True,
@@ -119,9 +119,12 @@ class TestDecomposeGoalExternal:
                 "Build a chatbot", context="Use Python"
             )
 
+        expected_description = (
+            "Build a chatbot\n\nAdditional context from user:\nUse Python"
+        )
         mock_client.post.assert_called_once_with(
             "/api/decompose-description",
-            json={"description": "Build a chatbot", "user_instruction": "Use Python"},
+            json={"description": expected_description},
         )
 
     @pytest.mark.asyncio
@@ -151,15 +154,20 @@ class TestDecomposeGoalExternal:
     @pytest.mark.asyncio
     async def test_decompose_goal_handles_http_error(self):
         """Test decomposition handles HTTP errors gracefully."""
+        mock_response = MagicMock()
+        mock_response.status_code = 500
         mock_client = AsyncMock()
         mock_client.post.side_effect = httpx.HTTPStatusError(
-            "Server error", request=MagicMock(), response=MagicMock()
+            "Server error", request=MagicMock(), response=mock_response
         )
 
         with patch.object(service, "_get_client", return_value=mock_client):
             result = await service.decompose_goal_external("Build a chatbot")
 
-        assert result is None
+        assert result is not None
+        assert result.get("type") == "error"
+        assert result.get("error_type") == "http_error"
+        assert "Server error" in result.get("error", "")
 
     @pytest.mark.asyncio
     async def test_decompose_goal_handles_request_error(self):
@@ -170,7 +178,10 @@ class TestDecomposeGoalExternal:
         with patch.object(service, "_get_client", return_value=mock_client):
             result = await service.decompose_goal_external("Build a chatbot")
 
-        assert result is None
+        assert result is not None
+        assert result.get("type") == "error"
+        assert result.get("error_type") == "connection_error"
+        assert "Connection failed" in result.get("error", "")
 
     @pytest.mark.asyncio
     async def test_decompose_goal_handles_service_error(self):
@@ -179,6 +190,7 @@ class TestDecomposeGoalExternal:
         mock_response.json.return_value = {
             "success": False,
             "error": "Internal error",
+            "error_type": "internal_error",
         }
         mock_response.raise_for_status = MagicMock()
 
@@ -188,7 +200,10 @@ class TestDecomposeGoalExternal:
         with patch.object(service, "_get_client", return_value=mock_client):
             result = await service.decompose_goal_external("Build a chatbot")
 
-        assert result is None
+        assert result is not None
+        assert result.get("type") == "error"
+        assert result.get("error") == "Internal error"
+        assert result.get("error_type") == "internal_error"
 
 
 class TestGenerateAgentExternal:
@@ -236,7 +251,10 @@ class TestGenerateAgentExternal:
         with patch.object(service, "_get_client", return_value=mock_client):
             result = await service.generate_agent_external({"steps": []})
 
-        assert result is None
+        assert result is not None
+        assert result.get("type") == "error"
+        assert result.get("error_type") == "connection_error"
+        assert "Connection failed" in result.get("error", "")
 
 
 class TestGenerateAgentPatchExternal:
@@ -416,6 +434,140 @@ class TestGetBlocksExternal:
             result = await service.get_blocks_external()
 
         assert result is None
+
+
+class TestLibraryAgentsPassthrough:
+    """Test that library_agents are passed correctly in all requests."""
+
+    def setup_method(self):
+        """Reset client singleton before each test."""
+        service._settings = None
+        service._client = None
+
+    @pytest.mark.asyncio
+    async def test_decompose_goal_passes_library_agents(self):
+        """Test that library_agents are included in decompose goal payload."""
+        library_agents = [
+            {
+                "graph_id": "agent-123",
+                "graph_version": 1,
+                "name": "Email Sender",
+                "description": "Sends emails",
+                "input_schema": {"properties": {"to": {"type": "string"}}},
+                "output_schema": {"properties": {"sent": {"type": "boolean"}}},
+            },
+        ]
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "success": True,
+            "type": "instructions",
+            "steps": ["Step 1"],
+        }
+        mock_response.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_response
+
+        with patch.object(service, "_get_client", return_value=mock_client):
+            await service.decompose_goal_external(
+                "Send an email",
+                library_agents=library_agents,
+            )
+
+        # Verify library_agents was passed in the payload
+        call_args = mock_client.post.call_args
+        assert call_args[1]["json"]["library_agents"] == library_agents
+
+    @pytest.mark.asyncio
+    async def test_generate_agent_passes_library_agents(self):
+        """Test that library_agents are included in generate agent payload."""
+        library_agents = [
+            {
+                "graph_id": "agent-456",
+                "graph_version": 2,
+                "name": "Data Fetcher",
+                "description": "Fetches data from API",
+                "input_schema": {"properties": {"url": {"type": "string"}}},
+                "output_schema": {"properties": {"data": {"type": "object"}}},
+            },
+        ]
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "success": True,
+            "agent_json": {"name": "Test Agent", "nodes": []},
+        }
+        mock_response.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_response
+
+        with patch.object(service, "_get_client", return_value=mock_client):
+            await service.generate_agent_external(
+                {"steps": ["Step 1"]},
+                library_agents=library_agents,
+            )
+
+        # Verify library_agents was passed in the payload
+        call_args = mock_client.post.call_args
+        assert call_args[1]["json"]["library_agents"] == library_agents
+
+    @pytest.mark.asyncio
+    async def test_generate_agent_patch_passes_library_agents(self):
+        """Test that library_agents are included in patch generation payload."""
+        library_agents = [
+            {
+                "graph_id": "agent-789",
+                "graph_version": 1,
+                "name": "Slack Notifier",
+                "description": "Sends Slack messages",
+                "input_schema": {"properties": {"message": {"type": "string"}}},
+                "output_schema": {"properties": {"success": {"type": "boolean"}}},
+            },
+        ]
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "success": True,
+            "agent_json": {"name": "Updated Agent", "nodes": []},
+        }
+        mock_response.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_response
+
+        with patch.object(service, "_get_client", return_value=mock_client):
+            await service.generate_agent_patch_external(
+                "Add error handling",
+                {"name": "Original Agent", "nodes": []},
+                library_agents=library_agents,
+            )
+
+        # Verify library_agents was passed in the payload
+        call_args = mock_client.post.call_args
+        assert call_args[1]["json"]["library_agents"] == library_agents
+
+    @pytest.mark.asyncio
+    async def test_decompose_goal_without_library_agents(self):
+        """Test that decompose goal works without library_agents."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "success": True,
+            "type": "instructions",
+            "steps": ["Step 1"],
+        }
+        mock_response.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_response
+
+        with patch.object(service, "_get_client", return_value=mock_client):
+            await service.decompose_goal_external("Build a workflow")
+
+        # Verify library_agents was NOT passed when not provided
+        call_args = mock_client.post.call_args
+        assert "library_agents" not in call_args[1]["json"]
 
 
 if __name__ == "__main__":

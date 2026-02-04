@@ -1,6 +1,7 @@
 """Tool for executing blocks directly."""
 
 import logging
+import uuid
 from collections import defaultdict
 from typing import Any
 
@@ -10,6 +11,7 @@ from backend.api.features.chat.model import ChatSession
 from backend.data.block import get_block
 from backend.data.execution import ExecutionContext
 from backend.data.model import CredentialsMetaInput
+from backend.data.workspace import get_or_create_workspace
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util.exceptions import BlockError
 
@@ -250,11 +252,48 @@ class RunBlockTool(BaseTool):
             )
 
         try:
-            # Fetch actual credentials and prepare kwargs for block execution
-            # Create execution context with defaults (blocks may require it)
+            # Get or create user's workspace for CoPilot file operations
+            workspace = await get_or_create_workspace(user_id)
+
+            # Generate synthetic IDs for CoPilot context
+            # Each chat session is treated as its own agent with one continuous run
+            # This means:
+            # - graph_id (agent) = session (memories scoped to session when limit_to_agent=True)
+            # - graph_exec_id (run) = session (memories scoped to session when limit_to_run=True)
+            # - node_exec_id = unique per block execution
+            synthetic_graph_id = f"copilot-session-{session.session_id}"
+            synthetic_graph_exec_id = f"copilot-session-{session.session_id}"
+            synthetic_node_id = f"copilot-node-{block_id}"
+            synthetic_node_exec_id = (
+                f"copilot-{session.session_id}-{uuid.uuid4().hex[:8]}"
+            )
+
+            # Create unified execution context with all required fields
+            execution_context = ExecutionContext(
+                # Execution identity
+                user_id=user_id,
+                graph_id=synthetic_graph_id,
+                graph_exec_id=synthetic_graph_exec_id,
+                graph_version=1,  # Versions are 1-indexed
+                node_id=synthetic_node_id,
+                node_exec_id=synthetic_node_exec_id,
+                # Workspace with session scoping
+                workspace_id=workspace.id,
+                session_id=session.session_id,
+            )
+
+            # Prepare kwargs for block execution
+            # Keep individual kwargs for backwards compatibility with existing blocks
             exec_kwargs: dict[str, Any] = {
                 "user_id": user_id,
-                "execution_context": ExecutionContext(),
+                "execution_context": execution_context,
+                # Legacy: individual kwargs for blocks not yet using execution_context
+                "workspace_id": workspace.id,
+                "graph_exec_id": synthetic_graph_exec_id,
+                "node_exec_id": synthetic_node_exec_id,
+                "node_id": synthetic_node_id,
+                "graph_version": 1,  # Versions are 1-indexed
+                "graph_id": synthetic_graph_id,
             }
 
             for field_name, cred_meta in matched_credentials.items():
