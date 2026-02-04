@@ -33,7 +33,6 @@ export function Chat({
     isSessionNotFound,
     sessionId,
     createSession,
-    refreshSession,
     showLoader,
     startPollingForOperation,
   } = useChat({ urlSessionId });
