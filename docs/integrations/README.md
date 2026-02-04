@@ -62,7 +62,6 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Get Store Agent Details](block-integrations/system/store_operations.md#get-store-agent-details) | Get detailed information about an agent from the store |
 | [Get Weather Information](block-integrations/basic.md#get-weather-information) | Retrieves weather information for a specified location using OpenWeatherMap API |
 | [Human In The Loop](block-integrations/basic.md#human-in-the-loop) | Pause execution and wait for human approval or modification of data |
-| [Linear Search Issues](block-integrations/linear/issues.md#linear-search-issues) | Searches for issues on Linear |
 | [List Is Empty](block-integrations/basic.md#list-is-empty) | Checks if a list is empty |
 | [List Library Agents](block-integrations/system/library_operations.md#list-library-agents) | List all agents in your personal library |
 | [Note](block-integrations/basic.md#note) | A visual annotation block that displays a sticky note in the workflow editor for documentation and organization purposes |
@@ -571,6 +570,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Linear Create Comment](block-integrations/linear/comment.md#linear-create-comment) | Creates a new comment on a Linear issue |
 | [Linear Create Issue](block-integrations/linear/issues.md#linear-create-issue) | Creates a new issue on Linear |
 | [Linear Get Project Issues](block-integrations/linear/issues.md#linear-get-project-issues) | Gets issues from a Linear project filtered by status and assignee |
+| [Linear Search Issues](block-integrations/linear/issues.md#linear-search-issues) | Searches for issues on Linear |
 | [Linear Search Projects](block-integrations/linear/projects.md#linear-search-projects) | Searches for projects on Linear |
 
 ## Hardware

@@ -100,12 +100,14 @@ Returns a list of issues matching the search term.
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | term | Term to search for issues | str | Yes |
+| max_results | Maximum number of results to return | int | No |
+| team_name | Optional team name to filter results (e.g., 'Internal', 'Open Source') | str | No |
 
 ### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
-| error | Error message if the operation failed | str |
+| error | Error message if the search failed | str |
 | issues | List of issues | List[Issue] |
 
 ### Possible use case
