@@ -114,6 +114,7 @@ def strip_chapters_inplace(video_path: str) -> None:
             ],
             capture_output=True,
             text=True,
+            timeout=300,
         )
         if result.returncode != 0:
             logger.warning(

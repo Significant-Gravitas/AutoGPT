@@ -52,6 +52,7 @@ class VideoDownloadBlock(Block):
             categories={BlockCategory.MULTIMEDIA},
             input_schema=self.Input,
             output_schema=self.Output,
+            disabled=True,  # Disable until we can sandbox yt-dlp and handle security implications
             test_input={
                 "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
                 "quality": "480p",

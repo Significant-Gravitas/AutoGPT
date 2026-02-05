@@ -74,6 +74,7 @@ class VideoTextOverlayBlock(Block):
             categories={BlockCategory.MULTIMEDIA},
             input_schema=self.Input,
             output_schema=self.Output,
+            disabled=True,  # Disable until we can lockdown imagemagick security policy
             test_input={"video_in": "/tmp/test.mp4", "text": "Hello World"},
             test_output=[("video_out", str)],
             test_mock={
