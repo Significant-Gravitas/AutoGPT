@@ -25,8 +25,8 @@ function ErrorPageContent() {
         window.location.reload();
       }, 2000);
     } else {
-      // For server/network errors, go to marketplace
-      window.location.href = "/marketplace";
+      // For server/network errors, go to home
+      window.location.href = "/";
     }
   }
 

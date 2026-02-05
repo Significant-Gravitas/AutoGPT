@@ -1,42 +1,40 @@
 "use client";
 
-import { useGetV1GetUserTimezone } from "@/app/api/__generated__/endpoints/auth/auth";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { humanizeCronExpression } from "@/lib/cron-expression-utils";
 import { isLargeScreen, useBreakpoint } from "@/lib/hooks/useBreakpoint";
+import { useUserTimezone } from "@/lib/hooks/useUserTimezone";
 import { formatInTimezone, getTimezoneDisplayName } from "@/lib/timezone-utils";
 import { AgentInputsReadOnly } from "../../modals/AgentInputsReadOnly/AgentInputsReadOnly";
 import { LoadingSelectedContent } from "../LoadingSelectedContent";
 import { RunDetailCard } from "../RunDetailCard/RunDetailCard";
 import { RunDetailHeader } from "../RunDetailHeader/RunDetailHeader";
 import { SelectedViewLayout } from "../SelectedViewLayout";
-import { SelectedScheduleActions } from "./components/SelectedScheduleActions";
+import { SelectedScheduleActions } from "./components/SelectedScheduleActions/SelectedScheduleActions";
 import { useSelectedScheduleView } from "./useSelectedScheduleView";
 
 interface Props {
   agent: LibraryAgent;
   scheduleId: string;
   onClearSelectedRun?: () => void;
+  banner?: React.ReactNode;
 }
 
 export function SelectedScheduleView({
   agent,
   scheduleId,
   onClearSelectedRun,
+  banner,
 }: Props) {
   const { schedule, isLoading, error } = useSelectedScheduleView(
     agent.graph_id,
     scheduleId,
   );
 
-  const { data: userTzRes } = useGetV1GetUserTimezone({
-    query: {
-      select: (res) => (res.status === 200 ? res.data.timezone : undefined),
-    },
-  });
+  const userTimezone = useUserTimezone();
 
   const breakpoint = useBreakpoint();
   const isLgScreenUp = isLargeScreen(breakpoint);
@@ -68,13 +66,13 @@ export function SelectedScheduleView({
   }
 
   if (isLoading && !schedule) {
-    return <LoadingSelectedContent agentName={agent.name} agentId={agent.id} />;
+    return <LoadingSelectedContent agent={agent} />;
   }
 
   return (
     <div className="flex h-full w-full gap-4">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <SelectedViewLayout agentName={agent.name} agentId={agent.id}>
+        <SelectedViewLayout agent={agent} banner={banner}>
           <div className="flex flex-col gap-4">
             <div className="flex w-full flex-col gap-0">
               <RunDetailHeader
@@ -82,7 +80,7 @@ export function SelectedScheduleView({
                 run={undefined}
                 scheduleRecurrence={
                   schedule
-                    ? `${humanizeCronExpression(schedule.cron || "")} · ${getTimezoneDisplayName(schedule.timezone || userTzRes || "UTC")}`
+                    ? `${humanizeCronExpression(schedule.cron || "")} · ${getTimezoneDisplayName(schedule.timezone || userTimezone || "UTC")}`
                     : undefined
                 }
               />
@@ -117,7 +115,7 @@ export function SelectedScheduleView({
                         <span className="text-zinc-500">•</span>{" "}
                         <span className="text-zinc-500">
                           {getTimezoneDisplayName(
-                            schedule.timezone || userTzRes || "UTC",
+                            schedule.timezone || userTimezone || "UTC",
                           )}
                         </span>
                       </Text>
@@ -127,7 +125,7 @@ export function SelectedScheduleView({
                       <Text variant="body" className="flex items-center gap-3">
                         {formatInTimezone(
                           schedule.next_run_time,
-                          userTzRes || "UTC",
+                          userTimezone || "UTC",
                           {
                             year: "numeric",
                             month: "long",
@@ -140,7 +138,7 @@ export function SelectedScheduleView({
                         <span className="text-zinc-500">•</span>{" "}
                         <span className="text-zinc-500">
                           {getTimezoneDisplayName(
-                            schedule.timezone || userTzRes || "UTC",
+                            schedule.timezone || userTimezone || "UTC",
                           )}
                         </span>
                       </Text>

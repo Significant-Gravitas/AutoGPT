@@ -7,6 +7,7 @@ import {
   useGetV1ListExecutionSchedulesForAUser,
   useDeleteV1DeleteExecutionSchedule,
 } from "@/app/api/__generated__/endpoints/schedules/schedules";
+import { okData } from "@/app/api/helpers";
 
 import { Card } from "@/components/__legacy__/ui/card";
 import { SchedulesTable } from "@/app/(platform)/monitoring/components/SchedulesTable";
@@ -34,8 +35,7 @@ const Monitor = () => {
     useGetV1ListExecutionSchedulesForAUser();
   const deleteScheduleMutation = useDeleteV1DeleteExecutionSchedule();
 
-  const schedules =
-    schedulesResponse?.status === 200 ? schedulesResponse.data : [];
+  const schedules = okData(schedulesResponse) ?? [];
 
   const removeSchedule = useCallback(
     async (scheduleId: string) => {
@@ -98,7 +98,11 @@ const Monitor = () => {
           ...(selectedFlow
             ? executions.filter((v) => v.graph_id == selectedFlow.graph_id)
             : executions),
-        ].sort((a, b) => b.started_at.getTime() - a.started_at.getTime())}
+        ].sort((a, b) => {
+          const aTime = a.started_at?.getTime() ?? 0;
+          const bTime = b.started_at?.getTime() ?? 0;
+          return bTime - aTime;
+        })}
         selectedRun={selectedRun}
         onSelectRun={(r) => setSelectedRun(r.id == selectedRun?.id ? null : r)}
       />

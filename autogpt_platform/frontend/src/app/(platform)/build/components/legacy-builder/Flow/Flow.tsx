@@ -26,15 +26,17 @@ import {
   applyNodeChanges,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { CustomNode } from "../CustomNode/CustomNode";
+import { ConnectedEdge, CustomNode } from "../CustomNode/CustomNode";
 import "./flow.css";
 import {
   BlockUIType,
   formatEdgeID,
   GraphExecutionID,
   GraphID,
+  GraphMeta,
   LibraryAgent,
 } from "@/lib/autogpt-server-api";
+import { IncompatibilityInfo } from "../../../hooks/useSubAgentUpdate/types";
 import { Key, storage } from "@/services/storage/local-storage";
 import { findNewlyAddedBlockCoordinates, getTypeColor } from "@/lib/utils";
 import { history } from "../history";
@@ -65,11 +67,20 @@ import NewControlPanel from "@/app/(platform)/build/components/NewControlPanel/N
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { BuildActionBar } from "../BuildActionBar";
 import { FloatingReviewsPanel } from "@/components/organisms/FloatingReviewsPanel/FloatingReviewsPanel";
-import { FloatingSafeModeToggle } from "@/components/molecules/FloatingSafeModeToggle/FloatingSafeModeToggle";
+import { useFlowRealtime } from "@/app/(platform)/build/components/FlowEditor/Flow/useFlowRealtime";
+import { FloatingSafeModeToggle } from "../../FloatingSafeModeToogle";
 
 // This is for the history, this is the minimum distance a block must move before it is logged
 // It helps to prevent spamming the history with small movements especially when pressing on a input in a block
 const MINIMUM_MOVE_BEFORE_LOG = 50;
+
+export type ResolutionModeState = {
+  active: boolean;
+  nodeId: string | null;
+  incompatibilities: IncompatibilityInfo | null;
+  brokenEdgeIds: string[];
+  pendingUpdate: Record<string, unknown> | null; // The hardcoded values to apply after resolution
+};
 
 type BuilderContextType = {
   libraryAgent: LibraryAgent | null;
@@ -77,6 +88,16 @@ type BuilderContextType = {
   setIsAnyModalOpen: (isOpen: boolean) => void;
   getNextNodeId: () => string;
   getNodeTitle: (nodeID: string) => string | null;
+  availableFlows: GraphMeta[];
+  resolutionMode: ResolutionModeState;
+  enterResolutionMode: (
+    nodeId: string,
+    incompatibilities: IncompatibilityInfo,
+    brokenEdgeIds: string[],
+    pendingUpdate: Record<string, unknown>,
+  ) => void;
+  exitResolutionMode: () => void;
+  applyPendingUpdate: () => void;
 };
 
 export type NodeDimension = {
@@ -103,6 +124,7 @@ const FlowEditor: React.FC<{
     updateNode,
     getViewport,
     setViewport,
+    fitView,
     screenToFlowPosition,
   } = useReactFlow<CustomNode, CustomEdge>();
   const [nodeId, setNodeId] = useState<number>(1);
@@ -115,6 +137,7 @@ const FlowEditor: React.FC<{
   const [pinBlocksPopover, setPinBlocksPopover] = useState(false);
   // State to control if save popover should be pinned open
   const [pinSavePopover, setPinSavePopover] = useState(false);
+  const [hasAutoFramed, setHasAutoFramed] = useState(false);
 
   const {
     agentName,
@@ -151,6 +174,9 @@ const FlowEditor: React.FC<{
     Record<string, { x: number; y: number }>
   >(Object.fromEntries(nodes.map((node) => [node.id, node.position])));
 
+  // Add realtime execution status tracking for FloatingReviewsPanel
+  useFlowRealtime();
+
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
@@ -165,6 +191,92 @@ const FlowEditor: React.FC<{
 
   // It stores the dimension of all nodes with position as well
   const [nodeDimensions, setNodeDimensions] = useState<NodeDimension>({});
+
+  // Resolution mode state for sub-agent incompatible updates
+  const [resolutionMode, setResolutionMode] = useState<ResolutionModeState>({
+    active: false,
+    nodeId: null,
+    incompatibilities: null,
+    brokenEdgeIds: [],
+    pendingUpdate: null,
+  });
+
+  const enterResolutionMode = useCallback(
+    (
+      nodeId: string,
+      incompatibilities: IncompatibilityInfo,
+      brokenEdgeIds: string[],
+      pendingUpdate: Record<string, unknown>,
+    ) => {
+      setResolutionMode({
+        active: true,
+        nodeId,
+        incompatibilities,
+        brokenEdgeIds,
+        pendingUpdate,
+      });
+    },
+    [],
+  );
+
+  const exitResolutionMode = useCallback(() => {
+    setResolutionMode({
+      active: false,
+      nodeId: null,
+      incompatibilities: null,
+      brokenEdgeIds: [],
+      pendingUpdate: null,
+    });
+  }, []);
+
+  // Apply pending update after resolution mode completes
+  const applyPendingUpdate = useCallback(() => {
+    if (!resolutionMode.nodeId || !resolutionMode.pendingUpdate) return;
+
+    const node = nodes.find((n) => n.id === resolutionMode.nodeId);
+    if (node) {
+      const pendingUpdate = resolutionMode.pendingUpdate as {
+        [key: string]: any;
+      };
+      setNodes((nds) =>
+        nds.map((n) =>
+          n.id === resolutionMode.nodeId
+            ? { ...n, data: { ...n.data, hardcodedValues: pendingUpdate } }
+            : n,
+        ),
+      );
+    }
+    exitResolutionMode();
+    toast({
+      title: "Update complete",
+      description: "Agent has been updated to the new version.",
+    });
+  }, [resolutionMode, nodes, setNodes, exitResolutionMode, toast]);
+
+  // Check if all broken edges have been removed and auto-apply pending update
+  useEffect(() => {
+    if (!resolutionMode.active || resolutionMode.brokenEdgeIds.length === 0) {
+      return;
+    }
+
+    const currentEdgeIds = new Set(edges.map((e) => e.id));
+    const remainingBrokenEdges = resolutionMode.brokenEdgeIds.filter((id) =>
+      currentEdgeIds.has(id),
+    );
+
+    if (remainingBrokenEdges.length === 0) {
+      // All broken edges have been removed, apply pending update
+      applyPendingUpdate();
+    } else if (
+      remainingBrokenEdges.length !== resolutionMode.brokenEdgeIds.length
+    ) {
+      // Update the list of broken edges
+      setResolutionMode((prev) => ({
+        ...prev,
+        brokenEdgeIds: remainingBrokenEdges,
+      }));
+    }
+  }, [edges, resolutionMode, applyPendingUpdate]);
 
   // Set page title with or without graph name
   useEffect(() => {
@@ -425,17 +537,19 @@ const FlowEditor: React.FC<{
                 ...node.data.connections.filter(
                   (conn) =>
                     !removedEdges.some(
-                      (removedEdge) => removedEdge.id === conn.edge_id,
+                      (removedEdge) => removedEdge.id === conn.id,
                     ),
                 ),
                 // Add node connections for added edges
-                ...addedEdges.map((addedEdge) => ({
-                  edge_id: addedEdge.item.id,
-                  source: addedEdge.item.source,
-                  target: addedEdge.item.target,
-                  sourceHandle: addedEdge.item.sourceHandle!,
-                  targetHandle: addedEdge.item.targetHandle!,
-                })),
+                ...addedEdges.map(
+                  (addedEdge): ConnectedEdge => ({
+                    id: addedEdge.item.id,
+                    source: addedEdge.item.source,
+                    target: addedEdge.item.target,
+                    sourceHandle: addedEdge.item.sourceHandle!,
+                    targetHandle: addedEdge.item.targetHandle!,
+                  }),
+                ),
               ],
             },
           }));
@@ -461,13 +575,15 @@ const FlowEditor: React.FC<{
             data: {
               ...node.data,
               connections: [
-                ...replaceEdges.map((replaceEdge) => ({
-                  edge_id: replaceEdge.item.id,
-                  source: replaceEdge.item.source,
-                  target: replaceEdge.item.target,
-                  sourceHandle: replaceEdge.item.sourceHandle!,
-                  targetHandle: replaceEdge.item.targetHandle!,
-                })),
+                ...replaceEdges.map(
+                  (replaceEdge): ConnectedEdge => ({
+                    id: replaceEdge.item.id,
+                    source: replaceEdge.item.source,
+                    target: replaceEdge.item.target,
+                    sourceHandle: replaceEdge.item.sourceHandle!,
+                    targetHandle: replaceEdge.item.targetHandle!,
+                  }),
+                ),
               ],
             },
           })),
@@ -482,35 +598,26 @@ const FlowEditor: React.FC<{
     return uuidv4();
   }, []);
 
-  // Set the initial view port to center the canvas.
   useEffect(() => {
-    const { x, y } = getViewport();
-    if (nodes.length <= 0 || x !== 0 || y !== 0) {
+    if (nodes.length === 0) {
       return;
     }
 
-    const topLeft = { x: Infinity, y: Infinity };
-    const bottomRight = { x: -Infinity, y: -Infinity };
+    if (hasAutoFramed) {
+      return;
+    }
 
-    nodes.forEach((node) => {
-      const { x, y } = node.position;
-      topLeft.x = Math.min(topLeft.x, x);
-      topLeft.y = Math.min(topLeft.y, y);
-      // Rough estimate of the width and height of the node: 500x400.
-      bottomRight.x = Math.max(bottomRight.x, x + 500);
-      bottomRight.y = Math.max(bottomRight.y, y + 400);
+    const rafId = requestAnimationFrame(() => {
+      fitView({ padding: 0.2, duration: 800, maxZoom: 1 });
+      setHasAutoFramed(true);
     });
 
-    const centerX = (topLeft.x + bottomRight.x) / 2;
-    const centerY = (topLeft.y + bottomRight.y) / 2;
-    const zoom = 0.8;
+    return () => cancelAnimationFrame(rafId);
+  }, [fitView, hasAutoFramed, nodes.length]);
 
-    setViewport({
-      x: window.innerWidth / 2 - centerX * zoom,
-      y: window.innerHeight / 2 - centerY * zoom,
-      zoom: zoom,
-    });
-  }, [nodes, getViewport, setViewport]);
+  useEffect(() => {
+    setHasAutoFramed(false);
+  }, [flowID, flowVersion]);
 
   const navigateToNode = useCallback(
     (nodeId: string) => {
@@ -893,8 +1000,23 @@ const FlowEditor: React.FC<{
       setIsAnyModalOpen,
       getNextNodeId,
       getNodeTitle,
+      availableFlows,
+      resolutionMode,
+      enterResolutionMode,
+      exitResolutionMode,
+      applyPendingUpdate,
     }),
-    [libraryAgent, visualizeBeads, getNextNodeId, getNodeTitle],
+    [
+      libraryAgent,
+      visualizeBeads,
+      getNextNodeId,
+      getNodeTitle,
+      availableFlows,
+      resolutionMode,
+      enterResolutionMode,
+      applyPendingUpdate,
+      exitResolutionMode,
+    ],
   );
 
   return (
@@ -931,8 +1053,7 @@ const FlowEditor: React.FC<{
           {savedAgent && (
             <FloatingSafeModeToggle
               graph={savedAgent}
-              className="right-4 top-32 p-2"
-              variant="black"
+              className="right-2 top-32 p-2"
             />
           )}
           {isNewBlockEnabled ? (
@@ -995,6 +1116,7 @@ const FlowEditor: React.FC<{
               onClickScheduleButton={handleScheduleButton}
               isDisabled={!savedAgent}
               isRunning={isRunning}
+              resolutionModeActive={resolutionMode.active}
             />
           ) : (
             <Alert className="absolute bottom-4 left-1/2 z-20 w-auto -translate-x-1/2 select-none">

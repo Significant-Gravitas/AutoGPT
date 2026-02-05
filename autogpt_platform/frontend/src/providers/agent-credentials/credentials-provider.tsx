@@ -1,5 +1,4 @@
-import { createContext, useCallback, useEffect, useState } from "react";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useToastOnFail } from "@/components/molecules/Toast/use-toast";
 import {
   APIKeyCredentials,
   CredentialsDeleteNeedConfirmationResponse,
@@ -10,8 +9,9 @@ import {
   UserPasswordCredentials,
 } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
-import { useToastOnFail } from "@/components/molecules/Toast/use-toast";
+import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { toDisplayName } from "@/providers/agent-credentials/helper";
+import { createContext, useCallback, useEffect, useState } from "react";
 
 type APIKeyCredentialsCreatable = Omit<
   APIKeyCredentials,
@@ -32,6 +32,8 @@ export type CredentialsProviderData = {
   provider: CredentialsProviderName;
   providerName: string;
   savedCredentials: CredentialsMetaResponse[];
+  /** Whether this provider has platform credits available (system credentials) */
+  isSystemProvider: boolean;
   oAuthCallback: (
     code: string,
     state_token: string,
@@ -68,6 +70,9 @@ export default function CredentialsProvider({
   const [providers, setProviders] =
     useState<CredentialsProvidersContextType | null>(null);
   const [providerNames, setProviderNames] = useState<string[]>([]);
+  const [systemProviders, setSystemProviders] = useState<Set<string>>(
+    new Set(),
+  );
   const { isLoggedIn } = useSupabase();
   const api = useBackendAPI();
   const onFailToast = useToastOnFail();
@@ -218,17 +223,7 @@ export default function CredentialsProvider({
     [api, onFailToast],
   );
 
-  // Fetch provider names on mount
-  useEffect(() => {
-    api
-      .listProviders()
-      .then((names) => {
-        setProviderNames(names);
-      })
-      .catch(onFailToast("load provider names"));
-  }, [api, onFailToast]);
-
-  useEffect(() => {
+  const loadCredentials = useCallback(() => {
     if (!isLoggedIn || providerNames.length === 0) {
       if (isLoggedIn == false) setProviders({});
       return;
@@ -251,27 +246,32 @@ export default function CredentialsProvider({
         setProviders((prev) => ({
           ...prev,
           ...Object.fromEntries(
-            providerNames.map((provider) => [
-              provider,
-              {
+            providerNames.map((provider) => {
+              const providerCredentials = credentialsByProvider[provider] ?? [];
+
+              return [
                 provider,
-                providerName: toDisplayName(provider as string),
-                savedCredentials: credentialsByProvider[provider] ?? [],
-                oAuthCallback: (code: string, state_token: string) =>
-                  oAuthCallback(provider, code, state_token),
-                createAPIKeyCredentials: (
-                  credentials: APIKeyCredentialsCreatable,
-                ) => createAPIKeyCredentials(provider, credentials),
-                createUserPasswordCredentials: (
-                  credentials: UserPasswordCredentialsCreatable,
-                ) => createUserPasswordCredentials(provider, credentials),
-                createHostScopedCredentials: (
-                  credentials: HostScopedCredentialsCreatable,
-                ) => createHostScopedCredentials(provider, credentials),
-                deleteCredentials: (id: string, force: boolean = false) =>
-                  deleteCredentials(provider, id, force),
-              } satisfies CredentialsProviderData,
-            ]),
+                {
+                  provider,
+                  providerName: toDisplayName(provider as string),
+                  savedCredentials: providerCredentials,
+                  isSystemProvider: systemProviders.has(provider),
+                  oAuthCallback: (code: string, state_token: string) =>
+                    oAuthCallback(provider, code, state_token),
+                  createAPIKeyCredentials: (
+                    credentials: APIKeyCredentialsCreatable,
+                  ) => createAPIKeyCredentials(provider, credentials),
+                  createUserPasswordCredentials: (
+                    credentials: UserPasswordCredentialsCreatable,
+                  ) => createUserPasswordCredentials(provider, credentials),
+                  createHostScopedCredentials: (
+                    credentials: HostScopedCredentialsCreatable,
+                  ) => createHostScopedCredentials(provider, credentials),
+                  deleteCredentials: (id: string, force: boolean = false) =>
+                    deleteCredentials(provider, id, force),
+                } satisfies CredentialsProviderData,
+              ];
+            }),
           ),
         }));
       })
@@ -280,6 +280,7 @@ export default function CredentialsProvider({
     api,
     isLoggedIn,
     providerNames,
+    systemProviders,
     createAPIKeyCredentials,
     createUserPasswordCredentials,
     createHostScopedCredentials,
@@ -287,6 +288,20 @@ export default function CredentialsProvider({
     oAuthCallback,
     onFailToast,
   ]);
+
+  // Fetch provider names and system providers on mount
+  useEffect(() => {
+    Promise.all([api.listProviders(), api.listSystemProviders()])
+      .then(([names, systemList]) => {
+        setProviderNames(names);
+        setSystemProviders(new Set(systemList));
+      })
+      .catch(onFailToast("Load provider names"));
+  }, [api, onFailToast]);
+
+  useEffect(() => {
+    loadCredentials();
+  }, [loadCredentials]);
 
   return (
     <CredentialsProvidersContext.Provider value={providers}>

@@ -3,22 +3,18 @@ import React from "react";
 import { uiSchema } from "./uiSchema";
 import { useNodeStore } from "../../../stores/nodeStore";
 import { BlockUIType } from "../../types";
-import { FormRenderer } from "@/components/renderers/input-renderer/FormRenderer";
+import { FormRenderer } from "@/components/renderers/InputRenderer/FormRenderer";
 
-export const FormCreator = React.memo(
-  ({
-    jsonSchema,
-    nodeId,
-    uiType,
-    showHandles = true,
-    className,
-  }: {
-    jsonSchema: RJSFSchema;
-    nodeId: string;
-    uiType: BlockUIType;
-    showHandles?: boolean;
-    className?: string;
-  }) => {
+interface FormCreatorProps {
+  jsonSchema: RJSFSchema;
+  nodeId: string;
+  uiType: BlockUIType;
+  showHandles?: boolean;
+  className?: string;
+}
+
+export const FormCreator: React.FC<FormCreatorProps> = React.memo(
+  ({ jsonSchema, nodeId, uiType, showHandles = true, className }) => {
     const updateNodeData = useNodeStore((state) => state.updateNodeData);
 
     const getHardCodedValues = useNodeStore(
@@ -48,7 +44,10 @@ export const FormCreator = React.memo(
         : hardcodedValues;
 
     return (
-      <div className={className}>
+      <div
+        className={className}
+        data-id={`form-creator-container-${nodeId}-node`}
+      >
         <FormRenderer
           jsonSchema={jsonSchema}
           handleChange={handleChange}

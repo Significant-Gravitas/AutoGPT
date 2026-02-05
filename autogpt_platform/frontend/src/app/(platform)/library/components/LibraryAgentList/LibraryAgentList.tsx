@@ -1,10 +1,22 @@
 "use client";
-import LibraryActionSubHeader from "../LibraryActionSubHeader/LibraryActionSubHeader";
-import LibraryAgentCard from "../LibraryAgentCard/LibraryAgentCard";
+import { LibraryAgentSort } from "@/app/api/__generated__/models/libraryAgentSort";
+import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { InfiniteScroll } from "@/components/contextual/InfiniteScroll/InfiniteScroll";
+import { LibraryActionSubHeader } from "../LibraryActionSubHeader/LibraryActionSubHeader";
+import { LibraryAgentCard } from "../LibraryAgentCard/LibraryAgentCard";
 import { useLibraryAgentList } from "./useLibraryAgentList";
 
-export default function LibraryAgentList() {
+interface Props {
+  searchTerm: string;
+  librarySort: LibraryAgentSort;
+  setLibrarySort: (value: LibraryAgentSort) => void;
+}
+
+export function LibraryAgentList({
+  searchTerm,
+  librarySort,
+  setLibrarySort,
+}: Props) {
   const {
     agentLoading,
     agentCount,
@@ -12,28 +24,27 @@ export default function LibraryAgentList() {
     hasNextPage,
     isFetchingNextPage,
     fetchNextPage,
-  } = useLibraryAgentList();
-
-  const LoadingSpinner = () => (
-    <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-t-2 border-neutral-800" />
-  );
+  } = useLibraryAgentList({ searchTerm, librarySort });
 
   return (
     <>
-      <LibraryActionSubHeader agentCount={agentCount} />
+      <LibraryActionSubHeader
+        agentCount={agentCount}
+        setLibrarySort={setLibrarySort}
+      />
       <div className="px-2">
         {agentLoading ? (
           <div className="flex h-[200px] items-center justify-center">
-            <LoadingSpinner />
+            <LoadingSpinner size="large" />
           </div>
         ) : (
           <InfiniteScroll
             isFetchingNextPage={isFetchingNextPage}
             fetchNextPage={fetchNextPage}
             hasNextPage={hasNextPage}
-            loader={<LoadingSpinner />}
+            loader={<LoadingSpinner size="medium" />}
           >
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {agents.map((agent) => (
                 <LibraryAgentCard key={agent.id} agent={agent} />
               ))}

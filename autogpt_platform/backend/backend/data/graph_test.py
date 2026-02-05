@@ -1,21 +1,33 @@
 import json
 from typing import Any
+from unittest.mock import AsyncMock, patch
 from uuid import UUID
 
 import fastapi.exceptions
 import pytest
 from pytest_snapshot.plugin import Snapshot
 
-import backend.server.v2.store.model as store
+import backend.api.features.store.model as store
+from backend.api.model import CreateGraph
 from backend.blocks.basic import StoreValueBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.data.block import BlockSchema, BlockSchemaInput
 from backend.data.graph import Graph, Link, Node
 from backend.data.model import SchemaField
 from backend.data.user import DEFAULT_USER_ID
-from backend.server.model import CreateGraph
 from backend.usecases.sample import create_test_user
 from backend.util.test import SpinTestServer
+
+
+@pytest.fixture(scope="session", autouse=True)
+def mock_embedding_functions():
+    """Mock embedding functions for all tests to avoid database/API dependencies."""
+    with patch(
+        "backend.api.features.store.db.ensure_embedding",
+        new_callable=AsyncMock,
+        return_value=True,
+    ):
+        yield
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -396,3 +408,58 @@ async def test_access_store_listing_graph(server: SpinTestServer):
         created_graph.id, created_graph.version, "3e53486c-cf57-477e-ba2a-cb02dc828e1b"
     )
     assert got_graph is not None
+
+
+# ============================================================================
+# Tests for Optional Credentials Feature
+# ============================================================================
+
+
+def test_node_credentials_optional_default():
+    """Test that credentials_optional defaults to False when not set in metadata."""
+    node = Node(
+        id="test_node",
+        block_id=StoreValueBlock().id,
+        input_default={},
+        metadata={},
+    )
+    assert node.credentials_optional is False
+
+
+def test_node_credentials_optional_true():
+    """Test that credentials_optional returns True when explicitly set."""
+    node = Node(
+        id="test_node",
+        block_id=StoreValueBlock().id,
+        input_default={},
+        metadata={"credentials_optional": True},
+    )
+    assert node.credentials_optional is True
+
+
+def test_node_credentials_optional_false():
+    """Test that credentials_optional returns False when explicitly set to False."""
+    node = Node(
+        id="test_node",
+        block_id=StoreValueBlock().id,
+        input_default={},
+        metadata={"credentials_optional": False},
+    )
+    assert node.credentials_optional is False
+
+
+def test_node_credentials_optional_with_other_metadata():
+    """Test that credentials_optional works correctly with other metadata present."""
+    node = Node(
+        id="test_node",
+        block_id=StoreValueBlock().id,
+        input_default={},
+        metadata={
+            "position": {"x": 100, "y": 200},
+            "customized_name": "My Custom Node",
+            "credentials_optional": True,
+        },
+    )
+    assert node.credentials_optional is True
+    assert node.metadata["position"] == {"x": 100, "y": 200}
+    assert node.metadata["customized_name"] == "My Custom Node"
