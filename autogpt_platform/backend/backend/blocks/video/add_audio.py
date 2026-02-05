@@ -1,8 +1,5 @@
 """AddAudioToVideoBlock - Attach an audio track to a video file."""
 
-import os
-import tempfile
-
 from moviepy.audio.io.AudioFileClip import AudioFileClip
 from moviepy.video.io.VideoFileClip import VideoFileClip
 
@@ -16,7 +13,7 @@ from backend.data.block import (
 )
 from backend.data.execution import ExecutionContext
 from backend.data.model import SchemaField
-from backend.util.file import MediaFileType, store_media_file
+from backend.util.file import MediaFileType, get_exec_file_path, store_media_file
 
 
 class AddAudioToVideoBlock(Block):
@@ -72,9 +69,8 @@ class AddAudioToVideoBlock(Block):
             return_format="for_local_processing",
         )
 
-        abs_temp_dir = os.path.join(tempfile.gettempdir(), "exec_file", graph_exec_id)
-        video_abspath = os.path.join(abs_temp_dir, local_video_path)
-        audio_abspath = os.path.join(abs_temp_dir, local_audio_path)
+        video_abspath = get_exec_file_path(graph_exec_id, local_video_path)
+        audio_abspath = get_exec_file_path(graph_exec_id, local_audio_path)
 
         # 2) Load video + audio with moviepy
         strip_chapters_inplace(video_abspath)
@@ -95,7 +91,7 @@ class AddAudioToVideoBlock(Block):
             # 4) Write to output file
             source = extract_source_name(local_video_path)
             output_filename = MediaFileType(f"{node_exec_id}_with_audio_{source}.mp4")
-            output_abspath = os.path.join(abs_temp_dir, output_filename)
+            output_abspath = get_exec_file_path(graph_exec_id, output_filename)
             final_clip.write_videofile(
                 output_abspath, codec="libx264", audio_codec="aac"
             )
