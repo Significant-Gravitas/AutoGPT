@@ -206,9 +206,9 @@ async def search_agents(
             ]
         )
         no_results_msg = (
-            f"No agents found matching '{query}'. Try different keywords or browse the marketplace. Let the user know we can create a custom agent from them based on there needs."
+            f"No agents found matching '{query}'. Try different keywords, browse the marketplace, or I can create a custom agent for you based on your needs."
             if source == "marketplace"
-            else f"No agents matching '{query}' found in your library. Let the user know we can create a custom agent from them based on there needs."
+            else f"No agents matching '{query}' found in your library. I can create a custom agent for you based on your needs."
         )
         return NoResultsResponse(
             message=no_results_msg, session_id=session_id, suggestions=suggestions
