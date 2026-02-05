@@ -198,6 +198,20 @@ class TestDetectRawBase64:
         result = _detect_raw_base64("not-valid-base64!!!")
         assert result is None
 
+    def test_detects_base64_with_line_breaks(self):
+        """Should detect raw base64 with RFC 2045 line breaks."""
+        png_content = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
+        png_b64 = base64.b64encode(png_content).decode()
+        # Simulate RFC 2045 line wrapping at 76 chars
+        wrapped = png_b64[:76] + "\n" + png_b64[76:]
+
+        result = _detect_raw_base64(wrapped)
+
+        assert result is not None
+        content, ext = result
+        assert ext == "png"
+        assert content == png_content
+
 
 # =============================================================================
 # Process Binary Outputs Tests

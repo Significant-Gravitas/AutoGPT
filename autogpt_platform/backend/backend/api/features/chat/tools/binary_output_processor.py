@@ -47,7 +47,8 @@ ALLOWED_MIMETYPES = {
 }
 
 # Base64 character validation (strict - must be pure base64)
-BASE64_PATTERN = re.compile(r"^[A-Za-z0-9+/\n\r]+=*$")
+# Allows whitespace which will be stripped before decoding (RFC 2045 line wrapping)
+BASE64_PATTERN = re.compile(r"^[A-Za-z0-9+/\s]+=*$")
 
 # Magic numbers for binary file detection
 # Note: WebP requires two-step detection: RIFF prefix + WEBP at offset 8
@@ -171,12 +172,15 @@ def _detect_raw_base64(value: str) -> Optional[tuple[bytes, str]]:
 
     Returns (content, extension) or None.
     """
-    # Pre-filter: must look like base64 (no spaces, punctuation, etc.)
+    # Pre-filter: must look like base64 (allows whitespace for RFC 2045 line wrapping)
     if not BASE64_PATTERN.match(value):
         return None
 
+    # Strip whitespace before decoding (RFC 2045 allows line breaks in base64)
+    normalized = re.sub(r"\s+", "", value)
+
     try:
-        content = base64.b64decode(value, validate=True)
+        content = base64.b64decode(normalized, validate=True)
     except (ValueError, binascii.Error):
         return None
 
