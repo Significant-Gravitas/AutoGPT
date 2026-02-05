@@ -112,6 +112,19 @@ class VideoConcatBlock(Block):
                 strip_chapters_inplace(v)
                 clips.append(VideoFileClip(v))
 
+            # Validate transition_duration against shortest clip
+            if transition in {"crossfade", "fade_black"} and transition_duration > 0:
+                min_duration = min(c.duration for c in clips)
+                if transition_duration >= min_duration:
+                    raise BlockExecutionError(
+                        message=(
+                            f"transition_duration ({transition_duration}s) must be "
+                            f"shorter than the shortest clip ({min_duration:.2f}s)"
+                        ),
+                        block_name=self.name,
+                        block_id=str(self.id),
+                    )
+
             if transition == "crossfade":
                 for i, clip in enumerate(clips):
                     effects = []
