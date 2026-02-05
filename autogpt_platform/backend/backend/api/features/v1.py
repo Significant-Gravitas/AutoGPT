@@ -780,13 +780,12 @@ async def create_new_graph(
     create_graph: CreateGraph,
     user_id: Annotated[str, Security(get_user_id)],
 ) -> graph_db.GraphModel:
-    # Validate graph before saving
-    graph = graph_db.make_graph_model(create_graph.graph, user_id)
-    graph.validate_graph(for_run=False)
+    graph_model = graph_db.make_graph_model(create_graph.graph, user_id)
+    graph_model.reassign_ids(user_id=user_id, reassign_graph_id=True)
+    graph_model.validate_graph(for_run=False)
 
-    # Save graph and create library agent
     created_graph, _ = await library_db.save_graph(
-        create_graph.graph, user_id, is_update=False
+        graph_model, user_id, is_update=False
     )
 
     if create_graph.source == "builder":
