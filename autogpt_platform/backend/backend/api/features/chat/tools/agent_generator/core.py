@@ -726,15 +726,23 @@ async def save_agent_to_library(
 
     graph = json_to_graph(agent_json)
 
-    if is_update:
-        if graph.id:
+    # Check if there's an existing library agent for this graph (for updates)
+    existing_library_agent = None
+    if is_update and graph.id:
+        existing_library_agent = await library_db.get_library_agent_by_graph_id(
+            user_id, graph.id
+        )
+        if existing_library_agent:
+            # Get latest version and increment
             existing_versions = await get_graph_all_versions(graph.id, user_id)
             if existing_versions:
                 latest_version = max(v.version for v in existing_versions)
                 graph.version = latest_version + 1
                 _reassign_node_ids(graph)
                 logger.info(f"Updating agent {graph.id} to version {graph.version}")
-    else:
+
+    if not is_update or not existing_library_agent:
+        # Creating new agent (either explicitly or because no existing library agent found)
         graph.id = str(uuid.uuid4())
         graph.version = 1
         _reassign_node_ids(graph)
@@ -742,14 +750,23 @@ async def save_agent_to_library(
 
     created_graph = await create_graph(graph, user_id)
 
-    library_agents = await library_db.create_library_agent(
-        graph=created_graph,
-        user_id=user_id,
-        sensitive_action_safe_mode=True,
-        create_library_agents_for_sub_graphs=False,
-    )
-
-    return created_graph, library_agents[0]
+    if is_update and existing_library_agent:
+        # Update existing library agent to point to new version
+        updated_library_agent = await library_db.update_agent_version_in_library(
+            user_id=user_id,
+            agent_graph_id=created_graph.id,
+            agent_graph_version=created_graph.version,
+        )
+        return created_graph, updated_library_agent
+    else:
+        # Create new library agent
+        library_agents = await library_db.create_library_agent(
+            graph=created_graph,
+            user_id=user_id,
+            sensitive_action_safe_mode=True,
+            create_library_agents_for_sub_graphs=False,
+        )
+        return created_graph, library_agents[0]
 
 
 def graph_to_json(graph: Graph) -> dict[str, Any]:
