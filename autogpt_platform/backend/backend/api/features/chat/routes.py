@@ -18,6 +18,29 @@ from .completion_handler import process_operation_failure, process_operation_suc
 from .config import ChatConfig
 from .model import ChatSession, create_chat_session, get_chat_session, get_user_sessions
 from .response_model import StreamFinish, StreamHeartbeat, StreamStart
+from .tools.models import (
+    AgentDetailsResponse,
+    AgentOutputResponse,
+    AgentPreviewResponse,
+    AgentSavedResponse,
+    AgentsFoundResponse,
+    BlockListResponse,
+    BlockOutputResponse,
+    ClarificationNeededResponse,
+    DocPageResponse,
+    DocSearchResultsResponse,
+    ErrorResponse,
+    ExecutionStartedResponse,
+    InputValidationErrorResponse,
+    NeedLoginResponse,
+    NoResultsResponse,
+    OperationInProgressResponse,
+    OperationPendingResponse,
+    OperationStartedResponse,
+    ResponseType,
+    SetupRequirementsResponse,
+    UnderstandingUpdatedResponse,
+)
 
 config = ChatConfig()
 
@@ -751,3 +774,42 @@ async def health_check() -> dict:
         "service": "chat",
         "version": "0.1.0",
     }
+
+
+# ========== Schema Export (for OpenAPI / Orval codegen) ==========
+
+ToolResponseUnion = (
+    AgentsFoundResponse
+    | NoResultsResponse
+    | AgentDetailsResponse
+    | SetupRequirementsResponse
+    | ExecutionStartedResponse
+    | NeedLoginResponse
+    | ErrorResponse
+    | InputValidationErrorResponse
+    | AgentOutputResponse
+    | UnderstandingUpdatedResponse
+    | AgentPreviewResponse
+    | AgentSavedResponse
+    | ClarificationNeededResponse
+    | BlockListResponse
+    | BlockOutputResponse
+    | DocSearchResultsResponse
+    | DocPageResponse
+    | OperationStartedResponse
+    | OperationPendingResponse
+    | OperationInProgressResponse
+)
+
+
+@router.get(
+    "/schema/tool-responses",
+    response_model=ToolResponseUnion,
+    include_in_schema=True,
+    summary="[Dummy] Tool response type export for codegen",
+    description="This endpoint is not meant to be called. It exists solely to "
+    "expose tool response models in the OpenAPI schema for frontend codegen.",
+)
+async def _tool_response_schema() -> ToolResponseUnion:  # type: ignore[return]
+    """Never called at runtime. Exists only so Orval generates TS types."""
+    raise HTTPException(status_code=501, detail="Schema-only endpoint")
