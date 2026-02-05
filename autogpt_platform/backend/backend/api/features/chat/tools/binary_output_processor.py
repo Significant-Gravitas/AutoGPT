@@ -20,6 +20,7 @@ import uuid
 from typing import Any, Optional
 
 from backend.util.file import sanitize_filename
+from backend.util.virus_scanner import scan_content_safe
 from backend.util.workspace import WorkspaceManager
 
 logger = logging.getLogger(__name__)
@@ -237,6 +238,9 @@ async def _save_binary(
     try:
         safe_block = sanitize_filename(block)[:20].lower()
         filename = f"{safe_block}_{uuid.uuid4().hex[:12]}.{ext}"
+
+        # Scan for viruses before saving
+        await scan_content_safe(content, filename=filename)
 
         file = await wm.write_file(content, filename)
         ref = f"workspace://{file.id}"
