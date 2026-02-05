@@ -78,6 +78,7 @@ class AddAudioToVideoBlock(Block):
 
         # 2) Load video + audio with moviepy
         strip_chapters_inplace(video_abspath)
+        strip_chapters_inplace(audio_abspath)
         video_clip = None
         audio_clip = None
         final_clip = None
