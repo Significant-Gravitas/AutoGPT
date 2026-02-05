@@ -7,15 +7,7 @@ from typing import Any, NotRequired, TypedDict
 
 from backend.api.features.library import db as library_db
 from backend.api.features.store import db as store_db
-from backend.data.graph import (
-    Graph,
-    Link,
-    Node,
-    create_graph,
-    get_graph,
-    get_graph_all_versions,
-    get_store_listed_graphs,
-)
+from backend.data.graph import Graph, Link, Node, get_graph, get_store_listed_graphs
 from backend.util.exceptions import DatabaseError, NotFoundError
 
 from .service import (
@@ -723,42 +715,9 @@ async def save_agent_to_library(
     """
     _populate_agent_executor_user_ids(agent_json, user_id)
     graph = json_to_graph(agent_json)
+    _reassign_node_ids(graph)
 
-    existing_library_agent = None
-    if is_update and graph.id:
-        existing_library_agent = await library_db.get_library_agent_by_graph_id(
-            user_id, graph.id
-        )
-
-    if existing_library_agent:
-        existing_versions = await get_graph_all_versions(graph.id, user_id)
-        if existing_versions:
-            graph.version = max(v.version for v in existing_versions) + 1
-            _reassign_node_ids(graph)
-            logger.info(f"Updating agent {graph.id} to version {graph.version}")
-    else:
-        graph.id = str(uuid.uuid4())
-        graph.version = 1
-        _reassign_node_ids(graph)
-        logger.info(f"Creating new agent with ID {graph.id}")
-
-    created_graph = await create_graph(graph, user_id)
-
-    if existing_library_agent:
-        updated_library_agent = await library_db.update_agent_version_in_library(
-            user_id=user_id,
-            agent_graph_id=created_graph.id,
-            agent_graph_version=created_graph.version,
-        )
-        return created_graph, updated_library_agent
-
-    library_agents = await library_db.create_library_agent(
-        graph=created_graph,
-        user_id=user_id,
-        sensitive_action_safe_mode=True,
-        create_library_agents_for_sub_graphs=False,
-    )
-    return created_graph, library_agents[0]
+    return await library_db.save_graph_to_library(graph, user_id, is_update)
 
 
 def graph_to_json(graph: Graph) -> dict[str, Any]:

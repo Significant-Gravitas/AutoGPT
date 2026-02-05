@@ -537,6 +537,65 @@ async def update_agent_version_in_library(
     return library_model.LibraryAgent.from_db(lib)
 
 
+async def save_graph_to_library(
+    graph: graph_db.Graph,
+    user_id: str,
+    is_update: bool = False,
+) -> tuple[graph_db.GraphModel, library_model.LibraryAgent]:
+    """
+    Save a graph and manage its library agent entry.
+
+    Shared logic for both builder saves and CoPilot-generated agents.
+    Handles version bumping for updates and library agent creation/update.
+
+    Args:
+        graph: The Graph to save (will be modified in place for version/ID assignment)
+        user_id: The user ID
+        is_update: Whether this is an update to an existing agent
+
+    Returns:
+        Tuple of (created GraphModel, LibraryAgent)
+
+    Note:
+        For updates, the graph.id must be set to the existing graph ID.
+        For new graphs, graph.id will be assigned a new UUID.
+    """
+    import uuid
+
+    existing_library_agent = None
+    if is_update and graph.id:
+        existing_library_agent = await get_library_agent_by_graph_id(user_id, graph.id)
+
+    if existing_library_agent:
+        existing_versions = await graph_db.get_graph_all_versions(graph.id, user_id)
+        if existing_versions:
+            graph.version = max(v.version for v in existing_versions) + 1
+            logger.info(f"Updating agent {graph.id} to version {graph.version}")
+    else:
+        graph.id = str(uuid.uuid4())
+        graph.version = 1
+        logger.info(f"Creating new agent with ID {graph.id}")
+
+    created_graph = await graph_db.create_graph(graph, user_id)
+
+    if existing_library_agent:
+        library_agent = await update_agent_version_in_library(
+            user_id=user_id,
+            agent_graph_id=created_graph.id,
+            agent_graph_version=created_graph.version,
+        )
+    else:
+        library_agents = await create_library_agent(
+            graph=created_graph,
+            user_id=user_id,
+            sensitive_action_safe_mode=True,
+            create_library_agents_for_sub_graphs=False,
+        )
+        library_agent = library_agents[0]
+
+    return created_graph, library_agent
+
+
 async def update_library_agent(
     library_agent_id: str,
     user_id: str,
