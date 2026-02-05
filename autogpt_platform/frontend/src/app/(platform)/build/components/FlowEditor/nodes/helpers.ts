@@ -89,6 +89,18 @@ export function extractOptions(
 
 // get display type and color for schema types [need for type display next to field name]
 export const getTypeDisplayInfo = (schema: any) => {
+  if (
+    schema?.type === "array" &&
+    "format" in schema &&
+    schema.format === "table"
+  ) {
+    return {
+      displayType: "table",
+      colorClass: "!text-indigo-500",
+      hexColor: "#6366f1",
+    };
+  }
+
   if (schema?.type === "string" && schema?.format) {
     const formatMap: Record<
       string,
@@ -175,3 +187,38 @@ export const getTypeDisplayInfo = (schema: any) => {
     hexColor,
   };
 };
+
+export function getEdgeColorFromOutputType(
+  outputSchema: RJSFSchema | undefined,
+  sourceHandle: string,
+): { colorClass: string; hexColor: string } {
+  const defaultColor = {
+    colorClass: "stroke-zinc-500/50",
+    hexColor: "#6b7280",
+  };
+
+  if (!outputSchema?.properties) return defaultColor;
+
+  const properties = outputSchema.properties as Record<string, unknown>;
+  const handleParts = sourceHandle.split("_#_");
+  let currentSchema: Record<string, unknown> = properties;
+
+  for (let i = 0; i < handleParts.length; i++) {
+    const part = handleParts[i];
+    const fieldSchema = currentSchema[part] as Record<string, unknown>;
+    if (!fieldSchema) return defaultColor;
+
+    if (i === handleParts.length - 1) {
+      const { hexColor, colorClass } = getTypeDisplayInfo(fieldSchema);
+      return { colorClass: colorClass.replace("!text-", "stroke-"), hexColor };
+    }
+
+    if (fieldSchema.properties) {
+      currentSchema = fieldSchema.properties as Record<string, unknown>;
+    } else {
+      return defaultColor;
+    }
+  }
+
+  return defaultColor;
+}

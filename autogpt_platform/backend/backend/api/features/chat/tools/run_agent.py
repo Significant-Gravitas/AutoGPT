@@ -7,6 +7,11 @@ from pydantic import BaseModel, Field, field_validator
 
 from backend.api.features.chat.config import ChatConfig
 from backend.api.features.chat.model import ChatSession
+from backend.api.features.chat.tracking import (
+    track_agent_run_success,
+    track_agent_scheduled,
+)
+from backend.api.features.library import db as library_db
 from backend.data.graph import GraphModel
 from backend.data.model import CredentialsMetaInput
 from backend.data.user import get_user_by_id
@@ -25,13 +30,14 @@ from .models import (
     ErrorResponse,
     ExecutionOptions,
     ExecutionStartedResponse,
+    InputValidationErrorResponse,
     SetupInfo,
     SetupRequirementsResponse,
     ToolResponseBase,
     UserReadiness,
 )
 from .utils import (
-    check_user_has_required_credentials,
+    build_missing_credentials_from_graph,
     extract_credentials_from_schema,
     fetch_graph_from_store_slug,
     get_or_create_library_agent,
@@ -57,6 +63,7 @@ class RunAgentInput(BaseModel):
     """Input parameters for the run_agent tool."""
 
     username_agent_slug: str = ""
+    library_agent_id: str = ""
     inputs: dict[str, Any] = Field(default_factory=dict)
     use_defaults: bool = False
     schedule_name: str = ""
@@ -64,7 +71,12 @@ class RunAgentInput(BaseModel):
     timezone: str = "UTC"
 
     @field_validator(
-        "username_agent_slug", "schedule_name", "cron", "timezone", mode="before"
+        "username_agent_slug",
+        "library_agent_id",
+        "schedule_name",
+        "cron",
+        "timezone",
+        mode="before",
     )
     @classmethod
     def strip_strings(cls, v: Any) -> Any:
@@ -90,13 +102,17 @@ class RunAgentTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return """Run or schedule an agent from the marketplace.
+        return """Run or schedule an agent from the marketplace or user's library.
 
         The tool automatically handles the setup flow:
         - Returns missing inputs if required fields are not provided
         - Returns missing credentials if user needs to configure them
         - Executes immediately if all requirements are met
         - Schedules execution if cron expression is provided
+
+        Identify the agent using either:
+        - username_agent_slug: Marketplace format 'username/agent-name'
+        - library_agent_id: ID of an agent in the user's library
 
         For scheduled execution, provide: schedule_name, cron, and optionally timezone."""
 
@@ -108,6 +124,10 @@ class RunAgentTool(BaseTool):
                 "username_agent_slug": {
                     "type": "string",
                     "description": "Agent identifier in format 'username/agent-name'",
+                },
+                "library_agent_id": {
+                    "type": "string",
+                    "description": "Library agent ID from user's library",
                 },
                 "inputs": {
                     "type": "object",
@@ -131,7 +151,7 @@ class RunAgentTool(BaseTool):
                     "description": "IANA timezone for schedule (default: UTC)",
                 },
             },
-            "required": ["username_agent_slug"],
+            "required": [],
         }
 
     @property
@@ -149,10 +169,16 @@ class RunAgentTool(BaseTool):
         params = RunAgentInput(**kwargs)
         session_id = session.session_id
 
-        # Validate agent slug format
-        if not params.username_agent_slug or "/" not in params.username_agent_slug:
+        # Validate at least one identifier is provided
+        has_slug = params.username_agent_slug and "/" in params.username_agent_slug
+        has_library_id = bool(params.library_agent_id)
+
+        if not has_slug and not has_library_id:
             return ErrorResponse(
-                message="Please provide an agent slug in format 'username/agent-name'",
+                message=(
+                    "Please provide either a username_agent_slug "
+                    "(format 'username/agent-name') or a library_agent_id"
+                ),
                 session_id=session_id,
             )
 
@@ -167,13 +193,41 @@ class RunAgentTool(BaseTool):
         is_schedule = bool(params.schedule_name or params.cron)
 
         try:
-            # Step 1: Fetch agent details (always happens first)
-            username, agent_name = params.username_agent_slug.split("/", 1)
-            graph, store_agent = await fetch_graph_from_store_slug(username, agent_name)
+            # Step 1: Fetch agent details
+            graph: GraphModel | None = None
+            library_agent = None
+
+            # Priority: library_agent_id if provided
+            if has_library_id:
+                library_agent = await library_db.get_library_agent(
+                    params.library_agent_id, user_id
+                )
+                if not library_agent:
+                    return ErrorResponse(
+                        message=f"Library agent '{params.library_agent_id}' not found",
+                        session_id=session_id,
+                    )
+                # Get the graph from the library agent
+                from backend.data.graph import get_graph
+
+                graph = await get_graph(
+                    library_agent.graph_id,
+                    library_agent.graph_version,
+                    user_id=user_id,
+                )
+            else:
+                # Fetch from marketplace slug
+                username, agent_name = params.username_agent_slug.split("/", 1)
+                graph, _ = await fetch_graph_from_store_slug(username, agent_name)
 
             if not graph:
+                identifier = (
+                    params.library_agent_id
+                    if has_library_id
+                    else params.username_agent_slug
+                )
                 return ErrorResponse(
-                    message=f"Agent '{params.username_agent_slug}' not found in marketplace",
+                    message=f"Agent '{identifier}' not found",
                     session_id=session_id,
                 )
 
@@ -186,15 +240,13 @@ class RunAgentTool(BaseTool):
                 # Return credentials needed response with input data info
                 # The UI handles credential setup automatically, so the message
                 # focuses on asking about input data
-                credentials = extract_credentials_from_schema(
-                    graph.credentials_input_schema
+                requirements_creds_dict = build_missing_credentials_from_graph(
+                    graph, None
                 )
-                missing_creds_check = await check_user_has_required_credentials(
-                    user_id, credentials
+                missing_credentials_dict = build_missing_credentials_from_graph(
+                    graph, graph_credentials
                 )
-                missing_credentials_dict = {
-                    c.id: c.model_dump() for c in missing_creds_check
-                }
+                requirements_creds_list = list(requirements_creds_dict.values())
 
                 return SetupRequirementsResponse(
                     message=self._build_inputs_message(graph, MSG_WHAT_VALUES_TO_USE),
@@ -208,7 +260,7 @@ class RunAgentTool(BaseTool):
                             ready_to_run=False,
                         ),
                         requirements={
-                            "credentials": [c.model_dump() for c in credentials],
+                            "credentials": requirements_creds_list,
                             "inputs": self._get_inputs_list(graph.input_schema),
                             "execution_modes": self._get_execution_modes(graph),
                         },
@@ -222,6 +274,22 @@ class RunAgentTool(BaseTool):
             input_properties = graph.input_schema.get("properties", {})
             required_fields = set(graph.input_schema.get("required", []))
             provided_inputs = set(params.inputs.keys())
+            valid_fields = set(input_properties.keys())
+
+            # Check for unknown input fields
+            unrecognized_fields = provided_inputs - valid_fields
+            if unrecognized_fields:
+                return InputValidationErrorResponse(
+                    message=(
+                        f"Unknown input field(s) provided: {', '.join(sorted(unrecognized_fields))}. "
+                        f"Agent was not executed. Please use the correct field names from the schema."
+                    ),
+                    session_id=session_id,
+                    unrecognized_fields=sorted(unrecognized_fields),
+                    inputs=graph.input_schema,
+                    graph_id=graph.id,
+                    graph_version=graph.version,
+                )
 
             # If agent has inputs but none were provided AND use_defaults is not set,
             # always show what's available first so user can decide
@@ -404,6 +472,16 @@ class RunAgentTool(BaseTool):
             session.successful_agent_runs.get(library_agent.graph_id, 0) + 1
         )
 
+        # Track in PostHog
+        track_agent_run_success(
+            user_id=user_id,
+            session_id=session_id,
+            graph_id=library_agent.graph_id,
+            graph_name=library_agent.name,
+            execution_id=execution.id,
+            library_agent_id=library_agent.id,
+        )
+
         library_agent_link = f"/library/agents/{library_agent.id}"
         return ExecutionStartedResponse(
             message=(
@@ -483,6 +561,18 @@ class RunAgentTool(BaseTool):
         # Track successful schedule
         session.successful_agent_schedules[library_agent.graph_id] = (
             session.successful_agent_schedules.get(library_agent.graph_id, 0) + 1
+        )
+
+        # Track in PostHog
+        track_agent_scheduled(
+            user_id=user_id,
+            session_id=session_id,
+            graph_id=library_agent.graph_id,
+            graph_name=library_agent.name,
+            schedule_id=result.id,
+            schedule_name=schedule_name,
+            cron=cron,
+            library_agent_id=library_agent.id,
         )
 
         library_agent_link = f"/library/agents/{library_agent.id}"

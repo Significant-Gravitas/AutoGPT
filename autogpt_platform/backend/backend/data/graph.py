@@ -3,7 +3,7 @@ import logging
 import uuid
 from collections import defaultdict
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any, Literal, Optional, cast
+from typing import TYPE_CHECKING, Annotated, Any, Literal, Optional, cast
 
 from prisma.enums import SubmissionStatus
 from prisma.models import (
@@ -20,7 +20,7 @@ from prisma.types import (
     AgentNodeLinkCreateInput,
     StoreListingVersionWhereInput,
 )
-from pydantic import BaseModel, Field, create_model
+from pydantic import BaseModel, BeforeValidator, Field, create_model
 from pydantic.fields import computed_field
 
 from backend.blocks.agent import AgentExecutorBlock
@@ -62,7 +62,31 @@ logger = logging.getLogger(__name__)
 
 
 class GraphSettings(BaseModel):
-    human_in_the_loop_safe_mode: bool | None = None
+    # Use Annotated with BeforeValidator to coerce None to default values.
+    # This handles cases where the database has null values for these fields.
+    model_config = {"extra": "ignore"}
+
+    human_in_the_loop_safe_mode: Annotated[
+        bool, BeforeValidator(lambda v: v if v is not None else True)
+    ] = True
+    sensitive_action_safe_mode: Annotated[
+        bool, BeforeValidator(lambda v: v if v is not None else False)
+    ] = False
+
+    @classmethod
+    def from_graph(
+        cls,
+        graph: "GraphModel",
+        hitl_safe_mode: bool | None = None,
+        sensitive_action_safe_mode: bool = False,
+    ) -> "GraphSettings":
+        # Default to True if not explicitly set
+        if hitl_safe_mode is None:
+            hitl_safe_mode = True
+        return cls(
+            human_in_the_loop_safe_mode=hitl_safe_mode,
+            sensitive_action_safe_mode=sensitive_action_safe_mode,
+        )
 
 
 class Link(BaseDbModel):
@@ -93,6 +117,15 @@ class Node(BaseDbModel):
     metadata: dict[str, Any] = {}
     input_links: list[Link] = []
     output_links: list[Link] = []
+
+    @property
+    def credentials_optional(self) -> bool:
+        """
+        Whether credentials are optional for this node.
+        When True and credentials are not configured, the node will be skipped
+        during execution rather than causing a validation error.
+        """
+        return self.metadata.get("credentials_optional", False)
 
     @property
     def block(self) -> AnyBlockSchema | "_UnknownBlockBase":
@@ -238,6 +271,13 @@ class BaseGraph(BaseDbModel):
             if node.block.block_type == BlockType.HUMAN_IN_THE_LOOP
         )
 
+    @computed_field
+    @property
+    def has_sensitive_action(self) -> bool:
+        return any(
+            node.block_id for node in self.nodes if node.block.is_sensitive_action
+        )
+
     @property
     def webhook_input_node(self) -> Node | None:
         return next(
@@ -326,7 +366,35 @@ class Graph(BaseGraph):
     @computed_field
     @property
     def credentials_input_schema(self) -> dict[str, Any]:
-        return self._credentials_input_schema.jsonschema()
+        schema = self._credentials_input_schema.jsonschema()
+
+        # Determine which credential fields are required based on credentials_optional metadata
+        graph_credentials_inputs = self.aggregate_credentials_inputs()
+        required_fields = []
+
+        # Build a map of node_id -> node for quick lookup
+        all_nodes = {node.id: node for node in self.nodes}
+        for sub_graph in self.sub_graphs:
+            for node in sub_graph.nodes:
+                all_nodes[node.id] = node
+
+        for field_key, (
+            _field_info,
+            node_field_pairs,
+        ) in graph_credentials_inputs.items():
+            # A field is required if ANY node using it has credentials_optional=False
+            is_required = False
+            for node_id, _field_name in node_field_pairs:
+                node = all_nodes.get(node_id)
+                if node and not node.credentials_optional:
+                    is_required = True
+                    break
+
+            if is_required:
+                required_fields.append(field_key)
+
+        schema["required"] = required_fields
+        return schema
 
     @property
     def _credentials_input_schema(self) -> type[BlockSchema]:
@@ -958,6 +1026,39 @@ async def get_graph(
         )
 
     return GraphModel.from_db(graph, for_export)
+
+
+async def get_store_listed_graphs(*graph_ids: str) -> dict[str, GraphModel]:
+    """Batch-fetch multiple store-listed graphs by their IDs.
+
+    Only returns graphs that have approved store listings (publicly available).
+    Does not require permission checks since store-listed graphs are public.
+
+    Args:
+        *graph_ids: Variable number of graph IDs to fetch
+
+    Returns:
+        Dict mapping graph_id to GraphModel for graphs with approved store listings
+    """
+    if not graph_ids:
+        return {}
+
+    store_listings = await StoreListingVersion.prisma().find_many(
+        where={
+            "agentGraphId": {"in": list(graph_ids)},
+            "submissionStatus": SubmissionStatus.APPROVED,
+            "isDeleted": False,
+        },
+        include={"AgentGraph": {"include": AGENT_GRAPH_INCLUDE}},
+        distinct=["agentGraphId"],
+        order={"agentGraphVersion": "desc"},
+    )
+
+    return {
+        listing.agentGraphId: GraphModel.from_db(listing.AgentGraph)
+        for listing in store_listings
+        if listing.AgentGraph
+    }
 
 
 async def get_graph_as_admin(

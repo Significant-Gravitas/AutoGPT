@@ -64,7 +64,6 @@ from backend.data.onboarding import (
     complete_re_run_agent,
     get_recommended_agents,
     get_user_onboarding,
-    increment_runs,
     onboarding_enabled,
     reset_user_onboarding,
     update_user_onboarding,
@@ -262,14 +261,36 @@ async def get_onboarding_agents(
     return await get_recommended_agents(user_id)
 
 
+class OnboardingStatusResponse(pydantic.BaseModel):
+    """Response for onboarding status check."""
+
+    is_onboarding_enabled: bool
+    is_chat_enabled: bool
+
+
 @v1_router.get(
     "/onboarding/enabled",
     summary="Is onboarding enabled",
     tags=["onboarding", "public"],
-    dependencies=[Security(requires_user)],
+    response_model=OnboardingStatusResponse,
 )
-async def is_onboarding_enabled() -> bool:
-    return await onboarding_enabled()
+async def is_onboarding_enabled(
+    user_id: Annotated[str, Security(get_user_id)],
+) -> OnboardingStatusResponse:
+    # Check if chat is enabled for user
+    is_chat_enabled = await is_feature_enabled(Flag.CHAT, user_id, False)
+
+    # If chat is enabled, skip legacy onboarding
+    if is_chat_enabled:
+        return OnboardingStatusResponse(
+            is_onboarding_enabled=False,
+            is_chat_enabled=True,
+        )
+
+    return OnboardingStatusResponse(
+        is_onboarding_enabled=await onboarding_enabled(),
+        is_chat_enabled=False,
+    )
 
 
 @v1_router.post(
@@ -365,6 +386,8 @@ async def execute_graph_block(
     obj = get_block(block_id)
     if not obj:
         raise HTTPException(status_code=404, detail=f"Block #{block_id} not found.")
+    if obj.disabled:
+        raise HTTPException(status_code=403, detail=f"Block #{block_id} is disabled.")
 
     user = await get_user_by_id(user_id)
     if not user:
@@ -762,10 +785,8 @@ async def create_new_graph(
     graph.reassign_ids(user_id=user_id, reassign_graph_id=True)
     graph.validate_graph(for_run=False)
 
-    # The return value of the create graph & library function is intentionally not used here,
-    # as the graph already valid and no sub-graphs are returned back.
     await graph_db.create_graph(graph, user_id=user_id)
-    await library_db.create_library_agent(graph, user_id=user_id)
+    await library_db.create_library_agent(graph, user_id)
     activated_graph = await on_graph_activate(graph, user_id=user_id)
 
     if create_graph.source == "builder":
@@ -889,21 +910,19 @@ async def set_graph_active_version(
 async def _update_library_agent_version_and_settings(
     user_id: str, agent_graph: graph_db.GraphModel
 ) -> library_model.LibraryAgent:
-    # Keep the library agent up to date with the new active version
     library = await library_db.update_agent_version_in_library(
         user_id, agent_graph.id, agent_graph.version
     )
-    # If the graph has HITL node, initialize the setting if it's not already set.
-    if (
-        agent_graph.has_human_in_the_loop
-        and library.settings.human_in_the_loop_safe_mode is None
-    ):
-        await library_db.update_library_agent_settings(
+    updated_settings = GraphSettings.from_graph(
+        graph=agent_graph,
+        hitl_safe_mode=library.settings.human_in_the_loop_safe_mode,
+        sensitive_action_safe_mode=library.settings.sensitive_action_safe_mode,
+    )
+    if updated_settings != library.settings:
+        library = await library_db.update_library_agent(
+            library_agent_id=library.id,
             user_id=user_id,
-            agent_id=library.id,
-            settings=library.settings.model_copy(
-                update={"human_in_the_loop_safe_mode": True}
-            ),
+            settings=updated_settings,
         )
     return library
 
@@ -920,21 +939,18 @@ async def update_graph_settings(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> GraphSettings:
     """Update graph settings for the user's library agent."""
-    # Get the library agent for this graph
     library_agent = await library_db.get_library_agent_by_graph_id(
         graph_id=graph_id, user_id=user_id
     )
     if not library_agent:
         raise HTTPException(404, f"Graph #{graph_id} not found in user's library")
 
-    # Update the library agent settings
-    updated_agent = await library_db.update_library_agent_settings(
+    updated_agent = await library_db.update_library_agent(
+        library_agent_id=library_agent.id,
         user_id=user_id,
-        agent_id=library_agent.id,
         settings=settings,
     )
 
-    # Return the updated settings
     return GraphSettings.model_validate(updated_agent.settings)
 
 
@@ -975,7 +991,6 @@ async def execute_graph(
         # Record successful graph execution
         record_graph_execution(graph_id=graph_id, status="success", user_id=user_id)
         record_graph_operation(operation="execute", status="success")
-        await increment_runs(user_id)
         await complete_re_run_agent(user_id, graph_id)
         if source == "library":
             await complete_onboarding_step(

@@ -1,4 +1,5 @@
 import uuid
+from unittest.mock import AsyncMock, patch
 
 import orjson
 import pytest
@@ -17,7 +18,18 @@ setup_test_data = setup_test_data
 setup_firecrawl_test_data = setup_firecrawl_test_data
 
 
-@pytest.mark.asyncio(scope="session")
+@pytest.fixture(scope="session", autouse=True)
+def mock_embedding_functions():
+    """Mock embedding functions for all tests to avoid database/API dependencies."""
+    with patch(
+        "backend.api.features.store.db.ensure_embedding",
+        new_callable=AsyncMock,
+        return_value=True,
+    ):
+        yield
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_run_agent(setup_test_data):
     """Test that the run_agent tool successfully executes an approved agent"""
     # Use test data from fixture
@@ -46,11 +58,11 @@ async def test_run_agent(setup_test_data):
 
     # Verify the response
     assert response is not None
-    assert hasattr(response, "result")
+    assert hasattr(response, "output")
     # Parse the result JSON to verify the execution started
 
-    assert isinstance(response.result, str)
-    result_data = orjson.loads(response.result)
+    assert isinstance(response.output, str)
+    result_data = orjson.loads(response.output)
     assert "execution_id" in result_data
     assert "graph_id" in result_data
     assert result_data["graph_id"] == graph.id
@@ -58,7 +70,7 @@ async def test_run_agent(setup_test_data):
     assert result_data["graph_name"] == "Test Agent"
 
 
-@pytest.mark.asyncio(scope="session")
+@pytest.mark.asyncio(loop_scope="session")
 async def test_run_agent_missing_inputs(setup_test_data):
     """Test that the run_agent tool returns error when inputs are missing"""
     # Use test data from fixture
@@ -86,15 +98,15 @@ async def test_run_agent_missing_inputs(setup_test_data):
 
     # Verify that we get an error response
     assert response is not None
-    assert hasattr(response, "result")
+    assert hasattr(response, "output")
     # The tool should return an ErrorResponse when setup info indicates not ready
 
-    assert isinstance(response.result, str)
-    result_data = orjson.loads(response.result)
+    assert isinstance(response.output, str)
+    result_data = orjson.loads(response.output)
     assert "message" in result_data
 
 
-@pytest.mark.asyncio(scope="session")
+@pytest.mark.asyncio(loop_scope="session")
 async def test_run_agent_invalid_agent_id(setup_test_data):
     """Test that the run_agent tool returns error for invalid agent ID"""
     # Use test data from fixture
@@ -118,10 +130,10 @@ async def test_run_agent_invalid_agent_id(setup_test_data):
 
     # Verify that we get an error response
     assert response is not None
-    assert hasattr(response, "result")
+    assert hasattr(response, "output")
 
-    assert isinstance(response.result, str)
-    result_data = orjson.loads(response.result)
+    assert isinstance(response.output, str)
+    result_data = orjson.loads(response.output)
     assert "message" in result_data
     # Should get an error about failed setup or not found
     assert any(
@@ -129,7 +141,7 @@ async def test_run_agent_invalid_agent_id(setup_test_data):
     )
 
 
-@pytest.mark.asyncio(scope="session")
+@pytest.mark.asyncio(loop_scope="session")
 async def test_run_agent_with_llm_credentials(setup_llm_test_data):
     """Test that run_agent works with an agent requiring LLM credentials"""
     # Use test data from fixture
@@ -158,12 +170,12 @@ async def test_run_agent_with_llm_credentials(setup_llm_test_data):
 
     # Verify the response
     assert response is not None
-    assert hasattr(response, "result")
+    assert hasattr(response, "output")
 
     # Parse the result JSON to verify the execution started
 
-    assert isinstance(response.result, str)
-    result_data = orjson.loads(response.result)
+    assert isinstance(response.output, str)
+    result_data = orjson.loads(response.output)
 
     # Should successfully start execution since credentials are available
     assert "execution_id" in result_data
@@ -173,7 +185,7 @@ async def test_run_agent_with_llm_credentials(setup_llm_test_data):
     assert result_data["graph_name"] == "LLM Test Agent"
 
 
-@pytest.mark.asyncio(scope="session")
+@pytest.mark.asyncio(loop_scope="session")
 async def test_run_agent_shows_available_inputs_when_none_provided(setup_test_data):
     """Test that run_agent returns available inputs when called without inputs or use_defaults."""
     user = setup_test_data["user"]
@@ -195,9 +207,9 @@ async def test_run_agent_shows_available_inputs_when_none_provided(setup_test_da
     )
 
     assert response is not None
-    assert hasattr(response, "result")
-    assert isinstance(response.result, str)
-    result_data = orjson.loads(response.result)
+    assert hasattr(response, "output")
+    assert isinstance(response.output, str)
+    result_data = orjson.loads(response.output)
 
     # Should return agent_details type showing available inputs
     assert result_data.get("type") == "agent_details"
@@ -207,7 +219,7 @@ async def test_run_agent_shows_available_inputs_when_none_provided(setup_test_da
     assert "inputs" in result_data["message"].lower()
 
 
-@pytest.mark.asyncio(scope="session")
+@pytest.mark.asyncio(loop_scope="session")
 async def test_run_agent_with_use_defaults(setup_test_data):
     """Test that run_agent executes successfully with use_defaults=True."""
     user = setup_test_data["user"]
@@ -230,16 +242,16 @@ async def test_run_agent_with_use_defaults(setup_test_data):
     )
 
     assert response is not None
-    assert hasattr(response, "result")
-    assert isinstance(response.result, str)
-    result_data = orjson.loads(response.result)
+    assert hasattr(response, "output")
+    assert isinstance(response.output, str)
+    result_data = orjson.loads(response.output)
 
     # Should execute successfully
     assert "execution_id" in result_data
     assert result_data["graph_id"] == graph.id
 
 
-@pytest.mark.asyncio(scope="session")
+@pytest.mark.asyncio(loop_scope="session")
 async def test_run_agent_missing_credentials(setup_firecrawl_test_data):
     """Test that run_agent returns setup_requirements when credentials are missing."""
     user = setup_firecrawl_test_data["user"]
@@ -260,9 +272,9 @@ async def test_run_agent_missing_credentials(setup_firecrawl_test_data):
     )
 
     assert response is not None
-    assert hasattr(response, "result")
-    assert isinstance(response.result, str)
-    result_data = orjson.loads(response.result)
+    assert hasattr(response, "output")
+    assert isinstance(response.output, str)
+    result_data = orjson.loads(response.output)
 
     # Should return setup_requirements type with missing credentials
     assert result_data.get("type") == "setup_requirements"
@@ -273,7 +285,7 @@ async def test_run_agent_missing_credentials(setup_firecrawl_test_data):
     assert len(setup_info["user_readiness"]["missing_credentials"]) > 0
 
 
-@pytest.mark.asyncio(scope="session")
+@pytest.mark.asyncio(loop_scope="session")
 async def test_run_agent_invalid_slug_format(setup_test_data):
     """Test that run_agent returns error for invalid slug format (no slash)."""
     user = setup_test_data["user"]
@@ -292,22 +304,23 @@ async def test_run_agent_invalid_slug_format(setup_test_data):
     )
 
     assert response is not None
-    assert hasattr(response, "result")
-    assert isinstance(response.result, str)
-    result_data = orjson.loads(response.result)
+    assert hasattr(response, "output")
+    assert isinstance(response.output, str)
+    result_data = orjson.loads(response.output)
 
     # Should return error
     assert result_data.get("type") == "error"
     assert "username/agent-name" in result_data["message"]
 
 
-@pytest.mark.asyncio(scope="session")
+@pytest.mark.asyncio(loop_scope="session")
 async def test_run_agent_unauthenticated():
     """Test that run_agent returns need_login for unauthenticated users."""
     tool = RunAgentTool()
-    session = make_session(user_id=None)
+    # Session has a user_id (session owner), but we test tool execution without user_id
+    session = make_session(user_id="test-session-owner")
 
-    # Execute without user_id
+    # Execute without user_id to test unauthenticated behavior
     response = await tool.execute(
         user_id=None,
         session_id=str(uuid.uuid4()),
@@ -318,16 +331,16 @@ async def test_run_agent_unauthenticated():
     )
 
     assert response is not None
-    assert hasattr(response, "result")
-    assert isinstance(response.result, str)
-    result_data = orjson.loads(response.result)
+    assert hasattr(response, "output")
+    assert isinstance(response.output, str)
+    result_data = orjson.loads(response.output)
 
     # Base tool returns need_login type for unauthenticated users
     assert result_data.get("type") == "need_login"
     assert "sign in" in result_data["message"].lower()
 
 
-@pytest.mark.asyncio(scope="session")
+@pytest.mark.asyncio(loop_scope="session")
 async def test_run_agent_schedule_without_cron(setup_test_data):
     """Test that run_agent returns error when scheduling without cron expression."""
     user = setup_test_data["user"]
@@ -350,16 +363,16 @@ async def test_run_agent_schedule_without_cron(setup_test_data):
     )
 
     assert response is not None
-    assert hasattr(response, "result")
-    assert isinstance(response.result, str)
-    result_data = orjson.loads(response.result)
+    assert hasattr(response, "output")
+    assert isinstance(response.output, str)
+    result_data = orjson.loads(response.output)
 
     # Should return error about missing cron
     assert result_data.get("type") == "error"
     assert "cron" in result_data["message"].lower()
 
 
-@pytest.mark.asyncio(scope="session")
+@pytest.mark.asyncio(loop_scope="session")
 async def test_run_agent_schedule_without_name(setup_test_data):
     """Test that run_agent returns error when scheduling without schedule_name."""
     user = setup_test_data["user"]
@@ -382,10 +395,49 @@ async def test_run_agent_schedule_without_name(setup_test_data):
     )
 
     assert response is not None
-    assert hasattr(response, "result")
-    assert isinstance(response.result, str)
-    result_data = orjson.loads(response.result)
+    assert hasattr(response, "output")
+    assert isinstance(response.output, str)
+    result_data = orjson.loads(response.output)
 
     # Should return error about missing schedule_name
     assert result_data.get("type") == "error"
     assert "schedule_name" in result_data["message"].lower()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_run_agent_rejects_unknown_input_fields(setup_test_data):
+    """Test that run_agent returns input_validation_error for unknown input fields."""
+    user = setup_test_data["user"]
+    store_submission = setup_test_data["store_submission"]
+
+    tool = RunAgentTool()
+    agent_marketplace_id = f"{user.email.split('@')[0]}/{store_submission.slug}"
+    session = make_session(user_id=user.id)
+
+    # Execute with unknown input field names
+    response = await tool.execute(
+        user_id=user.id,
+        session_id=str(uuid.uuid4()),
+        tool_call_id=str(uuid.uuid4()),
+        username_agent_slug=agent_marketplace_id,
+        inputs={
+            "unknown_field": "some value",
+            "another_unknown": "another value",
+        },
+        session=session,
+    )
+
+    assert response is not None
+    assert hasattr(response, "output")
+    assert isinstance(response.output, str)
+    result_data = orjson.loads(response.output)
+
+    # Should return input_validation_error type with unrecognized fields
+    assert result_data.get("type") == "input_validation_error"
+    assert "unrecognized_fields" in result_data
+    assert set(result_data["unrecognized_fields"]) == {
+        "another_unknown",
+        "unknown_field",
+    }
+    assert "inputs" in result_data  # Contains the valid schema
+    assert "Agent was not executed" in result_data["message"]

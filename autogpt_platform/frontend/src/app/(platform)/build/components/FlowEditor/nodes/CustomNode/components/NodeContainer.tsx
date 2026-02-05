@@ -27,6 +27,7 @@ export const NodeContainer = ({
         status && nodeStyleBasedOnStatus[status],
         hasErrors ? nodeStyleBasedOnStatus[AgentExecutionStatus.FAILED] : "",
       )}
+      data-id={`custom-node-${nodeId}`}
     >
       {children}
     </div>

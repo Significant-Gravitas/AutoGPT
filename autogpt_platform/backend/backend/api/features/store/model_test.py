@@ -26,11 +26,13 @@ def test_store_agent():
         description="Test description",
         runs=50,
         rating=4.5,
+        agent_graph_id="test-graph-id",
     )
     assert agent.slug == "test-agent"
     assert agent.agent_name == "Test Agent"
     assert agent.runs == 50
     assert agent.rating == 4.5
+    assert agent.agent_graph_id == "test-graph-id"
 
 
 def test_store_agents_response():
@@ -46,6 +48,7 @@ def test_store_agents_response():
                 description="Test description",
                 runs=50,
                 rating=4.5,
+                agent_graph_id="test-graph-id",
             )
         ],
         pagination=store_model.Pagination(
@@ -138,6 +141,7 @@ def test_creator_details():
 
 def test_store_submission():
     submission = store_model.StoreSubmission(
+        listing_id="listing123",
         agent_id="agent123",
         agent_version=1,
         sub_heading="Test subheading",
@@ -159,6 +163,7 @@ def test_store_submissions_response():
     response = store_model.StoreSubmissionsResponse(
         submissions=[
             store_model.StoreSubmission(
+                listing_id="listing123",
                 agent_id="agent123",
                 agent_version=1,
                 sub_heading="Test subheading",

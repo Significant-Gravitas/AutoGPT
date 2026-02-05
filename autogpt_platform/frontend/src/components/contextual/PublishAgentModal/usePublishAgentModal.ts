@@ -6,9 +6,12 @@ import { emptyModalState } from "./helpers";
 import {
   useGetV2GetMyAgents,
   useGetV2ListMySubmissions,
+  getGetV2ListMySubmissionsQueryKey,
 } from "@/app/api/__generated__/endpoints/store/store";
 import { okData } from "@/app/api/helpers";
 import type { MyAgent } from "@/app/api/__generated__/models/myAgent";
+import { useQueryClient } from "@tanstack/react-query";
+import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 
 const defaultTargetState: PublishState = {
   isOpen: false,
@@ -65,10 +68,20 @@ export function usePublishAgentModal({
   >(preSelectedAgentVersion || null);
 
   const router = useRouter();
+  const queryClient = useQueryClient();
+  const { isLoggedIn } = useSupabase();
 
   // Fetch agent data for pre-populating form when agent is pre-selected
-  const { data: myAgents } = useGetV2GetMyAgents();
-  const { data: mySubmissions } = useGetV2ListMySubmissions();
+  const { data: myAgents } = useGetV2GetMyAgents(undefined, {
+    query: {
+      enabled: isLoggedIn,
+    },
+  });
+  const { data: mySubmissions } = useGetV2ListMySubmissions(undefined, {
+    query: {
+      enabled: isLoggedIn,
+    },
+  });
 
   // Sync currentState with targetState when it changes from outside
   useEffect(() => {
@@ -77,14 +90,18 @@ export function usePublishAgentModal({
     }
   }, [targetState]);
 
-  // Reset internal state when modal opens
+  // Reset internal state when modal opens (only on initial open, not on every targetState change)
+  const [hasOpened, setHasOpened] = useState(false);
   useEffect(() => {
     if (!targetState) return;
-    if (targetState.isOpen) {
+    if (targetState.isOpen && !hasOpened) {
       setSelectedAgent(null);
       setSelectedAgentId(preSelectedAgentId || null);
       setSelectedAgentVersion(preSelectedAgentVersion || null);
       setInitialData(emptyModalState);
+      setHasOpened(true);
+    } else if (!targetState.isOpen && hasOpened) {
+      setHasOpened(false);
     }
   }, [targetState, preSelectedAgentId, preSelectedAgentVersion]);
 
@@ -171,6 +188,11 @@ export function usePublishAgentModal({
     setSelectedAgentId(null);
     setSelectedAgentVersion(null);
     setInitialData(emptyModalState);
+
+    // Invalidate submissions query to refresh the data after modal closes
+    queryClient.invalidateQueries({
+      queryKey: getGetV2ListMySubmissionsQueryKey(),
+    });
 
     // Update parent with clean closed state
     const newState = {

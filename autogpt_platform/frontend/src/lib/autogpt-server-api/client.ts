@@ -352,6 +352,10 @@ export default class BackendAPI {
     return this._get("/integrations/providers");
   }
 
+  listSystemProviders(): Promise<string[]> {
+    return this._get("/integrations/providers/system");
+  }
+
   listCredentials(provider?: string): Promise<CredentialsMetaResponse[]> {
     return this._get(
       provider

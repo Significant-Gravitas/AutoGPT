@@ -21,7 +21,7 @@ from backend.data.model import CredentialsMetaInput
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.webhooks.graph_lifecycle_hooks import on_graph_activate
 from backend.util.clients import get_scheduler_client
-from backend.util.exceptions import DatabaseError, NotFoundError
+from backend.util.exceptions import DatabaseError, InvalidInputError, NotFoundError
 from backend.util.json import SafeJson
 from backend.util.models import Pagination
 from backend.util.settings import Config
@@ -39,6 +39,7 @@ async def list_library_agents(
     sort_by: library_model.LibraryAgentSort = library_model.LibraryAgentSort.UPDATED_AT,
     page: int = 1,
     page_size: int = 50,
+    include_executions: bool = False,
 ) -> library_model.LibraryAgentResponse:
     """
     Retrieves a paginated list of LibraryAgent records for a given user.
@@ -49,6 +50,9 @@ async def list_library_agents(
         sort_by: Sorting field (createdAt, updatedAt, isFavorite, isCreatedByUser).
         page: Current page (1-indexed).
         page_size: Number of items per page.
+        include_executions: Whether to include execution data for status calculation.
+            Defaults to False for performance (UI fetches status separately).
+            Set to True when accurate status/metrics are needed (e.g., agent generator).
 
     Returns:
         A LibraryAgentResponse containing the list of agents and pagination details.
@@ -64,11 +68,11 @@ async def list_library_agents(
 
     if page < 1 or page_size < 1:
         logger.warning(f"Invalid pagination: page={page}, page_size={page_size}")
-        raise DatabaseError("Invalid pagination input")
+        raise InvalidInputError("Invalid pagination input")
 
     if search_term and len(search_term.strip()) > 100:
         logger.warning(f"Search term too long: {repr(search_term)}")
-        raise DatabaseError("Search term is too long")
+        raise InvalidInputError("Search term is too long")
 
     where_clause: prisma.types.LibraryAgentWhereInput = {
         "userId": user_id,
@@ -76,7 +80,6 @@ async def list_library_agents(
         "isArchived": False,
     }
 
-    # Build search filter if applicable
     if search_term:
         where_clause["OR"] = [
             {
@@ -93,7 +96,6 @@ async def list_library_agents(
             },
         ]
 
-    # Determine sorting
     order_by: prisma.types.LibraryAgentOrderByInput | None = None
 
     if sort_by == library_model.LibraryAgentSort.CREATED_AT:
@@ -105,7 +107,7 @@ async def list_library_agents(
         library_agents = await prisma.models.LibraryAgent.prisma().find_many(
             where=where_clause,
             include=library_agent_include(
-                user_id, include_nodes=False, include_executions=False
+                user_id, include_nodes=False, include_executions=include_executions
             ),
             order=order_by,
             skip=(page - 1) * page_size,
@@ -175,7 +177,7 @@ async def list_favorite_library_agents(
 
     if page < 1 or page_size < 1:
         logger.warning(f"Invalid pagination: page={page}, page_size={page_size}")
-        raise DatabaseError("Invalid pagination input")
+        raise InvalidInputError("Invalid pagination input")
 
     where_clause: prisma.types.LibraryAgentWhereInput = {
         "userId": user_id,
@@ -401,27 +403,11 @@ async def add_generated_agent_image(
     )
 
 
-def _initialize_graph_settings(graph: graph_db.GraphModel) -> GraphSettings:
-    """
-    Initialize GraphSettings based on graph content.
-
-    Args:
-        graph: The graph to analyze
-
-    Returns:
-        GraphSettings with appropriate human_in_the_loop_safe_mode value
-    """
-    if graph.has_human_in_the_loop:
-        # Graph has HITL blocks - set safe mode to True by default
-        return GraphSettings(human_in_the_loop_safe_mode=True)
-    else:
-        # Graph has no HITL blocks - keep None
-        return GraphSettings(human_in_the_loop_safe_mode=None)
-
-
 async def create_library_agent(
     graph: graph_db.GraphModel,
     user_id: str,
+    hitl_safe_mode: bool = True,
+    sensitive_action_safe_mode: bool = False,
     create_library_agents_for_sub_graphs: bool = True,
 ) -> list[library_model.LibraryAgent]:
     """
@@ -430,6 +416,8 @@ async def create_library_agent(
     Args:
         agent: The agent/Graph to add to the library.
         user_id: The user to whom the agent will be added.
+        hitl_safe_mode: Whether HITL blocks require manual review (default True).
+        sensitive_action_safe_mode: Whether sensitive action blocks require review.
         create_library_agents_for_sub_graphs: If True, creates LibraryAgent records for sub-graphs as well.
 
     Returns:
@@ -465,7 +453,11 @@ async def create_library_agent(
                             }
                         },
                         settings=SafeJson(
-                            _initialize_graph_settings(graph_entry).model_dump()
+                            GraphSettings.from_graph(
+                                graph_entry,
+                                hitl_safe_mode=hitl_safe_mode,
+                                sensitive_action_safe_mode=sensitive_action_safe_mode,
+                            ).model_dump()
                         ),
                     ),
                     include=library_agent_include(
@@ -489,7 +481,7 @@ async def update_agent_version_in_library(
     agent_graph_version: int,
 ) -> library_model.LibraryAgent:
     """
-    Updates the agent version in the library if useGraphIsActiveVersion is True.
+    Updates the agent version in the library for any agent owned by the user.
 
     Args:
         user_id: Owner of the LibraryAgent.
@@ -498,20 +490,31 @@ async def update_agent_version_in_library(
 
     Raises:
         DatabaseError: If there's an error with the update.
+        NotFoundError: If no library agent is found for this user and agent.
     """
     logger.debug(
         f"Updating agent version in library for user #{user_id}, "
         f"agent #{agent_graph_id} v{agent_graph_version}"
     )
-    try:
-        library_agent = await prisma.models.LibraryAgent.prisma().find_first_or_raise(
+    async with transaction() as tx:
+        library_agent = await prisma.models.LibraryAgent.prisma(tx).find_first_or_raise(
             where={
                 "userId": user_id,
                 "agentGraphId": agent_graph_id,
-                "useGraphIsActiveVersion": True,
             },
         )
-        lib = await prisma.models.LibraryAgent.prisma().update(
+
+        # Delete any conflicting LibraryAgent for the target version
+        await prisma.models.LibraryAgent.prisma(tx).delete_many(
+            where={
+                "userId": user_id,
+                "agentGraphId": agent_graph_id,
+                "agentGraphVersion": agent_graph_version,
+                "id": {"not": library_agent.id},
+            }
+        )
+
+        lib = await prisma.models.LibraryAgent.prisma(tx).update(
             where={"id": library_agent.id},
             data={
                 "AgentGraph": {
@@ -525,13 +528,13 @@ async def update_agent_version_in_library(
             },
             include={"AgentGraph": True},
         )
-        if lib is None:
-            raise NotFoundError(f"Library agent {library_agent.id} not found")
 
-        return library_model.LibraryAgent.from_db(lib)
-    except prisma.errors.PrismaError as e:
-        logger.error(f"Database error updating agent version in library: {e}")
-        raise DatabaseError("Failed to update agent version in library") from e
+    if lib is None:
+        raise NotFoundError(
+            f"Failed to update library agent for {agent_graph_id} v{agent_graph_version}"
+        )
+
+    return library_model.LibraryAgent.from_db(lib)
 
 
 async def update_library_agent(
@@ -582,7 +585,13 @@ async def update_library_agent(
             )
         update_fields["isDeleted"] = is_deleted
     if settings is not None:
-        update_fields["settings"] = SafeJson(settings.model_dump())
+        existing_agent = await get_library_agent(id=library_agent_id, user_id=user_id)
+        current_settings_dict = (
+            existing_agent.settings.model_dump() if existing_agent.settings else {}
+        )
+        new_settings = settings.model_dump(exclude_unset=True)
+        merged_settings = {**current_settings_dict, **new_settings}
+        update_fields["settings"] = SafeJson(merged_settings)
 
     try:
         # If graph_version is provided, update to that specific version
@@ -614,33 +623,6 @@ async def update_library_agent(
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error updating library agent: {str(e)}")
         raise DatabaseError("Failed to update library agent") from e
-
-
-async def update_library_agent_settings(
-    user_id: str,
-    agent_id: str,
-    settings: GraphSettings,
-) -> library_model.LibraryAgent:
-    """
-    Updates the settings for a specific LibraryAgent.
-
-    Args:
-        user_id: The owner of the LibraryAgent.
-        agent_id: The ID of the LibraryAgent to update.
-        settings: New GraphSettings to apply.
-
-    Returns:
-        The updated LibraryAgent.
-
-    Raises:
-        NotFoundError: If the specified LibraryAgent does not exist.
-        DatabaseError: If there's an error in the update operation.
-    """
-    return await update_library_agent(
-        library_agent_id=agent_id,
-        user_id=user_id,
-        settings=settings,
-    )
 
 
 async def delete_library_agent(
@@ -825,8 +807,9 @@ async def add_store_agent_to_library(
                     }
                 },
                 "isCreatedByUser": False,
+                "useGraphIsActiveVersion": False,
                 "settings": SafeJson(
-                    _initialize_graph_settings(graph_model).model_dump()
+                    GraphSettings.from_graph(graph_model).model_dump()
                 ),
             },
             include=library_agent_include(
@@ -1216,8 +1199,15 @@ async def fork_library_agent(
         )
         new_graph = await on_graph_activate(new_graph, user_id=user_id)
 
-        # Create a library agent for the new graph
-        return (await create_library_agent(new_graph, user_id))[0]
+        # Create a library agent for the new graph, preserving safe mode settings
+        return (
+            await create_library_agent(
+                new_graph,
+                user_id,
+                hitl_safe_mode=original_agent.settings.human_in_the_loop_safe_mode,
+                sensitive_action_safe_mode=original_agent.settings.sensitive_action_safe_mode,
+            )
+        )[0]
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error cloning library agent: {e}")
         raise DatabaseError("Failed to fork library agent") from e

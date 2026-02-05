@@ -1,7 +1,6 @@
 """Configuration management for chat system."""
 
 import os
-from pathlib import Path
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
@@ -12,7 +11,11 @@ class ChatConfig(BaseSettings):
 
     # OpenAI API Configuration
     model: str = Field(
-        default="qwen/qwen3-235b-a22b-2507", description="Default model to use"
+        default="anthropic/claude-opus-4.5", description="Default model to use"
+    )
+    title_model: str = Field(
+        default="openai/gpt-4o-mini",
+        description="Model to use for generating session titles (should be fast/cheap)",
     )
     api_key: str | None = Field(default=None, description="OpenAI API key")
     base_url: str | None = Field(
@@ -23,12 +26,6 @@ class ChatConfig(BaseSettings):
     # Session TTL Configuration - 12 hours
     session_ttl: int = Field(default=43200, description="Session TTL in seconds")
 
-    # System Prompt Configuration
-    system_prompt_path: str = Field(
-        default="prompts/chat_system.md",
-        description="Path to system prompt file relative to chat module",
-    )
-
     # Streaming Configuration
     max_context_messages: int = Field(
         default=50, ge=1, le=200, description="Maximum context messages"
@@ -36,9 +33,64 @@ class ChatConfig(BaseSettings):
 
     stream_timeout: int = Field(default=300, description="Stream timeout in seconds")
     max_retries: int = Field(default=3, description="Maximum number of retries")
-    max_agent_runs: int = Field(default=3, description="Maximum number of agent runs")
+    max_agent_runs: int = Field(default=30, description="Maximum number of agent runs")
     max_agent_schedules: int = Field(
-        default=3, description="Maximum number of agent schedules"
+        default=30, description="Maximum number of agent schedules"
+    )
+
+    # Long-running operation configuration
+    long_running_operation_ttl: int = Field(
+        default=600,
+        description="TTL in seconds for long-running operation tracking in Redis (safety net if pod dies)",
+    )
+
+    # Stream registry configuration for SSE reconnection
+    stream_ttl: int = Field(
+        default=3600,
+        description="TTL in seconds for stream data in Redis (1 hour)",
+    )
+    stream_max_length: int = Field(
+        default=10000,
+        description="Maximum number of messages to store per stream",
+    )
+
+    # Redis Streams configuration for completion consumer
+    stream_completion_name: str = Field(
+        default="chat:completions",
+        description="Redis Stream name for operation completions",
+    )
+    stream_consumer_group: str = Field(
+        default="chat_consumers",
+        description="Consumer group name for completion stream",
+    )
+    stream_claim_min_idle_ms: int = Field(
+        default=60000,
+        description="Minimum idle time in milliseconds before claiming pending messages from dead consumers",
+    )
+
+    # Redis key prefixes for stream registry
+    task_meta_prefix: str = Field(
+        default="chat:task:meta:",
+        description="Prefix for task metadata hash keys",
+    )
+    task_stream_prefix: str = Field(
+        default="chat:stream:",
+        description="Prefix for task message stream keys",
+    )
+    task_op_prefix: str = Field(
+        default="chat:task:op:",
+        description="Prefix for operation ID to task ID mapping keys",
+    )
+    internal_api_key: str | None = Field(
+        default=None,
+        description="API key for internal webhook callbacks (env: CHAT_INTERNAL_API_KEY)",
+    )
+
+    # Langfuse Prompt Management Configuration
+    # Note: Langfuse credentials are in Settings().secrets (settings.py)
+    langfuse_prompt_name: str = Field(
+        default="CoPilot Prompt",
+        description="Name of the prompt in Langfuse to fetch",
     )
 
     @field_validator("api_key", mode="before")
@@ -72,43 +124,19 @@ class ChatConfig(BaseSettings):
                 v = "https://openrouter.ai/api/v1"
         return v
 
-    def get_system_prompt(self, **template_vars) -> str:
-        """Load and render the system prompt from file.
+    @field_validator("internal_api_key", mode="before")
+    @classmethod
+    def get_internal_api_key(cls, v):
+        """Get internal API key from environment if not provided."""
+        if v is None:
+            v = os.getenv("CHAT_INTERNAL_API_KEY")
+        return v
 
-        Args:
-            **template_vars: Variables to substitute in the template
-
-        Returns:
-            Rendered system prompt string
-
-        """
-        # Get the path relative to this module
-        module_dir = Path(__file__).parent
-        prompt_path = module_dir / self.system_prompt_path
-
-        # Check for .j2 extension first (Jinja2 template)
-        j2_path = Path(str(prompt_path) + ".j2")
-        if j2_path.exists():
-            try:
-                from jinja2 import Template
-
-                template = Template(j2_path.read_text())
-                return template.render(**template_vars)
-            except ImportError:
-                # Jinja2 not installed, fall back to reading as plain text
-                return j2_path.read_text()
-
-        # Check for markdown file
-        if prompt_path.exists():
-            content = prompt_path.read_text()
-
-            # Simple variable substitution if Jinja2 is not available
-            for key, value in template_vars.items():
-                placeholder = f"{{{key}}}"
-                content = content.replace(placeholder, str(value))
-
-            return content
-        raise FileNotFoundError(f"System prompt file not found: {prompt_path}")
+    # Prompt paths for different contexts
+    PROMPT_PATHS: dict[str, str] = {
+        "default": "prompts/chat_system.md",
+        "onboarding": "prompts/onboarding_system.md",
+    }
 
     class Config:
         """Pydantic config."""
