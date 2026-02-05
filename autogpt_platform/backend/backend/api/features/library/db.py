@@ -581,21 +581,26 @@ async def save_graph(
 
     created_graph = await graph_db.create_graph(graph_model, user_id)
 
-    if created_graph.is_active:
-        created_graph = await on_graph_activate(created_graph, user_id=user_id)
-        await graph_db.set_graph_active_version(
-            graph_id=created_graph.id,
-            version=created_graph.version,
-            user_id=user_id,
-        )
-        if current_active_version:
-            await on_graph_deactivate(current_active_version, user_id=user_id)
-
     if existing_library_agent:
-        library_agent = await update_library_agent_version_and_settings(
-            user_id, created_graph
-        )
+        # Update flow: activate -> set_active_version -> deactivate old -> update library agent
+        if created_graph.is_active:
+            library_agent = await update_library_agent_version_and_settings(
+                user_id, created_graph
+            )
+            created_graph = await on_graph_activate(created_graph, user_id=user_id)
+            await graph_db.set_graph_active_version(
+                graph_id=created_graph.id,
+                version=created_graph.version,
+                user_id=user_id,
+            )
+            if current_active_version:
+                await on_graph_deactivate(current_active_version, user_id=user_id)
+        else:
+            library_agent = await update_library_agent_version_and_settings(
+                user_id, created_graph
+            )
     else:
+        # Create flow: create_library_agent -> on_graph_activate (no set_graph_active_version)
         library_agents = await create_library_agent(
             graph=created_graph,
             user_id=user_id,
@@ -603,6 +608,8 @@ async def save_graph(
             create_library_agents_for_sub_graphs=False,
         )
         library_agent = library_agents[0]
+        if created_graph.is_active:
+            created_graph = await on_graph_activate(created_graph, user_id=user_id)
 
     return created_graph, library_agent
 
