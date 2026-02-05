@@ -12,6 +12,7 @@ from backend.data.block import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
+from backend.data.execution import ExecutionContext
 from backend.data.model import (
     APIKeyCredentials,
     CredentialsField,
@@ -121,10 +122,12 @@ class AIImageEditorBlock(Block):
                 "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_output=[
-                ("output_image", "https://replicate.com/output/edited-image.png"),
+                # Output will be a workspace ref or data URI depending on context
+                ("output_image", lambda x: x.startswith(("workspace://", "data:"))),
             ],
             test_mock={
-                "run_model": lambda *args, **kwargs: "https://replicate.com/output/edited-image.png",
+                # Use data URI to avoid HTTP requests during tests
+                "run_model": lambda *args, **kwargs: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
             },
             test_credentials=TEST_CREDENTIALS,
         )
@@ -134,8 +137,7 @@ class AIImageEditorBlock(Block):
         input_data: Input,
         *,
         credentials: APIKeyCredentials,
-        graph_exec_id: str,
-        user_id: str,
+        execution_context: ExecutionContext,
         **kwargs,
     ) -> BlockOutput:
         result = await self.run_model(
@@ -144,20 +146,25 @@ class AIImageEditorBlock(Block):
             prompt=input_data.prompt,
             input_image_b64=(
                 await store_media_file(
-                    graph_exec_id=graph_exec_id,
                     file=input_data.input_image,
-                    user_id=user_id,
-                    return_content=True,
+                    execution_context=execution_context,
+                    return_format="for_external_api",  # Get content for Replicate API
                 )
                 if input_data.input_image
                 else None
             ),
             aspect_ratio=input_data.aspect_ratio.value,
             seed=input_data.seed,
-            user_id=user_id,
-            graph_exec_id=graph_exec_id,
+            user_id=execution_context.user_id or "",
+            graph_exec_id=execution_context.graph_exec_id or "",
         )
-        yield "output_image", result
+        # Store the generated image to the user's workspace for persistence
+        stored_url = await store_media_file(
+            file=result,
+            execution_context=execution_context,
+            return_format="for_block_output",
+        )
+        yield "output_image", stored_url
 
     async def run_model(
         self,

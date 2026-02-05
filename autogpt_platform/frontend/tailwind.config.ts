@@ -149,11 +149,29 @@ const config = {
             opacity: "1",
           },
         },
+        shimmer: {
+          "0%": {
+            backgroundPosition: "200% 0",
+          },
+          "100%": {
+            backgroundPosition: "-200% 0",
+          },
+        },
+        loader: {
+          "0%": {
+            boxShadow: "0 0 0 0 rgba(0, 0, 0, 0.25)",
+          },
+          "100%": {
+            boxShadow: "0 0 0 30px rgba(0, 0, 0, 0)",
+          },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
         "fade-in": "fade-in 0.2s ease-out",
+        shimmer: "shimmer 2s ease-in-out infinite",
+        loader: "loader 1s infinite",
       },
       transitionDuration: {
         "2000": "2000ms",

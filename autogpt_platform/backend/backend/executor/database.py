@@ -17,6 +17,7 @@ from backend.data.analytics import (
     get_accuracy_trends_and_alerts,
     get_marketplace_graphs_for_monitoring,
 )
+from backend.data.auth.oauth import cleanup_expired_oauth_tokens
 from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
 from backend.data.execution import (
     create_graph_execution,
@@ -50,6 +51,8 @@ from backend.data.graph import (
     validate_graph_execution_permissions,
 )
 from backend.data.human_review import (
+    cancel_pending_reviews_for_execution,
+    check_approval,
     get_or_create_human_review,
     has_pending_reviews_for_graph_exec,
     update_review_processed_status,
@@ -190,6 +193,8 @@ class DatabaseManager(AppService):
     get_user_notification_preference = _(get_user_notification_preference)
 
     # Human In The Loop
+    cancel_pending_reviews_for_execution = _(cancel_pending_reviews_for_execution)
+    check_approval = _(check_approval)
     get_or_create_human_review = _(get_or_create_human_review)
     has_pending_reviews_for_graph_exec = _(has_pending_reviews_for_graph_exec)
     update_review_processed_status = _(update_review_processed_status)
@@ -214,6 +219,9 @@ class DatabaseManager(AppService):
 
     # Onboarding
     increment_onboarding_runs = _(increment_onboarding_runs)
+
+    # OAuth
+    cleanup_expired_oauth_tokens = _(cleanup_expired_oauth_tokens)
 
     # Store
     get_store_agents = _(get_store_agents)
@@ -313,6 +321,8 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     set_execution_kv_data = d.set_execution_kv_data
 
     # Human In The Loop
+    cancel_pending_reviews_for_execution = d.cancel_pending_reviews_for_execution
+    check_approval = d.check_approval
     get_or_create_human_review = d.get_or_create_human_review
     update_review_processed_status = d.update_review_processed_status
 
@@ -342,6 +352,9 @@ class DatabaseManagerAsyncClient(AppServiceClient):
 
     # Onboarding
     increment_onboarding_runs = d.increment_onboarding_runs
+
+    # OAuth
+    cleanup_expired_oauth_tokens = d.cleanup_expired_oauth_tokens
 
     # Store
     get_store_agents = d.get_store_agents

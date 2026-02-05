@@ -26,7 +26,7 @@ export function useSignupPage() {
 
   useEffect(() => {
     if (isLoggedIn && !isSigningUp) {
-      router.push(nextUrl || "/marketplace");
+      router.push(nextUrl || "/");
     }
   }, [isLoggedIn, isSigningUp, nextUrl, router]);
 

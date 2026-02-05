@@ -290,6 +290,26 @@ async def _cache_session(session: ChatSession) -> None:
     await async_redis.setex(redis_key, config.session_ttl, session.model_dump_json())
 
 
+async def cache_chat_session(session: ChatSession) -> None:
+    """Cache a chat session without persisting to the database."""
+    await _cache_session(session)
+
+
+async def invalidate_session_cache(session_id: str) -> None:
+    """Invalidate a chat session from Redis cache.
+
+    Used by background tasks to ensure fresh data is loaded on next access.
+    This is best-effort - Redis failures are logged but don't fail the operation.
+    """
+    try:
+        redis_key = _get_session_cache_key(session_id)
+        async_redis = await get_redis_async()
+        await async_redis.delete(redis_key)
+    except Exception as e:
+        # Best-effort: log but don't fail - cache will expire naturally
+        logger.warning(f"Failed to invalidate session cache for {session_id}: {e}")
+
+
 async def _get_session_from_db(session_id: str) -> ChatSession | None:
     """Get a chat session from the database."""
     prisma_session = await chat_db.get_chat_session(session_id)

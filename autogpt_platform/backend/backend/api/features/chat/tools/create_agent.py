@@ -3,22 +3,22 @@
 import logging
 from typing import Any
 
-from langfuse import observe
-
 from backend.api.features.chat.model import ChatSession
 
 from .agent_generator import (
-    apply_all_fixes,
+    AgentGeneratorNotConfiguredError,
     decompose_goal,
+    enrich_library_agents_from_steps,
     generate_agent,
-    get_blocks_info,
+    get_all_relevant_agents_for_generation,
+    get_user_message_for_error,
     save_agent_to_library,
-    validate_agent,
 )
 from .base import BaseTool
 from .models import (
     AgentPreviewResponse,
     AgentSavedResponse,
+    AsyncProcessingResponse,
     ClarificationNeededResponse,
     ClarifyingQuestion,
     ErrorResponse,
@@ -26,9 +26,6 @@ from .models import (
 )
 
 logger = logging.getLogger(__name__)
-
-# Maximum retries for agent generation with validation feedback
-MAX_GENERATION_RETRIES = 2
 
 
 class CreateAgentTool(BaseTool):
@@ -47,6 +44,10 @@ class CreateAgentTool(BaseTool):
 
     @property
     def requires_auth(self) -> bool:
+        return True
+
+    @property
+    def is_long_running(self) -> bool:
         return True
 
     @property
@@ -80,7 +81,6 @@ class CreateAgentTool(BaseTool):
             "required": ["description"],
         }
 
-    @observe(as_type="tool", name="create_agent")
     async def _execute(
         self,
         user_id: str | None,
@@ -91,14 +91,17 @@ class CreateAgentTool(BaseTool):
 
         Flow:
         1. Decompose the description into steps (may return clarifying questions)
-        2. Generate agent JSON from the steps
-        3. Apply fixes to correct common LLM errors
-        4. Preview or save based on the save parameter
+        2. Generate agent JSON (external service handles fixing and validation)
+        3. Preview or save based on the save parameter
         """
         description = kwargs.get("description", "").strip()
         context = kwargs.get("context", "")
         save = kwargs.get("save", True)
         session_id = session.session_id if session else None
+
+        # Extract async processing params (passed by long-running tool handler)
+        operation_id = kwargs.get("_operation_id")
+        task_id = kwargs.get("_task_id")
 
         if not description:
             return ErrorResponse(
@@ -107,25 +110,61 @@ class CreateAgentTool(BaseTool):
                 session_id=session_id,
             )
 
-        # Step 1: Decompose goal into steps
+        library_agents = None
+        if user_id:
+            try:
+                library_agents = await get_all_relevant_agents_for_generation(
+                    user_id=user_id,
+                    search_query=description,
+                    include_marketplace=True,
+                )
+                logger.debug(
+                    f"Found {len(library_agents)} relevant agents for sub-agent composition"
+                )
+            except Exception as e:
+                logger.warning(f"Failed to fetch library agents: {e}")
+
         try:
-            decomposition_result = await decompose_goal(description, context)
-        except ValueError as e:
-            # Handle missing API key or configuration errors
+            decomposition_result = await decompose_goal(
+                description, context, library_agents
+            )
+        except AgentGeneratorNotConfiguredError:
             return ErrorResponse(
-                message=f"Agent generation is not configured: {str(e)}",
-                error="configuration_error",
+                message=(
+                    "Agent generation is not available. "
+                    "The Agent Generator service is not configured."
+                ),
+                error="service_not_configured",
                 session_id=session_id,
             )
 
         if decomposition_result is None:
             return ErrorResponse(
-                message="Failed to analyze the goal. Please try rephrasing.",
-                error="Decomposition failed",
+                message="Failed to analyze the goal. The agent generation service may be unavailable. Please try again.",
+                error="decomposition_failed",
+                details={"description": description[:100]},
                 session_id=session_id,
             )
 
-        # Check if LLM returned clarifying questions
+        if decomposition_result.get("type") == "error":
+            error_msg = decomposition_result.get("error", "Unknown error")
+            error_type = decomposition_result.get("error_type", "unknown")
+            user_message = get_user_message_for_error(
+                error_type,
+                operation="analyze the goal",
+                llm_parse_message="The AI had trouble understanding this request. Please try rephrasing your goal.",
+            )
+            return ErrorResponse(
+                message=user_message,
+                error=f"decomposition_failed:{error_type}",
+                details={
+                    "description": description[:100],
+                    "service_error": error_msg,
+                    "error_type": error_type,
+                },
+                session_id=session_id,
+            )
+
         if decomposition_result.get("type") == "clarifying_questions":
             questions = decomposition_result.get("questions", [])
             return ClarificationNeededResponse(
@@ -144,7 +183,6 @@ class CreateAgentTool(BaseTool):
                 session_id=session_id,
             )
 
-        # Check for unachievable/vague goals
         if decomposition_result.get("type") == "unachievable_goal":
             suggested = decomposition_result.get("suggested_goal", "")
             reason = decomposition_result.get("reason", "")
@@ -171,72 +209,88 @@ class CreateAgentTool(BaseTool):
                 session_id=session_id,
             )
 
-        # Step 2: Generate agent JSON with retry on validation failure
-        blocks_info = get_blocks_info()
-        agent_json = None
-        validation_errors = None
-
-        for attempt in range(MAX_GENERATION_RETRIES + 1):
-            # Generate agent (include validation errors from previous attempt)
-            if attempt == 0:
-                agent_json = await generate_agent(decomposition_result)
-            else:
-                # Retry with validation error feedback
-                logger.info(
-                    f"Retry {attempt}/{MAX_GENERATION_RETRIES} with validation feedback"
+        if user_id and library_agents is not None:
+            try:
+                library_agents = await enrich_library_agents_from_steps(
+                    user_id=user_id,
+                    decomposition_result=decomposition_result,
+                    existing_agents=library_agents,
+                    include_marketplace=True,
                 )
-                retry_instructions = {
-                    **decomposition_result,
-                    "previous_errors": validation_errors,
-                    "retry_instructions": (
-                        "The previous generation had validation errors. "
-                        "Please fix these issues in the new generation:\n"
-                        f"{validation_errors}"
-                    ),
-                }
-                agent_json = await generate_agent(retry_instructions)
+                logger.debug(
+                    f"After enrichment: {len(library_agents)} total agents for sub-agent composition"
+                )
+            except Exception as e:
+                logger.warning(f"Failed to enrich library agents from steps: {e}")
 
-            if agent_json is None:
-                if attempt == MAX_GENERATION_RETRIES:
-                    return ErrorResponse(
-                        message="Failed to generate the agent. Please try again.",
-                        error="Generation failed",
-                        session_id=session_id,
-                    )
-                continue
-
-            # Step 3: Apply fixes to correct common errors
-            agent_json = apply_all_fixes(agent_json, blocks_info)
-
-            # Step 4: Validate the agent
-            is_valid, validation_errors = validate_agent(agent_json, blocks_info)
-
-            if is_valid:
-                logger.info(f"Agent generated successfully on attempt {attempt + 1}")
-                break
-
-            logger.warning(
-                f"Validation failed on attempt {attempt + 1}: {validation_errors}"
+        try:
+            agent_json = await generate_agent(
+                decomposition_result,
+                library_agents,
+                operation_id=operation_id,
+                task_id=task_id,
+            )
+        except AgentGeneratorNotConfiguredError:
+            return ErrorResponse(
+                message=(
+                    "Agent generation is not available. "
+                    "The Agent Generator service is not configured."
+                ),
+                error="service_not_configured",
+                session_id=session_id,
             )
 
-            if attempt == MAX_GENERATION_RETRIES:
-                # Return error with validation details
-                return ErrorResponse(
-                    message=(
-                        f"Generated agent has validation errors after {MAX_GENERATION_RETRIES + 1} attempts. "
-                        f"Please try rephrasing your request or simplify the workflow."
-                    ),
-                    error="validation_failed",
-                    details={"validation_errors": validation_errors},
-                    session_id=session_id,
-                )
+        if agent_json is None:
+            return ErrorResponse(
+                message="Failed to generate the agent. The agent generation service may be unavailable. Please try again.",
+                error="generation_failed",
+                details={"description": description[:100]},
+                session_id=session_id,
+            )
+
+        if isinstance(agent_json, dict) and agent_json.get("type") == "error":
+            error_msg = agent_json.get("error", "Unknown error")
+            error_type = agent_json.get("error_type", "unknown")
+            user_message = get_user_message_for_error(
+                error_type,
+                operation="generate the agent",
+                llm_parse_message="The AI had trouble generating the agent. Please try again or simplify your goal.",
+                validation_message=(
+                    "I wasn't able to create a valid agent for this request. "
+                    "The generated workflow had some structural issues. "
+                    "Please try simplifying your goal or breaking it into smaller steps."
+                ),
+                error_details=error_msg,
+            )
+            return ErrorResponse(
+                message=user_message,
+                error=f"generation_failed:{error_type}",
+                details={
+                    "description": description[:100],
+                    "service_error": error_msg,
+                    "error_type": error_type,
+                },
+                session_id=session_id,
+            )
+
+        # Check if Agent Generator accepted for async processing
+        if agent_json.get("status") == "accepted":
+            logger.info(
+                f"Agent generation delegated to async processing "
+                f"(operation_id={operation_id}, task_id={task_id})"
+            )
+            return AsyncProcessingResponse(
+                message="Agent generation started. You'll be notified when it's complete.",
+                operation_id=operation_id,
+                task_id=task_id,
+                session_id=session_id,
+            )
 
         agent_name = agent_json.get("name", "Generated Agent")
         agent_description = agent_json.get("description", "")
         node_count = len(agent_json.get("nodes", []))
         link_count = len(agent_json.get("links", []))
 
-        # Step 4: Preview or save
         if not save:
             return AgentPreviewResponse(
                 message=(
@@ -251,7 +305,6 @@ class CreateAgentTool(BaseTool):
                 session_id=session_id,
             )
 
-        # Save to library
         if not user_id:
             return ErrorResponse(
                 message="You must be logged in to save agents.",
@@ -269,7 +322,7 @@ class CreateAgentTool(BaseTool):
                 agent_id=created_graph.id,
                 agent_name=created_graph.name,
                 library_agent_id=library_agent.id,
-                library_agent_link=f"/library/{library_agent.id}",
+                library_agent_link=f"/library/agents/{library_agent.id}",
                 agent_page_link=f"/build?flowID={created_graph.id}",
                 session_id=session_id,
             )

@@ -3,8 +3,6 @@
 import logging
 from typing import Any
 
-from langfuse import observe
-
 from backend.api.features.chat.model import ChatSession
 from backend.data.understanding import (
     BusinessUnderstandingInput,
@@ -61,7 +59,6 @@ and automations for the user's specific needs."""
         """Requires authentication to store user-specific data."""
         return True
 
-    @observe(as_type="tool", name="add_understanding")
     async def _execute(
         self,
         user_id: str | None,

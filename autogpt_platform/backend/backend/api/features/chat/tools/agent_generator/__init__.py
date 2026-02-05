@@ -1,29 +1,59 @@
 """Agent generator package - Creates agents from natural language."""
 
 from .core import (
-    apply_agent_patch,
+    AgentGeneratorNotConfiguredError,
+    AgentJsonValidationError,
+    AgentSummary,
+    DecompositionResult,
+    DecompositionStep,
+    LibraryAgentSummary,
+    MarketplaceAgentSummary,
+    customize_template,
     decompose_goal,
+    enrich_library_agents_from_steps,
+    extract_search_terms_from_steps,
+    extract_uuids_from_text,
     generate_agent,
     generate_agent_patch,
     get_agent_as_json,
+    get_all_relevant_agents_for_generation,
+    get_library_agent_by_graph_id,
+    get_library_agent_by_id,
+    get_library_agents_for_generation,
+    graph_to_json,
+    json_to_graph,
     save_agent_to_library,
+    search_marketplace_agents_for_generation,
 )
-from .fixer import apply_all_fixes
-from .utils import get_blocks_info
-from .validator import validate_agent
+from .errors import get_user_message_for_error
+from .service import health_check as check_external_service_health
+from .service import is_external_service_configured
 
 __all__ = [
-    # Core functions
+    "AgentGeneratorNotConfiguredError",
+    "AgentJsonValidationError",
+    "AgentSummary",
+    "DecompositionResult",
+    "DecompositionStep",
+    "LibraryAgentSummary",
+    "MarketplaceAgentSummary",
+    "check_external_service_health",
+    "customize_template",
     "decompose_goal",
+    "enrich_library_agents_from_steps",
+    "extract_search_terms_from_steps",
+    "extract_uuids_from_text",
     "generate_agent",
     "generate_agent_patch",
-    "apply_agent_patch",
-    "save_agent_to_library",
     "get_agent_as_json",
-    # Fixer
-    "apply_all_fixes",
-    # Validator
-    "validate_agent",
-    # Utils
-    "get_blocks_info",
+    "get_all_relevant_agents_for_generation",
+    "get_library_agent_by_graph_id",
+    "get_library_agent_by_id",
+    "get_library_agents_for_generation",
+    "get_user_message_for_error",
+    "graph_to_json",
+    "is_external_service_configured",
+    "json_to_graph",
+    "save_agent_to_library",
+    "search_marketplace_agents_for_generation",
 ]

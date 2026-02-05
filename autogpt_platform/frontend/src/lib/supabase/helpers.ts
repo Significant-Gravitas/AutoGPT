@@ -70,7 +70,7 @@ export function getRedirectPath(
   }
 
   if (isAdminPage(path) && userRole !== "admin") {
-    return "/marketplace";
+    return "/";
   }
 
   return null;

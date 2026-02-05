@@ -3,11 +3,14 @@
 import logging
 from typing import Any
 
-from langfuse import observe
 from pydantic import BaseModel, Field, field_validator
 
 from backend.api.features.chat.config import ChatConfig
 from backend.api.features.chat.model import ChatSession
+from backend.api.features.chat.tracking import (
+    track_agent_run_success,
+    track_agent_scheduled,
+)
 from backend.api.features.library import db as library_db
 from backend.data.graph import GraphModel
 from backend.data.model import CredentialsMetaInput
@@ -27,6 +30,7 @@ from .models import (
     ErrorResponse,
     ExecutionOptions,
     ExecutionStartedResponse,
+    InputValidationErrorResponse,
     SetupInfo,
     SetupRequirementsResponse,
     ToolResponseBase,
@@ -155,7 +159,6 @@ class RunAgentTool(BaseTool):
         """All operations require authentication."""
         return True
 
-    @observe(as_type="tool", name="run_agent")
     async def _execute(
         self,
         user_id: str | None,
@@ -271,6 +274,22 @@ class RunAgentTool(BaseTool):
             input_properties = graph.input_schema.get("properties", {})
             required_fields = set(graph.input_schema.get("required", []))
             provided_inputs = set(params.inputs.keys())
+            valid_fields = set(input_properties.keys())
+
+            # Check for unknown input fields
+            unrecognized_fields = provided_inputs - valid_fields
+            if unrecognized_fields:
+                return InputValidationErrorResponse(
+                    message=(
+                        f"Unknown input field(s) provided: {', '.join(sorted(unrecognized_fields))}. "
+                        f"Agent was not executed. Please use the correct field names from the schema."
+                    ),
+                    session_id=session_id,
+                    unrecognized_fields=sorted(unrecognized_fields),
+                    inputs=graph.input_schema,
+                    graph_id=graph.id,
+                    graph_version=graph.version,
+                )
 
             # If agent has inputs but none were provided AND use_defaults is not set,
             # always show what's available first so user can decide
@@ -453,6 +472,16 @@ class RunAgentTool(BaseTool):
             session.successful_agent_runs.get(library_agent.graph_id, 0) + 1
         )
 
+        # Track in PostHog
+        track_agent_run_success(
+            user_id=user_id,
+            session_id=session_id,
+            graph_id=library_agent.graph_id,
+            graph_name=library_agent.name,
+            execution_id=execution.id,
+            library_agent_id=library_agent.id,
+        )
+
         library_agent_link = f"/library/agents/{library_agent.id}"
         return ExecutionStartedResponse(
             message=(
@@ -532,6 +561,18 @@ class RunAgentTool(BaseTool):
         # Track successful schedule
         session.successful_agent_schedules[library_agent.graph_id] = (
             session.successful_agent_schedules.get(library_agent.graph_id, 0) + 1
+        )
+
+        # Track in PostHog
+        track_agent_scheduled(
+            user_id=user_id,
+            session_id=session_id,
+            graph_id=library_agent.graph_id,
+            graph_name=library_agent.name,
+            schedule_id=result.id,
+            schedule_name=schedule_name,
+            cron=cron,
+            library_agent_id=library_agent.id,
         )
 
         library_agent_link = f"/library/agents/{library_agent.id}"
