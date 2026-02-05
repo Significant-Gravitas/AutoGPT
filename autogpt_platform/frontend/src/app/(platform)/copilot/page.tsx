@@ -6,7 +6,9 @@ import { Text } from "@/components/atoms/Text/Text";
 import { Chat } from "@/components/contextual/Chat/Chat";
 import { ChatInput } from "@/components/contextual/Chat/components/ChatInput/ChatInput";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
+import { useEffect, useState } from "react";
 import { useCopilotStore } from "./copilot-page-store";
+import { getInputPlaceholder } from "./helpers";
 import { useCopilotPage } from "./useCopilotPage";
 
 export default function CopilotPage() {
@@ -14,8 +16,25 @@ export default function CopilotPage() {
   const isInterruptModalOpen = useCopilotStore((s) => s.isInterruptModalOpen);
   const confirmInterrupt = useCopilotStore((s) => s.confirmInterrupt);
   const cancelInterrupt = useCopilotStore((s) => s.cancelInterrupt);
+
+  const [inputPlaceholder, setInputPlaceholder] = useState(
+    getInputPlaceholder(),
+  );
+
+  useEffect(() => {
+    const handleResize = () => {
+      setInputPlaceholder(getInputPlaceholder(window.innerWidth));
+    };
+
+    handleResize();
+
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
   const { greetingName, quickActions, isLoading, hasSession, initialPrompt } =
     state;
+
   const {
     handleQuickAction,
     startChatWithPrompt,
@@ -73,7 +92,7 @@ export default function CopilotPage() {
   }
 
   return (
-    <div className="flex h-full flex-1 items-center justify-center overflow-y-auto bg-[#f8f8f9] px-6 py-10">
+    <div className="flex h-full flex-1 items-center justify-center overflow-y-auto bg-[#f8f8f9] px-3 py-5 md:px-6 md:py-10">
       <div className="w-full text-center">
         {isLoading ? (
           <div className="mx-auto max-w-2xl">
@@ -90,25 +109,25 @@ export default function CopilotPage() {
           </div>
         ) : (
           <>
-            <div className="mx-auto max-w-2xl">
+            <div className="mx-auto max-w-3xl">
               <Text
                 variant="h3"
-                className="mb-3 !text-[1.375rem] text-zinc-700"
+                className="mb-1 !text-[1.375rem] text-zinc-700"
               >
                 Hey, <span className="text-violet-600">{greetingName}</span>
               </Text>
               <Text variant="h3" className="mb-8 !font-normal">
-                What do you want to automate?
+                Tell me about your work — I&apos;ll find what to automate.
               </Text>
 
               <div className="mb-6">
                 <ChatInput
                   onSend={startChatWithPrompt}
-                  placeholder='You can search or just ask - e.g. "create a blog post outline"'
+                  placeholder={inputPlaceholder}
                 />
               </div>
             </div>
-            <div className="flex flex-nowrap items-center justify-center gap-3 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <div className="flex flex-wrap items-center justify-center gap-3 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {quickActions.map((action) => (
                 <Button
                   key={action}
@@ -116,7 +135,7 @@ export default function CopilotPage() {
                   variant="outline"
                   size="small"
                   onClick={() => handleQuickAction(action)}
-                  className="h-auto shrink-0 border-zinc-600 !px-4 !py-2 text-[1rem] text-zinc-600"
+                  className="h-auto shrink-0 border-zinc-300 px-3 py-2 text-[.9rem] text-zinc-600"
                 >
                   {action}
                 </Button>
