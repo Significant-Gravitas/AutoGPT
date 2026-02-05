@@ -57,6 +57,7 @@ export function ChatInput({
     isStreaming,
     value,
     baseHandleKeyDown,
+    inputId,
   });
 
   return (
@@ -73,19 +74,20 @@ export function ChatInput({
             hasMultipleLines ? "rounded-xlarge" : "rounded-full",
           )}
         >
+          {!value && !isRecording && (
+            <div
+              className="pointer-events-none absolute inset-0 top-0.5 flex items-center justify-start pl-14 text-[1rem] text-zinc-400"
+              aria-hidden="true"
+            >
+              {isTranscribing ? "Transcribing..." : placeholder}
+            </div>
+          )}
           <textarea
             id={inputId}
             aria-label="Chat message input"
             value={value}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
-            placeholder={
-              isTranscribing
-                ? "Transcribing..."
-                : isRecording
-                  ? ""
-                  : placeholder
-            }
             disabled={isInputDisabled}
             rows={1}
             className={cn(
@@ -121,13 +123,14 @@ export function ChatInput({
               size="icon"
               aria-label={isRecording ? "Stop recording" : "Start recording"}
               onClick={toggleRecording}
-              disabled={disabled || isTranscribing}
+              disabled={disabled || isTranscribing || isStreaming}
               className={cn(
                 isRecording
                   ? "animate-pulse border-red-500 bg-red-500 text-white hover:border-red-600 hover:bg-red-600"
                   : isTranscribing
                     ? "border-zinc-300 bg-zinc-100 text-zinc-400"
                     : "border-zinc-300 bg-white text-zinc-500 hover:border-zinc-400 hover:bg-zinc-50 hover:text-zinc-700",
+                isStreaming && "opacity-40",
               )}
             >
               {isTranscribing ? (
