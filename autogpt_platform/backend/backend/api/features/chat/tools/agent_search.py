@@ -224,10 +224,10 @@ async def search_agents(
     message = (
         "Now you have found some options for the user to choose from. "
         "You can add a link to a recommended agent at: /marketplace/agent/agent_id "
-        "Please ask the user if they would like to use any of these agents. Let the user know we can create a custom agent from them based on there needs."
+        "Please ask the user if they would like to use any of these agents. Let the user know we can create a custom agent for them based on their needs."
         if source == "marketplace"
         else "Found agents in the user's library. You can provide a link to view an agent at: "
-        "/library/agents/{agent_id}. Use agent_output to get execution results, or run_agent to execute. Let the user know we can create a custom agent from them based on there needs."
+        "/library/agents/{agent_id}. Use agent_output to get execution results, or run_agent to execute. Let the user know we can create a custom agent for them based on their needs."
     )
 
     return AgentsFoundResponse(
