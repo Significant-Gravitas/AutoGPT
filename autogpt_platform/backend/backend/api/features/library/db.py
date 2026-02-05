@@ -540,70 +540,54 @@ async def update_agent_version_in_library(
     return library_model.LibraryAgent.from_db(lib)
 
 
-async def save_graph_to_library(
-    graph: graph_db.Graph,
+async def save_graph(
+    graph: graph_db.Graph | graph_db.GraphModel,
     user_id: str,
     is_update: bool = False,
 ) -> tuple[graph_db.GraphModel, library_model.LibraryAgent]:
     """
     Save a graph and manage its library agent entry.
 
-    Shared logic for both builder saves and CoPilot-generated agents.
-    Handles version bumping, ID reassignment, and library agent creation/update.
-
     Args:
-        graph: The Graph to save
+        graph: Graph or GraphModel to save. If Graph, will be converted and IDs reassigned.
         user_id: The user ID
-        is_update: Whether this is an update to an existing agent
+        is_update: If True, creates a new version of existing graph. If False, creates new graph.
 
     Returns:
         Tuple of (created GraphModel, LibraryAgent)
-
-    Note:
-        For updates, the graph.id must be set to the existing graph ID.
-        For new graphs, graph.id will be assigned a new UUID.
     """
     existing_library_agent = None
-    existing_versions = None
     current_active_version = None
 
     if is_update and graph.id:
         existing_library_agent = await get_library_agent_by_graph_id(user_id, graph.id)
-
-    if existing_library_agent:
-        existing_versions = await graph_db.get_graph_all_versions(graph.id, user_id)
-        if existing_versions:
-            current_active_version = next(
-                (v for v in existing_versions if v.is_active), None
-            )
-            graph.version = max(v.version for v in existing_versions) + 1
-            logger.info(f"Updating agent {graph.id} to version {graph.version}")
+        if existing_library_agent:
+            existing_versions = await graph_db.get_graph_all_versions(graph.id, user_id)
+            if existing_versions:
+                current_active_version = next(
+                    (v for v in existing_versions if v.is_active), None
+                )
+                graph.version = max(v.version for v in existing_versions) + 1
     else:
-        # New graph - version 1, ID will be reassigned by reassign_ids
         graph.version = 1
-        logger.info("Creating new agent")
 
-    # Convert to GraphModel and reassign IDs
-    # For new graphs, reassign the graph ID too; for updates, keep the existing ID
-    graph_model = graph_db.make_graph_model(graph, user_id)
-    graph_model.reassign_ids(
-        user_id=user_id, reassign_graph_id=(existing_library_agent is None)
-    )
+    if isinstance(graph, graph_db.Graph):
+        graph_model = graph_db.make_graph_model(graph, user_id)
+        graph_model.reassign_ids(
+            user_id=user_id, reassign_graph_id=(existing_library_agent is None)
+        )
+    else:
+        graph_model = graph
 
     created_graph = await graph_db.create_graph(graph_model, user_id)
 
-    # Handle activation for the new version
     if created_graph.is_active:
         created_graph = await on_graph_activate(created_graph, user_id=user_id)
-
-        # Set new version as the only active version
         await graph_db.set_graph_active_version(
             graph_id=created_graph.id,
             version=created_graph.version,
             user_id=user_id,
         )
-
-        # Deactivate previous version
         if current_active_version:
             await on_graph_deactivate(current_active_version, user_id=user_id)
 
@@ -619,53 +603,6 @@ async def save_graph_to_library(
             create_library_agents_for_sub_graphs=False,
         )
         library_agent = library_agents[0]
-
-    return created_graph, library_agent
-
-
-async def create_graph_version(
-    graph: graph_db.GraphModel,
-    user_id: str,
-    existing_versions: list[graph_db.GraphModel],
-) -> tuple[graph_db.GraphModel, library_model.LibraryAgent | None]:
-    """
-    Create a new version of an existing graph.
-
-    Handles version bumping, graph creation, activation hooks, and library agent updates.
-    Used by the builder's update_graph endpoint.
-
-    Args:
-        graph: The GraphModel to save (should be pre-validated, IDs reassigned)
-        user_id: The user ID
-        existing_versions: List of existing graph versions (for version number calculation)
-
-    Returns:
-        Tuple of (created GraphModel, LibraryAgent or None if not active)
-    """
-    current_active_version = next((v for v in existing_versions if v.is_active), None)
-
-    created_graph = await graph_db.create_graph(graph, user_id=user_id)
-    library_agent = None
-
-    if created_graph.is_active:
-        # Update library agent to point to new version
-        library_agent = await _update_library_agent_version_and_settings(
-            user_id, created_graph
-        )
-
-        # Run activation hooks
-        created_graph = await on_graph_activate(created_graph, user_id=user_id)
-
-        # Ensure new version is the only active version
-        await graph_db.set_graph_active_version(
-            graph_id=created_graph.id,
-            version=created_graph.version,
-            user_id=user_id,
-        )
-
-        # Deactivate previous version
-        if current_active_version:
-            await on_graph_deactivate(current_active_version, user_id=user_id)
 
     return created_graph, library_agent
 

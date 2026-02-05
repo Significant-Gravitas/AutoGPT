@@ -785,7 +785,7 @@ async def create_new_graph(
     graph.validate_graph(for_run=False)
 
     # Save graph and create library agent
-    created_graph, _ = await library_db.save_graph_to_library(
+    created_graph, _ = await library_db.save_graph(
         create_graph.graph, user_id, is_update=False
     )
 
@@ -827,21 +827,16 @@ async def update_graph(
     if graph.id and graph.id != graph_id:
         raise HTTPException(400, detail="Graph ID does not match ID in URI")
 
-    # Determine new version
     existing_versions = await graph_db.get_graph_all_versions(graph_id, user_id=user_id)
     if not existing_versions:
         raise HTTPException(404, detail=f"Graph #{graph_id} not found")
-    latest_version_number = max(g.version for g in existing_versions)
-    graph.version = latest_version_number + 1
 
-    # Prepare graph for saving
-    graph = graph_db.make_graph_model(graph, user_id)
-    graph.reassign_ids(user_id=user_id, reassign_graph_id=False)
-    graph.validate_graph(for_run=False)
+    graph_model = graph_db.make_graph_model(graph, user_id)
+    graph_model.reassign_ids(user_id=user_id, reassign_graph_id=False)
+    graph_model.validate_graph(for_run=False)
 
-    # Create new version and handle activation/library agent
-    new_graph_version, _ = await library_db.create_graph_version(
-        graph, user_id, existing_versions
+    new_graph_version, _ = await library_db.save_graph(
+        graph_model, user_id, is_update=True
     )
 
     # Fetch new graph version *with sub-graphs* (needed for credentials input schema)
