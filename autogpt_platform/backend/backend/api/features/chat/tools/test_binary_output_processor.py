@@ -116,6 +116,18 @@ class TestDecodeAndValidate:
         result = _decode_and_validate(wav_b64)
         assert result is None
 
+    def test_handles_line_wrapped_base64(self):
+        """Should handle RFC 2045 line-wrapped base64."""
+        pdf_content = b"%PDF-1.4 " + b"x" * 2000
+        pdf_b64 = base64.b64encode(pdf_content).decode()
+        # Simulate line wrapping at 76 chars
+        wrapped = "\n".join(pdf_b64[i : i + 76] for i in range(0, len(pdf_b64), 76))
+        result = _decode_and_validate(wrapped)
+        assert result is not None
+        content, ext = result
+        assert ext == "pdf"
+        assert content == pdf_content
+
 
 # =============================================================================
 # Marker Expansion Tests

@@ -28,8 +28,9 @@ logger = logging.getLogger(__name__)
 MIN_DECODED_SIZE = 1024  # 1KB
 
 # Pattern to find base64 chunks in text (at least 100 chars to be worth checking)
-# Matches continuous base64 characters, optionally ending with = padding
-EMBEDDED_BASE64_PATTERN = re.compile(r"[A-Za-z0-9+/]{100,}={0,2}")
+# Matches continuous base64 characters (with optional whitespace for line wrapping),
+# optionally ending with = padding
+EMBEDDED_BASE64_PATTERN = re.compile(r"[A-Za-z0-9+/\s]{100,}={0,2}")
 
 # Magic numbers for binary file detection
 MAGIC_SIGNATURES = [
@@ -141,8 +142,11 @@ def _decode_and_validate(b64_str: str) -> Optional[tuple[bytes, str]]:
 
     Returns (content, extension) if valid binary, None otherwise.
     """
+    # Strip whitespace for RFC 2045 line-wrapped base64
+    normalized = re.sub(r"\s+", "", b64_str)
+
     try:
-        content = base64.b64decode(b64_str, validate=True)
+        content = base64.b64decode(normalized, validate=True)
     except (ValueError, binascii.Error):
         return None
 
