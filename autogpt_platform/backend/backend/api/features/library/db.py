@@ -578,6 +578,10 @@ async def save_graph_to_library(
 
     created_graph = await graph_db.create_graph(graph, user_id)
 
+    # Run activation hooks (validates credentials, sets up webhooks, etc.)
+    if created_graph.is_active:
+        created_graph = await on_graph_activate(created_graph, user_id=user_id)
+
     if existing_library_agent:
         library_agent = await update_agent_version_in_library(
             user_id=user_id,
