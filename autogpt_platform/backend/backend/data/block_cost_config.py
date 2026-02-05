@@ -78,6 +78,7 @@ MODEL_COST: dict[LlmModel, int] = {
     LlmModel.CLAUDE_4_1_OPUS: 21,
     LlmModel.CLAUDE_4_OPUS: 21,
     LlmModel.CLAUDE_4_SONNET: 5,
+    LlmModel.CLAUDE_4_6_OPUS: 14,
     LlmModel.CLAUDE_4_5_HAIKU: 4,
     LlmModel.CLAUDE_4_5_OPUS: 14,
     LlmModel.CLAUDE_4_5_SONNET: 9,
