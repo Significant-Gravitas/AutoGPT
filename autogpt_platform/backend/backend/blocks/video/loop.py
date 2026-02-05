@@ -29,11 +29,13 @@ class LoopVideoBlock(Block):
             description="Target duration (in seconds) to loop the video to. If omitted, defaults to no looping.",
             default=None,
             ge=0.0,
+            le=3600.0,  # Max 1 hour to prevent disk exhaustion
         )
         n_loops: Optional[int] = SchemaField(
             description="Number of times to repeat the video. If omitted, defaults to 1 (no repeat).",
             default=None,
             ge=1,
+            le=10,  # Max 10 loops to prevent disk exhaustion
         )
 
     class Output(BlockSchemaOutput):
