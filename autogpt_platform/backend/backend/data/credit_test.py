@@ -124,12 +124,14 @@ async def test_block_credit_top_up(server: SpinTestServer):
 @pytest.mark.asyncio(loop_scope="session")
 async def test_block_credit_reset(server: SpinTestServer):
     """Test that BetaUserCredit provides monthly refills correctly."""
+    await disable_test_user_transactions()
+
     # Save original time_now function for restoration
     original_time_now = user_credit.time_now
 
     try:
-        # Test month 1 behavior - use a fixed year to avoid date boundary issues
-        month1 = datetime(2025, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+        # Test month 1 behavior
+        month1 = datetime.now(timezone.utc).replace(month=1, day=1)
         user_credit.time_now = lambda: month1
 
         # IMPORTANT: Set updatedAt to December of previous year to ensure it's
@@ -167,8 +169,8 @@ async def test_block_credit_reset(server: SpinTestServer):
             },
         )
 
-        # Now test month 2 behavior - use fixed date
-        month2 = datetime(2025, 2, 15, 12, 0, 0, tzinfo=timezone.utc)
+        # Now test month 2 behavior
+        month2 = datetime.now(timezone.utc).replace(month=2, day=1)
         user_credit.time_now = lambda: month2
 
         # In month 2, since balance (1100) > refill (1000), no refill should happen
@@ -193,8 +195,8 @@ async def test_block_credit_reset(server: SpinTestServer):
             }
         )
 
-        # Move to month 3 - use fixed date
-        month3 = datetime(2025, 3, 15, 12, 0, 0, tzinfo=timezone.utc)
+        # Move to month 3
+        month3 = datetime.now(timezone.utc).replace(month=3, day=1)
         user_credit.time_now = lambda: month3
 
         # Should get refilled since balance (400) < refill value (1000)
