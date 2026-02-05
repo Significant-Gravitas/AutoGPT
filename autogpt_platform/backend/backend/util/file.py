@@ -368,7 +368,12 @@ async def store_media_file(
             if not ws.mime_type:
                 # Add MIME type fragment if missing (older refs without it)
                 try:
-                    info = await workspace_manager.get_file_info(ws.file_ref)
+                    if ws.is_path:
+                        info = await workspace_manager.get_file_info_by_path(
+                            ws.file_ref
+                        )
+                    else:
+                        info = await workspace_manager.get_file_info(ws.file_ref)
                     if info:
                         return MediaFileType(f"{file}#{info.mimeType}")
                 except Exception:
