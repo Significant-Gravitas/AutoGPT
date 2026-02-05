@@ -105,8 +105,8 @@ async def generate_test_data(
             sys.path.insert(0, str(test_dir))
 
             try:
-                from e2e_test_data import (
-                    TestDataCreator,  # type: ignore[import-not-found]
+                from e2e_test_data import (  # pyright: ignore[reportMissingImports]
+                    TestDataCreator,
                 )
 
                 # Connect to database if not already connected
@@ -142,9 +142,9 @@ async def generate_test_data(
             sys.path.insert(0, str(test_dir))
 
             try:
-                from test_data_creator import (
-                    main as create_full_test_data,  # type: ignore[import-not-found]
-                )
+                import test_data_creator  # pyright: ignore[reportMissingImports]
+
+                create_full_test_data = test_data_creator.main
 
                 await create_full_test_data()
 
