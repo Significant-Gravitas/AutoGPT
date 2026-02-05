@@ -20,7 +20,10 @@ from backend.data.graph import GraphSettings
 from backend.data.includes import AGENT_PRESET_INCLUDE, library_agent_include
 from backend.data.model import CredentialsMetaInput
 from backend.integrations.creds_manager import IntegrationCredentialsManager
-from backend.integrations.webhooks.graph_lifecycle_hooks import on_graph_activate
+from backend.integrations.webhooks.graph_lifecycle_hooks import (
+    on_graph_activate,
+    on_graph_deactivate,
+)
 from backend.util.clients import get_scheduler_client
 from backend.util.exceptions import DatabaseError, InvalidInputError, NotFoundError
 from backend.util.json import SafeJson
@@ -597,6 +600,74 @@ async def save_graph_to_library(
         library_agent = library_agents[0]
 
     return created_graph, library_agent
+
+
+async def create_graph_version(
+    graph: graph_db.GraphModel,
+    user_id: str,
+    existing_versions: list[graph_db.GraphModel],
+) -> tuple[graph_db.GraphModel, library_model.LibraryAgent | None]:
+    """
+    Create a new version of an existing graph.
+
+    Handles version bumping, graph creation, activation hooks, and library agent updates.
+    Used by the builder's update_graph endpoint.
+
+    Args:
+        graph: The GraphModel to save (should be pre-validated, IDs reassigned)
+        user_id: The user ID
+        existing_versions: List of existing graph versions (for version number calculation)
+
+    Returns:
+        Tuple of (created GraphModel, LibraryAgent or None if not active)
+    """
+    current_active_version = next((v for v in existing_versions if v.is_active), None)
+
+    created_graph = await graph_db.create_graph(graph, user_id=user_id)
+    library_agent = None
+
+    if created_graph.is_active:
+        # Update library agent to point to new version
+        library_agent = await _update_library_agent_version_and_settings(
+            user_id, created_graph
+        )
+
+        # Run activation hooks
+        created_graph = await on_graph_activate(created_graph, user_id=user_id)
+
+        # Ensure new version is the only active version
+        await graph_db.set_graph_active_version(
+            graph_id=created_graph.id,
+            version=created_graph.version,
+            user_id=user_id,
+        )
+
+        # Deactivate previous version
+        if current_active_version:
+            await on_graph_deactivate(current_active_version, user_id=user_id)
+
+    return created_graph, library_agent
+
+
+async def _update_library_agent_version_and_settings(
+    user_id: str, agent_graph: graph_db.GraphModel
+) -> library_model.LibraryAgent:
+    """Update library agent to point to new graph version and sync settings."""
+    library = await update_agent_version_in_library(
+        user_id, agent_graph.id, agent_graph.version
+    )
+    updated_settings = GraphSettings.from_graph(
+        graph=agent_graph,
+        hitl_safe_mode=library.settings.human_in_the_loop_safe_mode,
+        sensitive_action_safe_mode=library.settings.sensitive_action_safe_mode,
+    )
+    if updated_settings != library.settings:
+        library = await update_library_agent(
+            library_agent_id=library.id,
+            user_id=user_id,
+            settings=updated_settings,
+        )
+    return library
 
 
 async def update_library_agent(
