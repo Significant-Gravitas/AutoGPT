@@ -112,10 +112,10 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     CLAUDE_4_1_OPUS = "claude-opus-4-1-20250805"
     CLAUDE_4_OPUS = "claude-opus-4-20250514"
     CLAUDE_4_SONNET = "claude-sonnet-4-20250514"
-    CLAUDE_4_6_OPUS = "claude-opus-4-6"
     CLAUDE_4_5_OPUS = "claude-opus-4-5-20251101"
     CLAUDE_4_5_SONNET = "claude-sonnet-4-5-20250929"
     CLAUDE_4_5_HAIKU = "claude-haiku-4-5-20251001"
+    CLAUDE_4_6_OPUS = "claude-opus-4-6"
     CLAUDE_3_HAIKU = "claude-3-haiku-20240307"
     # AI/ML API models
     AIML_API_QWEN2_5_72B = "Qwen/Qwen2.5-72B-Instruct-Turbo"
