@@ -1,15 +1,14 @@
 """
-Content-based detection and saving of binary data in block outputs.
+Detect and save embedded binary data in block outputs.
 
-This module post-processes block execution outputs to detect and save binary
-content (images, PDFs) to the workspace, returning workspace:// references
-instead of raw base64 data. This reduces LLM output token usage by ~97% for
+Scans stdout_logs and other string outputs for embedded base64 patterns,
+saves detected binary content to workspace, and replaces the base64 with
+workspace:// references. This reduces LLM output token usage by ~97% for
 file generation tasks.
 
-Detection is content-based (not field-name based) because:
-- Code execution blocks return base64 in stdout_logs, not structured fields
-- The png/jpeg/pdf fields only populate from Jupyter display mechanisms
-- Other blocks use various field names: image, result, output, response, etc.
+Primary use case: ExecuteCodeBlock prints base64 to stdout, which appears
+in stdout_logs. Without this processor, the LLM would re-type the entire
+base64 string when saving files.
 """
 
 import base64
@@ -25,40 +24,21 @@ from backend.util.workspace import WorkspaceManager
 
 logger = logging.getLogger(__name__)
 
-# Only process strings larger than this (filters out tokens, hashes, short strings)
-SIZE_THRESHOLD = 1024  # 1KB
+# Minimum decoded size to process (filters out small base64 strings)
+MIN_DECODED_SIZE = 1024  # 1KB
 
-# Data URI pattern with mimetype extraction
-DATA_URI_PATTERN = re.compile(
-    r"^data:([a-zA-Z0-9.+-]+/[a-zA-Z0-9.+-]+);base64,(.+)$",
-    re.DOTALL,
-)
-
-# Only process these mimetypes from data URIs (avoid text/plain, etc.)
-ALLOWED_MIMETYPES = {
-    "image/png",
-    "image/jpeg",
-    "image/jpg",  # Non-standard but sometimes used
-    "image/gif",
-    "image/webp",
-    "image/svg+xml",
-    "application/pdf",
-    "application/octet-stream",
-}
-
-# Base64 character validation (strict - must be pure base64)
-# Allows whitespace which will be stripped before decoding (RFC 2045 line wrapping)
-BASE64_PATTERN = re.compile(r"^[A-Za-z0-9+/\s]+=*$")
+# Pattern to find base64 chunks in text (at least 100 chars to be worth checking)
+# Matches continuous base64 characters, optionally ending with = padding
+EMBEDDED_BASE64_PATTERN = re.compile(r"[A-Za-z0-9+/]{100,}={0,2}")
 
 # Magic numbers for binary file detection
-# Note: WebP requires two-step detection: RIFF prefix + WEBP at offset 8
 MAGIC_SIGNATURES = [
     (b"\x89PNG\r\n\x1a\n", "png"),
     (b"\xff\xd8\xff", "jpg"),
     (b"%PDF-", "pdf"),
     (b"GIF87a", "gif"),
     (b"GIF89a", "gif"),
-    (b"RIFF", "webp"),  # Special case: also check content[8:12] == b'WEBP'
+    (b"RIFF", "webp"),  # Also check content[8:12] == b'WEBP'
 ]
 
 
@@ -68,12 +48,8 @@ async def process_binary_outputs(
     block_name: str,
 ) -> dict[str, list[Any]]:
     """
-    Scan all string values in outputs and replace detected binary content
-    with workspace:// references.
-
-    Uses content-based detection (data URIs, magic numbers) to find binary
-    data regardless of field name. Deduplicates identical content within
-    a single call using content hashing.
+    Scan all string values in outputs for embedded base64 binary content.
+    Save detected binaries to workspace and replace with references.
 
     Args:
         outputs: Block execution outputs (dict of output_name -> list of values)
@@ -81,7 +57,7 @@ async def process_binary_outputs(
         block_name: Name of the block (used in generated filenames)
 
     Returns:
-        Processed outputs with binary data replaced by workspace references
+        Processed outputs with embedded base64 replaced by workspace references
     """
     cache: dict[str, str] = {}  # content_hash -> workspace_ref
 
@@ -102,7 +78,7 @@ async def _process_value(
     block: str,
     cache: dict[str, str],
 ) -> Any:
-    """Recursively process a value, detecting binary content in strings."""
+    """Recursively process a value, detecting embedded base64 in strings."""
     if isinstance(value, dict):
         result = {}
         for k, v in value.items():
@@ -110,78 +86,68 @@ async def _process_value(
         return result
     if isinstance(value, list):
         return [await _process_value(v, wm, block, cache) for v in value]
-    if isinstance(value, str) and len(value) > SIZE_THRESHOLD:
-        return await _try_detect_and_save(value, wm, block, cache)
+    if isinstance(value, str) and len(value) > MIN_DECODED_SIZE:
+        return await _extract_and_replace_base64(value, wm, block, cache)
     return value
 
 
-async def _try_detect_and_save(
-    value: str,
+async def _extract_and_replace_base64(
+    text: str,
     wm: WorkspaceManager,
     block: str,
     cache: dict[str, str],
 ) -> str:
-    """Attempt to detect binary content and save it. Returns original if not binary."""
-
-    # Try data URI first (highest confidence - explicit mimetype)
-    result = _detect_data_uri(value)
-    if result:
-        content, ext = result
-        return await _save_binary(content, ext, wm, block, cache, value)
-
-    # Try raw base64 with magic number detection
-    result = _detect_raw_base64(value)
-    if result:
-        content, ext = result
-        return await _save_binary(content, ext, wm, block, cache, value)
-
-    return value  # Not binary, return unchanged
-
-
-def _detect_data_uri(value: str) -> Optional[tuple[bytes, str]]:
     """
-    Detect data URI with whitelisted mimetype.
+    Find embedded base64 in text, save binaries, replace with references.
 
-    Returns (content, extension) or None.
+    Scans for base64 patterns, validates each as binary via magic numbers,
+    saves valid binaries to workspace, and replaces the base64 portion
+    (plus any surrounding markers) with the workspace reference.
     """
-    match = DATA_URI_PATTERN.match(value)
-    if not match:
-        return None
+    result = text
+    offset = 0
 
-    mimetype, b64_payload = match.groups()
-    if mimetype not in ALLOWED_MIMETYPES:
-        return None
+    for match in EMBEDDED_BASE64_PATTERN.finditer(text):
+        b64_str = match.group(0)
 
+        # Try to decode and validate
+        detection = _decode_and_validate(b64_str)
+        if detection is None:
+            continue
+
+        content, ext = detection
+
+        # Save to workspace
+        ref = await _save_binary(content, ext, wm, block, cache)
+        if ref is None:
+            continue
+
+        # Calculate replacement bounds (include surrounding markers if present)
+        start, end = match.start(), match.end()
+        start, end = _expand_to_markers(text, start, end)
+
+        # Apply replacement with offset adjustment
+        adj_start = start + offset
+        adj_end = end + offset
+        result = result[:adj_start] + ref + result[adj_end:]
+        offset += len(ref) - (end - start)
+
+    return result
+
+
+def _decode_and_validate(b64_str: str) -> Optional[tuple[bytes, str]]:
+    """
+    Decode base64 and validate it's a known binary format.
+
+    Returns (content, extension) if valid binary, None otherwise.
+    """
     try:
-        content = base64.b64decode(b64_payload, validate=True)
+        content = base64.b64decode(b64_str, validate=True)
     except (ValueError, binascii.Error):
         return None
 
-    ext = _mimetype_to_ext(mimetype)
-    return content, ext
-
-
-def _detect_raw_base64(value: str) -> Optional[tuple[bytes, str]]:
-    """
-    Detect raw base64 with magic number validation.
-
-    Only processes strings that:
-    1. Look like pure base64 (regex pre-filter)
-    2. Successfully decode as base64
-    3. Start with a known binary file magic number
-
-    Returns (content, extension) or None.
-    """
-    # Pre-filter: must look like base64 (allows whitespace for RFC 2045 line wrapping)
-    if not BASE64_PATTERN.match(value):
-        return None
-
-    # Strip whitespace before decoding (RFC 2045 allows line breaks in base64)
-    normalized = re.sub(r"\s+", "", value)
-
-    try:
-        content = base64.b64decode(normalized, validate=True)
-    except (ValueError, binascii.Error):
+    # Must meet minimum size
+    if len(content) < MIN_DECODED_SIZE:
         return None
 
     # Check magic numbers
@@ -193,7 +159,47 @@ def _detect_raw_base64(value: str) -> Optional[tuple[bytes, str]]:
                     continue
             return content, ext
 
-    return None  # No magic number match = not a recognized binary format
+    return None
+
+
+def _expand_to_markers(text: str, start: int, end: int) -> tuple[int, int]:
+    """
+    Expand replacement bounds to include surrounding markers if present.
+
+    Handles patterns like:
+    - ---BASE64_START---\\n{base64}\\n---BASE64_END---
+    - [BASE64]{base64}[/BASE64]
+    - Or just the raw base64
+    """
+    # Common marker patterns to strip
+    start_markers = [
+        "---BASE64_START---\n",
+        "---BASE64_START---",
+        "[BASE64]\n",
+        "[BASE64]",
+    ]
+    end_markers = [
+        "\n---BASE64_END---",
+        "---BASE64_END---",
+        "\n[/BASE64]",
+        "[/BASE64]",
+    ]
+
+    # Check for start markers
+    for marker in start_markers:
+        marker_start = start - len(marker)
+        if marker_start >= 0 and text[marker_start:start] == marker:
+            start = marker_start
+            break
+
+    # Check for end markers
+    for marker in end_markers:
+        marker_end = end + len(marker)
+        if marker_end <= len(text) and text[end:marker_end] == marker:
+            end = marker_end
+            break
+
+    return start, end
 
 
 async def _save_binary(
@@ -202,12 +208,11 @@ async def _save_binary(
     wm: WorkspaceManager,
     block: str,
     cache: dict[str, str],
-    original: str,
-) -> str:
+) -> Optional[str]:
     """
     Save binary content to workspace with deduplication.
 
-    Returns workspace://file-id reference, or original value on failure.
+    Returns workspace://file-id reference, or None on failure.
     """
     content_hash = hashlib.sha256(content).hexdigest()
 
@@ -224,19 +229,4 @@ async def _save_binary(
         return ref
     except Exception as e:
         logger.warning(f"Failed to save binary output: {e}")
-        return original  # Graceful degradation
-
-
-def _mimetype_to_ext(mimetype: str) -> str:
-    """Convert mimetype to file extension."""
-    mapping = {
-        "image/png": "png",
-        "image/jpeg": "jpg",
-        "image/jpg": "jpg",
-        "image/gif": "gif",
-        "image/webp": "webp",
-        "image/svg+xml": "svg",
-        "application/pdf": "pdf",
-        "application/octet-stream": "bin",
-    }
-    return mapping.get(mimetype, "bin")
+        return None
