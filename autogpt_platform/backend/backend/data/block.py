@@ -873,14 +873,13 @@ def is_block_auth_configured(
 
 
 async def initialize_blocks() -> None:
-    # First, sync all provider costs to blocks
-    # Imported here to avoid circular import
     from backend.sdk.cost_integration import sync_all_provider_costs
+    from backend.util.retry import func_retry
 
     sync_all_provider_costs()
 
-    for cls in get_blocks().values():
-        block = cls()
+    @func_retry
+    async def sync_block_to_db(block: Block) -> None:
         existing_block = await AgentBlock.prisma().find_first(
             where={"OR": [{"id": block.id}, {"name": block.name}]}
         )
@@ -893,7 +892,7 @@ async def initialize_blocks() -> None:
                     outputSchema=json.dumps(block.output_schema.jsonschema()),
                 )
             )
-            continue
+            return
 
         input_schema = json.dumps(block.input_schema.jsonschema())
         output_schema = json.dumps(block.output_schema.jsonschema())
@@ -912,6 +911,25 @@ async def initialize_blocks() -> None:
                     "outputSchema": output_schema,
                 },
             )
+
+    failed_blocks: list[str] = []
+    for cls in get_blocks().values():
+        block = cls()
+        try:
+            await sync_block_to_db(block)
+        except Exception as e:
+            logger.warning(
+                f"Failed to sync block {block.name} to database: {e}. "
+                "Block is still available in memory.",
+                exc_info=True,
+            )
+            failed_blocks.append(block.name)
+
+    if failed_blocks:
+        logger.error(
+            f"Failed to sync {len(failed_blocks)} block(s) to database: "
+            f"{', '.join(failed_blocks)}. These blocks are still available in memory."
+        )
 
 
 # Note on the return type annotation: https://github.com/microsoft/pyright/issues/10281

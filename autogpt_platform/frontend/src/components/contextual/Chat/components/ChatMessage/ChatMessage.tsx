@@ -346,6 +346,7 @@ export function ChatMessage({
           toolId={message.toolId}
           toolName={message.toolName}
           result={message.result}
+          onSendMessage={onSendMessage}
         />
       </div>
     );
