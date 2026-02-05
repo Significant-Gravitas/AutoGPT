@@ -140,8 +140,8 @@ class TestExpandToMarkers:
     def test_expands_base64_start_end_markers(self):
         """Should expand to include ---BASE64_START--- and ---BASE64_END---."""
         text = "prefix\n---BASE64_START---\nABCDEF\n---BASE64_END---\nsuffix"
-        # Base64 is at position 27-33
-        start, end = _expand_to_markers(text, 27, 33)
+        # Base64 "ABCDEF" is at position 26-32
+        start, end = _expand_to_markers(text, 26, 32)
         assert text[start:end] == "---BASE64_START---\nABCDEF\n---BASE64_END---"
 
     def test_expands_bracket_markers(self):
