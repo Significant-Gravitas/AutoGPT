@@ -44,6 +44,48 @@ class ChatConfig(BaseSettings):
         description="TTL in seconds for long-running operation tracking in Redis (safety net if pod dies)",
     )
 
+    # Stream registry configuration for SSE reconnection
+    stream_ttl: int = Field(
+        default=3600,
+        description="TTL in seconds for stream data in Redis (1 hour)",
+    )
+    stream_max_length: int = Field(
+        default=10000,
+        description="Maximum number of messages to store per stream",
+    )
+
+    # Redis Streams configuration for completion consumer
+    stream_completion_name: str = Field(
+        default="chat:completions",
+        description="Redis Stream name for operation completions",
+    )
+    stream_consumer_group: str = Field(
+        default="chat_consumers",
+        description="Consumer group name for completion stream",
+    )
+    stream_claim_min_idle_ms: int = Field(
+        default=60000,
+        description="Minimum idle time in milliseconds before claiming pending messages from dead consumers",
+    )
+
+    # Redis key prefixes for stream registry
+    task_meta_prefix: str = Field(
+        default="chat:task:meta:",
+        description="Prefix for task metadata hash keys",
+    )
+    task_stream_prefix: str = Field(
+        default="chat:stream:",
+        description="Prefix for task message stream keys",
+    )
+    task_op_prefix: str = Field(
+        default="chat:task:op:",
+        description="Prefix for operation ID to task ID mapping keys",
+    )
+    internal_api_key: str | None = Field(
+        default=None,
+        description="API key for internal webhook callbacks (env: CHAT_INTERNAL_API_KEY)",
+    )
+
     # Langfuse Prompt Management Configuration
     # Note: Langfuse credentials are in Settings().secrets (settings.py)
     langfuse_prompt_name: str = Field(
@@ -80,6 +122,14 @@ class ChatConfig(BaseSettings):
                 v = os.getenv("OPENAI_BASE_URL")
             if not v:
                 v = "https://openrouter.ai/api/v1"
+        return v
+
+    @field_validator("internal_api_key", mode="before")
+    @classmethod
+    def get_internal_api_key(cls, v):
+        """Get internal API key from environment if not provided."""
+        if v is None:
+            v = os.getenv("CHAT_INTERNAL_API_KEY")
         return v
 
     # Prompt paths for different contexts

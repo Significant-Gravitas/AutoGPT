@@ -8,7 +8,12 @@ from backend.api.features.library import model as library_model
 from backend.api.features.store import db as store_db
 from backend.data import graph as graph_db
 from backend.data.graph import GraphModel
-from backend.data.model import Credentials, CredentialsFieldInfo, CredentialsMetaInput
+from backend.data.model import (
+    CredentialsFieldInfo,
+    CredentialsMetaInput,
+    HostScopedCredentials,
+    OAuth2Credentials,
+)
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util.exceptions import NotFoundError
 
@@ -273,7 +278,14 @@ async def match_user_credentials_to_graph(
                 for cred in available_creds
                 if cred.provider in credential_requirements.provider
                 and cred.type in credential_requirements.supported_types
-                and _credential_has_required_scopes(cred, credential_requirements)
+                and (
+                    cred.type != "oauth2"
+                    or _credential_has_required_scopes(cred, credential_requirements)
+                )
+                and (
+                    cred.type != "host_scoped"
+                    or _credential_is_for_host(cred, credential_requirements)
+                )
             ),
             None,
         )
@@ -318,25 +330,32 @@ async def match_user_credentials_to_graph(
 
 
 def _credential_has_required_scopes(
-    credential: Credentials,
+    credential: OAuth2Credentials,
     requirements: CredentialsFieldInfo,
 ) -> bool:
-    """
-    Check if a credential has all the scopes required by the block.
-
-    For OAuth2 credentials, verifies that the credential's scopes are a superset
-    of the required scopes. For other credential types, returns True (no scope check).
-    """
-    # Only OAuth2 credentials have scopes to check
-    if credential.type != "oauth2":
-        return True
-
+    """Check if an OAuth2 credential has all the scopes required by the input."""
     # If no scopes are required, any credential matches
     if not requirements.required_scopes:
         return True
 
     # Check that credential scopes are a superset of required scopes
     return set(credential.scopes).issuperset(requirements.required_scopes)
+
+
+def _credential_is_for_host(
+    credential: HostScopedCredentials,
+    requirements: CredentialsFieldInfo,
+) -> bool:
+    """Check if a host-scoped credential matches the host required by the input."""
+    # We need to know the host to match host-scoped credentials to.
+    # Graph.aggregate_credentials_inputs() adds the node's set URL value (if any)
+    # to discriminator_values. No discriminator_values -> no host to match against.
+    if not requirements.discriminator_values:
+        return True
+
+    # Check that credential host matches required host.
+    # Host-scoped credential inputs are grouped by host, so any item from the set works.
+    return credential.matches_url(list(requirements.discriminator_values)[0])
 
 
 async def check_user_has_required_credentials(

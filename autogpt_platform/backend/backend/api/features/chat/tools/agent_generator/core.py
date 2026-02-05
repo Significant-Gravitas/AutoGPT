@@ -19,6 +19,7 @@ from backend.data.graph import (
 from backend.util.exceptions import DatabaseError, NotFoundError
 
 from .service import (
+    customize_template_external,
     decompose_goal_external,
     generate_agent_external,
     generate_agent_patch_external,
@@ -549,15 +550,21 @@ async def decompose_goal(
 async def generate_agent(
     instructions: DecompositionResult | dict[str, Any],
     library_agents: list[AgentSummary] | list[dict[str, Any]] | None = None,
+    operation_id: str | None = None,
+    task_id: str | None = None,
 ) -> dict[str, Any] | None:
     """Generate agent JSON from instructions.
 
     Args:
         instructions: Structured instructions from decompose_goal
         library_agents: User's library agents available for sub-agent composition
+        operation_id: Operation ID for async processing (enables Redis Streams
+            completion notification)
+        task_id: Task ID for async processing (enables Redis Streams persistence
+            and SSE delivery)
 
     Returns:
-        Agent JSON dict, error dict {"type": "error", ...}, or None on error
+        Agent JSON dict, {"status": "accepted"} for async, error dict {"type": "error", ...}, or None on error
 
     Raises:
         AgentGeneratorNotConfiguredError: If the external service is not configured.
@@ -565,8 +572,13 @@ async def generate_agent(
     _check_service_configured()
     logger.info("Calling external Agent Generator service for generate_agent")
     result = await generate_agent_external(
-        dict(instructions), _to_dict_list(library_agents)
+        dict(instructions), _to_dict_list(library_agents), operation_id, task_id
     )
+
+    # Don't modify async response
+    if result and result.get("status") == "accepted":
+        return result
+
     if result:
         if isinstance(result, dict) and result.get("type") == "error":
             return result
@@ -740,32 +752,15 @@ async def save_agent_to_library(
     return created_graph, library_agents[0]
 
 
-async def get_agent_as_json(
-    agent_id: str, user_id: str | None
-) -> dict[str, Any] | None:
-    """Fetch an agent and convert to JSON format for editing.
+def graph_to_json(graph: Graph) -> dict[str, Any]:
+    """Convert a Graph object to JSON format for the agent generator.
 
     Args:
-        agent_id: Graph ID or library agent ID
-        user_id: User ID
+        graph: Graph object to convert
 
     Returns:
-        Agent as JSON dict or None if not found
+        Agent as JSON dict
     """
-    graph = await get_graph(agent_id, version=None, user_id=user_id)
-
-    if not graph and user_id:
-        try:
-            library_agent = await library_db.get_library_agent(agent_id, user_id)
-            graph = await get_graph(
-                library_agent.graph_id, version=None, user_id=user_id
-            )
-        except NotFoundError:
-            pass
-
-    if not graph:
-        return None
-
     nodes = []
     for node in graph.nodes:
         nodes.append(
@@ -802,10 +797,41 @@ async def get_agent_as_json(
     }
 
 
+async def get_agent_as_json(
+    agent_id: str, user_id: str | None
+) -> dict[str, Any] | None:
+    """Fetch an agent and convert to JSON format for editing.
+
+    Args:
+        agent_id: Graph ID or library agent ID
+        user_id: User ID
+
+    Returns:
+        Agent as JSON dict or None if not found
+    """
+    graph = await get_graph(agent_id, version=None, user_id=user_id)
+
+    if not graph and user_id:
+        try:
+            library_agent = await library_db.get_library_agent(agent_id, user_id)
+            graph = await get_graph(
+                library_agent.graph_id, version=None, user_id=user_id
+            )
+        except NotFoundError:
+            pass
+
+    if not graph:
+        return None
+
+    return graph_to_json(graph)
+
+
 async def generate_agent_patch(
     update_request: str,
     current_agent: dict[str, Any],
     library_agents: list[AgentSummary] | None = None,
+    operation_id: str | None = None,
+    task_id: str | None = None,
 ) -> dict[str, Any] | None:
     """Update an existing agent using natural language.
 
@@ -818,10 +844,12 @@ async def generate_agent_patch(
         update_request: Natural language description of changes
         current_agent: Current agent JSON
         library_agents: User's library agents available for sub-agent composition
+        operation_id: Operation ID for async processing (enables Redis Streams callback)
+        task_id: Task ID for async processing (enables Redis Streams callback)
 
     Returns:
         Updated agent JSON, clarifying questions dict {"type": "clarifying_questions", ...},
-        error dict {"type": "error", ...}, or None on unexpected error
+        {"status": "accepted"} for async, error dict {"type": "error", ...}, or None on error
 
     Raises:
         AgentGeneratorNotConfiguredError: If the external service is not configured.
@@ -829,5 +857,43 @@ async def generate_agent_patch(
     _check_service_configured()
     logger.info("Calling external Agent Generator service for generate_agent_patch")
     return await generate_agent_patch_external(
-        update_request, current_agent, _to_dict_list(library_agents)
+        update_request,
+        current_agent,
+        _to_dict_list(library_agents),
+        operation_id,
+        task_id,
+    )
+
+
+async def customize_template(
+    template_agent: dict[str, Any],
+    modification_request: str,
+    context: str = "",
+) -> dict[str, Any] | None:
+    """Customize a template/marketplace agent using natural language.
+
+    This is used when users want to modify a template or marketplace agent
+    to fit their specific needs before adding it to their library.
+
+    The external Agent Generator service handles:
+    - Understanding the modification request
+    - Applying changes to the template
+    - Fixing and validating the result
+
+    Args:
+        template_agent: The template agent JSON to customize
+        modification_request: Natural language description of customizations
+        context: Additional context (e.g., answers to previous questions)
+
+    Returns:
+        Customized agent JSON, clarifying questions dict {"type": "clarifying_questions", ...},
+        error dict {"type": "error", ...}, or None on unexpected error
+
+    Raises:
+        AgentGeneratorNotConfiguredError: If the external service is not configured.
+    """
+    _check_service_configured()
+    logger.info("Calling external Agent Generator service for customize_template")
+    return await customize_template_external(
+        template_agent, modification_request, context
     )

@@ -10,6 +10,7 @@ from .add_understanding import AddUnderstandingTool
 from .agent_output import AgentOutputTool
 from .base import BaseTool
 from .create_agent import CreateAgentTool
+from .customize_agent import CustomizeAgentTool
 from .edit_agent import EditAgentTool
 from .find_agent import FindAgentTool
 from .find_block import FindBlockTool
@@ -34,6 +35,7 @@ logger = logging.getLogger(__name__)
 TOOL_REGISTRY: dict[str, BaseTool] = {
     "add_understanding": AddUnderstandingTool(),
     "create_agent": CreateAgentTool(),
+    "customize_agent": CustomizeAgentTool(),
     "edit_agent": EditAgentTool(),
     "find_agent": FindAgentTool(),
     "find_block": FindBlockTool(),
