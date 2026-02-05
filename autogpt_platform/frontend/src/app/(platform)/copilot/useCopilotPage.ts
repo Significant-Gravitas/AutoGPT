@@ -3,18 +3,11 @@ import {
   postV2CreateSession,
 } from "@/app/api/__generated__/endpoints/chat/chat";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { getHomepageRoute } from "@/lib/constants";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
-import {
-  Flag,
-  type FlagValues,
-  useGetFlag,
-} from "@/services/feature-flags/use-get-flag";
 import { SessionKey, sessionStorage } from "@/services/storage/session-storage";
 import * as Sentry from "@sentry/nextjs";
 import { useQueryClient } from "@tanstack/react-query";
-import { useFlags } from "launchdarkly-react-client-sdk";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { useCopilotStore } from "./copilot-page-store";
@@ -33,22 +26,6 @@ export function useCopilotPage() {
   const isCreating = useCopilotStore((s) => s.isCreatingSession);
   const setIsCreating = useCopilotStore((s) => s.setIsCreatingSession);
 
-  // Complete VISIT_COPILOT onboarding step to grant $5 welcome bonus
-  useEffect(() => {
-    if (isLoggedIn) {
-      completeStep("VISIT_COPILOT");
-    }
-  }, [completeStep, isLoggedIn]);
-
-  const isChatEnabled = useGetFlag(Flag.CHAT);
-  const flags = useFlags<FlagValues>();
-  const homepageRoute = getHomepageRoute(isChatEnabled);
-  const envEnabled = process.env.NEXT_PUBLIC_LAUNCHDARKLY_ENABLED === "true";
-  const clientId = process.env.NEXT_PUBLIC_LAUNCHDARKLY_CLIENT_ID;
-  const isLaunchDarklyConfigured = envEnabled && Boolean(clientId);
-  const isFlagReady =
-    !isLaunchDarklyConfigured || flags[Flag.CHAT] !== undefined;
-
   const greetingName = getGreetingName(user);
   const quickActions = getQuickActions();
 
@@ -58,11 +35,8 @@ export function useCopilotPage() {
     : undefined;
 
   useEffect(() => {
-    if (!isFlagReady) return;
-    if (isChatEnabled === false) {
-      router.replace(homepageRoute);
-    }
-  }, [homepageRoute, isChatEnabled, isFlagReady, router]);
+    if (isLoggedIn) completeStep("VISIT_COPILOT");
+  }, [completeStep, isLoggedIn]);
 
   async function startChatWithPrompt(prompt: string) {
     if (!prompt?.trim()) return;
@@ -116,7 +90,6 @@ export function useCopilotPage() {
       isLoading: isUserLoading,
       hasSession,
       initialPrompt,
-      isReady: isFlagReady && isChatEnabled !== false && isLoggedIn,
     },
     handlers: {
       handleQuickAction,

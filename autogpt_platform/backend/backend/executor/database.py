@@ -17,6 +17,7 @@ from backend.data.analytics import (
     get_accuracy_trends_and_alerts,
     get_marketplace_graphs_for_monitoring,
 )
+from backend.data.auth.oauth import cleanup_expired_oauth_tokens
 from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
 from backend.data.execution import (
     create_graph_execution,
@@ -219,6 +220,9 @@ class DatabaseManager(AppService):
     # Onboarding
     increment_onboarding_runs = _(increment_onboarding_runs)
 
+    # OAuth
+    cleanup_expired_oauth_tokens = _(cleanup_expired_oauth_tokens)
+
     # Store
     get_store_agents = _(get_store_agents)
     get_store_agent_details = _(get_store_agent_details)
@@ -348,6 +352,9 @@ class DatabaseManagerAsyncClient(AppServiceClient):
 
     # Onboarding
     increment_onboarding_runs = d.increment_onboarding_runs
+
+    # OAuth
+    cleanup_expired_oauth_tokens = d.cleanup_expired_oauth_tokens
 
     # Store
     get_store_agents = d.get_store_agents

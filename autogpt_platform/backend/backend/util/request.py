@@ -157,12 +157,7 @@ async def validate_url(
         is_trusted: Boolean indicating if the hostname is in trusted_origins
         ip_addresses: List of IP addresses for the host; empty if the host is trusted
     """
-    # Canonicalize URL
-    url = url.strip("/ ").replace("\\", "/")
-    parsed = urlparse(url)
-    if not parsed.scheme:
-        url = f"http://{url}"
-        parsed = urlparse(url)
+    parsed = parse_url(url)
 
     # Check scheme
     if parsed.scheme not in ALLOWED_SCHEMES:
@@ -218,6 +213,17 @@ async def validate_url(
         is_trusted,
         ip_addresses,
     )
+
+
+def parse_url(url: str) -> URL:
+    """Canonicalizes and parses a URL string."""
+    url = url.strip("/ ").replace("\\", "/")
+
+    # Ensure scheme is present for proper parsing
+    if not re.match(r"[a-z0-9+.\-]+://", url):
+        url = f"http://{url}"
+
+    return urlparse(url)
 
 
 def pin_url(url: URL, ip_addresses: Optional[list[str]] = None) -> URL:

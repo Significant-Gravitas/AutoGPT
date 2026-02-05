@@ -1,3 +1,4 @@
+import { INITIAL_STREAM_ID } from "./chat-constants";
 import type {
   ActiveStream,
   StreamChunk,
@@ -10,8 +11,14 @@ import {
   parseSSELine,
 } from "./stream-utils";
 
-function notifySubscribers(stream: ActiveStream, chunk: StreamChunk) {
-  stream.chunks.push(chunk);
+function notifySubscribers(
+  stream: ActiveStream,
+  chunk: StreamChunk,
+  skipStore = false,
+) {
+  if (!skipStore) {
+    stream.chunks.push(chunk);
+  }
   for (const callback of stream.onChunkCallbacks) {
     try {
       callback(chunk);
@@ -21,36 +28,114 @@ function notifySubscribers(stream: ActiveStream, chunk: StreamChunk) {
   }
 }
 
-export async function executeStream(
-  stream: ActiveStream,
-  message: string,
-  isUserMessage: boolean,
-  context?: { url: string; content: string },
-  retryCount: number = 0,
+interface StreamExecutionOptions {
+  stream: ActiveStream;
+  mode: "new" | "reconnect";
+  message?: string;
+  isUserMessage?: boolean;
+  context?: { url: string; content: string };
+  taskId?: string;
+  lastMessageId?: string;
+  retryCount?: number;
+}
+
+async function executeStreamInternal(
+  options: StreamExecutionOptions,
 ): Promise<void> {
+  const {
+    stream,
+    mode,
+    message,
+    isUserMessage,
+    context,
+    taskId,
+    lastMessageId = INITIAL_STREAM_ID,
+    retryCount = 0,
+  } = options;
+
   const { sessionId, abortController } = stream;
+  const isReconnect = mode === "reconnect";
+
+  if (isReconnect) {
+    if (!taskId) {
+      throw new Error("taskId is required for reconnect mode");
+    }
+    if (lastMessageId === null || lastMessageId === undefined) {
+      throw new Error("lastMessageId is required for reconnect mode");
+    }
+  } else {
+    if (!message) {
+      throw new Error("message is required for new stream mode");
+    }
+    if (isUserMessage === undefined) {
+      throw new Error("isUserMessage is required for new stream mode");
+    }
+  }
 
   try {
-    const url = `/api/chat/sessions/${sessionId}/stream`;
-    const body = JSON.stringify({
-      message,
-      is_user_message: isUserMessage,
-      context: context || null,
-    });
+    let url: string;
+    let fetchOptions: RequestInit;
 
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "text/event-stream",
-      },
-      body,
-      signal: abortController.signal,
-    });
+    if (isReconnect) {
+      url = `/api/chat/tasks/${taskId}/stream?last_message_id=${encodeURIComponent(lastMessageId)}`;
+      fetchOptions = {
+        method: "GET",
+        headers: {
+          Accept: "text/event-stream",
+        },
+        signal: abortController.signal,
+      };
+    } else {
+      url = `/api/chat/sessions/${sessionId}/stream`;
+      fetchOptions = {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "text/event-stream",
+        },
+        body: JSON.stringify({
+          message,
+          is_user_message: isUserMessage,
+          context: context || null,
+        }),
+        signal: abortController.signal,
+      };
+    }
+
+    const response = await fetch(url, fetchOptions);
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(errorText || `HTTP ${response.status}`);
+      let errorCode: string | undefined;
+      let errorMessage = errorText || `HTTP ${response.status}`;
+      try {
+        const parsed = JSON.parse(errorText);
+        if (parsed.detail) {
+          const detail =
+            typeof parsed.detail === "string"
+              ? parsed.detail
+              : parsed.detail.message || JSON.stringify(parsed.detail);
+          errorMessage = detail;
+          errorCode =
+            typeof parsed.detail === "object" ? parsed.detail.code : undefined;
+        }
+      } catch {}
+
+      const isPermanentError =
+        isReconnect &&
+        (response.status === 404 ||
+          response.status === 403 ||
+          response.status === 410);
+
+      const error = new Error(errorMessage) as Error & {
+        status?: number;
+        isPermanent?: boolean;
+        taskErrorCode?: string;
+      };
+      error.status = response.status;
+      error.isPermanent = isPermanentError;
+      error.taskErrorCode = errorCode;
+      throw error;
     }
 
     if (!response.body) {
@@ -104,9 +189,7 @@ export async function executeStream(
               );
               return;
             }
-          } catch (err) {
-            console.warn("[StreamExecutor] Failed to parse SSE chunk:", err);
-          }
+          } catch {}
         }
       }
     }
@@ -117,19 +200,17 @@ export async function executeStream(
       return;
     }
 
-    if (retryCount < MAX_RETRIES) {
+    const isPermanentError =
+      err instanceof Error &&
+      (err as Error & { isPermanent?: boolean }).isPermanent;
+
+    if (!isPermanentError && retryCount < MAX_RETRIES) {
       const retryDelay = INITIAL_RETRY_DELAY * Math.pow(2, retryCount);
-      console.log(
-        `[StreamExecutor] Retrying in ${retryDelay}ms (attempt ${retryCount + 1}/${MAX_RETRIES})`,
-      );
       await new Promise((resolve) => setTimeout(resolve, retryDelay));
-      return executeStream(
-        stream,
-        message,
-        isUserMessage,
-        context,
-        retryCount + 1,
-      );
+      return executeStreamInternal({
+        ...options,
+        retryCount: retryCount + 1,
+      });
     }
 
     stream.status = "error";
@@ -139,4 +220,36 @@ export async function executeStream(
       message: stream.error.message,
     });
   }
+}
+
+export async function executeStream(
+  stream: ActiveStream,
+  message: string,
+  isUserMessage: boolean,
+  context?: { url: string; content: string },
+  retryCount: number = 0,
+): Promise<void> {
+  return executeStreamInternal({
+    stream,
+    mode: "new",
+    message,
+    isUserMessage,
+    context,
+    retryCount,
+  });
+}
+
+export async function executeTaskReconnect(
+  stream: ActiveStream,
+  taskId: string,
+  lastMessageId: string = INITIAL_STREAM_ID,
+  retryCount: number = 0,
+): Promise<void> {
+  return executeStreamInternal({
+    stream,
+    mode: "reconnect",
+    taskId,
+    lastMessageId,
+    retryCount,
+  });
 }

@@ -7,8 +7,20 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.data.execution import ExecutionContext
 from backend.util.file import store_media_file
 from backend.util.type import MediaFileType
+
+
+def make_test_context(
+    graph_exec_id: str = "test-exec-123",
+    user_id: str = "test-user-123",
+) -> ExecutionContext:
+    """Helper to create test ExecutionContext."""
+    return ExecutionContext(
+        user_id=user_id,
+        graph_exec_id=graph_exec_id,
+    )
 
 
 class TestFileCloudIntegration:
@@ -70,10 +82,9 @@ class TestFileCloudIntegration:
             mock_path_class.side_effect = path_constructor
 
             result = await store_media_file(
-                graph_exec_id,
-                MediaFileType(cloud_path),
-                "test-user-123",
-                return_content=False,
+                file=MediaFileType(cloud_path),
+                execution_context=make_test_context(graph_exec_id=graph_exec_id),
+                return_format="for_local_processing",
             )
 
             # Verify cloud storage operations
@@ -144,10 +155,9 @@ class TestFileCloudIntegration:
             mock_path_obj.name = "image.png"
             with patch("backend.util.file.Path", return_value=mock_path_obj):
                 result = await store_media_file(
-                    graph_exec_id,
-                    MediaFileType(cloud_path),
-                    "test-user-123",
-                    return_content=True,
+                    file=MediaFileType(cloud_path),
+                    execution_context=make_test_context(graph_exec_id=graph_exec_id),
+                    return_format="for_external_api",
                 )
 
             # Verify result is a data URI
@@ -198,10 +208,9 @@ class TestFileCloudIntegration:
             mock_resolved_path.relative_to.return_value = Path("test-uuid-789.txt")
 
             await store_media_file(
-                graph_exec_id,
-                MediaFileType(data_uri),
-                "test-user-123",
-                return_content=False,
+                file=MediaFileType(data_uri),
+                execution_context=make_test_context(graph_exec_id=graph_exec_id),
+                return_format="for_local_processing",
             )
 
             # Verify cloud handler was checked but not used for retrieval
@@ -234,5 +243,7 @@ class TestFileCloudIntegration:
                 FileNotFoundError, match="File not found in cloud storage"
             ):
                 await store_media_file(
-                    graph_exec_id, MediaFileType(cloud_path), "test-user-123"
+                    file=MediaFileType(cloud_path),
+                    execution_context=make_test_context(graph_exec_id=graph_exec_id),
+                    return_format="for_local_processing",
                 )

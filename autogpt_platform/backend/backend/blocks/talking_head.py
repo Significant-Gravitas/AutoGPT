@@ -10,6 +10,7 @@ from backend.data.block import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
+from backend.data.execution import ExecutionContext
 from backend.data.model import (
     APIKeyCredentials,
     CredentialsField,
@@ -17,7 +18,9 @@ from backend.data.model import (
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
+from backend.util.file import store_media_file
 from backend.util.request import Requests
+from backend.util.type import MediaFileType
 
 TEST_CREDENTIALS = APIKeyCredentials(
     id="01234567-89ab-cdef-0123-456789abcdef",
@@ -102,7 +105,7 @@ class CreateTalkingAvatarVideoBlock(Block):
             test_output=[
                 (
                     "video_url",
-                    "https://d-id.com/api/clips/abcd1234-5678-efgh-ijkl-mnopqrstuvwx/video",
+                    lambda x: x.startswith(("workspace://", "data:")),
                 ),
             ],
             test_mock={
@@ -110,9 +113,10 @@ class CreateTalkingAvatarVideoBlock(Block):
                     "id": "abcd1234-5678-efgh-ijkl-mnopqrstuvwx",
                     "status": "created",
                 },
+                # Use data URI to avoid HTTP requests during tests
                 "get_clip_status": lambda *args, **kwargs: {
                     "status": "done",
-                    "result_url": "https://d-id.com/api/clips/abcd1234-5678-efgh-ijkl-mnopqrstuvwx/video",
+                    "result_url": "data:video/mp4;base64,AAAA",
                 },
             },
             test_credentials=TEST_CREDENTIALS,
@@ -138,7 +142,12 @@ class CreateTalkingAvatarVideoBlock(Block):
         return response.json()
 
     async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+        self,
+        input_data: Input,
+        *,
+        credentials: APIKeyCredentials,
+        execution_context: ExecutionContext,
+        **kwargs,
     ) -> BlockOutput:
         # Create the clip
         payload = {
@@ -165,7 +174,14 @@ class CreateTalkingAvatarVideoBlock(Block):
         for _ in range(input_data.max_polling_attempts):
             status_response = await self.get_clip_status(credentials.api_key, clip_id)
             if status_response["status"] == "done":
-                yield "video_url", status_response["result_url"]
+                # Store the generated video to the user's workspace for persistence
+                video_url = status_response["result_url"]
+                stored_url = await store_media_file(
+                    file=MediaFileType(video_url),
+                    execution_context=execution_context,
+                    return_format="for_block_output",
+                )
+                yield "video_url", stored_url
                 return
             elif status_response["status"] == "error":
                 raise RuntimeError(
