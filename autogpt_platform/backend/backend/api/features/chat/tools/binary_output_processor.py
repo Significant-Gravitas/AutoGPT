@@ -140,28 +140,37 @@ def _decode_and_validate(b64_str: str) -> Optional[tuple[bytes, str]]:
     """
     Decode base64 and validate it's a known binary format.
 
+    Tries multiple 4-byte aligned offsets to handle cases where marker text
+    (e.g., "START" from "PDF_BASE64_START") bleeds into the regex match.
+    Base64 works in 4-char chunks, so we only check aligned offsets.
+
     Returns (content, extension) if valid binary, None otherwise.
     """
     # Strip whitespace for RFC 2045 line-wrapped base64
     normalized = re.sub(r"\s+", "", b64_str)
 
-    try:
-        content = base64.b64decode(normalized, validate=True)
-    except (ValueError, binascii.Error):
-        return None
+    # Try offsets 0, 4, 8, ... up to 32 chars (handles markers up to ~24 chars)
+    # This handles cases like "STARTJVBERi0..." where "START" bleeds into match
+    for char_offset in range(0, min(33, len(normalized)), 4):
+        candidate = normalized[char_offset:]
 
-    # Must meet minimum size
-    if len(content) < MIN_DECODED_SIZE:
-        return None
+        try:
+            content = base64.b64decode(candidate, validate=True)
+        except (ValueError, binascii.Error):
+            continue
 
-    # Check magic numbers
-    for magic, ext in MAGIC_SIGNATURES:
-        if content.startswith(magic):
-            # Special case for WebP: RIFF container, verify "WEBP" at offset 8
-            if magic == b"RIFF":
-                if len(content) < 12 or content[8:12] != b"WEBP":
-                    continue
-            return content, ext
+        # Must meet minimum size
+        if len(content) < MIN_DECODED_SIZE:
+            continue
+
+        # Check magic numbers
+        for magic, ext in MAGIC_SIGNATURES:
+            if content.startswith(magic):
+                # Special case for WebP: RIFF container, verify "WEBP" at offset 8
+                if magic == b"RIFF":
+                    if len(content) < 12 or content[8:12] != b"WEBP":
+                        continue
+                return content, ext
 
     return None
 
@@ -175,14 +184,16 @@ def _expand_to_markers(text: str, start: int, end: int) -> tuple[int, int]:
     - [BASE64]{base64}[/BASE64]
     - Or just the raw base64
     """
-    # Common marker patterns to strip
+    # Common marker patterns to strip (order matters - check longer patterns first)
     start_markers = [
+        "PDF_BASE64_START",
         "---BASE64_START---\n",
         "---BASE64_START---",
         "[BASE64]\n",
         "[BASE64]",
     ]
     end_markers = [
+        "PDF_BASE64_END",
         "\n---BASE64_END---",
         "---BASE64_END---",
         "\n[/BASE64]",
