@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import uuid
 from typing import Literal, Optional
 
 import fastapi
@@ -560,8 +561,6 @@ async def save_graph_to_library(
         For updates, the graph.id must be set to the existing graph ID.
         For new graphs, graph.id will be assigned a new UUID.
     """
-    import uuid
-
     existing_library_agent = None
     if is_update and graph.id:
         existing_library_agent = await get_library_agent_by_graph_id(user_id, graph.id)
