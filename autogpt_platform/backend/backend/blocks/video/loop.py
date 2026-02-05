@@ -37,7 +37,7 @@ class LoopVideoBlock(Block):
         )
 
     class Output(BlockSchemaOutput):
-        video_out: str = SchemaField(
+        video_out: MediaFileType = SchemaField(
             description="Looped video returned either as a relative path or a data URI."
         )
 

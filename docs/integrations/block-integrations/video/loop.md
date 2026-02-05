@@ -26,7 +26,7 @@ The block uses MoviePy's Loop effect to repeat a video clip. You can specify eit
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
-| video_out | Looped video returned either as a relative path or a data URI. | str |
+| video_out | Looped video returned either as a relative path or a data URI. | str (file) |
 
 ### Possible use case
 <!-- MANUAL: use_case -->
