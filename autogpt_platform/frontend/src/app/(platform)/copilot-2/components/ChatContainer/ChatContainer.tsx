@@ -1,10 +1,10 @@
 "use client";
-import { UIDataTypes, UITools, UIMessage } from "ai";
-import { ChatMessagesContainer } from "../ChatMessagesContainer/ChatMessagesContainer";
-import { EmptySession } from "../EmptySession/EmptySession";
 import { ChatInput } from "@/components/contextual/Chat/components/ChatInput/ChatInput";
-import { CopilotChatActionsProvider } from "../CopilotChatActionsProvider/CopilotChatActionsProvider";
+import { UIDataTypes, UIMessage, UITools } from "ai";
 import { LayoutGroup, motion } from "framer-motion";
+import { ChatMessagesContainer } from "../ChatMessagesContainer/ChatMessagesContainer";
+import { CopilotChatActionsProvider } from "../CopilotChatActionsProvider/CopilotChatActionsProvider";
+import { EmptySession } from "../EmptySession/EmptySession";
 
 export interface ChatContainerProps {
   messages: UIMessage<unknown, UIDataTypes, UITools>[];
@@ -29,40 +29,38 @@ export const ChatContainer = ({
   return (
     <CopilotChatActionsProvider onSend={onSend}>
       <LayoutGroup id="copilot-2-chat-layout">
-        <div className="h-full w-full pb-6">
-          <div className="flex h-full flex-col">
-            {sessionId ? (
-              <div className="mx-auto flex h-full w-full max-w-3xl flex-col">
-                <ChatMessagesContainer
-                  messages={messages}
-                  status={status}
-                  error={error}
-                />
-                <motion.div
-                  layoutId={inputLayoutId}
-                  transition={{ type: "spring", bounce: 0.2, duration: 0.65 }}
-                  className="relative px-3 pt-2"
-                >
-                  <div className="pointer-events-none absolute top-[-18px] z-10 h-6 w-full bg-gradient-to-b from-transparent to-[#f8f8f9] dark:to-background" />
-                  <ChatInput
-                    inputId="chat-input-session"
-                    onSend={onSend}
-                    disabled={status === "streaming"}
-                    isStreaming={status === "streaming"}
-                    onStop={() => {}}
-                    placeholder="You can search or just ask"
-                  />
-                </motion.div>
-              </div>
-            ) : (
-              <EmptySession
-                inputLayoutId={inputLayoutId}
-                isCreatingSession={isCreatingSession}
-                onCreateSession={onCreateSession}
-                onSend={onSend}
+        <div className="flex h-full min-h-0 w-full flex-col bg-[#f8f8f9] px-2 lg:px-0">
+          {sessionId ? (
+            <div className="mx-auto flex h-full min-h-0 w-full max-w-3xl flex-col">
+              <ChatMessagesContainer
+                messages={messages}
+                status={status}
+                error={error}
               />
-            )}
-          </div>
+              <motion.div
+                layoutId={inputLayoutId}
+                transition={{ type: "spring", bounce: 0.2, duration: 0.65 }}
+                className="relative px-3 pb-2 pt-2"
+              >
+                <div className="pointer-events-none absolute left-0 right-0 top-[-18px] z-10 h-6 bg-gradient-to-b from-transparent to-[#f8f8f9]" />
+                <ChatInput
+                  inputId="chat-input-session"
+                  onSend={onSend}
+                  disabled={status === "streaming"}
+                  isStreaming={status === "streaming"}
+                  onStop={() => {}}
+                  placeholder="What else can I help with?"
+                />
+              </motion.div>
+            </div>
+          ) : (
+            <EmptySession
+              inputLayoutId={inputLayoutId}
+              isCreatingSession={isCreatingSession}
+              onCreateSession={onCreateSession}
+              onSend={onSend}
+            />
+          )}
         </div>
       </LayoutGroup>
     </CopilotChatActionsProvider>

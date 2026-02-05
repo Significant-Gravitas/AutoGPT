@@ -2,15 +2,16 @@
 
 import {
   getGreetingName,
+  getInputPlaceholder,
   getQuickActions,
 } from "@/app/(platform)/copilot/helpers";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { ChatInput } from "@/components/contextual/Chat/components/ChatInput/ChatInput";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
-import { SparkleIcon, SpinnerGapIcon } from "@phosphor-icons/react";
+import { SpinnerGapIcon } from "@phosphor-icons/react";
 import { motion } from "framer-motion";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 interface Props {
   inputLayoutId: string;
@@ -28,6 +29,13 @@ export function EmptySession({
   const greetingName = getGreetingName(user);
   const quickActions = getQuickActions();
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
+  const [inputPlaceholder, setInputPlaceholder] = useState(
+    getInputPlaceholder(),
+  );
+
+  useEffect(() => {
+    setInputPlaceholder(getInputPlaceholder(window.innerWidth));
+  }, [window.innerWidth]);
 
   async function handleQuickActionClick(action: string) {
     if (isCreatingSession || loadingAction) return;
@@ -41,66 +49,61 @@ export function EmptySession({
   }
 
   return (
-    <div className="relative flex h-full flex-1 flex-col items-center justify-center overflow-hidden px-6 py-10 dark:bg-background">
+    <div className="flex h-full flex-1 items-center justify-center overflow-y-auto bg-[#f8f8f9] px-0 py-5 md:px-6 md:py-10">
       <motion.div
-        className="relative w-full max-w-3xl"
+        className="w-full max-w-3xl text-center"
         initial={{ opacity: 0, y: 14, filter: "blur(6px)" }}
         animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
         transition={{ type: "spring", bounce: 0.2, duration: 0.7 }}
       >
-        <div className="mx-auto flex flex-col items-center text-center">
-          <div className="mb-5 flex items-center gap-2 rounded-full border border-border/60 bg-white/70 px-3 py-1 text-xs text-muted-foreground shadow-sm backdrop-blur dark:bg-neutral-950/40">
-            <SparkleIcon className="h-3.5 w-3.5 text-purple-600" />
-            <span>Autopilot runs for you 24/7</span>
-          </div>
-
-          <Text variant="h3" className="mb-3 !text-[1.375rem] text-zinc-700">
+        <div className="mx-auto max-w-3xl">
+          <Text variant="h3" className="mb-1 !text-[1.375rem] text-zinc-700">
             Hey, <span className="text-violet-600">{greetingName}</span>
           </Text>
-          <Text variant="h3" className="!font-normal">
-            What do you want to automate?
+          <Text variant="h3" className="mb-8 !font-normal">
+            Tell me about your work — I&apos;ll find what to automate.
           </Text>
+
+          <div className="mb-6">
+            <motion.div
+              layoutId={inputLayoutId}
+              transition={{ type: "spring", bounce: 0.2, duration: 0.65 }}
+              className="w-full px-2"
+            >
+              <ChatInput
+                inputId="chat-input-empty"
+                onSend={onSend}
+                disabled={isCreatingSession}
+                placeholder={inputPlaceholder}
+                className="w-full"
+              />
+            </motion.div>
+          </div>
         </div>
 
-        <div className="mx-auto p-5 dark:bg-neutral-950/40">
-          <motion.div
-            layoutId={inputLayoutId}
-            transition={{ type: "spring", bounce: 0.2, duration: 0.65 }}
-            className="w-full"
-          >
-            <ChatInput
-              inputId="chat-input-empty"
-              onSend={onSend}
-              disabled={isCreatingSession}
-              placeholder='You can search or just ask - e.g. "create a blog post outline"'
-              className="w-full"
-            />
-          </motion.div>
-
-          <div className="mt-8 flex w-full flex-nowrap items-center justify-center gap-3 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {quickActions.map((action) => (
-              <Button
-                key={action}
-                type="button"
-                variant="outline"
-                size="small"
-                onClick={() => void handleQuickActionClick(action)}
-                disabled={isCreatingSession || loadingAction !== null}
-                aria-busy={loadingAction === action}
-                leftIcon={
-                  loadingAction === action ? (
-                    <SpinnerGapIcon
-                      className="h-4 w-4 animate-spin"
-                      weight="bold"
-                    />
-                  ) : null
-                }
-                className="h-auto shrink-0 border-zinc-600 !px-4 !py-2 text-[1rem] text-zinc-600"
-              >
-                {action}
-              </Button>
-            ))}
-          </div>
+        <div className="flex flex-wrap items-center justify-center gap-3 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {quickActions.map((action) => (
+            <Button
+              key={action}
+              type="button"
+              variant="outline"
+              size="small"
+              onClick={() => void handleQuickActionClick(action)}
+              disabled={isCreatingSession || loadingAction !== null}
+              aria-busy={loadingAction === action}
+              leftIcon={
+                loadingAction === action ? (
+                  <SpinnerGapIcon
+                    className="h-4 w-4 animate-spin"
+                    weight="bold"
+                  />
+                ) : null
+              }
+              className="h-auto shrink-0 border-zinc-300 px-3 py-2 text-[.9rem] text-zinc-600"
+            >
+              {action}
+            </Button>
+          ))}
         </div>
       </motion.div>
     </div>

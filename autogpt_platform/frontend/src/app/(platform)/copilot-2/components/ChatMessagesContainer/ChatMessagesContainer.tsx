@@ -1,7 +1,6 @@
 import {
   Conversation,
   ConversationContent,
-  ConversationEmptyState,
   ConversationScrollButton,
 } from "@/components/ai-elements/conversation";
 import {
@@ -9,8 +8,7 @@ import {
   MessageContent,
   MessageResponse,
 } from "@/components/ai-elements/message";
-import { MessageSquareIcon } from "lucide-react";
-import { UIMessage, UIDataTypes, UITools, ToolUIPart } from "ai";
+import { UIDataTypes, UIMessage, UITools, ToolUIPart } from "ai";
 import { FindBlocksTool } from "../../tools/FindBlocks/FindBlocks";
 import { FindAgentsTool } from "../../tools/FindAgents/FindAgents";
 import { SearchDocsTool } from "../../tools/SearchDocs/SearchDocs";
@@ -32,103 +30,97 @@ export const ChatMessagesContainer = ({
   error,
 }: ChatMessagesContainerProps) => {
   return (
-    <Conversation className="flex-1">
-      <ConversationContent>
-        {messages.length === 0 ? (
-          <ConversationEmptyState
-            icon={<MessageSquareIcon className="size-12" />}
-            title="Start a conversation"
-            description="Type a message below to begin chatting"
-          />
-        ) : (
-          messages.map((message) => (
-            <Message from={message.role} key={message.id}>
-              <MessageContent
-                className={
-                  "rounded-xl border px-3 py-2 " +
-                  "group-[.is-user]:rounded-2xl group-[.is-user]:border-purple-200 group-[.is-user]:bg-purple-100 group-[.is-user]:text-slate-900 " +
-                  "group-[.is-assistant]:border-none group-[.is-assistant]:bg-slate-50/20 group-[.is-assistant]:text-slate-900"
+    <Conversation className="min-h-0 flex-1">
+      <ConversationContent className="gap-6 px-3 py-6">
+        {messages.map((message) => (
+          <Message from={message.role} key={message.id}>
+            <MessageContent
+              className={
+                "text-[1rem] leading-relaxed " +
+                "group-[.is-user]:rounded-xl group-[.is-user]:bg-purple-100 group-[.is-user]:px-3 group-[.is-user]:py-2.5 group-[.is-user]:text-slate-900 group-[.is-user]:[border-bottom-right-radius:0] " +
+                "group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-slate-900"
+              }
+            >
+              {message.parts.map((part, i) => {
+                switch (part.type) {
+                  case "text":
+                    return (
+                      <MessageResponse key={`${message.id}-${i}`}>
+                        {part.text}
+                      </MessageResponse>
+                    );
+                  case "tool-find_block":
+                    return (
+                      <FindBlocksTool
+                        key={`${message.id}-${i}`}
+                        part={part as ToolUIPart}
+                      />
+                    );
+                  case "tool-find_agent":
+                  case "tool-find_library_agent":
+                    return (
+                      <FindAgentsTool
+                        key={`${message.id}-${i}`}
+                        part={part as ToolUIPart}
+                      />
+                    );
+                  case "tool-search_docs":
+                  case "tool-get_doc_page":
+                    return (
+                      <SearchDocsTool
+                        key={`${message.id}-${i}`}
+                        part={part as ToolUIPart}
+                      />
+                    );
+                  case "tool-run_block":
+                    return (
+                      <RunBlockTool
+                        key={`${message.id}-${i}`}
+                        part={part as ToolUIPart}
+                      />
+                    );
+                  case "tool-run_agent":
+                  case "tool-schedule_agent":
+                    return (
+                      <RunAgentTool
+                        key={`${message.id}-${i}`}
+                        part={part as ToolUIPart}
+                      />
+                    );
+                  case "tool-create_agent":
+                    return (
+                      <CreateAgentTool
+                        key={`${message.id}-${i}`}
+                        part={part as ToolUIPart}
+                      />
+                    );
+                  case "tool-edit_agent":
+                    return (
+                      <EditAgentTool
+                        key={`${message.id}-${i}`}
+                        part={part as ToolUIPart}
+                      />
+                    );
+                  case "tool-view_agent_output":
+                    return (
+                      <ViewAgentOutputTool
+                        key={`${message.id}-${i}`}
+                        part={part as ToolUIPart}
+                      />
+                    );
+                  default:
+                    return null;
                 }
-              >
-                {message.parts.map((part, i) => {
-                  switch (part.type) {
-                    case "text":
-                      return (
-                        <MessageResponse key={`${message.id}-${i}`}>
-                          {part.text}
-                        </MessageResponse>
-                      );
-                    case "tool-find_block":
-                      return (
-                        <FindBlocksTool
-                          key={`${message.id}-${i}`}
-                          part={part as ToolUIPart}
-                        />
-                      );
-                    case "tool-find_agent":
-                    case "tool-find_library_agent":
-                      return (
-                        <FindAgentsTool
-                          key={`${message.id}-${i}`}
-                          part={part as ToolUIPart}
-                        />
-                      );
-                    case "tool-search_docs":
-                    case "tool-get_doc_page":
-                      return (
-                        <SearchDocsTool
-                          key={`${message.id}-${i}`}
-                          part={part as ToolUIPart}
-                        />
-                      );
-                    case "tool-run_block":
-                      return (
-                        <RunBlockTool
-                          key={`${message.id}-${i}`}
-                          part={part as ToolUIPart}
-                        />
-                      );
-                    case "tool-run_agent":
-                    case "tool-schedule_agent":
-                      return (
-                        <RunAgentTool
-                          key={`${message.id}-${i}`}
-                          part={part as ToolUIPart}
-                        />
-                      );
-                    case "tool-create_agent":
-                      return (
-                        <CreateAgentTool
-                          key={`${message.id}-${i}`}
-                          part={part as ToolUIPart}
-                        />
-                      );
-                    case "tool-edit_agent":
-                      return (
-                        <EditAgentTool
-                          key={`${message.id}-${i}`}
-                          part={part as ToolUIPart}
-                        />
-                      );
-                    case "tool-view_agent_output":
-                      return (
-                        <ViewAgentOutputTool
-                          key={`${message.id}-${i}`}
-                          part={part as ToolUIPart}
-                        />
-                      );
-                    default:
-                      return null;
-                  }
-                })}
-              </MessageContent>
-            </Message>
-          ))
-        )}
+              })}
+            </MessageContent>
+          </Message>
+        ))}
         {status === "submitted" && (
           <Message from="assistant">
-            <MessageContent>
-              <p className="text-zinc-500">Thinking...</p>
+            <MessageContent className="text-[1rem] leading-relaxed">
+              <span className="inline-block animate-shimmer bg-gradient-to-r from-neutral-400 via-neutral-600 to-neutral-400 bg-[length:200%_100%] bg-clip-text text-transparent">
+                Thinking...
+              </span>
             </MessageContent>
           </Message>
         )}

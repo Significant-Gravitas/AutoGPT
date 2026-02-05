@@ -1,19 +1,25 @@
-import { useChat } from "@ai-sdk/react";
-import { DefaultChatTransport } from "ai";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { parseAsString, useQueryState } from "nuqs";
 import {
   getGetV2ListSessionsQueryKey,
   getV2GetSession,
   postV2CreateSession,
+  useGetV2ListSessions,
 } from "@/app/api/__generated__/endpoints/chat/chat";
-import { convertChatSessionMessagesToUiMessages } from "./helpers/convertChatSessionToUiMessages";
+import { useBreakpoint } from "@/lib/hooks/useBreakpoint";
+import { useChat } from "@ai-sdk/react";
 import { useQueryClient } from "@tanstack/react-query";
+import { DefaultChatTransport } from "ai";
+import { parseAsString, useQueryState } from "nuqs";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { convertChatSessionMessagesToUiMessages } from "./helpers/convertChatSessionToUiMessages";
 
 export function useCopilotPage() {
-  const [copied, setCopied] = useState(false);
   const [isCreatingSession, setIsCreatingSession] = useState(false);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [sessionId, setSessionId] = useQueryState("sessionId", parseAsString);
+
+  const breakpoint = useBreakpoint();
+  const isMobile =
+    breakpoint === "base" || breakpoint === "sm" || breakpoint === "md";
   const hydrationSeq = useRef(0);
   const lastHydratedSessionIdRef = useRef<string | null>(null);
   const createSessionPromiseRef = useRef<Promise<string> | null>(null);
@@ -21,31 +27,23 @@ export function useCopilotPage() {
   const queuedFirstMessageResolverRef = useRef<(() => void) | null>(null);
   const queryClient = useQueryClient();
 
-  function handleCopySessionId() {
-    if (!sessionId) return;
-    navigator.clipboard.writeText(sessionId);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }
-
-  const transport = useMemo(() => {
-    if (!sessionId) return null;
-    return new DefaultChatTransport({
-      api: `/api/chat/sessions/${sessionId}/stream`,
-      prepareSendMessagesRequest: ({ messages }) => {
-        const last = messages[messages.length - 1];
-        return {
-          body: {
-            message: last.parts
-              ?.map((p) => (p.type === "text" ? p.text : ""))
-              .join(""),
-            is_user_message: last.role === "user",
-            context: null,
-          },
-        };
-      },
-    });
-  }, [sessionId]);
+  const transport = sessionId
+    ? new DefaultChatTransport({
+        api: `/api/chat/sessions/${sessionId}/stream`,
+        prepareSendMessagesRequest: ({ messages }) => {
+          const last = messages[messages.length - 1];
+          return {
+            body: {
+              message: last.parts
+                ?.map((p) => (p.type === "text" ? p.text : ""))
+                .join(""),
+              is_user_message: last.role === "user",
+              context: null,
+            },
+          };
+        },
+      })
+    : null;
 
   const { messages, sendMessage, status, error, setMessages } = useChat({
     id: sessionId ?? undefined,
@@ -58,7 +56,7 @@ export function useCopilotPage() {
     messagesRef.current = messages;
   }, [messages]);
 
-  async function createSession(): Promise<string> {
+  async function createSession() {
     if (sessionId) return sessionId;
     if (createSessionPromiseRef.current) return createSessionPromiseRef.current;
 
@@ -166,15 +164,56 @@ export function useCopilotPage() {
     await sentPromise;
   }
 
+  // Sessions list for mobile drawer
+  const { data: sessionsResponse, isLoading: isLoadingSessions } =
+    useGetV2ListSessions({ limit: 50 });
+
+  const sessions =
+    sessionsResponse?.status === 200 ? sessionsResponse.data.sessions : [];
+
+  // Drawer handlers
+  const handleOpenDrawer = useCallback(() => {
+    setIsDrawerOpen(true);
+  }, []);
+
+  const handleCloseDrawer = useCallback(() => {
+    setIsDrawerOpen(false);
+  }, []);
+
+  const handleDrawerOpenChange = useCallback((open: boolean) => {
+    setIsDrawerOpen(open);
+  }, []);
+
+  const handleSelectSession = useCallback(
+    (id: string) => {
+      setSessionId(id);
+      if (isMobile) setIsDrawerOpen(false);
+    },
+    [setSessionId, isMobile],
+  );
+
+  const handleNewChat = useCallback(() => {
+    setSessionId(null);
+    if (isMobile) setIsDrawerOpen(false);
+  }, [setSessionId, isMobile]);
+
   return {
-    copied,
     sessionId,
     messages,
     status,
     error,
     isCreatingSession,
-    handleCopySessionId,
     createSession,
     onSend,
+    // Mobile drawer
+    isMobile,
+    isDrawerOpen,
+    sessions,
+    isLoadingSessions,
+    handleOpenDrawer,
+    handleCloseDrawer,
+    handleDrawerOpenChange,
+    handleSelectSession,
+    handleNewChat,
   };
 }

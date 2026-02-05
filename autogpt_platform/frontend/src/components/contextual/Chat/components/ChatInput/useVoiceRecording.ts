@@ -214,17 +214,33 @@ export function useVoiceRecording({
 
   const handleKeyDown = useCallback(
     (event: KeyboardEvent<HTMLTextAreaElement>) => {
-      if (event.key === " " && !value.trim() && !isTranscribing) {
+      // Allow space to toggle recording (start when empty, stop when recording)
+      if (event.key === " " && !isTranscribing) {
+        if (isRecordingRef.current) {
+          // Stop recording on space
+          event.preventDefault();
+          stopRecording();
+          return;
+        } else if (!value.trim()) {
+          // Start recording on space when input is empty
+          event.preventDefault();
+          void startRecording();
+          return;
+        }
+      }
+      // Block all key events when recording (except space handled above)
+      if (isRecordingRef.current) {
         event.preventDefault();
-        toggleRecording();
         return;
       }
       baseHandleKeyDown(event);
     },
-    [value, isTranscribing, toggleRecording, baseHandleKeyDown],
+    [value, isTranscribing, stopRecording, startRecording, baseHandleKeyDown],
   );
 
   const showMicButton = isSupported;
+  // Don't include isRecording in disabled state - we need key events to work
+  // Text input is blocked via handleKeyDown instead
   const isInputDisabled = disabled || isStreaming || isTranscribing;
 
   // Cleanup on unmount

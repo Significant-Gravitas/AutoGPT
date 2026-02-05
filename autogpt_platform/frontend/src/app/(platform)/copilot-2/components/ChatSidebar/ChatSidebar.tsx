@@ -1,35 +1,28 @@
 "use client";
+import { useGetV2ListSessions } from "@/app/api/__generated__/endpoints/chat/chat";
+import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
 import {
   Sidebar,
-  SidebarHeader,
   SidebarContent,
   SidebarFooter,
+  SidebarHeader,
   SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 import {
+  PlusCircleIcon,
   PlusIcon,
   SpinnerGapIcon,
-  ChatCircleIcon,
 } from "@phosphor-icons/react";
 import { motion } from "framer-motion";
-import { useState } from "react";
 import { parseAsString, useQueryState } from "nuqs";
-import {
-  postV2CreateSession,
-  useGetV2ListSessions,
-  getGetV2ListSessionsQueryKey,
-} from "@/app/api/__generated__/endpoints/chat/chat";
-import { Button } from "@/components/atoms/Button/Button";
-import { useQueryClient } from "@tanstack/react-query";
 
 export function ChatSidebar() {
   const { state } = useSidebar();
   const isCollapsed = state === "collapsed";
-  const [isCreating, setIsCreating] = useState(false);
   const [sessionId, setSessionId] = useQueryState("sessionId", parseAsString);
-  const queryClient = useQueryClient();
 
   const { data: sessionsResponse, isLoading: isLoadingSessions } =
     useGetV2ListSessions({ limit: 50 });
@@ -37,22 +30,8 @@ export function ChatSidebar() {
   const sessions =
     sessionsResponse?.status === 200 ? sessionsResponse.data.sessions : [];
 
-  async function handleNewChat() {
-    if (isCreating) return;
-    setIsCreating(true);
-    try {
-      const response = await postV2CreateSession({
-        body: JSON.stringify({}),
-      });
-      if (response.status === 200 && response.data?.id) {
-        setSessionId(response.data.id);
-        queryClient.invalidateQueries({
-          queryKey: getGetV2ListSessionsQueryKey(),
-        });
-      }
-    } finally {
-      setIsCreating(false);
-    }
+  function handleNewChat() {
+    setSessionId(null);
   }
 
   function handleSelectSession(id: string) {
@@ -68,14 +47,27 @@ export function ChatSidebar() {
     if (diffDays === 0) return "Today";
     if (diffDays === 1) return "Yesterday";
     if (diffDays < 7) return `${diffDays} days ago`;
-    return date.toLocaleDateString();
+
+    const day = date.getDate();
+    const ordinal =
+      day % 10 === 1 && day !== 11
+        ? "st"
+        : day % 10 === 2 && day !== 12
+          ? "nd"
+          : day % 10 === 3 && day !== 13
+            ? "rd"
+            : "th";
+    const month = date.toLocaleDateString("en-US", { month: "short" });
+    const year = date.getFullYear();
+
+    return `${day}${ordinal} ${month} ${year}`;
   }
 
   return (
     <Sidebar
       variant="inset"
       collapsible="icon"
-      className="!top-[60px] !h-[calc(100vh-60px)]"
+      className="!top-[50px] !h-[calc(100vh-50px)] border-r border-zinc-100 px-0"
     >
       {isCollapsed && (
         <SidebarHeader
@@ -88,52 +80,49 @@ export function ChatSidebar() {
         >
           <motion.div
             key={isCollapsed ? "header-collapsed" : "header-expanded"}
-            className={cn(
-              "flex items-center gap-2",
-              isCollapsed ? "flex-row md:flex-col-reverse" : "flex-row",
-            )}
+            className="flex flex-col items-center gap-3 pt-4"
             initial={{ opacity: 0, filter: "blur(3px)" }}
             animate={{ opacity: 1, filter: "blur(0px)" }}
             transition={{ type: "spring", bounce: 0.2 }}
           >
-            {isCollapsed && (
-              <div className="h-fit rounded-3xl border border-neutral-400 bg-secondary p-1">
-                <SidebarTrigger />
-              </div>
-            )}
+            <div className="flex flex-col items-center gap-2">
+              <SidebarTrigger />
+              <Button
+                variant="ghost"
+                onClick={handleNewChat}
+                style={{ minWidth: "auto", width: "auto" }}
+              >
+                <PlusCircleIcon className="!size-5" />
+                <span className="sr-only">New Chat</span>
+              </Button>
+            </div>
           </motion.div>
         </SidebarHeader>
       )}
-      <SidebarContent className="gap-4 overflow-y-auto px-2 py-4 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={handleNewChat}
-            disabled={isCreating}
-            className={cn(
-              "flex h-fit w-full items-center justify-center gap-2 rounded-3xl border-purple-400 bg-purple-100 px-3 py-2 text-purple-600 hover:border-purple-500 hover:bg-purple-200 hover:text-purple-700",
-              isCollapsed && "justify-center rounded-3xl px-1",
-            )}
+      <SidebarContent className="gap-4 overflow-y-auto px-4 py-4 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {!isCollapsed && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.2, delay: 0.1 }}
+            className="flex items-center justify-between px-3"
           >
-            {isCreating ? (
-              <SpinnerGapIcon className="h-4 w-4 animate-spin" weight="bold" />
-            ) : (
-              <PlusIcon className="h-4 w-4" weight="bold" />
-            )}
-            {!isCollapsed && (
-              <span>{isCreating ? "Creating..." : "New Chat"}</span>
-            )}
-          </Button>
-          {!isCollapsed && (
-            <div className="h-fit rounded-3xl border border-neutral-400 bg-secondary p-1">
+            <Text variant="h3" size="body-medium">
+              Your chats
+            </Text>
+            <div className="relative left-5">
               <SidebarTrigger />
             </div>
-          )}
-        </div>
+          </motion.div>
+        )}
 
         {!isCollapsed && (
-          <div className="mt-4 flex flex-col gap-1">
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.2, delay: 0.15 }}
+            className="mt-4 flex flex-col gap-1"
+          >
             {isLoadingSessions ? (
               <div className="flex items-center justify-center py-4">
                 <SpinnerGapIcon className="h-5 w-5 animate-spin text-neutral-400" />
@@ -148,27 +137,55 @@ export function ChatSidebar() {
                   key={session.id}
                   onClick={() => handleSelectSession(session.id)}
                   className={cn(
-                    "flex items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition-colors hover:bg-neutral-100 dark:hover:bg-neutral-800",
-                    sessionId === session.id &&
-                      "bg-neutral-100 dark:bg-neutral-800",
+                    "w-full rounded-lg px-3 py-2.5 text-left transition-colors",
+                    session.id === sessionId
+                      ? "bg-zinc-100"
+                      : "hover:bg-zinc-50",
                   )}
                 >
-                  <ChatCircleIcon className="h-4 w-4 shrink-0 text-neutral-500" />
-                  <div className="flex flex-col overflow-hidden">
-                    <span className="truncate font-medium">
-                      {session.title || `Untitled chat`}
-                    </span>
-                    <span className="text-xs text-neutral-500">
+                  <div className="flex min-w-0 max-w-full flex-col overflow-hidden">
+                    <div className="min-w-0 max-w-full">
+                      <Text
+                        variant="body"
+                        className={cn(
+                          "truncate font-normal",
+                          session.id === sessionId
+                            ? "text-zinc-600"
+                            : "text-zinc-800",
+                        )}
+                      >
+                        {session.title || `Untitled chat`}
+                      </Text>
+                    </div>
+                    <Text variant="small" className="text-neutral-400">
                       {formatDate(session.updated_at)}
-                    </span>
+                    </Text>
                   </div>
                 </button>
               ))
             )}
-          </div>
+          </motion.div>
         )}
       </SidebarContent>
-      <SidebarFooter className="px-2"></SidebarFooter>
+      {!isCollapsed && sessionId && (
+        <SidebarFooter className="shrink-0 bg-zinc-50 p-3 pb-1 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.2, delay: 0.2 }}
+          >
+            <Button
+              variant="primary"
+              size="small"
+              onClick={handleNewChat}
+              className="w-full"
+              leftIcon={<PlusIcon className="h-4 w-4" weight="bold" />}
+            >
+              New Chat
+            </Button>
+          </motion.div>
+        </SidebarFooter>
+      )}
     </Sidebar>
   );
 }

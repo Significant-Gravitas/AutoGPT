@@ -6,6 +6,7 @@ import {
   MicrophoneIcon,
   StopIcon,
 } from "@phosphor-icons/react";
+import { ChangeEvent, useCallback } from "react";
 import { RecordingIndicator } from "./components/RecordingIndicator";
 import { useChatInput } from "./useChatInput";
 import { useVoiceRecording } from "./useVoiceRecording";
@@ -34,7 +35,7 @@ export function ChatInput({
     setValue,
     handleKeyDown: baseHandleKeyDown,
     handleSubmit,
-    handleChange,
+    handleChange: baseHandleChange,
     hasMultipleLines,
   } = useChatInput({
     onSend,
@@ -60,6 +61,15 @@ export function ChatInput({
     baseHandleKeyDown,
     inputId,
   });
+
+  // Block text changes when recording
+  const handleChange = useCallback(
+    (e: ChangeEvent<HTMLTextAreaElement>) => {
+      if (isRecording) return;
+      baseHandleChange(e);
+    },
+    [isRecording, baseHandleChange],
+  );
 
   return (
     <form onSubmit={handleSubmit} className={cn("relative flex-1", className)}>
