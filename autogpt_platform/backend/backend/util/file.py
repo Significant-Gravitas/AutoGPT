@@ -313,6 +313,14 @@ async def store_media_file(
         if not target_path.is_file():
             raise ValueError(f"Local file does not exist: {target_path}")
 
+        # Virus scan the local file before any further processing
+        local_content = target_path.read_bytes()
+        if len(local_content) > MAX_FILE_SIZE_BYTES:
+            raise ValueError(
+                f"File too large: {len(local_content)} bytes > {MAX_FILE_SIZE_BYTES} bytes"
+            )
+        await scan_content_safe(local_content, filename=sanitized_file)
+
     # Return based on requested format
     if return_format == "for_local_processing":
         # Use when processing files locally with tools like ffmpeg, MoviePy, PIL
