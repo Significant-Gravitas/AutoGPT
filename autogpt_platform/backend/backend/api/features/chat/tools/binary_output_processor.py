@@ -225,12 +225,12 @@ async def _save_binary(
 
     try:
         safe_block = sanitize_filename(block)[:20].lower()
-        filename = f"{safe_block}_{ext}_{uuid.uuid4().hex[:12]}.{ext}"
+        filename = f"{safe_block}_{uuid.uuid4().hex[:12]}.{ext}"
 
         file = await wm.write_file(content, filename)
         ref = f"workspace://{file.id}"
         cache[content_hash] = ref
         return ref
     except Exception as e:
-        logger.warning(f"Failed to save binary output: {e}")
+        logger.warning("Failed to save binary output: %s", e)
         return None
