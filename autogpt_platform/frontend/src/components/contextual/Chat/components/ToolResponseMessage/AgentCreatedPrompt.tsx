@@ -118,6 +118,9 @@ export function AgentCreatedPrompt({
               </Button>
             )}
           </div>
+          <Text variant="small" className="text-neutral-500">
+            or just ask me
+          </Text>
         </div>
       </div>
     </AIChatBubble>
