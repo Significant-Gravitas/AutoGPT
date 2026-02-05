@@ -19,7 +19,6 @@ from typing import (
     cast,
     get_args,
 )
-from urllib.parse import urlparse
 from uuid import uuid4
 
 from prisma.enums import CreditTransactionType, OnboardingStep
@@ -42,6 +41,7 @@ from typing_extensions import TypedDict
 
 from backend.integrations.providers import ProviderName
 from backend.util.json import loads as json_loads
+from backend.util.request import parse_url
 from backend.util.settings import Secrets
 
 # Type alias for any provider name (including custom ones)
@@ -397,19 +397,25 @@ class HostScopedCredentials(_BaseCredentials):
     def matches_url(self, url: str) -> bool:
         """Check if this credential should be applied to the given URL."""
 
-        parsed_url = urlparse(url)
-        # Extract hostname without port
-        request_host = parsed_url.hostname
+        request_host, request_port = _extract_host_from_url(url)
+        cred_scope_host, cred_scope_port = _extract_host_from_url(self.host)
         if not request_host:
             return False
 
-        # Simple host matching - exact match or wildcard subdomain match
-        if self.host == request_host:
+        # If a port is specified in credential host, the request host port must match
+        if cred_scope_port is not None and request_port != cred_scope_port:
+            return False
+        # Non-standard ports are only allowed if explicitly specified in credential host
+        elif cred_scope_port is None and request_port not in (80, 443, None):
+            return False
+
+        # Simple host matching
+        if cred_scope_host == request_host:
             return True
 
         # Support wildcard matching (e.g., "*.example.com" matches "api.example.com")
-        if self.host.startswith("*."):
-            domain = self.host[2:]  # Remove "*."
+        if cred_scope_host.startswith("*."):
+            domain = cred_scope_host[2:]  # Remove "*."
             return request_host.endswith(f".{domain}") or request_host == domain
 
         return False
@@ -551,13 +557,13 @@ class CredentialsMetaInput(BaseModel, Generic[CP, CT]):
     )
 
 
-def _extract_host_from_url(url: str) -> str:
-    """Extract host from URL for grouping host-scoped credentials."""
+def _extract_host_from_url(url: str) -> tuple[str, int | None]:
+    """Extract host and port from URL for grouping host-scoped credentials."""
     try:
-        parsed = urlparse(url)
-        return parsed.hostname or url
+        parsed = parse_url(url)
+        return parsed.hostname or url, parsed.port
     except Exception:
-        return ""
+        return "", None
 
 
 class CredentialsFieldInfo(BaseModel, Generic[CP, CT]):
@@ -606,7 +612,7 @@ class CredentialsFieldInfo(BaseModel, Generic[CP, CT]):
                 providers = frozenset(
                     [cast(CP, "http")]
                     + [
-                        cast(CP, _extract_host_from_url(str(value)))
+                        cast(CP, parse_url(str(value)).netloc)
                         for value in field.discriminator_values
                     ]
                 )
