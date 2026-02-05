@@ -550,10 +550,10 @@ async def save_graph_to_library(
     Save a graph and manage its library agent entry.
 
     Shared logic for both builder saves and CoPilot-generated agents.
-    Handles version bumping for updates and library agent creation/update.
+    Handles version bumping, ID reassignment, and library agent creation/update.
 
     Args:
-        graph: The Graph to save (will be modified in place for version/ID assignment)
+        graph: The Graph to save
         user_id: The user ID
         is_update: Whether this is an update to an existing agent
 
@@ -578,7 +578,11 @@ async def save_graph_to_library(
         graph.version = 1
         logger.info(f"Creating new agent with ID {graph.id}")
 
-    created_graph = await graph_db.create_graph(graph, user_id)
+    # Convert to GraphModel and reassign IDs
+    graph_model = graph_db.make_graph_model(graph, user_id)
+    graph_model.reassign_ids(user_id=user_id, reassign_graph_id=False)
+
+    created_graph = await graph_db.create_graph(graph_model, user_id)
 
     # Run activation hooks (validates credentials, sets up webhooks, etc.)
     if created_graph.is_active:
