@@ -93,19 +93,21 @@ async def generate_test_data(
 
     try:
         if request.script_type == TestDataScriptType.E2E:
-            from backend.data.db import prisma
-
             # Import and run the E2E test data creator
             # We need to import within the function to avoid circular imports
             import sys
             from pathlib import Path
+
+            from backend.data.db import prisma
 
             # Add the test directory to the path
             test_dir = Path(__file__).parent.parent.parent.parent.parent / "test"
             sys.path.insert(0, str(test_dir))
 
             try:
-                from e2e_test_data import TestDataCreator  # type: ignore[import-not-found]
+                from e2e_test_data import (
+                    TestDataCreator,  # type: ignore[import-not-found]
+                )
 
                 # Connect to database if not already connected
                 if not prisma.is_connected():
@@ -140,7 +142,9 @@ async def generate_test_data(
             sys.path.insert(0, str(test_dir))
 
             try:
-                from test_data_creator import main as create_full_test_data  # type: ignore[import-not-found]
+                from test_data_creator import (
+                    main as create_full_test_data,  # type: ignore[import-not-found]
+                )
 
                 await create_full_test_data()
 
