@@ -1,6 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
+import { useEffect, useState } from "react";
 import type { ChatMessageData } from "../ChatMessage/useChatMessage";
 import { StreamingMessage } from "../StreamingMessage/StreamingMessage";
 import { ThinkingMessage } from "../ThinkingMessage/ThinkingMessage";
@@ -30,6 +31,29 @@ export function MessageList({
     messageCount: messages.length,
     isStreaming,
   });
+
+  const [showThinkingMessage, setShowThinkingMessage] = useState(false);
+  const [thinkingComplete, setThinkingComplete] = useState(false);
+
+  // Manage thinking message visibility and completion state
+  useEffect(() => {
+    if (isStreaming && streamingChunks.length === 0) {
+      // Start showing thinking message
+      setShowThinkingMessage(true);
+      setThinkingComplete(false);
+    } else if (streamingChunks.length > 0 && showThinkingMessage) {
+      // Chunks arrived - trigger completion animation
+      setThinkingComplete(true);
+    } else if (!isStreaming) {
+      // Streaming ended completely - reset state
+      setShowThinkingMessage(false);
+      setThinkingComplete(false);
+    }
+  }, [isStreaming, streamingChunks.length, showThinkingMessage]);
+
+  function handleThinkingAnimationComplete() {
+    setShowThinkingMessage(false);
+  }
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
@@ -92,10 +116,15 @@ export function MessageList({
           })()}
 
           {/* Render thinking message when streaming but no chunks yet */}
-          {isStreaming && streamingChunks.length === 0 && <ThinkingMessage />}
+          {showThinkingMessage && (
+            <ThinkingMessage
+              isComplete={thinkingComplete}
+              onAnimationComplete={handleThinkingAnimationComplete}
+            />
+          )}
 
-          {/* Render streaming message if active */}
-          {isStreaming && streamingChunks.length > 0 && (
+          {/* Render streaming message if active (wait for thinking animation to complete) */}
+          {isStreaming && streamingChunks.length > 0 && !showThinkingMessage && (
             <StreamingMessage
               chunks={streamingChunks}
               onComplete={onStreamComplete}

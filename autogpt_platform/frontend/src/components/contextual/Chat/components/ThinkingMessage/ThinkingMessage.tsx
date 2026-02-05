@@ -6,26 +6,36 @@ import { useAsymptoticProgress } from "../ToolCallMessage/useAsymptoticProgress"
 
 export interface ThinkingMessageProps {
   className?: string;
+  isComplete?: boolean;
+  onAnimationComplete?: () => void;
 }
 
-export function ThinkingMessage({ className }: ThinkingMessageProps) {
+export function ThinkingMessage({
+  className,
+  isComplete = false,
+  onAnimationComplete,
+}: ThinkingMessageProps) {
   const [showSlowLoader, setShowSlowLoader] = useState(false);
   const [showCoffeeMessage, setShowCoffeeMessage] = useState(false);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const coffeeTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const progress = useAsymptoticProgress(showCoffeeMessage);
+  const delayTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const { progress, isAnimationDone } = useAsymptoticProgress(
+    showCoffeeMessage,
+    isComplete,
+  );
 
   useEffect(() => {
     if (timerRef.current === null) {
       timerRef.current = setTimeout(() => {
         setShowSlowLoader(true);
-      }, 8000);
+      }, 3000);
     }
 
     if (coffeeTimerRef.current === null) {
       coffeeTimerRef.current = setTimeout(() => {
         setShowCoffeeMessage(true);
-      }, 10000);
+      }, 8000);
     }
 
     return () => {
@@ -39,6 +49,22 @@ export function ThinkingMessage({ className }: ThinkingMessageProps) {
       }
     };
   }, []);
+
+  // Handle completion animation delay before unmounting
+  useEffect(() => {
+    if (isAnimationDone && onAnimationComplete) {
+      delayTimerRef.current = setTimeout(() => {
+        onAnimationComplete();
+      }, 200); // 200ms delay after animation completes
+    }
+
+    return () => {
+      if (delayTimerRef.current) {
+        clearTimeout(delayTimerRef.current);
+        delayTimerRef.current = null;
+      }
+    };
+  }, [isAnimationDone, onAnimationComplete]);
 
   return (
     <div
