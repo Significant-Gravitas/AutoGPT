@@ -79,13 +79,9 @@ export function handleTextEnded(
     chunksLength: deps.streamingChunksRef.current.length,
   });
 
-  if (deps.textFinalizedRef.current) {
-    console.log("[handleTextEnded] Skipped - already finalized");
-    return;
-  }
+  if (deps.textFinalizedRef.current) return;
 
   const completedText = deps.streamingChunksRef.current.join("");
-  console.log("[handleTextEnded] Completed text length:", completedText.length);
 
   if (completedText.trim()) {
     deps.textFinalizedRef.current = true;
@@ -97,11 +93,7 @@ export function handleTextEnded(
           msg.role === "assistant" &&
           msg.content === completedText,
       );
-      console.log("[handleTextEnded] Adding message", {
-        exists,
-        prevLength: prev.length,
-        contentPreview: completedText.slice(0, 100),
-      });
+
       if (exists) return prev;
 
       const assistantMessage: ChatMessageData = {
@@ -302,26 +294,12 @@ export function handleStreamEnd(
   _chunk: StreamChunk,
   deps: HandlerDependencies,
 ) {
-  console.log("[handleStreamEnd] Called", {
-    streamEndedRef: deps.streamEndedRef.current,
-    textFinalizedRef: deps.textFinalizedRef.current,
-    hasResponseRef: deps.hasResponseRef.current,
-    chunksLength: deps.streamingChunksRef.current.length,
-  });
-
-  if (deps.streamEndedRef.current) {
-    console.log("[handleStreamEnd] Skipped - already ended");
-    return;
-  }
+  if (deps.streamEndedRef.current) return;
   deps.streamEndedRef.current = true;
 
   const completedContent = deps.streamingChunksRef.current.join("");
-  console.log("[handleStreamEnd] Content length:", completedContent.length);
 
   if (!completedContent.trim() && !deps.hasResponseRef.current) {
-    console.log(
-      "[handleStreamEnd] No content and no response - adding error message",
-    );
     deps.setMessages((prev) => {
       const exists = prev.some(
         (msg) =>
@@ -342,7 +320,6 @@ export function handleStreamEnd(
     });
   }
   if (completedContent.trim() && !deps.textFinalizedRef.current) {
-    console.log("[handleStreamEnd] Finalizing text from stream_end");
     deps.textFinalizedRef.current = true;
 
     deps.setMessages((prev) => {
@@ -352,10 +329,6 @@ export function handleStreamEnd(
           msg.role === "assistant" &&
           msg.content === completedContent,
       );
-      console.log("[handleStreamEnd] Adding message", {
-        exists,
-        prevLength: prev.length,
-      });
       if (exists) return prev;
 
       const assistantMessage: ChatMessageData = {
@@ -371,13 +344,10 @@ export function handleStreamEnd(
   deps.streamingChunksRef.current = [];
   deps.setHasTextChunks(false);
   deps.setIsStreamingInitiated(false);
-  console.log("[handleStreamEnd] Completed - streaming state cleared");
 }
 
 export function handleError(chunk: StreamChunk, deps: HandlerDependencies) {
-  if (isRegionBlockedError(chunk)) {
-    deps.setIsRegionBlockedModalOpen(true);
-  }
+  if (isRegionBlockedError(chunk)) deps.setIsRegionBlockedModalOpen(true);
   deps.setIsStreamingInitiated(false);
   deps.setHasTextChunks(false);
   deps.setStreamingChunks([]);
@@ -388,8 +358,6 @@ export function handleError(chunk: StreamChunk, deps: HandlerDependencies) {
 
 export function getErrorDisplayMessage(chunk: StreamChunk): string {
   const friendlyMessage = getUserFriendlyErrorMessage(chunk.code);
-  if (friendlyMessage) {
-    return friendlyMessage;
-  }
+  if (friendlyMessage) return friendlyMessage;
   return chunk.message || chunk.content || "An error occurred";
 }
