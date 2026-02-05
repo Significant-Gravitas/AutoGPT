@@ -141,12 +141,20 @@ class FindBlockTool(BaseTool):
                 output_schema = {}
                 try:
                     input_schema = block.input_schema.jsonschema()
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(
+                        "Failed to generate input schema for block %s: %s",
+                        block_id,
+                        e,
+                    )
                 try:
                     output_schema = block.output_schema.jsonschema()
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(
+                        "Failed to generate output schema for block %s: %s",
+                        block_id,
+                        e,
+                    )
 
                 # Get categories from block instance
                 categories = []

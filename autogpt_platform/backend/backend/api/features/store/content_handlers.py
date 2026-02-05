@@ -13,28 +13,13 @@ from typing import Any
 
 from prisma.enums import ContentType
 
-from backend.data.block import BlockType
+from backend.api.features.chat.tools.find_block import (
+    EXCLUDED_BLOCK_IDS,
+    EXCLUDED_BLOCK_TYPES,
+)
 from backend.data.db import query_raw_with_schema
 
 logger = logging.getLogger(__name__)
-
-# Blocks excluded from CoPilot standalone execution and search indexing
-# NOTE: This does NOT affect the Builder UI which uses load_all_blocks() directly
-EXCLUDED_BLOCK_TYPES = {
-    BlockType.INPUT,  # Graph interface definition - data enters via chat, not graph inputs
-    BlockType.OUTPUT,  # Graph interface definition - data exits via chat, not graph outputs
-    BlockType.WEBHOOK,  # Wait for external events - would hang forever in CoPilot
-    BlockType.WEBHOOK_MANUAL,  # Same as WEBHOOK
-    BlockType.NOTE,  # Visual annotation only - no runtime behavior
-    BlockType.HUMAN_IN_THE_LOOP,  # Pauses for human approval - CoPilot IS human-in-the-loop
-    BlockType.AGENT,  # AgentExecutorBlock requires execution_context - use run_agent tool
-}
-
-# Blocks that have STANDARD/other types but still require graph context
-EXCLUDED_BLOCK_IDS = {
-    # SmartDecisionMakerBlock - dynamically discovers downstream blocks via graph topology
-    "3b191d9f-356f-482d-8238-ba04b6d18381",
-}
 
 
 @dataclass
@@ -195,29 +180,32 @@ class BlockHandler(ContentHandler):
         )
 
         existing_ids = {row["contentId"] for row in existing_result}
-        missing_blocks = [
-            (block_id, block_cls)
-            for block_id, block_cls in all_blocks.items()
-            if block_id not in existing_ids
-        ]
 
-        # Convert to ContentItem
-        items = []
-        for block_id, block_cls in missing_blocks[:batch_size]:
+        # Filter blocks: exclude already-embedded, disabled, and graph-only blocks
+        # IMPORTANT: Filter BEFORE slicing to batch_size to avoid returning empty
+        # batches when all first N blocks are excluded (causing processing stall)
+        eligible_blocks = []
+        for block_id, block_cls in all_blocks.items():
+            if block_id in existing_ids:
+                continue
             try:
                 block_instance = block_cls()
-
-                # Skip disabled blocks - they shouldn't be indexed
                 if block_instance.disabled:
                     continue
-
-                # Skip blocks excluded from CoPilot (graph-only blocks)
                 if (
                     block_instance.block_type in EXCLUDED_BLOCK_TYPES
                     or block_id in EXCLUDED_BLOCK_IDS
                 ):
                     continue
+                eligible_blocks.append((block_id, block_cls, block_instance))
+            except Exception as e:
+                logger.warning(f"Failed to instantiate block {block_id}: {e}")
+                continue
 
+        # Convert to ContentItem (now safe to slice after filtering)
+        items = []
+        for block_id, block_cls, block_instance in eligible_blocks[:batch_size]:
+            try:
                 # Build searchable text from block metadata
                 parts = []
                 if hasattr(block_instance, "name") and block_instance.name:
