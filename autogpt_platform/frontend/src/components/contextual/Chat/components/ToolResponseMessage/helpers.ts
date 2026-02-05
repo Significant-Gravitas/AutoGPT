@@ -6,6 +6,43 @@ function stripInternalReasoning(content: string): string {
     .trim();
 }
 
+export interface AgentSavedData {
+  isSaved: boolean;
+  agentName: string;
+  agentId: string;
+  libraryAgentId: string;
+  libraryAgentLink: string;
+}
+
+export function isAgentSavedResponse(result: unknown): AgentSavedData {
+  if (typeof result !== "object" || result === null) {
+    return {
+      isSaved: false,
+      agentName: "",
+      agentId: "",
+      libraryAgentId: "",
+      libraryAgentLink: "",
+    };
+  }
+  const response = result as Record<string, unknown>;
+  if (response.type === "agent_saved") {
+    return {
+      isSaved: true,
+      agentName: (response.agent_name as string) || "Agent",
+      agentId: (response.agent_id as string) || "",
+      libraryAgentId: (response.library_agent_id as string) || "",
+      libraryAgentLink: (response.library_agent_link as string) || "",
+    };
+  }
+  return {
+    isSaved: false,
+    agentName: "",
+    agentId: "",
+    libraryAgentId: "",
+    libraryAgentLink: "",
+  };
+}
+
 export function isErrorResponse(result: unknown): boolean {
   if (typeof result === "string") {
     const lower = result.toLowerCase();

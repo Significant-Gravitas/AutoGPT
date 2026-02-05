@@ -132,9 +132,15 @@ async def test_block_credit_reset(server: SpinTestServer):
         month1 = datetime(2025, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
         user_credit.time_now = lambda: month1
 
-        # Reset transactions AFTER setting time_now so the old date calculation
-        # uses a date that's definitely in a previous month relative to month1
-        await disable_test_user_transactions()
+        # IMPORTANT: Set updatedAt to December of previous year to ensure it's
+        # in a different month than month1 (January). This fixes a timing bug
+        # where if the test runs in early February, 35 days ago would be January,
+        # matching the mocked month1 and preventing the refill from triggering.
+        dec_previous_year = month1.replace(year=month1.year - 1, month=12, day=15)
+        await UserBalance.prisma().update(
+            where={"userId": DEFAULT_USER_ID},
+            data={"updatedAt": dec_previous_year},
+        )
 
         # First call in month 1 should trigger refill
         balance = await user_credit.get_credits(DEFAULT_USER_ID)
