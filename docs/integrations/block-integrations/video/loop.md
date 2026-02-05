@@ -18,8 +18,8 @@ The block uses MoviePy's Loop effect to repeat a video clip. You can specify eit
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | video_in | The input video (can be a URL, data URI, or local path). | str (file) | Yes |
-| duration | Target duration (in seconds) to loop the video to. If omitted, defaults to no looping. | float | No |
-| n_loops | Number of times to repeat the video. If omitted, defaults to 1 (no repeat). | int | No |
+| duration | Target duration (in seconds) to loop the video to. Either duration or n_loops must be provided. | float | No |
+| n_loops | Number of times to repeat the video. Either n_loops or duration must be provided. | int | No |
 
 ### Outputs
 
