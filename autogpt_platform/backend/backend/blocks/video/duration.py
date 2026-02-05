@@ -62,9 +62,16 @@ class MediaDurationBlock(Block):
 
         # 2) Strip chapters to avoid MoviePy crash, then load the clip
         strip_chapters_inplace(media_abspath)
-        if input_data.is_video:
-            clip = VideoFileClip(media_abspath)
-        else:
-            clip = AudioFileClip(media_abspath)
+        clip = None
+        try:
+            if input_data.is_video:
+                clip = VideoFileClip(media_abspath)
+            else:
+                clip = AudioFileClip(media_abspath)
 
-        yield "duration", clip.duration
+            duration = clip.duration
+        finally:
+            if clip:
+                clip.close()
+
+        yield "duration", duration

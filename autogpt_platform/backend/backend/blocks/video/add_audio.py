@@ -78,20 +78,33 @@ class AddAudioToVideoBlock(Block):
 
         # 2) Load video + audio with moviepy
         strip_chapters_inplace(video_abspath)
-        video_clip = VideoFileClip(video_abspath)
-        audio_clip = AudioFileClip(audio_abspath)
-        # Optionally scale volume
-        if input_data.volume != 1.0:
-            audio_clip = audio_clip.with_volume_scaled(input_data.volume)
+        video_clip = None
+        audio_clip = None
+        final_clip = None
+        try:
+            video_clip = VideoFileClip(video_abspath)
+            audio_clip = AudioFileClip(audio_abspath)
+            # Optionally scale volume
+            if input_data.volume != 1.0:
+                audio_clip = audio_clip.with_volume_scaled(input_data.volume)
 
-        # 3) Attach the new audio track
-        final_clip = video_clip.with_audio(audio_clip)
+            # 3) Attach the new audio track
+            final_clip = video_clip.with_audio(audio_clip)
 
-        # 4) Write to output file
-        source = extract_source_name(local_video_path)
-        output_filename = MediaFileType(f"{node_exec_id}_with_audio_{source}.mp4")
-        output_abspath = os.path.join(abs_temp_dir, output_filename)
-        final_clip.write_videofile(output_abspath, codec="libx264", audio_codec="aac")
+            # 4) Write to output file
+            source = extract_source_name(local_video_path)
+            output_filename = MediaFileType(f"{node_exec_id}_with_audio_{source}.mp4")
+            output_abspath = os.path.join(abs_temp_dir, output_filename)
+            final_clip.write_videofile(
+                output_abspath, codec="libx264", audio_codec="aac"
+            )
+        finally:
+            if final_clip:
+                final_clip.close()
+            if audio_clip:
+                audio_clip.close()
+            if video_clip:
+                video_clip.close()
 
         # 5) Return output - for_block_output returns workspace:// if available, else data URI
         video_out = await store_media_file(

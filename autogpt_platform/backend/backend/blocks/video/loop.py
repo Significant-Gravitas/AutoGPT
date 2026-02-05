@@ -72,27 +72,36 @@ class LoopVideoBlock(Block):
 
         # 2) Load the clip
         strip_chapters_inplace(input_abspath)
-        clip = VideoFileClip(input_abspath)
+        clip = None
+        looped_clip = None
+        try:
+            clip = VideoFileClip(input_abspath)
 
-        # 3) Apply the loop effect
-        looped_clip = clip
-        if input_data.duration:
-            # Loop until we reach the specified duration
-            looped_clip = looped_clip.with_effects([Loop(duration=input_data.duration)])
-        elif input_data.n_loops:
-            looped_clip = looped_clip.with_effects([Loop(n=input_data.n_loops)])
-        else:
-            raise ValueError("Either 'duration' or 'n_loops' must be provided.")
+            # 3) Apply the loop effect
+            if input_data.duration:
+                # Loop until we reach the specified duration
+                looped_clip = clip.with_effects([Loop(duration=input_data.duration)])
+            elif input_data.n_loops:
+                looped_clip = clip.with_effects([Loop(n=input_data.n_loops)])
+            else:
+                raise ValueError("Either 'duration' or 'n_loops' must be provided.")
 
-        assert isinstance(looped_clip, VideoFileClip)
+            assert isinstance(looped_clip, VideoFileClip)
 
-        # 4) Save the looped output
-        source = extract_source_name(local_video_path)
-        output_filename = MediaFileType(f"{node_exec_id}_looped_{source}.mp4")
-        output_abspath = get_exec_file_path(graph_exec_id, output_filename)
+            # 4) Save the looped output
+            source = extract_source_name(local_video_path)
+            output_filename = MediaFileType(f"{node_exec_id}_looped_{source}.mp4")
+            output_abspath = get_exec_file_path(graph_exec_id, output_filename)
 
-        looped_clip = looped_clip.with_audio(clip.audio)
-        looped_clip.write_videofile(output_abspath, codec="libx264", audio_codec="aac")
+            looped_clip = looped_clip.with_audio(clip.audio)
+            looped_clip.write_videofile(
+                output_abspath, codec="libx264", audio_codec="aac"
+            )
+        finally:
+            if looped_clip:
+                looped_clip.close()
+            if clip:
+                clip.close()
 
         # Return output - for_block_output returns workspace:// if available, else data URI
         video_out = await store_media_file(
