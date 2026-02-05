@@ -546,6 +546,8 @@ async def get_graph_executions_count(
     created_time_lte: Optional[datetime] = None,
     started_time_gte: Optional[datetime] = None,
     started_time_lte: Optional[datetime] = None,
+    updated_time_gte: Optional[datetime] = None,
+    updated_time_lte: Optional[datetime] = None,
 ) -> int:
     """
     Get count of graph executions with optional filters.
@@ -558,6 +560,8 @@ async def get_graph_executions_count(
         created_time_lte: Optional maximum creation time
         started_time_gte: Optional minimum start time (when execution started running)
         started_time_lte: Optional maximum start time (when execution started running)
+        updated_time_gte: Optional minimum update time
+        updated_time_lte: Optional maximum update time
 
     Returns:
         Count of matching graph executions
@@ -582,6 +586,12 @@ async def get_graph_executions_count(
         where_filter["startedAt"] = {
             "gte": started_time_gte or datetime.min.replace(tzinfo=timezone.utc),
             "lte": started_time_lte or datetime.max.replace(tzinfo=timezone.utc),
+        }
+
+    if updated_time_gte or updated_time_lte:
+        where_filter["updatedAt"] = {
+            "gte": updated_time_gte or datetime.min.replace(tzinfo=timezone.utc),
+            "lte": updated_time_lte or datetime.max.replace(tzinfo=timezone.utc),
         }
 
     if statuses:
