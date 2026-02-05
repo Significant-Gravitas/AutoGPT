@@ -673,7 +673,9 @@ async def save_agent_to_library(
         Tuple of (created Graph, LibraryAgent)
     """
     graph = json_to_graph(agent_json)
-    return await library_db.save_graph(graph, user_id, is_update)
+    if is_update:
+        return await library_db.update_graph_in_library(graph, user_id)
+    return await library_db.create_graph_in_library(graph, user_id)
 
 
 def graph_to_json(graph: Graph) -> dict[str, Any]:

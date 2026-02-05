@@ -540,53 +540,60 @@ async def update_agent_version_in_library(
     return library_model.LibraryAgent.from_db(lib)
 
 
-async def save_graph(
-    graph: graph_db.Graph | graph_db.GraphModel,
+async def create_graph_in_library(
+    graph: graph_db.Graph,
     user_id: str,
-    is_update: bool = False,
 ) -> tuple[graph_db.GraphModel, library_model.LibraryAgent]:
-    """
-    Save a graph and manage its library agent entry.
-
-    Args:
-        graph: Graph or GraphModel to save. If Graph, will be converted and IDs reassigned.
-        user_id: The user ID
-        is_update: If True, creates a new version of existing graph. If False, creates new graph.
-
-    Returns:
-        Tuple of (created GraphModel, LibraryAgent)
-    """
-    existing_library_agent = None
-    current_active_version = None
-
-    if is_update and graph.id:
-        existing_library_agent = await get_library_agent_by_graph_id(user_id, graph.id)
-        if existing_library_agent:
-            existing_versions = await graph_db.get_graph_all_versions(graph.id, user_id)
-            if existing_versions:
-                current_active_version = next(
-                    (v for v in existing_versions if v.is_active), None
-                )
-                graph.version = max(v.version for v in existing_versions) + 1
-    else:
-        graph.version = 1
-
-    if isinstance(graph, graph_db.Graph):
-        graph_model = graph_db.make_graph_model(graph, user_id)
-        graph_model.reassign_ids(
-            user_id=user_id, reassign_graph_id=(existing_library_agent is None)
-        )
-    else:
-        graph_model = graph
+    """Create a new graph and add it to the user's library."""
+    graph.version = 1
+    graph_model = graph_db.make_graph_model(graph, user_id)
+    graph_model.reassign_ids(user_id=user_id, reassign_graph_id=True)
 
     created_graph = await graph_db.create_graph(graph_model, user_id)
 
+    library_agents = await create_library_agent(
+        graph=created_graph,
+        user_id=user_id,
+        sensitive_action_safe_mode=True,
+        create_library_agents_for_sub_graphs=False,
+    )
+
+    if created_graph.is_active:
+        created_graph = await on_graph_activate(created_graph, user_id=user_id)
+
+    return created_graph, library_agents[0]
+
+
+async def update_graph_in_library(
+    graph: graph_db.Graph,
+    user_id: str,
+) -> tuple[graph_db.GraphModel, library_model.LibraryAgent]:
+    """Create a new version of an existing graph and update the library entry."""
+    existing_versions = await graph_db.get_graph_all_versions(graph.id, user_id)
+    current_active_version = (
+        next((v for v in existing_versions if v.is_active), None)
+        if existing_versions
+        else None
+    )
+    graph.version = (
+        max(v.version for v in existing_versions) + 1 if existing_versions else 1
+    )
+
+    graph_model = graph_db.make_graph_model(graph, user_id)
+    graph_model.reassign_ids(user_id=user_id, reassign_graph_id=False)
+
+    created_graph = await graph_db.create_graph(graph_model, user_id)
+
+    # Library agent handling: update existing or create new
+    existing_library_agent = await get_library_agent_by_graph_id(
+        user_id, created_graph.id
+    )
+
     if existing_library_agent:
-        # Update flow: activate -> set_active_version -> deactivate old -> update library agent
+        library_agent = await update_library_agent_version_and_settings(
+            user_id, created_graph
+        )
         if created_graph.is_active:
-            library_agent = await update_library_agent_version_and_settings(
-                user_id, created_graph
-            )
             created_graph = await on_graph_activate(created_graph, user_id=user_id)
             await graph_db.set_graph_active_version(
                 graph_id=created_graph.id,
@@ -595,12 +602,7 @@ async def save_graph(
             )
             if current_active_version:
                 await on_graph_deactivate(current_active_version, user_id=user_id)
-        else:
-            library_agent = await update_library_agent_version_and_settings(
-                user_id, created_graph
-            )
     else:
-        # Create flow: create_library_agent -> on_graph_activate (no set_graph_active_version)
         library_agents = await create_library_agent(
             graph=created_graph,
             user_id=user_id,

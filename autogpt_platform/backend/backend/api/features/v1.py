@@ -780,18 +780,18 @@ async def create_new_graph(
     create_graph: CreateGraph,
     user_id: Annotated[str, Security(get_user_id)],
 ) -> graph_db.GraphModel:
-    graph_model = graph_db.make_graph_model(create_graph.graph, user_id)
-    graph_model.reassign_ids(user_id=user_id, reassign_graph_id=True)
-    graph_model.validate_graph(for_run=False)
+    graph = graph_db.make_graph_model(create_graph.graph, user_id)
+    graph.reassign_ids(user_id=user_id, reassign_graph_id=True)
+    graph.validate_graph(for_run=False)
 
-    created_graph, _ = await library_db.save_graph(
-        graph_model, user_id, is_update=False
-    )
+    await graph_db.create_graph(graph, user_id=user_id)
+    await library_db.create_library_agent(graph, user_id)
+    activated_graph = await on_graph_activate(graph, user_id=user_id)
 
     if create_graph.source == "builder":
         await complete_onboarding_step(user_id, OnboardingStep.BUILDER_SAVE_AGENT)
 
-    return created_graph
+    return activated_graph
 
 
 @v1_router.delete(
@@ -822,7 +822,6 @@ async def update_graph(
     graph: graph_db.Graph,
     user_id: Annotated[str, Security(get_user_id)],
 ) -> graph_db.GraphModel:
-    # Sanity check
     if graph.id and graph.id != graph_id:
         raise HTTPException(400, detail="Graph ID does not match ID in URI")
 
@@ -830,22 +829,33 @@ async def update_graph(
     if not existing_versions:
         raise HTTPException(404, detail=f"Graph #{graph_id} not found")
 
-    graph_model = graph_db.make_graph_model(graph, user_id)
-    graph_model.reassign_ids(user_id=user_id, reassign_graph_id=False)
-    graph_model.validate_graph(for_run=False)
+    graph.version = max(g.version for g in existing_versions) + 1
+    current_active_version = next((v for v in existing_versions if v.is_active), None)
 
-    new_graph_version, _ = await library_db.save_graph(
-        graph_model, user_id, is_update=True
-    )
+    graph = graph_db.make_graph_model(graph, user_id)
+    graph.reassign_ids(user_id=user_id, reassign_graph_id=False)
+    graph.validate_graph(for_run=False)
 
-    # Fetch new graph version *with sub-graphs* (needed for credentials input schema)
+    new_graph_version = await graph_db.create_graph(graph, user_id=user_id)
+
+    if new_graph_version.is_active:
+        await library_db.update_library_agent_version_and_settings(
+            user_id, new_graph_version
+        )
+        new_graph_version = await on_graph_activate(new_graph_version, user_id=user_id)
+        await graph_db.set_graph_active_version(
+            graph_id=graph_id, version=new_graph_version.version, user_id=user_id
+        )
+        if current_active_version:
+            await on_graph_deactivate(current_active_version, user_id=user_id)
+
     new_graph_version_with_subgraphs = await graph_db.get_graph(
         graph_id,
         new_graph_version.version,
         user_id=user_id,
         include_subgraphs=True,
     )
-    assert new_graph_version_with_subgraphs  # make type checker happy
+    assert new_graph_version_with_subgraphs
     return new_graph_version_with_subgraphs
 
 
