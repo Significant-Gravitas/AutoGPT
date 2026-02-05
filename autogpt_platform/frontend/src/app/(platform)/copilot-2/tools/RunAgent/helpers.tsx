@@ -1,9 +1,5 @@
 import type { ToolUIPart } from "ai";
-import {
-  CheckCircleIcon,
-  CircleNotchIcon,
-  XCircleIcon,
-} from "@phosphor-icons/react";
+import { PlayIcon } from "@phosphor-icons/react";
 import type { AgentDetailsResponse } from "@/app/api/__generated__/models/agentDetailsResponse";
 import type { ErrorResponse } from "@/app/api/__generated__/models/errorResponse";
 import type { ExecutionStartedResponse } from "@/app/api/__generated__/models/executionStartedResponse";
@@ -128,24 +124,29 @@ export function getAnimationText(part: {
 }): string {
   const input = part.input as RunAgentInput | undefined;
   const agentIdentifier = getAgentIdentifierText(input);
-  const mode = getExecutionModeText(input);
+  const isSchedule = Boolean(
+    input?.schedule_name?.trim() || input?.cron?.trim(),
+  );
+  const actionPhrase = isSchedule
+    ? "Scheduling the agent to run"
+    : "Running the agent";
+  const identifierText = agentIdentifier ? ` "${agentIdentifier}"` : "";
 
   switch (part.state) {
     case "input-streaming":
-      return "Preparing to run agent";
     case "input-available":
-      return agentIdentifier ? `${mode}: ${agentIdentifier}` : "Running agent";
+      return `${actionPhrase}${identifierText}`;
     case "output-available": {
       const output = parseOutput(part.output);
-      if (!output) return "Agent run updated";
+      if (!output) return `${actionPhrase}${identifierText}`;
       if (isRunAgentExecutionStartedOutput(output)) {
-        return `Started: ${output.graph_name}`;
+        return `Started "${output.graph_name}"`;
       }
       if (isRunAgentAgentDetailsOutput(output)) {
-        return `Agent inputs: ${output.agent.name}`;
+        return `Agent inputs needed for "${output.agent.name}"`;
       }
       if (isRunAgentSetupRequirementsOutput(output)) {
-        return `Needs setup: ${output.setup_info.agent_name}`;
+        return `Setup needed for "${output.setup_info.agent_name}"`;
       }
       if (isRunAgentNeedLoginOutput(output))
         return "Sign in required to run agent";
@@ -154,27 +155,30 @@ export function getAnimationText(part: {
     case "output-error":
       return "Error running agent";
     default:
-      return "Processing";
+      return actionPhrase;
   }
 }
 
-export function StateIcon({ state }: { state: ToolUIPart["state"] }) {
-  switch (state) {
-    case "input-streaming":
-    case "input-available":
-      return (
-        <CircleNotchIcon
-          className="h-4 w-4 animate-spin text-muted-foreground"
-          weight="bold"
-        />
-      );
-    case "output-available":
-      return <CheckCircleIcon className="h-4 w-4 text-green-500" />;
-    case "output-error":
-      return <XCircleIcon className="h-4 w-4 text-red-500" />;
-    default:
-      return null;
-  }
+export function ToolIcon({
+  isStreaming,
+  isError,
+}: {
+  isStreaming?: boolean;
+  isError?: boolean;
+}) {
+  return (
+    <PlayIcon
+      size={14}
+      weight="regular"
+      className={
+        isError
+          ? "text-red-500"
+          : isStreaming
+            ? "text-neutral-500"
+            : "text-neutral-400"
+      }
+    />
+  );
 }
 
 export function formatMaybeJson(value: unknown): string {

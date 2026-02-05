@@ -1,8 +1,7 @@
 import { ToolUIPart } from "ai";
 import {
-  CheckCircleIcon,
-  CircleNotchIcon,
-  XCircleIcon,
+  MagnifyingGlassIcon,
+  SquaresFourIcon,
 } from "@phosphor-icons/react";
 import type { AgentInfo } from "@/app/api/__generated__/models/agentInfo";
 import type { AgentsFoundResponse } from "@/app/api/__generated__/models/agentsFoundResponse";
@@ -99,52 +98,45 @@ export function getAnimationText(part: {
   input?: unknown;
   output?: unknown;
 }): string {
-  const { label, source } = getSourceLabelFromToolType(part.type);
+  const { source } = getSourceLabelFromToolType(part.type);
+  const query = (part.input as FindAgentInput | undefined)?.query?.trim();
+
+  // Action phrase matching legacy ToolCallMessage
+  const actionPhrase =
+    source === "library"
+      ? "Looking for library agents"
+      : "Looking for agents in the marketplace";
+
+  const queryText = query ? ` matching "${query}"` : "";
+
   switch (part.state) {
     case "input-streaming":
-      return `Searching ${label.toLowerCase()} agents for you`;
-
-    case "input-available": {
-      const query = (part.input as FindAgentInput | undefined)?.query?.trim();
-      if (query) {
-        return source === "library"
-          ? `Finding library agents matching "${query}"`
-          : `Finding marketplace agents matching "${query}"`;
-      }
-      return source === "library" ? "Finding library agents" : "Finding agents";
-    }
+    case "input-available":
+      return `${actionPhrase}${queryText}`;
 
     case "output-available": {
       const output = parseOutput(part.output);
-      const query = (part.input as FindAgentInput | undefined)?.query?.trim();
-      const scope = source === "library" ? "in your library" : "in marketplace";
       if (!output) {
-        return query ? `Found agents ${scope} for "${query}"` : "Found agents";
+        return `${actionPhrase}${queryText}`;
       }
       if (isNoResultsOutput(output)) {
-        return query
-          ? `No agents found ${scope} for "${query}"`
-          : `No agents found ${scope}`;
+        return `No agents found${queryText}`;
       }
       if (isAgentsFoundOutput(output)) {
         const count = output.count ?? output.agents?.length ?? 0;
-        const countText = `Found ${count} agent${count === 1 ? "" : "s"}`;
-        if (query) return `${countText} ${scope} for "${query}"`;
-        return `${countText} ${scope}`;
+        return `Found ${count} agent${count === 1 ? "" : "s"}${queryText}`;
       }
       if (isErrorOutput(output)) {
-        return `Error finding agents ${scope}`;
+        return `Error finding agents${queryText}`;
       }
-      return `Found agents ${scope}`;
+      return `${actionPhrase}${queryText}`;
     }
 
     case "output-error":
-      return source === "library"
-        ? "Error finding agents in your library"
-        : "Error finding agents in marketplace";
+      return `Error finding agents${queryText}`;
 
     default:
-      return "Processing";
+      return actionPhrase;
   }
 }
 
@@ -158,21 +150,30 @@ export function getAgentHref(agent: AgentInfo): string | null {
   return `/marketplace/agent/${encodeURIComponent(creator)}/${encodeURIComponent(slug)}`;
 }
 
-export function StateIcon({ state }: { state: ToolUIPart["state"] }) {
-  switch (state) {
-    case "input-streaming":
-    case "input-available":
-      return (
-        <CircleNotchIcon
-          className="h-4 w-4 animate-spin text-muted-foreground"
-          weight="bold"
-        />
-      );
-    case "output-available":
-      return <CheckCircleIcon className="h-4 w-4 text-green-500" />;
-    case "output-error":
-      return <XCircleIcon className="h-4 w-4 text-red-500" />;
-    default:
-      return null;
-  }
+export function ToolIcon({
+  toolType,
+  isStreaming,
+  isError,
+}: {
+  toolType?: FindAgentsToolType;
+  isStreaming?: boolean;
+  isError?: boolean;
+}) {
+  const { source } = getSourceLabelFromToolType(toolType);
+  const IconComponent =
+    source === "library" ? MagnifyingGlassIcon : SquaresFourIcon;
+
+  return (
+    <IconComponent
+      size={14}
+      weight="regular"
+      className={
+        isError
+          ? "text-red-500"
+          : isStreaming
+            ? "text-neutral-500"
+            : "text-neutral-400"
+      }
+    />
+  );
 }

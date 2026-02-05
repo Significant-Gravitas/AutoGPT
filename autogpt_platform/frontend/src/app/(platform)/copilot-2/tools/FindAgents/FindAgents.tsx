@@ -9,7 +9,8 @@ import {
   getFindAgentsOutput,
   getSourceLabelFromToolType,
   isAgentsFoundOutput,
-  StateIcon,
+  isErrorOutput,
+  ToolIcon,
 } from "./helpers";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
 
@@ -28,6 +29,10 @@ interface Props {
 export function FindAgentsTool({ part }: Props) {
   const text = getAnimationText(part);
   const output = getFindAgentsOutput(part);
+  const isStreaming =
+    part.state === "input-streaming" || part.state === "input-available";
+  const isError =
+    part.state === "output-error" || (!!output && isErrorOutput(output));
 
   const query =
     typeof part.input === "object" && part.input !== null
@@ -59,8 +64,11 @@ export function FindAgentsTool({ part }: Props) {
   return (
     <div className="py-2">
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <StateIcon state={part.state} />
-        <MorphingTextAnimation text={text} />
+        <ToolIcon toolType={part.type} isStreaming={isStreaming} isError={isError} />
+        <MorphingTextAnimation
+          text={text}
+          className={isError ? "text-red-500" : undefined}
+        />
       </div>
 
       {hasAgents && agentsFoundOutput && (

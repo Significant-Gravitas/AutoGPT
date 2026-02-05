@@ -110,7 +110,7 @@ export function ChatSidebar() {
             <Text variant="h3" size="body-medium">
               Your chats
             </Text>
-            <div className="relative left-5">
+            <div className="relative left-6">
               <SidebarTrigger />
             </div>
           </motion.div>

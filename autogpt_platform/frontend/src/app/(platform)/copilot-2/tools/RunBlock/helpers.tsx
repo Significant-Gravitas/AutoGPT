@@ -1,9 +1,5 @@
 import type { ToolUIPart } from "ai";
-import {
-  CheckCircleIcon,
-  CircleNotchIcon,
-  XCircleIcon,
-} from "@phosphor-icons/react";
+import { PlayIcon } from "@phosphor-icons/react";
 import type { BlockOutputResponse } from "@/app/api/__generated__/models/blockOutputResponse";
 import type { ErrorResponse } from "@/app/api/__generated__/models/errorResponse";
 import { ResponseType } from "@/app/api/__generated__/models/responseType";
@@ -89,47 +85,50 @@ export function getAnimationText(part: {
   output?: unknown;
 }): string {
   const input = part.input as RunBlockInput | undefined;
-  const blockLabel = getBlockLabel(input);
+  const blockId = input?.block_id?.trim();
+  const blockText = blockId ? ` "${blockId}"` : "";
 
   switch (part.state) {
     case "input-streaming":
-      return "Preparing to run block";
     case "input-available":
-      return blockLabel ? `Running ${blockLabel}` : "Running block";
+      return `Running the block${blockText}`;
     case "output-available": {
       const output = parseOutput(part.output);
-      if (!output) return "Block run updated";
+      if (!output) return `Running the block${blockText}`;
       if (isRunBlockBlockOutput(output))
-        return `Block ran: ${output.block_name}`;
+        return `Ran "${output.block_name}"`;
       if (isRunBlockSetupRequirementsOutput(output)) {
-        return `Needs setup: ${output.setup_info.agent_name}`;
+        return `Setup needed for "${output.setup_info.agent_name}"`;
       }
       return "Error running block";
     }
     case "output-error":
       return "Error running block";
     default:
-      return "Processing";
+      return "Running the block";
   }
 }
 
-export function StateIcon({ state }: { state: ToolUIPart["state"] }) {
-  switch (state) {
-    case "input-streaming":
-    case "input-available":
-      return (
-        <CircleNotchIcon
-          className="h-4 w-4 animate-spin text-muted-foreground"
-          weight="bold"
-        />
-      );
-    case "output-available":
-      return <CheckCircleIcon className="h-4 w-4 text-green-500" />;
-    case "output-error":
-      return <XCircleIcon className="h-4 w-4 text-red-500" />;
-    default:
-      return null;
-  }
+export function ToolIcon({
+  isStreaming,
+  isError,
+}: {
+  isStreaming?: boolean;
+  isError?: boolean;
+}) {
+  return (
+    <PlayIcon
+      size={14}
+      weight="regular"
+      className={
+        isError
+          ? "text-red-500"
+          : isStreaming
+            ? "text-neutral-500"
+            : "text-neutral-400"
+      }
+    />
+  );
 }
 
 export function formatMaybeJson(value: unknown): string {

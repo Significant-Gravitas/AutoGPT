@@ -1,9 +1,5 @@
 import { ToolUIPart } from "ai";
-import {
-  CheckCircleIcon,
-  CircleNotchIcon,
-  XCircleIcon,
-} from "@phosphor-icons/react";
+import { FileMagnifyingGlassIcon, FileTextIcon } from "@phosphor-icons/react";
 import type { DocPageResponse } from "@/app/api/__generated__/models/docPageResponse";
 import type { DocSearchResultsResponse } from "@/app/api/__generated__/models/docSearchResultsResponse";
 import type { ErrorResponse } from "@/app/api/__generated__/models/errorResponse";
@@ -123,51 +119,42 @@ export function getAnimationText(part: {
 }): string {
   switch (part.type) {
     case "tool-search_docs": {
+      const query = (part.input as SearchDocsInput | undefined)?.query?.trim();
+      const queryText = query ? ` for "${query}"` : "";
+
       switch (part.state) {
         case "input-streaming":
-          return "Searching docs for you";
-        case "input-available": {
-          const query = (
-            part.input as SearchDocsInput | undefined
-          )?.query?.trim();
-          return query ? `Searching docs for "${query}"` : "Searching docs";
-        }
+        case "input-available":
+          return `Searching documentation${queryText}`;
         case "output-available": {
           const output = parseOutput(part.output);
-          const query = (
-            part.input as SearchDocsInput | undefined
-          )?.query?.trim();
-          if (!output) return "Found documentation";
+          if (!output) return `Searching documentation${queryText}`;
           if (isDocSearchResultsOutput(output)) {
             const count = output.count ?? output.results.length;
-            return query
-              ? `Found ${count} doc result${count === 1 ? "" : "s"} for "${query}"`
-              : `Found ${count} doc result${count === 1 ? "" : "s"}`;
+            return `Found ${count} result${count === 1 ? "" : "s"}${queryText}`;
           }
           if (isNoResultsOutput(output)) {
-            return query ? `No docs found for "${query}"` : "No docs found";
+            return `No results found${queryText}`;
           }
-          return "Error searching docs";
+          return `Error searching documentation${queryText}`;
         }
         case "output-error":
-          return "Error searching docs";
+          return `Error searching documentation${queryText}`;
         default:
-          return "Processing";
+          return "Searching documentation";
       }
     }
     case "tool-get_doc_page": {
+      const path = (part.input as GetDocPageInput | undefined)?.path?.trim();
+      const pathText = path ? ` "${path}"` : "";
+
       switch (part.state) {
         case "input-streaming":
-          return "Loading documentation page";
-        case "input-available": {
-          const path = (
-            part.input as GetDocPageInput | undefined
-          )?.path?.trim();
-          return path ? `Loading "${path}"` : "Loading documentation page";
-        }
+        case "input-available":
+          return `Loading documentation page${pathText}`;
         case "output-available": {
           const output = parseOutput(part.output);
-          if (!output) return "Loaded documentation page";
+          if (!output) return `Loading documentation page${pathText}`;
           if (isDocPageOutput(output)) return `Loaded "${output.title}"`;
           if (isNoResultsOutput(output)) return "Documentation page not found";
           return "Error loading documentation page";
@@ -175,7 +162,7 @@ export function getAnimationText(part: {
         case "output-error":
           return "Error loading documentation page";
         default:
-          return "Processing";
+          return "Loading documentation page";
       }
     }
   }
@@ -183,23 +170,31 @@ export function getAnimationText(part: {
   return "Processing";
 }
 
-export function StateIcon({ state }: { state: ToolUIPart["state"] }) {
-  switch (state) {
-    case "input-streaming":
-    case "input-available":
-      return (
-        <CircleNotchIcon
-          className="h-4 w-4 animate-spin text-muted-foreground"
-          weight="bold"
-        />
-      );
-    case "output-available":
-      return <CheckCircleIcon className="h-4 w-4 text-green-500" />;
-    case "output-error":
-      return <XCircleIcon className="h-4 w-4 text-red-500" />;
-    default:
-      return null;
-  }
+export function ToolIcon({
+  toolType,
+  isStreaming,
+  isError,
+}: {
+  toolType: DocsToolType;
+  isStreaming?: boolean;
+  isError?: boolean;
+}) {
+  const IconComponent =
+    toolType === "tool-get_doc_page" ? FileTextIcon : FileMagnifyingGlassIcon;
+
+  return (
+    <IconComponent
+      size={14}
+      weight="regular"
+      className={
+        isError
+          ? "text-red-500"
+          : isStreaming
+            ? "text-neutral-500"
+            : "text-neutral-400"
+      }
+    />
+  );
 }
 
 export function toDocsUrl(path: string): string {

@@ -20,7 +20,7 @@ import {
   isOperationInProgressOutput,
   isOperationPendingOutput,
   isOperationStartedOutput,
-  StateIcon,
+  ToolIcon,
   truncateText,
   type CreateAgentToolOutput,
 } from "./helpers";
@@ -73,8 +73,12 @@ function getAccordionMeta(output: CreateAgentToolOutput): {
 export function CreateAgentTool({ part }: Props) {
   const text = getAnimationText(part);
   const { onSend } = useCopilotChatActions();
+  const isStreaming =
+    part.state === "input-streaming" || part.state === "input-available";
 
   const output = getCreateAgentToolOutput(part);
+  const isError =
+    part.state === "output-error" || (!!output && isErrorOutput(output));
   const hasExpandableContent =
     part.state === "output-available" &&
     !!output &&
@@ -99,8 +103,11 @@ export function CreateAgentTool({ part }: Props) {
   return (
     <div className="py-2">
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <StateIcon state={part.state} />
-        <MorphingTextAnimation text={text} />
+        <ToolIcon isStreaming={isStreaming} isError={isError} />
+        <MorphingTextAnimation
+          text={text}
+          className={isError ? "text-red-500" : undefined}
+        />
       </div>
 
       {hasExpandableContent && output && (

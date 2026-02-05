@@ -15,7 +15,7 @@ import {
   isRunBlockBlockOutput,
   isRunBlockErrorOutput,
   isRunBlockSetupRequirementsOutput,
-  StateIcon,
+  ToolIcon,
   type RunBlockToolOutput,
 } from "./helpers";
 
@@ -190,8 +190,12 @@ function coerceExpectedInputs(rawInputs: unknown): Array<{
 export function RunBlockTool({ part }: Props) {
   const text = getAnimationText(part);
   const { onSend } = useCopilotChatActions();
+  const isStreaming =
+    part.state === "input-streaming" || part.state === "input-available";
 
   const output = getRunBlockToolOutput(part);
+  const isError =
+    part.state === "output-error" || (!!output && isRunBlockErrorOutput(output));
   const hasExpandableContent =
     part.state === "output-available" &&
     !!output &&
@@ -208,8 +212,11 @@ export function RunBlockTool({ part }: Props) {
   return (
     <div className="py-2">
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <StateIcon state={part.state} />
-        <MorphingTextAnimation text={text} />
+        <ToolIcon isStreaming={isStreaming} isError={isError} />
+        <MorphingTextAnimation
+          text={text}
+          className={isError ? "text-red-500" : undefined}
+        />
       </div>
 
       {hasExpandableContent && output && (

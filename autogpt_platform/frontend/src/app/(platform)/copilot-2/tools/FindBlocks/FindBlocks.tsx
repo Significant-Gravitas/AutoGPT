@@ -1,7 +1,7 @@
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
 import type { BlockListResponse } from "@/app/api/__generated__/models/blockListResponse";
 import { ToolUIPart } from "ai";
-import { getAnimationText, StateIcon } from "./helpers";
+import { getAnimationText, ToolIcon } from "./helpers";
 
 export interface FindBlockInput {
   query: string;
@@ -25,11 +25,17 @@ interface Props {
 
 export function FindBlocksTool({ part }: Props) {
   const text = getAnimationText(part);
+  const isStreaming =
+    part.state === "input-streaming" || part.state === "input-available";
+  const isError = part.state === "output-error";
 
   return (
     <div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
-      <StateIcon state={part.state} />
-      <MorphingTextAnimation text={text} />
+      <ToolIcon isStreaming={isStreaming} isError={isError} />
+      <MorphingTextAnimation
+        text={text}
+        className={isError ? "text-red-500" : undefined}
+      />
     </div>
   );
 }

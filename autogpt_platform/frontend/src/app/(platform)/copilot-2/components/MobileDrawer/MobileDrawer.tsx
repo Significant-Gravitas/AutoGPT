@@ -57,7 +57,7 @@ export function MobileDrawer({
       <Drawer.Portal>
         <Drawer.Overlay className="fixed inset-0 z-[60] bg-black/10 backdrop-blur-sm" />
         <Drawer.Content className="fixed left-0 top-0 z-[70] flex h-full w-80 flex-col border-r border-zinc-200 bg-zinc-50">
-          <div className="shrink-0 border-b border-zinc-200 p-4">
+          <div className="shrink-0 border-b border-zinc-200 px-4 py-2">
             <div className="flex items-center justify-between">
               <Drawer.Title className="text-lg font-semibold text-zinc-800">
                 Your chats
@@ -68,7 +68,7 @@ export function MobileDrawer({
                 aria-label="Close sessions"
                 onClick={onClose}
               >
-                <X width="1.25rem" height="1.25rem" />
+                <X width="1rem" height="1rem" />
               </Button>
             </div>
           </div>

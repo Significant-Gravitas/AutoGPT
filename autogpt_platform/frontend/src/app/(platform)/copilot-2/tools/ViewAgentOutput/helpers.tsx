@@ -1,9 +1,5 @@
 import type { ToolUIPart } from "ai";
-import {
-  CheckCircleIcon,
-  CircleNotchIcon,
-  XCircleIcon,
-} from "@phosphor-icons/react";
+import { EyeIcon } from "@phosphor-icons/react";
 import type { AgentOutputResponse } from "@/app/api/__generated__/models/agentOutputResponse";
 import type { ErrorResponse } from "@/app/api/__generated__/models/errorResponse";
 import type { NoResultsResponse } from "@/app/api/__generated__/models/noResultsResponse";
@@ -102,19 +98,19 @@ export function getAnimationText(part: {
 }): string {
   const input = part.input as ViewAgentOutputInput | undefined;
   const agent = getAgentIdentifierText(input);
+  const agentText = agent ? ` "${agent}"` : "";
 
   switch (part.state) {
     case "input-streaming":
-      return "Looking up agent outputs";
     case "input-available":
-      return agent ? `Loading outputs: ${agent}` : "Loading agent outputs";
+      return `Retrieving agent output${agentText}`;
     case "output-available": {
       const output = parseOutput(part.output);
-      if (!output) return "Loaded agent outputs";
+      if (!output) return `Retrieving agent output${agentText}`;
       if (isAgentOutputResponse(output)) {
         if (output.execution)
-          return `Loaded output (${output.execution.status})`;
-        return "Loaded agent outputs";
+          return `Retrieved output (${output.execution.status})`;
+        return "Retrieved agent output";
       }
       if (isNoResultsResponse(output)) return "No outputs found";
       return "Error loading agent output";
@@ -122,27 +118,30 @@ export function getAnimationText(part: {
     case "output-error":
       return "Error loading agent output";
     default:
-      return "Processing";
+      return "Retrieving agent output";
   }
 }
 
-export function StateIcon({ state }: { state: ToolUIPart["state"] }) {
-  switch (state) {
-    case "input-streaming":
-    case "input-available":
-      return (
-        <CircleNotchIcon
-          className="h-4 w-4 animate-spin text-muted-foreground"
-          weight="bold"
-        />
-      );
-    case "output-available":
-      return <CheckCircleIcon className="h-4 w-4 text-green-500" />;
-    case "output-error":
-      return <XCircleIcon className="h-4 w-4 text-red-500" />;
-    default:
-      return null;
-  }
+export function ToolIcon({
+  isStreaming,
+  isError,
+}: {
+  isStreaming?: boolean;
+  isError?: boolean;
+}) {
+  return (
+    <EyeIcon
+      size={14}
+      weight="regular"
+      className={
+        isError
+          ? "text-red-500"
+          : isStreaming
+            ? "text-neutral-500"
+            : "text-neutral-400"
+      }
+    />
+  );
 }
 
 export function formatMaybeJson(value: unknown): string {

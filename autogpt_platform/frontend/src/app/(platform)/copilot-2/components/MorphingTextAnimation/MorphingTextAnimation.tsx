@@ -1,14 +1,16 @@
+import { cn } from "@/lib/utils";
 import { AnimatePresence, motion } from "framer-motion";
 
 interface Props {
   text: string;
+  className?: string;
 }
 
-export function MorphingTextAnimation({ text }: Props) {
+export function MorphingTextAnimation({ text, className }: Props) {
   const letters = text.split("");
 
   return (
-    <div>
+    <div className={cn(className)}>
       <AnimatePresence mode="popLayout" initial={false}>
         <motion.div key={text} className="whitespace-nowrap">
           <motion.span className="inline-flex overflow-hidden">

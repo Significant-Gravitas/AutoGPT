@@ -1,9 +1,9 @@
 "use client";
 
+import { cn } from "@/lib/utils";
 import { CaretDownIcon } from "@phosphor-icons/react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useId } from "react";
-import { cn } from "@/lib/utils";
 import { useToolAccordion } from "./useToolAccordion";
 
 interface Props {
@@ -36,12 +36,7 @@ export function ToolAccordion({
   });
 
   return (
-    <div
-      className={cn(
-        "mt-2 w-full rounded-2xl border bg-background px-3 py-2",
-        className,
-      )}
-    >
+    <div className={cn("mt-2 w-full rounded-lg border px-3 py-2", className)}>
       <button
         type="button"
         aria-expanded={isExpanded}
@@ -50,7 +45,7 @@ export function ToolAccordion({
         className="flex w-full items-center justify-between gap-3 py-1 text-left"
       >
         <div className="flex min-w-0 items-center gap-2">
-          <span className="rounded-full border bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+          <span className="px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
             {badgeText}
           </span>
           <div className="min-w-0">

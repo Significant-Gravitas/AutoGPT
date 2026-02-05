@@ -1,9 +1,5 @@
 import type { ToolUIPart } from "ai";
-import {
-  CheckCircleIcon,
-  CircleNotchIcon,
-  XCircleIcon,
-} from "@phosphor-icons/react";
+import { PencilLineIcon } from "@phosphor-icons/react";
 import type { AgentPreviewResponse } from "@/app/api/__generated__/models/agentPreviewResponse";
 import type { AgentSavedResponse } from "@/app/api/__generated__/models/agentSavedResponse";
 import type { ClarificationNeededResponse } from "@/app/api/__generated__/models/clarificationNeededResponse";
@@ -126,45 +122,47 @@ export function getAnimationText(part: {
 }): string {
   switch (part.state) {
     case "input-streaming":
-      return "Editing agent";
     case "input-available":
-      return "Updating agent workflow";
+      return "Editing the agent";
     case "output-available": {
       const output = parseOutput(part.output);
-      if (!output) return "Agent updated";
+      if (!output) return "Editing the agent";
       if (isOperationStartedOutput(output)) return "Agent update started";
       if (isOperationPendingOutput(output)) return "Agent update in progress";
       if (isOperationInProgressOutput(output))
         return "Agent update already in progress";
-      if (isAgentSavedOutput(output)) return `Saved: ${output.agent_name}`;
-      if (isAgentPreviewOutput(output)) return `Preview: ${output.agent_name}`;
+      if (isAgentSavedOutput(output)) return `Saved "${output.agent_name}"`;
+      if (isAgentPreviewOutput(output)) return `Preview "${output.agent_name}"`;
       if (isClarificationNeededOutput(output)) return "Needs clarification";
       return "Error editing agent";
     }
     case "output-error":
       return "Error editing agent";
     default:
-      return "Processing";
+      return "Editing the agent";
   }
 }
 
-export function StateIcon({ state }: { state: ToolUIPart["state"] }) {
-  switch (state) {
-    case "input-streaming":
-    case "input-available":
-      return (
-        <CircleNotchIcon
-          className="h-4 w-4 animate-spin text-muted-foreground"
-          weight="bold"
-        />
-      );
-    case "output-available":
-      return <CheckCircleIcon className="h-4 w-4 text-green-500" />;
-    case "output-error":
-      return <XCircleIcon className="h-4 w-4 text-red-500" />;
-    default:
-      return null;
-  }
+export function ToolIcon({
+  isStreaming,
+  isError,
+}: {
+  isStreaming?: boolean;
+  isError?: boolean;
+}) {
+  return (
+    <PencilLineIcon
+      size={14}
+      weight="regular"
+      className={
+        isError
+          ? "text-red-500"
+          : isStreaming
+            ? "text-neutral-500"
+            : "text-neutral-400"
+      }
+    />
+  );
 }
 
 export function formatMaybeJson(value: unknown): string {

@@ -14,7 +14,7 @@ import {
   isDocSearchResultsOutput,
   isErrorOutput,
   isNoResultsOutput,
-  StateIcon,
+  ToolIcon,
   toDocsUrl,
   type DocsToolType,
 } from "./helpers";
@@ -40,6 +40,10 @@ function truncate(text: string, maxChars: number): string {
 export function SearchDocsTool({ part }: Props) {
   const output = getDocsToolOutput(part);
   const text = getAnimationText(part);
+  const isStreaming =
+    part.state === "input-streaming" || part.state === "input-available";
+  const isError =
+    part.state === "output-error" || (!!output && isErrorOutput(output));
 
   const normalized = useMemo(() => {
     if (!output) return null;
@@ -80,8 +84,11 @@ export function SearchDocsTool({ part }: Props) {
   return (
     <div className="py-2">
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <StateIcon state={part.state} />
-        <MorphingTextAnimation text={text} />
+        <ToolIcon toolType={part.type} isStreaming={isStreaming} isError={isError} />
+        <MorphingTextAnimation
+          text={text}
+          className={isError ? "text-red-500" : undefined}
+        />
       </div>
 
       {hasExpandableContent && normalized && (
