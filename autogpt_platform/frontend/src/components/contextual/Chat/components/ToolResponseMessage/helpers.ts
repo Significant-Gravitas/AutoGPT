@@ -39,69 +39,101 @@ export function getErrorMessage(result: unknown): string {
 
 /**
  * Check if a value is a workspace file reference.
+ * Format: workspace://{fileId} or workspace://{fileId}#{mimeType}
  */
 function isWorkspaceRef(value: unknown): value is string {
   return typeof value === "string" && value.startsWith("workspace://");
 }
 
 /**
- * Check if a workspace reference appears to be an image based on common patterns.
- * Since workspace refs don't have extensions, we check the context or assume image
- * for certain block types.
- *
- * TODO: Replace keyword matching with MIME type encoded in workspace ref.
- * e.g., workspace://abc123#image/png or workspace://abc123#video/mp4
- * This would let frontend render correctly without fragile keyword matching.
+ * Extract MIME type from a workspace reference fragment.
+ * e.g., "workspace://abc123#video/mp4" → "video/mp4"
+ * Returns undefined if no fragment is present.
  */
-function isLikelyImageRef(value: string, outputKey?: string): boolean {
-  if (!isWorkspaceRef(value)) return false;
-
-  // Check output key name for video-related hints (these are NOT images)
-  const videoKeywords = ["video", "mp4", "mov", "avi", "webm", "movie", "clip"];
-  if (outputKey) {
-    const lowerKey = outputKey.toLowerCase();
-    if (videoKeywords.some((kw) => lowerKey.includes(kw))) {
-      return false;
-    }
-  }
-
-  // Check output key name for image-related hints
-  const imageKeywords = [
-    "image",
-    "img",
-    "photo",
-    "picture",
-    "thumbnail",
-    "avatar",
-    "icon",
-    "screenshot",
-  ];
-  if (outputKey) {
-    const lowerKey = outputKey.toLowerCase();
-    if (imageKeywords.some((kw) => lowerKey.includes(kw))) {
-      return true;
-    }
-  }
-
-  // Default to treating workspace refs as potential images
-  // since that's the most common case for generated content
-  return true;
+function getWorkspaceMimeType(value: string): string | undefined {
+  const hashIndex = value.indexOf("#");
+  if (hashIndex === -1) return undefined;
+  return value.slice(hashIndex + 1) || undefined;
 }
 
 /**
- * Format a single output value, converting workspace refs to markdown images.
+ * Determine the media category of a workspace ref or data URI.
+ * Uses the MIME type fragment on workspace refs when available,
+ * falls back to output key keyword matching for older refs without it.
  */
-function formatOutputValue(value: unknown, outputKey?: string): string {
-  if (isWorkspaceRef(value) && isLikelyImageRef(value, outputKey)) {
-    // Format as markdown image
-    return `![${outputKey || "Generated image"}](${value})`;
+function getMediaCategory(
+  value: string,
+  outputKey?: string,
+): "video" | "image" | "audio" | "unknown" {
+  // Data URIs carry their own MIME type
+  if (value.startsWith("data:video/")) return "video";
+  if (value.startsWith("data:image/")) return "image";
+  if (value.startsWith("data:audio/")) return "audio";
+
+  // Workspace refs: prefer MIME type fragment
+  if (isWorkspaceRef(value)) {
+    const mime = getWorkspaceMimeType(value);
+    if (mime) {
+      if (mime.startsWith("video/")) return "video";
+      if (mime.startsWith("image/")) return "image";
+      if (mime.startsWith("audio/")) return "audio";
+      return "unknown";
+    }
+
+    // Fallback: keyword matching on output key for older refs without fragment
+    if (outputKey) {
+      const lowerKey = outputKey.toLowerCase();
+
+      const videoKeywords = [
+        "video",
+        "mp4",
+        "mov",
+        "avi",
+        "webm",
+        "movie",
+        "clip",
+      ];
+      if (videoKeywords.some((kw) => lowerKey.includes(kw))) return "video";
+
+      const imageKeywords = [
+        "image",
+        "img",
+        "photo",
+        "picture",
+        "thumbnail",
+        "avatar",
+        "icon",
+        "screenshot",
+      ];
+      if (imageKeywords.some((kw) => lowerKey.includes(kw))) return "image";
+    }
+
+    // Default to image for backward compatibility
+    return "image";
   }
 
+  return "unknown";
+}
+
+/**
+ * Format a single output value, converting workspace refs to markdown images/videos.
+ * Videos use a "video:" alt-text prefix so the MarkdownContent renderer can
+ * distinguish them from images and render a <video> element.
+ */
+function formatOutputValue(value: unknown, outputKey?: string): string {
   if (typeof value === "string") {
-    // Check for data URIs (images)
-    if (value.startsWith("data:image/")) {
+    const category = getMediaCategory(value, outputKey);
+
+    if (category === "video") {
+      // Format with "video:" prefix so MarkdownContent renders <video>
+      return `![video:${outputKey || "Video"}](${value})`;
+    }
+
+    if (category === "image") {
       return `![${outputKey || "Generated image"}](${value})`;
     }
+
+    // For audio, unknown workspace refs, data URIs, etc. - return as-is
     return value;
   }
 
