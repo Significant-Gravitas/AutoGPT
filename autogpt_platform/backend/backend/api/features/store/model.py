@@ -38,6 +38,7 @@ class StoreAgent(pydantic.BaseModel):
     description: str
     runs: int
     rating: float
+    agent_graph_id: str
 
 
 class StoreAgentsResponse(pydantic.BaseModel):
@@ -221,3 +222,23 @@ class ReviewSubmissionRequest(pydantic.BaseModel):
     is_approved: bool
     comments: str  # External comments visible to creator
     internal_comments: str | None = None  # Private admin notes
+
+
+class UnifiedSearchResult(pydantic.BaseModel):
+    """A single result from unified hybrid search across all content types."""
+
+    content_type: str  # STORE_AGENT, BLOCK, DOCUMENTATION
+    content_id: str
+    searchable_text: str
+    metadata: dict | None = None
+    updated_at: datetime.datetime | None = None
+    combined_score: float | None = None
+    semantic_score: float | None = None
+    lexical_score: float | None = None
+
+
+class UnifiedSearchResponse(pydantic.BaseModel):
+    """Response model for unified search across all content types."""
+
+    results: list[UnifiedSearchResult]
+    pagination: Pagination

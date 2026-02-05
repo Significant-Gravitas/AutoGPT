@@ -100,6 +100,7 @@ COPY autogpt_platform/backend/migrations /app/autogpt_platform/backend/migration
 FROM server_dependencies AS server
 
 COPY autogpt_platform/backend /app/autogpt_platform/backend
+COPY docs /app/docs
 RUN poetry install --no-ansi --only-root
 
 ENV PORT=8000

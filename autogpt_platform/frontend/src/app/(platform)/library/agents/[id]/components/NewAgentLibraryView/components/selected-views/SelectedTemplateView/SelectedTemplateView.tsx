@@ -4,11 +4,11 @@ import type { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExe
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { Input } from "@/components/atoms/Input/Input";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { CredentialsInput } from "../../../../../../../../../../components/contextual/CredentialsInput/CredentialsInput";
 import {
   getAgentCredentialsFields,
   getAgentInputFields,
 } from "../../modals/AgentInputsReadOnly/helpers";
-import { CredentialsInput } from "../../modals/CredentialsInputs/CredentialsInputs";
 import { RunAgentInputs } from "../../modals/RunAgentInputs/RunAgentInputs";
 import { LoadingSelectedContent } from "../LoadingSelectedContent";
 import { RunDetailCard } from "../RunDetailCard/RunDetailCard";

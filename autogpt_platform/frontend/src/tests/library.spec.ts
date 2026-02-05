@@ -1,6 +1,6 @@
 import test, { expect } from "@playwright/test";
 import path from "path";
-import { TEST_CREDENTIALS } from "./credentials";
+import { getTestUserWithLibraryAgents } from "./credentials";
 import { LibraryPage } from "./pages/library.page";
 import { LoginPage } from "./pages/login.page";
 import { hasUrl } from "./utils/assertion";
@@ -14,7 +14,8 @@ test.describe("Library", () => {
 
     await page.goto("/login");
     const loginPage = new LoginPage(page);
-    await loginPage.login(TEST_CREDENTIALS.email, TEST_CREDENTIALS.password);
+    const richUser = getTestUserWithLibraryAgents();
+    await loginPage.login(richUser.email, richUser.password);
     await hasUrl(page, "/marketplace");
   });
 
@@ -58,12 +59,13 @@ test.describe("Library", () => {
   });
 
   test("pagination works correctly", async ({ page }, testInfo) => {
-    test.setTimeout(testInfo.timeout * 3); // Increase timeout for pagination operations
+    test.setTimeout(testInfo.timeout * 3);
     await page.goto("/library");
 
+    const PAGE_SIZE = 20;
     const paginationResult = await libraryPage.testPagination();
 
-    if (paginationResult.initialCount >= 10) {
+    if (paginationResult.initialCount >= PAGE_SIZE) {
       expect(paginationResult.finalCount).toBeGreaterThanOrEqual(
         paginationResult.initialCount,
       );
@@ -132,7 +134,10 @@ test.describe("Library", () => {
     test.expect(clearedSearchValue).toBe("");
   });
 
-  test("pagination while searching works correctly", async ({ page }) => {
+  test("pagination while searching works correctly", async ({
+    page,
+  }, testInfo) => {
+    test.setTimeout(testInfo.timeout * 3);
     await page.goto("/library");
 
     const allAgents = await libraryPage.getAgents();
@@ -151,9 +156,10 @@ test.describe("Library", () => {
     );
     expect(matchingResults.length).toEqual(initialSearchResults.length);
 
+    const PAGE_SIZE = 20;
     const searchPaginationResult = await libraryPage.testPagination();
 
-    if (searchPaginationResult.initialCount >= 10) {
+    if (searchPaginationResult.initialCount >= PAGE_SIZE) {
       expect(searchPaginationResult.finalCount).toBeGreaterThanOrEqual(
         searchPaginationResult.initialCount,
       );

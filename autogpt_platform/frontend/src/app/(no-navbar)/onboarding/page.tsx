@@ -1,9 +1,9 @@
 "use client";
+import { getV1OnboardingState } from "@/app/api/__generated__/endpoints/onboarding/onboarding";
+import { getOnboardingStatus, resolveResponse } from "@/app/api/helpers";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
-import { resolveResponse, shouldShowOnboarding } from "@/app/api/helpers";
-import { getV1OnboardingState } from "@/app/api/__generated__/endpoints/onboarding/onboarding";
 
 export default function OnboardingPage() {
   const router = useRouter();
@@ -11,9 +11,10 @@ export default function OnboardingPage() {
   useEffect(() => {
     async function redirectToStep() {
       try {
-        // Check if onboarding is enabled
-        const isEnabled = await shouldShowOnboarding();
-        if (!isEnabled) {
+        // Check if onboarding is enabled (also gets chat flag for redirect)
+        const { shouldShowOnboarding } = await getOnboardingStatus();
+
+        if (!shouldShowOnboarding) {
           router.replace("/");
           return;
         }

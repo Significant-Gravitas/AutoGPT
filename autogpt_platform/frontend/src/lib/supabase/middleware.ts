@@ -66,7 +66,7 @@ export async function updateSession(request: NextRequest) {
 
     // 2. Check if user is authenticated but lacks admin role when accessing admin pages
     if (user && userRole !== "admin" && isAdminPage(pathname)) {
-      url.pathname = "/marketplace";
+      url.pathname = "/";
       return NextResponse.redirect(url);
     }
 

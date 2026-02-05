@@ -441,6 +441,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         static_output: bool = False,
         block_type: BlockType = BlockType.STANDARD,
         webhook_config: Optional[BlockWebhookConfig | BlockManualWebhookConfig] = None,
+        is_sensitive_action: bool = False,
     ):
         """
         Initialize the block with the given schema.
@@ -473,8 +474,8 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         self.static_output = static_output
         self.block_type = block_type
         self.webhook_config = webhook_config
+        self.is_sensitive_action = is_sensitive_action
         self.execution_stats: NodeExecutionStats = NodeExecutionStats()
-        self.requires_human_review: bool = False
 
         if self.webhook_config:
             if isinstance(self.webhook_config, BlockWebhookConfig):
@@ -622,6 +623,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         input_data: BlockInput,
         *,
         user_id: str,
+        node_id: str,
         node_exec_id: str,
         graph_exec_id: str,
         graph_id: str,
@@ -637,8 +639,9 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             - should_pause: True if execution should be paused for review
             - input_data_to_use: The input data to use (may be modified by reviewer)
         """
-        # Skip review if not required or safe mode is disabled
-        if not self.requires_human_review or not execution_context.safe_mode:
+        if not (
+            self.is_sensitive_action and execution_context.sensitive_action_safe_mode
+        ):
             return False, input_data
 
         from backend.blocks.helpers.review import HITLReviewHelper
@@ -647,11 +650,11 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         decision = await HITLReviewHelper.handle_review_decision(
             input_data=input_data,
             user_id=user_id,
+            node_id=node_id,
             node_exec_id=node_exec_id,
             graph_exec_id=graph_exec_id,
             graph_id=graph_id,
             graph_version=graph_version,
-            execution_context=execution_context,
             block_name=self.name,
             editable=True,
         )
@@ -680,12 +683,23 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         return False, reviewed_data
 
     async def _execute(self, input_data: BlockInput, **kwargs) -> BlockOutput:
-        # Check for review requirement and get potentially modified input data
-        should_pause, input_data = await self.is_block_exec_need_review(
-            input_data, **kwargs
+        # Check for review requirement only if running within a graph execution context
+        # Direct block execution (e.g., from chat) skips the review process
+        has_graph_context = all(
+            key in kwargs
+            for key in (
+                "node_exec_id",
+                "graph_exec_id",
+                "graph_id",
+                "execution_context",
+            )
         )
-        if should_pause:
-            return
+        if has_graph_context:
+            should_pause, input_data = await self.is_block_exec_need_review(
+                input_data, **kwargs
+            )
+            if should_pause:
+                return
 
         # Validate the input data (original or reviewer-modified) once
         if error := self.input_schema.validate_data(input_data):
@@ -859,14 +873,13 @@ def is_block_auth_configured(
 
 
 async def initialize_blocks() -> None:
-    # First, sync all provider costs to blocks
-    # Imported here to avoid circular import
     from backend.sdk.cost_integration import sync_all_provider_costs
+    from backend.util.retry import func_retry
 
     sync_all_provider_costs()
 
-    for cls in get_blocks().values():
-        block = cls()
+    @func_retry
+    async def sync_block_to_db(block: Block) -> None:
         existing_block = await AgentBlock.prisma().find_first(
             where={"OR": [{"id": block.id}, {"name": block.name}]}
         )
@@ -879,7 +892,7 @@ async def initialize_blocks() -> None:
                     outputSchema=json.dumps(block.output_schema.jsonschema()),
                 )
             )
-            continue
+            return
 
         input_schema = json.dumps(block.input_schema.jsonschema())
         output_schema = json.dumps(block.output_schema.jsonschema())
@@ -898,6 +911,25 @@ async def initialize_blocks() -> None:
                     "outputSchema": output_schema,
                 },
             )
+
+    failed_blocks: list[str] = []
+    for cls in get_blocks().values():
+        block = cls()
+        try:
+            await sync_block_to_db(block)
+        except Exception as e:
+            logger.warning(
+                f"Failed to sync block {block.name} to database: {e}. "
+                "Block is still available in memory.",
+                exc_info=True,
+            )
+            failed_blocks.append(block.name)
+
+    if failed_blocks:
+        logger.error(
+            f"Failed to sync {len(failed_blocks)} block(s) to database: "
+            f"{', '.join(failed_blocks)}. These blocks are still available in memory."
+        )
 
 
 # Note on the return type annotation: https://github.com/microsoft/pyright/issues/10281

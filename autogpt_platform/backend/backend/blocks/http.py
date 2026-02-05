@@ -15,6 +15,7 @@ from backend.data.block import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
+from backend.data.execution import ExecutionContext
 from backend.data.model import (
     CredentialsField,
     CredentialsMetaInput,
@@ -116,10 +117,9 @@ class SendWebRequestBlock(Block):
 
     @staticmethod
     async def _prepare_files(
-        graph_exec_id: str,
+        execution_context: ExecutionContext,
         files_name: str,
         files: list[MediaFileType],
-        user_id: str,
     ) -> list[tuple[str, tuple[str, BytesIO, str]]]:
         """
         Prepare files for the request by storing them and reading their content.
@@ -127,11 +127,16 @@ class SendWebRequestBlock(Block):
         (files_name, (filename, BytesIO, mime_type))
         """
         files_payload: list[tuple[str, tuple[str, BytesIO, str]]] = []
+        graph_exec_id = execution_context.graph_exec_id
+        if graph_exec_id is None:
+            raise ValueError("graph_exec_id is required for file operations")
 
         for media in files:
             # Normalise to a list so we can repeat the same key
             rel_path = await store_media_file(
-                graph_exec_id, media, user_id, return_content=False
+                file=media,
+                execution_context=execution_context,
+                return_format="for_local_processing",
             )
             abs_path = get_exec_file_path(graph_exec_id, rel_path)
             async with aiofiles.open(abs_path, "rb") as f:
@@ -143,7 +148,7 @@ class SendWebRequestBlock(Block):
         return files_payload
 
     async def run(
-        self, input_data: Input, *, graph_exec_id: str, user_id: str, **kwargs
+        self, input_data: Input, *, execution_context: ExecutionContext, **kwargs
     ) -> BlockOutput:
         # ─── Parse/normalise body ────────────────────────────────────
         body = input_data.body
@@ -174,7 +179,7 @@ class SendWebRequestBlock(Block):
         files_payload: list[tuple[str, tuple[str, BytesIO, str]]] = []
         if use_files:
             files_payload = await self._prepare_files(
-                graph_exec_id, input_data.files_name, input_data.files, user_id
+                execution_context, input_data.files_name, input_data.files
             )
 
         # Enforce body format rules
@@ -238,9 +243,8 @@ class SendAuthenticatedWebRequestBlock(SendWebRequestBlock):
         self,
         input_data: Input,
         *,
-        graph_exec_id: str,
+        execution_context: ExecutionContext,
         credentials: HostScopedCredentials,
-        user_id: str,
         **kwargs,
     ) -> BlockOutput:
         # Create SendWebRequestBlock.Input from our input (removing credentials field)
@@ -271,6 +275,6 @@ class SendAuthenticatedWebRequestBlock(SendWebRequestBlock):
 
         # Use parent class run method
         async for output_name, output_data in super().run(
-            base_input, graph_exec_id=graph_exec_id, user_id=user_id, **kwargs
+            base_input, execution_context=execution_context, **kwargs
         ):
             yield output_name, output_data

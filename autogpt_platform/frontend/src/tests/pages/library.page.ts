@@ -300,21 +300,27 @@ export class LibraryPage extends BasePage {
   async scrollToLoadMore(): Promise<void> {
     console.log(`scrolling to load more agents`);
 
-    // Get initial agent count
-    const initialCount = await this.getAgentCount();
-    console.log(`Initial agent count: ${initialCount}`);
+    const initialCount = await this.getAgentCountByListLength();
+    console.log(`Initial agent count (DOM cards): ${initialCount}`);
 
-    // Scroll down to trigger pagination
     await this.scrollToBottom();
 
-    // Wait for potential new agents to load
-    await this.page.waitForTimeout(2000);
+    await this.page
+      .waitForLoadState("networkidle", { timeout: 10000 })
+      .catch(() => console.log("Network idle timeout, continuing..."));
 
-    // Check if more agents loaded
-    const newCount = await this.getAgentCount();
-    console.log(`New agent count after scroll: ${newCount}`);
+    await this.page
+      .waitForFunction(
+        (prevCount) =>
+          document.querySelectorAll('[data-testid="library-agent-card"]')
+            .length > prevCount,
+        initialCount,
+        { timeout: 5000 },
+      )
+      .catch(() => {});
 
-    return;
+    const newCount = await this.getAgentCountByListLength();
+    console.log(`New agent count after scroll (DOM cards): ${newCount}`);
   }
 
   async testPagination(): Promise<{
@@ -450,21 +456,72 @@ export async function navigateToAgentByName(
   agentName: string,
 ): Promise<void> {
   const agentCard = getAgentCards(page).filter({ hasText: agentName }).first();
+  // Wait for the agent card to be visible before clicking
+  // This handles async loading of agents after page navigation
+  await agentCard.waitFor({ state: "visible", timeout: 15000 });
   await agentCard.click();
 }
 
 export async function clickRunButton(page: Page): Promise<void> {
   const { getId } = getSelectors(page);
+
+  // Wait for page to stabilize and buttons to render
+  // The NewAgentLibraryView shows either "Setup your task" (empty state)
+  // or "New task" (with items) button
+  const setupTaskButton = page.getByRole("button", {
+    name: /Setup your task/i,
+  });
+  const newTaskButton = page.getByRole("button", { name: /New task/i });
   const runButton = getId("agent-run-button");
   const runAgainButton = getId("run-again-button");
 
+  // Use Promise.race with waitFor to wait for any of the buttons to appear
+  // This handles the async rendering in CI environments
+  try {
+    await Promise.race([
+      setupTaskButton.waitFor({ state: "visible", timeout: 15000 }),
+      newTaskButton.waitFor({ state: "visible", timeout: 15000 }),
+      runButton.waitFor({ state: "visible", timeout: 15000 }),
+      runAgainButton.waitFor({ state: "visible", timeout: 15000 }),
+    ]);
+  } catch {
+    throw new Error(
+      "Could not find run/start task button - none of the expected buttons appeared",
+    );
+  }
+
+  // Now check which button is visible and click it
+  if (await setupTaskButton.isVisible()) {
+    await setupTaskButton.click();
+    const startTaskButton = page
+      .getByRole("button", { name: /Start Task/i })
+      .first();
+    await startTaskButton.waitFor({ state: "visible", timeout: 10000 });
+    await startTaskButton.click();
+    return;
+  }
+
+  if (await newTaskButton.isVisible()) {
+    await newTaskButton.click();
+    const startTaskButton = page
+      .getByRole("button", { name: /Start Task/i })
+      .first();
+    await startTaskButton.waitFor({ state: "visible", timeout: 10000 });
+    await startTaskButton.click();
+    return;
+  }
+
   if (await runButton.isVisible()) {
     await runButton.click();
-  } else if (await runAgainButton.isVisible()) {
-    await runAgainButton.click();
-  } else {
-    throw new Error("Neither run button nor run again button is visible");
+    return;
   }
+
+  if (await runAgainButton.isVisible()) {
+    await runAgainButton.click();
+    return;
+  }
+
+  throw new Error("Could not find run/start task button");
 }
 
 export async function clickNewRunButton(page: Page): Promise<void> {

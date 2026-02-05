@@ -10,6 +10,8 @@ from pydantic import BaseModel, JsonValue, ValidationError
 
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
+from backend.data import human_review as human_review_db
+from backend.data import onboarding as onboarding_db
 from backend.data import user as user_db
 from backend.data.block import (
     Block,
@@ -31,7 +33,6 @@ from backend.data.execution import (
     GraphExecutionStats,
     GraphExecutionWithNodes,
     NodesInputMasks,
-    get_graph_execution,
 )
 from backend.data.graph import GraphModel, Node
 from backend.data.model import USER_TIMEZONE_NOT_SET, CredentialsMetaInput
@@ -749,9 +750,27 @@ async def stop_graph_execution(
         if graph_exec.status in [
             ExecutionStatus.QUEUED,
             ExecutionStatus.INCOMPLETE,
+            ExecutionStatus.REVIEW,
         ]:
-            # If the graph is still on the queue, we can prevent them from being executed
-            # by setting the status to TERMINATED.
+            # If the graph is queued/incomplete/paused for review, terminate immediately
+            # No need to wait for executor since it's not actively running
+
+            # If graph is in REVIEW status, clean up pending reviews before terminating
+            if graph_exec.status == ExecutionStatus.REVIEW:
+                # Use human_review_db if Prisma connected, else database manager
+                review_db = (
+                    human_review_db
+                    if prisma.is_connected()
+                    else get_database_manager_async_client()
+                )
+                # Mark all pending reviews as rejected/cancelled
+                cancelled_count = await review_db.cancel_pending_reviews_for_execution(
+                    graph_exec_id, user_id
+                )
+                logger.info(
+                    f"Cancelled {cancelled_count} pending review(s) for stopped execution {graph_exec_id}"
+                )
+
             graph_exec.status = ExecutionStatus.TERMINATED
 
             await asyncio.gather(
@@ -809,13 +828,14 @@ async def add_graph_execution(
         edb = execution_db
         udb = user_db
         gdb = graph_db
+        odb = onboarding_db
     else:
-        edb = udb = gdb = get_database_manager_async_client()
+        edb = udb = gdb = odb = get_database_manager_async_client()
 
     # Get or create the graph execution
     if graph_exec_id:
         # Resume existing execution
-        graph_exec = await get_graph_execution(
+        graph_exec = await edb.get_graph_execution(
             user_id=user_id,
             execution_id=graph_exec_id,
             include_node_executions=True,
@@ -872,14 +892,19 @@ async def add_graph_execution(
         settings = await gdb.get_graph_settings(user_id=user_id, graph_id=graph_id)
 
         execution_context = ExecutionContext(
-            safe_mode=(
-                settings.human_in_the_loop_safe_mode
-                if settings.human_in_the_loop_safe_mode is not None
-                else True
-            ),
+            # Execution identity
+            user_id=user_id,
+            graph_id=graph_id,
+            graph_exec_id=graph_exec.id,
+            graph_version=graph_exec.graph_version,
+            # Safety settings
+            human_in_the_loop_safe_mode=settings.human_in_the_loop_safe_mode,
+            sensitive_action_safe_mode=settings.sensitive_action_safe_mode,
+            # User settings
             user_timezone=(
                 user.timezone if user.timezone != USER_TIMEZONE_NOT_SET else "UTC"
             ),
+            # Execution hierarchy
             root_execution_id=graph_exec.id,
         )
 
@@ -889,8 +914,28 @@ async def add_graph_execution(
             nodes_to_skip=nodes_to_skip,
             execution_context=execution_context,
         )
-        logger.info(f"Publishing execution {graph_exec.id} to execution queue")
+        logger.info(f"Queueing execution {graph_exec.id}")
 
+        # Update execution status to QUEUED BEFORE publishing to prevent race condition
+        # where two concurrent requests could both publish the same execution
+        updated_exec = await edb.update_graph_execution_stats(
+            graph_exec_id=graph_exec.id,
+            status=ExecutionStatus.QUEUED,
+        )
+
+        # Verify the status update succeeded (prevents duplicate queueing in race conditions)
+        # If another request already updated the status, this execution will not be QUEUED
+        if not updated_exec or updated_exec.status != ExecutionStatus.QUEUED:
+            logger.warning(
+                f"Skipping queue publish for execution {graph_exec.id} - "
+                f"status update failed or execution already queued by another request"
+            )
+            return graph_exec
+
+        graph_exec.status = ExecutionStatus.QUEUED
+
+        # Publish to execution queue for executor to pick up
+        # This happens AFTER status update to ensure only one request publishes
         exec_queue = await get_async_execution_queue()
         await exec_queue.publish_message(
             routing_key=GRAPH_EXECUTION_ROUTING_KEY,
@@ -898,15 +943,6 @@ async def add_graph_execution(
             exchange=GRAPH_EXECUTION_EXCHANGE,
         )
         logger.info(f"Published execution {graph_exec.id} to RabbitMQ queue")
-
-        graph_exec.status = ExecutionStatus.QUEUED
-        await edb.update_graph_execution_stats(
-            graph_exec_id=graph_exec.id,
-            status=graph_exec.status,
-        )
-        await get_async_execution_event_bus().publish(graph_exec)
-
-        return graph_exec
     except BaseException as e:
         err = str(e) or type(e).__name__
         if not graph_exec:
@@ -926,6 +962,24 @@ async def add_graph_execution(
             stats=GraphExecutionStats(error=err),
         )
         raise
+
+    try:
+        await get_async_execution_event_bus().publish(graph_exec)
+        logger.info(f"Published update for execution #{graph_exec.id} to event bus")
+    except Exception as e:
+        logger.error(
+            f"Failed to publish execution event for graph exec #{graph_exec.id}: {e}"
+        )
+
+    try:
+        await odb.increment_onboarding_runs(user_id)
+        logger.info(
+            f"Incremented user #{user_id} onboarding runs for exec #{graph_exec.id}"
+        )
+    except Exception as e:
+        logger.error(f"Failed to increment onboarding runs for user #{user_id}: {e}")
+
+    return graph_exec
 
 
 # ============ Execution Output Helpers ============ #
