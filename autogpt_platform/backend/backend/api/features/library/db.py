@@ -592,7 +592,7 @@ async def save_graph(
             await on_graph_deactivate(current_active_version, user_id=user_id)
 
     if existing_library_agent:
-        library_agent = await _update_library_agent_version_and_settings(
+        library_agent = await update_library_agent_version_and_settings(
             user_id, created_graph
         )
     else:
@@ -607,7 +607,7 @@ async def save_graph(
     return created_graph, library_agent
 
 
-async def _update_library_agent_version_and_settings(
+async def update_library_agent_version_and_settings(
     user_id: str, agent_graph: graph_db.GraphModel
 ) -> library_model.LibraryAgent:
     """Update library agent to point to new graph version and sync settings."""

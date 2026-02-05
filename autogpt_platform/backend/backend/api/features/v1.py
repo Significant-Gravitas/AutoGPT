@@ -883,7 +883,7 @@ async def set_graph_active_version(
     )
 
     # Keep the library agent up to date with the new active version
-    await library_db._update_library_agent_version_and_settings(
+    await library_db.update_library_agent_version_and_settings(
         user_id, new_active_graph
     )
 
