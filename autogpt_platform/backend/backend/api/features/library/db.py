@@ -565,12 +565,18 @@ async def save_graph_to_library(
         For new graphs, graph.id will be assigned a new UUID.
     """
     existing_library_agent = None
+    existing_versions = None
+    current_active_version = None
+
     if is_update and graph.id:
         existing_library_agent = await get_library_agent_by_graph_id(user_id, graph.id)
 
     if existing_library_agent:
         existing_versions = await graph_db.get_graph_all_versions(graph.id, user_id)
         if existing_versions:
+            current_active_version = next(
+                (v for v in existing_versions if v.is_active), None
+            )
             graph.version = max(v.version for v in existing_versions) + 1
             logger.info(f"Updating agent {graph.id} to version {graph.version}")
     else:
@@ -584,15 +590,24 @@ async def save_graph_to_library(
 
     created_graph = await graph_db.create_graph(graph_model, user_id)
 
-    # Run activation hooks (validates credentials, sets up webhooks, etc.)
+    # Handle activation for the new version
     if created_graph.is_active:
         created_graph = await on_graph_activate(created_graph, user_id=user_id)
 
-    if existing_library_agent:
-        library_agent = await update_agent_version_in_library(
+        # Set new version as the only active version
+        await graph_db.set_graph_active_version(
+            graph_id=created_graph.id,
+            version=created_graph.version,
             user_id=user_id,
-            agent_graph_id=created_graph.id,
-            agent_graph_version=created_graph.version,
+        )
+
+        # Deactivate previous version
+        if current_active_version:
+            await on_graph_deactivate(current_active_version, user_id=user_id)
+
+    if existing_library_agent:
+        library_agent = await _update_library_agent_version_and_settings(
+            user_id, created_graph
         )
     else:
         library_agents = await create_library_agent(
