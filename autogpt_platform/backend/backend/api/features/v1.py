@@ -780,18 +780,19 @@ async def create_new_graph(
     create_graph: CreateGraph,
     user_id: Annotated[str, Security(get_user_id)],
 ) -> graph_db.GraphModel:
+    # Validate graph before saving
     graph = graph_db.make_graph_model(create_graph.graph, user_id)
-    graph.reassign_ids(user_id=user_id, reassign_graph_id=True)
     graph.validate_graph(for_run=False)
 
-    await graph_db.create_graph(graph, user_id=user_id)
-    await library_db.create_library_agent(graph, user_id)
-    activated_graph = await on_graph_activate(graph, user_id=user_id)
+    # Save graph and create library agent
+    created_graph, _ = await library_db.save_graph_to_library(
+        create_graph.graph, user_id, is_update=False
+    )
 
     if create_graph.source == "builder":
         await complete_onboarding_step(user_id, OnboardingStep.BUILDER_SAVE_AGENT)
 
-    return activated_graph
+    return created_graph
 
 
 @v1_router.delete(

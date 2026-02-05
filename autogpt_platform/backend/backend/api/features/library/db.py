@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import uuid
 from typing import Literal, Optional
 
 import fastapi
@@ -580,13 +579,16 @@ async def save_graph_to_library(
             graph.version = max(v.version for v in existing_versions) + 1
             logger.info(f"Updating agent {graph.id} to version {graph.version}")
     else:
-        graph.id = str(uuid.uuid4())
+        # New graph - version 1, ID will be reassigned by reassign_ids
         graph.version = 1
-        logger.info(f"Creating new agent with ID {graph.id}")
+        logger.info("Creating new agent")
 
     # Convert to GraphModel and reassign IDs
+    # For new graphs, reassign the graph ID too; for updates, keep the existing ID
     graph_model = graph_db.make_graph_model(graph, user_id)
-    graph_model.reassign_ids(user_id=user_id, reassign_graph_id=False)
+    graph_model.reassign_ids(
+        user_id=user_id, reassign_graph_id=(existing_library_agent is None)
+    )
 
     created_graph = await graph_db.create_graph(graph_model, user_id)
 
