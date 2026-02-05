@@ -1,12 +1,15 @@
 """VideoTextOverlayBlock - Add text overlay to video."""
 
-import os
 from typing import Literal
 
 from moviepy import CompositeVideoClip, TextClip
 from moviepy.video.io.VideoFileClip import VideoFileClip
 
-from backend.blocks.video._utils import get_video_codecs, strip_chapters_inplace
+from backend.blocks.video._utils import (
+    extract_source_name,
+    get_video_codecs,
+    strip_chapters_inplace,
+)
 from backend.data.block import (
     Block,
     BlockCategory,
@@ -192,9 +195,8 @@ class VideoTextOverlayBlock(Block):
             )
 
             # Build output path
-            output_filename = MediaFileType(
-                f"{node_exec_id}_overlay_{os.path.basename(local_video_path)}"
-            )
+            source = extract_source_name(local_video_path)
+            output_filename = MediaFileType(f"{node_exec_id}_overlay_{source}.mp4")
             output_abspath = get_exec_file_path(
                 execution_context.graph_exec_id, output_filename
             )

@@ -1,12 +1,11 @@
 """LoopVideoBlock - Loop a video to a given duration or number of repeats."""
 
-import os
 from typing import Optional
 
 from moviepy.video.fx.Loop import Loop
 from moviepy.video.io.VideoFileClip import VideoFileClip
 
-from backend.blocks.video._utils import strip_chapters_inplace
+from backend.blocks.video._utils import extract_source_name, strip_chapters_inplace
 from backend.data.block import (
     Block,
     BlockCategory,
@@ -88,9 +87,8 @@ class LoopVideoBlock(Block):
         assert isinstance(looped_clip, VideoFileClip)
 
         # 4) Save the looped output
-        output_filename = MediaFileType(
-            f"{node_exec_id}_looped_{os.path.basename(local_video_path)}"
-        )
+        source = extract_source_name(local_video_path)
+        output_filename = MediaFileType(f"{node_exec_id}_looped_{source}.mp4")
         output_abspath = get_exec_file_path(graph_exec_id, output_filename)
 
         looped_clip = looped_clip.with_audio(clip.audio)

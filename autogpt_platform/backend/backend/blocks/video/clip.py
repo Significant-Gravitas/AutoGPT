@@ -1,11 +1,14 @@
 """VideoClipBlock - Extract a segment from a video file."""
 
-import os
 from typing import Literal
 
 from moviepy.video.io.VideoFileClip import VideoFileClip
 
-from backend.blocks.video._utils import get_video_codecs, strip_chapters_inplace
+from backend.blocks.video._utils import (
+    extract_source_name,
+    get_video_codecs,
+    strip_chapters_inplace,
+)
 from backend.data.block import (
     Block,
     BlockCategory,
@@ -131,12 +134,10 @@ class VideoClipBlock(Block):
             )
 
             # Build output path
+            source = extract_source_name(local_video_path)
             output_filename = MediaFileType(
-                f"{node_exec_id}_clip_{os.path.basename(local_video_path)}"
+                f"{node_exec_id}_clip_{source}.{input_data.output_format}"
             )
-            # Ensure correct extension
-            base, _ = os.path.splitext(output_filename)
-            output_filename = MediaFileType(f"{base}.{input_data.output_format}")
             output_abspath = get_exec_file_path(
                 execution_context.graph_exec_id, output_filename
             )

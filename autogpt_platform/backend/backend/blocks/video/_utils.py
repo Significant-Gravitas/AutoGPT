@@ -4,9 +4,56 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import subprocess
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+# Known operation tags added by video blocks
+_VIDEO_OPS = (
+    r"(?:clip|overlay|narrated|looped|concat|audio_attached|with_audio|narration)"
+)
+
+# Matches: {node_exec_id}_{operation}_ where node_exec_id contains a UUID
+_BLOCK_PREFIX_RE = re.compile(
+    r"^[a-zA-Z0-9_-]*"
+    r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+    r"[a-zA-Z0-9_-]*"
+    r"_" + _VIDEO_OPS + r"_"
+)
+
+# Matches: a lone {node_exec_id}_ prefix (no operation keyword, e.g. download output)
+_UUID_PREFIX_RE = re.compile(
+    r"^[a-zA-Z0-9_-]*"
+    r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+    r"[a-zA-Z0-9_-]*_"
+)
+
+
+def extract_source_name(input_path: str, max_length: int = 50) -> str:
+    """Extract the original source filename by stripping block-generated prefixes.
+
+    Iteratively removes {node_exec_id}_{operation}_ prefixes that accumulate
+    when chaining video blocks, recovering the original human-readable name.
+
+    Safe for plain filenames (no UUID -> no stripping).
+    Falls back to "video" if everything is stripped.
+    """
+    stem = Path(input_path).stem
+
+    # Pass 1: strip {node_exec_id}_{operation}_ prefixes iteratively
+    while _BLOCK_PREFIX_RE.match(stem):
+        stem = _BLOCK_PREFIX_RE.sub("", stem, count=1)
+
+    # Pass 2: strip a lone {node_exec_id}_ prefix (e.g. from download block)
+    if _UUID_PREFIX_RE.match(stem):
+        stem = _UUID_PREFIX_RE.sub("", stem, count=1)
+
+    if not stem:
+        return "video"
+
+    return stem[:max_length]
 
 
 def get_video_codecs(output_path: str) -> tuple[str, str]:

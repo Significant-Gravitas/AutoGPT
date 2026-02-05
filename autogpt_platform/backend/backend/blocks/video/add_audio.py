@@ -6,7 +6,7 @@ import tempfile
 from moviepy.audio.io.AudioFileClip import AudioFileClip
 from moviepy.video.io.VideoFileClip import VideoFileClip
 
-from backend.blocks.video._utils import strip_chapters_inplace
+from backend.blocks.video._utils import extract_source_name, strip_chapters_inplace
 from backend.data.block import (
     Block,
     BlockCategory,
@@ -88,9 +88,8 @@ class AddAudioToVideoBlock(Block):
         final_clip = video_clip.with_audio(audio_clip)
 
         # 4) Write to output file
-        output_filename = MediaFileType(
-            f"{node_exec_id}_audio_attached_{os.path.basename(local_video_path)}"
-        )
+        source = extract_source_name(local_video_path)
+        output_filename = MediaFileType(f"{node_exec_id}_with_audio_{source}.mp4")
         output_abspath = os.path.join(abs_temp_dir, output_filename)
         final_clip.write_videofile(output_abspath, codec="libx264", audio_codec="aac")
 

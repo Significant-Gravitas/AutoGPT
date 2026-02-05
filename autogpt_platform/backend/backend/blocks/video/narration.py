@@ -14,7 +14,11 @@ from backend.blocks.elevenlabs._auth import (
     ElevenLabsCredentials,
     ElevenLabsCredentialsInput,
 )
-from backend.blocks.video._utils import get_video_codecs, strip_chapters_inplace
+from backend.blocks.video._utils import (
+    extract_source_name,
+    get_video_codecs,
+    strip_chapters_inplace,
+)
 from backend.data.block import (
     Block,
     BlockCategory,
@@ -229,9 +233,8 @@ class VideoNarrationBlock(Block):
                 f.write(audio_content)
 
             # Add narration to video
-            output_filename = MediaFileType(
-                f"{node_exec_id}_narrated_{os.path.basename(local_video_path)}"
-            )
+            source = extract_source_name(local_video_path)
+            output_filename = MediaFileType(f"{node_exec_id}_narrated_{source}.mp4")
             output_abspath = get_exec_file_path(
                 execution_context.graph_exec_id, output_filename
             )

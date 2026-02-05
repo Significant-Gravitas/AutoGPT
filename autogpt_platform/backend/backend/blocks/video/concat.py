@@ -6,7 +6,11 @@ from moviepy import concatenate_videoclips
 from moviepy.video.fx import CrossFadeIn, CrossFadeOut, FadeIn, FadeOut
 from moviepy.video.io.VideoFileClip import VideoFileClip
 
-from backend.blocks.video._utils import get_video_codecs, strip_chapters_inplace
+from backend.blocks.video._utils import (
+    extract_source_name,
+    get_video_codecs,
+    strip_chapters_inplace,
+)
 from backend.data.block import (
     Block,
     BlockCategory,
@@ -175,8 +179,11 @@ class VideoConcatBlock(Block):
                 )
 
             # Build output path
+            source = (
+                extract_source_name(video_abspaths[0]) if video_abspaths else "video"
+            )
             output_filename = MediaFileType(
-                f"{node_exec_id}_concat.{input_data.output_format}"
+                f"{node_exec_id}_concat_{source}.{input_data.output_format}"
             )
             output_abspath = get_exec_file_path(
                 execution_context.graph_exec_id, output_filename
