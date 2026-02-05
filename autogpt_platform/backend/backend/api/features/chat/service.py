@@ -33,7 +33,7 @@ from backend.data.understanding import (
     get_business_understanding,
 )
 from backend.util.exceptions import NotFoundError
-from backend.util.settings import Settings
+from backend.util.settings import AppEnvironment, Settings
 
 from . import db as chat_db
 from . import stream_registry
@@ -222,8 +222,18 @@ async def _get_system_prompt_template(context: str) -> str:
         try:
             # cache_ttl_seconds=0 disables SDK caching to always get the latest prompt
             # Use asyncio.to_thread to avoid blocking the event loop
+            # In non-production environments, fetch the latest prompt version
+            # instead of the production-labeled version for easier testing
+            label = (
+                None
+                if settings.config.app_env == AppEnvironment.PRODUCTION
+                else "latest"
+            )
             prompt = await asyncio.to_thread(
-                langfuse.get_prompt, config.langfuse_prompt_name, cache_ttl_seconds=0
+                langfuse.get_prompt,
+                config.langfuse_prompt_name,
+                label=label,
+                cache_ttl_seconds=0,
             )
             return prompt.compile(users_information=context)
         except Exception as e:
@@ -623,6 +633,9 @@ async def stream_chat_completion(
                         total_tokens=chunk.totalTokens,
                     )
                 )
+            elif isinstance(chunk, StreamHeartbeat):
+                # Pass through heartbeat to keep SSE connection alive
+                yield chunk
             else:
                 logger.error(f"Unknown chunk type: {type(chunk)}", exc_info=True)
 
