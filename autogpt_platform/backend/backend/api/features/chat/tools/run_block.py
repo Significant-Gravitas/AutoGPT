@@ -8,11 +8,7 @@ from typing import Any
 from pydantic_core import PydanticUndefined
 
 from backend.api.features.chat.model import ChatSession
-from backend.api.features.chat.tools.find_block import (
-    EXCLUDED_BLOCK_IDS,
-    EXCLUDED_BLOCK_TYPES,
-)
-from backend.data.block import get_block
+from backend.data.block import EXCLUDED_BLOCK_IDS, EXCLUDED_BLOCK_TYPES, get_block
 from backend.data.execution import ExecutionContext
 from backend.data.model import CredentialsMetaInput
 from backend.data.workspace import get_or_create_workspace

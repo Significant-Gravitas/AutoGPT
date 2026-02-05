@@ -13,27 +13,9 @@ from backend.api.features.chat.tools.models import (
     NoResultsResponse,
 )
 from backend.api.features.store.hybrid_search import unified_hybrid_search
-from backend.data.block import BlockType, get_block
+from backend.data.block import EXCLUDED_BLOCK_IDS, EXCLUDED_BLOCK_TYPES, get_block
 
 logger = logging.getLogger(__name__)
-
-# Blocks excluded from CoPilot standalone execution
-# NOTE: This does NOT affect the Builder UI which uses load_all_blocks() directly
-EXCLUDED_BLOCK_TYPES = {
-    BlockType.INPUT,  # Graph interface definition - data enters via chat, not graph inputs
-    BlockType.OUTPUT,  # Graph interface definition - data exits via chat, not graph outputs
-    BlockType.WEBHOOK,  # Wait for external events - would hang forever in CoPilot
-    BlockType.WEBHOOK_MANUAL,  # Same as WEBHOOK
-    BlockType.NOTE,  # Visual annotation only - no runtime behavior
-    BlockType.HUMAN_IN_THE_LOOP,  # Pauses for human approval - CoPilot IS human-in-the-loop
-    BlockType.AGENT,  # AgentExecutorBlock requires execution_context - use run_agent tool
-}
-
-# Blocks that have STANDARD/other types but still require graph context
-EXCLUDED_BLOCK_IDS = {
-    # SmartDecisionMakerBlock - dynamically discovers downstream blocks via graph topology
-    "3b191d9f-356f-482d-8238-ba04b6d18381",
-}
 
 
 class FindBlockTool(BaseTool):

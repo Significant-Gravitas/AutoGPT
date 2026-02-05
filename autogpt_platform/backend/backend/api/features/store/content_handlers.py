@@ -13,10 +13,7 @@ from typing import Any
 
 from prisma.enums import ContentType
 
-from backend.api.features.chat.tools.find_block import (
-    EXCLUDED_BLOCK_IDS,
-    EXCLUDED_BLOCK_TYPES,
-)
+from backend.data.block import EXCLUDED_BLOCK_IDS, EXCLUDED_BLOCK_TYPES
 from backend.data.db import query_raw_with_schema
 
 logger = logging.getLogger(__name__)
