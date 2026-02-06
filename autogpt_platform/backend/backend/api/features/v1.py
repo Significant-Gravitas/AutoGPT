@@ -7,6 +7,7 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Annotated, Any, Sequence, get_args
 
+import prisma.models
 import pydantic
 import stripe
 from autogpt_libs.auth import get_user_id, requires_user
@@ -827,7 +828,44 @@ async def update_graph(
 
     existing_versions = await graph_db.get_graph_all_versions(graph_id, user_id=user_id)
     if not existing_versions:
-        raise HTTPException(404, detail=f"Graph #{graph_id} not found")
+        # User doesn't own this graph -- check if they have it in their library
+        # (e.g. added from the marketplace). If so, fork it with their edits applied.
+        library_agent = await prisma.models.LibraryAgent.prisma().find_first(
+            where={
+                "userId": user_id,
+                "agentGraphId": graph_id,
+                "isDeleted": False,
+            }
+        )
+        if not library_agent:
+            raise HTTPException(404, detail=f"Graph #{graph_id} not found")
+
+        # Fork: apply the user's edits to a new user-owned graph
+        graph.version = 1
+        graph.is_active = True
+        forked = graph_db.make_graph_model(graph, user_id)
+        forked.forked_from_id = graph_id
+        forked.forked_from_version = library_agent.agentGraphVersion
+        forked.reassign_ids(user_id=user_id, reassign_graph_id=True)
+        forked.validate_graph(for_run=False)
+
+        new_graph_version = await graph_db.create_graph(forked, user_id=user_id)
+        new_graph_version = await on_graph_activate(new_graph_version, user_id=user_id)
+        await graph_db.set_graph_active_version(
+            graph_id=new_graph_version.id,
+            version=new_graph_version.version,
+            user_id=user_id,
+        )
+        await library_db.create_library_agent(new_graph_version, user_id)
+
+        new_graph_with_subgraphs = await graph_db.get_graph(
+            new_graph_version.id,
+            new_graph_version.version,
+            user_id=user_id,
+            include_subgraphs=True,
+        )
+        assert new_graph_with_subgraphs
+        return new_graph_with_subgraphs
 
     graph.version = max(g.version for g in existing_versions) + 1
     current_active_version = next((v for v in existing_versions if v.is_active), None)
