@@ -109,6 +109,12 @@ def _validate_user_isolation(
 def create_security_hooks(user_id: str | None) -> dict[str, Any]:
     """Create the security hooks configuration for Claude Agent SDK.
 
+    Includes security validation and observability hooks:
+    - PreToolUse: Security validation before tool execution
+    - PostToolUse: Log successful tool executions
+    - PostToolUseFailure: Log and handle failed tool executions
+    - PreCompact: Log context compaction events (SDK handles compaction automatically)
+
     Args:
         user_id: Current user ID for isolation validation
 
@@ -126,7 +132,6 @@ def create_security_hooks(user_id: str | None) -> dict[str, Any]:
         ) -> SyncHookJSONOutput:
             """Combined pre-tool-use validation hook."""
             _ = context  # unused but required by signature
-            # Extract tool info from the typed input
             tool_name = cast(str, input_data.get("tool_name", ""))
             tool_input = cast(dict[str, Any], input_data.get("tool_input", {}))
 
@@ -140,21 +145,59 @@ def create_security_hooks(user_id: str | None) -> dict[str, Any]:
             if result:
                 return cast(SyncHookJSONOutput, result)
 
-            # Log the usage
-            logger.debug(
-                f"[SDK Audit] Tool call: tool={tool_name}, "
+            logger.debug(f"[SDK] Tool start: {tool_name}, user={user_id}")
+            return cast(SyncHookJSONOutput, {})
+
+        async def post_tool_use_hook(
+            input_data: HookInput,
+            tool_use_id: str | None,
+            context: HookContext,
+        ) -> SyncHookJSONOutput:
+            """Log successful tool executions for observability."""
+            _ = context
+            tool_name = cast(str, input_data.get("tool_name", ""))
+            logger.debug(f"[SDK] Tool success: {tool_name}, tool_use_id={tool_use_id}")
+            return cast(SyncHookJSONOutput, {})
+
+        async def post_tool_failure_hook(
+            input_data: HookInput,
+            tool_use_id: str | None,
+            context: HookContext,
+        ) -> SyncHookJSONOutput:
+            """Log failed tool executions for debugging."""
+            _ = context
+            tool_name = cast(str, input_data.get("tool_name", ""))
+            error = input_data.get("error", "Unknown error")
+            logger.warning(
+                f"[SDK] Tool failed: {tool_name}, error={error}, "
                 f"user={user_id}, tool_use_id={tool_use_id}"
             )
+            return cast(SyncHookJSONOutput, {})
 
+        async def pre_compact_hook(
+            input_data: HookInput,
+            tool_use_id: str | None,
+            context: HookContext,
+        ) -> SyncHookJSONOutput:
+            """Log when SDK triggers context compaction.
+
+            The SDK automatically compacts conversation history when it grows too large.
+            This hook provides visibility into when compaction happens.
+            """
+            _ = context, tool_use_id
+            trigger = input_data.get("trigger", "auto")
+            logger.info(
+                f"[SDK] Context compaction triggered: {trigger}, user={user_id}"
+            )
             return cast(SyncHookJSONOutput, {})
 
         return {
-            "PreToolUse": [
-                HookMatcher(
-                    matcher="*",
-                    hooks=[pre_tool_use_hook],
-                ),
+            "PreToolUse": [HookMatcher(matcher="*", hooks=[pre_tool_use_hook])],
+            "PostToolUse": [HookMatcher(matcher="*", hooks=[post_tool_use_hook])],
+            "PostToolUseFailure": [
+                HookMatcher(matcher="*", hooks=[post_tool_failure_hook])
             ],
+            "PreCompact": [HookMatcher(matcher="*", hooks=[pre_compact_hook])],
         }
     except ImportError:
         # Fallback for when SDK isn't available - return empty hooks

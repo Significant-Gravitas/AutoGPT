@@ -137,8 +137,8 @@ async def _build_system_prompt(
 def _format_conversation_history(session: ChatSession) -> str:
     """Format conversation history as a prompt context.
 
-    The Claude Agent SDK doesn't support replaying full conversation history,
-    so we include it as context in the prompt.
+    The SDK handles context compaction automatically, so we pass full history
+    without manual truncation. The SDK will intelligently summarize if needed.
     """
     if not session.messages:
         return ""
@@ -148,30 +148,23 @@ def _format_conversation_history(session: ChatSession) -> str:
     if not messages:
         return ""
 
-    history_parts = []
-    history_parts.append("<conversation_history>")
+    history_parts = ["<conversation_history>"]
 
     for msg in messages:
         if msg.role == "user":
             history_parts.append(f"User: {msg.content or ''}")
         elif msg.role == "assistant":
-            content = msg.content or ""
-            # Truncate long assistant responses
-            if len(content) > 500:
-                content = content[:500] + "..."
-            history_parts.append(f"Assistant: {content}")
-            # Include tool calls summary if any
+            # Pass full content - SDK handles compaction automatically
+            history_parts.append(f"Assistant: {msg.content or ''}")
             if msg.tool_calls:
                 for tc in msg.tool_calls:
                     func = tc.get("function", {})
-                    tool_name = func.get("name", "unknown")
-                    history_parts.append(f"  [Called tool: {tool_name}]")
+                    history_parts.append(
+                        f"  [Called tool: {func.get('name', 'unknown')}]"
+                    )
         elif msg.role == "tool":
-            # Summarize tool results
-            result = msg.content or ""
-            if len(result) > 200:
-                result = result[:200] + "..."
-            history_parts.append(f"  [Tool result: {result}]")
+            # Pass full tool results - SDK handles compaction
+            history_parts.append(f"  [Tool result: {msg.content or ''}]")
 
     history_parts.append("</conversation_history>")
     history_parts.append("")

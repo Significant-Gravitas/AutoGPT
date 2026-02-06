@@ -27,12 +27,20 @@ class ChatConfig(BaseSettings):
     session_ttl: int = Field(default=43200, description="Session TTL in seconds")
 
     # Streaming Configuration
+    # Note: When using Claude Agent SDK, context management is handled automatically
+    # via the SDK's built-in compaction. This is mainly used for the fallback path.
     max_context_messages: int = Field(
-        default=50, ge=1, le=200, description="Maximum context messages"
+        default=100,
+        ge=1,
+        le=500,
+        description="Max context messages (SDK handles compaction automatically)",
     )
 
     stream_timeout: int = Field(default=300, description="Stream timeout in seconds")
-    max_retries: int = Field(default=3, description="Maximum number of retries")
+    max_retries: int = Field(
+        default=3,
+        description="Max retries for fallback path (SDK handles retries internally)",
+    )
     max_agent_runs: int = Field(default=30, description="Maximum number of agent runs")
     max_agent_schedules: int = Field(
         default=30, description="Maximum number of agent schedules"
