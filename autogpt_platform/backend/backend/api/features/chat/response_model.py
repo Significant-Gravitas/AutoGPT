@@ -138,12 +138,14 @@ class StreamToolOutputAvailable(StreamBaseResponse):
     def to_sse(self) -> str:
         """Convert to SSE format, excluding non-spec fields."""
         import json
+
         data = {
             "type": self.type.value,
             "toolCallId": self.toolCallId,
             "output": self.output,
         }
         return f"data: {json.dumps(data)}\n\n"
+
 
 # ========== Other ==========
 

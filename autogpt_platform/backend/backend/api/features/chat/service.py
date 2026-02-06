@@ -351,7 +351,9 @@ async def stream_chat_completion(
     retry_count: int = 0,
     session: ChatSession | None = None,
     context: dict[str, str] | None = None,  # {url: str, content: str}
-    _continuation_message_id: str | None = None,  # Internal: reuse message ID for tool call continuations
+    _continuation_message_id: (
+        str | None
+    ) = None,  # Internal: reuse message ID for tool call continuations
 ) -> AsyncGenerator[StreamBaseResponse, None]:
     """Main entry point for streaming chat completions with database handling.
 
@@ -480,13 +482,10 @@ async def stream_chat_completion(
     # Generate unique IDs for AI SDK protocol
     import uuid as uuid_module
 
-    # Reuse message ID for continuations (tool call follow-ups) to avoid duplicate messages
     is_continuation = _continuation_message_id is not None
     message_id = _continuation_message_id or str(uuid_module.uuid4())
     text_block_id = str(uuid_module.uuid4())
 
-    # Only yield message start for the initial call, not for continuations
-    # This prevents the AI SDK from creating duplicate message objects
     if not is_continuation:
         yield StreamStart(messageId=message_id)
 
