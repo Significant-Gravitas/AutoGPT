@@ -48,11 +48,15 @@ AutoPilot can help you manage your agent library, view task results, set up sche
 
 ## AutoPilot vs. the Agent Builder
 
+AutoPilot and the Agent Builder are two ways to achieve the same things on the platform. AutoPilot can do anything the builder can — including creating and editing full, reusable agents — and it can also run blocks directly without building an agent first.
+
 | | AutoPilot | Agent Builder |
 |---|-----------|---------------|
-| **Best for** | Quick tasks, exploration, one-off actions | Reusable workflows, complex multi-step agents |
-| **How it works** | Conversational — describe what you want | Visual — drag, drop, and connect blocks |
-| **Reusability** | Actions are one-off unless you ask it to build an agent | Agents are saved and can be re-run, scheduled, or shared |
-| **Block access** | Can run any block directly without an agent | Blocks must be connected into a workflow |
+| **Who is it for** | Everyone — no technical knowledge required | Technical users with a grasp of visual programming |
+| **Best for** | Natural language interaction, doing things fast, and accessing blocks directly | Hands-on visual control over exactly how an agent is wired together |
+| **How it works** | Conversational — describe what you want | Visual — drag, drop, and connect blocks on a canvas |
+| **Can build agents** | Yes — describe what you want and it builds the agent for you | Yes — you build the agent manually |
+| **Can edit agents** | Yes — including agents from the marketplace | Yes — full visual editing |
+| **Block access** | Can run any block directly without building an agent | Blocks must be connected into an agent workflow |
 
-Both are powerful tools. Use AutoPilot for quick tasks and exploration, and the Agent Builder when you want to create reusable, automated workflows.
+Choose whichever approach suits you. Many users use both — AutoPilot for speed, and the builder when they want fine-grained visual control over their workflow.
