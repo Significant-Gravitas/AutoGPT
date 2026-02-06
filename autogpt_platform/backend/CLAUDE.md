@@ -159,11 +159,13 @@ yield "image_url", result_url
 
 ## Workspace & Media Files
 
-See [Workspace & Media Architecture](docs/workspace-media-architecture.md) for details on:
+**Read [Workspace & Media Architecture](../../docs/platform/workspace-media-architecture.md) when:**
+- Working on CoPilot file upload/download features
+- Building blocks that handle `MediaFileType` inputs/outputs
+- Modifying `WorkspaceManager` or `store_media_file()`
+- Debugging file persistence or virus scanning issues
 
-- `WorkspaceManager` - persistent user file storage with session scoping
-- `store_media_file()` - media normalization pipeline for blocks
-- Virus scanning and persistence responsibilities
+Covers: `WorkspaceManager` (persistent storage with session scoping), `store_media_file()` (media normalization pipeline), and responsibility boundaries for virus scanning and persistence.
 
 ## Security Implementation
 
