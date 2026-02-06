@@ -23,7 +23,11 @@ function notifySubscribers(
     try {
       callback(chunk);
     } catch (err) {
-      console.warn("[StreamExecutor] Subscriber callback error:", err);
+      console.warn(
+        "[StreamExecutor] Subscriber callback error:",
+        { sessionId: stream.sessionId, chunkType: chunk.type },
+        err,
+      );
     }
   }
 }
