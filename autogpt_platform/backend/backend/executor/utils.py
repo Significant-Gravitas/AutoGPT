@@ -353,6 +353,15 @@ async def _validate_node_input_credentials(
                     )
 
                 if field_value and isinstance(field_value, dict):
+                    if "_credentials_id" not in field_value:
+                        # Key removed (e.g., on fork) — needs re-auth
+                        has_missing_credentials = True
+                        credential_errors[node.id][field_name] = (
+                            "Authentication missing for the selected file. "
+                            "Please re-select the file to authenticate with "
+                            "your own account."
+                        )
+                        continue
                     cred_id = field_value.get("_credentials_id")
                     if cred_id and isinstance(cred_id, str):
                         try:
@@ -367,9 +376,9 @@ async def _validate_node_input_credentials(
                         if not creds:
                             has_missing_credentials = True
                             credential_errors[node.id][field_name] = (
-                                "The saved Google credentials are not available "
+                                "The saved credentials are not available "
                                 "for your account. Please re-select the file to "
-                                "authenticate with your own Google account."
+                                "authenticate with your own account."
                             )
 
         # If node has optional credentials and any are missing, mark for skipping

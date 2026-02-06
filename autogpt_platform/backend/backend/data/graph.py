@@ -683,7 +683,7 @@ class GraphModel(Graph, GraphMeta):
                 continue
             for key, value in node.input_default.items():
                 if isinstance(value, dict) and "_credentials_id" in value:
-                    value["_credentials_id"] = None
+                    del value["_credentials_id"]
 
     def validate_graph(
         self,

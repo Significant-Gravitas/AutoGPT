@@ -560,8 +560,9 @@ def test_reassign_ids_clears_credentials_id():
 
     GraphModel._reassign_ids(graph, user_id="new-user", graph_id_map={})
 
-    # _credentials_id should be cleared
-    assert graph.nodes[0].input_default["spreadsheet"]["_credentials_id"] is None
+    # _credentials_id key should be removed (not set to None) so that
+    # _acquire_auto_credentials correctly errors instead of treating it as chained data
+    assert "_credentials_id" not in graph.nodes[0].input_default["spreadsheet"]
 
 
 def test_reassign_ids_preserves_non_credential_fields():
@@ -668,8 +669,8 @@ def test_reassign_ids_handles_multiple_credential_fields():
 
     GraphModel._reassign_ids(graph, user_id="new-user", graph_id_map={})
 
-    assert graph.nodes[0].input_default["spreadsheet"]["_credentials_id"] is None
-    assert graph.nodes[0].input_default["doc_file"]["_credentials_id"] is None
+    assert "_credentials_id" not in graph.nodes[0].input_default["spreadsheet"]
+    assert "_credentials_id" not in graph.nodes[0].input_default["doc_file"]
     assert graph.nodes[0].input_default["plain_input"] == "not a dict"
 
 
