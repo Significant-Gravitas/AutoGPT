@@ -111,9 +111,7 @@ class TestGenerateAgent:
             instructions = {"type": "instructions", "steps": ["Step 1"]}
             result = await core.generate_agent(instructions)
 
-            # library_agents defaults to None
-            mock_external.assert_called_once_with(instructions, None)
-            # Result should have id, version, is_active added if not present
+            mock_external.assert_called_once_with(instructions, None, None, None)
             assert result is not None
             assert result["name"] == "Test Agent"
             assert "id" in result
@@ -177,8 +175,9 @@ class TestGenerateAgentPatch:
             current_agent = {"nodes": [], "links": []}
             result = await core.generate_agent_patch("Add a node", current_agent)
 
-            # library_agents defaults to None
-            mock_external.assert_called_once_with("Add a node", current_agent, None)
+            mock_external.assert_called_once_with(
+                "Add a node", current_agent, None, None, None
+            )
             assert result == expected_result
 
     @pytest.mark.asyncio

@@ -224,7 +224,7 @@ export function useVoiceRecording({
     [value, isTranscribing, toggleRecording, baseHandleKeyDown],
   );
 
-  const showMicButton = isSupported && !isStreaming;
+  const showMicButton = isSupported;
   const isInputDisabled = disabled || isStreaming || isTranscribing;
 
   // Cleanup on unmount

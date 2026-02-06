@@ -133,9 +133,22 @@ class RedisEventBus(BaseRedisEventBus[M], ABC):
 
 
 class AsyncRedisEventBus(BaseRedisEventBus[M], ABC):
+    def __init__(self):
+        self._pubsub: AsyncPubSub | None = None
+
     @property
     async def connection(self) -> redis.AsyncRedis:
         return await redis.get_redis_async()
+
+    async def close(self) -> None:
+        """Close the PubSub connection if it exists."""
+        if self._pubsub is not None:
+            try:
+                await self._pubsub.close()
+            except Exception:
+                logger.warning("Failed to close PubSub connection", exc_info=True)
+            finally:
+                self._pubsub = None
 
     async def publish_event(self, event: M, channel_key: str):
         """
@@ -157,6 +170,7 @@ class AsyncRedisEventBus(BaseRedisEventBus[M], ABC):
             await self.connection, channel_key
         )
         assert isinstance(pubsub, AsyncPubSub)
+        self._pubsub = pubsub
 
         if "*" in channel_key:
             await pubsub.psubscribe(full_channel_name)
