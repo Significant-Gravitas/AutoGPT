@@ -1,0 +1,345 @@
+name: CLA Label Sync
+
+on:
+  # Real-time: when CLA check completes
+  check_run:
+    types: [completed]
+  
+  # When PRs are opened or updated
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+  
+  # Scheduled sweep - check stale PRs daily
+  schedule:
+    - cron: '0 9 * * *'  # 9 AM UTC daily
+  
+  # Manual trigger for testing
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'Specific PR number to check (optional)'
+        required: false
+
+permissions:
+  pull-requests: write
+  contents: read
+
+env:
+  CLA_CHECK_NAME: 'license/cla'
+  LABEL_PENDING: 'cla: pending'
+  LABEL_SIGNED: 'cla: signed'
+  # Timing configuration
+  REMINDER_DAYS: 7       # Days before first reminder
+  CLOSE_DAYS: 30         # Days before auto-close
+
+jobs:
+  sync-labels:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Ensure CLA labels exist
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const labels = [
+              { name: 'cla: pending', color: 'fbca04', description: 'CLA not yet signed by all contributors' },
+              { name: 'cla: signed', color: '0e8a16', description: 'CLA signed by all contributors' }
+            ];
+            
+            for (const label of labels) {
+              try {
+                await github.rest.issues.getLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name: label.name
+                });
+              } catch (e) {
+                if (e.status === 404) {
+                  await github.rest.issues.createLabel({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    name: label.name,
+                    color: label.color,
+                    description: label.description
+                  });
+                  console.log(`Created label: ${label.name}`);
+                }
+              }
+            }
+
+      - name: Sync CLA labels and handle stale PRs
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const CLA_CHECK_NAME = process.env.CLA_CHECK_NAME;
+            const LABEL_PENDING = process.env.LABEL_PENDING;
+            const LABEL_SIGNED = process.env.LABEL_SIGNED;
+            const REMINDER_DAYS = parseInt(process.env.REMINDER_DAYS);
+            const CLOSE_DAYS = parseInt(process.env.CLOSE_DAYS);
+            
+            const CLA_SIGN_URL = `https://cla-assistant.io/${context.repo.owner}/${context.repo.repo}`;
+            
+            // Helper: Get CLA status for a PR
+            async function getClaStatus(prNumber, headSha) {
+              // CLA-assistant uses the commit status API (not checks API)
+              const { data: statuses } = await github.rest.repos.getCombinedStatusForRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: headSha
+              });
+              
+              const claStatus = statuses.statuses.find(
+                s => s.context === CLA_CHECK_NAME
+              );
+              
+              if (claStatus) {
+                return {
+                  found: true,
+                  passed: claStatus.state === 'success',
+                  state: claStatus.state,
+                  description: claStatus.description
+                };
+              }
+              
+              // Fallback: check the Checks API too
+              const { data: checkRuns } = await github.rest.checks.listForRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: headSha
+              });
+              
+              const claCheck = checkRuns.check_runs.find(
+                check => check.name === CLA_CHECK_NAME
+              );
+              
+              if (claCheck) {
+                return {
+                  found: true,
+                  passed: claCheck.conclusion === 'success',
+                  state: claCheck.conclusion,
+                  description: claCheck.output?.summary || ''
+                };
+              }
+              
+              return { found: false, passed: false, state: 'unknown' };
+            }
+            
+            // Helper: Check if bot already commented with a specific marker
+            async function hasCommentWithMarker(prNumber, marker) {
+              const { data: comments } = await github.rest.issues.listComments({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                per_page: 100
+              });
+              
+              return comments.some(c => 
+                c.user.type === 'Bot' && 
+                c.body.includes(marker)
+              );
+            }
+            
+            // Helper: Days since a date
+            function daysSince(dateString) {
+              const date = new Date(dateString);
+              const now = new Date();
+              return Math.floor((now - date) / (1000 * 60 * 60 * 24));
+            }
+            
+            // Determine which PRs to check
+            let prsToCheck = [];
+            
+            if (context.eventName === 'check_run') {
+              // Only process if it's the CLA check
+              if (context.payload.check_run.name !== CLA_CHECK_NAME) {
+                console.log(`Ignoring check: ${context.payload.check_run.name}`);
+                return;
+              }
+              const prs = context.payload.check_run.pull_requests || [];
+              prsToCheck = prs.map(pr => pr.number);
+              
+            } else if (context.eventName === 'pull_request_target') {
+              prsToCheck = [context.payload.pull_request.number];
+              
+            } else if (context.eventName === 'workflow_dispatch' && context.payload.inputs?.pr_number) {
+              prsToCheck = [parseInt(context.payload.inputs.pr_number)];
+              
+            } else {
+              // Scheduled run: check all open PRs
+              const { data: openPRs } = await github.rest.pulls.list({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                state: 'open',
+                per_page: 100
+              });
+              prsToCheck = openPRs.map(pr => pr.number);
+            }
+            
+            console.log(`Checking ${prsToCheck.length} PR(s): ${prsToCheck.join(', ')}`);
+            
+            for (const prNumber of prsToCheck) {
+              try {
+                // Get PR details
+                const { data: pr } = await github.rest.pulls.get({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  pull_number: prNumber
+                });
+                
+                // Skip if PR is from a bot
+                if (pr.user.type === 'Bot') {
+                  console.log(`PR #${prNumber}: Skipping bot PR`);
+                  continue;
+                }
+                
+                const claStatus = await getClaStatus(prNumber, pr.head.sha);
+                const currentLabels = pr.labels.map(l => l.name);
+                const hasPending = currentLabels.includes(LABEL_PENDING);
+                const hasSigned = currentLabels.includes(LABEL_SIGNED);
+                const prAgeDays = daysSince(pr.created_at);
+                
+                console.log(`PR #${prNumber}: CLA ${claStatus.passed ? 'passed' : 'pending'} (${claStatus.state}), age: ${prAgeDays} days`);
+                
+                if (claStatus.passed) {
+                  // ✅ CLA signed - add signed label, remove pending
+                  if (!hasSigned) {
+                    await github.rest.issues.addLabels({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      issue_number: prNumber,
+                      labels: [LABEL_SIGNED]
+                    });
+                    console.log(`Added '${LABEL_SIGNED}' to PR #${prNumber}`);
+                  }
+                  if (hasPending) {
+                    await github.rest.issues.removeLabel({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      issue_number: prNumber,
+                      name: LABEL_PENDING
+                    });
+                    console.log(`Removed '${LABEL_PENDING}' from PR #${prNumber}`);
+                  }
+                  
+                } else {
+                  // ⏳ CLA pending
+                  
+                  // Add pending label if not present
+                  if (!hasPending) {
+                    await github.rest.issues.addLabels({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      issue_number: prNumber,
+                      labels: [LABEL_PENDING]
+                    });
+                    console.log(`Added '${LABEL_PENDING}' to PR #${prNumber}`);
+                  }
+                  if (hasSigned) {
+                    await github.rest.issues.removeLabel({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      issue_number: prNumber,
+                      name: LABEL_SIGNED
+                    });
+                    console.log(`Removed '${LABEL_SIGNED}' from PR #${prNumber}`);
+                  }
+                  
+                  // Check if we need to send reminder or close
+                  const REMINDER_MARKER = '<!-- cla-reminder -->';
+                  const CLOSE_WARNING_MARKER = '<!-- cla-close-warning -->';
+                  
+                  // 📢 Reminder after REMINDER_DAYS
+                  if (prAgeDays >= REMINDER_DAYS && prAgeDays < CLOSE_DAYS) {
+                    const hasReminder = await hasCommentWithMarker(prNumber, REMINDER_MARKER);
+                    
+                    if (!hasReminder) {
+                      await github.rest.issues.createComment({
+                        owner: context.repo.owner,
+                        repo: context.repo.repo,
+                        issue_number: prNumber,
+                        body: `${REMINDER_MARKER}
+            
+            👋 **Friendly reminder:** This PR is waiting on a signed CLA.
+            
+            All contributors need to sign our Contributor License Agreement before we can merge this PR.
+            
+            **➡️ [Sign the CLA here](${CLA_SIGN_URL}?pullRequest=${prNumber})**
+            
+            <details>
+            <summary>Why do we need a CLA?</summary>
+            
+            The CLA protects both you and the project by clarifying the terms under which your contribution is made. It's a one-time process — once signed, it covers all your future contributions.
+            
+            </details>
+            
+            <details>
+            <summary>Common issues</summary>
+            
+            - **Email mismatch:** Make sure your Git commit email matches your GitHub account email
+            - **Merge commits:** If you merged \`dev\` into your branch, try rebasing instead: \`git rebase origin/dev && git push --force-with-lease\`
+            - **Multiple authors:** All commit authors need to sign, not just the PR author
+            
+            </details>
+            
+            If you have questions, just ask! 🙂`
+                      });
+                      console.log(`Posted reminder on PR #${prNumber}`);
+                    }
+                  }
+                  
+                  // ⚠️ Close warning at CLOSE_DAYS - 7
+                  if (prAgeDays >= CLOSE_DAYS - 7 && prAgeDays < CLOSE_DAYS) {
+                    const hasCloseWarning = await hasCommentWithMarker(prNumber, CLOSE_WARNING_MARKER);
+                    
+                    if (!hasCloseWarning) {
+                      await github.rest.issues.createComment({
+                        owner: context.repo.owner,
+                        repo: context.repo.repo,
+                        issue_number: prNumber,
+                        body: `${CLOSE_WARNING_MARKER}
+            
+            ⚠️ **This PR will be automatically closed in 7 days** if the CLA is not signed.
+            
+            We haven't received a signed CLA from all contributors yet. Please sign it to keep this PR open:
+            
+            **➡️ [Sign the CLA here](${CLA_SIGN_URL}?pullRequest=${prNumber})**
+            
+            If you're unable to sign or have questions, please let us know — we're happy to help!`
+                      });
+                      console.log(`Posted close warning on PR #${prNumber}`);
+                    }
+                  }
+                  
+                  // 🚪 Auto-close after CLOSE_DAYS
+                  if (prAgeDays >= CLOSE_DAYS) {
+                    await github.rest.issues.createComment({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      issue_number: prNumber,
+                      body: `👋 Closing this PR due to unsigned CLA after ${CLOSE_DAYS} days.
+            
+            Thank you for your contribution! If you'd still like to contribute:
+            
+            1. [Sign the CLA](${CLA_SIGN_URL})
+            2. Re-open this PR or create a new one
+            
+            We appreciate your interest in AutoGPT and hope to see you back! 🚀`
+                    });
+                    
+                    await github.rest.pulls.update({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      pull_number: prNumber,
+                      state: 'closed'
+                    });
+                    
+                    console.log(`Closed PR #${prNumber} due to unsigned CLA`);
+                  }
+                }
+                
+              } catch (error) {
+                console.error(`Error processing PR #${prNumber}: ${error.message}`);
+              }
+            }
+            
+            console.log('CLA label sync complete!');
