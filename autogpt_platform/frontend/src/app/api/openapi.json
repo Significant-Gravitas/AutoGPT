@@ -7804,68 +7804,57 @@
             "anyOf": [{ "type": "integer" }, { "type": "null" }],
             "title": "Forked From Version"
           },
-          "sub_graphs": {
-            "items": { "$ref": "#/components/schemas/BaseGraph-Output" },
-            "type": "array",
-            "title": "Sub Graphs",
-            "default": []
-          },
           "user_id": { "type": "string", "title": "User Id" },
           "input_schema": {
             "additionalProperties": true,
             "type": "object",
-            "title": "Input Schema",
-            "readOnly": true
+            "title": "Input Schema"
           },
           "output_schema": {
             "additionalProperties": true,
             "type": "object",
-            "title": "Output Schema",
-            "readOnly": true
+            "title": "Output Schema"
+          },
+          "credentials_input_schema": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Credentials Input Schema"
           },
           "has_external_trigger": {
             "type": "boolean",
-            "title": "Has External Trigger",
-            "readOnly": true
+            "title": "Has External Trigger"
           },
           "has_human_in_the_loop": {
             "type": "boolean",
-            "title": "Has Human In The Loop",
-            "readOnly": true
+            "title": "Has Human In The Loop"
           },
           "has_sensitive_action": {
             "type": "boolean",
-            "title": "Has Sensitive Action",
-            "readOnly": true
+            "title": "Has Sensitive Action"
           },
           "trigger_setup_info": {
             "anyOf": [
               { "$ref": "#/components/schemas/GraphTriggerInfo" },
               { "type": "null" }
-            ],
-            "readOnly": true
-          },
-          "credentials_input_schema": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Credentials Input Schema",
-            "readOnly": true
+            ]
           }
         },
         "type": "object",
         "required": [
+          "id",
           "name",
           "description",
           "user_id",
           "input_schema",
           "output_schema",
+          "credentials_input_schema",
           "has_external_trigger",
           "has_human_in_the_loop",
           "has_sensitive_action",
-          "trigger_setup_info",
-          "credentials_input_schema"
+          "trigger_setup_info"
         ],
-        "title": "GraphMeta"
+        "title": "GraphMeta",
+        "description": "Graph metadata without nodes/links \u2014 used for list endpoints.\n\nThis is a flat, lightweight model (not inheriting from Graph) to avoid recomputing\nexpensive computed fields. Values are copied from GraphModel."
       },
       "GraphModel": {
         "properties": {

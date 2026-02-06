@@ -394,7 +394,11 @@ class Graph(BaseGraph):
         properties = {}
         required_fields = []
 
-        for agg_field_key, (field_info, _, is_required) in graph_credentials_inputs.items():
+        for agg_field_key, (
+            field_info,
+            _,
+            is_required,
+        ) in graph_credentials_inputs.items():
             providers = list(field_info.provider)
             cred_types = list(field_info.supported_types)
 
@@ -872,7 +876,6 @@ class GraphMeta(BaseModel):
 
     id: str
     version: int = 1
-    user_id: str
     is_active: bool = True
     name: str
     description: str
@@ -880,21 +883,21 @@ class GraphMeta(BaseModel):
     recommended_schedule_cron: str | None = None
     forked_from_id: str | None = None
     forked_from_version: int | None = None
+    user_id: str
 
-    input_schema: dict[str, Any] = {}
-    output_schema: dict[str, Any] = {}
-    credentials_input_schema: dict[str, Any] = {}
-    has_external_trigger: bool = False
-    has_human_in_the_loop: bool = False
-    has_sensitive_action: bool = False
-    trigger_setup_info: Optional["GraphTriggerInfo"] = None
+    input_schema: dict[str, Any]
+    output_schema: dict[str, Any]
+    credentials_input_schema: dict[str, Any]
+    has_external_trigger: bool
+    has_human_in_the_loop: bool
+    has_sensitive_action: bool
+    trigger_setup_info: Optional["GraphTriggerInfo"]
 
     @staticmethod
     def from_graph(graph: "GraphModel") -> "GraphMeta":
         return GraphMeta(
             id=graph.id,
             version=graph.version,
-            user_id=graph.user_id,
             is_active=graph.is_active,
             name=graph.name,
             description=graph.description,
@@ -902,7 +905,8 @@ class GraphMeta(BaseModel):
             recommended_schedule_cron=graph.recommended_schedule_cron,
             forked_from_id=graph.forked_from_id,
             forked_from_version=graph.forked_from_version,
-            # Pass pre-computed values for expensive fields
+            user_id=graph.user_id,
+            # Pre-computed values (were @computed_field on Graph)
             input_schema=graph.input_schema,
             output_schema=graph.output_schema,
             has_external_trigger=graph.has_external_trigger,
