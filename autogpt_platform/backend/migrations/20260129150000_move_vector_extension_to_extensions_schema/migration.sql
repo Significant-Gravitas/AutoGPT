@@ -76,8 +76,8 @@ BEGIN
         );
     ELSE
         EXECUTE format(
-            'ALTER ROLE %I SET search_path TO "$user", public, %s, %I',
-            current_user, ext_schemas, app_schema
+            'ALTER ROLE %I SET search_path TO "$user", %I, public, %s',
+            current_user, app_schema, ext_schemas
         );
     END IF;
 END $$;
