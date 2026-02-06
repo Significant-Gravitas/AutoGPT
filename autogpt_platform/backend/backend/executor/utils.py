@@ -259,7 +259,8 @@ async def _validate_node_input_credentials(
 
         # Find any fields of type CredentialsMetaInput
         credentials_fields = block.input_schema.get_credentials_fields()
-        if not credentials_fields:
+        auto_credentials_fields = block.input_schema.get_auto_credentials_fields()
+        if not credentials_fields and not auto_credentials_fields:
             continue
 
         # Track if any credential field is missing for this node
@@ -339,6 +340,31 @@ async def _validate_node_input_credentials(
                 ] = "Invalid credentials: type/provider mismatch"
                 continue
 
+        # Validate auto-credentials (GoogleDriveFileField-based)
+        # These have _credentials_id embedded in the file field data
+        if auto_credentials_fields:
+            for _kwarg_name, info in auto_credentials_fields.items():
+                field_name = info["field_name"]
+                # Check input_default and nodes_input_masks for the field value
+                field_value = node.input_default.get(field_name)
+                if nodes_input_masks and node.id in nodes_input_masks:
+                    field_value = nodes_input_masks[node.id].get(
+                        field_name, field_value
+                    )
+
+                if field_value and isinstance(field_value, dict):
+                    cred_id = field_value.get("_credentials_id")
+                    if cred_id and isinstance(cred_id, str):
+                        creds_store = get_integration_credentials_store()
+                        creds = await creds_store.get_creds_by_id(user_id, cred_id)
+                        if not creds:
+                            has_missing_credentials = True
+                            credential_errors[node.id][field_name] = (
+                                "The saved Google credentials are not available "
+                                "for your account. Please re-select the file to "
+                                "authenticate with your own Google account."
+                            )
+
         # If node has optional credentials and any are missing, mark for skipping
         # But only if there are no other errors for this node
         if (
@@ -370,8 +396,9 @@ def make_node_credentials_input_map(
     """
     result: dict[str, dict[str, JsonValue]] = {}
 
-    # Get aggregated credentials fields for the graph
-    graph_cred_inputs = graph.aggregate_credentials_inputs()
+    # Only map regular credentials (not auto_credentials, which are resolved
+    # at execution time from _credentials_id in file field data)
+    graph_cred_inputs = graph.regular_credentials_inputs
 
     for graph_input_name, (_, compatible_node_fields) in graph_cred_inputs.items():
         # Best-effort map: skip missing items

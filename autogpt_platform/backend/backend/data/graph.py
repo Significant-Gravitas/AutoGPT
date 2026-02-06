@@ -369,7 +369,7 @@ class Graph(BaseGraph):
         schema = self._credentials_input_schema.jsonschema()
 
         # Determine which credential fields are required based on credentials_optional metadata
-        graph_credentials_inputs = self.aggregate_credentials_inputs()
+        graph_credentials_inputs = self.regular_credentials_inputs
         required_fields = []
 
         # Build a map of node_id -> node for quick lookup
@@ -398,7 +398,7 @@ class Graph(BaseGraph):
 
     @property
     def _credentials_input_schema(self) -> type[BlockSchema]:
-        graph_credentials_inputs = self.aggregate_credentials_inputs()
+        graph_credentials_inputs = self.regular_credentials_inputs
         logger.debug(
             f"Combined credentials input fields for graph #{self.id} ({self.name}): "
             f"{graph_credentials_inputs}"
@@ -487,6 +487,28 @@ class Graph(BaseGraph):
         # Combine credential field info (this will merge discriminator_values automatically)
         return CredentialsFieldInfo.combine(*node_credential_data)
 
+    @property
+    def regular_credentials_inputs(
+        self,
+    ) -> dict[str, tuple[CredentialsFieldInfo, set[tuple[str, str]]]]:
+        """Credentials that need explicit user mapping (CredentialsMetaInput fields)."""
+        return {
+            k: v
+            for k, v in self.aggregate_credentials_inputs().items()
+            if not v[0].is_auto_credential
+        }
+
+    @property
+    def auto_credentials_inputs(
+        self,
+    ) -> dict[str, tuple[CredentialsFieldInfo, set[tuple[str, str]]]]:
+        """Credentials embedded in file fields (_credentials_id), resolved at execution time."""
+        return {
+            k: v
+            for k, v in self.aggregate_credentials_inputs().items()
+            if v[0].is_auto_credential
+        }
+
 
 class GraphModel(Graph):
     user_id: str
@@ -566,6 +588,16 @@ class GraphModel(Graph):
                 graph_id := node.input_default.get("graph_id")
             ) and graph_id in graph_id_map:
                 node.input_default["graph_id"] = graph_id_map[graph_id]
+
+        # Clear auto-credentials references (e.g., _credentials_id in
+        # GoogleDriveFile fields) so the new user must re-authenticate
+        # with their own account
+        for node in graph.nodes:
+            if not node.input_default:
+                continue
+            for key, value in node.input_default.items():
+                if isinstance(value, dict) and "_credentials_id" in value:
+                    value["_credentials_id"] = None
 
     def validate_graph(
         self,
