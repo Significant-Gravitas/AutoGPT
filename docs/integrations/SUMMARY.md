@@ -92,6 +92,7 @@
 * [Notion Read Page Markdown](block-integrations/notion/read_page_markdown.md)
 * [Notion Search](block-integrations/notion/search.md)
 * [Nvidia Deepfake](block-integrations/nvidia/deepfake.md)
+* [Pinchwork](block-integrations/pinchwork.md)
 * [Replicate Flux Advanced](block-integrations/replicate/flux_advanced.md)
 * [Replicate Replicate Block](block-integrations/replicate/replicate_block.md)
 * [Search](block-integrations/search.md)
