@@ -2,7 +2,7 @@ import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecut
 
 export const EMPTY_EXECUTION_UPDATES_THRESHOLD = 40;
 
-const POLLING_STATUSES = new Set([
+const POLLING_STATUSES = new Set<AgentExecutionStatus>([
   AgentExecutionStatus.RUNNING,
   AgentExecutionStatus.QUEUED,
   AgentExecutionStatus.INCOMPLETE,
