@@ -19,7 +19,8 @@ function initEditor() {
         lineNumbers: 'on',
         roundedSelection: false,
         cursorStyle: 'line',
-        glyphMargin: true
+        glyphMargin: true,
+        readOnly: false // Explicitly ensure it is NOT read-only
     });
 
     // Update cursor position in status bar
@@ -27,11 +28,61 @@ function initEditor() {
         document.getElementById('cursor-pos').innerText = `Ln ${e.position.lineNumber}, Col ${e.position.column}`;
     });
 
-    log('System', 'Monaco Editor initialized successfully.');
+    // Load last saved code
+    chrome.storage.local.get(['saved_deluge_code'], (result) => {
+        if (result.saved_deluge_code) {
+            editor.setValue(result.saved_deluge_code);
+            log('System', 'Loaded previously saved code.');
+        }
+    });
+
+    log('System', 'Monaco Editor initialized successfully. Mode: Local');
+
+    // Auto-save on change
+    let autoSaveTimeout;
+    editor.onDidChangeModelContent(() => {
+        clearTimeout(autoSaveTimeout);
+        autoSaveTimeout = setTimeout(() => {
+            const code = editor.getValue();
+            chrome.storage.local.set({ 'saved_deluge_code': code });
+            document.getElementById('sync-status').innerText = 'Auto-saved';
+            setTimeout(() => {
+                const syncStatusEl = document.getElementById('sync-status');
+                if (syncStatusEl.innerText === 'Auto-saved') {
+                    checkConnection(); // Restore connection status
+                }
+            }, 2000);
+        }, 1000);
+    });
+
     setupEventHandlers();
+    checkConnection(); // Initial connection check
+    setInterval(checkConnection, 5000); // Heartbeat
+}
+
+function checkConnection() {
+    chrome.runtime.sendMessage({ action: 'CHECK_CONNECTION' }, (response) => {
+        const statusEl = document.getElementById('status-indicator');
+        const syncStatusEl = document.getElementById('sync-status');
+
+        if (response && response.connected) {
+            statusEl.innerText = 'Connected: ' + (response.tabTitle || 'Zoho Tab');
+            statusEl.style.color = '#4ec9b0';
+            syncStatusEl.innerText = 'Connected';
+        } else {
+            statusEl.innerText = 'Disconnected (Local Mode)';
+            statusEl.style.color = '#888';
+            syncStatusEl.innerText = 'Local';
+        }
+    });
 }
 
 function setupEventHandlers() {
+    document.getElementById('new-btn').addEventListener('click', () => {
+        if (confirm('Start a new script? Unsaved changes in the editor will be lost.')) {
+            editor.setValue('// New Zoho Deluge Script\n\n');
+        }
+    });
     document.getElementById('pull-btn').addEventListener('click', pullFromZoho);
     document.getElementById('push-btn').addEventListener('click', pushToZoho);
     document.getElementById('save-btn').addEventListener('click', saveLocally);

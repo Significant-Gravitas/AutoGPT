@@ -12,7 +12,8 @@
         <header id="top-bar">
             <div class="logo">Zoho Deluge IDE</div>
             <div class="actions">
-                <span id="status-indicator">Disconnected</span>
+                <span id="status-indicator">Disconnected (Local Mode)</span>
+                <button id="new-btn" title="New Script">New</button>
                 <button id="pull-btn" title="Pull from Zoho Tab">Pull Code</button>
                 <button id="push-btn" title="Push to Zoho Tab">Sync to Zoho</button>
                 <button id="save-btn" title="Save Locally">Save</button>
@@ -62,19 +63,6 @@
     </div>
 
     <script src="assets/monaco-editor/min/vs/loader.js"></script>
-    <script>
-        require.config({ paths: { 'vs': 'assets/monaco-editor/min/vs' } });
-        require(['vs/editor/editor.main'], function() {
-            // Monaco is loaded, now we can load our custom language and IDE logic
-            var script = document.createElement('script');
-            script.src = 'deluge-lang.js';
-            script.onload = function() {
-                var ideScript = document.createElement('script');
-                ideScript.src = 'ide.js';
-                document.body.appendChild(ideScript);
-            };
-            document.body.appendChild(script);
-        });
-    </script>
+    <script src="loader-init.js"></script>
 </body>
 </html>

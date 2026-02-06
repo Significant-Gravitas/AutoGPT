@@ -4,10 +4,15 @@
     window.addEventListener('message', (event) => {
         if (event.data && event.data.type === 'FROM_EXTENSION') {
             const action = event.data.action;
-            let response = {};
+            const code = getEditorCode();
 
+            // If this frame doesn't have an editor and we're just getting code, don't respond
+            // so other frames can.
+            if (action === 'GET_ZOHO_CODE' && code === null) return;
+
+            let response = {};
             if (action === 'GET_ZOHO_CODE') {
-                response = { code: getEditorCode() };
+                response = { code: code };
             } else if (action === 'SET_ZOHO_CODE') {
                 response = { success: setEditorCode(event.data.code) };
             }
