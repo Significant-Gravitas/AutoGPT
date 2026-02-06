@@ -267,7 +267,11 @@ class BlockHandler(ContentHandler):
         # Filter out disabled blocks and excluded blocks - they're not indexed
         enabled_block_ids = []
         for block_id, block_cls in all_blocks.items():
-            block_instance = block_cls()
+            try:
+                block_instance = block_cls()
+            except Exception as e:
+                logger.warning(f"Failed to instantiate block {block_id}: {e}")
+                continue
             if block_instance.disabled:
                 continue
             if (
