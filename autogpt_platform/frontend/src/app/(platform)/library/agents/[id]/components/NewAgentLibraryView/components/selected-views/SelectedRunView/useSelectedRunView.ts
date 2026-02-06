@@ -19,6 +19,7 @@ export function useSelectedRunView(graphId: string, runId: string) {
   useEffect(() => {
     emptyUpdatesCountRef.current = 0;
     stuckRef.current = false;
+    setExecutionStuck(false);
   }, [graphId, runId]);
 
   const executionQuery = useGetV1GetExecutionDetails(graphId, runId, {

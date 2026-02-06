@@ -1,10 +1,12 @@
+import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
+
 export const EMPTY_EXECUTION_UPDATES_THRESHOLD = 40;
 
 const POLLING_STATUSES = new Set([
-  "RUNNING",
-  "QUEUED",
-  "INCOMPLETE",
-  "REVIEW",
+  AgentExecutionStatus.RUNNING,
+  AgentExecutionStatus.QUEUED,
+  AgentExecutionStatus.INCOMPLETE,
+  AgentExecutionStatus.REVIEW,
 ]);
 
 export function isEmptyExecutionUpdate(rawData: unknown): boolean {
