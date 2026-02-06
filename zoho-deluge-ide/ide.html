@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zoho Deluge Advanced IDE</title>
+    <link rel="stylesheet" href="ide.css">
+    <link rel="stylesheet" data-name="vs/editor/editor.main" href="assets/monaco-editor/min/vs/editor/editor.main.css">
+</head>
+<body>
+    <div id="app-container">
+        <header id="top-bar">
+            <div class="logo">Zoho Deluge IDE</div>
+            <div class="actions">
+                <span id="status-indicator">Disconnected</span>
+                <button id="pull-btn" title="Pull from Zoho Tab">Pull Code</button>
+                <button id="push-btn" title="Push to Zoho Tab">Sync to Zoho</button>
+                <button id="save-btn" title="Save Locally">Save</button>
+            </div>
+        </header>
+        <main id="main-content">
+            <aside id="sidebar">
+                <div class="sidebar-item active" title="Explorer">📁</div>
+                <div class="sidebar-item" title="Search">🔍</div>
+                <div class="sidebar-item" title="Zoho APIs">☁️</div>
+                <div class="sidebar-item" title="Settings">⚙️</div>
+            </aside>
+            <div id="editor-container"></div>
+        </main>
+        <footer id="bottom-panel">
+            <div class="panel-header">
+                <div class="tab active" data-target="console-output">Console</div>
+                <div class="tab" data-target="problems-output">Problems</div>
+                <div class="tab" data-target="docs-output">Zoho Docs</div>
+                <div class="panel-actions">
+                    <button id="manual-console-btn" title="Manual Console Input">➕</button>
+                    <button id="clear-console">Clear</button>
+                </div>
+            </div>
+            <div id="panel-body">
+                <div id="console-output" class="panel-content active">
+                    <div class="log-entry system">Welcome to Deluge IDE. Connect to a Zoho tab to begin.</div>
+                </div>
+                <div id="problems-output" class="panel-content">
+                    <div class="log-entry">No problems detected.</div>
+                </div>
+                <div id="docs-output" class="panel-content">
+                    <div class="log-entry">Select a function to see documentation.</div>
+                </div>
+            </div>
+        </footer>
+        <div id="status-bar">
+            <div class="status-left">
+                <span id="sync-status">Ready</span>
+                <span id="cursor-pos">Ln 1, Col 1</span>
+            </div>
+            <div class="status-right">
+                <span>Deluge</span>
+                <span>UTF-8</span>
+            </div>
+        </div>
+    </div>
+
+    <script src="assets/monaco-editor/min/vs/loader.js"></script>
+    <script>
+        require.config({ paths: { 'vs': 'assets/monaco-editor/min/vs' } });
+        require(['vs/editor/editor.main'], function() {
+            // Monaco is loaded, now we can load our custom language and IDE logic
+            var script = document.createElement('script');
+            script.src = 'deluge-lang.js';
+            script.onload = function() {
+                var ideScript = document.createElement('script');
+                ideScript.src = 'ide.js';
+                document.body.appendChild(ideScript);
+            };
+            document.body.appendChild(script);
+        });
+    </script>
+</body>
+</html>

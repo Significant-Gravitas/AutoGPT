@@ -1,0 +1,44 @@
+{
+  "manifest_version": 3,
+  "name": "Zoho Deluge Advanced IDE",
+  "version": "1.0",
+  "description": "A full-featured IDE for Zoho Deluge with real-time sync and autocomplete.",
+  "permissions": [
+    "tabs",
+    "scripting",
+    "activeTab",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://*.zoho.com/*",
+    "https://*.zoho.eu/*",
+    "https://*.zoho.in/*",
+    "https://*.zoho.com.au/*",
+    "https://*.zoho.jp/*"
+  ],
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*.zoho.com/*",
+        "https://*.zoho.eu/*",
+        "https://*.zoho.in/*",
+        "https://*.zoho.com.au/*",
+        "https://*.zoho.jp/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["ide.html", "assets/*", "bridge.js"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}
