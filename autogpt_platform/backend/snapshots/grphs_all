@@ -1,34 +1,14 @@
 [
   {
-    "credentials_input_schema": {
-      "properties": {},
-      "required": [],
-      "title": "TestGraphCredentialsInputSchema",
-      "type": "object"
-    },
+    "created_at": "2025-09-04T13:37:00",
     "description": "A test graph",
     "forked_from_id": null,
     "forked_from_version": null,
-    "has_external_trigger": false,
-    "has_human_in_the_loop": false,
-    "has_sensitive_action": false,
     "id": "graph-123",
-    "input_schema": {
-      "properties": {},
-      "required": [],
-      "type": "object"
-    },
     "instructions": null,
     "is_active": true,
     "name": "Test Graph",
-    "output_schema": {
-      "properties": {},
-      "required": [],
-      "type": "object"
-    },
     "recommended_schedule_cron": null,
-    "sub_graphs": [],
-    "trigger_setup_info": null,
     "user_id": "3e53486c-cf57-477e-ba2a-cb02dc828e1a",
     "version": 1
   }
