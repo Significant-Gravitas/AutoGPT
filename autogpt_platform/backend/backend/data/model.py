@@ -163,7 +163,6 @@ class User(BaseModel):
 if TYPE_CHECKING:
     from prisma.models import User as PrismaUser
 
-    from backend.data.block import BlockSchema
 
 T = TypeVar("T")
 logger = logging.getLogger(__name__)
@@ -508,15 +507,13 @@ class CredentialsMetaInput(BaseModel, Generic[CP, CT]):
     def allowed_cred_types(cls) -> tuple[CredentialsType, ...]:
         return get_args(cls.model_fields["type"].annotation)
 
-    @classmethod
-    def validate_credentials_field_schema(cls, model: type["BlockSchema"]):
+    @staticmethod
+    def validate_credentials_field_schema(
+        field_schema: dict[str, Any], field_name: str
+    ):
         """Validates the schema of a credentials input field"""
-        field_name = next(
-            name for name, type in model.get_credentials_fields().items() if type is cls
-        )
-        field_schema = model.jsonschema()["properties"][field_name]
         try:
-            schema_extra = CredentialsFieldInfo[CP, CT].model_validate(field_schema)
+            field_info = CredentialsFieldInfo[CP, CT].model_validate(field_schema)
         except ValidationError as e:
             if "Field required [type=missing" not in str(e):
                 raise
@@ -526,11 +523,11 @@ class CredentialsMetaInput(BaseModel, Generic[CP, CT]):
                 f"{field_schema}"
             ) from e
 
-        providers = cls.allowed_providers()
+        providers = field_info.provider
         if (
             providers is not None
             and len(providers) > 1
-            and not schema_extra.discriminator
+            and not field_info.discriminator
         ):
             raise TypeError(
                 f"Multi-provider CredentialsField '{field_name}' "
