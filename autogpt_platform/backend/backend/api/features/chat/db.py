@@ -5,6 +5,7 @@ import logging
 from datetime import UTC, datetime
 from typing import Any, cast
 
+from prisma.errors import UniqueViolationError
 from prisma.models import ChatMessage as PrismaChatMessage
 from prisma.models import ChatSession as PrismaChatSession
 from prisma.types import (
@@ -135,6 +136,28 @@ async def add_chat_message(
     return message
 
 
+async def get_max_message_sequence(session_id: str, tx: Any = None) -> int:
+    """Get the highest sequence number for a session's messages.
+
+    Args:
+        session_id: The chat session ID.
+        tx: Optional transaction client for running inside a transaction.
+
+    Returns:
+        The max sequence number, or -1 if no messages exist
+        (so that max + 1 = 0 for the first message).
+    """
+    client = PrismaChatMessage.prisma(tx) if tx else PrismaChatMessage.prisma()
+    results = await client.find_many(
+        where={"sessionId": session_id},
+        order={"sequence": "desc"},
+        take=1,
+    )
+    if results:
+        return results[0].sequence
+    return -1
+
+
 async def add_chat_messages_batch(
     session_id: str,
     messages: list[dict[str, Any]],
@@ -143,54 +166,88 @@ async def add_chat_messages_batch(
     """Add multiple messages to a chat session in a batch.
 
     Uses a transaction for atomicity - if any message creation fails,
-    the entire batch is rolled back.
+    the entire batch is rolled back. Computes the actual start sequence
+    inside the transaction to prevent race conditions in multi-pod deployments.
+
+    Retries once on UniqueViolationError (another pod may have inserted
+    messages with the same sequence numbers concurrently).
     """
     if not messages:
         return []
 
-    created_messages = []
+    max_attempts = 2
+    for attempt in range(1, max_attempts + 1):
+        try:
+            created_messages = []
 
-    async with transaction() as tx:
-        for i, msg in enumerate(messages):
-            # Build input dict dynamically rather than using ChatMessageCreateInput
-            # directly because Prisma's TypedDict validation rejects optional fields
-            # set to None. We only include fields that have values, then cast.
-            data: dict[str, Any] = {
-                "Session": {"connect": {"id": session_id}},
-                "role": msg["role"],
-                "sequence": start_sequence + i,
-            }
+            async with transaction() as tx:
+                # Compute authoritative start sequence inside the transaction
+                actual_max = await get_max_message_sequence(session_id, tx)
+                actual_start = actual_max + 1
 
-            # Add optional string fields
-            if msg.get("content") is not None:
-                data["content"] = msg["content"]
-            if msg.get("name") is not None:
-                data["name"] = msg["name"]
-            if msg.get("tool_call_id") is not None:
-                data["toolCallId"] = msg["tool_call_id"]
-            if msg.get("refusal") is not None:
-                data["refusal"] = msg["refusal"]
+                if actual_start != start_sequence:
+                    logger.warning(
+                        f"Sequence adjustment for session {session_id}: "
+                        f"caller provided start_sequence={start_sequence}, "
+                        f"but DB max sequence is {actual_max} "
+                        f"(using {actual_start} instead)"
+                    )
 
-            # Add optional JSON fields only when they have values
-            if msg.get("tool_calls") is not None:
-                data["toolCalls"] = SafeJson(msg["tool_calls"])
-            if msg.get("function_call") is not None:
-                data["functionCall"] = SafeJson(msg["function_call"])
+                for i, msg in enumerate(messages):
+                    # Build input dict dynamically rather than using
+                    # ChatMessageCreateInput directly because Prisma's TypedDict
+                    # validation rejects optional fields set to None.
+                    data: dict[str, Any] = {
+                        "Session": {"connect": {"id": session_id}},
+                        "role": msg["role"],
+                        "sequence": actual_start + i,
+                    }
 
-            created = await PrismaChatMessage.prisma(tx).create(
-                data=cast(ChatMessageCreateInput, data)
+                    # Add optional string fields
+                    if msg.get("content") is not None:
+                        data["content"] = msg["content"]
+                    if msg.get("name") is not None:
+                        data["name"] = msg["name"]
+                    if msg.get("tool_call_id") is not None:
+                        data["toolCallId"] = msg["tool_call_id"]
+                    if msg.get("refusal") is not None:
+                        data["refusal"] = msg["refusal"]
+
+                    # Add optional JSON fields only when they have values
+                    if msg.get("tool_calls") is not None:
+                        data["toolCalls"] = SafeJson(msg["tool_calls"])
+                    if msg.get("function_call") is not None:
+                        data["functionCall"] = SafeJson(msg["function_call"])
+
+                    created = await PrismaChatMessage.prisma(tx).create(
+                        data=cast(ChatMessageCreateInput, data)
+                    )
+                    created_messages.append(created)
+
+                # Update session's updatedAt timestamp within the same transaction.
+                # Note: Token usage is updated separately via update_chat_session().
+                await PrismaChatSession.prisma(tx).update(
+                    where={"id": session_id},
+                    data={"updatedAt": datetime.now(UTC)},
+                )
+
+            return created_messages
+
+        except UniqueViolationError:
+            if attempt < max_attempts:
+                logger.warning(
+                    f"UniqueViolationError on attempt {attempt} for session "
+                    f"{session_id}, retrying with fresh sequence"
+                )
+                continue
+            logger.error(
+                f"UniqueViolationError persisted after {max_attempts} attempts "
+                f"for session {session_id}"
             )
-            created_messages.append(created)
+            raise
 
-        # Update session's updatedAt timestamp within the same transaction.
-        # Note: Token usage (total_prompt_tokens, total_completion_tokens) is updated
-        # separately via update_chat_session() after streaming completes.
-        await PrismaChatSession.prisma(tx).update(
-            where={"id": session_id},
-            data={"updatedAt": datetime.now(UTC)},
-        )
-
-    return created_messages
+    # Unreachable, but satisfies type checker
+    return []
 
 
 async def get_user_chat_sessions(

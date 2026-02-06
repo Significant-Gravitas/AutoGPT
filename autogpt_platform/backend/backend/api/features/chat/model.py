@@ -19,6 +19,7 @@ from openai.types.chat.chat_completion_message_tool_call_param import (
     ChatCompletionMessageToolCallParam,
     Function,
 )
+from prisma.errors import UniqueViolationError
 from prisma.models import ChatMessage as PrismaChatMessage
 from prisma.models import ChatSession as PrismaChatSession
 from pydantic import BaseModel
@@ -468,6 +469,37 @@ async def upsert_chat_session(
         # Save to database (primary storage)
         try:
             await _save_session_to_db(session, existing_message_count)
+        except UniqueViolationError:
+            # Another pod likely saved the same messages concurrently.
+            # Re-query the message count and retry if unsaved messages remain.
+            logger.warning(
+                f"UniqueViolationError saving session {session.session_id}, "
+                f"re-querying message count for retry"
+            )
+            try:
+                fresh_count = await chat_db.get_chat_session_message_count(
+                    session.session_id
+                )
+                if fresh_count < len(session.messages):
+                    logger.info(
+                        f"Retrying save for session {session.session_id}: "
+                        f"fresh_count={fresh_count}, "
+                        f"total_messages={len(session.messages)}"
+                    )
+                    await _save_session_to_db(session, fresh_count)
+                else:
+                    logger.info(
+                        f"All messages already saved for session "
+                        f"{session.session_id} by another process "
+                        f"(db_count={fresh_count}, "
+                        f"session_count={len(session.messages)})"
+                    )
+            except Exception as retry_err:
+                logger.error(
+                    f"Retry also failed for session {session.session_id}: "
+                    f"{retry_err}"
+                )
+                db_error = retry_err
         except Exception as e:
             logger.error(
                 f"Failed to save session {session.session_id} to database: {e}"

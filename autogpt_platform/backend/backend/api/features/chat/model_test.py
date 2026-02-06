@@ -1,4 +1,7 @@
+from unittest.mock import patch
+
 import pytest
+from prisma.errors import UniqueViolationError
 
 from .model import (
     ChatMessage,
@@ -117,3 +120,92 @@ async def test_chatsession_db_storage(setup_test_user, test_user_id):
                 loaded.tool_calls is not None
             ), f"Tool calls missing for {orig.role} message"
             assert len(orig.tool_calls) == len(loaded.tool_calls)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_upsert_handles_concurrent_saves(setup_test_user, test_user_id):
+    """Test that incremental saves work: save initial messages, add more, save again."""
+    from backend.data.redis_client import get_redis_async
+
+    # Create session with initial messages
+    s = ChatSession.new(user_id=test_user_id)
+    s.messages = [
+        ChatMessage(content="First message", role="user"),
+        ChatMessage(content="First reply", role="assistant"),
+    ]
+    s = await upsert_chat_session(s)
+
+    # Add more messages and save again (incremental)
+    s.messages.append(ChatMessage(content="Second message", role="user"))
+    s.messages.append(ChatMessage(content="Second reply", role="assistant"))
+    s = await upsert_chat_session(s)
+
+    # Clear cache and verify all messages round-trip from DB
+    redis_key = f"chat:session:{s.session_id}"
+    async_redis = await get_redis_async()
+    await async_redis.delete(redis_key)
+
+    loaded = await get_chat_session(session_id=s.session_id, user_id=s.user_id)
+    assert loaded is not None, "Session not found after incremental save"
+    assert len(loaded.messages) == 4, f"Expected 4 messages, got {len(loaded.messages)}"
+
+    # Verify content of all messages
+    assert loaded.messages[0].content == "First message"
+    assert loaded.messages[1].content == "First reply"
+    assert loaded.messages[2].content == "Second message"
+    assert loaded.messages[3].content == "Second reply"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_upsert_retries_on_unique_violation(setup_test_user, test_user_id):
+    """Test that upsert_chat_session retries when UniqueViolationError is raised."""
+    from . import db as chat_db
+
+    # Create a session with initial messages
+    s = ChatSession.new(user_id=test_user_id)
+    s.messages = [
+        ChatMessage(content="Hello", role="user"),
+    ]
+    s = await upsert_chat_session(s)
+
+    # Add a new message
+    s.messages.append(ChatMessage(content="World", role="assistant"))
+
+    # Mock add_chat_messages_batch to raise UniqueViolationError on first call,
+    # then succeed on second call (simulating another pod saving concurrently).
+    original_batch = chat_db.add_chat_messages_batch
+    call_count = 0
+
+    async def mock_batch(session_id, messages, start_sequence):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise UniqueViolationError(
+                {
+                    "error": "Unique constraint failed on the fields: (sessionId, sequence)"
+                }
+            )
+        return await original_batch(session_id, messages, start_sequence)
+
+    with patch.object(chat_db, "add_chat_messages_batch", side_effect=mock_batch):
+        # Also mock get_chat_session_message_count to return 1 on retry
+        # (simulating that the first message was saved by "another pod")
+        original_count = chat_db.get_chat_session_message_count
+
+        count_call = 0
+
+        async def mock_count(session_id):
+            nonlocal count_call
+            count_call += 1
+            # First call is the initial count check in upsert_chat_session
+            # Second call is the retry after UniqueViolationError
+            return await original_count(session_id)
+
+        with patch.object(
+            chat_db, "get_chat_session_message_count", side_effect=mock_count
+        ):
+            s = await upsert_chat_session(s)
+
+    # Verify the session completed without error
+    assert s is not None
+    assert len(s.messages) == 2
