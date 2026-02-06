@@ -555,27 +555,6 @@ async def get_active_task_for_session(
                 if task_user_id and user_id != task_user_id:
                     continue
 
-                # Skip stale tasks (running for more than 5 minutes is suspicious)
-                created_at_str = meta.get("created_at", "")
-                if created_at_str:
-                    try:
-                        created_at = datetime.fromisoformat(created_at_str)
-                        age_seconds = (
-                            datetime.now(timezone.utc) - created_at
-                        ).total_seconds()
-                        if (
-                            age_seconds > 60
-                        ):  # 1 minute - tasks orphaned by server restart
-                            logger.warning(
-                                f"[TASK_LOOKUP] Skipping stale task {task_id[:8]}... "
-                                f"(age={age_seconds:.0f}s)"
-                            )
-                            # Mark stale task as failed to clean it up
-                            await mark_task_completed(task_id, "failed")
-                            continue
-                    except (ValueError, TypeError):
-                        pass  # If we can't parse the date, continue with the task
-
                 logger.info(
                     f"[TASK_LOOKUP] Found running task {task_id[:8]}... for session {session_id[:8]}..."
                 )
