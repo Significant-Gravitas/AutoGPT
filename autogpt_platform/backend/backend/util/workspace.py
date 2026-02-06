@@ -22,6 +22,7 @@ from backend.data.workspace import (
     soft_delete_workspace_file,
 )
 from backend.util.settings import Config
+from backend.util.virus_scanner import scan_content_safe
 from backend.util.workspace_storage import compute_file_checksum, get_workspace_storage
 
 logger = logging.getLogger(__name__)
@@ -186,6 +187,9 @@ class WorkspaceManager:
                 f"File too large: {len(content)} bytes exceeds "
                 f"{Config().max_file_size_mb}MB limit"
             )
+
+        # Virus scan content before persisting (defense in depth)
+        await scan_content_safe(content, filename=filename)
 
         # Determine path with session scoping
         if path is None:
