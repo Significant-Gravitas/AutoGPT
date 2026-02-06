@@ -20,7 +20,7 @@ from prisma.types import (
     AgentNodeLinkCreateInput,
     StoreListingVersionWhereInput,
 )
-from pydantic import BaseModel, BeforeValidator, Field, create_model
+from pydantic import BaseModel, BeforeValidator, Field
 from pydantic.fields import computed_field
 
 from backend.blocks.agent import AgentExecutorBlock
@@ -30,7 +30,6 @@ from backend.data.db import prisma as db
 from backend.data.dynamic_fields import is_tool_pin, sanitize_pin_name
 from backend.data.includes import MAX_GRAPH_VERSIONS_FETCH
 from backend.data.model import (
-    CredentialsField,
     CredentialsFieldInfo,
     CredentialsMetaInput,
     is_credentials_field_name,
@@ -45,7 +44,6 @@ from .block import (
     AnyBlockSchema,
     Block,
     BlockInput,
-    BlockSchema,
     BlockType,
     EmptySchema,
     get_block,
@@ -392,42 +390,70 @@ class Graph(BaseGraph):
                     f"keys: {keys} <> {other_keys}."
                 )
 
-        # Build the Pydantic model for the credentials input schema
-        fields: dict[str, tuple[type[CredentialsMetaInput], CredentialsMetaInput]] = {
-            agg_field_key: (
-                (
-                    CMI
-                    if (
-                        (
-                            CMI := CredentialsMetaInput[
-                                Literal[tuple(field_info.provider)],  # type: ignore
-                                Literal[tuple(field_info.supported_types)],  # type: ignore
-                            ]
-                        )
-                        or True
-                    )
-                    and is_required
-                    else CMI | None
-                ),
-                CredentialsField(
-                    required_scopes=set(field_info.required_scopes or []),
-                    discriminator=field_info.discriminator,
-                    discriminator_mapping=field_info.discriminator_mapping,
-                    discriminator_values=field_info.discriminator_values,
-                ),
-            )
-            for agg_field_key, (
-                field_info,
-                _,
-                is_required,
-            ) in graph_credentials_inputs.items()
-        }
+        # Build JSON schema directly to avoid expensive create_model + validation overhead
+        properties = {}
+        required_fields = []
 
-        return create_model(
-            self.name.replace(" ", "") + "CredentialsInputSchema",
-            __base__=BlockSchema,
-            **fields,  # type: ignore
-        ).jsonschema()
+        for agg_field_key, (field_info, _, is_required) in graph_credentials_inputs.items():
+            providers = list(field_info.provider)
+            cred_types = list(field_info.supported_types)
+
+            field_schema: dict[str, Any] = {
+                "credentials_provider": providers,
+                "credentials_types": cred_types,
+                "type": "object",
+                "properties": {
+                    "id": {"title": "Id", "type": "string"},
+                    "title": {
+                        "anyOf": [{"type": "string"}, {"type": "null"}],
+                        "default": None,
+                        "title": "Title",
+                    },
+                    "provider": {
+                        "title": "Provider",
+                        "type": "string",
+                        **(
+                            {"enum": providers}
+                            if len(providers) > 1
+                            else {"const": providers[0]}
+                        ),
+                    },
+                    "type": {
+                        "title": "Type",
+                        "type": "string",
+                        **(
+                            {"enum": cred_types}
+                            if len(cred_types) > 1
+                            else {"const": cred_types[0]}
+                        ),
+                    },
+                },
+                "required": ["id", "provider", "type"],
+            }
+
+            # Add other (optional) field info items
+            field_schema.update(
+                **field_info.model_dump(
+                    by_alias=True,
+                    exclude_defaults=True,
+                    exclude={"provider", "supported_types"},  # already included above
+                )
+            )
+
+            # Ensure field schema is well-formed
+            CredentialsMetaInput.validate_credentials_field_schema(
+                field_schema, agg_field_key
+            )
+
+            properties[agg_field_key] = field_schema
+            if is_required:
+                required_fields.append(agg_field_key)
+
+        return {
+            "type": "object",
+            "properties": properties,
+            "required": required_fields,
+        }
 
     def aggregate_credentials_inputs(
         self,
