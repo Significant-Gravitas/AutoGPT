@@ -16,7 +16,7 @@ export function isEmptyExecutionUpdate(rawData: unknown): boolean {
   const data = (rawData as { data?: unknown }).data;
   if (!data || typeof data !== "object" || Array.isArray(data)) return true;
   const status = (data as { status?: string }).status;
-  if (!status || !POLLING_STATUSES.has(status)) return false;
+  if (!status || !POLLING_STATUSES.has(status)) return true;
   const nodeExecutions = (data as { node_executions?: unknown[] })
     .node_executions;
   return !Array.isArray(nodeExecutions) || nodeExecutions.length === 0;
