@@ -128,7 +128,7 @@ def build_missing_credentials_from_graph(
 
     return {
         field_key: _serialize_missing_credential(field_key, field_info)
-        for field_key, (field_info, _node_fields) in aggregated_fields.items()
+        for field_key, (field_info, _, _) in aggregated_fields.items()
         if field_key not in matched_keys
     }
 
@@ -269,7 +269,8 @@ async def match_user_credentials_to_graph(
     # provider is in the set of acceptable providers.
     for credential_field_name, (
         credential_requirements,
-        _node_fields,
+        _,
+        _,
     ) in aggregated_creds.items():
         # Find first matching credential by provider, type, and scopes
         matching_cred = next(
