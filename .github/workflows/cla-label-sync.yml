@@ -212,6 +212,12 @@ jobs:
                   continue;
                 }
                 
+                // Skip if PR is not open (closed/merged)
+                if (pr.state !== 'open') {
+                  console.log(`PR #${prNumber}: Skipping non-open PR (state=${pr.state})`);
+                  continue;
+                }
+                
                 const claStatus = await getClaStatus(pr.head.sha);
                 const currentLabels = pr.labels.map(l => l.name);
                 const hasPending = currentLabels.includes(LABEL_PENDING);
@@ -268,8 +274,8 @@ jobs:
                   const REMINDER_MARKER = '<!-- cla-reminder -->';
                   const CLOSE_WARNING_MARKER = '<!-- cla-close-warning -->';
                   
-                  // 📢 Reminder after REMINDER_DAYS
-                  if (prAgeDays >= REMINDER_DAYS && prAgeDays < CLOSE_DAYS) {
+                  // 📢 Reminder after REMINDER_DAYS (but before warning window)
+                  if (prAgeDays >= REMINDER_DAYS && prAgeDays < CLOSE_WARNING_DAYS) {
                     const hasReminder = await hasCommentWithMarker(prNumber, REMINDER_MARKER);
                     
                     if (!hasReminder) {
@@ -333,11 +339,24 @@ jobs:
                   
                   // 🚪 Auto-close after CLOSE_DAYS
                   if (prAgeDays >= CLOSE_DAYS) {
-                    await github.rest.issues.createComment({
-                      owner: context.repo.owner,
-                      repo: context.repo.repo,
-                      issue_number: prNumber,
-                      body: `👋 Closing this PR due to unsigned CLA after ${CLOSE_DAYS} days.
+                    const CLOSE_MARKER = '<!-- cla-auto-closed -->';
+                    const OVERRIDE_LABEL = 'cla: override';
+                    
+                    // Check for override label (maintainer wants to keep PR open)
+                    if (currentLabels.includes(OVERRIDE_LABEL)) {
+                      console.log(`PR #${prNumber}: Skipping close due to '${OVERRIDE_LABEL}' label`);
+                    } else {
+                      // Check if we already posted a close comment
+                      const hasCloseComment = await hasCommentWithMarker(prNumber, CLOSE_MARKER);
+                      
+                      if (!hasCloseComment) {
+                        await github.rest.issues.createComment({
+                          owner: context.repo.owner,
+                          repo: context.repo.repo,
+                          issue_number: prNumber,
+                          body: `${CLOSE_MARKER}
+            
+            👋 Closing this PR due to unsigned CLA after ${CLOSE_DAYS} days.
             
             Thank you for your contribution! If you'd still like to contribute:
             
@@ -345,16 +364,18 @@ jobs:
             2. Re-open this PR or create a new one
             
             We appreciate your interest in AutoGPT and hope to see you back! 🚀`
-                    });
-                    
-                    await github.rest.pulls.update({
-                      owner: context.repo.owner,
-                      repo: context.repo.repo,
-                      pull_number: prNumber,
-                      state: 'closed'
-                    });
-                    
-                    console.log(`Closed PR #${prNumber} due to unsigned CLA`);
+                        });
+                      }
+                      
+                      await github.rest.pulls.update({
+                        owner: context.repo.owner,
+                        repo: context.repo.repo,
+                        pull_number: prNumber,
+                        state: 'closed'
+                      });
+                      
+                      console.log(`Closed PR #${prNumber} due to unsigned CLA`);
+                    }
                   }
                 }
                 
