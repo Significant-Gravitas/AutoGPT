@@ -12,6 +12,7 @@ from backend.data.block import (
     BlockSchemaInput,
     BlockType,
 )
+from backend.data.execution import ExecutionContext
 from backend.data.model import SchemaField
 from backend.util.file import store_media_file
 from backend.util.mock import MockObject
@@ -462,18 +463,21 @@ class AgentFileInputBlock(AgentInputBlock):
         self,
         input_data: Input,
         *,
-        graph_exec_id: str,
-        user_id: str,
+        execution_context: ExecutionContext,
         **kwargs,
     ) -> BlockOutput:
         if not input_data.value:
             return
 
+        # Determine return format based on user preference
+        # for_external_api: always returns data URI (base64) - honors "Produce Base64 Output"
+        # for_block_output: smart format - workspace:// in CoPilot, data URI in graphs
+        return_format = "for_external_api" if input_data.base_64 else "for_block_output"
+
         yield "result", await store_media_file(
-            graph_exec_id=graph_exec_id,
             file=input_data.value,
-            user_id=user_id,
-            return_content=input_data.base_64,
+            execution_context=execution_context,
+            return_format=return_format,
         )
 
 

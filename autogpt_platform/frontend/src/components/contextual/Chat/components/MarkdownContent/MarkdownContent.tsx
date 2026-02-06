@@ -1,7 +1,9 @@
 "use client";
 
+import { getGetWorkspaceDownloadFileByIdUrl } from "@/app/api/__generated__/endpoints/workspace/workspace";
 import { cn } from "@/lib/utils";
-import React from "react";
+import { EyeSlash } from "@phosphor-icons/react";
+import React, { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -29,12 +31,141 @@ interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   type?: string;
 }
 
+/**
+ * Converts a workspace:// URL to a proxy URL that routes through Next.js to the backend.
+ * workspace://abc123 -> /api/proxy/api/workspace/files/abc123/download
+ *
+ * Uses the generated API URL helper and routes through the Next.js proxy
+ * which handles authentication and proper backend routing.
+ */
+/**
+ * URL transformer for ReactMarkdown.
+ * Converts workspace:// URLs to proxy URLs that route through Next.js to the backend.
+ * workspace://abc123 -> /api/proxy/api/workspace/files/abc123/download
+ *
+ * This is needed because ReactMarkdown sanitizes URLs and only allows
+ * http, https, mailto, and tel protocols by default.
+ */
+function resolveWorkspaceUrl(src: string): string {
+  if (src.startsWith("workspace://")) {
+    // Strip MIME type fragment if present (e.g., workspace://abc123#video/mp4 → abc123)
+    const withoutPrefix = src.replace("workspace://", "");
+    const fileId = withoutPrefix.split("#")[0];
+    // Use the generated API URL helper to get the correct path
+    const apiPath = getGetWorkspaceDownloadFileByIdUrl(fileId);
+    // Route through the Next.js proxy (same pattern as customMutator for client-side)
+    return `/api/proxy${apiPath}`;
+  }
+  return src;
+}
+
+/**
+ * Check if the image URL is a workspace file (AI cannot see these yet).
+ * After URL transformation, workspace files have URLs like /api/proxy/api/workspace/files/...
+ */
+function isWorkspaceImage(src: string | undefined): boolean {
+  return src?.includes("/workspace/files/") ?? false;
+}
+
+/**
+ * Renders a workspace video with controls and an optional "AI cannot see" badge.
+ */
+function WorkspaceVideo({
+  src,
+  aiCannotSee,
+}: {
+  src: string;
+  aiCannotSee: boolean;
+}) {
+  return (
+    <span className="relative my-2 inline-block">
+      <video
+        controls
+        className="h-auto max-w-full rounded-md border border-zinc-200"
+        preload="metadata"
+      >
+        <source src={src} />
+        Your browser does not support the video tag.
+      </video>
+      {aiCannotSee && (
+        <span
+          className="absolute bottom-2 right-2 flex items-center gap-1 rounded bg-black/70 px-2 py-1 text-xs text-white"
+          title="The AI cannot see this video"
+        >
+          <EyeSlash size={14} />
+          <span>AI cannot see this video</span>
+        </span>
+      )}
+    </span>
+  );
+}
+
+/**
+ * Custom image component that shows an indicator when the AI cannot see the image.
+ * Also handles the "video:" alt-text prefix convention to render <video> elements.
+ * For workspace files with unknown types, falls back to <video> if <img> fails.
+ * Note: src is already transformed by urlTransform, so workspace:// is now /api/workspace/...
+ */
+function MarkdownImage(props: Record<string, unknown>) {
+  const src = props.src as string | undefined;
+  const alt = props.alt as string | undefined;
+  const [imgFailed, setImgFailed] = useState(false);
+
+  const aiCannotSee = isWorkspaceImage(src);
+
+  // If no src, show a placeholder
+  if (!src) {
+    return (
+      <span className="my-2 inline-block rounded border border-amber-200 bg-amber-50 px-2 py-1 text-sm text-amber-700">
+        [Image: {alt || "missing src"}]
+      </span>
+    );
+  }
+
+  // Detect video: prefix in alt text (set by formatOutputValue in helpers.ts)
+  if (alt?.startsWith("video:")) {
+    return <WorkspaceVideo src={src} aiCannotSee={aiCannotSee} />;
+  }
+
+  // If the <img> failed to load and this is a workspace file, try as video.
+  // This handles generic output keys like "file_out" where the MIME type
+  // isn't known from the key name alone.
+  if (imgFailed && aiCannotSee) {
+    return <WorkspaceVideo src={src} aiCannotSee={aiCannotSee} />;
+  }
+
+  return (
+    <span className="relative my-2 inline-block">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={src}
+        alt={alt || "Image"}
+        className="h-auto max-w-full rounded-md border border-zinc-200"
+        loading="lazy"
+        onError={() => {
+          if (aiCannotSee) setImgFailed(true);
+        }}
+      />
+      {aiCannotSee && (
+        <span
+          className="absolute bottom-2 right-2 flex items-center gap-1 rounded bg-black/70 px-2 py-1 text-xs text-white"
+          title="The AI cannot see this image"
+        >
+          <EyeSlash size={14} />
+          <span>AI cannot see this image</span>
+        </span>
+      )}
+    </span>
+  );
+}
+
 export function MarkdownContent({ content, className }: MarkdownContentProps) {
   return (
     <div className={cn("markdown-content", className)}>
       <ReactMarkdown
         skipHtml={true}
         remarkPlugins={[remarkGfm]}
+        urlTransform={resolveWorkspaceUrl}
         components={{
           code: ({ children, className, ...props }: CodeProps) => {
             const isInline = !className?.includes("language-");
@@ -205,6 +336,9 @@ export function MarkdownContent({ content, className }: MarkdownContentProps) {
             >
               {children}
             </td>
+          ),
+          img: ({ src, alt, ...props }) => (
+            <MarkdownImage src={src} alt={alt} {...props} />
           ),
         }}
       >

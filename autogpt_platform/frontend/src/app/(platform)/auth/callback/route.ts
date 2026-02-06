@@ -1,8 +1,8 @@
-import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
+import { getOnboardingStatus } from "@/app/api/helpers";
 import BackendAPI from "@/lib/autogpt-server-api";
-import { NextResponse } from "next/server";
+import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
 import { revalidatePath } from "next/cache";
-import { shouldShowOnboarding } from "@/app/api/helpers";
+import { NextResponse } from "next/server";
 
 // Handle the callback to complete the user session login
 export async function GET(request: Request) {
@@ -25,11 +25,14 @@ export async function GET(request: Request) {
         const api = new BackendAPI();
         await api.createUser();
 
-        if (await shouldShowOnboarding()) {
+        // Get onboarding status from backend (includes chat flag evaluated for this user)
+        const { shouldShowOnboarding } = await getOnboardingStatus();
+        if (shouldShowOnboarding) {
           next = "/onboarding";
           revalidatePath("/onboarding", "layout");
         } else {
-          revalidatePath("/", "layout");
+          next = "/";
+          revalidatePath(next, "layout");
         }
       } catch (createUserError) {
         console.error("Error creating user:", createUserError);

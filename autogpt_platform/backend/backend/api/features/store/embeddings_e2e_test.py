@@ -454,6 +454,9 @@ async def test_unified_hybrid_search_pagination(
     cleanup_embeddings: list,
 ):
     """Test unified search pagination works correctly."""
+    # Use a unique search term to avoid matching other test data
+    unique_term = f"xyzpagtest{uuid.uuid4().hex[:8]}"
+
     # Create multiple items
     content_ids = []
     for i in range(5):
@@ -465,14 +468,14 @@ async def test_unified_hybrid_search_pagination(
             content_type=ContentType.BLOCK,
             content_id=content_id,
             embedding=mock_embedding,
-            searchable_text=f"pagination test item number {i}",
+            searchable_text=f"{unique_term} item number {i}",
             metadata={"index": i},
             user_id=None,
         )
 
     # Get first page
     page1_results, total1 = await unified_hybrid_search(
-        query="pagination test",
+        query=unique_term,
         content_types=[ContentType.BLOCK],
         page=1,
         page_size=2,
@@ -480,7 +483,7 @@ async def test_unified_hybrid_search_pagination(
 
     # Get second page
     page2_results, total2 = await unified_hybrid_search(
-        query="pagination test",
+        query=unique_term,
         content_types=[ContentType.BLOCK],
         page=2,
         page_size=2,

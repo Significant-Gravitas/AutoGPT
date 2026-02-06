@@ -13,6 +13,7 @@ from backend.data.block import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
+from backend.data.execution import ExecutionContext
 from backend.data.model import (
     APIKeyCredentials,
     CredentialsField,
@@ -117,11 +118,13 @@ class AIImageCustomizerBlock(Block):
                 "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_output=[
-                ("image_url", "https://replicate.delivery/generated-image.jpg"),
+                # Output will be a workspace ref or data URI depending on context
+                ("image_url", lambda x: x.startswith(("workspace://", "data:"))),
             ],
             test_mock={
+                # Use data URI to avoid HTTP requests during tests
                 "run_model": lambda *args, **kwargs: MediaFileType(
-                    "https://replicate.delivery/generated-image.jpg"
+                    "data:image/jpeg;base64,/9j/4AAQSkZJRgABAgAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAABAAEDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwD3+iiigD//2Q=="
                 ),
             },
             test_credentials=TEST_CREDENTIALS,
@@ -132,8 +135,7 @@ class AIImageCustomizerBlock(Block):
         input_data: Input,
         *,
         credentials: APIKeyCredentials,
-        graph_exec_id: str,
-        user_id: str,
+        execution_context: ExecutionContext,
         **kwargs,
     ) -> BlockOutput:
         try:
@@ -141,10 +143,9 @@ class AIImageCustomizerBlock(Block):
             processed_images = await asyncio.gather(
                 *(
                     store_media_file(
-                        graph_exec_id=graph_exec_id,
                         file=img,
-                        user_id=user_id,
-                        return_content=True,
+                        execution_context=execution_context,
+                        return_format="for_external_api",  # Get content for Replicate API
                     )
                     for img in input_data.images
                 )
@@ -158,7 +159,14 @@ class AIImageCustomizerBlock(Block):
                 aspect_ratio=input_data.aspect_ratio.value,
                 output_format=input_data.output_format.value,
             )
-            yield "image_url", result
+
+            # Store the generated image to the user's workspace for persistence
+            stored_url = await store_media_file(
+                file=result,
+                execution_context=execution_context,
+                return_format="for_block_output",
+            )
+            yield "image_url", stored_url
         except Exception as e:
             yield "error", str(e)
 

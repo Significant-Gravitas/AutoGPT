@@ -31,11 +31,6 @@ export function MessageList({
     isStreaming,
   });
 
-  /**
-   * Keeps this for debugging purposes 💆🏽
-   */
-  console.log(messages);
-
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
       {/* Top fade shadow */}
@@ -78,6 +73,7 @@ export function MessageList({
                     key={index}
                     message={message}
                     prevMessage={messages[index - 1]}
+                    onSendMessage={onSendMessage}
                   />
                 );
               }
