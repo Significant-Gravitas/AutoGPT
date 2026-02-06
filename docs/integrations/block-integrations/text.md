@@ -380,6 +380,42 @@ This is useful when working with data from APIs or files where escape sequences 
 
 ---
 
+## Text Encoder
+
+### What it is
+Encodes a string by converting special characters into escape sequences
+
+### How it works
+<!-- MANUAL: how_it_works -->
+The Text Encoder takes the input string and applies Python's `unicode_escape` encoding (equivalent to `codecs.encode(text, "unicode_escape").decode("utf-8")`) to transform special characters like newlines, tabs, and backslashes into their escaped forms.
+
+The block relies on the input schema to ensure the value is a string; non-string inputs are rejected by validation, and any encoding failures surface as block errors. Non-ASCII characters are emitted as `\uXXXX` sequences, which is useful for ASCII-only payloads.
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| text | A string containing special characters to be encoded | str | Yes |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if encoding fails | str |
+| encoded_text | The encoded text with special characters converted to escape sequences | str |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+**JSON Payload Preparation**: Encode multiline or quoted text before embedding it in JSON string fields to ensure proper escaping.
+
+**Config/ENV Generation**: Convert template text into escaped strings for `.env` or YAML values that require special character handling.
+
+**Snapshot Fixtures**: Produce stable escaped strings for golden files or API tests where consistent text representation is needed.
+<!-- END MANUAL -->
+
+---
+
 ## Text Replace
 
 ### What it is

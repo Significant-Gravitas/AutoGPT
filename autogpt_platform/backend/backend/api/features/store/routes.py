@@ -278,7 +278,7 @@ async def get_agent(
 )
 async def get_graph_meta_by_store_listing_version_id(
     store_listing_version_id: str,
-) -> backend.data.graph.GraphMeta:
+) -> backend.data.graph.GraphModelWithoutNodes:
     """
     Get Agent Graph from Store Listing Version ID.
     """

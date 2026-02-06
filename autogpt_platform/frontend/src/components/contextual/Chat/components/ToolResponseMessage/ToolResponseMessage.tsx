@@ -2,11 +2,13 @@ import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import type { ToolResult } from "@/types/chat";
 import { WarningCircleIcon } from "@phosphor-icons/react";
+import { AgentCreatedPrompt } from "./AgentCreatedPrompt";
 import { AIChatBubble } from "../AIChatBubble/AIChatBubble";
 import { MarkdownContent } from "../MarkdownContent/MarkdownContent";
 import {
   formatToolResponse,
   getErrorMessage,
+  isAgentSavedResponse,
   isErrorResponse,
 } from "./helpers";
 
@@ -16,6 +18,7 @@ export interface ToolResponseMessageProps {
   result?: ToolResult;
   success?: boolean;
   className?: string;
+  onSendMessage?: (content: string) => void;
 }
 
 export function ToolResponseMessage({
@@ -24,6 +27,7 @@ export function ToolResponseMessage({
   result,
   success: _success,
   className,
+  onSendMessage,
 }: ToolResponseMessageProps) {
   if (isErrorResponse(result)) {
     const errorMessage = getErrorMessage(result);
@@ -40,6 +44,18 @@ export function ToolResponseMessage({
           </Text>
         </div>
       </AIChatBubble>
+    );
+  }
+
+  // Check for agent_saved response - show special prompt
+  const agentSavedData = isAgentSavedResponse(result);
+  if (agentSavedData.isSaved) {
+    return (
+      <AgentCreatedPrompt
+        agentName={agentSavedData.agentName}
+        libraryAgentId={agentSavedData.libraryAgentId}
+        onSendMessage={onSendMessage}
+      />
     );
   }
 

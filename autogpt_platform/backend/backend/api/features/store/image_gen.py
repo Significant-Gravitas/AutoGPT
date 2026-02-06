@@ -16,7 +16,7 @@ from backend.blocks.ideogram import (
     StyleType,
     UpscaleOption,
 )
-from backend.data.graph import BaseGraph
+from backend.data.graph import GraphBaseMeta
 from backend.data.model import CredentialsMetaInput, ProviderName
 from backend.integrations.credentials_store import ideogram_credentials
 from backend.util.request import Requests
@@ -34,14 +34,14 @@ class ImageStyle(str, Enum):
     DIGITAL_ART = "digital art"
 
 
-async def generate_agent_image(agent: BaseGraph | AgentGraph) -> io.BytesIO:
+async def generate_agent_image(agent: GraphBaseMeta | AgentGraph) -> io.BytesIO:
     if settings.config.use_agent_image_generation_v2:
         return await generate_agent_image_v2(graph=agent)
     else:
         return await generate_agent_image_v1(agent=agent)
 
 
-async def generate_agent_image_v2(graph: BaseGraph | AgentGraph) -> io.BytesIO:
+async def generate_agent_image_v2(graph: GraphBaseMeta | AgentGraph) -> io.BytesIO:
     """
     Generate an image for an agent using Ideogram model.
     Returns:
@@ -54,14 +54,17 @@ async def generate_agent_image_v2(graph: BaseGraph | AgentGraph) -> io.BytesIO:
     description = f"{name} ({graph.description})" if graph.description else name
 
     prompt = (
-        f"Create a visually striking retro-futuristic vector pop art illustration prominently featuring "
-        f'"{name}" in bold typography. The image clearly and literally depicts a {description}, '
-        f"along with recognizable objects directly associated with the primary function of a {name}. "
-        f"Ensure the imagery is concrete, intuitive, and immediately understandable, clearly conveying the "
-        f"purpose of a {name}. Maintain vibrant, limited-palette colors, sharp vector lines, geometric "
-        f"shapes, flat illustration techniques, and solid colors without gradients or shading. Preserve a "
-        f"retro-futuristic aesthetic influenced by mid-century futurism and 1960s psychedelia, "
-        f"prioritizing clear visual storytelling and thematic clarity above all else."
+        "Create a visually striking retro-futuristic vector pop art illustration "
+        f'prominently featuring "{name}" in bold typography. The image clearly and '
+        f"literally depicts a {description}, along with recognizable objects directly "
+        f"associated with the primary function of a {name}. "
+        f"Ensure the imagery is concrete, intuitive, and immediately understandable, "
+        f"clearly conveying the purpose of a {name}. "
+        "Maintain vibrant, limited-palette colors, sharp vector lines, "
+        "geometric shapes, flat illustration techniques, and solid colors "
+        "without gradients or shading. Preserve a retro-futuristic aesthetic "
+        "influenced by mid-century futurism and 1960s psychedelia, "
+        "prioritizing clear visual storytelling and thematic clarity above all else."
     )
 
     custom_colors = [
@@ -99,12 +102,12 @@ async def generate_agent_image_v2(graph: BaseGraph | AgentGraph) -> io.BytesIO:
     return io.BytesIO(response.content)
 
 
-async def generate_agent_image_v1(agent: BaseGraph | AgentGraph) -> io.BytesIO:
+async def generate_agent_image_v1(agent: GraphBaseMeta | AgentGraph) -> io.BytesIO:
     """
     Generate an image for an agent using Flux model via Replicate API.
 
     Args:
-        agent (Graph): The agent to generate an image for
+        agent (GraphBaseMeta | AgentGraph): The agent to generate an image for
 
     Returns:
         io.BytesIO: The generated image as bytes
@@ -114,7 +117,13 @@ async def generate_agent_image_v1(agent: BaseGraph | AgentGraph) -> io.BytesIO:
             raise ValueError("Missing Replicate API key in settings")
 
         # Construct prompt from agent details
-        prompt = f"Create a visually engaging app store thumbnail for the AI agent that highlights what it does in a clear and captivating way:\n- **Name**: {agent.name}\n- **Description**: {agent.description}\nFocus on showcasing its core functionality with an appealing design."
+        prompt = (
+            "Create a visually engaging app store thumbnail for the AI agent "
+            "that highlights what it does in a clear and captivating way:\n"
+            f"- **Name**: {agent.name}\n"
+            f"- **Description**: {agent.description}\n"
+            f"Focus on showcasing its core functionality with an appealing design."
+        )
 
         # Set up Replicate client
         client = ReplicateClient(api_token=settings.secrets.replicate_api_key)

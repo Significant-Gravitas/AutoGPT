@@ -11,7 +11,7 @@ class ChatConfig(BaseSettings):
 
     # OpenAI API Configuration
     model: str = Field(
-        default="anthropic/claude-opus-4.5", description="Default model to use"
+        default="anthropic/claude-opus-4.6", description="Default model to use"
     )
     title_model: str = Field(
         default="openai/gpt-4o-mini",

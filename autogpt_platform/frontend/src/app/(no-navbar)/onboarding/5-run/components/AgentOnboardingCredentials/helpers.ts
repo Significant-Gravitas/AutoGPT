@@ -1,9 +1,9 @@
 import { CredentialsMetaInput } from "@/app/api/__generated__/models/credentialsMetaInput";
-import { GraphMeta } from "@/app/api/__generated__/models/graphMeta";
+import { GraphModel } from "@/app/api/__generated__/models/graphModel";
 import { BlockIOCredentialsSubSchema } from "@/lib/autogpt-server-api/types";
 
 export function getCredentialFields(
-  agent: GraphMeta | null,
+  agent: GraphModel | null,
 ): AgentCredentialsFields {
   if (!agent) return {};
 

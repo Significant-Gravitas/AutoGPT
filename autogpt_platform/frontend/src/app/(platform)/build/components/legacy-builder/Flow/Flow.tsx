@@ -29,13 +29,17 @@ import "@xyflow/react/dist/style.css";
 import { ConnectedEdge, CustomNode } from "../CustomNode/CustomNode";
 import "./flow.css";
 import {
+  BlockIORootSchema,
   BlockUIType,
   formatEdgeID,
   GraphExecutionID,
   GraphID,
   GraphMeta,
   LibraryAgent,
+  SpecialBlockID,
 } from "@/lib/autogpt-server-api";
+import { getV1GetSpecificGraph } from "@/app/api/__generated__/endpoints/graphs/graphs";
+import { okData } from "@/app/api/helpers";
 import { IncompatibilityInfo } from "../../../hooks/useSubAgentUpdate/types";
 import { Key, storage } from "@/services/storage/local-storage";
 import { findNewlyAddedBlockCoordinates, getTypeColor } from "@/lib/utils";
@@ -687,8 +691,94 @@ const FlowEditor: React.FC<{
     [getNode, updateNode, nodes],
   );
 
+  /* Shared helper to create and add a node */
+  const createAndAddNode = useCallback(
+    async (
+      blockID: string,
+      blockName: string,
+      hardcodedValues: Record<string, any>,
+      position: { x: number; y: number },
+    ): Promise<CustomNode | null> => {
+      const nodeSchema = availableBlocks.find((node) => node.id === blockID);
+      if (!nodeSchema) {
+        console.error(`Schema not found for block ID: ${blockID}`);
+        return null;
+      }
+
+      // For agent blocks, fetch the full graph to get schemas
+      let inputSchema: BlockIORootSchema = nodeSchema.inputSchema;
+      let outputSchema: BlockIORootSchema = nodeSchema.outputSchema;
+      let finalHardcodedValues = hardcodedValues;
+
+      if (blockID === SpecialBlockID.AGENT) {
+        const graphID = hardcodedValues.graph_id as string;
+        const graphVersion = hardcodedValues.graph_version as number;
+        const graphData = okData(
+          await getV1GetSpecificGraph(graphID, { version: graphVersion }),
+        );
+
+        if (graphData) {
+          inputSchema = graphData.input_schema as BlockIORootSchema;
+          outputSchema = graphData.output_schema as BlockIORootSchema;
+          finalHardcodedValues = {
+            ...hardcodedValues,
+            input_schema: graphData.input_schema,
+            output_schema: graphData.output_schema,
+          };
+        } else {
+          console.error("Failed to fetch graph data for agent block");
+        }
+      }
+
+      const newNode: CustomNode = {
+        id: nodeId.toString(),
+        type: "custom",
+        position,
+        data: {
+          blockType: blockName,
+          blockCosts: nodeSchema.costs || [],
+          title: `${blockName} ${nodeId}`,
+          description: nodeSchema.description,
+          categories: nodeSchema.categories,
+          inputSchema: inputSchema,
+          outputSchema: outputSchema,
+          hardcodedValues: finalHardcodedValues,
+          connections: [],
+          isOutputOpen: false,
+          block_id: blockID,
+          isOutputStatic: nodeSchema.staticOutput,
+          uiType: nodeSchema.uiType,
+        },
+      };
+
+      addNodes(newNode);
+      setNodeId((prevId) => prevId + 1);
+      clearNodesStatusAndOutput();
+
+      history.push({
+        type: "ADD_NODE",
+        payload: { node: { ...newNode, ...newNode.data } },
+        undo: () => deleteElements({ nodes: [{ id: newNode.id }] }),
+        redo: () => addNodes(newNode),
+      });
+
+      return newNode;
+    },
+    [
+      availableBlocks,
+      nodeId,
+      addNodes,
+      deleteElements,
+      clearNodesStatusAndOutput,
+    ],
+  );
+
   const addNode = useCallback(
-    (blockId: string, nodeType: string, hardcodedValues: any = {}) => {
+    async (
+      blockId: string,
+      nodeType: string,
+      hardcodedValues: Record<string, any> = {},
+    ) => {
       const nodeSchema = availableBlocks.find((node) => node.id === blockId);
       if (!nodeSchema) {
         console.error(`Schema not found for block ID: ${blockId}`);
@@ -707,73 +797,42 @@ const FlowEditor: React.FC<{
       // Alternative: We could also use D3 force, Intersection for this (React flow Pro examples)
 
       const { x, y } = getViewport();
-      const viewportCoordinates =
+      const position =
         nodeDimensions && Object.keys(nodeDimensions).length > 0
-          ? // we will get all the dimension of nodes, then store
-            findNewlyAddedBlockCoordinates(
+          ? findNewlyAddedBlockCoordinates(
               nodeDimensions,
               nodeSchema.uiType == BlockUIType.NOTE ? 300 : 500,
               60,
               1.0,
             )
-          : // we will get all the dimension of nodes, then store
-            {
+          : {
               x: window.innerWidth / 2 - x,
               y: window.innerHeight / 2 - y,
             };
 
-      const newNode: CustomNode = {
-        id: nodeId.toString(),
-        type: "custom",
-        position: viewportCoordinates, // Set the position to the calculated viewport center
-        data: {
-          blockType: nodeType,
-          blockCosts: nodeSchema.costs,
-          title: `${nodeType} ${nodeId}`,
-          description: nodeSchema.description,
-          categories: nodeSchema.categories,
-          inputSchema: nodeSchema.inputSchema,
-          outputSchema: nodeSchema.outputSchema,
-          hardcodedValues: hardcodedValues,
-          connections: [],
-          isOutputOpen: false,
-          block_id: blockId,
-          isOutputStatic: nodeSchema.staticOutput,
-          uiType: nodeSchema.uiType,
-        },
-      };
-
-      addNodes(newNode);
-      setNodeId((prevId) => prevId + 1);
-      clearNodesStatusAndOutput(); // Clear status and output when a new node is added
+      const newNode = await createAndAddNode(
+        blockId,
+        nodeType,
+        hardcodedValues,
+        position,
+      );
+      if (!newNode) return;
 
       setViewport(
         {
-          // Rough estimate of the dimension of the node is: 500x400px.
-          // Though we skip shifting the X, considering the block menu side-bar.
-          x: -viewportCoordinates.x * 0.8 + (window.innerWidth - 0.0) / 2,
-          y: -viewportCoordinates.y * 0.8 + (window.innerHeight - 400) / 2,
+          x: -position.x * 0.8 + (window.innerWidth - 0.0) / 2,
+          y: -position.y * 0.8 + (window.innerHeight - 400) / 2,
           zoom: 0.8,
         },
         { duration: 500 },
       );
-
-      history.push({
-        type: "ADD_NODE",
-        payload: { node: { ...newNode, ...newNode.data } },
-        undo: () => deleteElements({ nodes: [{ id: newNode.id }] }),
-        redo: () => addNodes(newNode),
-      });
     },
     [
-      nodeId,
       getViewport,
       setViewport,
       availableBlocks,
-      addNodes,
       nodeDimensions,
-      deleteElements,
-      clearNodesStatusAndOutput,
+      createAndAddNode,
     ],
   );
 
@@ -920,7 +979,7 @@ const FlowEditor: React.FC<{
   }, []);
 
   const onDrop = useCallback(
-    (event: React.DragEvent) => {
+    async (event: React.DragEvent) => {
       event.preventDefault();
 
       const blockData = event.dataTransfer.getData("application/reactflow");
@@ -935,62 +994,17 @@ const FlowEditor: React.FC<{
           y: event.clientY,
         });
 
-        // Find the block schema
-        const nodeSchema = availableBlocks.find((node) => node.id === blockId);
-        if (!nodeSchema) {
-          console.error(`Schema not found for block ID: ${blockId}`);
-          return;
-        }
-
-        // Create the new node at the drop position
-        const newNode: CustomNode = {
-          id: nodeId.toString(),
-          type: "custom",
+        await createAndAddNode(
+          blockId,
+          blockName,
+          hardcodedValues || {},
           position,
-          data: {
-            blockType: blockName,
-            blockCosts: nodeSchema.costs || [],
-            title: `${blockName} ${nodeId}`,
-            description: nodeSchema.description,
-            categories: nodeSchema.categories,
-            inputSchema: nodeSchema.inputSchema,
-            outputSchema: nodeSchema.outputSchema,
-            hardcodedValues: hardcodedValues,
-            connections: [],
-            isOutputOpen: false,
-            block_id: blockId,
-            uiType: nodeSchema.uiType,
-          },
-        };
-
-        history.push({
-          type: "ADD_NODE",
-          payload: { node: { ...newNode, ...newNode.data } },
-          undo: () => {
-            deleteElements({ nodes: [{ id: newNode.id } as any], edges: [] });
-          },
-          redo: () => {
-            addNodes([newNode]);
-          },
-        });
-        addNodes([newNode]);
-        clearNodesStatusAndOutput();
-
-        setNodeId((prevId) => prevId + 1);
+        );
       } catch (error) {
         console.error("Failed to drop block:", error);
       }
     },
-    [
-      nodeId,
-      availableBlocks,
-      nodes,
-      edges,
-      addNodes,
-      screenToFlowPosition,
-      deleteElements,
-      clearNodesStatusAndOutput,
-    ],
+    [screenToFlowPosition, createAndAddNode],
   );
 
   const buildContextValue: BuilderContextType = useMemo(

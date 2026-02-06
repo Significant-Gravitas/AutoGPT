@@ -22,7 +22,7 @@ const isValidVideoUrl = (url: string): boolean => {
   if (url.startsWith("data:video")) {
     return true;
   }
-  const videoExtensions = /\.(mp4|webm|ogg)$/i;
+  const videoExtensions = /\.(mp4|webm|ogg|mov|avi|mkv|m4v)$/i;
   const youtubeRegex = /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.?be)\/.+$/;
   const cleanedUrl = url.split("?")[0];
   return (
@@ -44,9 +44,27 @@ const isValidAudioUrl = (url: string): boolean => {
   if (url.startsWith("data:audio")) {
     return true;
   }
-  const audioExtensions = /\.(mp3|wav)$/i;
+  const audioExtensions = /\.(mp3|wav|ogg|m4a|aac|flac)$/i;
   const cleanedUrl = url.split("?")[0];
   return isValidMediaUri(url) && audioExtensions.test(cleanedUrl);
+};
+
+const getVideoMimeType = (url: string): string => {
+  if (url.startsWith("data:video/")) {
+    const match = url.match(/^data:(video\/[^;]+)/);
+    return match?.[1] || "video/mp4";
+  }
+  const extension = url.split("?")[0].split(".").pop()?.toLowerCase();
+  const mimeMap: Record<string, string> = {
+    mp4: "video/mp4",
+    webm: "video/webm",
+    ogg: "video/ogg",
+    mov: "video/quicktime",
+    avi: "video/x-msvideo",
+    mkv: "video/x-matroska",
+    m4v: "video/mp4",
+  };
+  return mimeMap[extension || ""] || "video/mp4";
 };
 
 const VideoRenderer: React.FC<{ videoUrl: string }> = ({ videoUrl }) => {
@@ -63,7 +81,7 @@ const VideoRenderer: React.FC<{ videoUrl: string }> = ({ videoUrl }) => {
         ></iframe>
       ) : (
         <video controls width="100%" height="315">
-          <source src={videoUrl} type="video/mp4" />
+          <source src={videoUrl} type={getVideoMimeType(videoUrl)} />
           Your browser does not support the video tag.
         </video>
       )}

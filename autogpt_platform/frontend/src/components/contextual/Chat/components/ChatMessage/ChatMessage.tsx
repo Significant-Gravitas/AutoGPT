@@ -102,18 +102,6 @@ export function ChatMessage({
     }
   }
 
-  function handleClarificationAnswers(answers: Record<string, string>) {
-    if (onSendMessage) {
-      const contextMessage = Object.entries(answers)
-        .map(([keyword, answer]) => `${keyword}: ${answer}`)
-        .join("\n");
-
-      onSendMessage(
-        `I have the answers to your questions:\n\n${contextMessage}\n\nPlease proceed with creating the agent.`,
-      );
-    }
-  }
-
   const handleCopy = useCallback(
     async function handleCopy() {
       if (message.type !== "message") return;
@@ -161,6 +149,22 @@ export function ChatMessage({
       messages
         .slice(index + 1)
         .some((m) => m.type === "message" && m.role === "user");
+
+    const handleClarificationAnswers = (answers: Record<string, string>) => {
+      if (onSendMessage) {
+        // Iterate over questions (preserves original order) instead of answers
+        const contextMessage = message.questions
+          .map((q) => {
+            const answer = answers[q.keyword] || "";
+            return `> ${q.question}\n\n${answer}`;
+          })
+          .join("\n\n");
+
+        onSendMessage(
+          `**Here are my answers:**\n\n${contextMessage}\n\nPlease proceed with creating the agent.`,
+        );
+      }
+    };
 
     return (
       <ClarificationQuestionsWidget
@@ -346,6 +350,7 @@ export function ChatMessage({
           toolId={message.toolId}
           toolName={message.toolName}
           result={message.result}
+          onSendMessage={onSendMessage}
         />
       </div>
     );

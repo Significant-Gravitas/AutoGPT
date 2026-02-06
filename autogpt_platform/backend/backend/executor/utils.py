@@ -373,7 +373,7 @@ def make_node_credentials_input_map(
     # Get aggregated credentials fields for the graph
     graph_cred_inputs = graph.aggregate_credentials_inputs()
 
-    for graph_input_name, (_, compatible_node_fields) in graph_cred_inputs.items():
+    for graph_input_name, (_, compatible_node_fields, _) in graph_cred_inputs.items():
         # Best-effort map: skip missing items
         if graph_input_name not in graph_credentials_input:
             continue

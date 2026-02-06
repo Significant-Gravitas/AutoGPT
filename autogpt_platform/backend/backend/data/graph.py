@@ -3,7 +3,7 @@ import logging
 import uuid
 from collections import defaultdict
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Annotated, Any, Literal, Optional, cast
+from typing import TYPE_CHECKING, Annotated, Any, Literal, Optional, Self, cast
 
 from prisma.enums import SubmissionStatus
 from prisma.models import (
@@ -20,7 +20,7 @@ from prisma.types import (
     AgentNodeLinkCreateInput,
     StoreListingVersionWhereInput,
 )
-from pydantic import BaseModel, BeforeValidator, Field, create_model
+from pydantic import BaseModel, BeforeValidator, Field
 from pydantic.fields import computed_field
 
 from backend.blocks.agent import AgentExecutorBlock
@@ -30,7 +30,6 @@ from backend.data.db import prisma as db
 from backend.data.dynamic_fields import is_tool_pin, sanitize_pin_name
 from backend.data.includes import MAX_GRAPH_VERSIONS_FETCH
 from backend.data.model import (
-    CredentialsField,
     CredentialsFieldInfo,
     CredentialsMetaInput,
     is_credentials_field_name,
@@ -45,7 +44,6 @@ from .block import (
     AnyBlockSchema,
     Block,
     BlockInput,
-    BlockSchema,
     BlockType,
     EmptySchema,
     get_block,
@@ -113,10 +111,12 @@ class Link(BaseDbModel):
 
 class Node(BaseDbModel):
     block_id: str
-    input_default: BlockInput = {}  # dict[input_name, default_value]
-    metadata: dict[str, Any] = {}
-    input_links: list[Link] = []
-    output_links: list[Link] = []
+    input_default: BlockInput = Field(  # dict[input_name, default_value]
+        default_factory=dict
+    )
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    input_links: list[Link] = Field(default_factory=list)
+    output_links: list[Link] = Field(default_factory=list)
 
     @property
     def credentials_optional(self) -> bool:
@@ -221,17 +221,32 @@ class NodeModel(Node):
         return result
 
 
-class BaseGraph(BaseDbModel):
+class GraphBaseMeta(BaseDbModel):
+    """
+    Shared base for `GraphMeta` and `BaseGraph`, with core graph metadata fields.
+    """
+
     version: int = 1
     is_active: bool = True
     name: str
     description: str
     instructions: str | None = None
     recommended_schedule_cron: str | None = None
-    nodes: list[Node] = []
-    links: list[Link] = []
     forked_from_id: str | None = None
     forked_from_version: int | None = None
+
+
+class BaseGraph(GraphBaseMeta):
+    """
+    Graph with nodes, links, and computed I/O schema fields.
+
+    Used to represent sub-graphs within a `Graph`. Contains the full graph
+    structure including nodes and links, plus computed fields for schemas
+    and trigger info. Does NOT include user_id or created_at (see GraphModel).
+    """
+
+    nodes: list[Node] = Field(default_factory=list)
+    links: list[Link] = Field(default_factory=list)
 
     @computed_field
     @property
@@ -361,44 +376,79 @@ class GraphTriggerInfo(BaseModel):
 
 
 class Graph(BaseGraph):
-    sub_graphs: list[BaseGraph] = []  # Flattened sub-graphs
+    """Creatable graph model used in API create/update endpoints."""
+
+    sub_graphs: list[BaseGraph] = Field(default_factory=list)  # Flattened sub-graphs
+
+
+class GraphMeta(GraphBaseMeta):
+    """
+    Lightweight graph metadata model representing an existing graph from the database,
+    for use in listings and summaries.
+
+    Lacks `GraphModel`'s nodes, links, and expensive computed fields.
+    Use for list endpoints where full graph data is not needed and performance matters.
+    """
+
+    id: str  # type: ignore
+    version: int  # type: ignore
+    user_id: str
+    created_at: datetime
+
+    @classmethod
+    def from_db(cls, graph: "AgentGraph") -> Self:
+        return cls(
+            id=graph.id,
+            version=graph.version,
+            is_active=graph.isActive,
+            name=graph.name or "",
+            description=graph.description or "",
+            instructions=graph.instructions,
+            recommended_schedule_cron=graph.recommendedScheduleCron,
+            forked_from_id=graph.forkedFromId,
+            forked_from_version=graph.forkedFromVersion,
+            user_id=graph.userId,
+            created_at=graph.createdAt,
+        )
+
+
+class GraphModel(Graph, GraphMeta):
+    """
+    Full graph model representing an existing graph from the database.
+
+    This is the primary model for working with persisted graphs. Includes all
+    graph data (nodes, links, sub_graphs) plus user ownership and timestamps.
+    Provides computed fields (input_schema, output_schema, etc.) used during
+    set-up (frontend) and execution (backend).
+
+    Inherits from:
+    - `Graph`: provides structure (nodes, links, sub_graphs) and computed schemas
+    - `GraphMeta`: provides user_id, created_at for database records
+    """
+
+    nodes: list[NodeModel] = Field(default_factory=list)  # type: ignore
+
+    @property
+    def starting_nodes(self) -> list[NodeModel]:
+        outbound_nodes = {link.sink_id for link in self.links}
+        input_nodes = {
+            node.id for node in self.nodes if node.block.block_type == BlockType.INPUT
+        }
+        return [
+            node
+            for node in self.nodes
+            if node.id not in outbound_nodes or node.id in input_nodes
+        ]
+
+    @property
+    def webhook_input_node(self) -> NodeModel | None:  # type: ignore
+        return cast(NodeModel, super().webhook_input_node)
 
     @computed_field
     @property
     def credentials_input_schema(self) -> dict[str, Any]:
-        schema = self._credentials_input_schema.jsonschema()
-
-        # Determine which credential fields are required based on credentials_optional metadata
         graph_credentials_inputs = self.aggregate_credentials_inputs()
-        required_fields = []
 
-        # Build a map of node_id -> node for quick lookup
-        all_nodes = {node.id: node for node in self.nodes}
-        for sub_graph in self.sub_graphs:
-            for node in sub_graph.nodes:
-                all_nodes[node.id] = node
-
-        for field_key, (
-            _field_info,
-            node_field_pairs,
-        ) in graph_credentials_inputs.items():
-            # A field is required if ANY node using it has credentials_optional=False
-            is_required = False
-            for node_id, _field_name in node_field_pairs:
-                node = all_nodes.get(node_id)
-                if node and not node.credentials_optional:
-                    is_required = True
-                    break
-
-            if is_required:
-                required_fields.append(field_key)
-
-        schema["required"] = required_fields
-        return schema
-
-    @property
-    def _credentials_input_schema(self) -> type[BlockSchema]:
-        graph_credentials_inputs = self.aggregate_credentials_inputs()
         logger.debug(
             f"Combined credentials input fields for graph #{self.id} ({self.name}): "
             f"{graph_credentials_inputs}"
@@ -406,8 +456,8 @@ class Graph(BaseGraph):
 
         # Warn if same-provider credentials inputs can't be combined (= bad UX)
         graph_cred_fields = list(graph_credentials_inputs.values())
-        for i, (field, keys) in enumerate(graph_cred_fields):
-            for other_field, other_keys in list(graph_cred_fields)[i + 1 :]:
+        for i, (field, keys, _) in enumerate(graph_cred_fields):
+            for other_field, other_keys, _ in list(graph_cred_fields)[i + 1 :]:
                 if field.provider != other_field.provider:
                     continue
                 if ProviderName.HTTP in field.provider:
@@ -423,31 +473,78 @@ class Graph(BaseGraph):
                     f"keys: {keys} <> {other_keys}."
                 )
 
-        fields: dict[str, tuple[type[CredentialsMetaInput], CredentialsMetaInput]] = {
-            agg_field_key: (
-                CredentialsMetaInput[
-                    Literal[tuple(field_info.provider)],  # type: ignore
-                    Literal[tuple(field_info.supported_types)],  # type: ignore
-                ],
-                CredentialsField(
-                    required_scopes=set(field_info.required_scopes or []),
-                    discriminator=field_info.discriminator,
-                    discriminator_mapping=field_info.discriminator_mapping,
-                    discriminator_values=field_info.discriminator_values,
-                ),
-            )
-            for agg_field_key, (field_info, _) in graph_credentials_inputs.items()
-        }
+        # Build JSON schema directly to avoid expensive create_model + validation overhead
+        properties = {}
+        required_fields = []
 
-        return create_model(
-            self.name.replace(" ", "") + "CredentialsInputSchema",
-            __base__=BlockSchema,
-            **fields,  # type: ignore
-        )
+        for agg_field_key, (
+            field_info,
+            _,
+            is_required,
+        ) in graph_credentials_inputs.items():
+            providers = list(field_info.provider)
+            cred_types = list(field_info.supported_types)
+
+            field_schema: dict[str, Any] = {
+                "credentials_provider": providers,
+                "credentials_types": cred_types,
+                "type": "object",
+                "properties": {
+                    "id": {"title": "Id", "type": "string"},
+                    "title": {
+                        "anyOf": [{"type": "string"}, {"type": "null"}],
+                        "default": None,
+                        "title": "Title",
+                    },
+                    "provider": {
+                        "title": "Provider",
+                        "type": "string",
+                        **(
+                            {"enum": providers}
+                            if len(providers) > 1
+                            else {"const": providers[0]}
+                        ),
+                    },
+                    "type": {
+                        "title": "Type",
+                        "type": "string",
+                        **(
+                            {"enum": cred_types}
+                            if len(cred_types) > 1
+                            else {"const": cred_types[0]}
+                        ),
+                    },
+                },
+                "required": ["id", "provider", "type"],
+            }
+
+            # Add other (optional) field info items
+            field_schema.update(
+                field_info.model_dump(
+                    by_alias=True,
+                    exclude_defaults=True,
+                    exclude={"provider", "supported_types"},  # already included above
+                )
+            )
+
+            # Ensure field schema is well-formed
+            CredentialsMetaInput.validate_credentials_field_schema(
+                field_schema, agg_field_key
+            )
+
+            properties[agg_field_key] = field_schema
+            if is_required:
+                required_fields.append(agg_field_key)
+
+        return {
+            "type": "object",
+            "properties": properties,
+            "required": required_fields,
+        }
 
     def aggregate_credentials_inputs(
         self,
-    ) -> dict[str, tuple[CredentialsFieldInfo, set[tuple[str, str]]]]:
+    ) -> dict[str, tuple[CredentialsFieldInfo, set[tuple[str, str]], bool]]:
         """
         Returns:
             dict[aggregated_field_key, tuple(
@@ -455,13 +552,19 @@ class Graph(BaseGraph):
                     (now includes discriminator_values from matching nodes)
                 set[(node_id, field_name)]: Node credentials fields that are
                     compatible with this aggregated field spec
+                bool: True if the field is required (any node has credentials_optional=False)
             )]
         """
         # First collect all credential field data with input defaults
-        node_credential_data = []
+        # Track (field_info, (node_id, field_name), is_required) for each credential field
+        node_credential_data: list[tuple[CredentialsFieldInfo, tuple[str, str]]] = []
+        node_required_map: dict[str, bool] = {}  # node_id -> is_required
 
         for graph in [self] + self.sub_graphs:
             for node in graph.nodes:
+                # Track if this node requires credentials (credentials_optional=False means required)
+                node_required_map[node.id] = not node.credentials_optional
+
                 for (
                     field_name,
                     field_info,
@@ -485,37 +588,21 @@ class Graph(BaseGraph):
                     )
 
         # Combine credential field info (this will merge discriminator_values automatically)
-        return CredentialsFieldInfo.combine(*node_credential_data)
+        combined = CredentialsFieldInfo.combine(*node_credential_data)
 
-
-class GraphModel(Graph):
-    user_id: str
-    nodes: list[NodeModel] = []  # type: ignore
-
-    created_at: datetime
-
-    @property
-    def starting_nodes(self) -> list[NodeModel]:
-        outbound_nodes = {link.sink_id for link in self.links}
-        input_nodes = {
-            node.id for node in self.nodes if node.block.block_type == BlockType.INPUT
+        # Add is_required flag to each aggregated field
+        # A field is required if ANY node using it has credentials_optional=False
+        return {
+            key: (
+                field_info,
+                node_field_pairs,
+                any(
+                    node_required_map.get(node_id, True)
+                    for node_id, _ in node_field_pairs
+                ),
+            )
+            for key, (field_info, node_field_pairs) in combined.items()
         }
-        return [
-            node
-            for node in self.nodes
-            if node.id not in outbound_nodes or node.id in input_nodes
-        ]
-
-    @property
-    def webhook_input_node(self) -> NodeModel | None:  # type: ignore
-        return cast(NodeModel, super().webhook_input_node)
-
-    def meta(self) -> "GraphMeta":
-        """
-        Returns a GraphMeta object with metadata about the graph.
-        This is used to return metadata about the graph without exposing nodes and links.
-        """
-        return GraphMeta.from_graph(self)
 
     def reassign_ids(self, user_id: str, reassign_graph_id: bool = False):
         """
@@ -799,13 +886,14 @@ class GraphModel(Graph):
             if is_static_output_block(link.source_id):
                 link.is_static = True  # Each value block output should be static.
 
-    @staticmethod
-    def from_db(
+    @classmethod
+    def from_db(  # type: ignore[reportIncompatibleMethodOverride]
+        cls,
         graph: AgentGraph,
         for_export: bool = False,
         sub_graphs: list[AgentGraph] | None = None,
-    ) -> "GraphModel":
-        return GraphModel(
+    ) -> Self:
+        return cls(
             id=graph.id,
             user_id=graph.userId if not for_export else "",
             version=graph.version,
@@ -831,17 +919,28 @@ class GraphModel(Graph):
             ],
         )
 
+    def hide_nodes(self) -> "GraphModelWithoutNodes":
+        """
+        Returns a copy of the `GraphModel` with nodes, links, and sub-graphs hidden
+        (excluded from serialization). They are still present in the model instance
+        so all computed fields (e.g. `credentials_input_schema`) still work.
+        """
+        return GraphModelWithoutNodes.model_validate(self, from_attributes=True)
 
-class GraphMeta(Graph):
-    user_id: str
 
-    # Easy work-around to prevent exposing nodes and links in the API response
-    nodes: list[NodeModel] = Field(default=[], exclude=True)  # type: ignore
-    links: list[Link] = Field(default=[], exclude=True)
+class GraphModelWithoutNodes(GraphModel):
+    """
+    GraphModel variant that excludes nodes, links, and sub-graphs from serialization.
 
-    @staticmethod
-    def from_graph(graph: GraphModel) -> "GraphMeta":
-        return GraphMeta(**graph.model_dump())
+    Used in contexts like the store where exposing internal graph structure
+    is not desired. Inherits all computed fields from GraphModel but marks
+    nodes and links as excluded from JSON output.
+    """
+
+    nodes: list[NodeModel] = Field(default_factory=list, exclude=True)
+    links: list[Link] = Field(default_factory=list, exclude=True)
+
+    sub_graphs: list[BaseGraph] = Field(default_factory=list, exclude=True)
 
 
 class GraphsPaginated(BaseModel):
@@ -912,21 +1011,11 @@ async def list_graphs_paginated(
         where=where_clause,
         distinct=["id"],
         order={"version": "desc"},
-        include=AGENT_GRAPH_INCLUDE,
         skip=offset,
         take=page_size,
     )
 
-    graph_models: list[GraphMeta] = []
-    for graph in graphs:
-        try:
-            graph_meta = GraphModel.from_db(graph).meta()
-            # Trigger serialization to validate that the graph is well formed
-            graph_meta.model_dump()
-            graph_models.append(graph_meta)
-        except Exception as e:
-            logger.error(f"Error processing graph {graph.id}: {e}")
-            continue
+    graph_models = [GraphMeta.from_db(graph) for graph in graphs]
 
     return GraphsPaginated(
         graphs=graph_models,

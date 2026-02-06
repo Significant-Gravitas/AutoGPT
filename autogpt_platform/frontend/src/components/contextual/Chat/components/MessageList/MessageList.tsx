@@ -73,6 +73,7 @@ export function MessageList({
                     key={index}
                     message={message}
                     prevMessage={messages[index - 1]}
+                    onSendMessage={onSendMessage}
                   />
                 );
               }

@@ -36,12 +36,21 @@ class Project(BaseModel):
     content: str | None = None
 
 
+class State(BaseModel):
+    id: str
+    name: str
+    type: str | None = (
+        None  # Workflow state type (e.g., "triage", "backlog", "started", "completed", "canceled")
+    )
+
+
 class Issue(BaseModel):
     id: str
     identifier: str
     title: str
     description: str | None
     priority: int
+    state: State | None = None
     project: Project | None = None
     createdAt: str | None = None
     comments: list[Comment] | None = None
