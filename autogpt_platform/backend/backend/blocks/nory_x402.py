@@ -91,7 +91,6 @@ class NoryGetPaymentRequirementsBlock(Block):
                 params=params,
                 headers=headers,
             )
-            response.raise_for_status()
             yield "requirements", response.json()
         except Exception as e:
             yield "error", str(e)
@@ -144,7 +143,6 @@ class NoryVerifyPaymentBlock(Block):
                 json={"payload": input_data.payload},
                 headers=headers,
             )
-            response.raise_for_status()
             yield "result", response.json()
         except Exception as e:
             yield "error", str(e)
@@ -197,7 +195,6 @@ class NorySettlePaymentBlock(Block):
                 json={"payload": input_data.payload},
                 headers=headers,
             )
-            response.raise_for_status()
             yield "result", response.json()
         except Exception as e:
             yield "error", str(e)
@@ -253,7 +250,6 @@ class NoryTransactionLookupBlock(Block):
                 params={"network": input_data.network.value},
                 headers=headers,
             )
-            response.raise_for_status()
             yield "transaction", response.json()
         except Exception as e:
             yield "error", str(e)
@@ -289,7 +285,6 @@ class NoryHealthCheckBlock(Block):
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         try:
             response = await Requests().get(f"{NORY_API_BASE}/api/x402/health")
-            response.raise_for_status()
             yield "health", response.json()
         except Exception as e:
             yield "error", str(e)
