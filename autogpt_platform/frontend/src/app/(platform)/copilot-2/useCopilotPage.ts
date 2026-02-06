@@ -37,12 +37,17 @@ export function useCopilotPage() {
             },
           };
         },
+        // Resume uses GET on the same endpoint (no message param → backend resumes)
+        prepareReconnectToStreamRequest: () => ({
+          api: `/api/chat/sessions/${sessionId}/stream`,
+        }),
       })
     : null;
 
   const { messages, sendMessage, status, error, setMessages } = useChat({
     id: sessionId ?? undefined,
     transport: transport ?? undefined,
+    resume: !!sessionId,
   });
 
   useEffect(() => {

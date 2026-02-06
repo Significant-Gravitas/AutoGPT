@@ -6,7 +6,7 @@ from collections.abc import AsyncGenerator
 from typing import Annotated
 
 from autogpt_libs import auth
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Security
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, Security
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -393,63 +393,73 @@ async def stream_chat_post(
 @router.get(
     "/sessions/{session_id}/stream",
 )
-async def stream_chat_get(
+async def resume_session_stream(
     session_id: str,
-    message: Annotated[str, Query(min_length=1, max_length=10000)],
     user_id: str | None = Depends(auth.get_user_id),
-    is_user_message: bool = Query(default=True),
 ):
     """
-    Stream chat responses for a session (GET - legacy endpoint).
+    Resume an active stream for a session.
 
-    Streams the AI/completion responses in real time over Server-Sent Events (SSE), including:
-      - Text fragments as they are generated
-      - Tool call UI elements (if invoked)
-      - Tool execution results
+    Called by the AI SDK's ``useChat(resume: true)`` on page load.
+    Checks for an active (in-progress) task on the session and either replays
+    the full SSE stream or returns 204 No Content if nothing is running.
 
     Args:
-        session_id: The chat session identifier to associate with the streamed messages.
-        message: The user's new message to process.
+        session_id: The chat session identifier.
         user_id: Optional authenticated user ID.
-        is_user_message: Whether the message is a user message.
-    Returns:
-        StreamingResponse: SSE-formatted response chunks.
 
+    Returns:
+        StreamingResponse (SSE) when an active stream exists,
+        or 204 No Content when there is nothing to resume.
     """
-    session = await _validate_and_get_session(session_id, user_id)
+    import asyncio
+
+    active_task, _last_id = await stream_registry.get_active_task_for_session(
+        session_id, user_id
+    )
+
+    if not active_task:
+        return Response(status_code=204)
+
+    subscriber_queue = await stream_registry.subscribe_to_task(
+        task_id=active_task.task_id,
+        user_id=user_id,
+        last_message_id="0-0",  # Full replay so useChat rebuilds the message
+    )
+
+    if subscriber_queue is None:
+        return Response(status_code=204)
 
     async def event_generator() -> AsyncGenerator[str, None]:
-        chunk_count = 0
-        first_chunk_type: str | None = None
-        async for chunk in chat_service.stream_chat_completion(
-            session_id,
-            message,
-            is_user_message=is_user_message,
-            user_id=user_id,
-            session=session,  # Pass pre-fetched session to avoid double-fetch
-        ):
-            if chunk_count < 3:
-                logger.info(
-                    "Chat stream chunk",
-                    extra={
-                        "session_id": session_id,
-                        "chunk_type": str(chunk.type),
-                    },
+        try:
+            while True:
+                try:
+                    chunk = await asyncio.wait_for(
+                        subscriber_queue.get(), timeout=30.0
+                    )
+                    yield chunk.to_sse()
+
+                    if isinstance(chunk, StreamFinish):
+                        break
+                except asyncio.TimeoutError:
+                    yield StreamHeartbeat().to_sse()
+        except GeneratorExit:
+            pass
+        except Exception as e:
+            logger.error(
+                f"Error in resume stream for session {session_id}: {e}"
+            )
+        finally:
+            try:
+                await stream_registry.unsubscribe_from_task(
+                    active_task.task_id, subscriber_queue
                 )
-            if not first_chunk_type:
-                first_chunk_type = str(chunk.type)
-            chunk_count += 1
-            yield chunk.to_sse()
-        logger.info(
-            "Chat stream completed",
-            extra={
-                "session_id": session_id,
-                "chunk_count": chunk_count,
-                "first_chunk_type": first_chunk_type,
-            },
-        )
-        # AI SDK protocol termination
-        yield "data: [DONE]\n\n"
+            except Exception as unsub_err:
+                logger.error(
+                    f"Error unsubscribing from task {active_task.task_id}: {unsub_err}",
+                    exc_info=True,
+                )
+            yield "data: [DONE]\n\n"
 
     return StreamingResponse(
         event_generator(),
@@ -457,8 +467,8 @@ async def stream_chat_get(
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",  # Disable nginx buffering
-            "x-vercel-ai-ui-message-stream": "v1",  # AI SDK protocol header
+            "X-Accel-Buffering": "no",
+            "x-vercel-ai-ui-message-stream": "v1",
         },
     )
 
