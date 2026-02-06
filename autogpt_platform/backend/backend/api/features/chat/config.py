@@ -93,6 +93,12 @@ class ChatConfig(BaseSettings):
         description="Name of the prompt in Langfuse to fetch",
     )
 
+    # Claude Agent SDK Configuration
+    use_claude_agent_sdk: bool = Field(
+        default=True,
+        description="Use Claude Agent SDK for chat completions",
+    )
+
     @field_validator("api_key", mode="before")
     @classmethod
     def get_api_key(cls, v):
@@ -131,6 +137,17 @@ class ChatConfig(BaseSettings):
         if v is None:
             v = os.getenv("CHAT_INTERNAL_API_KEY")
         return v
+
+    @field_validator("use_claude_agent_sdk", mode="before")
+    @classmethod
+    def get_use_claude_agent_sdk(cls, v):
+        """Get use_claude_agent_sdk from environment if not provided."""
+        # Check environment variable - default to True if not set
+        env_val = os.getenv("CHAT_USE_CLAUDE_AGENT_SDK", "").lower()
+        if env_val:
+            return env_val in ("true", "1", "yes", "on")
+        # Default to True (SDK enabled by default)
+        return True if v is None else v
 
     # Prompt paths for different contexts
     PROMPT_PATHS: dict[str, str] = {

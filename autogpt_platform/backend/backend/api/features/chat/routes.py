@@ -1,5 +1,6 @@
 """Chat API routes for chat session management and streaming via SSE."""
 
+import asyncio
 import logging
 import uuid as uuid_module
 from collections.abc import AsyncGenerator
@@ -16,8 +17,17 @@ from . import service as chat_service
 from . import stream_registry
 from .completion_handler import process_operation_failure, process_operation_success
 from .config import ChatConfig
-from .model import ChatSession, create_chat_session, get_chat_session, get_user_sessions
+from .model import (
+    ChatMessage,
+    ChatSession,
+    create_chat_session,
+    get_chat_session,
+    get_user_sessions,
+    upsert_chat_session,
+)
 from .response_model import StreamFinish, StreamHeartbeat, StreamStart
+from .sdk import service as sdk_service
+from .tracking import track_user_message
 
 config = ChatConfig()
 
@@ -209,6 +219,10 @@ async def get_session(
     active_task, last_message_id = await stream_registry.get_active_task_for_session(
         session_id, user_id
     )
+    logger.info(
+        f"[GET_SESSION] session={session_id}, active_task={active_task is not None}, "
+        f"msg_count={len(messages)}, last_role={messages[-1].get('role') if messages else 'none'}"
+    )
     if active_task:
         # Filter out the in-progress assistant message from the session response.
         # The client will receive the complete assistant response through the SSE
@@ -265,9 +279,29 @@ async def stream_chat_post(
         containing the task_id for reconnection.
 
     """
-    import asyncio
-
     session = await _validate_and_get_session(session_id, user_id)
+
+    # Add user message to session BEFORE creating task to avoid race condition
+    # where GET_SESSION sees the task as "running" but the message isn't saved yet
+    if request.message:
+        session.messages.append(
+            ChatMessage(
+                role="user" if request.is_user_message else "assistant",
+                content=request.message,
+            )
+        )
+        if request.is_user_message:
+            track_user_message(
+                user_id=user_id,
+                session_id=session_id,
+                message_length=len(request.message),
+            )
+        logger.info(
+            f"[STREAM] Saving user message to session {session_id}, "
+            f"msg_count={len(session.messages)}"
+        )
+        session = await upsert_chat_session(session)
+        logger.info(f"[STREAM] User message saved for session {session_id}")
 
     # Create a task in the stream registry for reconnection support
     task_id = str(uuid_module.uuid4())
@@ -283,24 +317,38 @@ async def stream_chat_post(
 
     # Background task that runs the AI generation independently of SSE connection
     async def run_ai_generation():
+        chunk_count = 0
         try:
             # Emit a start event with task_id for reconnection
             start_chunk = StreamStart(messageId=task_id, taskId=task_id)
             await stream_registry.publish_chunk(task_id, start_chunk)
 
-            async for chunk in chat_service.stream_chat_completion(
+            # Choose service based on configuration
+            use_sdk = config.use_claude_agent_sdk
+            stream_fn = (
+                sdk_service.stream_chat_completion_sdk
+                if use_sdk
+                else chat_service.stream_chat_completion
+            )
+            # Pass message=None since we already added it to the session above
+            async for chunk in stream_fn(
                 session_id,
-                request.message,
+                None,  # Message already in session
                 is_user_message=request.is_user_message,
                 user_id=user_id,
-                session=session,  # Pass pre-fetched session to avoid double-fetch
+                session=session,  # Pass session with message already added
                 context=request.context,
             ):
+                chunk_count += 1
                 # Write to Redis (subscribers will receive via XREAD)
                 await stream_registry.publish_chunk(task_id, chunk)
 
-            # Mark task as completed
-            await stream_registry.mark_task_completed(task_id, "completed")
+            logger.info(
+                f"[BG_TASK] AI generation completed for session {session_id}: {chunk_count} chunks, marking task {task_id} as completed"
+            )
+            # Mark task as completed (also publishes StreamFinish)
+            completed = await stream_registry.mark_task_completed(task_id, "completed")
+            logger.info(f"[BG_TASK] mark_task_completed returned: {completed}")
         except Exception as e:
             logger.error(
                 f"Error in background AI generation for session {session_id}: {e}"
@@ -315,7 +363,7 @@ async def stream_chat_post(
     async def event_generator() -> AsyncGenerator[str, None]:
         subscriber_queue = None
         try:
-            # Subscribe to the task stream (this replays existing messages + live updates)
+            # Subscribe to the task stream (replays + live updates)
             subscriber_queue = await stream_registry.subscribe_to_task(
                 task_id=task_id,
                 user_id=user_id,
@@ -323,6 +371,7 @@ async def stream_chat_post(
             )
 
             if subscriber_queue is None:
+                logger.warning(f"Failed to subscribe to task {task_id}")
                 yield StreamFinish().to_sse()
                 yield "data: [DONE]\n\n"
                 return
@@ -341,11 +390,11 @@ async def stream_chat_post(
                     yield StreamHeartbeat().to_sse()
 
         except GeneratorExit:
-            pass  # Client disconnected - background task continues
+            pass  # Client disconnected - normal behavior
         except Exception as e:
             logger.error(f"Error in SSE stream for task {task_id}: {e}")
         finally:
-            # Unsubscribe when client disconnects or stream ends to prevent resource leak
+            # Unsubscribe when client disconnects or stream ends
             if subscriber_queue is not None:
                 try:
                     await stream_registry.unsubscribe_from_task(
@@ -400,35 +449,21 @@ async def stream_chat_get(
     session = await _validate_and_get_session(session_id, user_id)
 
     async def event_generator() -> AsyncGenerator[str, None]:
-        chunk_count = 0
-        first_chunk_type: str | None = None
-        async for chunk in chat_service.stream_chat_completion(
+        # Choose service based on configuration
+        use_sdk = config.use_claude_agent_sdk
+        stream_fn = (
+            sdk_service.stream_chat_completion_sdk
+            if use_sdk
+            else chat_service.stream_chat_completion
+        )
+        async for chunk in stream_fn(
             session_id,
             message,
             is_user_message=is_user_message,
             user_id=user_id,
             session=session,  # Pass pre-fetched session to avoid double-fetch
         ):
-            if chunk_count < 3:
-                logger.info(
-                    "Chat stream chunk",
-                    extra={
-                        "session_id": session_id,
-                        "chunk_type": str(chunk.type),
-                    },
-                )
-            if not first_chunk_type:
-                first_chunk_type = str(chunk.type)
-            chunk_count += 1
             yield chunk.to_sse()
-        logger.info(
-            "Chat stream completed",
-            extra={
-                "session_id": session_id,
-                "chunk_count": chunk_count,
-                "first_chunk_type": first_chunk_type,
-            },
-        )
         # AI SDK protocol termination
         yield "data: [DONE]\n\n"
 
@@ -550,8 +585,6 @@ async def stream_task(
         )
 
     async def event_generator() -> AsyncGenerator[str, None]:
-        import asyncio
-
         heartbeat_interval = 15.0  # Send heartbeat every 15 seconds
         try:
             while True:

@@ -1,0 +1,428 @@
+"""Claude Agent SDK service layer for CoPilot chat completions."""
+
+import asyncio
+import logging
+import uuid
+from collections.abc import AsyncGenerator
+from typing import Any
+
+import openai
+
+from backend.data.understanding import (
+    format_understanding_for_prompt,
+    get_business_understanding,
+)
+from backend.util.exceptions import NotFoundError
+
+from ..config import ChatConfig
+from ..model import (
+    ChatMessage,
+    ChatSession,
+    get_chat_session,
+    update_session_title,
+    upsert_chat_session,
+)
+from ..response_model import (
+    StreamBaseResponse,
+    StreamError,
+    StreamFinish,
+    StreamStart,
+    StreamTextDelta,
+    StreamToolOutputAvailable,
+)
+from ..tracking import track_user_message
+from .anthropic_fallback import stream_with_anthropic
+from .response_adapter import SDKResponseAdapter
+from .security_hooks import create_security_hooks
+from .tool_adapter import (
+    COPILOT_TOOL_NAMES,
+    create_copilot_mcp_server,
+    set_execution_context,
+)
+
+logger = logging.getLogger(__name__)
+config = ChatConfig()
+
+DEFAULT_SYSTEM_PROMPT = """You are **Otto**, an AI Co-Pilot for AutoGPT and a Forward-Deployed Automation Engineer serving small business owners. Your mission is to help users automate business tasks with AI by delivering tangible value through working automations—not through documentation or lengthy explanations.
+
+Here is everything you know about the current user from previous interactions:
+
+<users_information>
+{users_information}
+</users_information>
+
+## YOUR CORE MANDATE
+
+You are action-oriented. Your success is measured by:
+- **Value Delivery**: Does the user think "wow, that was amazing" or "what was the point"?
+- **Demonstrable Proof**: Show working automations, not descriptions of what's possible
+- **Time Saved**: Focus on tangible efficiency gains
+- **Quality Output**: Deliver results that meet or exceed expectations
+
+## YOUR WORKFLOW
+
+Adapt flexibly to the conversation context. Not every interaction requires all stages:
+
+1. **Explore & Understand**: Learn about the user's business, tasks, and goals. Use `add_understanding` to capture important context that will improve future conversations.
+
+2. **Assess Automation Potential**: Help the user understand whether and how AI can automate their task.
+
+3. **Prepare for AI**: Provide brief, actionable guidance on prerequisites (data, access, etc.).
+
+4. **Discover or Create Agents**:
+   - **Always check the user's library first** with `find_library_agent` (these may be customized to their needs)
+   - Search the marketplace with `find_agent` for pre-built automations
+   - Find reusable components with `find_block`
+   - Create custom solutions with `create_agent` if nothing suitable exists
+   - Modify existing library agents with `edit_agent`
+
+5. **Execute**: Run automations immediately, schedule them, or set up webhooks using `run_agent`. Test specific components with `run_block`.
+
+6. **Show Results**: Display outputs using `agent_output`.
+
+## BEHAVIORAL GUIDELINES
+
+**Be Concise:**
+- Target 2-5 short lines maximum
+- Make every word count—no repetition or filler
+- Use lightweight structure for scannability (bullets, numbered lists, short prompts)
+- Avoid jargon (blocks, slugs, cron) unless the user asks
+
+**Be Proactive:**
+- Suggest next steps before being asked
+- Anticipate needs based on conversation context and user information
+- Look for opportunities to expand scope when relevant
+- Reveal capabilities through action, not explanation
+
+**Use Tools Effectively:**
+- Select the right tool for each task
+- **Always check `find_library_agent` before searching the marketplace**
+- Use `add_understanding` to capture valuable business context
+- When tool calls fail, try alternative approaches
+
+## CRITICAL REMINDER
+
+You are NOT a chatbot. You are NOT documentation. You are a partner who helps busy business owners get value quickly by showing proof through working automations. Bias toward action over explanation."""
+
+
+async def _build_system_prompt(
+    user_id: str | None, has_conversation_history: bool = False
+) -> tuple[str, Any]:
+    """Build the system prompt with user's business understanding context.
+
+    Args:
+        user_id: The user ID to fetch understanding for.
+        has_conversation_history: Whether there's existing conversation history.
+            If True, we don't tell the model to greet/introduce (since they're
+            already in a conversation).
+    """
+    understanding = None
+    if user_id:
+        try:
+            understanding = await get_business_understanding(user_id)
+        except Exception as e:
+            logger.warning(f"Failed to fetch business understanding: {e}")
+
+    if understanding:
+        context = format_understanding_for_prompt(understanding)
+    elif has_conversation_history:
+        # Don't tell model to greet if there's conversation history
+        context = "No prior understanding saved yet. Continue the existing conversation naturally."
+    else:
+        context = "This is the first time you are meeting the user. Greet them and introduce them to the platform"
+
+    return DEFAULT_SYSTEM_PROMPT.format(users_information=context), understanding
+
+
+def _format_conversation_history(session: ChatSession) -> str:
+    """Format conversation history as a prompt context.
+
+    The Claude Agent SDK doesn't support replaying full conversation history,
+    so we include it as context in the prompt.
+    """
+    if not session.messages:
+        return ""
+
+    # Get all messages except the last user message (which will be the prompt)
+    messages = session.messages[:-1] if session.messages else []
+    if not messages:
+        return ""
+
+    history_parts = []
+    history_parts.append("<conversation_history>")
+
+    for msg in messages:
+        if msg.role == "user":
+            history_parts.append(f"User: {msg.content or ''}")
+        elif msg.role == "assistant":
+            content = msg.content or ""
+            # Truncate long assistant responses
+            if len(content) > 500:
+                content = content[:500] + "..."
+            history_parts.append(f"Assistant: {content}")
+            # Include tool calls summary if any
+            if msg.tool_calls:
+                for tc in msg.tool_calls:
+                    func = tc.get("function", {})
+                    tool_name = func.get("name", "unknown")
+                    history_parts.append(f"  [Called tool: {tool_name}]")
+        elif msg.role == "tool":
+            # Summarize tool results
+            result = msg.content or ""
+            if len(result) > 200:
+                result = result[:200] + "..."
+            history_parts.append(f"  [Tool result: {result}]")
+
+    history_parts.append("</conversation_history>")
+    history_parts.append("")
+    history_parts.append(
+        "Continue this conversation. Respond to the user's latest message:"
+    )
+    history_parts.append("")
+
+    return "\n".join(history_parts)
+
+
+async def _generate_session_title(
+    message: str,
+    user_id: str | None = None,
+    session_id: str | None = None,
+) -> str | None:
+    """Generate a concise title for a chat session."""
+    from backend.util.settings import Settings
+
+    settings = Settings()
+    try:
+        # Build extra_body for OpenRouter tracing
+        extra_body: dict[str, Any] = {
+            "posthogProperties": {"environment": settings.config.app_env.value},
+        }
+        if user_id:
+            extra_body["user"] = user_id[:128]
+            extra_body["posthogDistinctId"] = user_id
+        if session_id:
+            extra_body["session_id"] = session_id[:128]
+
+        client = openai.AsyncOpenAI(api_key=config.api_key, base_url=config.base_url)
+        response = await client.chat.completions.create(
+            model=config.title_model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "Generate a very short title (3-6 words) for a chat conversation based on the user's first message. Return ONLY the title, no quotes or punctuation.",
+                },
+                {"role": "user", "content": message[:500]},
+            ],
+            max_tokens=20,
+            extra_body=extra_body,
+        )
+        title = response.choices[0].message.content
+        if title:
+            title = title.strip().strip("\"'")
+            return title[:47] + "..." if len(title) > 50 else title
+        return None
+    except Exception as e:
+        logger.warning(f"Failed to generate session title: {e}")
+        return None
+
+
+async def stream_chat_completion_sdk(
+    session_id: str,
+    message: str | None = None,
+    tool_call_response: str | None = None,  # noqa: ARG001
+    is_user_message: bool = True,
+    user_id: str | None = None,
+    retry_count: int = 0,  # noqa: ARG001
+    session: ChatSession | None = None,
+    context: dict[str, str] | None = None,  # noqa: ARG001
+) -> AsyncGenerator[StreamBaseResponse, None]:
+    """Stream chat completion using Claude Agent SDK.
+
+    Drop-in replacement for stream_chat_completion with improved reliability.
+    """
+
+    if session is None:
+        session = await get_chat_session(session_id, user_id)
+
+    if not session:
+        raise NotFoundError(
+            f"Session {session_id} not found. Please create a new session first."
+        )
+
+    if message:
+        session.messages.append(
+            ChatMessage(
+                role="user" if is_user_message else "assistant", content=message
+            )
+        )
+        if is_user_message:
+            track_user_message(
+                user_id=user_id, session_id=session_id, message_length=len(message)
+            )
+
+    session = await upsert_chat_session(session)
+
+    # Generate title for new sessions (first user message)
+    if is_user_message and not session.title:
+        user_messages = [m for m in session.messages if m.role == "user"]
+        if len(user_messages) == 1:
+            first_message = user_messages[0].content or message or ""
+            if first_message:
+                asyncio.create_task(
+                    _update_title_async(session_id, first_message, user_id)
+                )
+
+    # Check if there's conversation history (more than just the current message)
+    has_history = len(session.messages) > 1
+    system_prompt, _ = await _build_system_prompt(
+        user_id, has_conversation_history=has_history
+    )
+    set_execution_context(user_id, session, None)
+
+    message_id = str(uuid.uuid4())
+    text_block_id = str(uuid.uuid4())
+    task_id = str(uuid.uuid4())
+
+    yield StreamStart(messageId=message_id, taskId=task_id)
+
+    # Track whether the stream completed normally via ResultMessage
+    stream_completed = False
+
+    try:
+        try:
+            from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
+
+            # Create MCP server with CoPilot tools
+            mcp_server = create_copilot_mcp_server()
+
+            options = ClaudeAgentOptions(
+                system_prompt=system_prompt,
+                mcp_servers={"copilot": mcp_server},  # type: ignore[arg-type]
+                allowed_tools=COPILOT_TOOL_NAMES,
+                hooks=create_security_hooks(user_id),  # type: ignore[arg-type]
+                continue_conversation=True,  # Enable conversation continuation
+            )
+
+            adapter = SDKResponseAdapter(message_id=message_id)
+            adapter.set_task_id(task_id)
+
+            async with ClaudeSDKClient(options=options) as client:
+                # Build prompt with conversation history for context
+                # The SDK doesn't support replaying full conversation history,
+                # so we include it as context in the prompt
+                current_message = message or ""
+                if not current_message and session.messages:
+                    last_user = [m for m in session.messages if m.role == "user"]
+                    if last_user:
+                        current_message = last_user[-1].content or ""
+
+                # Include conversation history if there are prior messages
+                if len(session.messages) > 1:
+                    history_context = _format_conversation_history(session)
+                    prompt = f"{history_context}{current_message}"
+                else:
+                    prompt = current_message
+
+                await client.query(prompt, session_id=session_id)
+
+                # Track assistant response to save to session
+                # We may need multiple assistant messages if text comes after tool results
+                assistant_response = ChatMessage(role="assistant", content="")
+                has_appended_assistant = False
+                has_tool_results = False  # Track if we've received tool results
+
+                # Receive messages from the SDK
+                async for sdk_msg in client.receive_messages():
+
+                    for response in adapter.convert_message(sdk_msg):
+                        if isinstance(response, StreamStart):
+                            continue
+                        yield response
+
+                        # Accumulate text deltas into assistant response
+                        if isinstance(response, StreamTextDelta):
+                            delta = response.delta or ""
+                            # After tool results, create new assistant message for post-tool text
+                            if has_tool_results and has_appended_assistant:
+                                assistant_response = ChatMessage(
+                                    role="assistant", content=delta
+                                )
+                                session.messages.append(assistant_response)
+                                has_tool_results = False
+                            else:
+                                assistant_response.content = (
+                                    assistant_response.content or ""
+                                ) + delta
+                                if not has_appended_assistant:
+                                    session.messages.append(assistant_response)
+                                    has_appended_assistant = True
+
+                        elif isinstance(response, StreamToolOutputAvailable):
+                            session.messages.append(
+                                ChatMessage(
+                                    role="tool",
+                                    content=(
+                                        response.output
+                                        if isinstance(response.output, str)
+                                        else str(response.output)
+                                    ),
+                                    tool_call_id=response.toolCallId,
+                                )
+                            )
+                            has_tool_results = True
+
+                        elif isinstance(response, StreamFinish):
+                            stream_completed = True
+
+                    # Break out of the message loop if we received finish signal
+                    if stream_completed:
+                        break
+
+                # Ensure assistant response is saved even if no text deltas
+                # (e.g., only tool calls were made)
+                if assistant_response.content and not has_appended_assistant:
+                    session.messages.append(assistant_response)
+
+        except ImportError:
+            logger.warning(
+                "[SDK] claude-agent-sdk not available, using Anthropic fallback"
+            )
+            async for response in stream_with_anthropic(
+                session, system_prompt, text_block_id
+            ):
+                yield response
+
+        # Save the session with accumulated messages
+        await upsert_chat_session(session)
+        logger.debug(
+            f"[SDK] Session {session_id} saved with {len(session.messages)} messages"
+        )
+        # Always yield StreamFinish to signal completion to the caller
+        # The adapter yields StreamFinish for the SSE stream, but we need to
+        # yield it here so the background task in routes.py knows to call mark_task_completed
+        yield StreamFinish()
+
+    except Exception as e:
+        logger.error(f"[SDK] Error: {e}", exc_info=True)
+        # Save session even on error to preserve any partial response
+        try:
+            await upsert_chat_session(session)
+        except Exception as save_err:
+            logger.error(f"[SDK] Failed to save session on error: {save_err}")
+        yield StreamError(errorText=f"An error occurred: {str(e)}", code="sdk_error")
+        yield StreamFinish()
+
+
+async def _update_title_async(
+    session_id: str, message: str, user_id: str | None = None
+) -> None:
+    """Background task to update session title."""
+    try:
+        title = await _generate_session_title(
+            message, user_id=user_id, session_id=session_id
+        )
+        if title:
+            await update_session_title(session_id, title)
+            logger.debug(f"[SDK] Generated title for {session_id}: {title}")
+    except Exception as e:
+        logger.warning(f"[SDK] Failed to update session title: {e}")

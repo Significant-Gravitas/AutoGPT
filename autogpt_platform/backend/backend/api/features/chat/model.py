@@ -273,9 +273,8 @@ async def _get_session_from_cache(session_id: str) -> ChatSession | None:
     try:
         session = ChatSession.model_validate_json(raw_session)
         logger.info(
-            f"Loading session {session_id} from cache: "
-            f"message_count={len(session.messages)}, "
-            f"roles={[m.role for m in session.messages]}"
+            f"[CACHE] Loaded session {session_id}: {len(session.messages)} messages, "
+            f"last_roles={[m.role for m in session.messages[-3:]]}"  # Last 3 roles
         )
         return session
     except Exception as e:
@@ -317,11 +316,9 @@ async def _get_session_from_db(session_id: str) -> ChatSession | None:
         return None
 
     messages = prisma_session.Messages
-    logger.info(
-        f"Loading session {session_id} from DB: "
-        f"has_messages={messages is not None}, "
-        f"message_count={len(messages) if messages else 0}, "
-        f"roles={[m.role for m in messages] if messages else []}"
+    logger.debug(
+        f"[DB] Loaded session {session_id}: {len(messages) if messages else 0} messages, "
+        f"roles={[m.role for m in messages[-3:]] if messages else []}"  # Last 3 roles
     )
 
     return ChatSession.from_db(prisma_session, messages)
@@ -372,10 +369,9 @@ async def _save_session_to_db(
                     "function_call": msg.function_call,
                 }
             )
-        logger.info(
-            f"Saving {len(new_messages)} new messages to DB for session {session.session_id}: "
-            f"roles={[m['role'] for m in messages_data]}, "
-            f"start_sequence={existing_message_count}"
+        logger.debug(
+            f"[DB] Saving {len(new_messages)} messages to session {session.session_id}, "
+            f"roles={[m['role'] for m in messages_data]}"
         )
         await chat_db.add_chat_messages_batch(
             session_id=session.session_id,
@@ -415,7 +411,7 @@ async def get_chat_session(
         logger.warning(f"Unexpected cache error for session {session_id}: {e}")
 
     # Fall back to database
-    logger.info(f"Session {session_id} not in cache, checking database")
+    logger.debug(f"Session {session_id} not in cache, checking database")
     session = await _get_session_from_db(session_id)
 
     if session is None:
@@ -432,7 +428,6 @@ async def get_chat_session(
     # Cache the session from DB
     try:
         await _cache_session(session)
-        logger.info(f"Cached session {session_id} from database")
     except Exception as e:
         logger.warning(f"Failed to cache session {session_id}: {e}")
 
@@ -603,13 +598,19 @@ async def update_session_title(session_id: str, title: str) -> bool:
             logger.warning(f"Session {session_id} not found for title update")
             return False
 
-        # Invalidate cache so next fetch gets updated title
+        # Update title in cache if it exists (instead of invalidating).
+        # This prevents race conditions where cache invalidation causes
+        # the frontend to see stale DB data while streaming is still in progress.
         try:
-            redis_key = _get_session_cache_key(session_id)
-            async_redis = await get_redis_async()
-            await async_redis.delete(redis_key)
+            cached = await _get_session_from_cache(session_id)
+            if cached:
+                cached.title = title
+                await _cache_session(cached)
         except Exception as e:
-            logger.warning(f"Failed to invalidate cache for session {session_id}: {e}")
+            # Not critical - title will be correct on next full cache refresh
+            logger.warning(
+                f"Failed to update title in cache for session {session_id}: {e}"
+            )
 
         return True
     except Exception as e:
