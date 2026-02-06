@@ -38,9 +38,13 @@ export function useVoiceRecording({
   const streamRef = useRef<MediaStream | null>(null);
   const isRecordingRef = useRef(false);
 
-  const isSupported =
-    typeof window !== "undefined" &&
-    !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+  const [isSupported, setIsSupported] = useState(false);
+
+  useEffect(() => {
+    setIsSupported(
+      !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia),
+    );
+  }, []);
 
   const clearTimer = useCallback(() => {
     if (timerRef.current) {

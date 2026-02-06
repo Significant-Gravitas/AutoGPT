@@ -1,31 +1,26 @@
-import {
-  getGetV2ListSessionsQueryKey,
-  getV2GetSession,
-  postV2CreateSession,
-  useGetV2ListSessions,
-} from "@/app/api/__generated__/endpoints/chat/chat";
+import { useGetV2ListSessions } from "@/app/api/__generated__/endpoints/chat/chat";
 import { useBreakpoint } from "@/lib/hooks/useBreakpoint";
 import { useChat } from "@ai-sdk/react";
-import { useQueryClient } from "@tanstack/react-query";
 import { DefaultChatTransport } from "ai";
-import { parseAsString, useQueryState } from "nuqs";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { convertChatSessionMessagesToUiMessages } from "./helpers/convertChatSessionToUiMessages";
+import { useCallback, useEffect, useState } from "react";
+import { useChatSession } from "./useChatSession";
 
 export function useCopilotPage() {
-  const [isCreatingSession, setIsCreatingSession] = useState(false);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  const [sessionId, setSessionId] = useQueryState("sessionId", parseAsString);
+  const [pendingMessage, setPendingMessage] = useState<string | null>(null);
+
+  const {
+    sessionId,
+    setSessionId,
+    hydratedMessages,
+    isLoadingSession,
+    createSession,
+    isCreatingSession,
+  } = useChatSession();
 
   const breakpoint = useBreakpoint();
   const isMobile =
     breakpoint === "base" || breakpoint === "sm" || breakpoint === "md";
-  const hydrationSeq = useRef(0);
-  const lastHydratedSessionIdRef = useRef<string | null>(null);
-  const createSessionPromiseRef = useRef<Promise<string> | null>(null);
-  const queuedFirstMessageRef = useRef<string | null>(null);
-  const queuedFirstMessageResolverRef = useRef<(() => void) | null>(null);
-  const queryClient = useQueryClient();
 
   const transport = sessionId
     ? new DefaultChatTransport({
@@ -50,101 +45,25 @@ export function useCopilotPage() {
     transport: transport ?? undefined,
   });
 
-  const messagesRef = useRef(messages);
-
   useEffect(() => {
-    messagesRef.current = messages;
-  }, [messages]);
+    if (!hydratedMessages || hydratedMessages.length === 0) return;
+    setMessages((prev) => {
+      if (prev.length > hydratedMessages.length) return prev;
+      return hydratedMessages;
+    });
+  }, [hydratedMessages, setMessages]);
 
-  async function createSession() {
-    if (sessionId) return sessionId;
-    if (createSessionPromiseRef.current) return createSessionPromiseRef.current;
-
-    setIsCreatingSession(true);
-    const promise = (async () => {
-      const response = await postV2CreateSession({
-        body: JSON.stringify({}),
-      });
-      if (response.status !== 200 || !response.data?.id) {
-        throw new Error("Failed to create chat session");
-      }
-      setSessionId(response.data.id);
-      queryClient.invalidateQueries({
-        queryKey: getGetV2ListSessionsQueryKey(),
-      });
-      return response.data.id;
-    })();
-
-    createSessionPromiseRef.current = promise;
-
-    try {
-      return await promise;
-    } finally {
-      createSessionPromiseRef.current = null;
-      setIsCreatingSession(false);
-    }
-  }
-
+  // Clear messages when session is null
   useEffect(() => {
-    hydrationSeq.current += 1;
-    const seq = hydrationSeq.current;
-    const controller = new AbortController();
-
-    if (!sessionId) {
-      setMessages([]);
-      lastHydratedSessionIdRef.current = null;
-      return;
-    }
-
-    const currentSessionId = sessionId;
-
-    if (lastHydratedSessionIdRef.current !== currentSessionId) {
-      setMessages([]);
-      lastHydratedSessionIdRef.current = currentSessionId;
-    }
-
-    async function hydrate() {
-      try {
-        const response = await getV2GetSession(currentSessionId, {
-          signal: controller.signal,
-        });
-        if (response.status !== 200) return;
-
-        const uiMessages = convertChatSessionMessagesToUiMessages(
-          currentSessionId,
-          response.data.messages ?? [],
-        );
-        if (controller.signal.aborted) return;
-        if (hydrationSeq.current !== seq) return;
-
-        const localMessagesCount = messagesRef.current.length;
-        const remoteMessagesCount = uiMessages.length;
-
-        if (remoteMessagesCount === 0) return;
-        if (localMessagesCount > remoteMessagesCount) return;
-
-        setMessages(uiMessages);
-      } catch (error) {
-        if ((error as { name?: string } | null)?.name === "AbortError") return;
-        console.warn("Failed to hydrate chat session:", error);
-      }
-    }
-
-    void hydrate();
-
-    return () => controller.abort();
+    if (!sessionId) setMessages([]);
   }, [sessionId, setMessages]);
 
   useEffect(() => {
-    if (!sessionId) return;
-    const firstMessage = queuedFirstMessageRef.current;
-    if (!firstMessage) return;
-
-    queuedFirstMessageRef.current = null;
-    sendMessage({ text: firstMessage });
-    queuedFirstMessageResolverRef.current?.();
-    queuedFirstMessageResolverRef.current = null;
-  }, [sendMessage, sessionId]);
+    if (!sessionId || !pendingMessage) return;
+    const msg = pendingMessage;
+    setPendingMessage(null);
+    sendMessage({ text: msg });
+  }, [sessionId, pendingMessage, sendMessage]);
 
   async function onSend(message: string) {
     const trimmed = message.trim();
@@ -155,23 +74,16 @@ export function useCopilotPage() {
       return;
     }
 
-    queuedFirstMessageRef.current = trimmed;
-    const sentPromise = new Promise<void>((resolve) => {
-      queuedFirstMessageResolverRef.current = resolve;
-    });
-
+    setPendingMessage(trimmed);
     await createSession();
-    await sentPromise;
   }
 
-  // Sessions list for mobile drawer
   const { data: sessionsResponse, isLoading: isLoadingSessions } =
     useGetV2ListSessions({ limit: 50 });
 
   const sessions =
     sessionsResponse?.status === 200 ? sessionsResponse.data.sessions : [];
 
-  // Drawer handlers
   const handleOpenDrawer = useCallback(() => {
     setIsDrawerOpen(true);
   }, []);
@@ -202,6 +114,7 @@ export function useCopilotPage() {
     messages,
     status,
     error,
+    isLoadingSession,
     isCreatingSession,
     createSession,
     onSend,

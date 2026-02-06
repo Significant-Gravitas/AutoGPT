@@ -195,7 +195,8 @@ export function RunBlockTool({ part }: Props) {
 
   const output = getRunBlockToolOutput(part);
   const isError =
-    part.state === "output-error" || (!!output && isRunBlockErrorOutput(output));
+    part.state === "output-error" ||
+    (!!output && isRunBlockErrorOutput(output));
   const hasExpandableContent =
     part.state === "output-available" &&
     !!output &&

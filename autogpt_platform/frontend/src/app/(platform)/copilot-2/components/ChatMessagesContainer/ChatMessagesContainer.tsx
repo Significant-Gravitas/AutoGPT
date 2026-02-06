@@ -8,6 +8,7 @@ import {
   MessageContent,
   MessageResponse,
 } from "@/components/ai-elements/message";
+import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { UIDataTypes, UIMessage, UITools, ToolUIPart } from "ai";
 import { FindBlocksTool } from "../../tools/FindBlocks/FindBlocks";
 import { FindAgentsTool } from "../../tools/FindAgents/FindAgents";
@@ -22,16 +23,23 @@ interface ChatMessagesContainerProps {
   messages: UIMessage<unknown, UIDataTypes, UITools>[];
   status: string;
   error: Error | undefined;
+  isLoading: boolean;
 }
 
 export const ChatMessagesContainer = ({
   messages,
   status,
   error,
+  isLoading,
 }: ChatMessagesContainerProps) => {
   return (
     <Conversation className="min-h-0 flex-1">
       <ConversationContent className="gap-6 px-3 py-6">
+        {isLoading && messages.length === 0 && (
+          <div className="flex flex-1 items-center justify-center">
+            <LoadingSpinner size="large" className="text-neutral-400" />
+          </div>
+        )}
         {messages.map((message) => (
           <Message from={message.role} key={message.id}>
             <MessageContent

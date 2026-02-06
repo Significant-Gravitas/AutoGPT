@@ -210,7 +210,8 @@ export function RunAgentTool({ part }: Props) {
 
   const output = getRunAgentToolOutput(part);
   const isError =
-    part.state === "output-error" || (!!output && isRunAgentErrorOutput(output));
+    part.state === "output-error" ||
+    (!!output && isRunAgentErrorOutput(output));
   const hasExpandableContent =
     part.state === "output-available" &&
     !!output &&

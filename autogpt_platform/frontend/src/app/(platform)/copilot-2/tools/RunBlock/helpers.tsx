@@ -95,8 +95,7 @@ export function getAnimationText(part: {
     case "output-available": {
       const output = parseOutput(part.output);
       if (!output) return `Running the block${blockText}`;
-      if (isRunBlockBlockOutput(output))
-        return `Ran "${output.block_name}"`;
+      if (isRunBlockBlockOutput(output)) return `Ran "${output.block_name}"`;
       if (isRunBlockSetupRequirementsOutput(output)) {
         return `Setup needed for "${output.setup_info.agent_name}"`;
       }

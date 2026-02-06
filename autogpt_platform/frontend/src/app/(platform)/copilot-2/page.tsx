@@ -13,6 +13,7 @@ export default function Page() {
     messages,
     status,
     error,
+    isLoadingSession,
     isCreatingSession,
     createSession,
     onSend,
@@ -42,6 +43,7 @@ export default function Page() {
             status={status}
             error={error}
             sessionId={sessionId}
+            isLoadingSession={isLoadingSession}
             isCreatingSession={isCreatingSession}
             onCreateSession={createSession}
             onSend={onSend}

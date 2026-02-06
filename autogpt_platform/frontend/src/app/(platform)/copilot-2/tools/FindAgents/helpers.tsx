@@ -1,8 +1,5 @@
 import { ToolUIPart } from "ai";
-import {
-  MagnifyingGlassIcon,
-  SquaresFourIcon,
-} from "@phosphor-icons/react";
+import { MagnifyingGlassIcon, SquaresFourIcon } from "@phosphor-icons/react";
 import type { AgentInfo } from "@/app/api/__generated__/models/agentInfo";
 import type { AgentsFoundResponse } from "@/app/api/__generated__/models/agentsFoundResponse";
 import type { ErrorResponse } from "@/app/api/__generated__/models/errorResponse";

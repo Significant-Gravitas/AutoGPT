@@ -11,6 +11,7 @@ export interface ChatContainerProps {
   status: string;
   error: Error | undefined;
   sessionId: string | null;
+  isLoadingSession: boolean;
   isCreatingSession: boolean;
   onCreateSession: () => void | Promise<string>;
   onSend: (message: string) => void | Promise<void>;
@@ -20,6 +21,7 @@ export const ChatContainer = ({
   status,
   error,
   sessionId,
+  isLoadingSession,
   isCreatingSession,
   onCreateSession,
   onSend,
@@ -36,6 +38,7 @@ export const ChatContainer = ({
                 messages={messages}
                 status={status}
                 error={error}
+                isLoading={isLoadingSession}
               />
               <motion.div
                 layoutId={inputLayoutId}
