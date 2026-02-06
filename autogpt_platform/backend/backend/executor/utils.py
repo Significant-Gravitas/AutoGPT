@@ -355,8 +355,15 @@ async def _validate_node_input_credentials(
                 if field_value and isinstance(field_value, dict):
                     cred_id = field_value.get("_credentials_id")
                     if cred_id and isinstance(cred_id, str):
-                        creds_store = get_integration_credentials_store()
-                        creds = await creds_store.get_creds_by_id(user_id, cred_id)
+                        try:
+                            creds_store = get_integration_credentials_store()
+                            creds = await creds_store.get_creds_by_id(user_id, cred_id)
+                        except Exception as e:
+                            has_missing_credentials = True
+                            credential_errors[node.id][
+                                field_name
+                            ] = f"Credentials not available: {e}"
+                            continue
                         if not creds:
                             has_missing_credentials = True
                             credential_errors[node.id][field_name] = (
