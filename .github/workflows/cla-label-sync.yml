@@ -1,9 +1,8 @@
 name: CLA Label Sync
 
 on:
-  # Real-time: when CLA check completes
-  check_run:
-    types: [completed]
+  # Real-time: when CLA status changes (CLA-assistant uses Status API)
+  status:
   
   # When PRs are opened or updated
   pull_request_target:
@@ -38,6 +37,8 @@ env:
 jobs:
   sync-labels:
     runs-on: ubuntu-latest
+    # Only run on status events if it's the CLA check
+    if: github.event_name != 'status' || github.event.context == 'license/cla'
     
     steps:
       - name: Ensure CLA labels exist
@@ -166,14 +167,24 @@ jobs:
             // Determine which PRs to check
             let prsToCheck = [];
             
-            if (context.eventName === 'check_run') {
-              // Only process if it's the CLA check
-              if (context.payload.check_run.name !== CLA_CHECK_NAME) {
-                console.log(`Ignoring check: ${context.payload.check_run.name}`);
+            if (context.eventName === 'status') {
+              // Status event from CLA-assistant - find PRs with this commit
+              const sha = context.payload.sha;
+              console.log(`Status event for SHA: ${sha}, context: ${context.payload.context}`);
+              
+              // Search for open PRs with this head SHA
+              const { data: prs } = await github.rest.pulls.list({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                state: 'open',
+                per_page: 100
+              });
+              prsToCheck = prs.filter(pr => pr.head.sha === sha).map(pr => pr.number);
+              
+              if (prsToCheck.length === 0) {
+                console.log('No open PRs found with this SHA');
                 return;
               }
-              const prs = context.payload.check_run.pull_requests || [];
-              prsToCheck = prs.map(pr => pr.number);
               
             } else if (context.eventName === 'pull_request_target') {
               prsToCheck = [context.payload.pull_request.number];
