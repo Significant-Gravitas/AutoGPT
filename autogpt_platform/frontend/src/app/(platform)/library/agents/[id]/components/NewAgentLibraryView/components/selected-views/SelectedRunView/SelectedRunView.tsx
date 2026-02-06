@@ -42,7 +42,7 @@ export function SelectedRunView({
   onClearSelectedRun,
   banner,
 }: Props) {
-  const { run, preset, isLoading, responseError, httpError } =
+  const { run, preset, isLoading, responseError, httpError, executionStuck } =
     useSelectedRunView(agent.graph_id, runId);
 
   const breakpoint = useBreakpoint();
@@ -68,6 +68,15 @@ export function SelectedRunView({
       <ErrorCard
         responseError={responseError ?? undefined}
         httpError={httpError ?? undefined}
+        context="run"
+      />
+    );
+  }
+
+  if (executionStuck) {
+    return (
+      <ErrorCard
+        responseError={new Error("Execution stopped: no updates received. The run may be stuck.")}
         context="run"
       />
     );

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { PendingReviewsList } from "@/components/organisms/PendingReviewsList/PendingReviewsList";
 import { usePendingReviewsForExecution } from "@/hooks/usePendingReviews";
 import { Button } from "@/components/atoms/Button/Button";
@@ -10,6 +10,11 @@ import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecut
 import { okData } from "@/app/api/helpers";
 import { useGraphStore } from "@/app/(platform)/build/stores/graphStore";
 import { useShallow } from "zustand/react/shallow";
+import {
+  EMPTY_EXECUTION_UPDATES_THRESHOLD,
+  isEmptyExecutionUpdate,
+  isPollingStatus,
+} from "@/lib/executionPollingWatchdog";
 
 interface FloatingReviewsPanelProps {
   executionId?: string;
@@ -23,6 +28,13 @@ export function FloatingReviewsPanel({
   className,
 }: FloatingReviewsPanelProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const emptyUpdatesCountRef = useRef(0);
+  const stuckRef = useRef(false);
+
+  useEffect(() => {
+    emptyUpdatesCountRef.current = 0;
+    stuckRef.current = false;
+  }, [graphId, executionId]);
 
   const { data: executionDetails } = useGetV1GetExecutionDetails(
     graphId || "",
@@ -31,26 +43,30 @@ export function FloatingReviewsPanel({
       query: {
         enabled: !!(graphId && executionId),
         select: okData,
-        // Poll while execution is in progress to detect status changes
         refetchInterval: (q) => {
-          // Note: refetchInterval callback receives raw data before select transform
-          const rawData = q.state.data as
-            | { status: number; data?: { status?: string } }
-            | undefined;
-          if (rawData?.status !== 200) return false;
+          if (stuckRef.current) return false;
 
-          const status = rawData?.data?.status;
-          if (!status) return false;
+          const rawData = q.state.data;
+          if (!rawData) return false;
 
-          // Poll every 2 seconds while running or in review
-          if (
-            status === AgentExecutionStatus.RUNNING ||
-            status === AgentExecutionStatus.QUEUED ||
-            status === AgentExecutionStatus.INCOMPLETE ||
-            status === AgentExecutionStatus.REVIEW
-          ) {
-            return 2000;
+          if (isEmptyExecutionUpdate(rawData)) {
+            emptyUpdatesCountRef.current += 1;
+            if (
+              emptyUpdatesCountRef.current >= EMPTY_EXECUTION_UPDATES_THRESHOLD
+            ) {
+              stuckRef.current = true;
+              return false;
+            }
+          } else {
+            emptyUpdatesCountRef.current = 0;
           }
+
+          const status =
+            (rawData as { status?: number }).status === 200
+              ? (rawData as { data?: { status?: string } }).data?.status
+              : undefined;
+          if (!status) return false;
+          if (isPollingStatus(status)) return 2000;
           return false;
         },
         refetchIntervalInBackground: true,
