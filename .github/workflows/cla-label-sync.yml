@@ -126,18 +126,22 @@ jobs:
               return { found: false, passed: false, state: 'unknown' };
             }
             
-            // Helper: Check if bot already commented with a specific marker
+            // Helper: Check if bot already commented with a specific marker (paginated)
             async function hasCommentWithMarker(prNumber, marker) {
-              const { data: comments } = await github.rest.issues.listComments({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: prNumber,
-                per_page: 100
-              });
+              // Use paginate to fetch ALL comments, not just first 100
+              const comments = await github.paginate(
+                github.rest.issues.listComments,
+                {
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: prNumber,
+                  per_page: 100
+                }
+              );
               
               return comments.some(c => 
-                c.user.type === 'Bot' && 
-                c.body.includes(marker)
+                c.user?.type === 'Bot' && 
+                c.body?.includes(marker)
               );
             }
             
@@ -167,13 +171,16 @@ jobs:
               prsToCheck = [parseInt(context.payload.inputs.pr_number)];
               
             } else {
-              // Scheduled run: check all open PRs
-              const { data: openPRs } = await github.rest.pulls.list({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                state: 'open',
-                per_page: 100
-              });
+              // Scheduled run: check all open PRs (paginated to handle >100 PRs)
+              const openPRs = await github.paginate(
+                github.rest.pulls.list,
+                {
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  state: 'open',
+                  per_page: 100
+                }
+              );
               prsToCheck = openPRs.map(pr => pr.number);
             }
             
