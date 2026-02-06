@@ -196,13 +196,13 @@ output = await store_media_file(
 | Component | Scans? | Notes |
 |-----------|--------|-------|
 | `store_media_file()` | ✅ Yes | Scans **all** content before writing to local disk |
-| `WorkspaceManager.write_file()` | ❌ No | Assumes caller has already scanned |
-| Upload API endpoints | ✅ Yes | Must scan before calling WorkspaceManager |
+| `WorkspaceManager.write_file()` | ✅ Yes | Scans content before persisting (defense in depth) |
+| Upload API endpoints | ✅ Yes | Also scan before calling WorkspaceManager (fail fast) |
 
-**The rule:** Content is scanned at ingestion boundaries:
+**Defense in depth:** Scanning happens at multiple layers:
 1. `store_media_file()` scans everything it downloads/decodes
-2. API endpoints scan uploads before persisting
-3. WorkspaceManager trusts its callers
+2. API endpoints scan uploads for early rejection
+3. `WorkspaceManager.write_file()` scans as a final gate before persistence
 
 ### Persistence
 
@@ -301,10 +301,10 @@ async def run(self, input_data, *, execution_context, **kwargs):
 async def upload_file(file: UploadFile, user_id: str, workspace_id: str):
     content = await file.read()
     
-    # 1. Virus scan first
+    # Optional: scan early for faster rejection (write_file also scans)
     await scan_content_safe(content, filename=file.filename)
     
-    # 2. Store in workspace
+    # Store in workspace (includes virus scan as defense in depth)
     manager = WorkspaceManager(user_id, workspace_id)
     workspace_file = await manager.write_file(
         content=content,
