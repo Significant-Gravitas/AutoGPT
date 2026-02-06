@@ -223,7 +223,7 @@ class NodeModel(Node):
 
 class GraphBaseMeta(BaseDbModel):
     """
-    Shared base for `GraphModelMeta` and `BaseGraph`, with core graph metadata fields.
+    Shared base for `GraphMeta` and `BaseGraph`, with core graph metadata fields.
     """
 
     version: int = 1
