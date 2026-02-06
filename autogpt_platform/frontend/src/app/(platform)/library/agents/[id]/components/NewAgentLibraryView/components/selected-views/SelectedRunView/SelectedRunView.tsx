@@ -76,7 +76,11 @@ export function SelectedRunView({
   if (executionStuck) {
     return (
       <ErrorCard
-        responseError={new Error("Execution stopped: no updates received. The run may be stuck.")}
+        responseError={
+          new Error(
+            "Execution stopped: no updates received. The run may be stuck.",
+          )
+        }
         context="run"
       />
     );
