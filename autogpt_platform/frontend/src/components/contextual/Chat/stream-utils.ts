@@ -28,6 +28,7 @@ export function normalizeStreamChunk(
 
   switch (chunk.type) {
     case "text-delta":
+      // Vercel AI SDK sends "delta" for text content
       return { type: "text_chunk", content: chunk.delta };
     case "text-end":
       return { type: "text_ended" };
@@ -63,6 +64,10 @@ export function normalizeStreamChunk(
     case "finish":
       return { type: "stream_end" };
     case "start":
+      // Start event with optional taskId for reconnection
+      return chunk.taskId
+        ? { type: "stream_start", taskId: chunk.taskId }
+        : null;
     case "text-start":
       return null;
     case "tool-input-start":

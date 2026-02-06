@@ -9,13 +9,13 @@ import { CustomNodeData } from "@/app/(platform)/build/components/legacy-builder
 import {
   BlockUIType,
   CredentialsMetaInput,
-  GraphMeta,
+  Graph,
 } from "@/lib/autogpt-server-api/types";
 import RunnerOutputUI, { OutputNodeInfo } from "./RunnerOutputUI";
 import { RunnerInputDialog } from "./RunnerInputUI";
 
 interface RunnerUIWrapperProps {
-  graph: GraphMeta;
+  graph: Graph;
   nodes: Node<CustomNodeData>[];
   graphExecutionError?: string | null;
   saveAndRun: (

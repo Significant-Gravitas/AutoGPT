@@ -26,8 +26,20 @@ export function buildCopilotChatUrl(prompt: string): string {
 
 export function getQuickActions(): string[] {
   return [
-    "Show me what I can automate",
-    "Design a custom workflow",
-    "Help me with content creation",
+    "I don't know where to start, just ask me stuff",
+    "I do the same thing every week and it's killing me",
+    "Help me find where I'm wasting my time",
   ];
+}
+
+export function getInputPlaceholder(width?: number) {
+  if (!width) return "What's your role and what eats up most of your day?";
+
+  if (width < 500) {
+    return "I'm a chef and I hate...";
+  }
+  if (width <= 1080) {
+    return "What's your role and what eats up most of your day?";
+  }
+  return "What's your role and what eats up most of your day? e.g. 'I'm a recruiter and I hate...'";
 }

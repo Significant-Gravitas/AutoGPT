@@ -41,7 +41,17 @@ export function HostScopedCredentialsModal({
   const currentHost = currentUrl ? getHostFromUrl(currentUrl) : "";
 
   const formSchema = z.object({
-    host: z.string().min(1, "Host is required"),
+    host: z
+      .string()
+      .min(1, "Host is required")
+      .refine((val) => !/^[a-zA-Z][a-zA-Z\d+\-.]*:\/\//.test(val), {
+        message: "Enter only the host (e.g. api.example.com), not a full URL",
+      })
+      .refine((val) => !val.includes("/"), {
+        message:
+          "Enter only the host (e.g. api.example.com), without a trailing path. " +
+          "You may specify a port (e.g. api.example.com:8080) if needed.",
+      }),
     title: z.string().optional(),
     headers: z.record(z.string()).optional(),
   });
