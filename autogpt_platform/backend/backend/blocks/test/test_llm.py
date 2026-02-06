@@ -13,18 +13,17 @@ class TestLLMStatsTracking:
         """Test that llm_call returns proper token counts in LLMResponse."""
         import backend.blocks.llm as llm
 
-        # Mock the OpenAI client
+        # Mock the OpenAI Responses API response
         mock_response = MagicMock()
-        mock_response.choices = [
-            MagicMock(message=MagicMock(content="Test response", tool_calls=None))
-        ]
-        mock_response.usage = MagicMock(prompt_tokens=10, completion_tokens=20)
+        mock_response.output_text = "Test response"
+        mock_response.output = []  # No tool calls
+        mock_response.usage = MagicMock(input_tokens=10, output_tokens=20)
 
-        # Test with mocked OpenAI response
+        # Test with mocked OpenAI Responses API
         with patch("openai.AsyncOpenAI") as mock_openai:
             mock_client = AsyncMock()
             mock_openai.return_value = mock_client
-            mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
+            mock_client.responses.create = AsyncMock(return_value=mock_response)
 
             response = await llm.llm_call(
                 credentials=llm.TEST_CREDENTIALS,
@@ -41,8 +40,6 @@ class TestLLMStatsTracking:
     @pytest.mark.asyncio
     async def test_ai_structured_response_block_tracks_stats(self):
         """Test that AIStructuredResponseGeneratorBlock correctly tracks stats."""
-        from unittest.mock import patch
-
         import backend.blocks.llm as llm
 
         block = llm.AIStructuredResponseGeneratorBlock()
@@ -255,13 +252,11 @@ class TestLLMStatsTracking:
     @pytest.mark.asyncio
     async def test_ai_text_summarizer_real_llm_call_stats(self):
         """Test AITextSummarizer with real LLM call mocking to verify llm_call_count."""
-        from unittest.mock import AsyncMock, MagicMock, patch
-
         import backend.blocks.llm as llm
 
         block = llm.AITextSummarizerBlock()
 
-        # Mock the actual LLM call instead of the llm_call method
+        # Mock the actual LLM call using Responses API format
         call_count = 0
 
         async def mock_create(*args, **kwargs):
@@ -271,30 +266,17 @@ class TestLLMStatsTracking:
             mock_response = MagicMock()
             # Return different responses for chunk summary vs final summary
             if call_count == 1:
-                mock_response.choices = [
-                    MagicMock(
-                        message=MagicMock(
-                            content='<json_output id="test123456">{"summary": "Test chunk summary"}</json_output>',
-                            tool_calls=None,
-                        )
-                    )
-                ]
+                mock_response.output_text = '<json_output id="test123456">{"summary": "Test chunk summary"}</json_output>'
             else:
-                mock_response.choices = [
-                    MagicMock(
-                        message=MagicMock(
-                            content='<json_output id="test123456">{"final_summary": "Test final summary"}</json_output>',
-                            tool_calls=None,
-                        )
-                    )
-                ]
-            mock_response.usage = MagicMock(prompt_tokens=50, completion_tokens=30)
+                mock_response.output_text = '<json_output id="test123456">{"final_summary": "Test final summary"}</json_output>'
+            mock_response.output = []  # No tool calls
+            mock_response.usage = MagicMock(input_tokens=50, output_tokens=30)
             return mock_response
 
         with patch("openai.AsyncOpenAI") as mock_openai:
             mock_client = AsyncMock()
             mock_openai.return_value = mock_client
-            mock_client.chat.completions.create = mock_create
+            mock_client.responses.create = mock_create
 
             # Test with very short text (should only need 1 chunk + 1 final summary)
             input_data = llm.AITextSummarizerBlock.Input(
@@ -311,10 +293,6 @@ class TestLLMStatsTracking:
                     input_data, credentials=llm.TEST_CREDENTIALS
                 ):
                     outputs[output_name] = output_data
-
-            print(f"Actual calls made: {call_count}")
-            print(f"Block stats: {block.execution_stats}")
-            print(f"LLM call count: {block.execution_stats.llm_call_count}")
 
             # Should have made 2 calls: 1 for chunk summary + 1 for final summary
             assert block.execution_stats.llm_call_count >= 1

@@ -562,8 +562,7 @@ def convert_openai_tool_fmt_to_anthropic(
 
 
 def extract_openai_reasoning(response) -> str | None:
-    """Extract reasoning from OpenAI-compatible response if available."""
-    """Note: This will likely not working since the reasoning is not present in another Response API"""
+    """Extract reasoning from OpenAI Chat Completions response if available."""
     reasoning = None
     choice = response.choices[0]
     if hasattr(choice, "reasoning") and getattr(choice, "reasoning", None):
@@ -578,7 +577,7 @@ def extract_openai_reasoning(response) -> str | None:
 
 
 def extract_openai_tool_calls(response) -> list[ToolContentBlock] | None:
-    """Extract tool calls from OpenAI-compatible response."""
+    """Extract tool calls from OpenAI Chat Completions response."""
     if response.choices[0].message.tool_calls:
         return [
             ToolContentBlock(
@@ -594,9 +593,47 @@ def extract_openai_tool_calls(response) -> list[ToolContentBlock] | None:
     return None
 
 
+def extract_responses_api_reasoning(response) -> str | None:
+    """Extract reasoning from OpenAI Responses API response if available.
+
+    The summary field can be either a string or an array of summary items,
+    so we handle both cases appropriately.
+    """
+    # The Responses API stores reasoning in output items with type "reasoning"
+    if hasattr(response, "output") and response.output:
+        for item in response.output:
+            if hasattr(item, "type") and item.type == "reasoning":
+                if hasattr(item, "summary") and item.summary:
+                    # Handle both string and array summary formats
+                    if isinstance(item.summary, list):
+                        # Join array items into a single string
+                        return " ".join(str(s) for s in item.summary if s)
+                    return str(item.summary)
+    return None
+
+
+def extract_responses_api_tool_calls(response) -> list[ToolContentBlock] | None:
+    """Extract tool calls from OpenAI Responses API response."""
+    tool_calls = []
+    if hasattr(response, "output") and response.output:
+        for item in response.output:
+            if hasattr(item, "type") and item.type == "function_call":
+                tool_calls.append(
+                    ToolContentBlock(
+                        id=getattr(item, "call_id", getattr(item, "id", "")),
+                        type="function",
+                        function=ToolCall(
+                            name=item.name,
+                            arguments=item.arguments,
+                        ),
+                    )
+                )
+    return tool_calls if tool_calls else None
+
+
 def get_parallel_tool_calls_param(
     llm_model: LlmModel, parallel_tool_calls: bool | None
-):
+) -> bool | openai.NotGiven:
     """Get the appropriate parallel_tool_calls parameter for OpenAI-compatible APIs."""
     if llm_model.startswith("o") or parallel_tool_calls is None:
         return openai.NOT_GIVEN
@@ -661,34 +698,81 @@ async def llm_call(
     if provider == "openai":
         tools_param = tools if tools else openai.NOT_GIVEN
         oai_client = openai.AsyncOpenAI(api_key=credentials.api_key.get_secret_value())
-        response_format = None
 
-        parallel_tool_calls = get_parallel_tool_calls_param(
+        parallel_tool_calls_param = get_parallel_tool_calls_param(
             llm_model, parallel_tool_calls
         )
 
+        # Extract system messages for instructions parameter
+        system_messages = [p["content"] for p in prompt if p["role"] == "system"]
+        instructions = " ".join(system_messages) if system_messages else None
+
+        # Filter out system messages for input (Responses API expects them in instructions)
+        input_messages = [p for p in prompt if p["role"] != "system"]
+
+        # Build Responses API parameters
+        responses_params: dict = {
+            "model": llm_model.value,
+            "input": input_messages,
+            "max_output_tokens": max_tokens,
+        }
+
+        if instructions:
+            responses_params["instructions"] = instructions
+
+        if tools_param is not openai.NOT_GIVEN:
+            responses_params["tools"] = tools_param
+            if parallel_tool_calls_param is not openai.NOT_GIVEN:
+                responses_params["parallel_tool_calls"] = parallel_tool_calls_param
+
         if force_json_output:
-            response_format = {"type": "json_object"}
+            responses_params["text"] = {"format": {"type": "json_object"}}
 
-        response = await oai_client.chat.completions.create(
-            model=llm_model.value,
-            messages=prompt,  # type: ignore
-            response_format=response_format,  # type: ignore
-            max_completion_tokens=max_tokens,
-            tools=tools_param,  # type: ignore
-            parallel_tool_calls=parallel_tool_calls,
-        )
+        try:
+            response = await oai_client.responses.create(
+                **responses_params, timeout=600
+            )
+        except openai.APIError as e:
+            error_message = (
+                f"OpenAI Responses API error for model {llm_model.value}: {str(e)}"
+            )
+            logger.error(error_message)
+            raise ValueError(error_message) from e
+        except TimeoutError as e:
+            error_message = f"OpenAI Responses API timeout for model {llm_model.value}"
+            logger.error(error_message)
+            raise ValueError(error_message) from e
 
-        tool_calls = extract_openai_tool_calls(response)
-        reasoning = extract_openai_reasoning(response)
+        tool_calls = extract_responses_api_tool_calls(response)
+        reasoning = extract_responses_api_reasoning(response)
+
+        # Build a message dict for raw_response that matches the expected format
+        # for conversation history (role, content, and optionally tool_calls)
+        raw_response_dict: dict = {
+            "role": "assistant",
+            "content": response.output_text or "",
+        }
+        # Add tool_calls in OpenAI format if present
+        if tool_calls:
+            raw_response_dict["tool_calls"] = [
+                {
+                    "id": tc.id,
+                    "type": "function",
+                    "function": {
+                        "name": tc.function.name,
+                        "arguments": tc.function.arguments,
+                    },
+                }
+                for tc in tool_calls
+            ]
 
         return LLMResponse(
-            raw_response=response.choices[0].message,
+            raw_response=raw_response_dict,
             prompt=prompt,
-            response=response.choices[0].message.content or "",
+            response=response.output_text or "",
             tool_calls=tool_calls,
-            prompt_tokens=response.usage.prompt_tokens if response.usage else 0,
-            completion_tokens=response.usage.completion_tokens if response.usage else 0,
+            prompt_tokens=response.usage.input_tokens if response.usage else 0,
+            completion_tokens=response.usage.output_tokens if response.usage else 0,
             reasoning=reasoning,
         )
     elif provider == "anthropic":
