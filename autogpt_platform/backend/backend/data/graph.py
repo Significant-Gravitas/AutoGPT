@@ -395,9 +395,9 @@ class GraphMeta(GraphBaseMeta):
     user_id: str
     created_at: datetime
 
-    @staticmethod
-    def from_db(graph: "AgentGraph") -> "GraphMeta":
-        return GraphMeta(
+    @classmethod
+    def from_db(cls, graph: "AgentGraph") -> Self:
+        return cls(
             id=graph.id,
             version=graph.version,
             is_active=graph.isActive,
@@ -887,7 +887,7 @@ class GraphModel(Graph, GraphMeta):
                 link.is_static = True  # Each value block output should be static.
 
     @classmethod
-    def from_db(
+    def from_db(  # type: ignore[reportIncompatibleMethodOverride]
         cls,
         graph: AgentGraph,
         for_export: bool = False,
