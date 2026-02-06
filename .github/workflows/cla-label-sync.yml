@@ -24,6 +24,7 @@ permissions:
   pull-requests: write
   contents: read
   statuses: read
+  checks: read
 
 env:
   CLA_CHECK_NAME: 'license/cla'
@@ -80,10 +81,19 @@ jobs:
             const CLOSE_WARNING_DAYS = parseInt(process.env.CLOSE_WARNING_DAYS);
             const CLOSE_DAYS = parseInt(process.env.CLOSE_DAYS);
             
+            // Validate timing configuration
+            if ([REMINDER_DAYS, CLOSE_WARNING_DAYS, CLOSE_DAYS].some(Number.isNaN)) {
+              core.setFailed('Invalid timing configuration — REMINDER_DAYS, CLOSE_WARNING_DAYS, and CLOSE_DAYS must be numeric.');
+              return;
+            }
+            if (!(REMINDER_DAYS < CLOSE_WARNING_DAYS && CLOSE_WARNING_DAYS < CLOSE_DAYS)) {
+              core.warning(`Timing order looks odd: REMINDER(${REMINDER_DAYS}) < WARNING(${CLOSE_WARNING_DAYS}) < CLOSE(${CLOSE_DAYS}) expected.`);
+            }
+            
             const CLA_SIGN_URL = `https://cla-assistant.io/${context.repo.owner}/${context.repo.repo}`;
             
-            // Helper: Get CLA status for a PR
-            async function getClaStatus(prNumber, headSha) {
+            // Helper: Get CLA status for a commit
+            async function getClaStatus(headSha) {
               // CLA-assistant uses the commit status API (not checks API)
               const { data: statuses } = await github.rest.repos.getCombinedStatusForRef({
                 owner: context.repo.owner,
@@ -202,7 +212,7 @@ jobs:
                   continue;
                 }
                 
-                const claStatus = await getClaStatus(prNumber, pr.head.sha);
+                const claStatus = await getClaStatus(pr.head.sha);
                 const currentLabels = pr.labels.map(l => l.name);
                 const hasPending = currentLabels.includes(LABEL_PENDING);
                 const hasSigned = currentLabels.includes(LABEL_SIGNED);
