@@ -197,16 +197,12 @@ output = await store_media_file(
 |-----------|--------|-------|
 | `store_media_file()` | ✅ Yes | Scans **all** content before writing to local disk |
 | `WorkspaceManager.write_file()` | ✅ Yes | Scans content before persisting |
-| `WriteWorkspaceFileTool` | ✅ Yes | Scans before calling WorkspaceManager (fail fast) |
 
-**Scanning happens at multiple layers:**
-1. `store_media_file()` scans everything it downloads/decodes
-2. CoPilot tools (e.g., `WriteWorkspaceFileTool`) scan for early rejection
-3. `WorkspaceManager.write_file()` scans before persistence
+**Scanning happens at:**
+1. `store_media_file()` — scans everything it downloads/decodes
+2. `WorkspaceManager.write_file()` — scans before persistence
 
-**Note on double scanning:** Some paths (like `WriteWorkspaceFileTool`) will scan twice — once at the tool layer and once in `WorkspaceManager.write_file()`. This is intentional:
-- **First scan (tool layer):** Fail fast, reject bad content early
-- **Second scan (persistence layer):** Catches any caller that skipped scanning
+Tools like `WriteWorkspaceFileTool` don't need to scan because `WorkspaceManager.write_file()` handles it.
 
 ### Persistence
 
@@ -305,10 +301,7 @@ async def run(self, input_data, *, execution_context, **kwargs):
 async def upload_file(file: UploadFile, user_id: str, workspace_id: str):
     content = await file.read()
     
-    # Optional: scan early for faster rejection (write_file also scans)
-    await scan_content_safe(content, filename=file.filename)
-    
-    # Store in workspace (includes virus scan)
+    # write_file handles virus scanning
     manager = WorkspaceManager(user_id, workspace_id)
     workspace_file = await manager.write_file(
         content=content,
