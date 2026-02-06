@@ -19,13 +19,13 @@ export function ThinkingMessage({ className }: ThinkingMessageProps) {
     if (timerRef.current === null) {
       timerRef.current = setTimeout(() => {
         setShowSlowLoader(true);
-      }, 3000);
+      }, 8000);
     }
 
     if (coffeeTimerRef.current === null) {
       coffeeTimerRef.current = setTimeout(() => {
         setShowCoffeeMessage(true);
-      }, 8000);
+      }, 10000);
     }
 
     return () => {
