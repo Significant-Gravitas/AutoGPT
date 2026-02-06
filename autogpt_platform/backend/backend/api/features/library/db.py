@@ -374,7 +374,7 @@ async def get_library_agent_by_graph_id(
 
 
 async def add_generated_agent_image(
-    graph: graph_db.BaseGraph,
+    graph: graph_db.GraphBaseMeta,
     user_id: str,
     library_agent_id: str,
 ) -> Optional[prisma.models.LibraryAgent]:

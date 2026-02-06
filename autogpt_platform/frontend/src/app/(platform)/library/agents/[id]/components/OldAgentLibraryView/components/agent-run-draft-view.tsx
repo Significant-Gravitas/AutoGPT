@@ -10,8 +10,8 @@ import React, {
 import {
   CredentialsMetaInput,
   CredentialsType,
+  Graph,
   GraphExecutionID,
-  GraphMeta,
   LibraryAgentPreset,
   LibraryAgentPresetID,
   LibraryAgentPresetUpdatable,
@@ -69,7 +69,7 @@ export function AgentRunDraftView({
   className,
   recommendedScheduleCron,
 }: {
-  graph: GraphMeta;
+  graph: Graph;
   agentActions?: ButtonAction[];
   recommendedScheduleCron?: string | null;
   doRun?: (

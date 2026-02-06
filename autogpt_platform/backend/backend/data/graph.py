@@ -111,10 +111,12 @@ class Link(BaseDbModel):
 
 class Node(BaseDbModel):
     block_id: str
-    input_default: BlockInput = {}  # dict[input_name, default_value]
-    metadata: dict[str, Any] = {}
-    input_links: list[Link] = []
-    output_links: list[Link] = []
+    input_default: BlockInput = Field(  # dict[input_name, default_value]
+        default_factory=dict
+    )
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    input_links: list[Link] = Field(default_factory=list)
+    output_links: list[Link] = Field(default_factory=list)
 
     @property
     def credentials_optional(self) -> bool:
@@ -219,17 +221,32 @@ class NodeModel(Node):
         return result
 
 
-class BaseGraph(BaseDbModel):
+class GraphBaseMeta(BaseDbModel):
+    """
+    Shared base for `GraphModelMeta` and `BaseGraph`, with core graph metadata fields.
+    """
+
     version: int = 1
     is_active: bool = True
     name: str
     description: str
     instructions: str | None = None
     recommended_schedule_cron: str | None = None
-    nodes: list[Node] = []
-    links: list[Link] = []
     forked_from_id: str | None = None
     forked_from_version: int | None = None
+
+
+class BaseGraph(GraphBaseMeta):
+    """
+    Graph with nodes, links, and computed I/O schema fields.
+
+    Used to represent sub-graphs within a `Graph`. Contains the full graph
+    structure including nodes and links, plus computed fields for schemas
+    and trigger info. Does NOT include user_id or created_at (see GraphModel).
+    """
+
+    nodes: list[Node] = Field(default_factory=list)
+    links: list[Link] = Field(default_factory=list)
 
     @computed_field
     @property
@@ -359,7 +376,73 @@ class GraphTriggerInfo(BaseModel):
 
 
 class Graph(BaseGraph):
-    sub_graphs: list[BaseGraph] = []  # Flattened sub-graphs
+    """Creatable graph model used in API create/update endpoints."""
+
+    sub_graphs: list[BaseGraph] = Field(default_factory=list)  # Flattened sub-graphs
+
+
+class GraphMeta(GraphBaseMeta):
+    """
+    Lightweight graph metadata model representing an existing graph from the database,
+    for use in listings and summaries.
+
+    Lacks `GraphModel`'s nodes, links, and expensive computed fields.
+    Use for list endpoints where full graph data is not needed and performance matters.
+    """
+
+    id: str  # type: ignore
+    version: int  # type: ignore
+    user_id: str
+    created_at: datetime
+
+    @staticmethod
+    def from_db(graph: "AgentGraph") -> "GraphMeta":
+        return GraphMeta(
+            id=graph.id,
+            version=graph.version,
+            is_active=graph.isActive,
+            name=graph.name or "",
+            description=graph.description or "",
+            instructions=graph.instructions,
+            recommended_schedule_cron=graph.recommendedScheduleCron,
+            forked_from_id=graph.forkedFromId,
+            forked_from_version=graph.forkedFromVersion,
+            user_id=graph.userId,
+            created_at=graph.createdAt,
+        )
+
+
+class GraphModel(Graph, GraphMeta):
+    """
+    Full graph model representing an existing graph from the database.
+
+    This is the primary model for working with persisted graphs. Includes all
+    graph data (nodes, links, sub_graphs) plus user ownership and timestamps.
+    Provides computed fields (input_schema, output_schema, etc.) used during
+    set-up (frontend) and execution (backend).
+
+    Inherits from:
+    - `Graph`: provides structure (nodes, links, sub_graphs) and computed schemas
+    - `GraphMeta`: provides user_id, created_at for database records
+    """
+
+    nodes: list[NodeModel] = Field(default_factory=list)  # type: ignore
+
+    @property
+    def starting_nodes(self) -> list[NodeModel]:
+        outbound_nodes = {link.sink_id for link in self.links}
+        input_nodes = {
+            node.id for node in self.nodes if node.block.block_type == BlockType.INPUT
+        }
+        return [
+            node
+            for node in self.nodes
+            if node.id not in outbound_nodes or node.id in input_nodes
+        ]
+
+    @property
+    def webhook_input_node(self) -> NodeModel | None:  # type: ignore
+        return cast(NodeModel, super().webhook_input_node)
 
     @computed_field
     @property
@@ -520,36 +603,6 @@ class Graph(BaseGraph):
             )
             for key, (field_info, node_field_pairs) in combined.items()
         }
-
-
-class GraphModel(Graph):
-    user_id: str
-    nodes: list[NodeModel] = []  # type: ignore
-
-    created_at: datetime
-
-    @property
-    def starting_nodes(self) -> list[NodeModel]:
-        outbound_nodes = {link.sink_id for link in self.links}
-        input_nodes = {
-            node.id for node in self.nodes if node.block.block_type == BlockType.INPUT
-        }
-        return [
-            node
-            for node in self.nodes
-            if node.id not in outbound_nodes or node.id in input_nodes
-        ]
-
-    @property
-    def webhook_input_node(self) -> NodeModel | None:  # type: ignore
-        return cast(NodeModel, super().webhook_input_node)
-
-    def meta(self) -> "GraphMeta":
-        """
-        Returns a GraphMeta object with metadata about the graph.
-        This is used to return metadata about the graph without exposing nodes and links.
-        """
-        return GraphMeta.from_graph(self)
 
     def reassign_ids(self, user_id: str, reassign_graph_id: bool = False):
         """
@@ -865,56 +918,28 @@ class GraphModel(Graph):
             ],
         )
 
+    def hide_nodes(self) -> "GraphModelWithoutNodes":
+        """
+        Returns a copy of the `GraphModel` with nodes, links, and sub-graphs hidden
+        (excluded from serialization). They are still present in the model instance
+        so all computed fields (e.g. `credentials_input_schema`) still work.
+        """
+        return GraphModelWithoutNodes.model_validate(self, from_attributes=True)
 
-class GraphMeta(BaseModel):
+
+class GraphModelWithoutNodes(GraphModel):
     """
-    Graph metadata without nodes/links, used for list endpoints.
+    GraphModel variant that excludes nodes, links, and sub-graphs from serialization.
 
-    This is a flat, lightweight model (not inheriting from Graph) to avoid recomputing
-    expensive computed fields. Values are copied from GraphModel.
+    Used in contexts like the store where exposing internal graph structure
+    is not desired. Inherits all computed fields from GraphModel but marks
+    nodes and links as excluded from JSON output.
     """
 
-    id: str
-    version: int = 1
-    is_active: bool = True
-    name: str
-    description: str
-    instructions: str | None = None
-    recommended_schedule_cron: str | None = None
-    forked_from_id: str | None = None
-    forked_from_version: int | None = None
-    user_id: str
+    nodes: list[NodeModel] = Field(default_factory=list, exclude=True)
+    links: list[Link] = Field(default_factory=list, exclude=True)
 
-    input_schema: dict[str, Any]
-    output_schema: dict[str, Any]
-    credentials_input_schema: dict[str, Any]
-    has_external_trigger: bool
-    has_human_in_the_loop: bool
-    has_sensitive_action: bool
-    trigger_setup_info: Optional["GraphTriggerInfo"]
-
-    @staticmethod
-    def from_graph(graph: "GraphModel") -> "GraphMeta":
-        return GraphMeta(
-            id=graph.id,
-            version=graph.version,
-            is_active=graph.is_active,
-            name=graph.name,
-            description=graph.description,
-            instructions=graph.instructions,
-            recommended_schedule_cron=graph.recommended_schedule_cron,
-            forked_from_id=graph.forked_from_id,
-            forked_from_version=graph.forked_from_version,
-            user_id=graph.user_id,
-            # Pre-computed values (were @computed_field on Graph)
-            input_schema=graph.input_schema,
-            output_schema=graph.output_schema,
-            has_external_trigger=graph.has_external_trigger,
-            has_human_in_the_loop=graph.has_human_in_the_loop,
-            has_sensitive_action=graph.has_sensitive_action,
-            trigger_setup_info=graph.trigger_setup_info,
-            credentials_input_schema=graph.credentials_input_schema,
-        )
+    sub_graphs: list[BaseGraph] = Field(default_factory=list, exclude=True)
 
 
 class GraphsPaginated(BaseModel):
@@ -985,21 +1010,11 @@ async def list_graphs_paginated(
         where=where_clause,
         distinct=["id"],
         order={"version": "desc"},
-        include=AGENT_GRAPH_INCLUDE,
         skip=offset,
         take=page_size,
     )
 
-    graph_models: list[GraphMeta] = []
-    for graph in graphs:
-        try:
-            # GraphMeta.from_graph() accesses all computed fields on the GraphModel,
-            # which validates that the graph is well formed (e.g. no unknown block_ids).
-            graph_meta = GraphModel.from_db(graph).meta()
-            graph_models.append(graph_meta)
-        except Exception as e:
-            logger.error(f"Error processing graph {graph.id}: {e}")
-            continue
+    graph_models = [GraphMeta.from_db(graph) for graph in graphs]
 
     return GraphsPaginated(
         graphs=graph_models,

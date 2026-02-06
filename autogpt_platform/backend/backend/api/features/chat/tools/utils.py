@@ -6,7 +6,6 @@ from typing import Any
 from backend.api.features.library import db as library_db
 from backend.api.features.library import model as library_model
 from backend.api.features.store import db as store_db
-from backend.data import graph as graph_db
 from backend.data.graph import GraphModel
 from backend.data.model import (
     CredentialsFieldInfo,
@@ -44,14 +43,8 @@ async def fetch_graph_from_store_slug(
         return None, None
 
     # Get the graph from store listing version
-    graph_meta = await store_db.get_available_graph(
-        store_agent.store_listing_version_id
-    )
-    graph = await graph_db.get_graph(
-        graph_id=graph_meta.id,
-        version=graph_meta.version,
-        user_id=None,  # Public access
-        include_subgraphs=True,
+    graph = await store_db.get_available_graph(
+        store_agent.store_listing_version_id, hide_nodes=False
     )
     return graph, store_agent
 
