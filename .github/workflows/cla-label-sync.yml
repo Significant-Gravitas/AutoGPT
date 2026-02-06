@@ -23,6 +23,7 @@ on:
 permissions:
   pull-requests: write
   contents: read
+  statuses: read
 
 env:
   CLA_CHECK_NAME: 'license/cla'
