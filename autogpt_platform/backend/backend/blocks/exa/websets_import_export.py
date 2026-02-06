@@ -474,7 +474,9 @@ class ExaDeleteImportBlock(Block):
         # Use AsyncExa SDK
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        deleted_import = await aexa.websets.imports.delete(import_id=input_data.import_id)
+        deleted_import = await aexa.websets.imports.delete(
+            import_id=input_data.import_id
+        )
 
         yield "import_id", deleted_import.id
         yield "success", "true"

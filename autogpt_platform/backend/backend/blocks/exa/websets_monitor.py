@@ -522,7 +522,9 @@ class ExaDeleteMonitorBlock(Block):
         # Use AsyncExa SDK
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        deleted_monitor = await aexa.websets.monitors.delete(monitor_id=input_data.monitor_id)
+        deleted_monitor = await aexa.websets.monitors.delete(
+            monitor_id=input_data.monitor_id
+        )
 
         yield "monitor_id", deleted_monitor.id
         yield "success", "true"
