@@ -1215,7 +1215,7 @@ def test_make_node_credentials_input_map_excludes_auto_creds(
 
     # Mock regular_credentials_inputs property (auto_credentials are excluded)
     mock_graph.regular_credentials_inputs = {
-        "github_creds": (regular_field_info, {("node-1", "credentials")}),
+        "github_creds": (regular_field_info, {("node-1", "credentials")}, True),
     }
 
     graph_credentials_input = {

@@ -32,7 +32,7 @@ def test_build_missing_credentials_excludes_auto_creds():
     mock_graph = MagicMock()
     # regular_credentials_inputs should only return the non-auto field
     mock_graph.regular_credentials_inputs = {
-        "github_api_key": (regular_field, {("node-1", "credentials")}),
+        "github_api_key": (regular_field, {("node-1", "credentials")}, True),
     }
 
     result = build_missing_credentials_from_graph(mock_graph, matched_credentials=None)
@@ -57,7 +57,7 @@ async def test_match_user_credentials_excludes_auto_creds():
     mock_graph.id = "test-graph"
     # regular_credentials_inputs returns only non-auto fields
     mock_graph.regular_credentials_inputs = {
-        "github_api_key": (regular_field, {("node-1", "credentials")}),
+        "github_api_key": (regular_field, {("node-1", "credentials")}, True),
     }
 
     # Mock the credentials manager to return no credentials

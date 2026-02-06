@@ -729,12 +729,14 @@ def test_discriminate_preserves_regular_credential_defaults():
 # Tests for credentials_input_schema excluding auto_credentials
 def test_credentials_input_schema_excludes_auto_creds():
     """
-    Graph._credentials_input_schema and credentials_input_schema should exclude
-    auto_credentials (is_auto_credential=True) from the schema. Auto_credentials
-    are transparently resolved at execution time via file picker data.
+    GraphModel.credentials_input_schema should exclude auto_credentials
+    (is_auto_credential=True) from the schema. Auto_credentials are
+    transparently resolved at execution time via file picker data.
     """
+    from datetime import datetime, timezone
     from unittest.mock import PropertyMock, patch
 
+    from backend.data.graph import GraphModel, NodeModel
     from backend.data.model import CredentialsFieldInfo
 
     regular_field_info = CredentialsFieldInfo.model_validate(
@@ -746,20 +748,32 @@ def test_credentials_input_schema_excludes_auto_creds():
         by_alias=True,
     )
 
-    graph = Graph(
+    graph = GraphModel(
         id="test-graph",
+        version=1,
         name="Test",
         description="Test",
+        user_id="test-user",
+        created_at=datetime.now(timezone.utc),
         nodes=[
-            Node(id="node-1", block_id=StoreValueBlock().id, input_default={}),
+            NodeModel(
+                id="node-1",
+                block_id=StoreValueBlock().id,
+                input_default={},
+                graph_id="test-graph",
+                graph_version=1,
+            ),
         ],
         links=[],
     )
 
-    # Mock regular_credentials_inputs to return only the non-auto field
-    # Field names must match *_credentials pattern for BlockSchema validation
+    # Mock regular_credentials_inputs to return only the non-auto field (3-tuple)
     regular_only = {
-        "github_credentials": (regular_field_info, {("node-1", "credentials")}),
+        "github_credentials": (
+            regular_field_info,
+            {("node-1", "credentials")},
+            True,
+        ),
     }
 
     with patch.object(
@@ -768,8 +782,8 @@ def test_credentials_input_schema_excludes_auto_creds():
         new_callable=PropertyMock,
         return_value=regular_only,
     ):
-        schema = graph._credentials_input_schema
-        field_names = set(schema.model_fields.keys())
+        schema = graph.credentials_input_schema
+        field_names = set(schema.get("properties", {}).keys())
         # Should include regular credential but NOT auto_credential
         assert "github_credentials" in field_names
         assert "google_credentials" not in field_names

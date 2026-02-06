@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from datetime import datetime, timezone
-from typing import Any, Literal
+from typing import Any, Literal, overload
 
 import fastapi
 import prisma.enums
@@ -11,8 +11,8 @@ import prisma.types
 
 from backend.data.db import transaction
 from backend.data.graph import (
-    GraphMeta,
     GraphModel,
+    GraphModelWithoutNodes,
     get_graph,
     get_graph_as_admin,
     get_sub_graphs,
@@ -334,7 +334,22 @@ async def get_store_agent_details(
         raise DatabaseError("Failed to fetch agent details") from e
 
 
-async def get_available_graph(store_listing_version_id: str) -> GraphMeta:
+@overload
+async def get_available_graph(
+    store_listing_version_id: str, hide_nodes: Literal[False]
+) -> GraphModel: ...
+
+
+@overload
+async def get_available_graph(
+    store_listing_version_id: str, hide_nodes: Literal[True] = True
+) -> GraphModelWithoutNodes: ...
+
+
+async def get_available_graph(
+    store_listing_version_id: str,
+    hide_nodes: bool = True,
+) -> GraphModelWithoutNodes | GraphModel:
     try:
         # Get avaialble, non-deleted store listing version
         store_listing_version = (
@@ -344,7 +359,7 @@ async def get_available_graph(store_listing_version_id: str) -> GraphMeta:
                     "isAvailable": True,
                     "isDeleted": False,
                 },
-                include={"AgentGraph": {"include": {"Nodes": True}}},
+                include={"AgentGraph": {"include": AGENT_GRAPH_INCLUDE}},
             )
         )
 
@@ -354,7 +369,9 @@ async def get_available_graph(store_listing_version_id: str) -> GraphMeta:
                 detail=f"Store listing version {store_listing_version_id} not found",
             )
 
-        return GraphModel.from_db(store_listing_version.AgentGraph).meta()
+        return (GraphModelWithoutNodes if hide_nodes else GraphModel).from_db(
+            store_listing_version.AgentGraph
+        )
 
     except Exception as e:
         logger.error(f"Error getting agent: {e}")

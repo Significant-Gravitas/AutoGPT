@@ -400,7 +400,7 @@ def make_node_credentials_input_map(
     # at execution time from _credentials_id in file field data)
     graph_cred_inputs = graph.regular_credentials_inputs
 
-    for graph_input_name, (_, compatible_node_fields) in graph_cred_inputs.items():
+    for graph_input_name, (_, compatible_node_fields, _) in graph_cred_inputs.items():
         # Best-effort map: skip missing items
         if graph_input_name not in graph_credentials_input:
             continue
