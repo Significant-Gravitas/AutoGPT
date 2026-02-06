@@ -437,7 +437,7 @@ class Graph(BaseGraph):
 
             # Add other (optional) field info items
             field_schema.update(
-                **field_info.model_dump(
+                field_info.model_dump(
                     by_alias=True,
                     exclude_defaults=True,
                     exclude={"provider", "supported_types"},  # already included above
