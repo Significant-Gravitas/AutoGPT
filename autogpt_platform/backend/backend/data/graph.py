@@ -3,7 +3,7 @@ import logging
 import uuid
 from collections import defaultdict
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Annotated, Any, Literal, Optional, cast
+from typing import TYPE_CHECKING, Annotated, Any, Literal, Optional, Self, cast
 
 from prisma.enums import SubmissionStatus
 from prisma.models import (
@@ -886,13 +886,14 @@ class GraphModel(Graph, GraphMeta):
             if is_static_output_block(link.source_id):
                 link.is_static = True  # Each value block output should be static.
 
-    @staticmethod
+    @classmethod
     def from_db(
+        cls,
         graph: AgentGraph,
         for_export: bool = False,
         sub_graphs: list[AgentGraph] | None = None,
-    ) -> "GraphModel":
-        return GraphModel(
+    ) -> Self:
+        return cls(
             id=graph.id,
             user_id=graph.userId if not for_export else "",
             version=graph.version,
