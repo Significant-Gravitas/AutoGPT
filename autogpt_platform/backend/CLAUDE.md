@@ -157,6 +157,14 @@ yield "image_url", result_url
 3. Write tests alongside the route file
 4. Run `poetry run test` to verify
 
+## Workspace & Media Files
+
+See [Workspace & Media Architecture](docs/workspace-media-architecture.md) for details on:
+
+- `WorkspaceManager` - persistent user file storage with session scoping
+- `store_media_file()` - media normalization pipeline for blocks
+- Virus scanning and persistence responsibilities
+
 ## Security Implementation
 
 ### Cache Protection Middleware
