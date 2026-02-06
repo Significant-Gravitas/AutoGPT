@@ -107,7 +107,7 @@ async def generate_agent_image_v1(agent: GraphBaseMeta | AgentGraph) -> io.Bytes
     Generate an image for an agent using Flux model via Replicate API.
 
     Args:
-        agent (_GraphBaseMeta | AgentGraph): The agent to generate an image for
+        agent (GraphBaseMeta | AgentGraph): The agent to generate an image for
 
     Returns:
         io.BytesIO: The generated image as bytes
