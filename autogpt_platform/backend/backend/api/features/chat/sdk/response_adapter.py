@@ -239,6 +239,7 @@ class SDKResponseAdapter:
                     code="sdk_error",
                 )
             )
+            responses.append(StreamFinish())
 
         return responses
 

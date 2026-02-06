@@ -1,6 +1,7 @@
 """Claude Agent SDK service layer for CoPilot chat completions."""
 
 import asyncio
+import json
 import logging
 import uuid
 from collections.abc import AsyncGenerator
@@ -28,6 +29,7 @@ from ..response_model import (
     StreamFinish,
     StreamStart,
     StreamTextDelta,
+    StreamToolInputAvailable,
     StreamToolOutputAvailable,
 )
 from ..tracking import track_user_message
@@ -42,6 +44,9 @@ from .tool_adapter import (
 
 logger = logging.getLogger(__name__)
 config = ChatConfig()
+
+# Set to hold background tasks to prevent garbage collection
+_background_tasks: set[asyncio.Task[Any]] = set()
 
 DEFAULT_SYSTEM_PROMPT = """You are **Otto**, an AI Co-Pilot for AutoGPT and a Forward-Deployed Automation Engineer serving small business owners. Your mission is to help users automate business tasks with AI by delivering tangible value through working automations—not through documentation or lengthy explanations.
 
@@ -137,8 +142,8 @@ async def _build_system_prompt(
 def _format_conversation_history(session: ChatSession) -> str:
     """Format conversation history as a prompt context.
 
-    The SDK handles context compaction automatically, so we pass full history
-    without manual truncation. The SDK will intelligently summarize if needed.
+    The SDK handles context compaction automatically, but we apply
+    max_context_messages as a safety guard to limit initial prompt size.
     """
     if not session.messages:
         return ""
@@ -147,6 +152,12 @@ def _format_conversation_history(session: ChatSession) -> str:
     messages = session.messages[:-1] if session.messages else []
     if not messages:
         return ""
+
+    # Apply max_context_messages limit as a safety guard
+    # (SDK handles compaction, but this prevents excessively large initial prompts)
+    max_messages = config.max_context_messages
+    if len(messages) > max_messages:
+        messages = messages[-max_messages:]
 
     history_parts = ["<conversation_history>"]
 
@@ -261,9 +272,12 @@ async def stream_chat_completion_sdk(
         if len(user_messages) == 1:
             first_message = user_messages[0].content or message or ""
             if first_message:
-                asyncio.create_task(
+                task = asyncio.create_task(
                     _update_title_async(session_id, first_message, user_id)
                 )
+                # Store reference to prevent garbage collection
+                _background_tasks.add(task)
+                task.add_done_callback(_background_tasks.discard)
 
     # Check if there's conversation history (more than just the current message)
     has_history = len(session.messages) > 1
@@ -316,11 +330,21 @@ async def stream_chat_completion_sdk(
                 else:
                     prompt = current_message
 
+                # Guard against empty prompts
+                if not prompt.strip():
+                    yield StreamError(
+                        errorText="Message cannot be empty.",
+                        code="empty_prompt",
+                    )
+                    yield StreamFinish()
+                    return
+
                 await client.query(prompt, session_id=session_id)
 
                 # Track assistant response to save to session
                 # We may need multiple assistant messages if text comes after tool results
                 assistant_response = ChatMessage(role="assistant", content="")
+                accumulated_tool_calls: list[dict[str, Any]] = []
                 has_appended_assistant = False
                 has_tool_results = False  # Track if we've received tool results
 
@@ -340,6 +364,7 @@ async def stream_chat_completion_sdk(
                                 assistant_response = ChatMessage(
                                     role="assistant", content=delta
                                 )
+                                accumulated_tool_calls = []  # Reset for new message
                                 session.messages.append(assistant_response)
                                 has_tool_results = False
                             else:
@@ -349,6 +374,25 @@ async def stream_chat_completion_sdk(
                                 if not has_appended_assistant:
                                     session.messages.append(assistant_response)
                                     has_appended_assistant = True
+
+                        # Track tool calls on the assistant message
+                        elif isinstance(response, StreamToolInputAvailable):
+                            accumulated_tool_calls.append(
+                                {
+                                    "id": response.toolCallId,
+                                    "type": "function",
+                                    "function": {
+                                        "name": response.toolName,
+                                        "arguments": json.dumps(response.input or {}),
+                                    },
+                                }
+                            )
+                            # Update assistant message with tool calls
+                            assistant_response.tool_calls = accumulated_tool_calls
+                            # Append assistant message if not already (tool-only response)
+                            if not has_appended_assistant:
+                                session.messages.append(assistant_response)
+                                has_appended_assistant = True
 
                         elif isinstance(response, StreamToolOutputAvailable):
                             session.messages.append(
@@ -373,7 +417,9 @@ async def stream_chat_completion_sdk(
 
                 # Ensure assistant response is saved even if no text deltas
                 # (e.g., only tool calls were made)
-                if assistant_response.content and not has_appended_assistant:
+                if (
+                    assistant_response.content or assistant_response.tool_calls
+                ) and not has_appended_assistant:
                     session.messages.append(assistant_response)
 
         except ImportError:
@@ -402,7 +448,11 @@ async def stream_chat_completion_sdk(
             await upsert_chat_session(session)
         except Exception as save_err:
             logger.error(f"[SDK] Failed to save session on error: {save_err}")
-        yield StreamError(errorText=f"An error occurred: {str(e)}", code="sdk_error")
+        # Sanitize error message to avoid exposing internal details
+        yield StreamError(
+            errorText="An error occurred. Please try again.",
+            code="sdk_error",
+        )
         yield StreamFinish()
 
 

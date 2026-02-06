@@ -237,9 +237,7 @@ def create_strict_security_hooks(
             tool_input = cast(dict[str, Any], input_data.get("tool_input", {}))
 
             # Remove MCP prefix if present
-            clean_name = tool_name
-            if tool_name.startswith("mcp__copilot__"):
-                clean_name = tool_name.replace("mcp__copilot__", "")
+            clean_name = tool_name.removeprefix("mcp__copilot__")
 
             if clean_name not in allowed_set:
                 logger.warning(f"Blocked non-whitelisted tool: {tool_name}")

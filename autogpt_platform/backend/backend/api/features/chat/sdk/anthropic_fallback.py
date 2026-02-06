@@ -11,8 +11,7 @@ import uuid
 from collections.abc import AsyncGenerator
 from typing import Any, cast
 
-from ..config import ChatConfig
-from ..model import ChatSession
+from ..model import ChatMessage, ChatSession
 from ..response_model import (
     StreamBaseResponse,
     StreamError,
@@ -28,7 +27,6 @@ from ..response_model import (
 from .tool_adapter import get_tool_definitions, get_tool_handlers
 
 logger = logging.getLogger(__name__)
-config = ChatConfig()
 
 
 async def stream_with_anthropic(
@@ -36,13 +34,19 @@ async def stream_with_anthropic(
     system_prompt: str,
     text_block_id: str,
 ) -> AsyncGenerator[StreamBaseResponse, None]:
-    """Stream using Anthropic SDK directly with tool calling support."""
+    """Stream using Anthropic SDK directly with tool calling support.
+
+    This function accumulates messages into the session for persistence.
+    The caller should NOT yield an additional StreamFinish - this function handles it.
+    """
     import anthropic
 
-    api_key = os.getenv("ANTHROPIC_API_KEY") or config.api_key
+    # Only use ANTHROPIC_API_KEY - don't fall back to OpenRouter keys
+    api_key = os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
         yield StreamError(
-            errorText="ANTHROPIC_API_KEY not configured", code="config_error"
+            errorText="ANTHROPIC_API_KEY not configured for fallback",
+            code="config_error",
         )
         yield StreamFinish()
         return
@@ -69,6 +73,8 @@ async def stream_with_anthropic(
 
     has_started_text = False
     max_iterations = 10
+    accumulated_text = ""
+    accumulated_tool_calls: list[dict[str, Any]] = []
 
     for _ in range(max_iterations):
         try:
@@ -94,6 +100,7 @@ async def stream_with_anthropic(
                     elif event.type == "content_block_delta":
                         delta = event.delta
                         if hasattr(delta, "type") and delta.type == "text_delta":
+                            accumulated_text += delta.text
                             yield StreamTextDelta(id=text_block_id, delta=delta.text)
 
                 final_message = await stream.get_final_message()
@@ -122,6 +129,22 @@ async def stream_with_anthropic(
                                 }
                             )
 
+                            # Track tool call for session persistence
+                            accumulated_tool_calls.append(
+                                {
+                                    "id": block.id,
+                                    "type": "function",
+                                    "function": {
+                                        "name": block.name,
+                                        "arguments": json.dumps(
+                                            block.input
+                                            if isinstance(block.input, dict)
+                                            else {}
+                                        ),
+                                    },
+                                }
+                            )
+
                             yield StreamToolInputAvailable(
                                 toolCallId=block.id,
                                 toolName=block.name,
@@ -141,6 +164,15 @@ async def stream_with_anthropic(
                                 success=not is_error,
                             )
 
+                            # Save tool result to session
+                            session.messages.append(
+                                ChatMessage(
+                                    role="tool",
+                                    content=output,
+                                    tool_call_id=block.id,
+                                )
+                            )
+
                             tool_results.append(
                                 {
                                     "type": "tool_result",
@@ -149,6 +181,22 @@ async def stream_with_anthropic(
                                     "is_error": is_error,
                                 }
                             )
+
+                    # Save assistant message with tool calls to session
+                    session.messages.append(
+                        ChatMessage(
+                            role="assistant",
+                            content=accumulated_text or None,
+                            tool_calls=(
+                                accumulated_tool_calls
+                                if accumulated_tool_calls
+                                else None
+                            ),
+                        )
+                    )
+                    # Reset for next iteration
+                    accumulated_text = ""
+                    accumulated_tool_calls = []
 
                     anthropic_messages.append(
                         {"role": "assistant", "content": assistant_content}
@@ -159,6 +207,12 @@ async def stream_with_anthropic(
                 else:
                     if has_started_text:
                         yield StreamTextEnd(id=text_block_id)
+
+                    # Save final assistant response to session
+                    if accumulated_text:
+                        session.messages.append(
+                            ChatMessage(role="assistant", content=accumulated_text)
+                        )
 
                     yield StreamUsage(
                         promptTokens=final_message.usage.input_tokens,
@@ -171,7 +225,10 @@ async def stream_with_anthropic(
 
         except Exception as e:
             logger.error(f"[Anthropic Fallback] Error: {e}", exc_info=True)
-            yield StreamError(errorText=f"Error: {str(e)}", code="anthropic_error")
+            yield StreamError(
+                errorText="An error occurred. Please try again.",
+                code="anthropic_error",
+            )
             yield StreamFinish()
             return
 
@@ -180,11 +237,15 @@ async def stream_with_anthropic(
 
 
 def _convert_session_to_anthropic(session: ChatSession) -> list[dict[str, Any]]:
-    """Convert session messages to Anthropic format."""
-    messages = []
+    """Convert session messages to Anthropic format.
+
+    Handles merging consecutive same-role messages (Anthropic requires alternating roles).
+    """
+    messages: list[dict[str, Any]] = []
+
     for msg in session.messages:
         if msg.role == "user":
-            messages.append({"role": "user", "content": msg.content or ""})
+            new_msg = {"role": "user", "content": msg.content or ""}
         elif msg.role == "assistant":
             content: list[dict[str, Any]] = []
             if msg.content:
@@ -207,21 +268,61 @@ def _convert_session_to_anthropic(session: ChatSession) -> list[dict[str, Any]]:
                         }
                     )
             if content:
-                messages.append({"role": "assistant", "content": content})
+                new_msg = {"role": "assistant", "content": content}
+            else:
+                continue  # Skip empty assistant messages
         elif msg.role == "tool":
-            messages.append(
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "tool_result",
-                            "tool_use_id": msg.tool_call_id or "",
-                            "content": msg.content or "",
-                        }
-                    ],
-                }
-            )
-    return messages
+            new_msg = {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": msg.tool_call_id or "",
+                        "content": msg.content or "",
+                    }
+                ],
+            }
+        else:
+            continue
+
+        messages.append(new_msg)
+
+    # Merge consecutive same-role messages (Anthropic requires alternating roles)
+    return _merge_consecutive_roles(messages)
+
+
+def _merge_consecutive_roles(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Merge consecutive messages with the same role.
+
+    Anthropic API requires alternating user/assistant roles.
+    """
+    if not messages:
+        return []
+
+    merged: list[dict[str, Any]] = []
+    for msg in messages:
+        if merged and merged[-1]["role"] == msg["role"]:
+            # Merge with previous message
+            prev_content = merged[-1]["content"]
+            new_content = msg["content"]
+
+            # Normalize both to list-of-blocks form
+            if isinstance(prev_content, str):
+                prev_content = [{"type": "text", "text": prev_content}]
+            if isinstance(new_content, str):
+                new_content = [{"type": "text", "text": new_content}]
+
+            # Ensure both are lists
+            if not isinstance(prev_content, list):
+                prev_content = [prev_content]
+            if not isinstance(new_content, list):
+                new_content = [new_content]
+
+            merged[-1]["content"] = prev_content + new_content
+        else:
+            merged.append(msg)
+
+    return merged
 
 
 async def _execute_tool(
@@ -234,7 +335,13 @@ async def _execute_tool(
 
     try:
         result = await handler(tool_input)
-        output = result.get("content", [{}])[0].get("text", "")
+        # Safely extract output - handle empty or missing content
+        content = result.get("content") or []
+        if content and isinstance(content, list) and len(content) > 0:
+            first_item = content[0]
+            output = first_item.get("text", "") if isinstance(first_item, dict) else ""
+        else:
+            output = ""
         is_error = result.get("isError", False)
         return output, is_error
     except Exception as e:
