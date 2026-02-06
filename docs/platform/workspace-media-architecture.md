@@ -196,19 +196,17 @@ output = await store_media_file(
 | Component | Scans? | Notes |
 |-----------|--------|-------|
 | `store_media_file()` | ✅ Yes | Scans **all** content before writing to local disk |
-| `WorkspaceManager.write_file()` | ✅ Yes | Scans content before persisting (defense in depth) |
+| `WorkspaceManager.write_file()` | ✅ Yes | Scans content before persisting |
 | `WriteWorkspaceFileTool` | ✅ Yes | Scans before calling WorkspaceManager (fail fast) |
 
-**Defense in depth:** Scanning happens at multiple layers:
+**Scanning happens at multiple layers:**
 1. `store_media_file()` scans everything it downloads/decodes
 2. CoPilot tools (e.g., `WriteWorkspaceFileTool`) scan for early rejection
-3. `WorkspaceManager.write_file()` scans as a final gate before persistence
+3. `WorkspaceManager.write_file()` scans before persistence
 
-**Note on double scanning:** Some paths (like `WriteWorkspaceFileTool`) will scan twice — once at the API/tool layer and once in `WorkspaceManager.write_file()`. This is intentional:
-- **First scan (tool layer):** Fail fast, reject bad content before any processing
-- **Second scan (persistence layer):** Defense in depth, catches any caller that forgot to scan
-
-The performance cost is acceptable since scanning is fast and security is critical.
+**Note on double scanning:** Some paths (like `WriteWorkspaceFileTool`) will scan twice — once at the tool layer and once in `WorkspaceManager.write_file()`. This is intentional:
+- **First scan (tool layer):** Fail fast, reject bad content early
+- **Second scan (persistence layer):** Catches any caller that skipped scanning
 
 ### Persistence
 
@@ -310,7 +308,7 @@ async def upload_file(file: UploadFile, user_id: str, workspace_id: str):
     # Optional: scan early for faster rejection (write_file also scans)
     await scan_content_safe(content, filename=file.filename)
     
-    # Store in workspace (includes virus scan as defense in depth)
+    # Store in workspace (includes virus scan)
     manager = WorkspaceManager(user_id, workspace_id)
     workspace_file = await manager.write_file(
         content=content,
