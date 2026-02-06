@@ -28,9 +28,10 @@ env:
   CLA_CHECK_NAME: 'license/cla'
   LABEL_PENDING: 'cla: pending'
   LABEL_SIGNED: 'cla: signed'
-  # Timing configuration
-  REMINDER_DAYS: 7       # Days before first reminder
-  CLOSE_DAYS: 30         # Days before auto-close
+  # Timing configuration (all independently configurable)
+  REMINDER_DAYS: 3        # Days before first reminder
+  CLOSE_WARNING_DAYS: 7   # Days before "closing soon" warning
+  CLOSE_DAYS: 10          # Days before auto-close
 
 jobs:
   sync-labels:
@@ -75,6 +76,7 @@ jobs:
             const LABEL_PENDING = process.env.LABEL_PENDING;
             const LABEL_SIGNED = process.env.LABEL_SIGNED;
             const REMINDER_DAYS = parseInt(process.env.REMINDER_DAYS);
+            const CLOSE_WARNING_DAYS = parseInt(process.env.CLOSE_WARNING_DAYS);
             const CLOSE_DAYS = parseInt(process.env.CLOSE_DAYS);
             
             const CLA_SIGN_URL = `https://cla-assistant.io/${context.repo.owner}/${context.repo.repo}`;
@@ -287,18 +289,19 @@ jobs:
                     }
                   }
                   
-                  // ⚠️ Close warning at CLOSE_DAYS - 7
-                  if (prAgeDays >= CLOSE_DAYS - 7 && prAgeDays < CLOSE_DAYS) {
+                  // ⚠️ Close warning at CLOSE_WARNING_DAYS
+                  if (prAgeDays >= CLOSE_WARNING_DAYS && prAgeDays < CLOSE_DAYS) {
                     const hasCloseWarning = await hasCommentWithMarker(prNumber, CLOSE_WARNING_MARKER);
                     
                     if (!hasCloseWarning) {
+                      const daysRemaining = CLOSE_DAYS - prAgeDays;
                       await github.rest.issues.createComment({
                         owner: context.repo.owner,
                         repo: context.repo.repo,
                         issue_number: prNumber,
                         body: `${CLOSE_WARNING_MARKER}
             
-            ⚠️ **This PR will be automatically closed in 7 days** if the CLA is not signed.
+            ⚠️ **This PR will be automatically closed in ${daysRemaining} day${daysRemaining === 1 ? '' : 's'}** if the CLA is not signed.
             
             We haven't received a signed CLA from all contributors yet. Please sign it to keep this PR open:
             
