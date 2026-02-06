@@ -266,12 +266,24 @@ async def stream_chat_post(
 
     """
     import asyncio
+    import time
+
+    stream_start_time = time.perf_counter()
+    logger.info(
+        f"[TIMING] stream_chat_post STARTED for session={session_id}, "
+        f"message_len={len(request.message)}"
+    )
 
     session = await _validate_and_get_session(session_id, user_id)
+    logger.info(
+        f"[TIMING] stream_chat_post session validated in "
+        f"{(time.perf_counter() - stream_start_time)*1000:.1f}ms"
+    )
 
     # Create a task in the stream registry for reconnection support
     task_id = str(uuid_module.uuid4())
     operation_id = str(uuid_module.uuid4())
+    task_create_start = time.perf_counter()
     await stream_registry.create_task(
         task_id=task_id,
         session_id=session_id,
@@ -280,14 +292,37 @@ async def stream_chat_post(
         tool_name="chat",
         operation_id=operation_id,
     )
+    logger.info(
+        f"[TIMING][routes] stream_registry.create_task completed in "
+        f"{(time.perf_counter() - task_create_start)*1000:.1f}ms, "
+        f"task_id={task_id}, session={session_id}"
+    )
 
     # Background task that runs the AI generation independently of SSE connection
     async def run_ai_generation():
+        import time as time_module
+
+        gen_start_time = time_module.perf_counter()
+        logger.info(
+            f"[TIMING][routes] run_ai_generation STARTED, task_id={task_id}, "
+            f"session={session_id}"
+        )
+        first_chunk_time = None
+        chunk_count = 0
         try:
             # Emit a start event with task_id for reconnection
             start_chunk = StreamStart(messageId=task_id, taskId=task_id)
             await stream_registry.publish_chunk(task_id, start_chunk)
+            logger.info(
+                f"[TIMING][routes] StreamStart published at "
+                f"{(time_module.perf_counter() - gen_start_time)*1000:.1f}ms, "
+                f"task_id={task_id}"
+            )
 
+            logger.info(
+                f"[TIMING][routes] Calling chat_service.stream_chat_completion, "
+                f"task_id={task_id}"
+            )
             async for chunk in chat_service.stream_chat_completion(
                 session_id,
                 request.message,
@@ -296,54 +331,134 @@ async def stream_chat_post(
                 session=session,  # Pass pre-fetched session to avoid double-fetch
                 context=request.context,
             ):
+                chunk_count += 1
+                if first_chunk_time is None:
+                    first_chunk_time = time_module.perf_counter()
+                    logger.info(
+                        f"[TIMING][routes] FIRST AI CHUNK received at "
+                        f"{(first_chunk_time - gen_start_time)*1000:.1f}ms, "
+                        f"chunk_type={type(chunk).__name__}, task_id={task_id}"
+                    )
                 # Write to Redis (subscribers will receive via XREAD)
                 await stream_registry.publish_chunk(task_id, chunk)
+
+            gen_end_time = time_module.perf_counter()
+            logger.info(
+                f"[TIMING][routes] run_ai_generation COMPLETED, "
+                f"total_time={(gen_end_time - gen_start_time)*1000:.1f}ms, "
+                f"time_to_first_chunk={(first_chunk_time - gen_start_time)*1000:.1f}ms if first_chunk_time else 'N/A', "
+                f"chunk_count={chunk_count}, task_id={task_id}"
+            )
 
             # Mark task as completed
             await stream_registry.mark_task_completed(task_id, "completed")
         except Exception as e:
             logger.error(
-                f"Error in background AI generation for session {session_id}: {e}"
+                f"[TIMING][routes] Error in run_ai_generation for session {session_id} "
+                f"after {(time_module.perf_counter() - gen_start_time)*1000:.1f}ms: {e}"
             )
             await stream_registry.mark_task_completed(task_id, "failed")
 
     # Start the AI generation in a background task
     bg_task = asyncio.create_task(run_ai_generation())
     await stream_registry.set_task_asyncio_task(task_id, bg_task)
+    logger.info(
+        f"[TIMING][routes] Background task started, total setup time="
+        f"{(time.perf_counter() - stream_start_time)*1000:.1f}ms, task_id={task_id}"
+    )
 
     # SSE endpoint that subscribes to the task's stream
     async def event_generator() -> AsyncGenerator[str, None]:
+        import time as time_module
+
+        event_gen_start = time_module.perf_counter()
+        logger.info(f"[TIMING][routes] event_generator STARTED, task_id={task_id}")
         subscriber_queue = None
+        first_chunk_yielded = False
+        chunks_yielded = 0
         try:
             # Subscribe to the task stream (this replays existing messages + live updates)
+            subscribe_start = time_module.perf_counter()
+            logger.info(
+                f"[TIMING][routes] Calling subscribe_to_task, task_id={task_id}"
+            )
             subscriber_queue = await stream_registry.subscribe_to_task(
                 task_id=task_id,
                 user_id=user_id,
                 last_message_id="0-0",  # Get all messages from the beginning
             )
+            logger.info(
+                f"[TIMING][routes] subscribe_to_task completed in "
+                f"{(time_module.perf_counter() - subscribe_start)*1000:.1f}ms, "
+                f"queue_obtained={subscriber_queue is not None}, task_id={task_id}"
+            )
 
             if subscriber_queue is None:
+                logger.info(
+                    f"[TIMING][routes] subscriber_queue is None, yielding finish, "
+                    f"task_id={task_id}"
+                )
                 yield StreamFinish().to_sse()
                 yield "data: [DONE]\n\n"
                 return
 
             # Read from the subscriber queue and yield to SSE
+            logger.info(
+                f"[TIMING][routes] Starting to read from subscriber_queue, "
+                f"task_id={task_id}"
+            )
             while True:
                 try:
+                    queue_wait_start = time_module.perf_counter()
                     chunk = await asyncio.wait_for(subscriber_queue.get(), timeout=30.0)
+                    queue_wait_time = (
+                        time_module.perf_counter() - queue_wait_start
+                    ) * 1000
+                    chunks_yielded += 1
+
+                    if not first_chunk_yielded:
+                        first_chunk_yielded = True
+                        logger.info(
+                            f"[TIMING][routes] FIRST CHUNK from queue at "
+                            f"{(time_module.perf_counter() - event_gen_start)*1000:.1f}ms, "
+                            f"chunk_type={type(chunk).__name__}, "
+                            f"queue_wait={queue_wait_time:.1f}ms, task_id={task_id}"
+                        )
+                    elif chunks_yielded % 50 == 0:
+                        logger.info(
+                            f"[TIMING][routes] Chunk #{chunks_yielded} yielded, "
+                            f"chunk_type={type(chunk).__name__}, task_id={task_id}"
+                        )
+
                     yield chunk.to_sse()
 
                     # Check for finish signal
                     if isinstance(chunk, StreamFinish):
+                        logger.info(
+                            f"[TIMING][routes] StreamFinish received, total chunks={chunks_yielded}, "
+                            f"total_time={(time_module.perf_counter() - event_gen_start)*1000:.1f}ms, "
+                            f"task_id={task_id}"
+                        )
                         break
                 except asyncio.TimeoutError:
                     # Send heartbeat to keep connection alive
+                    logger.info(
+                        f"[TIMING][routes] Heartbeat timeout, sending heartbeat, "
+                        f"chunks_so_far={chunks_yielded}, task_id={task_id}"
+                    )
                     yield StreamHeartbeat().to_sse()
 
         except GeneratorExit:
+            logger.info(
+                f"[TIMING][routes] GeneratorExit (client disconnected), "
+                f"chunks_yielded={chunks_yielded}, task_id={task_id}"
+            )
             pass  # Client disconnected - background task continues
         except Exception as e:
-            logger.error(f"Error in SSE stream for task {task_id}: {e}")
+            logger.error(
+                f"[TIMING][routes] Error in event_generator for task {task_id} "
+                f"after {(time_module.perf_counter() - event_gen_start)*1000:.1f}ms: {e}"
+            )
         finally:
             # Unsubscribe when client disconnects or stream ends to prevent resource leak
             if subscriber_queue is not None:
@@ -357,6 +472,11 @@ async def stream_chat_post(
                         exc_info=True,
                     )
             # AI SDK protocol termination - always yield even if unsubscribe fails
+            logger.info(
+                f"[TIMING][routes] event_generator FINISHED, total_time="
+                f"{(time_module.perf_counter() - event_gen_start)*1000:.1f}ms, "
+                f"chunks_yielded={chunks_yielded}, task_id={task_id}"
+            )
             yield "data: [DONE]\n\n"
 
     return StreamingResponse(

@@ -104,6 +104,14 @@ async def create_task(
     Returns:
         The created ActiveTask instance (metadata only)
     """
+    import time
+
+    start_time = time.perf_counter()
+    logger.info(
+        f"[TIMING][stream_registry] create_task STARTED, task_id={task_id}, "
+        f"session={session_id}"
+    )
+
     task = ActiveTask(
         task_id=task_id,
         session_id=session_id,
@@ -114,10 +122,17 @@ async def create_task(
     )
 
     # Store metadata in Redis
+    redis_start = time.perf_counter()
     redis = await get_redis_async()
+    logger.info(
+        f"[TIMING][stream_registry] get_redis_async took "
+        f"{(time.perf_counter() - redis_start)*1000:.1f}ms, task_id={task_id}"
+    )
+
     meta_key = _get_task_meta_key(task_id)
     op_key = _get_operation_mapping_key(operation_id)
 
+    hset_start = time.perf_counter()
     await redis.hset(  # type: ignore[misc]
         meta_key,
         mapping={
@@ -131,12 +146,20 @@ async def create_task(
             "created_at": task.created_at.isoformat(),
         },
     )
+    logger.info(
+        f"[TIMING][stream_registry] redis.hset took "
+        f"{(time.perf_counter() - hset_start)*1000:.1f}ms, task_id={task_id}"
+    )
+
     await redis.expire(meta_key, config.stream_ttl)
 
     # Create operation_id -> task_id mapping for webhook lookups
     await redis.set(op_key, task_id, ex=config.stream_ttl)
 
-    logger.debug(f"Created task {task_id} for session {session_id}")
+    logger.info(
+        f"[TIMING][stream_registry] create_task COMPLETED in "
+        f"{(time.perf_counter() - start_time)*1000:.1f}ms, task_id={task_id}"
+    )
 
     return task
 
@@ -156,6 +179,10 @@ async def publish_chunk(
     Returns:
         The Redis Stream message ID
     """
+    import time
+
+    start_time = time.perf_counter()
+    chunk_type = type(chunk).__name__
     chunk_json = chunk.model_dump_json()
     message_id = "0-0"
 
@@ -164,18 +191,34 @@ async def publish_chunk(
         stream_key = _get_task_stream_key(task_id)
 
         # Write to Redis Stream for persistence and real-time delivery
+        xadd_start = time.perf_counter()
         raw_id = await redis.xadd(
             stream_key,
             {"data": chunk_json},
             maxlen=config.stream_max_length,
         )
+        xadd_time = (time.perf_counter() - xadd_start) * 1000
         message_id = raw_id if isinstance(raw_id, str) else raw_id.decode()
 
         # Set TTL on stream to match task metadata TTL
         await redis.expire(stream_key, config.stream_ttl)
+
+        total_time = (time.perf_counter() - start_time) * 1000
+        # Only log timing for significant chunks or slow operations
+        if (
+            chunk_type
+            in ("StreamStart", "StreamFinish", "StreamTextStart", "StreamTextEnd")
+            or total_time > 50
+        ):
+            logger.info(
+                f"[TIMING][stream_registry] publish_chunk {chunk_type} in "
+                f"{total_time:.1f}ms (xadd={xadd_time:.1f}ms), "
+                f"task_id={task_id}, msg_id={message_id}"
+            )
     except Exception as e:
         logger.error(
-            f"Failed to publish chunk for task {task_id}: {e}",
+            f"[TIMING][stream_registry] Failed to publish chunk {chunk_type} "
+            f"for task {task_id} after {(time.perf_counter() - start_time)*1000:.1f}ms: {e}",
             exc_info=True,
         )
 
@@ -200,12 +243,28 @@ async def subscribe_to_task(
         An asyncio Queue that will receive stream chunks, or None if task not found
         or user doesn't have access
     """
+    import time
+
+    start_time = time.perf_counter()
+    logger.info(
+        f"[TIMING][stream_registry] subscribe_to_task STARTED, task_id={task_id}, "
+        f"last_message_id={last_message_id}"
+    )
+
+    redis_start = time.perf_counter()
     redis = await get_redis_async()
     meta_key = _get_task_meta_key(task_id)
     meta: dict[Any, Any] = await redis.hgetall(meta_key)  # type: ignore[misc]
+    logger.info(
+        f"[TIMING][stream_registry] Redis hgetall took "
+        f"{(time.perf_counter() - redis_start)*1000:.1f}ms, task_id={task_id}"
+    )
 
     if not meta:
-        logger.debug(f"Task {task_id} not found in Redis")
+        logger.info(
+            f"[TIMING][stream_registry] Task {task_id} not found in Redis after "
+            f"{(time.perf_counter() - start_time)*1000:.1f}ms"
+        )
         return None
 
     # Note: Redis client uses decode_responses=True, so keys are strings
@@ -216,8 +275,8 @@ async def subscribe_to_task(
     if task_user_id:
         if user_id != task_user_id:
             logger.warning(
-                f"User {user_id} denied access to task {task_id} "
-                f"owned by {task_user_id}"
+                f"[TIMING][stream_registry] User {user_id} denied access to task "
+                f"{task_id} owned by {task_user_id}"
             )
             return None
 
@@ -225,7 +284,13 @@ async def subscribe_to_task(
     stream_key = _get_task_stream_key(task_id)
 
     # Step 1: Replay messages from Redis Stream
+    xread_start = time.perf_counter()
     messages = await redis.xread({stream_key: last_message_id}, block=0, count=1000)
+    xread_time = (time.perf_counter() - xread_start) * 1000
+    logger.info(
+        f"[TIMING][stream_registry] Redis xread (replay) took {xread_time:.1f}ms, "
+        f"task_id={task_id}, task_status={task_status}"
+    )
 
     replayed_count = 0
     replay_last_id = last_message_id
@@ -244,10 +309,17 @@ async def subscribe_to_task(
                     except Exception as e:
                         logger.warning(f"Failed to replay message: {e}")
 
-    logger.debug(f"Task {task_id}: replayed {replayed_count} messages")
+    logger.info(
+        f"[TIMING][stream_registry] Replayed {replayed_count} messages, "
+        f"replay_last_id={replay_last_id}, task_id={task_id}"
+    )
 
     # Step 2: If task is still running, start stream listener for live updates
     if task_status == "running":
+        logger.info(
+            f"[TIMING][stream_registry] Task still running, starting _stream_listener, "
+            f"task_id={task_id}"
+        )
         listener_task = asyncio.create_task(
             _stream_listener(task_id, subscriber_queue, replay_last_id)
         )
@@ -255,8 +327,17 @@ async def subscribe_to_task(
         _listener_tasks[id(subscriber_queue)] = (task_id, listener_task)
     else:
         # Task is completed/failed - add finish marker
+        logger.info(
+            f"[TIMING][stream_registry] Task already {task_status}, adding StreamFinish, "
+            f"task_id={task_id}"
+        )
         await subscriber_queue.put(StreamFinish())
 
+    logger.info(
+        f"[TIMING][stream_registry] subscribe_to_task COMPLETED in "
+        f"{(time.perf_counter() - start_time)*1000:.1f}ms, "
+        f"replayed={replayed_count}, task_id={task_id}"
+    )
     return subscriber_queue
 
 
@@ -275,9 +356,20 @@ async def _stream_listener(
         subscriber_queue: Queue to deliver messages to
         last_replayed_id: Last message ID from replay (continue from here)
     """
+    import time
+
+    start_time = time.perf_counter()
+    logger.info(
+        f"[TIMING][stream_registry] _stream_listener STARTED, task_id={task_id}, "
+        f"last_replayed_id={last_replayed_id}"
+    )
+
     queue_id = id(subscriber_queue)
     # Track the last successfully delivered message ID for recovery hints
     last_delivered_id = last_replayed_id
+    messages_delivered = 0
+    first_message_time = None
+    xread_count = 0
 
     try:
         redis = await get_redis_async()
@@ -287,9 +379,25 @@ async def _stream_listener(
         while True:
             # Block for up to 30 seconds waiting for new messages
             # This allows periodic checking if task is still running
+            xread_start = time.perf_counter()
+            xread_count += 1
             messages = await redis.xread(
                 {stream_key: current_id}, block=30000, count=100
             )
+            xread_time = (time.perf_counter() - xread_start) * 1000
+
+            if messages:
+                logger.info(
+                    f"[TIMING][stream_registry] _stream_listener xread #{xread_count} "
+                    f"returned {sum(len(msgs) for _, msgs in messages)} messages in "
+                    f"{xread_time:.1f}ms, task_id={task_id}"
+                )
+            elif xread_time > 1000:
+                # Only log timeouts (30s blocking)
+                logger.info(
+                    f"[TIMING][stream_registry] _stream_listener xread #{xread_count} "
+                    f"timeout after {xread_time:.1f}ms, task_id={task_id}"
+                )
 
             if not messages:
                 # Timeout - check if task is still running
@@ -326,9 +434,17 @@ async def _stream_listener(
                                 )
                                 # Update last delivered ID on successful delivery
                                 last_delivered_id = current_id
+                                messages_delivered += 1
+                                if first_message_time is None:
+                                    first_message_time = time.perf_counter()
+                                    logger.info(
+                                        f"[TIMING][stream_registry] _stream_listener FIRST live message "
+                                        f"delivered at {(first_message_time - start_time)*1000:.1f}ms, "
+                                        f"chunk_type={type(chunk).__name__}, task_id={task_id}"
+                                    )
                             except asyncio.TimeoutError:
                                 logger.warning(
-                                    f"Subscriber queue full for task {task_id}, "
+                                    f"[TIMING][stream_registry] Subscriber queue full for task {task_id}, "
                                     f"message delivery timed out after {QUEUE_PUT_TIMEOUT}s"
                                 )
                                 # Send overflow error with recovery info
@@ -351,15 +467,27 @@ async def _stream_listener(
 
                             # Stop listening on finish
                             if isinstance(chunk, StreamFinish):
+                                logger.info(
+                                    f"[TIMING][stream_registry] _stream_listener received StreamFinish, "
+                                    f"total_time={(time.perf_counter() - start_time)*1000:.1f}ms, "
+                                    f"messages_delivered={messages_delivered}, task_id={task_id}"
+                                )
                                 return
                     except Exception as e:
                         logger.warning(f"Error processing stream message: {e}")
 
     except asyncio.CancelledError:
-        logger.debug(f"Stream listener cancelled for task {task_id}")
+        logger.info(
+            f"[TIMING][stream_registry] _stream_listener CANCELLED after "
+            f"{(time.perf_counter() - start_time)*1000:.1f}ms, "
+            f"messages_delivered={messages_delivered}, task_id={task_id}"
+        )
         raise  # Re-raise to propagate cancellation
     except Exception as e:
-        logger.error(f"Stream listener error for task {task_id}: {e}")
+        logger.error(
+            f"[TIMING][stream_registry] _stream_listener ERROR after "
+            f"{(time.perf_counter() - start_time)*1000:.1f}ms: {e}, task_id={task_id}"
+        )
         # On error, send finish to unblock subscriber
         try:
             await asyncio.wait_for(
@@ -372,6 +500,12 @@ async def _stream_listener(
             )
     finally:
         # Clean up listener task mapping on exit
+        logger.info(
+            f"[TIMING][stream_registry] _stream_listener FINISHED, "
+            f"total_time={(time.perf_counter() - start_time)*1000:.1f}ms, "
+            f"messages_delivered={messages_delivered}, xread_count={xread_count}, "
+            f"task_id={task_id}"
+        )
         _listener_tasks.pop(queue_id, None)
 
 
