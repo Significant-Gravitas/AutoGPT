@@ -710,7 +710,7 @@ const FlowEditor: React.FC<{
       let outputSchema: BlockIORootSchema = nodeSchema.outputSchema;
       let finalHardcodedValues = hardcodedValues;
 
-      if (blockID === SpecialBlockID.AGENT && hardcodedValues) {
+      if (blockID === SpecialBlockID.AGENT) {
         const graphID = hardcodedValues.graph_id as string;
         const graphVersion = hardcodedValues.graph_version as number;
         const graphData = okData(
