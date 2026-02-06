@@ -68,7 +68,7 @@ class NoryGetPaymentRequirementsBlock(Block):
         super().__init__(
             id="a1b2c3d4-e5f6-7890-abcd-ef1234567890",
             description="Get x402 payment requirements for a resource. Returns amount, supported networks, and wallet address.",
-            categories={BlockCategory.FINANCE},
+            categories={BlockCategory.DATA},
             input_schema=NoryGetPaymentRequirementsBlock.Input,
             output_schema=NoryGetPaymentRequirementsBlock.Output,
         )
@@ -126,7 +126,7 @@ class NoryVerifyPaymentBlock(Block):
         super().__init__(
             id="b2c3d4e5-f6a7-8901-bcde-f12345678901",
             description="Verify a signed payment transaction before submitting to blockchain.",
-            categories={BlockCategory.FINANCE},
+            categories={BlockCategory.DATA},
             input_schema=NoryVerifyPaymentBlock.Input,
             output_schema=NoryVerifyPaymentBlock.Output,
         )
@@ -177,7 +177,7 @@ class NorySettlePaymentBlock(Block):
         super().__init__(
             id="c3d4e5f6-a7b8-9012-cdef-123456789012",
             description="Submit a verified payment to the blockchain for settlement (~400ms).",
-            categories={BlockCategory.FINANCE},
+            categories={BlockCategory.DATA},
             input_schema=NorySettlePaymentBlock.Input,
             output_schema=NorySettlePaymentBlock.Output,
         )
@@ -230,7 +230,7 @@ class NoryTransactionLookupBlock(Block):
         super().__init__(
             id="d4e5f6a7-b8c9-0123-def0-234567890123",
             description="Look up the status and details of a transaction.",
-            categories={BlockCategory.FINANCE},
+            categories={BlockCategory.DATA},
             input_schema=NoryTransactionLookupBlock.Input,
             output_schema=NoryTransactionLookupBlock.Output,
         )
@@ -275,7 +275,7 @@ class NoryHealthCheckBlock(Block):
         super().__init__(
             id="e5f6a7b8-c9d0-1234-ef01-345678901234",
             description="Check health status of Nory x402 payment service.",
-            categories={BlockCategory.FINANCE},
+            categories={BlockCategory.DATA},
             input_schema=NoryHealthCheckBlock.Input,
             output_schema=NoryHealthCheckBlock.Output,
         )
