@@ -66,7 +66,7 @@ class NoryGetPaymentRequirementsBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="f47ac10b-58cc-4372-a567-0e02b2c3d479",
+            id="2bd9a224-4bd9-4280-bd17-bbe6c970bc9a",
             description="Get x402 payment requirements for a resource. Returns amount, supported networks, and wallet address.",
             categories={BlockCategory.DATA},
             input_schema=NoryGetPaymentRequirementsBlock.Input,
@@ -126,7 +126,7 @@ class NoryVerifyPaymentBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="6ba7b810-9dad-41d4-80b4-00c04fd430c8",
+            id="a8160ae9-876c-45b1-a23c-0c89608dcb01",
             description="Verify a signed payment transaction before submitting to blockchain.",
             categories={BlockCategory.DATA},
             input_schema=NoryVerifyPaymentBlock.Input,
@@ -179,7 +179,7 @@ class NorySettlePaymentBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="6ba7b811-9dad-41d4-80b4-00c04fd430c8",
+            id="787dad1d-c64c-4996-89b6-8390b73b17f8",
             description="Submit a verified payment to the blockchain for settlement (~400ms).",
             categories={BlockCategory.DATA},
             input_schema=NorySettlePaymentBlock.Input,
@@ -234,7 +234,7 @@ class NoryTransactionLookupBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="6ba7b812-9dad-41d4-80b4-00c04fd430c8",
+            id="1334cf87-2b48-4e70-87d2-6e4807b78e02",
             description="Look up the status and details of a transaction.",
             categories={BlockCategory.DATA},
             input_schema=NoryTransactionLookupBlock.Input,
@@ -279,7 +279,7 @@ class NoryHealthCheckBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="6ba7b813-9dad-41d4-80b4-00c04fd430c8",
+            id="3b2595e1-5950-4094-b8b1-733dddd3b16c",
             description="Check health status of Nory x402 payment service.",
             categories={BlockCategory.DATA},
             input_schema=NoryHealthCheckBlock.Input,
