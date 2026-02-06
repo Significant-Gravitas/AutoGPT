@@ -229,6 +229,20 @@ jobs:
                   continue;
                 }
                 
+                // Skip if PR doesn't touch platform code (CLA automation only for autogpt_platform/)
+                const PLATFORM_PATH = 'autogpt_platform/';
+                const { data: files } = await github.rest.pulls.listFiles({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  pull_number: prNumber,
+                  per_page: 100
+                });
+                const touchesPlatform = files.some(f => f.filename.startsWith(PLATFORM_PATH));
+                if (!touchesPlatform) {
+                  console.log(`PR #${prNumber}: Skipping - doesn't touch ${PLATFORM_PATH}`);
+                  continue;
+                }
+                
                 const claStatus = await getClaStatus(pr.head.sha);
                 const currentLabels = pr.labels.map(l => l.name);
                 const hasPending = currentLabels.includes(LABEL_PENDING);
