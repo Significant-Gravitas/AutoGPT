@@ -7854,7 +7854,7 @@
           "trigger_setup_info"
         ],
         "title": "GraphMeta",
-        "description": "Graph metadata without nodes/links \u2014 used for list endpoints.\n\nThis is a flat, lightweight model (not inheriting from Graph) to avoid recomputing\nexpensive computed fields. Values are copied from GraphModel."
+        "description": "Graph metadata without nodes/links, used for list endpoints.\n\nThis is a flat, lightweight model (not inheriting from Graph) to avoid recomputing\nexpensive computed fields. Values are copied from GraphModel."
       },
       "GraphModel": {
         "properties": {

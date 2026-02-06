@@ -868,7 +868,7 @@ class GraphModel(Graph):
 
 class GraphMeta(BaseModel):
     """
-    Graph metadata without nodes/links — used for list endpoints.
+    Graph metadata without nodes/links, used for list endpoints.
 
     This is a flat, lightweight model (not inheriting from Graph) to avoid recomputing
     expensive computed fields. Values are copied from GraphModel.
