@@ -17,7 +17,7 @@ from . import stream_registry
 from .completion_handler import process_operation_failure, process_operation_success
 from .config import ChatConfig
 from .model import ChatSession, create_chat_session, get_chat_session, get_user_sessions
-from .response_model import StreamFinish, StreamHeartbeat, StreamStart
+from .response_model import StreamFinish, StreamHeartbeat
 from .tools.models import (
     AgentDetailsResponse,
     AgentOutputResponse,
@@ -306,10 +306,6 @@ async def stream_chat_post(
     # Background task that runs the AI generation independently of SSE connection
     async def run_ai_generation():
         try:
-            # Emit a start event with task_id for reconnection
-            start_chunk = StreamStart(messageId=task_id, taskId=task_id)
-            await stream_registry.publish_chunk(task_id, start_chunk)
-
             async for chunk in chat_service.stream_chat_completion(
                 session_id,
                 request.message,
@@ -317,6 +313,7 @@ async def stream_chat_post(
                 user_id=user_id,
                 session=session,  # Pass pre-fetched session to avoid double-fetch
                 context=request.context,
+                _task_id=task_id,  # Pass task_id so service emits start with taskId for reconnection
             ):
                 # Write to Redis (subscribers will receive via XREAD)
                 await stream_registry.publish_chunk(task_id, chunk)

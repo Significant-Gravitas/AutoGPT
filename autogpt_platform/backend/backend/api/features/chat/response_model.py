@@ -18,6 +18,10 @@ class ResponseType(str, Enum):
     START = "start"
     FINISH = "finish"
 
+    # Step lifecycle (one LLM API call within a message)
+    START_STEP = "start-step"
+    FINISH_STEP = "finish-step"
+
     # Text streaming
     TEXT_START = "text-start"
     TEXT_DELTA = "text-delta"
@@ -72,6 +76,26 @@ class StreamFinish(StreamBaseResponse):
     """End of message/stream."""
 
     type: ResponseType = ResponseType.FINISH
+
+
+class StreamStartStep(StreamBaseResponse):
+    """Start of a step (one LLM API call within a message).
+
+    The AI SDK uses this to add a step-start boundary to message.parts,
+    enabling visual separation between multiple LLM calls in a single message.
+    """
+
+    type: ResponseType = ResponseType.START_STEP
+
+
+class StreamFinishStep(StreamBaseResponse):
+    """End of a step (one LLM API call within a message).
+
+    The AI SDK uses this to reset activeTextParts and activeReasoningParts,
+    so the next LLM call in a tool-call continuation starts with clean state.
+    """
+
+    type: ResponseType = ResponseType.FINISH_STEP
 
 
 # ========== Text Streaming ==========
