@@ -294,7 +294,7 @@ class ExaCreateImportBlock(Block):
         if input_data.metadata:
             payload["metadata"] = input_data.metadata
 
-        sdk_import = aexa.websets.imports.create(
+        sdk_import = await aexa.websets.imports.create(
             params=payload, csv_data=input_data.csv_data
         )
 
@@ -360,7 +360,7 @@ class ExaGetImportBlock(Block):
         # Use AsyncExa SDK
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        sdk_import = aexa.websets.imports.get(import_id=input_data.import_id)
+        sdk_import = await aexa.websets.imports.get(import_id=input_data.import_id)
 
         import_obj = ImportModel.from_sdk(sdk_import)
 
@@ -426,7 +426,7 @@ class ExaListImportsBlock(Block):
         # Use AsyncExa SDK
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        response = aexa.websets.imports.list(
+        response = await aexa.websets.imports.list(
             cursor=input_data.cursor,
             limit=input_data.limit,
         )
@@ -474,7 +474,7 @@ class ExaDeleteImportBlock(Block):
         # Use AsyncExa SDK
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        deleted_import = aexa.websets.imports.delete(import_id=input_data.import_id)
+        deleted_import = await aexa.websets.imports.delete(import_id=input_data.import_id)
 
         yield "import_id", deleted_import.id
         yield "success", "true"
@@ -602,7 +602,7 @@ class ExaExportWebsetBlock(Block):
                 webset_id=input_data.webset_id, limit=input_data.max_items
             )
 
-            for sdk_item in item_iterator:
+            async for sdk_item in item_iterator:
                 if len(all_items) >= input_data.max_items:
                     break
 
