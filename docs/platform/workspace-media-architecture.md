@@ -197,12 +197,18 @@ output = await store_media_file(
 |-----------|--------|-------|
 | `store_media_file()` | ✅ Yes | Scans **all** content before writing to local disk |
 | `WorkspaceManager.write_file()` | ✅ Yes | Scans content before persisting (defense in depth) |
-| Upload API endpoints | ✅ Yes | Also scan before calling WorkspaceManager (fail fast) |
+| `WriteWorkspaceFileTool` | ✅ Yes | Scans before calling WorkspaceManager (fail fast) |
 
 **Defense in depth:** Scanning happens at multiple layers:
 1. `store_media_file()` scans everything it downloads/decodes
-2. API endpoints scan uploads for early rejection
+2. CoPilot tools (e.g., `WriteWorkspaceFileTool`) scan for early rejection
 3. `WorkspaceManager.write_file()` scans as a final gate before persistence
+
+**Note on double scanning:** Some paths (like `WriteWorkspaceFileTool`) will scan twice — once at the API/tool layer and once in `WorkspaceManager.write_file()`. This is intentional:
+- **First scan (tool layer):** Fail fast, reject bad content before any processing
+- **Second scan (persistence layer):** Defense in depth, catches any caller that forgot to scan
+
+The performance cost is acceptable since scanning is fast and security is critical.
 
 ### Persistence
 
