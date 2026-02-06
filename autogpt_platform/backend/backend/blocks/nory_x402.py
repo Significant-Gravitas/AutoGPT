@@ -4,13 +4,12 @@ Blocks for AI agents to make payments using the x402 HTTP protocol.
 Supports Solana and 7 EVM chains with sub-400ms settlement.
 """
 
-from typing import Literal
 from enum import Enum
+from urllib.parse import quote
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchemaInput
+from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
 from backend.util.request import Requests
-
 
 NORY_API_BASE = "https://noryx402.com"
 
@@ -37,7 +36,7 @@ class NoryGetPaymentRequirementsBlock(Block):
     and need to know how much to pay and where to send payment.
     """
 
-    class Input(BlockSchemaInput):
+    class Input(BlockSchema):
         resource: str = SchemaField(
             description="The resource path requiring payment (e.g., /api/premium/data)",
             placeholder="/api/premium/data",
@@ -53,9 +52,10 @@ class NoryGetPaymentRequirementsBlock(Block):
         api_key: str | None = SchemaField(
             description="Nory API key (optional for public endpoints)",
             default=None,
+            secret=True,
         )
 
-    class Output(BlockSchemaInput):
+    class Output(BlockSchema):
         requirements: dict = SchemaField(
             description="Payment requirements including amount, networks, and wallet address"
         )
@@ -66,7 +66,7 @@ class NoryGetPaymentRequirementsBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+            id="f47ac10b-58cc-4372-a567-0e02b2c3d479",
             description="Get x402 payment requirements for a resource. Returns amount, supported networks, and wallet address.",
             categories={BlockCategory.DATA},
             input_schema=NoryGetPaymentRequirementsBlock.Input,
@@ -91,6 +91,7 @@ class NoryGetPaymentRequirementsBlock(Block):
                 params=params,
                 headers=headers,
             )
+            response.raise_for_status()
             yield "requirements", response.json()
         except Exception as e:
             yield "error", str(e)
@@ -104,16 +105,17 @@ class NoryVerifyPaymentBlock(Block):
     before submitting it to the blockchain.
     """
 
-    class Input(BlockSchemaInput):
+    class Input(BlockSchema):
         payload: str = SchemaField(
             description="Base64-encoded payment payload containing signed transaction",
         )
         api_key: str | None = SchemaField(
             description="Nory API key (optional for public endpoints)",
             default=None,
+            secret=True,
         )
 
-    class Output(BlockSchemaInput):
+    class Output(BlockSchema):
         result: dict = SchemaField(
             description="Verification result including validity and payer info"
         )
@@ -124,7 +126,7 @@ class NoryVerifyPaymentBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="b2c3d4e5-f6a7-8901-bcde-f12345678901",
+            id="6ba7b810-9dad-41d4-80b4-00c04fd430c8",
             description="Verify a signed payment transaction before submitting to blockchain.",
             categories={BlockCategory.DATA},
             input_schema=NoryVerifyPaymentBlock.Input,
@@ -133,7 +135,7 @@ class NoryVerifyPaymentBlock(Block):
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         try:
-            headers = {"Content-Type": "application/json"}
+            headers = {}
             if input_data.api_key:
                 headers["Authorization"] = f"Bearer {input_data.api_key}"
 
@@ -142,6 +144,7 @@ class NoryVerifyPaymentBlock(Block):
                 json={"payload": input_data.payload},
                 headers=headers,
             )
+            response.raise_for_status()
             yield "result", response.json()
         except Exception as e:
             yield "error", str(e)
@@ -155,16 +158,17 @@ class NorySettlePaymentBlock(Block):
     Settlement typically completes in under 400ms.
     """
 
-    class Input(BlockSchemaInput):
+    class Input(BlockSchema):
         payload: str = SchemaField(
             description="Base64-encoded payment payload",
         )
         api_key: str | None = SchemaField(
             description="Nory API key (optional for public endpoints)",
             default=None,
+            secret=True,
         )
 
-    class Output(BlockSchemaInput):
+    class Output(BlockSchema):
         result: dict = SchemaField(
             description="Settlement result including transaction ID"
         )
@@ -175,7 +179,7 @@ class NorySettlePaymentBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="c3d4e5f6-a7b8-9012-cdef-123456789012",
+            id="6ba7b811-9dad-41d4-80b4-00c04fd430c8",
             description="Submit a verified payment to the blockchain for settlement (~400ms).",
             categories={BlockCategory.DATA},
             input_schema=NorySettlePaymentBlock.Input,
@@ -184,7 +188,7 @@ class NorySettlePaymentBlock(Block):
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         try:
-            headers = {"Content-Type": "application/json"}
+            headers = {}
             if input_data.api_key:
                 headers["Authorization"] = f"Bearer {input_data.api_key}"
 
@@ -193,6 +197,7 @@ class NorySettlePaymentBlock(Block):
                 json={"payload": input_data.payload},
                 headers=headers,
             )
+            response.raise_for_status()
             yield "result", response.json()
         except Exception as e:
             yield "error", str(e)
@@ -205,7 +210,7 @@ class NoryTransactionLookupBlock(Block):
     Use this to check the status of a previously submitted payment.
     """
 
-    class Input(BlockSchemaInput):
+    class Input(BlockSchema):
         transaction_id: str = SchemaField(
             description="Transaction ID or signature",
         )
@@ -215,9 +220,10 @@ class NoryTransactionLookupBlock(Block):
         api_key: str | None = SchemaField(
             description="Nory API key (optional for public endpoints)",
             default=None,
+            secret=True,
         )
 
-    class Output(BlockSchemaInput):
+    class Output(BlockSchema):
         transaction: dict = SchemaField(
             description="Transaction details including status and confirmations"
         )
@@ -228,7 +234,7 @@ class NoryTransactionLookupBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="d4e5f6a7-b8c9-0123-def0-234567890123",
+            id="6ba7b812-9dad-41d4-80b4-00c04fd430c8",
             description="Look up the status and details of a transaction.",
             categories={BlockCategory.DATA},
             input_schema=NoryTransactionLookupBlock.Input,
@@ -241,11 +247,13 @@ class NoryTransactionLookupBlock(Block):
             if input_data.api_key:
                 headers["Authorization"] = f"Bearer {input_data.api_key}"
 
+            encoded_tx_id = quote(input_data.transaction_id, safe="")
             response = await Requests().get(
-                f"{NORY_API_BASE}/api/x402/transactions/{input_data.transaction_id}",
+                f"{NORY_API_BASE}/api/x402/transactions/{encoded_tx_id}",
                 params={"network": input_data.network.value},
                 headers=headers,
             )
+            response.raise_for_status()
             yield "transaction", response.json()
         except Exception as e:
             yield "error", str(e)
@@ -259,13 +267,11 @@ class NoryHealthCheckBlock(Block):
     and see supported networks.
     """
 
-    class Input(BlockSchemaInput):
+    class Input(BlockSchema):
         pass
 
-    class Output(BlockSchemaInput):
-        health: dict = SchemaField(
-            description="Health status and supported networks"
-        )
+    class Output(BlockSchema):
+        health: dict = SchemaField(description="Health status and supported networks")
         error: str = SchemaField(
             description="Error message if health check failed",
             default="",
@@ -273,7 +279,7 @@ class NoryHealthCheckBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="e5f6a7b8-c9d0-1234-ef01-345678901234",
+            id="6ba7b813-9dad-41d4-80b4-00c04fd430c8",
             description="Check health status of Nory x402 payment service.",
             categories={BlockCategory.DATA},
             input_schema=NoryHealthCheckBlock.Input,
@@ -283,6 +289,7 @@ class NoryHealthCheckBlock(Block):
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         try:
             response = await Requests().get(f"{NORY_API_BASE}/api/x402/health")
+            response.raise_for_status()
             yield "health", response.json()
         except Exception as e:
             yield "error", str(e)
