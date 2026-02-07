@@ -582,9 +582,7 @@ class ExaExportWebsetBlock(Block):
 
         return {
             "_get_client": lambda *args, **kwargs: MagicMock(
-                websets=MagicMock(
-                    items=MagicMock(list_all=async_item_iterator)
-                )
+                websets=MagicMock(items=MagicMock(list_all=async_item_iterator))
             )
         }
 
