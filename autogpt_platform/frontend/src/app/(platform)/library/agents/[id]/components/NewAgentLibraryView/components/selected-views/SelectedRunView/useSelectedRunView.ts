@@ -39,10 +39,11 @@ export function useSelectedRunView(graphId: string, runId: string) {
             setStuckRef.current?.(true);
             return false;
           }
-        } else {
-          emptyUpdatesCountRef.current = 0;
-          setStuckRef.current?.(false);
+          return 1500;
         }
+
+        emptyUpdatesCountRef.current = 0;
+        setStuckRef.current?.(false);
 
         const status =
           (rawData as { status?: number }).status === 200
