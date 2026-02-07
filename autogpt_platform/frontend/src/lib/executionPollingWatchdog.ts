@@ -9,6 +9,12 @@ const POLLING_STATUSES = new Set<AgentExecutionStatus>([
   AgentExecutionStatus.REVIEW,
 ]);
 
+const TERMINAL_STATUSES = new Set<AgentExecutionStatus>([
+  AgentExecutionStatus.COMPLETED,
+  AgentExecutionStatus.FAILED,
+  AgentExecutionStatus.TERMINATED,
+]);
+
 export function isEmptyExecutionUpdate(rawData: unknown): boolean {
   if (!rawData || typeof rawData !== "object" || Array.isArray(rawData))
     return true;
@@ -19,14 +25,15 @@ export function isEmptyExecutionUpdate(rawData: unknown): boolean {
     return true;
   const record = payload as Record<string, unknown>;
   const status = record.status;
-  if (
-    typeof status !== "string" ||
-    !POLLING_STATUSES.has(status as AgentExecutionStatus)
-  )
-    return true;
-  const nodeExecutions = record.node_executions;
-  if (!Array.isArray(nodeExecutions)) return true;
-  return nodeExecutions.length === 0;
+  if (typeof status !== "string") return true;
+  const typedStatus = status as AgentExecutionStatus;
+  if (TERMINAL_STATUSES.has(typedStatus)) return false;
+  if (POLLING_STATUSES.has(typedStatus)) {
+    const nodeExecutions = record.node_executions;
+    if (!Array.isArray(nodeExecutions)) return true;
+    return nodeExecutions.length === 0;
+  }
+  return true;
 }
 
 export function isPollingStatus(
