@@ -233,7 +233,7 @@ class ExaCreateMonitorBlock(Block):
     def _create_test_mock():
         """Create test mocks for the AsyncExa SDK."""
         from datetime import datetime
-        from unittest.mock import MagicMock
+        from unittest.mock import AsyncMock, MagicMock
 
         # Create mock SDK monitor object
         mock_monitor = MagicMock()
@@ -263,7 +263,7 @@ class ExaCreateMonitorBlock(Block):
         return {
             "_get_client": lambda *args, **kwargs: MagicMock(
                 websets=MagicMock(
-                    monitors=MagicMock(create=lambda *args, **kwargs: mock_monitor)
+                    monitors=MagicMock(create=AsyncMock(return_value=mock_monitor))
                 )
             )
         }

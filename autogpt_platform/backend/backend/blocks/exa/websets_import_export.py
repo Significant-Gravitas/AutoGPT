@@ -222,7 +222,7 @@ class ExaCreateImportBlock(Block):
     def _create_test_mock():
         """Create test mocks for the AsyncExa SDK."""
         from datetime import datetime
-        from unittest.mock import MagicMock
+        from unittest.mock import AsyncMock, MagicMock
 
         # Create mock SDK import object
         mock_import = MagicMock()
@@ -247,7 +247,7 @@ class ExaCreateImportBlock(Block):
         return {
             "_get_client": lambda *args, **kwargs: MagicMock(
                 websets=MagicMock(
-                    imports=MagicMock(create=lambda *args, **kwargs: mock_import)
+                    imports=MagicMock(create=AsyncMock(return_value=mock_import))
                 )
             )
         }
@@ -575,13 +575,15 @@ class ExaExportWebsetBlock(Block):
             }
         )
 
-        # Create mock iterator
-        mock_items = [mock_item1, mock_item2]
+        # Create async iterator for list_all
+        async def async_item_iterator(*args, **kwargs):
+            for item in [mock_item1, mock_item2]:
+                yield item
 
         return {
             "_get_client": lambda *args, **kwargs: MagicMock(
                 websets=MagicMock(
-                    items=MagicMock(list_all=lambda *args, **kwargs: iter(mock_items))
+                    items=MagicMock(list_all=async_item_iterator)
                 )
             )
         }
