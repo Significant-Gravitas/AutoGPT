@@ -5660,7 +5660,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/GraphMeta" }
+                "schema": {
+                  "$ref": "#/components/schemas/GraphModelWithoutNodes"
+                }
               }
             }
           },
@@ -6813,18 +6815,6 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Recommended Schedule Cron"
           },
-          "nodes": {
-            "items": { "$ref": "#/components/schemas/Node" },
-            "type": "array",
-            "title": "Nodes",
-            "default": []
-          },
-          "links": {
-            "items": { "$ref": "#/components/schemas/Link" },
-            "type": "array",
-            "title": "Links",
-            "default": []
-          },
           "forked_from_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Forked From Id"
@@ -6832,11 +6822,22 @@
           "forked_from_version": {
             "anyOf": [{ "type": "integer" }, { "type": "null" }],
             "title": "Forked From Version"
+          },
+          "nodes": {
+            "items": { "$ref": "#/components/schemas/Node" },
+            "type": "array",
+            "title": "Nodes"
+          },
+          "links": {
+            "items": { "$ref": "#/components/schemas/Link" },
+            "type": "array",
+            "title": "Links"
           }
         },
         "type": "object",
         "required": ["name", "description"],
-        "title": "BaseGraph"
+        "title": "BaseGraph",
+        "description": "Graph with nodes, links, and computed I/O schema fields.\n\nUsed to represent sub-graphs within a `Graph`. Contains the full graph\nstructure including nodes and links, plus computed fields for schemas\nand trigger info. Does NOT include user_id or created_at (see GraphModel)."
       },
       "BaseGraph-Output": {
         "properties": {
@@ -6857,18 +6858,6 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Recommended Schedule Cron"
           },
-          "nodes": {
-            "items": { "$ref": "#/components/schemas/Node" },
-            "type": "array",
-            "title": "Nodes",
-            "default": []
-          },
-          "links": {
-            "items": { "$ref": "#/components/schemas/Link" },
-            "type": "array",
-            "title": "Links",
-            "default": []
-          },
           "forked_from_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Forked From Id"
@@ -6876,6 +6865,16 @@
           "forked_from_version": {
             "anyOf": [{ "type": "integer" }, { "type": "null" }],
             "title": "Forked From Version"
+          },
+          "nodes": {
+            "items": { "$ref": "#/components/schemas/Node" },
+            "type": "array",
+            "title": "Nodes"
+          },
+          "links": {
+            "items": { "$ref": "#/components/schemas/Link" },
+            "type": "array",
+            "title": "Links"
           },
           "input_schema": {
             "additionalProperties": true,
@@ -6923,7 +6922,8 @@
           "has_sensitive_action",
           "trigger_setup_info"
         ],
-        "title": "BaseGraph"
+        "title": "BaseGraph",
+        "description": "Graph with nodes, links, and computed I/O schema fields.\n\nUsed to represent sub-graphs within a `Graph`. Contains the full graph\nstructure including nodes and links, plus computed fields for schemas\nand trigger info. Does NOT include user_id or created_at (see GraphModel)."
       },
       "BlockCategoryResponse": {
         "properties": {
@@ -8039,18 +8039,6 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Recommended Schedule Cron"
           },
-          "nodes": {
-            "items": { "$ref": "#/components/schemas/Node" },
-            "type": "array",
-            "title": "Nodes",
-            "default": []
-          },
-          "links": {
-            "items": { "$ref": "#/components/schemas/Link" },
-            "type": "array",
-            "title": "Links",
-            "default": []
-          },
           "forked_from_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Forked From Id"
@@ -8059,16 +8047,26 @@
             "anyOf": [{ "type": "integer" }, { "type": "null" }],
             "title": "Forked From Version"
           },
+          "nodes": {
+            "items": { "$ref": "#/components/schemas/Node" },
+            "type": "array",
+            "title": "Nodes"
+          },
+          "links": {
+            "items": { "$ref": "#/components/schemas/Link" },
+            "type": "array",
+            "title": "Links"
+          },
           "sub_graphs": {
             "items": { "$ref": "#/components/schemas/BaseGraph-Input" },
             "type": "array",
-            "title": "Sub Graphs",
-            "default": []
+            "title": "Sub Graphs"
           }
         },
         "type": "object",
         "required": ["name", "description"],
-        "title": "Graph"
+        "title": "Graph",
+        "description": "Creatable graph model used in API create/update endpoints."
       },
       "GraphExecution": {
         "properties": {
@@ -8420,6 +8418,52 @@
       "GraphMeta": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
+          "version": { "type": "integer", "title": "Version" },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active",
+            "default": true
+          },
+          "name": { "type": "string", "title": "Name" },
+          "description": { "type": "string", "title": "Description" },
+          "instructions": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Instructions"
+          },
+          "recommended_schedule_cron": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Recommended Schedule Cron"
+          },
+          "forked_from_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Forked From Id"
+          },
+          "forked_from_version": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Forked From Version"
+          },
+          "user_id": { "type": "string", "title": "User Id" },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "version",
+          "name",
+          "description",
+          "user_id",
+          "created_at"
+        ],
+        "title": "GraphMeta",
+        "description": "Lightweight graph metadata model representing an existing graph from the database,\nfor use in listings and summaries.\n\nLacks `GraphModel`'s nodes, links, and expensive computed fields.\nUse for list endpoints where full graph data is not needed and performance matters."
+      },
+      "GraphModel": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
           "version": { "type": "integer", "title": "Version", "default": 1 },
           "is_active": {
             "type": "boolean",
@@ -8444,13 +8488,27 @@
             "anyOf": [{ "type": "integer" }, { "type": "null" }],
             "title": "Forked From Version"
           },
+          "user_id": { "type": "string", "title": "User Id" },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "nodes": {
+            "items": { "$ref": "#/components/schemas/NodeModel" },
+            "type": "array",
+            "title": "Nodes"
+          },
+          "links": {
+            "items": { "$ref": "#/components/schemas/Link" },
+            "type": "array",
+            "title": "Links"
+          },
           "sub_graphs": {
             "items": { "$ref": "#/components/schemas/BaseGraph-Output" },
             "type": "array",
-            "title": "Sub Graphs",
-            "default": []
+            "title": "Sub Graphs"
           },
-          "user_id": { "type": "string", "title": "User Id" },
           "input_schema": {
             "additionalProperties": true,
             "type": "object",
@@ -8497,6 +8555,7 @@
           "name",
           "description",
           "user_id",
+          "created_at",
           "input_schema",
           "output_schema",
           "has_external_trigger",
@@ -8505,9 +8564,10 @@
           "trigger_setup_info",
           "credentials_input_schema"
         ],
-        "title": "GraphMeta"
+        "title": "GraphModel",
+        "description": "Full graph model representing an existing graph from the database.\n\nThis is the primary model for working with persisted graphs. Includes all\ngraph data (nodes, links, sub_graphs) plus user ownership and timestamps.\nProvides computed fields (input_schema, output_schema, etc.) used during\nset-up (frontend) and execution (backend).\n\nInherits from:\n- `Graph`: provides structure (nodes, links, sub_graphs) and computed schemas\n- `GraphMeta`: provides user_id, created_at for database records"
       },
-      "GraphModel": {
+      "GraphModelWithoutNodes": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
           "version": { "type": "integer", "title": "Version", "default": 1 },
@@ -8526,18 +8586,6 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Recommended Schedule Cron"
           },
-          "nodes": {
-            "items": { "$ref": "#/components/schemas/NodeModel" },
-            "type": "array",
-            "title": "Nodes",
-            "default": []
-          },
-          "links": {
-            "items": { "$ref": "#/components/schemas/Link" },
-            "type": "array",
-            "title": "Links",
-            "default": []
-          },
           "forked_from_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Forked From Id"
@@ -8545,12 +8593,6 @@
           "forked_from_version": {
             "anyOf": [{ "type": "integer" }, { "type": "null" }],
             "title": "Forked From Version"
-          },
-          "sub_graphs": {
-            "items": { "$ref": "#/components/schemas/BaseGraph-Output" },
-            "type": "array",
-            "title": "Sub Graphs",
-            "default": []
           },
           "user_id": { "type": "string", "title": "User Id" },
           "created_at": {
@@ -8613,7 +8655,8 @@
           "trigger_setup_info",
           "credentials_input_schema"
         ],
-        "title": "GraphModel"
+        "title": "GraphModelWithoutNodes",
+        "description": "GraphModel variant that excludes nodes, links, and sub-graphs from serialization.\n\nUsed in contexts like the store where exposing internal graph structure\nis not desired. Inherits all computed fields from GraphModel but marks\nnodes and links as excluded from JSON output."
       },
       "GraphSettings": {
         "properties": {
@@ -9338,26 +9381,22 @@
           "input_default": {
             "additionalProperties": true,
             "type": "object",
-            "title": "Input Default",
-            "default": {}
+            "title": "Input Default"
           },
           "metadata": {
             "additionalProperties": true,
             "type": "object",
-            "title": "Metadata",
-            "default": {}
+            "title": "Metadata"
           },
           "input_links": {
             "items": { "$ref": "#/components/schemas/Link" },
             "type": "array",
-            "title": "Input Links",
-            "default": []
+            "title": "Input Links"
           },
           "output_links": {
             "items": { "$ref": "#/components/schemas/Link" },
             "type": "array",
-            "title": "Output Links",
-            "default": []
+            "title": "Output Links"
           }
         },
         "type": "object",
@@ -9437,26 +9476,22 @@
           "input_default": {
             "additionalProperties": true,
             "type": "object",
-            "title": "Input Default",
-            "default": {}
+            "title": "Input Default"
           },
           "metadata": {
             "additionalProperties": true,
             "type": "object",
-            "title": "Metadata",
-            "default": {}
+            "title": "Metadata"
           },
           "input_links": {
             "items": { "$ref": "#/components/schemas/Link" },
             "type": "array",
-            "title": "Input Links",
-            "default": []
+            "title": "Input Links"
           },
           "output_links": {
             "items": { "$ref": "#/components/schemas/Link" },
             "type": "array",
-            "title": "Output Links",
-            "default": []
+            "title": "Output Links"
           },
           "graph_id": { "type": "string", "title": "Graph Id" },
           "graph_version": { "type": "integer", "title": "Graph Version" },
@@ -13181,7 +13216,9 @@
             "title": "Location"
           },
           "msg": { "type": "string", "title": "Message" },
-          "type": { "type": "string", "title": "Error Type" }
+          "type": { "type": "string", "title": "Error Type" },
+          "input": { "title": "Input" },
+          "ctx": { "type": "object", "title": "Context" }
         },
         "type": "object",
         "required": ["loc", "msg", "type"],

@@ -47,7 +47,7 @@ export function Navbar() {
 
   const actualLoggedInLinks = [
     { name: "Home", href: homeHref },
-    ...(isChatEnabled === true ? [{ name: "Tasks", href: "/library" }] : []),
+    ...(isChatEnabled === true ? [{ name: "Agents", href: "/library" }] : []),
     ...loggedInLinks,
   ];
 
