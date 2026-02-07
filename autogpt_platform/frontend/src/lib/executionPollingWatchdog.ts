@@ -32,10 +32,6 @@ export function isEmptyExecutionUpdate(rawData: unknown): boolean {
 export function isPollingStatus(
   status: string | undefined,
 ): status is AgentExecutionStatus {
-  return (
-    typeof status === "string" &&
-    Object.values(AgentExecutionStatus).includes(
-      status as AgentExecutionStatus,
-    )
-  );
+  if (!status) return false;
+  return POLLING_STATUSES.has(status as AgentExecutionStatus);
 }
