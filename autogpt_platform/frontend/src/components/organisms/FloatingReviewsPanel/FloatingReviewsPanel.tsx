@@ -57,9 +57,10 @@ export function FloatingReviewsPanel({
               stuckRef.current = true;
               return false;
             }
-          } else {
-            emptyUpdatesCountRef.current = 0;
+            return 2000;
           }
+
+          emptyUpdatesCountRef.current = 0;
 
           const status =
             (rawData as { status?: number }).status === 200
