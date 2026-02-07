@@ -317,7 +317,7 @@ class ExaCreateWebsetSearchBlock(Block):
 
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        sdk_search = aexa.websets.searches.create(
+        sdk_search = await aexa.websets.searches.create(
             webset_id=input_data.webset_id, params=payload
         )
 
@@ -350,7 +350,7 @@ class ExaCreateWebsetSearchBlock(Block):
             poll_start = time.time()
 
             while time.time() - poll_start < input_data.polling_timeout:
-                current_search = aexa.websets.searches.get(
+                current_search = await aexa.websets.searches.get(
                     webset_id=input_data.webset_id, id=search_id
                 )
                 current_status = (
@@ -442,7 +442,7 @@ class ExaGetWebsetSearchBlock(Block):
         # Use AsyncExa SDK
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        sdk_search = aexa.websets.searches.get(
+        sdk_search = await aexa.websets.searches.get(
             webset_id=input_data.webset_id, id=input_data.search_id
         )
 
@@ -523,7 +523,7 @@ class ExaCancelWebsetSearchBlock(Block):
         # Use AsyncExa SDK
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        canceled_search = aexa.websets.searches.cancel(
+        canceled_search = await aexa.websets.searches.cancel(
             webset_id=input_data.webset_id, id=input_data.search_id
         )
 
@@ -604,7 +604,7 @@ class ExaFindOrCreateSearchBlock(Block):
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
         # Get webset to check existing searches
-        webset = aexa.websets.get(id=input_data.webset_id)
+        webset = await aexa.websets.get(id=input_data.webset_id)
 
         # Look for existing search with same query
         existing_search = None
@@ -636,7 +636,7 @@ class ExaFindOrCreateSearchBlock(Block):
             if input_data.entity_type != SearchEntityType.AUTO:
                 payload["entity"] = {"type": input_data.entity_type.value}
 
-            sdk_search = aexa.websets.searches.create(
+            sdk_search = await aexa.websets.searches.create(
                 webset_id=input_data.webset_id, params=payload
             )
 
