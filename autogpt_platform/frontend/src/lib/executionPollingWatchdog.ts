@@ -29,6 +29,13 @@ export function isEmptyExecutionUpdate(rawData: unknown): boolean {
   return nodeExecutions.length === 0;
 }
 
-export function isPollingStatus(status: string | undefined): boolean {
-  return !!status && POLLING_STATUSES.has(status);
+export function isPollingStatus(
+  status: string | undefined,
+): status is AgentExecutionStatus {
+  return (
+    typeof status === "string" &&
+    Object.values(AgentExecutionStatus).includes(
+      status as AgentExecutionStatus,
+    )
+  );
 }
