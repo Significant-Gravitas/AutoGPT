@@ -4,9 +4,12 @@ MCP (Model Context Protocol) HTTP client.
 Implements the MCP Streamable HTTP transport for listing tools and calling tools
 on remote MCP servers. Uses JSON-RPC 2.0 over HTTP POST.
 
-Reference: https://modelcontextprotocol.io/docs/concepts/transports
+Handles both JSON and SSE (text/event-stream) response formats per the MCP spec.
+
+Reference: https://modelcontextprotocol.io/specification/2025-03-26/basic/transports
 """
 
+import json
 import logging
 from dataclasses import dataclass, field
 from typing import Any
@@ -83,10 +86,43 @@ class MCPClient:
             req["params"] = params
         return req
 
+    @staticmethod
+    def _parse_sse_response(text: str) -> dict[str, Any]:
+        """Parse an SSE (text/event-stream) response body into JSON-RPC data.
+
+        MCP servers may return responses as SSE with format:
+            event: message
+            data: {"jsonrpc":"2.0","result":{...},"id":1}
+
+        We extract the last `data:` line that contains a JSON-RPC response
+        (i.e. has an "id" field), which is the reply to our request.
+        """
+        last_data: dict[str, Any] | None = None
+        for line in text.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("data:"):
+                payload = stripped[len("data:") :].strip()
+                if not payload:
+                    continue
+                try:
+                    parsed = json.loads(payload)
+                    # Only keep JSON-RPC responses (have "id"), skip notifications
+                    if isinstance(parsed, dict) and "id" in parsed:
+                        last_data = parsed
+                except (json.JSONDecodeError, ValueError):
+                    continue
+        if last_data is None:
+            raise MCPClientError("No JSON-RPC response found in SSE stream")
+        return last_data
+
     async def _send_request(
         self, method: str, params: dict[str, Any] | None = None
     ) -> Any:
-        """Send a JSON-RPC request to the MCP server and return the result."""
+        """Send a JSON-RPC request to the MCP server and return the result.
+
+        Handles both ``application/json`` and ``text/event-stream`` responses
+        as required by the MCP Streamable HTTP transport specification.
+        """
         payload = self._build_jsonrpc_request(method, params)
         headers = self._build_headers()
 
@@ -96,7 +132,12 @@ class MCPClient:
             trusted_origins=self.trusted_origins,
         )
         response = await requests.post(self.server_url, json=payload)
-        body = response.json()
+
+        content_type = response.headers.get("content-type", "")
+        if "text/event-stream" in content_type:
+            body = self._parse_sse_response(response.text())
+        else:
+            body = response.json()
 
         # Handle JSON-RPC error
         if "error" in body:
@@ -118,6 +159,90 @@ class MCPClient:
             trusted_origins=self.trusted_origins,
         )
         await requests.post(self.server_url, json=notification)
+
+    async def discover_auth(self) -> dict[str, Any] | None:
+        """Probe the MCP server's OAuth metadata (RFC 9728 / MCP spec).
+
+        Returns ``None`` if the server doesn't require auth, otherwise returns
+        a dict with:
+          - ``authorization_servers``: list of authorization server URLs
+          - ``resource``: the resource indicator URL (usually the MCP endpoint)
+          - ``scopes_supported``: optional list of supported scopes
+
+        The caller can then fetch the authorization server metadata to get
+        ``authorization_endpoint``, ``token_endpoint``, etc.
+        """
+        from urllib.parse import urlparse
+
+        parsed = urlparse(self.server_url)
+        base = f"{parsed.scheme}://{parsed.netloc}"
+
+        # Build candidates for protected-resource metadata (per RFC 9728)
+        path = parsed.path.rstrip("/")
+        candidates = []
+        if path and path != "/":
+            candidates.append(f"{base}/.well-known/oauth-protected-resource{path}")
+        candidates.append(f"{base}/.well-known/oauth-protected-resource")
+
+        requests = Requests(
+            raise_for_status=False,
+            trusted_origins=self.trusted_origins,
+        )
+        for url in candidates:
+            try:
+                resp = await requests.get(url)
+                if resp.status == 200:
+                    data = resp.json()
+                    if isinstance(data, dict) and "authorization_servers" in data:
+                        return data
+            except Exception:
+                continue
+
+        return None
+
+    async def discover_auth_server_metadata(
+        self, auth_server_url: str
+    ) -> dict[str, Any] | None:
+        """Fetch the OAuth Authorization Server Metadata (RFC 8414).
+
+        Given an authorization server URL, returns a dict with:
+          - ``authorization_endpoint``
+          - ``token_endpoint``
+          - ``registration_endpoint`` (for dynamic client registration)
+          - ``scopes_supported``
+          - ``code_challenge_methods_supported``
+          - etc.
+        """
+        from urllib.parse import urlparse
+
+        parsed = urlparse(auth_server_url)
+        base = f"{parsed.scheme}://{parsed.netloc}"
+        path = parsed.path.rstrip("/")
+
+        # Try standard metadata endpoints (RFC 8414 and OpenID Connect)
+        candidates = []
+        if path and path != "/":
+            candidates.append(
+                f"{base}/.well-known/oauth-authorization-server{path}"
+            )
+        candidates.append(f"{base}/.well-known/oauth-authorization-server")
+        candidates.append(f"{base}/.well-known/openid-configuration")
+
+        requests = Requests(
+            raise_for_status=False,
+            trusted_origins=self.trusted_origins,
+        )
+        for url in candidates:
+            try:
+                resp = await requests.get(url)
+                if resp.status == 200:
+                    data = resp.json()
+                    if isinstance(data, dict) and "authorization_endpoint" in data:
+                        return data
+            except Exception:
+                continue
+
+        return None
 
     async def initialize(self) -> dict[str, Any]:
         """

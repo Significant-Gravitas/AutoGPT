@@ -26,6 +26,7 @@ from backend.data.model import (
     APIKeyCredentials,
     CredentialsField,
     CredentialsMetaInput,
+    OAuth2Credentials,
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
@@ -33,8 +34,9 @@ from backend.util.json import validate_with_jsonschema
 
 logger = logging.getLogger(__name__)
 
+MCPCredentials = APIKeyCredentials | OAuth2Credentials
 MCPCredentialsInput = CredentialsMetaInput[
-    Literal[ProviderName.MCP], Literal["api_key"]
+    Literal[ProviderName.MCP], Literal["api_key", "oauth2"]
 ]
 
 TEST_CREDENTIALS = APIKeyCredentials(
@@ -67,8 +69,9 @@ class MCPToolBlock(Block):
     class Input(BlockSchemaInput):
         # -- Static fields (always shown) --
         credentials: MCPCredentialsInput = CredentialsField(
-            description="API key / Bearer token for the MCP server (optional for "
-            "public servers — create a credential with any placeholder value).",
+            description="Credentials for the MCP server. Use an API key for Bearer "
+            "token auth, or OAuth2 for servers that support it. For public "
+            "servers, create a credential with any placeholder value.",
         )
         server_url: str = SchemaField(
             description="URL of the MCP server (Streamable HTTP endpoint)",
@@ -217,11 +220,25 @@ class MCPToolBlock(Block):
             return output_parts[0]
         return output_parts if output_parts else None
 
+    @staticmethod
+    def _extract_auth_token(credentials: MCPCredentials) -> str | None:
+        """Extract a Bearer token from either API key or OAuth2 credentials."""
+        if isinstance(credentials, OAuth2Credentials):
+            return credentials.access_token.get_secret_value()
+
+        if isinstance(credentials, APIKeyCredentials) and credentials.api_key:
+            token_value = credentials.api_key.get_secret_value()
+            # Skip placeholder/fake tokens
+            if token_value and token_value not in ("", "FAKE_API_KEY", "placeholder"):
+                return token_value
+
+        return None
+
     async def run(
         self,
         input_data: Input,
         *,
-        credentials: APIKeyCredentials,
+        credentials: MCPCredentials,
         **kwargs,
     ) -> BlockOutput:
         if not input_data.server_url:
@@ -232,12 +249,7 @@ class MCPToolBlock(Block):
             yield "error", "No tool selected. Please select a tool from the dropdown."
             return
 
-        auth_token: str | None = None
-        if credentials and credentials.api_key:
-            token_value = credentials.api_key.get_secret_value()
-            # Skip placeholder/fake tokens
-            if token_value and token_value not in ("", "FAKE_API_KEY", "placeholder"):
-                auth_token = token_value
+        auth_token = self._extract_auth_token(credentials)
 
         try:
             result = await self._call_mcp_tool(

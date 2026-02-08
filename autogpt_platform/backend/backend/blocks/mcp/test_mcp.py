@@ -7,8 +7,80 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from pydantic import SecretStr
+
 from backend.blocks.mcp.block import MCPToolBlock, TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
+from backend.data.model import APIKeyCredentials, OAuth2Credentials
 from backend.blocks.mcp.client import MCPCallResult, MCPClient, MCPClientError, MCPTool
+
+# ── SSE parsing unit tests ───────────────────────────────────────────
+
+
+class TestSSEParsing:
+    """Tests for SSE (text/event-stream) response parsing."""
+
+    def test_parse_sse_simple(self):
+        sse = (
+            "event: message\n"
+            'data: {"jsonrpc":"2.0","result":{"tools":[]},"id":1}\n'
+            "\n"
+        )
+        body = MCPClient._parse_sse_response(sse)
+        assert body["result"] == {"tools": []}
+        assert body["id"] == 1
+
+    def test_parse_sse_with_notifications(self):
+        """SSE streams can contain notifications (no id) before the response."""
+        sse = (
+            "event: message\n"
+            'data: {"jsonrpc":"2.0","method":"some/notification"}\n'
+            "\n"
+            "event: message\n"
+            'data: {"jsonrpc":"2.0","result":{"ok":true},"id":2}\n'
+            "\n"
+        )
+        body = MCPClient._parse_sse_response(sse)
+        assert body["result"] == {"ok": True}
+        assert body["id"] == 2
+
+    def test_parse_sse_error_response(self):
+        sse = (
+            "event: message\n"
+            'data: {"jsonrpc":"2.0","error":{"code":-32600,"message":"Bad Request"},"id":1}\n'
+        )
+        body = MCPClient._parse_sse_response(sse)
+        assert "error" in body
+        assert body["error"]["code"] == -32600
+
+    def test_parse_sse_no_data_raises(self):
+        with pytest.raises(MCPClientError, match="No JSON-RPC response found"):
+            MCPClient._parse_sse_response("event: message\n\n")
+
+    def test_parse_sse_empty_raises(self):
+        with pytest.raises(MCPClientError, match="No JSON-RPC response found"):
+            MCPClient._parse_sse_response("")
+
+    def test_parse_sse_ignores_non_data_lines(self):
+        sse = (
+            ": comment line\n"
+            "event: message\n"
+            "id: 123\n"
+            'data: {"jsonrpc":"2.0","result":"ok","id":1}\n'
+            "\n"
+        )
+        body = MCPClient._parse_sse_response(sse)
+        assert body["result"] == "ok"
+
+    def test_parse_sse_uses_last_response(self):
+        """If multiple responses exist, use the last one."""
+        sse = (
+            'data: {"jsonrpc":"2.0","result":"first","id":1}\n'
+            "\n"
+            'data: {"jsonrpc":"2.0","result":"second","id":2}\n'
+            "\n"
+        )
+        body = MCPClient._parse_sse_response(sse)
+        assert body["result"] == "second"
 from backend.util.test import execute_block_test
 
 
@@ -505,9 +577,6 @@ class TestMCPToolBlock:
     @pytest.mark.asyncio
     async def test_run_skips_placeholder_credentials(self):
         """Ensure placeholder API keys are not sent to the MCP server."""
-        from backend.data.model import APIKeyCredentials
-        from pydantic import SecretStr
-
         block = MCPToolBlock()
         input_data = MCPToolBlock.Input(
             server_url="https://mcp.example.com/mcp",
@@ -534,3 +603,74 @@ class TestMCPToolBlock:
             pass
 
         assert captured_tokens == [None]
+
+
+# ── OAuth2 credential support tests ─────────────────────────────────
+
+
+class TestMCPOAuth2Support:
+    """Tests for OAuth2 credential support in MCPToolBlock."""
+
+    def test_extract_auth_token_from_api_key(self):
+        creds = APIKeyCredentials(
+            id="test", provider="mcp",
+            api_key=SecretStr("my-api-key"), title="test",
+        )
+        token = MCPToolBlock._extract_auth_token(creds)
+        assert token == "my-api-key"
+
+    def test_extract_auth_token_from_oauth2(self):
+        creds = OAuth2Credentials(
+            id="test", provider="mcp",
+            access_token=SecretStr("oauth2-access-token"),
+            scopes=["read"], title="test",
+        )
+        token = MCPToolBlock._extract_auth_token(creds)
+        assert token == "oauth2-access-token"
+
+    def test_extract_auth_token_placeholder_skipped(self):
+        creds = APIKeyCredentials(
+            id="test", provider="mcp",
+            api_key=SecretStr("FAKE_API_KEY"), title="test",
+        )
+        token = MCPToolBlock._extract_auth_token(creds)
+        assert token is None
+
+    def test_extract_auth_token_empty_skipped(self):
+        creds = APIKeyCredentials(
+            id="test", provider="mcp",
+            api_key=SecretStr(""), title="test",
+        )
+        token = MCPToolBlock._extract_auth_token(creds)
+        assert token is None
+
+    @pytest.mark.asyncio
+    async def test_run_with_oauth2_credentials(self):
+        """Verify the block can run with OAuth2 credentials."""
+        block = MCPToolBlock()
+        input_data = MCPToolBlock.Input(
+            server_url="https://mcp.example.com/mcp",
+            selected_tool="test_tool",
+            credentials=TEST_CREDENTIALS_INPUT,  # type: ignore
+        )
+
+        oauth2_creds = OAuth2Credentials(
+            id="test-id", provider="mcp",
+            access_token=SecretStr("real-oauth2-token"),
+            scopes=["read", "write"], title="MCP OAuth",
+        )
+
+        captured_tokens = []
+
+        async def mock_call(server_url, tool_name, arguments, auth_token=None):
+            captured_tokens.append(auth_token)
+            return {"status": "ok"}
+
+        block._call_mcp_tool = mock_call  # type: ignore
+
+        outputs = []
+        async for name, data in block.run(input_data, credentials=oauth2_creds):
+            outputs.append((name, data))
+
+        assert captured_tokens == ["real-oauth2-token"]
+        assert outputs == [("result", {"status": "ok"})]
