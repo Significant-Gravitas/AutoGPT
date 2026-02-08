@@ -8,7 +8,11 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from pydantic import SecretStr
 
-from backend.blocks.mcp.block import MCPToolBlock, TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
+from backend.blocks.mcp.block import (
+    TEST_CREDENTIALS,
+    TEST_CREDENTIALS_INPUT,
+    MCPToolBlock,
+)
 from backend.blocks.mcp.client import MCPCallResult, MCPClient, MCPClientError
 from backend.data.model import APIKeyCredentials, OAuth2Credentials
 from backend.util.test import execute_block_test
@@ -257,9 +261,7 @@ class TestMCPClient:
         }
 
         with (
-            patch.object(
-                client, "_send_request", return_value=mock_result
-            ) as mock_req,
+            patch.object(client, "_send_request", return_value=mock_result) as mock_req,
             patch.object(client, "_send_notification") as mock_notif,
         ):
             result = await client.initialize()
@@ -357,9 +359,7 @@ class TestMCPToolBlock:
             credentials=TEST_CREDENTIALS_INPUT,  # type: ignore
         )
         outputs = []
-        async for name, data in block.run(
-            input_data, credentials=TEST_CREDENTIALS
-        ):
+        async for name, data in block.run(input_data, credentials=TEST_CREDENTIALS):
             outputs.append((name, data))
         assert outputs == [("error", "MCP server URL is required")]
 
@@ -372,9 +372,7 @@ class TestMCPToolBlock:
             credentials=TEST_CREDENTIALS_INPUT,  # type: ignore
         )
         outputs = []
-        async for name, data in block.run(
-            input_data, credentials=TEST_CREDENTIALS
-        ):
+        async for name, data in block.run(input_data, credentials=TEST_CREDENTIALS):
             outputs.append((name, data))
         assert outputs == [
             ("error", "No tool selected. Please select a tool from the dropdown.")
@@ -400,9 +398,7 @@ class TestMCPToolBlock:
         block._call_mcp_tool = mock_call  # type: ignore
 
         outputs = []
-        async for name, data in block.run(
-            input_data, credentials=TEST_CREDENTIALS
-        ):
+        async for name, data in block.run(input_data, credentials=TEST_CREDENTIALS):
             outputs.append((name, data))
 
         assert len(outputs) == 1
@@ -424,9 +420,7 @@ class TestMCPToolBlock:
         block._call_mcp_tool = mock_call  # type: ignore
 
         outputs = []
-        async for name, data in block.run(
-            input_data, credentials=TEST_CREDENTIALS
-        ):
+        async for name, data in block.run(input_data, credentials=TEST_CREDENTIALS):
             outputs.append((name, data))
 
         assert outputs[0][0] == "error"
@@ -534,9 +528,7 @@ class TestMCPToolBlock:
             patch.object(MCPClient, "call_tool", mock_call),
         ):
             with pytest.raises(MCPClientError, match="returned an error"):
-                await block._call_mcp_tool(
-                    "https://mcp.example.com", "test_tool", {}
-                )
+                await block._call_mcp_tool("https://mcp.example.com", "test_tool", {})
 
     @pytest.mark.asyncio
     async def test_call_mcp_tool_image_content(self):
@@ -612,25 +604,31 @@ class TestMCPOAuth2Support:
 
     def test_extract_auth_token_from_api_key(self):
         creds = APIKeyCredentials(
-            id="test", provider="mcp",
-            api_key=SecretStr("my-api-key"), title="test",
+            id="test",
+            provider="mcp",
+            api_key=SecretStr("my-api-key"),
+            title="test",
         )
         token = MCPToolBlock._extract_auth_token(creds)
         assert token == "my-api-key"
 
     def test_extract_auth_token_from_oauth2(self):
         creds = OAuth2Credentials(
-            id="test", provider="mcp",
+            id="test",
+            provider="mcp",
             access_token=SecretStr("oauth2-access-token"),
-            scopes=["read"], title="test",
+            scopes=["read"],
+            title="test",
         )
         token = MCPToolBlock._extract_auth_token(creds)
         assert token == "oauth2-access-token"
 
     def test_extract_auth_token_empty_skipped(self):
         creds = APIKeyCredentials(
-            id="test", provider="mcp",
-            api_key=SecretStr(""), title="test",
+            id="test",
+            provider="mcp",
+            api_key=SecretStr(""),
+            title="test",
         )
         token = MCPToolBlock._extract_auth_token(creds)
         assert token is None
@@ -646,9 +644,11 @@ class TestMCPOAuth2Support:
         )
 
         oauth2_creds = OAuth2Credentials(
-            id="test-id", provider="mcp",
+            id="test-id",
+            provider="mcp",
             access_token=SecretStr("real-oauth2-token"),
-            scopes=["read", "write"], title="MCP OAuth",
+            scopes=["read", "write"],
+            title="MCP OAuth",
         )
 
         captured_tokens = []

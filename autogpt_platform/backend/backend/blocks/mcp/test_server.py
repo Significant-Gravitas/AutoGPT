@@ -7,6 +7,7 @@ with a few sample tools. Runs on localhost with a random available port.
 
 import json
 import logging
+
 from aiohttp import web
 
 logger = logging.getLogger(__name__)
@@ -149,9 +150,7 @@ async def handle_mcp_request(request: web.Request) -> web.Response:
         )
 
     result = handler(params)
-    return web.json_response(
-        {"jsonrpc": "2.0", "result": result, "id": request_id}
-    )
+    return web.json_response({"jsonrpc": "2.0", "result": result, "id": request_id})
 
 
 def create_test_mcp_app(auth_token: str | None = None) -> web.Application:

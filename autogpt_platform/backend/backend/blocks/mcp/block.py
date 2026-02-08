@@ -129,9 +129,7 @@ class MCPToolBlock(Block):
             return validate_with_jsonschema(tool_schema, tool_arguments)
 
     class Output(BlockSchemaOutput):
-        result: Any = SchemaField(
-            description="The result returned by the MCP tool"
-        )
+        result: Any = SchemaField(description="The result returned by the MCP tool")
         error: str = SchemaField(description="Error message if the tool call failed")
 
     def __init__(self):

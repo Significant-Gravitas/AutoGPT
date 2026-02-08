@@ -229,9 +229,7 @@ class MCPClient:
         # Try standard metadata endpoints (RFC 8414 and OpenID Connect)
         candidates = []
         if path and path != "/":
-            candidates.append(
-                f"{base}/.well-known/oauth-authorization-server{path}"
-            )
+            candidates.append(f"{base}/.well-known/oauth-authorization-server{path}")
         candidates.append(f"{base}/.well-known/oauth-authorization-server")
         candidates.append(f"{base}/.well-known/openid-configuration")
 

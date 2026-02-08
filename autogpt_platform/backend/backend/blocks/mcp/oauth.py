@@ -14,8 +14,8 @@ from typing import ClassVar, Optional
 from pydantic import SecretStr
 
 from backend.data.model import OAuth2Credentials
-from backend.integrations.providers import ProviderName
 from backend.integrations.oauth.base import BaseOAuthHandler
+from backend.integrations.providers import ProviderName
 from backend.util.request import Requests
 
 logger = logging.getLogger(__name__)
