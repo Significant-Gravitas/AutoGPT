@@ -116,7 +116,8 @@ class MCPToolBlock(Block):
         def get_missing_input(cls, data: BlockInput) -> set[str]:
             """Check which required tool arguments are missing."""
             required_fields = cls.get_input_schema(data).get("required", [])
-            return set(required_fields) - set(data)
+            tool_arguments = data.get("tool_arguments", {})
+            return set(required_fields) - set(tool_arguments)
 
         @classmethod
         def get_mismatch_error(cls, data: BlockInput) -> str | None:
@@ -124,7 +125,8 @@ class MCPToolBlock(Block):
             tool_schema = cls.get_input_schema(data)
             if not tool_schema:
                 return None
-            return validate_with_jsonschema(tool_schema, data)
+            tool_arguments = data.get("tool_arguments", {})
+            return validate_with_jsonschema(tool_schema, tool_arguments)
 
     class Output(BlockSchemaOutput):
         result: Any = SchemaField(
@@ -228,8 +230,7 @@ class MCPToolBlock(Block):
 
         if isinstance(credentials, APIKeyCredentials) and credentials.api_key:
             token_value = credentials.api_key.get_secret_value()
-            # Skip placeholder/fake tokens
-            if token_value and token_value not in ("", "FAKE_API_KEY", "placeholder"):
+            if token_value:
                 return token_value
 
         return None

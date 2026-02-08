@@ -68,7 +68,7 @@ class MCPOAuthHandler(BaseOAuthHandler):
         }
         if scopes:
             params["scope"] = " ".join(scopes)
-        # PKCE is required by the MCP spec (S256 only)
+        # PKCE (S256) — included when the caller provides a code_challenge
         if code_challenge:
             params["code_challenge"] = code_challenge
             params["code_challenge_method"] = "S256"
@@ -97,12 +97,17 @@ class MCPOAuthHandler(BaseOAuthHandler):
         if self.resource_url:
             data["resource"] = self.resource_url
 
-        response = await Requests().post(
+        response = await Requests(raise_for_status=True).post(
             self.token_url,
             data=data,
             headers={"Content-Type": "application/x-www-form-urlencoded"},
         )
         tokens = response.json()
+
+        if "error" in tokens:
+            raise RuntimeError(
+                f"Token exchange failed: {tokens.get('error_description', tokens['error'])}"
+            )
 
         now = int(time.time())
         expires_in = tokens.get("expires_in")
@@ -141,12 +146,17 @@ class MCPOAuthHandler(BaseOAuthHandler):
         if self.resource_url:
             data["resource"] = self.resource_url
 
-        response = await Requests().post(
+        response = await Requests(raise_for_status=True).post(
             self.token_url,
             data=data,
             headers={"Content-Type": "application/x-www-form-urlencoded"},
         )
         tokens = response.json()
+
+        if "error" in tokens:
+            raise RuntimeError(
+                f"Token refresh failed: {tokens.get('error_description', tokens['error'])}"
+            )
 
         now = int(time.time())
         expires_in = tokens.get("expires_in")

@@ -52,7 +52,8 @@ class _MCPTestServer:
     def start(self):
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
-        self._started.wait(timeout=5)
+        if not self._started.wait(timeout=5):
+            raise RuntimeError("MCP test server failed to start within 5 seconds")
         return self
 
     def stop(self):

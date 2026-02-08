@@ -6,12 +6,12 @@ import json
 from unittest.mock import AsyncMock, patch
 
 import pytest
-
 from pydantic import SecretStr
 
 from backend.blocks.mcp.block import MCPToolBlock, TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
+from backend.blocks.mcp.client import MCPCallResult, MCPClient, MCPClientError
 from backend.data.model import APIKeyCredentials, OAuth2Credentials
-from backend.blocks.mcp.client import MCPCallResult, MCPClient, MCPClientError, MCPTool
+from backend.util.test import execute_block_test
 
 # ── SSE parsing unit tests ───────────────────────────────────────────
 
@@ -81,7 +81,6 @@ class TestSSEParsing:
         )
         body = MCPClient._parse_sse_response(sse)
         assert body["result"] == "second"
-from backend.util.test import execute_block_test
 
 
 # ── MCPClient unit tests ─────────────────────────────────────────────
@@ -326,7 +325,7 @@ class TestMCPToolBlock:
                 },
                 "required": ["city", "units"],
             },
-            "city": "London",
+            "tool_arguments": {"city": "London"},
         }
         missing = MCPToolBlock.Input.get_missing_input(data)
         assert missing == {"units"}
@@ -338,7 +337,7 @@ class TestMCPToolBlock:
                 "properties": {"city": {"type": "string"}},
                 "required": ["city"],
             },
-            "city": "London",
+            "tool_arguments": {"city": "London"},
         }
         missing = MCPToolBlock.Input.get_missing_input(data)
         assert missing == set()
@@ -575,8 +574,8 @@ class TestMCPToolBlock:
         }
 
     @pytest.mark.asyncio
-    async def test_run_skips_placeholder_credentials(self):
-        """Ensure placeholder API keys are not sent to the MCP server."""
+    async def test_run_sends_api_key_credentials(self):
+        """Ensure non-empty API keys are sent to the MCP server."""
         block = MCPToolBlock()
         input_data = MCPToolBlock.Input(
             server_url="https://mcp.example.com/mcp",
@@ -584,11 +583,11 @@ class TestMCPToolBlock:
             credentials=TEST_CREDENTIALS_INPUT,  # type: ignore
         )
 
-        placeholder_creds = APIKeyCredentials(
+        creds = APIKeyCredentials(
             id="test-id",
             provider="mcp",
-            api_key=SecretStr("FAKE_API_KEY"),
-            title="Placeholder",
+            api_key=SecretStr("real-api-key"),
+            title="Real",
         )
 
         captured_tokens = []
@@ -599,10 +598,10 @@ class TestMCPToolBlock:
 
         block._call_mcp_tool = mock_call  # type: ignore
 
-        async for _ in block.run(input_data, credentials=placeholder_creds):
+        async for _ in block.run(input_data, credentials=creds):
             pass
 
-        assert captured_tokens == [None]
+        assert captured_tokens == ["real-api-key"]
 
 
 # ── OAuth2 credential support tests ─────────────────────────────────
@@ -627,14 +626,6 @@ class TestMCPOAuth2Support:
         )
         token = MCPToolBlock._extract_auth_token(creds)
         assert token == "oauth2-access-token"
-
-    def test_extract_auth_token_placeholder_skipped(self):
-        creds = APIKeyCredentials(
-            id="test", provider="mcp",
-            api_key=SecretStr("FAKE_API_KEY"), title="test",
-        )
-        token = MCPToolBlock._extract_auth_token(creds)
-        assert token is None
 
     def test_extract_auth_token_empty_skipped(self):
         creds = APIKeyCredentials(

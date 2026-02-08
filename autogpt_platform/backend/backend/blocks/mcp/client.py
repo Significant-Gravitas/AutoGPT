@@ -137,15 +137,22 @@ class MCPClient:
         if "text/event-stream" in content_type:
             body = self._parse_sse_response(response.text())
         else:
-            body = response.json()
+            try:
+                body = response.json()
+            except (ValueError, Exception) as e:
+                raise MCPClientError(
+                    f"MCP server returned non-JSON response: {e}"
+                ) from e
 
         # Handle JSON-RPC error
         if "error" in body:
             error = body["error"]
-            raise MCPClientError(
-                f"MCP server error [{error.get('code', '?')}]: "
-                f"{error.get('message', 'Unknown error')}"
-            )
+            if isinstance(error, dict):
+                raise MCPClientError(
+                    f"MCP server error [{error.get('code', '?')}]: "
+                    f"{error.get('message', 'Unknown error')}"
+                )
+            raise MCPClientError(f"MCP server error: {error}")
 
         return body.get("result")
 
