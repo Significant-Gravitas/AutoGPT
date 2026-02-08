@@ -6,9 +6,13 @@ from typing import Any
 from backend.api.features.library import db as library_db
 from backend.api.features.library import model as library_model
 from backend.api.features.store import db as store_db
-from backend.data import graph as graph_db
 from backend.data.graph import GraphModel
-from backend.data.model import Credentials, CredentialsFieldInfo, CredentialsMetaInput
+from backend.data.model import (
+    CredentialsFieldInfo,
+    CredentialsMetaInput,
+    HostScopedCredentials,
+    OAuth2Credentials,
+)
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util.exceptions import NotFoundError
 
@@ -39,14 +43,8 @@ async def fetch_graph_from_store_slug(
         return None, None
 
     # Get the graph from store listing version
-    graph_meta = await store_db.get_available_graph(
-        store_agent.store_listing_version_id
-    )
-    graph = await graph_db.get_graph(
-        graph_id=graph_meta.id,
-        version=graph_meta.version,
-        user_id=None,  # Public access
-        include_subgraphs=True,
+    graph = await store_db.get_available_graph(
+        store_agent.store_listing_version_id, hide_nodes=False
     )
     return graph, store_agent
 
@@ -123,7 +121,7 @@ def build_missing_credentials_from_graph(
 
     return {
         field_key: _serialize_missing_credential(field_key, field_info)
-        for field_key, (field_info, _node_fields) in aggregated_fields.items()
+        for field_key, (field_info, _, _) in aggregated_fields.items()
         if field_key not in matched_keys
     }
 
@@ -353,7 +351,8 @@ async def match_user_credentials_to_graph(
     # provider is in the set of acceptable providers.
     for credential_field_name, (
         credential_requirements,
-        _node_fields,
+        _,
+        _,
     ) in aggregated_creds.items():
         # Find first matching credential by provider, type, and scopes
         matching_cred = next(
@@ -362,7 +361,14 @@ async def match_user_credentials_to_graph(
                 for cred in available_creds
                 if cred.provider in credential_requirements.provider
                 and cred.type in credential_requirements.supported_types
-                and _credential_has_required_scopes(cred, credential_requirements)
+                and (
+                    cred.type != "oauth2"
+                    or _credential_has_required_scopes(cred, credential_requirements)
+                )
+                and (
+                    cred.type != "host_scoped"
+                    or _credential_is_for_host(cred, credential_requirements)
+                )
             ),
             None,
         )
@@ -407,15 +413,30 @@ async def match_user_credentials_to_graph(
 
 
 def _credential_has_required_scopes(
-    credential: Credentials,
+    credential: OAuth2Credentials,
     requirements: CredentialsFieldInfo,
 ) -> bool:
-    """Check if a credential has all the scopes required by the block."""
-    if credential.type != "oauth2":
-        return True
+    """Check if an OAuth2 credential has all the scopes required by the input."""
+    # If no scopes are required, any credential matches
     if not requirements.required_scopes:
         return True
     return set(credential.scopes).issuperset(requirements.required_scopes)
+
+
+def _credential_is_for_host(
+    credential: HostScopedCredentials,
+    requirements: CredentialsFieldInfo,
+) -> bool:
+    """Check if a host-scoped credential matches the host required by the input."""
+    # We need to know the host to match host-scoped credentials to.
+    # Graph.aggregate_credentials_inputs() adds the node's set URL value (if any)
+    # to discriminator_values. No discriminator_values -> no host to match against.
+    if not requirements.discriminator_values:
+        return True
+
+    # Check that credential host matches required host.
+    # Host-scoped credential inputs are grouped by host, so any item from the set works.
+    return credential.matches_url(list(requirements.discriminator_values)[0])
 
 
 async def check_user_has_required_credentials(

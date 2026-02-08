@@ -349,6 +349,7 @@ export function parseToolResponse(
         toolName: (parsedResult.tool_name as string) || toolName,
         toolId,
         operationId: (parsedResult.operation_id as string) || "",
+        taskId: (parsedResult.task_id as string) || undefined, // For SSE reconnection
         message:
           (parsedResult.message as string) ||
           "Operation started. You can close this tab.",

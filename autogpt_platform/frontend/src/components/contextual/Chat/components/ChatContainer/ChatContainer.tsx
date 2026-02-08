@@ -2,7 +2,6 @@ import type { SessionDetailResponse } from "@/app/api/__generated__/models/sessi
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import { useBreakpoint } from "@/lib/hooks/useBreakpoint";
 import { cn } from "@/lib/utils";
 import { GlobeHemisphereEastIcon } from "@phosphor-icons/react";
 import { useEffect } from "react";
@@ -17,6 +16,13 @@ export interface ChatContainerProps {
   className?: string;
   onStreamingChange?: (isStreaming: boolean) => void;
   onOperationStarted?: () => void;
+  /** Active stream info from the server for reconnection */
+  activeStream?: {
+    taskId: string;
+    lastMessageId: string;
+    operationId: string;
+    toolName: string;
+  };
 }
 
 export function ChatContainer({
@@ -26,6 +32,7 @@ export function ChatContainer({
   className,
   onStreamingChange,
   onOperationStarted,
+  activeStream,
 }: ChatContainerProps) {
   const {
     messages,
@@ -41,15 +48,12 @@ export function ChatContainer({
     initialMessages,
     initialPrompt,
     onOperationStarted,
+    activeStream,
   });
 
   useEffect(() => {
     onStreamingChange?.(isStreaming);
   }, [isStreaming, onStreamingChange]);
-
-  const breakpoint = useBreakpoint();
-  const isMobile =
-    breakpoint === "base" || breakpoint === "sm" || breakpoint === "md";
 
   return (
     <div
@@ -118,11 +122,7 @@ export function ChatContainer({
           disabled={isStreaming || !sessionId}
           isStreaming={isStreaming}
           onStop={stopStreaming}
-          placeholder={
-            isMobile
-              ? "You can search or just ask"
-              : 'You can search or just ask — e.g. "create a blog post outline"'
-          }
+          placeholder="What else can I help with?"
         />
       </div>
     </div>
