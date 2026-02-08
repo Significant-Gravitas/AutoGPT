@@ -1,16 +1,16 @@
+import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { AGENT_LIBRARY_SECTION_PADDING_X } from "../../helpers";
 import { SelectedViewLayout } from "./SelectedViewLayout";
 
 interface Props {
-  agentName: string;
-  agentId: string;
+  agent: LibraryAgent;
 }
 
 export function LoadingSelectedContent(props: Props) {
   return (
-    <SelectedViewLayout agentName={props.agentName} agentId={props.agentId}>
+    <SelectedViewLayout agent={props.agent}>
       <div
         className={cn("flex flex-col gap-4", AGENT_LIBRARY_SECTION_PADDING_X)}
       >

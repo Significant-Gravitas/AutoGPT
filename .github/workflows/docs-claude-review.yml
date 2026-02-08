@@ -1,0 +1,95 @@
+name: Claude Block Docs Review
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+    paths:
+      - "docs/integrations/**"
+      - "autogpt_platform/backend/backend/blocks/**"
+
+jobs:
+  claude-review:
+    # Only run for PRs from members/collaborators
+    if: |
+      github.event.pull_request.author_association == 'OWNER' ||
+      github.event.pull_request.author_association == 'MEMBER' ||
+      github.event.pull_request.author_association == 'COLLABORATOR'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up Python dependency cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pypoetry
+          key: poetry-${{ runner.os }}-${{ hashFiles('autogpt_platform/backend/poetry.lock') }}
+          restore-keys: |
+            poetry-${{ runner.os }}-
+
+      - name: Install Poetry
+        run: |
+          cd autogpt_platform/backend
+          HEAD_POETRY_VERSION=$(python3 ../../.github/workflows/scripts/get_package_version_from_lockfile.py poetry)
+          curl -sSL https://install.python-poetry.org | POETRY_VERSION=$HEAD_POETRY_VERSION python3 -
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Install dependencies
+        working-directory: autogpt_platform/backend
+        run: |
+          poetry install --only main
+          poetry run prisma generate
+
+      - name: Run Claude Code Review
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_args: |
+            --allowedTools "Read,Glob,Grep,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
+          prompt: |
+            You are reviewing a PR that modifies block documentation or block code for AutoGPT.
+
+            ## Your Task
+            Review the changes in this PR and provide constructive feedback. Focus on:
+
+            1. **Documentation Accuracy**: For any block code changes, verify that:
+               - Input/output tables in docs match the actual block schemas
+               - Description text accurately reflects what the block does
+               - Any new blocks have corresponding documentation
+
+            2. **Manual Content Quality**: Check manual sections (marked with `<!-- MANUAL: -->` markers):
+               - "How it works" sections should have clear technical explanations
+               - "Possible use case" sections should have practical, real-world examples
+               - Content should be helpful for users trying to understand the blocks
+
+            3. **Template Compliance**: Ensure docs follow the standard template:
+               - What it is (brief intro)
+               - What it does (description)
+               - How it works (technical explanation)
+               - Inputs table
+               - Outputs table
+               - Possible use case
+
+            4. **Cross-references**: Check that links and anchors are correct
+
+            ## Review Process
+            1. First, get the PR diff to see what changed: `gh pr diff ${{ github.event.pull_request.number }}`
+            2. Read any modified block files to understand the implementation
+            3. Read corresponding documentation files to verify accuracy
+            4. Provide your feedback as a PR comment
+
+            Be constructive and specific. If everything looks good, say so!
+            If there are issues, explain what's wrong and suggest how to fix it.

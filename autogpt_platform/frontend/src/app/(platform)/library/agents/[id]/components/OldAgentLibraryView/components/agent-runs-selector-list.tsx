@@ -184,9 +184,11 @@ export function AgentRunsSelectorList({
                     ))}
                   {agentPresets.length > 0 && <Separator className="my-1" />}
                   {agentRuns
-                    .toSorted(
-                      (a, b) => b.started_at.getTime() - a.started_at.getTime(),
-                    )
+                    .toSorted((a, b) => {
+                      const aTime = a.started_at?.getTime() ?? 0;
+                      const bTime = b.started_at?.getTime() ?? 0;
+                      return bTime - aTime;
+                    })
                     .map((run) => (
                       <AgentRunSummaryCard
                         className={listItemClasses}
@@ -199,7 +201,7 @@ export function AgentRunsSelectorList({
                                 ?.name
                             : null) ?? agent.name
                         }
-                        timestamp={run.started_at}
+                        timestamp={run.started_at ?? undefined}
                         selected={selectedView.id === run.id}
                         onClick={() => onSelectRun(run.id)}
                         onDelete={() => doDeleteRun(run as GraphExecutionMeta)}

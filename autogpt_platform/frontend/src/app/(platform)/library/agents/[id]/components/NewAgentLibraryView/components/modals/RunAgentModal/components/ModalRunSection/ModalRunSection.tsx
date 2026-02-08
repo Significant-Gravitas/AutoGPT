@@ -1,6 +1,7 @@
-import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/modals/CredentialsInputs/CredentialsInputs";
 import { Input } from "@/components/atoms/Input/Input";
+import { CredentialsGroupedView } from "@/components/contextual/CredentialsInput/components/CredentialsGroupedView/CredentialsGroupedView";
 import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
+import { useMemo } from "react";
 import { RunAgentInputs } from "../../../RunAgentInputs/RunAgentInputs";
 import { useRunAgentModalContext } from "../../context";
 import { ModalSection } from "../ModalSection/ModalSection";
@@ -8,6 +9,7 @@ import { WebhookTriggerBanner } from "../WebhookTriggerBanner/WebhookTriggerBann
 
 export function ModalRunSection() {
   const {
+    agent,
     defaultRunType,
     presetName,
     setPresetName,
@@ -16,13 +18,21 @@ export function ModalRunSection() {
     inputValues,
     setInputValue,
     agentInputFields,
+    agentCredentialsInputFields,
     inputCredentials,
     setInputCredentialsValue,
-    agentCredentialsInputFields,
   } = useRunAgentModalContext();
 
   const inputFields = Object.entries(agentInputFields || {});
-  const credentialFields = Object.entries(agentCredentialsInputFields || {});
+
+  const credentialFields = useMemo(() => {
+    if (!agentCredentialsInputFields) return [];
+    return Object.entries(agentCredentialsInputFields);
+  }, [agentCredentialsInputFields]);
+
+  const requiredCredentials = new Set(
+    (agent.credentials_input_schema?.required as string[]) || [],
+  );
 
   return (
     <div className="flex flex-col gap-4">
@@ -73,22 +83,15 @@ export function ModalRunSection() {
           title="Task Inputs"
           subtitle="Enter the information you want to provide to the agent for this task"
         >
-          {/* Regular inputs */}
           {inputFields.map(([key, inputSubSchema]) => (
-            <div key={key} className="flex w-full flex-col gap-0 space-y-2">
-              <label className="flex items-center gap-1 text-sm font-medium">
-                {inputSubSchema.title || key}
-                <InformationTooltip description={inputSubSchema.description} />
-              </label>
-
-              <RunAgentInputs
-                schema={inputSubSchema}
-                value={inputValues[key] ?? inputSubSchema.default}
-                placeholder={inputSubSchema.description}
-                onChange={(value) => setInputValue(key, value)}
-                data-testid={`agent-input-${key}`}
-              />
-            </div>
+            <RunAgentInputs
+              key={key}
+              schema={inputSubSchema}
+              value={inputValues[key] ?? inputSubSchema.default}
+              placeholder={inputSubSchema.description}
+              onChange={(value) => setInputValue(key, value)}
+              data-testid={`agent-input-${key}`}
+            />
           ))}
         </ModalSection>
       ) : null}
@@ -98,26 +101,13 @@ export function ModalRunSection() {
           title="Task Credentials"
           subtitle="These are the credentials the agent will use to perform this task"
         >
-          <div className="space-y-6">
-            {Object.entries(agentCredentialsInputFields || {}).map(
-              ([key, inputSubSchema]) => (
-                <CredentialsInput
-                  key={key}
-                  schema={
-                    { ...inputSubSchema, discriminator: undefined } as any
-                  }
-                  selectedCredentials={
-                    (inputCredentials && inputCredentials[key]) ??
-                    inputSubSchema.default
-                  }
-                  onSelectCredentials={(value) =>
-                    setInputCredentialsValue(key, value)
-                  }
-                  siblingInputs={inputValues}
-                />
-              ),
-            )}
-          </div>
+          <CredentialsGroupedView
+            credentialFields={credentialFields}
+            requiredCredentials={requiredCredentials}
+            inputCredentials={inputCredentials}
+            inputValues={inputValues}
+            onCredentialChange={setInputCredentialsValue}
+          />
         </ModalSection>
       ) : null}
     </div>

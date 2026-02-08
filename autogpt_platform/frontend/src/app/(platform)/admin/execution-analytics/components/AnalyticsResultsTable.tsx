@@ -51,6 +51,8 @@ export function AnalyticsResultsTable({ results }: Props) {
       "Execution ID",
       "Status",
       "Score",
+      "Started At",
+      "Ended At",
       "Summary Text",
       "Error Message",
     ];
@@ -62,6 +64,8 @@ export function AnalyticsResultsTable({ results }: Props) {
       result.exec_id,
       result.status,
       result.score?.toString() || "",
+      result.started_at ? new Date(result.started_at).toLocaleString() : "",
+      result.ended_at ? new Date(result.ended_at).toLocaleString() : "",
       `"${(result.summary_text || "").replace(/"/g, '""')}"`, // Escape quotes in summary
       `"${(result.error_message || "").replace(/"/g, '""')}"`, // Escape quotes in error
     ]);
@@ -248,15 +252,13 @@ export function AnalyticsResultsTable({ results }: Props) {
                         )}
                       </td>
                       <td className="px-4 py-3">
-                        {(result.summary_text || result.error_message) && (
-                          <Button
-                            variant="ghost"
-                            size="small"
-                            onClick={() => toggleRowExpansion(result.exec_id)}
-                          >
-                            <EyeIcon size={16} />
-                          </Button>
-                        )}
+                        <Button
+                          variant="ghost"
+                          size="small"
+                          onClick={() => toggleRowExpansion(result.exec_id)}
+                        >
+                          <EyeIcon size={16} />
+                        </Button>
                       </td>
                     </tr>
 
@@ -264,6 +266,44 @@ export function AnalyticsResultsTable({ results }: Props) {
                       <tr>
                         <td colSpan={7} className="bg-gray-50 px-4 py-3">
                           <div className="space-y-3">
+                            {/* Timestamps section */}
+                            <div className="grid grid-cols-2 gap-4 border-b border-gray-200 pb-3">
+                              <div>
+                                <Text
+                                  variant="body"
+                                  className="text-xs font-medium text-gray-600"
+                                >
+                                  Started At:
+                                </Text>
+                                <Text
+                                  variant="body"
+                                  className="text-sm text-gray-700"
+                                >
+                                  {result.started_at
+                                    ? new Date(
+                                        result.started_at,
+                                      ).toLocaleString()
+                                    : "—"}
+                                </Text>
+                              </div>
+                              <div>
+                                <Text
+                                  variant="body"
+                                  className="text-xs font-medium text-gray-600"
+                                >
+                                  Ended At:
+                                </Text>
+                                <Text
+                                  variant="body"
+                                  className="text-sm text-gray-700"
+                                >
+                                  {result.ended_at
+                                    ? new Date(result.ended_at).toLocaleString()
+                                    : "—"}
+                                </Text>
+                              </div>
+                            </div>
+
                             {result.summary_text && (
                               <div>
                                 <Text

@@ -1,8 +1,9 @@
 import logging
-from typing import Any, Literal
+from typing import Any
 
 from prisma.enums import ReviewStatus
 
+from backend.blocks.helpers.review import HITLReviewHelper
 from backend.data.block import (
     Block,
     BlockCategory,
@@ -11,11 +12,9 @@ from backend.data.block import (
     BlockSchemaOutput,
     BlockType,
 )
-from backend.data.execution import ExecutionContext, ExecutionStatus
+from backend.data.execution import ExecutionContext
 from backend.data.human_review import ReviewResult
 from backend.data.model import SchemaField
-from backend.executor.manager import async_update_node_execution_status
-from backend.util.clients import get_database_manager_async_client
 
 logger = logging.getLogger(__name__)
 
@@ -45,11 +44,11 @@ class HumanInTheLoopBlock(Block):
         )
 
     class Output(BlockSchemaOutput):
-        reviewed_data: Any = SchemaField(
-            description="The data after human review (may be modified)"
+        approved_data: Any = SchemaField(
+            description="The data when approved (may be modified by reviewer)"
         )
-        status: Literal["approved", "rejected"] = SchemaField(
-            description="Status of the review: 'approved' or 'rejected'"
+        rejected_data: Any = SchemaField(
+            description="The data when rejected (may be modified by reviewer)"
         )
         review_message: str = SchemaField(
             description="Any message provided by the reviewer", default=""
@@ -69,101 +68,73 @@ class HumanInTheLoopBlock(Block):
                 "editable": True,
             },
             test_output=[
-                ("status", "approved"),
-                ("reviewed_data", {"name": "John Doe", "age": 30}),
+                ("approved_data", {"name": "John Doe", "age": 30}),
             ],
             test_mock={
-                "get_or_create_human_review": lambda *_args, **_kwargs: ReviewResult(
-                    data={"name": "John Doe", "age": 30},
-                    status=ReviewStatus.APPROVED,
-                    message="",
-                    processed=False,
-                    node_exec_id="test-node-exec-id",
-                ),
-                "update_node_execution_status": lambda *_args, **_kwargs: None,
-                "update_review_processed_status": lambda *_args, **_kwargs: None,
+                "handle_review_decision": lambda **kwargs: type(
+                    "ReviewDecision",
+                    (),
+                    {
+                        "should_proceed": True,
+                        "message": "Test approval message",
+                        "review_result": ReviewResult(
+                            data={"name": "John Doe", "age": 30},
+                            status=ReviewStatus.APPROVED,
+                            message="",
+                            processed=False,
+                            node_exec_id="test-node-exec-id",
+                        ),
+                    },
+                )(),
             },
         )
 
-    async def get_or_create_human_review(self, **kwargs):
-        return await get_database_manager_async_client().get_or_create_human_review(
-            **kwargs
-        )
-
-    async def update_node_execution_status(self, **kwargs):
-        return await async_update_node_execution_status(
-            db_client=get_database_manager_async_client(), **kwargs
-        )
-
-    async def update_review_processed_status(self, node_exec_id: str, processed: bool):
-        return await get_database_manager_async_client().update_review_processed_status(
-            node_exec_id, processed
-        )
+    async def handle_review_decision(self, **kwargs):
+        return await HITLReviewHelper.handle_review_decision(**kwargs)
 
     async def run(
         self,
         input_data: Input,
         *,
         user_id: str,
+        node_id: str,
         node_exec_id: str,
         graph_exec_id: str,
         graph_id: str,
         graph_version: int,
         execution_context: ExecutionContext,
-        **kwargs,
+        **_kwargs,
     ) -> BlockOutput:
-        if not execution_context.safe_mode:
+        if not execution_context.human_in_the_loop_safe_mode:
             logger.info(
                 f"HITL block skipping review for node {node_exec_id} - safe mode disabled"
             )
-            yield "status", "approved"
-            yield "reviewed_data", input_data.data
+            yield "approved_data", input_data.data
             yield "review_message", "Auto-approved (safe mode disabled)"
             return
 
-        try:
-            result = await self.get_or_create_human_review(
-                user_id=user_id,
-                node_exec_id=node_exec_id,
-                graph_exec_id=graph_exec_id,
-                graph_id=graph_id,
-                graph_version=graph_version,
-                input_data=input_data.data,
-                message=input_data.name,
-                editable=input_data.editable,
-            )
-        except Exception as e:
-            logger.error(f"Error in HITL block for node {node_exec_id}: {str(e)}")
-            raise
+        decision = await self.handle_review_decision(
+            input_data=input_data.data,
+            user_id=user_id,
+            node_id=node_id,
+            node_exec_id=node_exec_id,
+            graph_exec_id=graph_exec_id,
+            graph_id=graph_id,
+            graph_version=graph_version,
+            block_name=input_data.name,  # Use user-provided name instead of block type
+            editable=input_data.editable,
+        )
 
-        if result is None:
-            logger.info(
-                f"HITL block pausing execution for node {node_exec_id} - awaiting human review"
-            )
-            try:
-                await self.update_node_execution_status(
-                    exec_id=node_exec_id,
-                    status=ExecutionStatus.REVIEW,
-                )
-                return
-            except Exception as e:
-                logger.error(
-                    f"Failed to update node status for HITL block {node_exec_id}: {str(e)}"
-                )
-                raise
+        if decision is None:
+            return
 
-        if not result.processed:
-            await self.update_review_processed_status(
-                node_exec_id=node_exec_id, processed=True
-            )
+        status = decision.review_result.status
+        if status == ReviewStatus.APPROVED:
+            yield "approved_data", decision.review_result.data
+        elif status == ReviewStatus.REJECTED:
+            yield "rejected_data", decision.review_result.data
+        else:
+            raise RuntimeError(f"Unexpected review status: {status}")
 
-            if result.status == ReviewStatus.APPROVED:
-                yield "status", "approved"
-                yield "reviewed_data", result.data
-                if result.message:
-                    yield "review_message", result.message
-
-            elif result.status == ReviewStatus.REJECTED:
-                yield "status", "rejected"
-                if result.message:
-                    yield "review_message", result.message
+        if decision.message:
+            yield "review_message", decision.message

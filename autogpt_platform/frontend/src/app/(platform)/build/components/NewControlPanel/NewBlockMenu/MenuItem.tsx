@@ -8,6 +8,7 @@ interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   selected?: boolean;
   number?: number;
   name?: string;
+  menuItemType?: string;
 }
 
 export const MenuItem: React.FC<Props> = ({
@@ -15,10 +16,12 @@ export const MenuItem: React.FC<Props> = ({
   number,
   name,
   className,
+  menuItemType,
   ...rest
 }) => {
   return (
     <Button
+      data-id={menuItemType ? `menu-item-${menuItemType}` : undefined}
       className={cn(
         "flex h-[2.375rem] w-[12.875rem] justify-between whitespace-normal rounded-[0.5rem] bg-transparent p-2 pl-3 shadow-none",
         "hover:cursor-default hover:bg-zinc-100 focus:ring-0",

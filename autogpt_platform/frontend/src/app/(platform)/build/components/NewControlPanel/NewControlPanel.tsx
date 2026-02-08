@@ -7,10 +7,10 @@ import { useNewControlPanel } from "./useNewControlPanel";
 import { GraphExecutionID } from "@/lib/autogpt-server-api";
 // import { ControlPanelButton } from "../ControlPanelButton";
 // import { GraphSearchMenu } from "../GraphMenu/GraphMenu";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { Separator } from "@/components/__legacy__/ui/separator";
-import { NewSaveControl } from "./NewSaveControl/NewSaveControl";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { CustomNode } from "../FlowEditor/nodes/CustomNode/CustomNode";
+import { NewSaveControl } from "./NewSaveControl/NewSaveControl";
 import { UndoRedoButtons } from "./UndoRedoButtons";
 
 export type Control = {
@@ -56,7 +56,7 @@ export const NewControlPanel = memo(
     return (
       <section
         className={cn(
-          "absolute left-4 top-10 z-10 w-[4.25rem] overflow-hidden rounded-[1rem] border-none bg-white p-0 shadow-[0_1px_5px_0_rgba(0,0,0,0.1)]",
+          "absolute left-4 top-10 z-10 overflow-hidden rounded-[1rem] border-none bg-white p-0 shadow-[0_1px_5px_0_rgba(0,0,0,0.1)]",
         )}
       >
         <div className="flex flex-col items-center justify-center rounded-[1rem] p-0">

@@ -29,7 +29,10 @@ export const FlowRunsStatus: React.FC<{
         : statsSince;
   const filteredFlowRuns =
     statsSinceTimestamp != null
-      ? executions.filter((fr) => fr.started_at.getTime() > statsSinceTimestamp)
+      ? executions.filter(
+          (fr) =>
+            fr.started_at && fr.started_at.getTime() > statsSinceTimestamp,
+        )
       : executions;
 
   return (

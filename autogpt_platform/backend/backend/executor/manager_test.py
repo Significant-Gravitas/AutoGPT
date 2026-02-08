@@ -1,22 +1,34 @@
 import logging
+from unittest.mock import AsyncMock, patch
 
 import fastapi.responses
 import pytest
 
-import backend.server.v2.library.model
-import backend.server.v2.store.model
+import backend.api.features.library.model
+import backend.api.features.store.model
+from backend.api.model import CreateGraph
+from backend.api.rest_api import AgentServer
 from backend.blocks.basic import StoreValueBlock
 from backend.blocks.data_manipulation import FindInDictionaryBlock
 from backend.blocks.io import AgentInputBlock
 from backend.blocks.maths import CalculatorBlock, Operation
 from backend.data import execution, graph
 from backend.data.model import User
-from backend.server.model import CreateGraph
-from backend.server.rest_api import AgentServer
 from backend.usecases.sample import create_test_graph, create_test_user
 from backend.util.test import SpinTestServer, wait_execution
 
 logger = logging.getLogger(__name__)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def mock_embedding_functions():
+    """Mock embedding functions for all tests to avoid database/API dependencies."""
+    with patch(
+        "backend.api.features.store.db.ensure_embedding",
+        new_callable=AsyncMock,
+        return_value=True,
+    ):
+        yield
 
 
 async def create_graph(s: SpinTestServer, g: graph.Graph, u: User) -> graph.Graph:
@@ -356,7 +368,7 @@ async def test_execute_preset(server: SpinTestServer):
     test_graph = await create_graph(server, test_graph, test_user)
 
     # Create preset with initial values
-    preset = backend.server.v2.library.model.LibraryAgentPresetCreatable(
+    preset = backend.api.features.library.model.LibraryAgentPresetCreatable(
         name="Test Preset With Clash",
         description="Test preset with clashing input values",
         graph_id=test_graph.id,
@@ -444,7 +456,7 @@ async def test_execute_preset_with_clash(server: SpinTestServer):
     test_graph = await create_graph(server, test_graph, test_user)
 
     # Create preset with initial values
-    preset = backend.server.v2.library.model.LibraryAgentPresetCreatable(
+    preset = backend.api.features.library.model.LibraryAgentPresetCreatable(
         name="Test Preset With Clash",
         description="Test preset with clashing input values",
         graph_id=test_graph.id,
@@ -485,7 +497,7 @@ async def test_store_listing_graph(server: SpinTestServer):
     test_user = await create_test_user()
     test_graph = await create_graph(server, create_test_graph(), test_user)
 
-    store_submission_request = backend.server.v2.store.model.StoreSubmissionRequest(
+    store_submission_request = backend.api.features.store.model.StoreSubmissionRequest(
         agent_id=test_graph.id,
         agent_version=test_graph.version,
         slug=test_graph.id,
@@ -514,7 +526,7 @@ async def test_store_listing_graph(server: SpinTestServer):
 
     admin_user = await create_test_user(alt_user=True)
     await server.agent_server.test_review_store_listing(
-        backend.server.v2.store.model.ReviewSubmissionRequest(
+        backend.api.features.store.model.ReviewSubmissionRequest(
             store_listing_version_id=slv_id,
             is_approved=True,
             comments="Test comments",
@@ -523,7 +535,7 @@ async def test_store_listing_graph(server: SpinTestServer):
     )
 
     # Add the approved store listing to the admin user's library so they can execute it
-    from backend.server.v2.library.db import add_store_agent_to_library
+    from backend.api.features.library.db import add_store_agent_to_library
 
     await add_store_agent_to_library(
         store_listing_version_id=slv_id, user_id=admin_user.id
