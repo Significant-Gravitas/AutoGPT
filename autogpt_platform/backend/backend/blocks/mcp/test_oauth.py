@@ -52,9 +52,7 @@ class TestMCPOAuthHandler:
         assert "scope=read+write" in url
 
     def test_get_login_url_with_resource(self):
-        handler = self._make_handler(
-            resource_url="https://mcp.example.com/mcp"
-        )
+        handler = self._make_handler(resource_url="https://mcp.example.com/mcp")
         url = handler.get_login_url(
             scopes=[], state="state", code_challenge="challenge"
         )
@@ -63,9 +61,7 @@ class TestMCPOAuthHandler:
 
     def test_get_login_url_without_pkce(self):
         handler = self._make_handler()
-        url = handler.get_login_url(
-            scopes=["read"], state="state", code_challenge=None
-        )
+        url = handler.get_login_url(scopes=["read"], state="state", code_challenge=None)
 
         assert "code_challenge" not in url
         assert "code_challenge_method" not in url
@@ -74,16 +70,16 @@ class TestMCPOAuthHandler:
     async def test_exchange_code_for_tokens(self):
         handler = self._make_handler()
 
-        resp = _mock_response({
-            "access_token": "new-access-token",
-            "refresh_token": "new-refresh-token",
-            "expires_in": 3600,
-            "token_type": "Bearer",
-        })
+        resp = _mock_response(
+            {
+                "access_token": "new-access-token",
+                "refresh_token": "new-refresh-token",
+                "expires_in": 3600,
+                "token_type": "Bearer",
+            }
+        )
 
-        with patch(
-            "backend.blocks.mcp.oauth.Requests"
-        ) as MockRequests:
+        with patch("backend.blocks.mcp.oauth.Requests") as MockRequests:
             instance = MockRequests.return_value
             instance.post = AsyncMock(return_value=resp)
 
@@ -95,6 +91,7 @@ class TestMCPOAuthHandler:
 
         assert isinstance(creds, OAuth2Credentials)
         assert creds.access_token.get_secret_value() == "new-access-token"
+        assert creds.refresh_token is not None
         assert creds.refresh_token.get_secret_value() == "new-refresh-token"
         assert creds.scopes == ["read"]
         assert creds.access_token_expires_at is not None
@@ -112,15 +109,15 @@ class TestMCPOAuthHandler:
             title="test",
         )
 
-        resp = _mock_response({
-            "access_token": "refreshed-token",
-            "refresh_token": "new-refresh",
-            "expires_in": 3600,
-        })
+        resp = _mock_response(
+            {
+                "access_token": "refreshed-token",
+                "refresh_token": "new-refresh",
+                "expires_in": 3600,
+            }
+        )
 
-        with patch(
-            "backend.blocks.mcp.oauth.Requests"
-        ) as MockRequests:
+        with patch("backend.blocks.mcp.oauth.Requests") as MockRequests:
             instance = MockRequests.return_value
             instance.post = AsyncMock(return_value=resp)
 
@@ -128,6 +125,7 @@ class TestMCPOAuthHandler:
 
         assert refreshed.id == "existing-id"
         assert refreshed.access_token.get_secret_value() == "refreshed-token"
+        assert refreshed.refresh_token is not None
         assert refreshed.refresh_token.get_secret_value() == "new-refresh"
 
     @pytest.mark.asyncio
@@ -151,7 +149,8 @@ class TestMCPOAuthHandler:
         creds = OAuth2Credentials(
             provider="mcp",
             access_token=SecretStr("token"),
-            scopes=[], title="test",
+            scopes=[],
+            title="test",
         )
 
         result = await handler.revoke_tokens(creds)
@@ -159,21 +158,18 @@ class TestMCPOAuthHandler:
 
     @pytest.mark.asyncio
     async def test_revoke_tokens_with_url(self):
-        handler = self._make_handler(
-            revoke_url="https://auth.example.com/revoke"
-        )
+        handler = self._make_handler(revoke_url="https://auth.example.com/revoke")
 
         creds = OAuth2Credentials(
             provider="mcp",
             access_token=SecretStr("token"),
-            scopes=[], title="test",
+            scopes=[],
+            title="test",
         )
 
         resp = _mock_response({}, status=200)
 
-        with patch(
-            "backend.blocks.mcp.oauth.Requests"
-        ) as MockRequests:
+        with patch("backend.blocks.mcp.oauth.Requests") as MockRequests:
             instance = MockRequests.return_value
             instance.post = AsyncMock(return_value=resp)
 
@@ -196,9 +192,7 @@ class TestMCPClientDiscovery:
 
         resp = _mock_response(metadata, status=200)
 
-        with patch(
-            "backend.blocks.mcp.client.Requests"
-        ) as MockRequests:
+        with patch("backend.blocks.mcp.client.Requests") as MockRequests:
             instance = MockRequests.return_value
             instance.get = AsyncMock(return_value=resp)
 
@@ -213,9 +207,7 @@ class TestMCPClientDiscovery:
 
         resp = _mock_response({}, status=404)
 
-        with patch(
-            "backend.blocks.mcp.client.Requests"
-        ) as MockRequests:
+        with patch("backend.blocks.mcp.client.Requests") as MockRequests:
             instance = MockRequests.return_value
             instance.get = AsyncMock(return_value=resp)
 
@@ -237,9 +229,7 @@ class TestMCPClientDiscovery:
 
         resp = _mock_response(server_metadata, status=200)
 
-        with patch(
-            "backend.blocks.mcp.client.Requests"
-        ) as MockRequests:
+        with patch("backend.blocks.mcp.client.Requests") as MockRequests:
             instance = MockRequests.return_value
             instance.get = AsyncMock(return_value=resp)
 

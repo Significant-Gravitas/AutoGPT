@@ -46,7 +46,7 @@ class _MCPTestServer:
         await self._runner.setup()
         site = web.TCPSite(self._runner, "127.0.0.1", 0)
         await site.start()
-        port = site._server.sockets[0].getsockname()[1]
+        port = site._server.sockets[0].getsockname()[1]  # type: ignore[union-attr]
         self.url = f"http://127.0.0.1:{port}/mcp"
 
     def start(self):
@@ -58,9 +58,9 @@ class _MCPTestServer:
 
     def stop(self):
         if self._loop and self._runner:
-            asyncio.run_coroutine_threadsafe(
-                self._runner.cleanup(), self._loop
-            ).result(timeout=5)
+            asyncio.run_coroutine_threadsafe(self._runner.cleanup(), self._loop).result(
+                timeout=5
+            )
             self._loop.call_soon_threadsafe(self._loop.stop)
         if self._thread:
             self._thread.join(timeout=5)
@@ -240,9 +240,7 @@ class TestMCPToolBlockIntegration:
         )
 
         outputs = []
-        async for name, data in block.run(
-            input_data, credentials=_make_fake_creds()
-        ):
+        async for name, data in block.run(input_data, credentials=_make_fake_creds()):
             outputs.append((name, data))
 
         assert len(outputs) == 1
@@ -275,9 +273,7 @@ class TestMCPToolBlockIntegration:
         )
 
         outputs = []
-        async for name, data in block.run(
-            input_data, credentials=_make_fake_creds()
-        ):
+        async for name, data in block.run(input_data, credentials=_make_fake_creds()):
             outputs.append((name, data))
 
         assert len(outputs) == 1
@@ -306,9 +302,7 @@ class TestMCPToolBlockIntegration:
         )
 
         outputs = []
-        async for name, data in block.run(
-            input_data, credentials=_make_fake_creds()
-        ):
+        async for name, data in block.run(input_data, credentials=_make_fake_creds()):
             outputs.append((name, data))
 
         assert len(outputs) == 1
@@ -332,9 +326,7 @@ class TestMCPToolBlockIntegration:
         )
 
         outputs = []
-        async for name, data in block.run(
-            input_data, credentials=_make_fake_creds()
-        ):
+        async for name, data in block.run(input_data, credentials=_make_fake_creds()):
             outputs.append((name, data))
 
         assert len(outputs) == 1
