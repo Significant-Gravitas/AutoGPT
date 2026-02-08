@@ -466,7 +466,7 @@ def test_node_credentials_optional_with_other_metadata():
 
 
 # ============================================================================
-# Tests for _reassign_ids credential clearing (Fix 3: SECRT-1772)
+# Tests for CredentialsFieldInfo.combine() field propagation
 def test_combine_preserves_is_auto_credential_flag():
     """
     CredentialsFieldInfo.combine() must propagate is_auto_credential and
@@ -526,6 +526,7 @@ def test_combine_preserves_regular_credential_defaults():
 
 
 # ============================================================================
+# Tests for _reassign_ids credential clearing (Fix 3: SECRT-1772)
 
 
 def test_reassign_ids_clears_credentials_id():
