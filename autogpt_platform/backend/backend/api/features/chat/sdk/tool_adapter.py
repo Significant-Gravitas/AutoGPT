@@ -179,10 +179,15 @@ def create_copilot_mcp_server():
 
             # Create the decorated tool
             # The @tool decorator expects (name, description, schema)
+            # Pass full JSON schema with type, properties, and required
             decorated = tool(
                 tool_name,
                 base_tool.description,
-                base_tool.parameters.get("properties", {}),
+                {
+                    "type": "object",
+                    "properties": base_tool.parameters.get("properties", {}),
+                    "required": base_tool.parameters.get("required", []),
+                },
             )(handler)
 
             sdk_tools.append(decorated)

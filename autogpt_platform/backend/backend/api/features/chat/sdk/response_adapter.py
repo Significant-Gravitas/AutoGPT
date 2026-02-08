@@ -282,6 +282,7 @@ async def adapt_sdk_stream(
     # Emit start immediately
     yield StreamStart(messageId=adapter.message_id, taskId=task_id)
 
+    finished = False
     try:
         async for sdk_message in sdk_stream:
             responses = adapter.convert_message(sdk_message)
@@ -289,12 +290,19 @@ async def adapt_sdk_stream(
                 # Skip duplicate start messages
                 if isinstance(response, StreamStart):
                     continue
+                if isinstance(response, StreamFinish):
+                    finished = True
                 yield response
 
     except Exception as e:
         logger.error(f"Error in SDK stream: {e}", exc_info=True)
         yield StreamError(
-            errorText=f"Stream error: {str(e)}",
+            errorText="An error occurred. Please try again.",
             code="stream_error",
         )
+        yield StreamFinish()
+        return
+
+    # Ensure terminal StreamFinish if SDK stream ended without one
+    if not finished:
         yield StreamFinish()

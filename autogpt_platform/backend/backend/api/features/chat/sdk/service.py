@@ -350,7 +350,6 @@ async def stream_chat_completion_sdk(
 
                 # Receive messages from the SDK
                 async for sdk_msg in client.receive_messages():
-
                     for response in adapter.convert_message(sdk_msg):
                         if isinstance(response, StreamStart):
                             continue
