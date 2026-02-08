@@ -47,9 +47,15 @@ class MCPClient:
     Supports optional Bearer token authentication.
     """
 
-    def __init__(self, server_url: str, auth_token: str | None = None):
+    def __init__(
+        self,
+        server_url: str,
+        auth_token: str | None = None,
+        trusted_origins: list[str] | None = None,
+    ):
         self.server_url = server_url.rstrip("/")
         self.auth_token = auth_token
+        self.trusted_origins = trusted_origins or []
         self._request_id = 0
 
     def _next_id(self) -> int:
@@ -84,7 +90,11 @@ class MCPClient:
         payload = self._build_jsonrpc_request(method, params)
         headers = self._build_headers()
 
-        requests = Requests(raise_for_status=True, extra_headers=headers)
+        requests = Requests(
+            raise_for_status=True,
+            extra_headers=headers,
+            trusted_origins=self.trusted_origins,
+        )
         response = await requests.post(self.server_url, json=payload)
         body = response.json()
 
@@ -102,7 +112,11 @@ class MCPClient:
         """Send a JSON-RPC notification (no id, no response expected)."""
         headers = self._build_headers()
         notification = {"jsonrpc": "2.0", "method": method}
-        requests = Requests(raise_for_status=False, extra_headers=headers)
+        requests = Requests(
+            raise_for_status=False,
+            extra_headers=headers,
+            trusted_origins=self.trusted_origins,
+        )
         await requests.post(self.server_url, json=notification)
 
     async def initialize(self) -> dict[str, Any]:
