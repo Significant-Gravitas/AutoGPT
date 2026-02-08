@@ -174,8 +174,11 @@ def _format_conversation_history(session: ChatSession) -> str:
                         f"  [Called tool: {func.get('name', 'unknown')}]"
                     )
         elif msg.role == "tool":
-            # Pass full tool results - SDK handles compaction
-            history_parts.append(f"  [Tool result: {msg.content or ''}]")
+            # Truncate large tool results to avoid blowing context window
+            tool_content = msg.content or ""
+            if len(tool_content) > 500:
+                tool_content = tool_content[:500] + "... (truncated)"
+            history_parts.append(f"  [Tool result: {tool_content}]")
 
     history_parts.append("</conversation_history>")
     history_parts.append("")
@@ -428,6 +431,8 @@ async def stream_chat_completion_sdk(
             async for response in stream_with_anthropic(
                 session, system_prompt, text_block_id
             ):
+                if isinstance(response, StreamFinish):
+                    stream_completed = True
                 yield response
 
         # Save the session with accumulated messages
@@ -435,10 +440,10 @@ async def stream_chat_completion_sdk(
         logger.debug(
             f"[SDK] Session {session_id} saved with {len(session.messages)} messages"
         )
-        # Always yield StreamFinish to signal completion to the caller
-        # The adapter yields StreamFinish for the SSE stream, but we need to
-        # yield it here so the background task in routes.py knows to call mark_task_completed
-        yield StreamFinish()
+        # Yield StreamFinish to signal completion to the caller (routes.py)
+        # Only if one hasn't already been yielded by the stream
+        if not stream_completed:
+            yield StreamFinish()
 
     except Exception as e:
         logger.error(f"[SDK] Error: {e}", exc_info=True)

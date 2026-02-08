@@ -6,6 +6,7 @@ into in-process MCP tools that can be used with the Claude Agent SDK.
 
 import json
 import logging
+import uuid
 from contextvars import ContextVar
 from typing import Any
 
@@ -78,10 +79,12 @@ def create_tool_handler(base_tool: BaseTool):
 
         try:
             # Call the existing tool's execute method
+            # Generate unique tool_call_id per invocation for proper correlation
+            effective_id = tool_call_id or f"sdk-{uuid.uuid4().hex[:12]}"
             result = await base_tool.execute(
                 user_id=user_id,
                 session=session,
-                tool_call_id=tool_call_id or "sdk-call",
+                tool_call_id=effective_id,
                 **args,
             )
 
@@ -121,6 +124,15 @@ def create_tool_handler(base_tool: BaseTool):
     return tool_handler
 
 
+def _build_input_schema(base_tool: BaseTool) -> dict[str, Any]:
+    """Build a JSON Schema input schema for a tool."""
+    return {
+        "type": "object",
+        "properties": base_tool.parameters.get("properties", {}),
+        "required": base_tool.parameters.get("required", []),
+    }
+
+
 def get_tool_definitions() -> list[dict[str, Any]]:
     """Get all tool definitions in MCP format.
 
@@ -133,11 +145,7 @@ def get_tool_definitions() -> list[dict[str, Any]]:
         tool_def = {
             "name": tool_name,
             "description": base_tool.description,
-            "inputSchema": {
-                "type": "object",
-                "properties": base_tool.parameters.get("properties", {}),
-                "required": base_tool.parameters.get("required", []),
-            },
+            "inputSchema": _build_input_schema(base_tool),
         }
         tool_definitions.append(tool_def)
 
@@ -183,11 +191,7 @@ def create_copilot_mcp_server():
             decorated = tool(
                 tool_name,
                 base_tool.description,
-                {
-                    "type": "object",
-                    "properties": base_tool.parameters.get("properties", {}),
-                    "required": base_tool.parameters.get("required", []),
-                },
+                _build_input_schema(base_tool),
             )(handler)
 
             sdk_tools.append(decorated)
@@ -202,13 +206,8 @@ def create_copilot_mcp_server():
         return server
 
     except ImportError:
-        logger.warning(
-            "claude-agent-sdk not available, returning tool definitions only"
-        )
-        return {
-            "tools": get_tool_definitions(),
-            "handlers": get_tool_handlers(),
-        }
+        # Let ImportError propagate so service.py handles the fallback
+        raise
 
 
 # List of tool names for allowed_tools configuration

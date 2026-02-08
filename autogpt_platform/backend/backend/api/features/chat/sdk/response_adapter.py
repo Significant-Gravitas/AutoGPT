@@ -241,6 +241,9 @@ class SDKResponseAdapter:
             )
             responses.append(StreamFinish())
 
+        else:
+            logger.debug(f"Unhandled SDK message type: {class_name}")
+
         return responses
 
     def create_heartbeat(self, tool_call_id: str | None = None) -> StreamHeartbeat:

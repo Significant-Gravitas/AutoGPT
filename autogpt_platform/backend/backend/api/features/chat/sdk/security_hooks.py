@@ -254,12 +254,12 @@ def create_strict_security_hooks(
                     },
                 )
 
-            # Run standard validations
-            result = _validate_tool_access(tool_name, tool_input)
+            # Run standard validations using clean_name for consistent checks
+            result = _validate_tool_access(clean_name, tool_input)
             if result:
                 return cast(SyncHookJSONOutput, result)
 
-            result = _validate_user_isolation(tool_name, tool_input, user_id)
+            result = _validate_user_isolation(clean_name, tool_input, user_id)
             if result:
                 return cast(SyncHookJSONOutput, result)
 
