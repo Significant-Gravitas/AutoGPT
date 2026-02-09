@@ -18,6 +18,7 @@ from redis.asyncio.lock import Lock as AsyncRedisLock
 
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.io import AgentOutputBlock
+from backend.blocks.mcp.block import MCPToolBlock
 from backend.data import redis_client as redis
 from backend.data.block import (
     BlockInput,
@@ -229,6 +230,10 @@ async def execute_node(
             _input_data.nodes_input_masks = nodes_input_masks
         _input_data.user_id = user_id
         input_data = _input_data.model_dump()
+    elif isinstance(node_block, MCPToolBlock):
+        _mcp_data = MCPToolBlock.Input(**node.input_default)
+        _mcp_data.tool_arguments = input_data
+        input_data = _mcp_data.model_dump()
     data.inputs = input_data
 
     # Execute the node
