@@ -4,7 +4,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
 import { Bell, MagnifyingGlass, X } from "@phosphor-icons/react";
-import { FixedSizeList as List } from "react-window";
+import { List } from "react-window";
 import { AgentExecutionWithInfo } from "../../helpers";
 import { ActivityItem } from "../ActivityItem";
 import styles from "./styles.module.css";
