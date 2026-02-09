@@ -2138,9 +2138,11 @@ async def add_user_to_waitlist(
                             where={"id": waitlist_id},
                             data={"unaffiliatedEmailUsers": current_emails},
                         )
-                        logger.info(f"Email {email} added to waitlist {waitlist_id}")
+                        # Mask email for logging to avoid PII exposure
+                        masked = email.split("@")[0][0] + "***@" + email.split("@")[1] if "@" in email else "***"
+                        logger.info(f"Email {masked} added to waitlist {waitlist_id}")
                     else:
-                        logger.debug(f"Email {email} already on waitlist {waitlist_id}")
+                        logger.debug(f"Email already exists on waitlist {waitlist_id}")
 
         # Re-fetch to return updated data
         updated_waitlist = await prisma.models.WaitlistEntry.prisma().find_unique(
