@@ -8,6 +8,10 @@ from typing import Any
 from pydantic_core import PydanticUndefined
 
 from backend.api.features.chat.model import ChatSession
+from backend.api.features.chat.tools.find_block import (
+    COPILOT_EXCLUDED_BLOCK_IDS,
+    COPILOT_EXCLUDED_BLOCK_TYPES,
+)
 from backend.data.block import get_block
 from backend.data.execution import ExecutionContext
 from backend.data.model import CredentialsMetaInput
@@ -209,6 +213,19 @@ class RunBlockTool(BaseTool):
         if block.disabled:
             return ErrorResponse(
                 message=f"Block '{block_id}' is disabled",
+                session_id=session_id,
+            )
+
+        # Check if block is excluded from CoPilot (graph-only blocks)
+        if (
+            block.block_type in COPILOT_EXCLUDED_BLOCK_TYPES
+            or block.id in COPILOT_EXCLUDED_BLOCK_IDS
+        ):
+            return ErrorResponse(
+                message=(
+                    f"Block '{block.name}' cannot be run directly in CoPilot. "
+                    "This block is designed for use within graphs only."
+                ),
                 session_id=session_id,
             )
 

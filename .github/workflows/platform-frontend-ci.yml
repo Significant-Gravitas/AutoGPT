@@ -42,7 +42,7 @@ jobs:
               - 'autogpt_platform/frontend/src/components/**'
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "22.18.0"
 
@@ -74,7 +74,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "22.18.0"
 
@@ -112,7 +112,7 @@ jobs:
           fetch-depth: 0
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "22.18.0"
 
@@ -153,7 +153,7 @@ jobs:
           submodules: recursive
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "22.18.0"
 
@@ -282,7 +282,7 @@ jobs:
           submodules: recursive
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "22.18.0"
 
