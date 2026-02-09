@@ -192,7 +192,7 @@ class SDKResponseAdapter:
                                     output_text += item.get("text", "")
                                 elif hasattr(item, "text"):
                                     output_text += getattr(item, "text", "")
-                            output = output_text
+                            output = output_text or json.dumps(result_content)
                         elif isinstance(result_content, str):
                             output = result_content
                         else:

@@ -136,7 +136,7 @@ async def _build_system_prompt(
     else:
         context = "This is the first time you are meeting the user. Greet them and introduce them to the platform"
 
-    return DEFAULT_SYSTEM_PROMPT.format(users_information=context), understanding
+    return DEFAULT_SYSTEM_PROMPT.replace("{users_information}", context), understanding
 
 
 def _format_conversation_history(session: ChatSession) -> str:

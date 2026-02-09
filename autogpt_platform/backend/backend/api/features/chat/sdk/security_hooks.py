@@ -135,13 +135,16 @@ def create_security_hooks(user_id: str | None) -> dict[str, Any]:
             tool_name = cast(str, input_data.get("tool_name", ""))
             tool_input = cast(dict[str, Any], input_data.get("tool_input", {}))
 
+            # Strip MCP prefix for consistent validation
+            clean_name = tool_name.removeprefix("mcp__copilot__")
+
             # Validate basic tool access
-            result = _validate_tool_access(tool_name, tool_input)
+            result = _validate_tool_access(clean_name, tool_input)
             if result:
                 return cast(SyncHookJSONOutput, result)
 
             # Validate user isolation
-            result = _validate_user_isolation(tool_name, tool_input, user_id)
+            result = _validate_user_isolation(clean_name, tool_input, user_id)
             if result:
                 return cast(SyncHookJSONOutput, result)
 
