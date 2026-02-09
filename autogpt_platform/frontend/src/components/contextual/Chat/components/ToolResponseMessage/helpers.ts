@@ -6,6 +6,43 @@ function stripInternalReasoning(content: string): string {
     .trim();
 }
 
+export interface AgentSavedData {
+  isSaved: boolean;
+  agentName: string;
+  agentId: string;
+  libraryAgentId: string;
+  libraryAgentLink: string;
+}
+
+export function isAgentSavedResponse(result: unknown): AgentSavedData {
+  if (typeof result !== "object" || result === null) {
+    return {
+      isSaved: false,
+      agentName: "",
+      agentId: "",
+      libraryAgentId: "",
+      libraryAgentLink: "",
+    };
+  }
+  const response = result as Record<string, unknown>;
+  if (response.type === "agent_saved") {
+    return {
+      isSaved: true,
+      agentName: (response.agent_name as string) || "Agent",
+      agentId: (response.agent_id as string) || "",
+      libraryAgentId: (response.library_agent_id as string) || "",
+      libraryAgentLink: (response.library_agent_link as string) || "",
+    };
+  }
+  return {
+    isSaved: false,
+    agentName: "",
+    agentId: "",
+    libraryAgentId: "",
+    libraryAgentLink: "",
+  };
+}
+
 export function isErrorResponse(result: unknown): boolean {
   if (typeof result === "string") {
     const lower = result.toLowerCase();
@@ -30,11 +67,124 @@ export function getErrorMessage(result: unknown): string {
   }
   if (typeof result === "object" && result !== null) {
     const response = result as Record<string, unknown>;
-    if (response.error) return stripInternalReasoning(String(response.error));
     if (response.message)
       return stripInternalReasoning(String(response.message));
+    if (response.error) return stripInternalReasoning(String(response.error));
   }
   return "An error occurred";
+}
+
+/**
+ * Check if a value is a workspace file reference.
+ * Format: workspace://{fileId} or workspace://{fileId}#{mimeType}
+ */
+function isWorkspaceRef(value: unknown): value is string {
+  return typeof value === "string" && value.startsWith("workspace://");
+}
+
+/**
+ * Extract MIME type from a workspace reference fragment.
+ * e.g., "workspace://abc123#video/mp4" → "video/mp4"
+ * Returns undefined if no fragment is present.
+ */
+function getWorkspaceMimeType(value: string): string | undefined {
+  const hashIndex = value.indexOf("#");
+  if (hashIndex === -1) return undefined;
+  return value.slice(hashIndex + 1) || undefined;
+}
+
+/**
+ * Determine the media category of a workspace ref or data URI.
+ * Uses the MIME type fragment on workspace refs when available,
+ * falls back to output key keyword matching for older refs without it.
+ */
+function getMediaCategory(
+  value: string,
+  outputKey?: string,
+): "video" | "image" | "audio" | "unknown" {
+  // Data URIs carry their own MIME type
+  if (value.startsWith("data:video/")) return "video";
+  if (value.startsWith("data:image/")) return "image";
+  if (value.startsWith("data:audio/")) return "audio";
+
+  // Workspace refs: prefer MIME type fragment
+  if (isWorkspaceRef(value)) {
+    const mime = getWorkspaceMimeType(value);
+    if (mime) {
+      if (mime.startsWith("video/")) return "video";
+      if (mime.startsWith("image/")) return "image";
+      if (mime.startsWith("audio/")) return "audio";
+      return "unknown";
+    }
+
+    // Fallback: keyword matching on output key for older refs without fragment
+    if (outputKey) {
+      const lowerKey = outputKey.toLowerCase();
+
+      const videoKeywords = [
+        "video",
+        "mp4",
+        "mov",
+        "avi",
+        "webm",
+        "movie",
+        "clip",
+      ];
+      if (videoKeywords.some((kw) => lowerKey.includes(kw))) return "video";
+
+      const imageKeywords = [
+        "image",
+        "img",
+        "photo",
+        "picture",
+        "thumbnail",
+        "avatar",
+        "icon",
+        "screenshot",
+      ];
+      if (imageKeywords.some((kw) => lowerKey.includes(kw))) return "image";
+    }
+
+    // Default to image for backward compatibility
+    return "image";
+  }
+
+  return "unknown";
+}
+
+/**
+ * Format a single output value, converting workspace refs to markdown images/videos.
+ * Videos use a "video:" alt-text prefix so the MarkdownContent renderer can
+ * distinguish them from images and render a <video> element.
+ */
+function formatOutputValue(value: unknown, outputKey?: string): string {
+  if (typeof value === "string") {
+    const category = getMediaCategory(value, outputKey);
+
+    if (category === "video") {
+      // Format with "video:" prefix so MarkdownContent renders <video>
+      return `![video:${outputKey || "Video"}](${value})`;
+    }
+
+    if (category === "image") {
+      return `![${outputKey || "Generated image"}](${value})`;
+    }
+
+    // For audio, unknown workspace refs, data URIs, etc. - return as-is
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    return value
+      .map((item, idx) => formatOutputValue(item, `${outputKey}_${idx}`))
+      .join("\n\n");
+  }
+
+  if (typeof value === "object" && value !== null) {
+    return JSON.stringify(value, null, 2);
+  }
+
+  return String(value);
 }
 
 function getToolCompletionPhrase(toolName: string): string {
@@ -127,10 +277,26 @@ export function formatToolResponse(result: unknown, toolName: string): string {
 
     case "block_output":
       const blockName = (response.block_name as string) || "Block";
-      const outputs = response.outputs as Record<string, unknown> | undefined;
+      const outputs = response.outputs as Record<string, unknown[]> | undefined;
       if (outputs && Object.keys(outputs).length > 0) {
-        const outputKeys = Object.keys(outputs);
-        return `${blockName} executed successfully. Outputs: ${outputKeys.join(", ")}`;
+        const formattedOutputs: string[] = [];
+
+        for (const [key, values] of Object.entries(outputs)) {
+          if (!Array.isArray(values) || values.length === 0) continue;
+
+          // Format each value in the output array
+          for (const value of values) {
+            const formatted = formatOutputValue(value, key);
+            if (formatted) {
+              formattedOutputs.push(formatted);
+            }
+          }
+        }
+
+        if (formattedOutputs.length > 0) {
+          return `${blockName} executed successfully.\n\n${formattedOutputs.join("\n\n")}`;
+        }
+        return `${blockName} executed successfully.`;
       }
       return `${blockName} executed successfully.`;
 
@@ -266,8 +432,8 @@ export function formatToolResponse(result: unknown, toolName: string): string {
 
     case "error":
       const errorMsg =
-        (response.error as string) || response.message || "An error occurred";
-      return `Error: ${errorMsg}`;
+        (response.message as string) || response.error || "An error occurred";
+      return stripInternalReasoning(String(errorMsg));
 
     case "no_results":
       const suggestions = (response.suggestions as string[]) || [];

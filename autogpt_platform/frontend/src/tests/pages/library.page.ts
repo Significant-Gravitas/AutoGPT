@@ -300,21 +300,27 @@ export class LibraryPage extends BasePage {
   async scrollToLoadMore(): Promise<void> {
     console.log(`scrolling to load more agents`);
 
-    // Get initial agent count
-    const initialCount = await this.getAgentCount();
-    console.log(`Initial agent count: ${initialCount}`);
+    const initialCount = await this.getAgentCountByListLength();
+    console.log(`Initial agent count (DOM cards): ${initialCount}`);
 
-    // Scroll down to trigger pagination
     await this.scrollToBottom();
 
-    // Wait for potential new agents to load
-    await this.page.waitForTimeout(2000);
+    await this.page
+      .waitForLoadState("networkidle", { timeout: 10000 })
+      .catch(() => console.log("Network idle timeout, continuing..."));
 
-    // Check if more agents loaded
-    const newCount = await this.getAgentCount();
-    console.log(`New agent count after scroll: ${newCount}`);
+    await this.page
+      .waitForFunction(
+        (prevCount) =>
+          document.querySelectorAll('[data-testid="library-agent-card"]')
+            .length > prevCount,
+        initialCount,
+        { timeout: 5000 },
+      )
+      .catch(() => {});
 
-    return;
+    const newCount = await this.getAgentCountByListLength();
+    console.log(`New agent count after scroll (DOM cards): ${newCount}`);
   }
 
   async testPagination(): Promise<{

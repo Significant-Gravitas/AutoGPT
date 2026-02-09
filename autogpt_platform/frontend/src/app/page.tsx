@@ -1,14 +1,15 @@
 "use client";
 
-import { FeatureFlagRedirect } from "@/services/feature-flags/FeatureFlagRedirect";
-import { Flag } from "@/services/feature-flags/use-get-flag";
+import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 
 export default function Page() {
-  return (
-    <FeatureFlagRedirect
-      flag={Flag.CHAT}
-      whenEnabled="/copilot"
-      whenDisabled="/library"
-    />
-  );
+  const router = useRouter();
+
+  useEffect(() => {
+    router.replace("/copilot");
+  }, [router]);
+
+  return <LoadingSpinner size="large" cover />;
 }

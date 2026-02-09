@@ -6,7 +6,7 @@ import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import { CheckCircleIcon, QuestionIcon } from "@phosphor-icons/react";
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 
 export interface ClarifyingQuestion {
   question: string;
@@ -17,39 +17,96 @@ export interface ClarifyingQuestion {
 interface Props {
   questions: ClarifyingQuestion[];
   message: string;
+  sessionId?: string;
   onSubmitAnswers: (answers: Record<string, string>) => void;
   onCancel?: () => void;
+  isAnswered?: boolean;
   className?: string;
+}
+
+function getStorageKey(sessionId?: string): string | null {
+  if (!sessionId) return null;
+  return `clarification_answers_${sessionId}`;
 }
 
 export function ClarificationQuestionsWidget({
   questions,
   message,
+  sessionId,
   onSubmitAnswers,
   onCancel,
+  isAnswered = false,
   className,
 }: Props) {
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const lastSessionIdRef = useRef<string | undefined>(undefined);
+
+  useEffect(() => {
+    const storageKey = getStorageKey(sessionId);
+    if (!storageKey) {
+      setAnswers({});
+      setIsSubmitted(false);
+      lastSessionIdRef.current = sessionId;
+      return;
+    }
+
+    try {
+      const saved = localStorage.getItem(storageKey);
+      if (saved) {
+        const parsed = JSON.parse(saved) as Record<string, string>;
+        setAnswers(parsed);
+      } else {
+        setAnswers({});
+      }
+      setIsSubmitted(false);
+    } catch {
+      setAnswers({});
+      setIsSubmitted(false);
+    }
+    lastSessionIdRef.current = sessionId;
+  }, [sessionId]);
+
+  useEffect(() => {
+    if (lastSessionIdRef.current !== sessionId) {
+      return;
+    }
+    const storageKey = getStorageKey(sessionId);
+    if (!storageKey) return;
+
+    const hasAnswers = Object.values(answers).some((v) => v.trim());
+    try {
+      if (hasAnswers) {
+        localStorage.setItem(storageKey, JSON.stringify(answers));
+      } else {
+        localStorage.removeItem(storageKey);
+      }
+    } catch {}
+  }, [answers, sessionId]);
 
   function handleAnswerChange(keyword: string, value: string) {
     setAnswers((prev) => ({ ...prev, [keyword]: value }));
   }
 
   function handleSubmit() {
-    // Check if all questions are answered
     const allAnswered = questions.every((q) => answers[q.keyword]?.trim());
     if (!allAnswered) {
       return;
     }
     setIsSubmitted(true);
     onSubmitAnswers(answers);
+
+    const storageKey = getStorageKey(sessionId);
+    try {
+      if (storageKey) {
+        localStorage.removeItem(storageKey);
+      }
+    } catch {}
   }
 
   const allAnswered = questions.every((q) => answers[q.keyword]?.trim());
 
-  // Show submitted state after answers are submitted
-  if (isSubmitted) {
+  if (isAnswered || isSubmitted) {
     return (
       <div
         className={cn(

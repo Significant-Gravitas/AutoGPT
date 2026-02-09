@@ -32,6 +32,7 @@ import backend.api.features.postmark.postmark
 import backend.api.features.store.model
 import backend.api.features.store.routes
 import backend.api.features.v1
+import backend.api.features.workspace.routes as workspace_routes
 import backend.data.block
 import backend.data.db
 import backend.data.graph
@@ -39,6 +40,10 @@ import backend.data.user
 import backend.integrations.webhooks.utils
 import backend.util.service
 import backend.util.settings
+from backend.api.features.chat.completion_consumer import (
+    start_completion_consumer,
+    stop_completion_consumer,
+)
 from backend.blocks.llm import DEFAULT_LLM_MODEL
 from backend.data.model import Credentials
 from backend.integrations.providers import ProviderName
@@ -52,6 +57,7 @@ from backend.util.exceptions import (
 )
 from backend.util.feature_flag import initialize_launchdarkly, shutdown_launchdarkly
 from backend.util.service import UnhealthyServiceError
+from backend.util.workspace_storage import shutdown_workspace_storage
 
 from .external.fastapi_app import external_api
 from .features.analytics import router as analytics_router
@@ -116,13 +122,30 @@ async def lifespan_context(app: fastapi.FastAPI):
     await backend.data.graph.migrate_llm_models(DEFAULT_LLM_MODEL)
     await backend.integrations.webhooks.utils.migrate_legacy_triggered_graphs()
 
+    # Start chat completion consumer for Redis Streams notifications
+    try:
+        await start_completion_consumer()
+    except Exception as e:
+        logger.warning(f"Could not start chat completion consumer: {e}")
+
     with launch_darkly_context():
         yield
+
+    # Stop chat completion consumer
+    try:
+        await stop_completion_consumer()
+    except Exception as e:
+        logger.warning(f"Error stopping chat completion consumer: {e}")
 
     try:
         await shutdown_cloud_storage_handler()
     except Exception as e:
         logger.warning(f"Error shutting down cloud storage handler: {e}")
+
+    try:
+        await shutdown_workspace_storage()
+    except Exception as e:
+        logger.warning(f"Error shutting down workspace storage: {e}")
 
     await backend.data.db.disconnect()
 
@@ -314,6 +337,11 @@ app.include_router(
     chat_routes.router,
     tags=["v2", "chat"],
     prefix="/api/chat",
+)
+app.include_router(
+    workspace_routes.router,
+    tags=["workspace"],
+    prefix="/api/workspace",
 )
 app.include_router(
     backend.api.features.oauth.router,
