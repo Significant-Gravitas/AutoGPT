@@ -1,15 +1,12 @@
 "use client";
 
-import React from "react";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import { Text } from "@/components/atoms/Text/Text";
+import { CredentialsInput } from "@/components/contextual/CredentialsInput/CredentialsInput";
+import { isSystemCredential } from "@/components/contextual/CredentialsInput/helpers";
 import type { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
-import { toDisplayName } from "@/providers/agent-credentials/helper";
-import {
-  getAgentCredentialsFields,
-  getAgentInputFields,
-  getCredentialTypeDisplayName,
-  renderValue,
-} from "./helpers";
+import { RunAgentInputs } from "../RunAgentInputs/RunAgentInputs";
+import { getAgentCredentialsFields, getAgentInputFields } from "./helpers";
 
 type Props = {
   agent: LibraryAgent;
@@ -22,16 +19,28 @@ export function AgentInputsReadOnly({
   inputs,
   credentialInputs,
 }: Props) {
-  const fields = getAgentInputFields(agent);
-  const credentialFields = getAgentCredentialsFields(agent);
-  const inputEntries = Object.entries(fields);
-  const credentialEntries = Object.entries(credentialFields);
+  const inputFields = getAgentInputFields(agent);
+  const credentialFieldEntries = Object.entries(
+    getAgentCredentialsFields(agent),
+  );
 
-  const hasInputs = inputs && inputEntries.length > 0;
-  const hasCredentials = credentialInputs && credentialEntries.length > 0;
+  const inputEntries =
+    inputs &&
+    Object.entries(inputs).map(([key, value]) => ({
+      key,
+      schema: inputFields[key],
+      value,
+    }));
+
+  const hasInputs = inputEntries && inputEntries.length > 0;
+  const hasCredentials = credentialInputs && credentialFieldEntries.length > 0;
 
   if (!hasInputs && !hasCredentials) {
-    return <div className="text-neutral-600">No input for this run.</div>;
+    return (
+      <Text variant="body" className="text-zinc-700">
+        No input for this run.
+      </Text>
+    );
   }
 
   return (
@@ -39,14 +48,20 @@ export function AgentInputsReadOnly({
       {/* Regular inputs */}
       {hasInputs && (
         <div className="flex flex-col gap-4">
-          {inputEntries.map(([key, sub]) => (
-            <div key={key} className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium">{sub?.title || key}</label>
-              <p className="whitespace-pre-wrap break-words text-sm text-neutral-700">
-                {renderValue((inputs as Record<string, any>)[key])}
-              </p>
-            </div>
-          ))}
+          {inputEntries.map(({ key, schema, value }) => {
+            if (!schema) return null;
+
+            return (
+              <RunAgentInputs
+                key={key}
+                schema={schema}
+                value={value}
+                placeholder={schema.description}
+                onChange={() => {}}
+                readOnly={true}
+              />
+            );
+          })}
         </div>
       )}
 
@@ -54,32 +69,19 @@ export function AgentInputsReadOnly({
       {hasCredentials && (
         <div className="flex flex-col gap-6">
           {hasInputs && <div className="border-t border-neutral-200 pt-4" />}
-          {credentialEntries.map(([key, _sub]) => {
+          {credentialFieldEntries.map(([key, inputSubSchema]) => {
             const credential = credentialInputs![key];
             if (!credential) return null;
+            if (isSystemCredential(credential)) return null;
 
             return (
-              <div key={key} className="flex flex-col gap-4">
-                <h3 className="text-lg font-medium text-neutral-900">
-                  {toDisplayName(credential.provider)} credentials
-                </h3>
-                <div className="flex flex-col gap-3">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-neutral-600">Name</span>
-                    <span className="text-neutral-600">
-                      {getCredentialTypeDisplayName(credential.type)}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-neutral-900">
-                      {credential.title || "Untitled"}
-                    </span>
-                    <span className="font-mono text-neutral-400">
-                      {"*".repeat(25)}
-                    </span>
-                  </div>
-                </div>
-              </div>
+              <CredentialsInput
+                key={key}
+                schema={{ ...inputSubSchema, discriminator: undefined } as any}
+                selectedCredentials={credential}
+                onSelectCredentials={() => {}}
+                readOnly={true}
+              />
             );
           })}
         </div>

@@ -1,44 +1,43 @@
 "use client";
 
-import { useGetV1GetUserTimezone } from "@/app/api/__generated__/endpoints/auth/auth";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
-import { Skeleton } from "@/components/__legacy__/ui/skeleton";
+import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
-import {
-  TabsLine,
-  TabsLineContent,
-  TabsLineList,
-  TabsLineTrigger,
-} from "@/components/molecules/TabsLine/TabsLine";
 import { humanizeCronExpression } from "@/lib/cron-expression-utils";
+import { isLargeScreen, useBreakpoint } from "@/lib/hooks/useBreakpoint";
+import { useUserTimezone } from "@/lib/hooks/useUserTimezone";
 import { formatInTimezone, getTimezoneDisplayName } from "@/lib/timezone-utils";
 import { AgentInputsReadOnly } from "../../modals/AgentInputsReadOnly/AgentInputsReadOnly";
+import { LoadingSelectedContent } from "../LoadingSelectedContent";
 import { RunDetailCard } from "../RunDetailCard/RunDetailCard";
 import { RunDetailHeader } from "../RunDetailHeader/RunDetailHeader";
-import { ScheduleActions } from "./components/ScheduleActions";
+import { SelectedViewLayout } from "../SelectedViewLayout";
+import { SelectedScheduleActions } from "./components/SelectedScheduleActions/SelectedScheduleActions";
 import { useSelectedScheduleView } from "./useSelectedScheduleView";
 
 interface Props {
   agent: LibraryAgent;
   scheduleId: string;
   onClearSelectedRun?: () => void;
+  banner?: React.ReactNode;
 }
 
 export function SelectedScheduleView({
   agent,
   scheduleId,
   onClearSelectedRun,
+  banner,
 }: Props) {
   const { schedule, isLoading, error } = useSelectedScheduleView(
     agent.graph_id,
     scheduleId,
   );
-  const { data: userTzRes } = useGetV1GetUserTimezone({
-    query: {
-      select: (res) => (res.status === 200 ? res.data.timezone : undefined),
-    },
-  });
+
+  const userTimezone = useUserTimezone();
+
+  const breakpoint = useBreakpoint();
+  const isLgScreenUp = isLargeScreen(breakpoint);
 
   if (error) {
     return (
@@ -67,126 +66,112 @@ export function SelectedScheduleView({
   }
 
   if (isLoading && !schedule) {
-    return (
-      <div className="flex-1 space-y-4">
-        <Skeleton className="h-8 w-full" />
-        <Skeleton className="h-12 w-full" />
-        <Skeleton className="h-64 w-full" />
-        <Skeleton className="h-32 w-full" />
-      </div>
-    );
+    return <LoadingSelectedContent agent={agent} />;
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <div>
-        <div className="flex w-full items-center justify-between">
-          <div className="flex w-full flex-col gap-0">
-            <RunDetailHeader
-              agent={agent}
-              run={undefined}
-              scheduleRecurrence={
-                schedule
-                  ? `${humanizeCronExpression(schedule.cron || "")} · ${getTimezoneDisplayName(schedule.timezone || userTzRes || "UTC")}`
-                  : undefined
-              }
-            />
-          </div>
-          {schedule ? (
-            <ScheduleActions
-              agent={agent}
-              scheduleId={schedule.id}
-              onDeleted={onClearSelectedRun}
-            />
-          ) : null}
-        </div>
-      </div>
-
-      <TabsLine defaultValue="input">
-        <TabsLineList>
-          <TabsLineTrigger value="input">Your input</TabsLineTrigger>
-          <TabsLineTrigger value="schedule">Schedule</TabsLineTrigger>
-        </TabsLineList>
-
-        <TabsLineContent value="input">
-          <RunDetailCard>
-            <div className="relative">
-              {/*                 {// TODO: re-enable edit inputs modal once the API supports it */}
-              {/* {schedule && Object.keys(schedule.input_data).length > 0 && (
-                <EditInputsModal agent={agent} schedule={schedule} />
-              )} */}
-              <AgentInputsReadOnly
+    <div className="flex h-full w-full gap-4">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <SelectedViewLayout agent={agent} banner={banner}>
+          <div className="flex flex-col gap-4">
+            <div className="flex w-full flex-col gap-0">
+              <RunDetailHeader
                 agent={agent}
-                inputs={schedule?.input_data}
-                credentialInputs={schedule?.input_credentials}
-              />
-            </div>
-          </RunDetailCard>
-        </TabsLineContent>
-
-        <TabsLineContent value="schedule">
-          <RunDetailCard>
-            {isLoading || !schedule ? (
-              <div className="text-neutral-500">Loading…</div>
-            ) : (
-              <div className="relative flex flex-col gap-8">
-                {
-                  // TODO: re-enable edit schedule modal once the API supports it
-                  /* <EditScheduleModal
-                  graphId={agent.graph_id}
-                  schedule={schedule}
-                /> */
+                run={undefined}
+                scheduleRecurrence={
+                  schedule
+                    ? `${humanizeCronExpression(schedule.cron || "")} · ${getTimezoneDisplayName(schedule.timezone || userTimezone || "UTC")}`
+                    : undefined
                 }
-                <div className="flex flex-col gap-1.5">
-                  <Text variant="body-medium" className="!text-black">
-                    Name
-                  </Text>
-                  <p className="text-sm text-zinc-600">{schedule.name}</p>
+              />
+              {schedule && !isLgScreenUp ? (
+                <div className="mt-4">
+                  <SelectedScheduleActions
+                    agent={agent}
+                    scheduleId={schedule.id}
+                    onDeleted={onClearSelectedRun}
+                  />
                 </div>
-                <div className="flex flex-col gap-1.5">
-                  <Text variant="body-medium" className="!text-black">
-                    Recurrence
-                  </Text>
-                  <p className="text-sm text-zinc-600">
-                    {humanizeCronExpression(schedule.cron)}
-                    {" • "}
-                    <span className="text-xs text-zinc-600">
-                      {getTimezoneDisplayName(
-                        schedule.timezone || userTzRes || "UTC",
-                      )}
-                    </span>
-                  </p>
+              ) : null}
+            </div>
+
+            {/* Schedule Section */}
+            <div id="schedule" className="scroll-mt-4">
+              <RunDetailCard title="Schedule">
+                {isLoading || !schedule ? (
+                  <div className="text-neutral-500">
+                    <LoadingSpinner />
+                  </div>
+                ) : (
+                  <div className="relative flex flex-col gap-8">
+                    <div className="flex flex-col gap-1.5">
+                      <Text variant="large-medium">Name</Text>
+                      <Text variant="body">{schedule.name}</Text>
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <Text variant="large-medium">Recurrence</Text>
+                      <Text variant="body" className="flex items-center gap-3">
+                        {humanizeCronExpression(schedule.cron)}{" "}
+                        <span className="text-zinc-500">•</span>{" "}
+                        <span className="text-zinc-500">
+                          {getTimezoneDisplayName(
+                            schedule.timezone || userTimezone || "UTC",
+                          )}
+                        </span>
+                      </Text>
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <Text variant="large-medium">Next run</Text>
+                      <Text variant="body" className="flex items-center gap-3">
+                        {formatInTimezone(
+                          schedule.next_run_time,
+                          userTimezone || "UTC",
+                          {
+                            year: "numeric",
+                            month: "long",
+                            day: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                            hour12: false,
+                          },
+                        )}{" "}
+                        <span className="text-zinc-500">•</span>{" "}
+                        <span className="text-zinc-500">
+                          {getTimezoneDisplayName(
+                            schedule.timezone || userTimezone || "UTC",
+                          )}
+                        </span>
+                      </Text>
+                    </div>
+                  </div>
+                )}
+              </RunDetailCard>
+            </div>
+
+            {/* Input Section */}
+            <div id="input" className="scroll-mt-4">
+              <RunDetailCard title="Your input">
+                <div className="relative">
+                  <AgentInputsReadOnly
+                    agent={agent}
+                    inputs={schedule?.input_data}
+                    credentialInputs={schedule?.input_credentials}
+                  />
                 </div>
-                <div className="flex flex-col gap-1.5">
-                  <Text variant="body-medium" className="!text-black">
-                    Next run
-                  </Text>
-                  <p className="text-sm text-zinc-600">
-                    {formatInTimezone(
-                      schedule.next_run_time,
-                      userTzRes || "UTC",
-                      {
-                        year: "numeric",
-                        month: "long",
-                        day: "numeric",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                        hour12: false,
-                      },
-                    )}{" "}
-                    •{" "}
-                    <span className="text-xs text-zinc-600">
-                      {getTimezoneDisplayName(
-                        schedule.timezone || userTzRes || "UTC",
-                      )}
-                    </span>
-                  </p>
-                </div>
-              </div>
-            )}
-          </RunDetailCard>
-        </TabsLineContent>
-      </TabsLine>
+              </RunDetailCard>
+            </div>
+          </div>
+        </SelectedViewLayout>
+      </div>
+      {schedule && isLgScreenUp ? (
+        <div className="max-w-[3.75rem] flex-shrink-0">
+          <SelectedScheduleActions
+            agent={agent}
+            scheduleId={schedule.id}
+            onDeleted={onClearSelectedRun}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }

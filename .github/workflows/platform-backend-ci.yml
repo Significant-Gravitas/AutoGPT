@@ -88,7 +88,7 @@ jobs:
         run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
 
       - name: Set up Python dependency cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/pypoetry
           key: poetry-${{ runner.os }}-${{ hashFiles('autogpt_platform/backend/poetry.lock') }}
@@ -134,7 +134,7 @@ jobs:
         run: poetry install
 
       - name: Generate Prisma Client
-        run: poetry run prisma generate
+        run: poetry run prisma generate && poetry run gen-prisma-stub
 
       - id: supabase
         name: Start Supabase
@@ -176,7 +176,7 @@ jobs:
           }
 
       - name: Run Database Migrations
-        run: poetry run prisma migrate dev --name updates
+        run: poetry run prisma migrate deploy
         env:
           DATABASE_URL: ${{ steps.supabase.outputs.DB_URL }}
           DIRECT_URL: ${{ steps.supabase.outputs.DB_URL }}

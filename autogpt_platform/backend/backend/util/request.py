@@ -11,9 +11,35 @@ from urllib.parse import quote, urljoin, urlparse
 import aiohttp
 import idna
 from aiohttp import FormData, abc
-from tenacity import retry, retry_if_result, wait_exponential_jitter
+from tenacity import (
+    RetryCallState,
+    retry,
+    retry_if_result,
+    stop_after_attempt,
+    wait_exponential_jitter,
+)
 
 from backend.util.json import loads
+
+
+class HTTPClientError(Exception):
+    """4xx client errors (400-499)"""
+
+    def __init__(self, message: str, status_code: int):
+        super().__init__(message)
+        self.status_code = status_code
+
+
+class HTTPServerError(Exception):
+    """5xx server errors (500-599)"""
+
+    def __init__(self, message: str, status_code: int):
+        super().__init__(message)
+        self.status_code = status_code
+
+
+# Default User-Agent for all requests
+DEFAULT_USER_AGENT = "AutoGPT-Platform/1.0 (https://github.com/Significant-Gravitas/AutoGPT; info@agpt.co) aiohttp"
 
 # Retry status codes for which we will automatically retry the request
 THROTTLE_RETRY_STATUS_CODES: set[int] = {429, 500, 502, 503, 504, 408}
@@ -131,12 +157,7 @@ async def validate_url(
         is_trusted: Boolean indicating if the hostname is in trusted_origins
         ip_addresses: List of IP addresses for the host; empty if the host is trusted
     """
-    # Canonicalize URL
-    url = url.strip("/ ").replace("\\", "/")
-    parsed = urlparse(url)
-    if not parsed.scheme:
-        url = f"http://{url}"
-        parsed = urlparse(url)
+    parsed = parse_url(url)
 
     # Check scheme
     if parsed.scheme not in ALLOWED_SCHEMES:
@@ -192,6 +213,17 @@ async def validate_url(
         is_trusted,
         ip_addresses,
     )
+
+
+def parse_url(url: str) -> URL:
+    """Canonicalizes and parses a URL string."""
+    url = url.strip("/ ").replace("\\", "/")
+
+    # Ensure scheme is present for proper parsing
+    if not re.match(r"[a-z0-9+.\-]+://", url):
+        url = f"http://{url}"
+
+    return urlparse(url)
 
 
 def pin_url(url: URL, ip_addresses: Optional[list[str]] = None) -> URL:
@@ -285,6 +317,20 @@ class Response:
         return 200 <= self.status < 300
 
 
+def _return_last_result(retry_state: RetryCallState) -> "Response":
+    """
+    Ensure the final attempt's response is returned when retrying stops.
+    """
+    if retry_state.outcome is None:
+        raise RuntimeError("Retry state is missing an outcome.")
+
+    exception = retry_state.outcome.exception()
+    if exception is not None:
+        raise exception
+
+    return retry_state.outcome.result()
+
+
 class Requests:
     """
     A wrapper around an aiohttp ClientSession that validates URLs before
@@ -299,6 +345,7 @@ class Requests:
         extra_url_validator: Callable[[URL], URL] | None = None,
         extra_headers: dict[str, str] | None = None,
         retry_max_wait: float = 300.0,
+        retry_max_attempts: int | None = None,
     ):
         self.trusted_origins = []
         for url in trusted_origins or []:
@@ -311,6 +358,9 @@ class Requests:
         self.extra_url_validator = extra_url_validator
         self.extra_headers = extra_headers
         self.retry_max_wait = retry_max_wait
+        if retry_max_attempts is not None and retry_max_attempts < 1:
+            raise ValueError("retry_max_attempts must be None or >= 1")
+        self.retry_max_attempts = retry_max_attempts
 
     async def request(
         self,
@@ -325,11 +375,17 @@ class Requests:
         max_redirects: int = 10,
         **kwargs,
     ) -> Response:
-        @retry(
-            wait=wait_exponential_jitter(max=self.retry_max_wait),
-            retry=retry_if_result(lambda r: r.status in THROTTLE_RETRY_STATUS_CODES),
-            reraise=True,
-        )
+        retry_kwargs: dict[str, Any] = {
+            "wait": wait_exponential_jitter(max=self.retry_max_wait),
+            "retry": retry_if_result(lambda r: r.status in THROTTLE_RETRY_STATUS_CODES),
+            "reraise": True,
+        }
+
+        if self.retry_max_attempts is not None:
+            retry_kwargs["stop"] = stop_after_attempt(self.retry_max_attempts)
+            retry_kwargs["retry_error_callback"] = _return_last_result
+
+        @retry(**retry_kwargs)
         async def _make_request() -> Response:
             return await self._request(
                 method=method,
@@ -420,6 +476,10 @@ class Requests:
         if self.extra_headers is not None:
             req_headers.update(self.extra_headers)
 
+        # Set default User-Agent if not provided
+        if "User-Agent" not in req_headers and "user-agent" not in req_headers:
+            req_headers["User-Agent"] = DEFAULT_USER_AGENT
+
         # Override Host header if using IP connection
         if connector:
             req_headers["Host"] = hostname
@@ -446,9 +506,16 @@ class Requests:
                         response.raise_for_status()
                     except ClientResponseError as e:
                         body = await response.read()
-                        raise Exception(
-                            f"HTTP {response.status} Error: {response.reason}, Body: {body.decode(errors='replace')}"
-                        ) from e
+                        error_message = f"HTTP {response.status} Error: {response.reason}, Body: {body.decode(errors='replace')}"
+
+                        # Raise specific exceptions based on status code range
+                        if 400 <= response.status <= 499:
+                            raise HTTPClientError(error_message, response.status) from e
+                        elif 500 <= response.status <= 599:
+                            raise HTTPServerError(error_message, response.status) from e
+                        else:
+                            # Generic fallback for other HTTP errors
+                            raise Exception(error_message) from e
 
                 # If allowed and a redirect is received, follow the redirect manually
                 if allow_redirects and response.status in (301, 302, 303, 307, 308):

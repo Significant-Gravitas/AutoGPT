@@ -52,7 +52,7 @@ export function AgentReviewStep({
             </Text>
             <Text
               variant="large"
-              className="line-clamp-1 text-ellipsis text-center !text-neutral-500"
+              className="line-clamp-1 text-ellipsis text-center text-neutral-500"
             >
               {subheader}
             </Text>
@@ -80,7 +80,7 @@ export function AgentReviewStep({
           {description ? (
             <Text
               variant="large"
-              className="line-clamp-1 text-ellipsis pt-2 text-center !text-neutral-500"
+              className="line-clamp-1 text-ellipsis pt-2 text-center text-neutral-500"
             >
               {description}
             </Text>

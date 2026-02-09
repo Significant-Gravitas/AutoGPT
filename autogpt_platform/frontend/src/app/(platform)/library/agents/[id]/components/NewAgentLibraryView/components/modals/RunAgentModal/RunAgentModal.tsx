@@ -3,14 +3,21 @@
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
 import { Button } from "@/components/atoms/Button/Button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/atoms/Tooltip/BaseTooltip";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import { AlarmIcon } from "@phosphor-icons/react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ScheduleAgentModal } from "../ScheduleAgentModal/ScheduleAgentModal";
-import { AgentCostSection } from "./components/AgentCostSection/AgentCostSection";
-import { AgentDetails } from "./components/AgentDetails/AgentDetails";
-import { AgentSectionHeader } from "./components/AgentSectionHeader/AgentSectionHeader";
+import {
+  AIAgentSafetyPopup,
+  useAIAgentSafetyPopup,
+} from "./components/AIAgentSafetyPopup/AIAgentSafetyPopup";
 import { ModalHeader } from "./components/ModalHeader/ModalHeader";
 import { ModalRunSection } from "./components/ModalRunSection/ModalRunSection";
 import { RunActions } from "./components/RunActions/RunActions";
@@ -20,16 +27,20 @@ import { useAgentRunModal } from "./useAgentRunModal";
 interface Props {
   triggerSlot: React.ReactNode;
   agent: LibraryAgent;
-  agentId: string;
-  agentVersion?: number;
+  initialInputValues?: Record<string, any>;
+  initialInputCredentials?: Record<string, any>;
   onRunCreated?: (execution: GraphExecutionMeta) => void;
+  onTriggerSetup?: (preset: LibraryAgentPreset) => void;
   onScheduleCreated?: (schedule: GraphExecutionJobInfo) => void;
 }
 
 export function RunAgentModal({
   triggerSlot,
   agent,
+  initialInputValues,
+  initialInputCredentials,
   onRunCreated,
+  onTriggerSetup,
   onScheduleCreated,
 }: Props) {
   const {
@@ -69,13 +80,67 @@ export function RunAgentModal({
     handleRun,
   } = useAgentRunModal(agent, {
     onRun: onRunCreated,
+    onSetupTrigger: onTriggerSetup,
+    initialInputValues,
+    initialInputCredentials,
   });
 
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
+  const [hasOverflow, setHasOverflow] = useState(false);
+  const [isSafetyPopupOpen, setIsSafetyPopupOpen] = useState(false);
+  const [pendingRunAction, setPendingRunAction] = useState<(() => void) | null>(
+    null,
+  );
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  const { shouldShowPopup, dismissPopup } = useAIAgentSafetyPopup(
+    agent.id,
+    agent.has_sensitive_action,
+    agent.has_human_in_the_loop,
+  );
 
   const hasAnySetupFields =
     Object.keys(agentInputFields || {}).length > 0 ||
     Object.keys(agentCredentialsInputFields || {}).length > 0;
+
+  const isTriggerRunType = defaultRunType.includes("trigger");
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    function checkOverflow() {
+      if (!contentRef.current) return;
+      const scrollableParent = contentRef.current
+        .closest("[data-dialog-content]")
+        ?.querySelector('[class*="overflow-y-auto"]');
+      if (scrollableParent) {
+        setHasOverflow(
+          scrollableParent.scrollHeight > scrollableParent.clientHeight,
+        );
+      }
+    }
+
+    const timeoutId = setTimeout(checkOverflow, 100);
+    const resizeObserver = new ResizeObserver(checkOverflow);
+    if (contentRef.current) {
+      const scrollableParent = contentRef.current
+        .closest("[data-dialog-content]")
+        ?.querySelector('[class*="overflow-y-auto"]');
+      if (scrollableParent) {
+        resizeObserver.observe(scrollableParent);
+      }
+    }
+
+    return () => {
+      clearTimeout(timeoutId);
+      resizeObserver.disconnect();
+    };
+  }, [
+    isOpen,
+    hasAnySetupFields,
+    agentInputFields,
+    agentCredentialsInputFields,
+  ]);
 
   function handleInputChange(key: string, value: string) {
     setInputValues((prev) => ({
@@ -114,6 +179,24 @@ export function RunAgentModal({
     onScheduleCreated?.(schedule);
   }
 
+  function handleRunWithSafetyCheck() {
+    if (shouldShowPopup) {
+      setPendingRunAction(() => handleRun);
+      setIsSafetyPopupOpen(true);
+    } else {
+      handleRun();
+    }
+  }
+
+  function handleSafetyPopupAcknowledge() {
+    setIsSafetyPopupOpen(false);
+    dismissPopup();
+    if (pendingRunAction) {
+      pendingRunAction();
+      setPendingRunAction(null);
+    }
+  }
+
   return (
     <>
       <Dialog
@@ -122,18 +205,14 @@ export function RunAgentModal({
       >
         <Dialog.Trigger>{triggerSlot}</Dialog.Trigger>
         <Dialog.Content>
-          <div className="flex h-full flex-col pb-4">
-            {/* Header */}
-            <div className="flex-shrink-0">
+          <div ref={contentRef} className="flex min-h-full flex-col">
+            <div className="flex-1">
+              {/* Header */}
               <ModalHeader agent={agent} />
-              <AgentCostSection flowId={agent.graph_id} />
-            </div>
 
-            {/* Scrollable content */}
-            <div className="flex-1 pr-1" style={{ scrollbarGutter: "stable" }}>
-              {/* Setup Section */}
-              <div className="mt-10">
-                {hasAnySetupFields ? (
+              {/* Content */}
+              {hasAnySetupFields ? (
+                <div className="mt-4 pb-10">
                   <RunAgentModalContextProvider
                     value={{
                       agent,
@@ -150,61 +229,81 @@ export function RunAgentModal({
                       agentCredentialsInputFields,
                     }}
                   >
-                    <>
-                      <AgentSectionHeader
-                        title={
-                          defaultRunType === "automatic-trigger"
-                            ? "Trigger Setup"
-                            : "Agent Setup"
-                        }
-                      />
-                      <ModalRunSection />
-                    </>
+                    <ModalRunSection />
                   </RunAgentModalContextProvider>
-                ) : null}
-              </div>
+                </div>
+              ) : null}
+            </div>
 
-              {/* Agent Details Section */}
-              <div className="mt-8">
-                <AgentSectionHeader title="Agent Details" />
-                <AgentDetails agent={agent} />
+            <Dialog.Footer
+              className={`sticky bottom-0 z-10 bg-white pt-4 ${
+                hasOverflow
+                  ? "border-t border-neutral-100 shadow-[0_-2px_8px_rgba(0,0,0,0.04)]"
+                  : ""
+              }`}
+            >
+              <div className="flex items-center justify-end gap-3">
+                {isTriggerRunType ? null : !allRequiredInputsAreSet ? (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span>
+                          <Button
+                            variant="secondary"
+                            onClick={handleOpenScheduleModal}
+                            disabled={
+                              isExecuting ||
+                              isSettingUpTrigger ||
+                              !allRequiredInputsAreSet
+                            }
+                          >
+                            Schedule Task
+                          </Button>
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>
+                          Please set up all required inputs and credentials
+                          before scheduling
+                        </p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                ) : (
+                  <Button
+                    variant="secondary"
+                    onClick={handleOpenScheduleModal}
+                    disabled={isExecuting || isSettingUpTrigger}
+                  >
+                    Schedule Task
+                  </Button>
+                )}
+                <RunActions
+                  defaultRunType={defaultRunType}
+                  onRun={handleRunWithSafetyCheck}
+                  isExecuting={isExecuting}
+                  isSettingUpTrigger={isSettingUpTrigger}
+                  isRunReady={allRequiredInputsAreSet}
+                />
               </div>
-            </div>
-          </div>
-          <Dialog.Footer
-            className="fixed bottom-1 left-0 z-10 w-full bg-white p-4"
-            style={{ boxShadow: "0px -8px 10px white" }}
-          >
-            <div className="flex items-center justify-end gap-3">
-              <Button
-                variant="secondary"
-                onClick={handleOpenScheduleModal}
-                disabled={
-                  isExecuting || isSettingUpTrigger || !allRequiredInputsAreSet
-                }
-              >
-                <AlarmIcon size={16} />
-                Schedule Agent
-              </Button>
-              <RunActions
-                defaultRunType={defaultRunType}
-                onRun={handleRun}
-                isExecuting={isExecuting}
-                isSettingUpTrigger={isSettingUpTrigger}
-                isRunReady={allRequiredInputsAreSet}
+              <ScheduleAgentModal
+                isOpen={isScheduleModalOpen}
+                onClose={handleCloseScheduleModal}
+                agent={agent}
+                inputValues={inputValues}
+                inputCredentials={inputCredentials}
+                onScheduleCreated={handleScheduleCreated}
               />
-            </div>
-            <ScheduleAgentModal
-              isOpen={isScheduleModalOpen}
-              onClose={handleCloseScheduleModal}
-              agent={agent}
-              inputValues={inputValues}
-              inputCredentials={inputCredentials}
-              onScheduleCreated={handleScheduleCreated}
-            />
-          </Dialog.Footer>
+            </Dialog.Footer>
+          </div>
         </Dialog.Content>
       </Dialog>
+
+      <AIAgentSafetyPopup
+        agentId={agent.id}
+        isOpen={isSafetyPopupOpen}
+        onAcknowledge={handleSafetyPopupAcknowledge}
+      />
     </>
   );
 }

@@ -1,9 +1,14 @@
 "use client";
 
-import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/modals/CredentialsInputs/CredentialsInputs";
 import { Button } from "@/components/atoms/Button/Button";
+import { CredentialsInput } from "@/components/contextual/CredentialsInput/CredentialsInput";
 import { CircleNotchIcon, FolderOpenIcon } from "@phosphor-icons/react";
-import { Props, useGoogleDrivePicker } from "./useGoogleDrivePicker";
+import {
+  Props as BaseProps,
+  useGoogleDrivePicker,
+} from "./useGoogleDrivePicker";
+
+export type Props = BaseProps;
 
 export function GoogleDrivePicker(props: Props) {
   const {
@@ -26,7 +31,6 @@ export function GoogleDrivePicker(props: Props) {
         schema={credentials.schema}
         selectedCredentials={selectedCredential}
         onSelectCredentials={setSelectedCredential}
-        hideIfSingleCredentialAvailable
       />
     );
   }
@@ -41,11 +45,11 @@ export function GoogleDrivePicker(props: Props) {
           schema={credentials.schema}
           selectedCredentials={selectedCredential}
           onSelectCredentials={setSelectedCredential}
-          hideIfSingleCredentialAvailable={false}
         />
       )}
       <Button
         size="small"
+        type="button"
         onClick={handleOpenPicker}
         disabled={props.disabled || isLoading || isAuthInProgress}
       >

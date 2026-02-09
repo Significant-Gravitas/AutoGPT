@@ -2,6 +2,8 @@ import copy
 from datetime import date, time
 from typing import Any, Optional
 
+# Import for Google Drive file input block
+from backend.blocks.google._drive import AttachmentView, GoogleDriveFile
 from backend.data.block import (
     Block,
     BlockCategory,
@@ -10,6 +12,7 @@ from backend.data.block import (
     BlockSchemaInput,
     BlockType,
 )
+from backend.data.execution import ExecutionContext
 from backend.data.model import SchemaField
 from backend.util.file import store_media_file
 from backend.util.mock import MockObject
@@ -74,7 +77,7 @@ class AgentInputBlock(Block):
         super().__init__(
             **{
                 "id": "c0a8e994-ebf1-4a9c-a4d8-89d09c86741b",
-                "description": "Base block for user inputs.",
+                "description": "A block that accepts and processes user input values within a workflow, supporting various input types and validation.",
                 "input_schema": AgentInputBlock.Input,
                 "output_schema": AgentInputBlock.Output,
                 "test_input": [
@@ -166,7 +169,7 @@ class AgentOutputBlock(Block):
     def __init__(self):
         super().__init__(
             id="363ae599-353e-4804-937e-b2ee3cef3da4",
-            description="Stores the output of the graph for users to see.",
+            description="A block that records and formats workflow results for display to users, with optional Jinja2 template formatting support.",
             input_schema=AgentOutputBlock.Input,
             output_schema=AgentOutputBlock.Output,
             test_input=[
@@ -460,18 +463,21 @@ class AgentFileInputBlock(AgentInputBlock):
         self,
         input_data: Input,
         *,
-        graph_exec_id: str,
-        user_id: str,
+        execution_context: ExecutionContext,
         **kwargs,
     ) -> BlockOutput:
         if not input_data.value:
             return
 
+        # Determine return format based on user preference
+        # for_external_api: always returns data URI (base64) - honors "Produce Base64 Output"
+        # for_block_output: smart format - workspace:// in CoPilot, data URI in graphs
+        return_format = "for_external_api" if input_data.base_64 else "for_block_output"
+
         yield "result", await store_media_file(
-            graph_exec_id=graph_exec_id,
             file=input_data.value,
-            user_id=user_id,
-            return_content=input_data.base_64,
+            execution_context=execution_context,
+            return_format=return_format,
         )
 
 
@@ -646,6 +652,119 @@ class AgentTableInputBlock(AgentInputBlock):
         yield "result", input_data.value if input_data.value is not None else []
 
 
+class AgentGoogleDriveFileInputBlock(AgentInputBlock):
+    """
+    This block allows users to select a file from Google Drive.
+
+    It provides a Google Drive file picker UI that handles both authentication
+    and file selection. The selected file information (ID, name, URL, etc.)
+    is output for use by other blocks like Google Sheets Read.
+    """
+
+    class Input(AgentInputBlock.Input):
+        value: Optional[GoogleDriveFile] = SchemaField(
+            description="The selected Google Drive file.",
+            default=None,
+            advanced=False,
+            title="Selected File",
+        )
+        allowed_views: list[AttachmentView] = SchemaField(
+            description="Which views to show in the file picker (DOCS, SPREADSHEETS, PRESENTATIONS, etc.).",
+            default_factory=lambda: ["DOCS", "SPREADSHEETS", "PRESENTATIONS"],
+            advanced=False,
+            title="Allowed Views",
+        )
+        allow_folder_selection: bool = SchemaField(
+            description="Whether to allow selecting folders.",
+            default=False,
+            advanced=True,
+            title="Allow Folder Selection",
+        )
+
+        def generate_schema(self):
+            """Generate schema for the value field with Google Drive picker format."""
+            schema = super().generate_schema()
+
+            # Default scopes for drive.file access
+            scopes = ["https://www.googleapis.com/auth/drive.file"]
+
+            # Build picker configuration
+            picker_config = {
+                "multiselect": False,  # Single file selection only for now
+                "allow_folder_selection": self.allow_folder_selection,
+                "allowed_views": (
+                    list(self.allowed_views) if self.allowed_views else ["DOCS"]
+                ),
+                "scopes": scopes,
+                # Auto-credentials config tells frontend to include _credentials_id in output
+                "auto_credentials": {
+                    "provider": "google",
+                    "type": "oauth2",
+                    "scopes": scopes,
+                    "kwarg_name": "credentials",
+                },
+            }
+
+            # Set format and config for frontend to render Google Drive picker
+            schema["format"] = "google-drive-picker"
+            schema["google_drive_picker_config"] = picker_config
+            # Also keep auto_credentials at top level for backend detection
+            schema["auto_credentials"] = {
+                "provider": "google",
+                "type": "oauth2",
+                "scopes": scopes,
+                "kwarg_name": "credentials",
+            }
+
+            if self.value is not None:
+                schema["default"] = self.value.model_dump()
+
+            return schema
+
+    class Output(AgentInputBlock.Output):
+        result: GoogleDriveFile = SchemaField(
+            description="The selected Google Drive file with ID, name, URL, and other metadata."
+        )
+
+    def __init__(self):
+        test_file = GoogleDriveFile.model_validate(
+            {
+                "id": "test-file-id",
+                "name": "Test Spreadsheet",
+                "mimeType": "application/vnd.google-apps.spreadsheet",
+                "url": "https://docs.google.com/spreadsheets/d/test-file-id",
+            }
+        )
+        super().__init__(
+            id="d3b32f15-6fd7-40e3-be52-e083f51b19a2",
+            description="Block for selecting a file from Google Drive.",
+            disabled=not config.enable_agent_input_subtype_blocks,
+            input_schema=AgentGoogleDriveFileInputBlock.Input,
+            output_schema=AgentGoogleDriveFileInputBlock.Output,
+            test_input=[
+                {
+                    "name": "spreadsheet_input",
+                    "description": "Select a spreadsheet from Google Drive",
+                    "allowed_views": ["SPREADSHEETS"],
+                    "value": {
+                        "id": "test-file-id",
+                        "name": "Test Spreadsheet",
+                        "mimeType": "application/vnd.google-apps.spreadsheet",
+                        "url": "https://docs.google.com/spreadsheets/d/test-file-id",
+                    },
+                }
+            ],
+            test_output=[("result", test_file)],
+        )
+
+    async def run(self, input_data: Input, *args, **kwargs) -> BlockOutput:
+        """
+        Yields the selected Google Drive file.
+        """
+        if input_data.value is not None:
+            yield "result", input_data.value
+
+
 IO_BLOCK_IDs = [
     AgentInputBlock().id,
     AgentOutputBlock().id,
@@ -658,4 +777,5 @@ IO_BLOCK_IDs = [
     AgentDropdownInputBlock().id,
     AgentToggleInputBlock().id,
     AgentTableInputBlock().id,
+    AgentGoogleDriveFileInputBlock().id,
 ]

@@ -185,6 +185,12 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Number of top blocks with most errors to show when no blocks exceed threshold (0 to disable).",
     )
 
+    # Execution Accuracy Monitoring
+    execution_accuracy_check_interval_hours: int = Field(
+        default=24,
+        description="Interval in hours between execution accuracy alert checks.",
+    )
+
     model_config = SettingsConfigDict(
         env_file=".env",
         extra="allow",
@@ -257,8 +263,14 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The name of the Google Cloud Storage bucket for media files",
     )
 
+    workspace_storage_dir: str = Field(
+        default="",
+        description="Local directory for workspace file storage when GCS is not configured. "
+        "If empty, defaults to {app_data}/workspaces. Used for self-hosted deployments.",
+    )
+
     reddit_user_agent: str = Field(
-        default="AutoGPT:1.0 (by /u/autogpt)",
+        default="web:AutoGPT:v0.6.0 (by /u/autogpt)",
         description="The user agent for the Reddit API",
     )
 
@@ -344,6 +356,19 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Whether to mark failed scans as clean or not",
     )
 
+    agentgenerator_host: str = Field(
+        default="",
+        description="The host for the Agent Generator service (empty to use built-in)",
+    )
+    agentgenerator_port: int = Field(
+        default=8000,
+        description="The port for the Agent Generator service",
+    )
+    agentgenerator_timeout: int = Field(
+        default=600,
+        description="The timeout in seconds for Agent Generator service requests (includes retries for rate limits)",
+    )
+
     enable_example_blocks: bool = Field(
         default=False,
         description="Whether to enable example blocks in production",
@@ -356,11 +381,25 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Hours between cloud storage cleanup runs (1-24 hours)",
     )
 
+    oauth_token_cleanup_interval_hours: int = Field(
+        default=6,
+        ge=1,
+        le=24,
+        description="Hours between OAuth token cleanup runs (1-24 hours)",
+    )
+
     upload_file_size_limit_mb: int = Field(
         default=256,
         ge=1,
         le=1024,
         description="Maximum file size in MB for file uploads (1-1024 MB)",
+    )
+
+    max_file_size_mb: int = Field(
+        default=100,
+        ge=1,
+        le=1024,
+        description="Maximum file size in MB for workspace files (1-1024 MB)",
     )
 
     # AutoMod configuration
@@ -617,6 +656,7 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     e2b_api_key: str = Field(default="", description="E2B API key")
     nvidia_api_key: str = Field(default="", description="Nvidia API key")
     mem0_api_key: str = Field(default="", description="Mem0 API key")
+    elevenlabs_api_key: str = Field(default="", description="ElevenLabs API key")
 
     linear_client_id: str = Field(default="", description="Linear client ID")
     linear_client_secret: str = Field(default="", description="Linear client secret")
@@ -645,6 +685,20 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
 
     ayrshare_api_key: str = Field(default="", description="Ayrshare API Key")
     ayrshare_jwt_key: str = Field(default="", description="Ayrshare private Key")
+
+    # Langfuse prompt management
+    langfuse_public_key: str = Field(default="", description="Langfuse public key")
+    langfuse_secret_key: str = Field(default="", description="Langfuse secret key")
+    langfuse_host: str = Field(
+        default="https://cloud.langfuse.com", description="Langfuse host URL"
+    )
+
+    # PostHog analytics
+    posthog_api_key: str = Field(default="", description="PostHog API key")
+    posthog_host: str = Field(
+        default="https://eu.i.posthog.com", description="PostHog host URL"
+    )
+
     # Add more secret fields as needed
     model_config = SettingsConfigDict(
         env_file=".env",

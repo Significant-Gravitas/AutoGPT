@@ -1,24 +1,25 @@
 "use client";
+import { getV1OnboardingState } from "@/app/api/__generated__/endpoints/onboarding/onboarding";
+import { getOnboardingStatus, resolveResponse } from "@/app/api/helpers";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
-import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 
 export default function OnboardingPage() {
   const router = useRouter();
-  const api = useBackendAPI();
 
   useEffect(() => {
     async function redirectToStep() {
       try {
-        // Check if onboarding is enabled
-        const isEnabled = await api.isOnboardingEnabled();
-        if (!isEnabled) {
+        // Check if onboarding is enabled (also gets chat flag for redirect)
+        const { shouldShowOnboarding } = await getOnboardingStatus();
+
+        if (!shouldShowOnboarding) {
           router.replace("/");
           return;
         }
 
-        const onboarding = await api.getUserOnboarding();
+        const onboarding = await resolveResponse(getV1OnboardingState());
 
         // Handle completed onboarding
         if (onboarding.completedSteps.includes("GET_RESULTS")) {
@@ -66,7 +67,7 @@ export default function OnboardingPage() {
     }
 
     redirectToStep();
-  }, [api, router]);
+  }, [router]);
 
   return <LoadingSpinner size="large" cover />;
 }

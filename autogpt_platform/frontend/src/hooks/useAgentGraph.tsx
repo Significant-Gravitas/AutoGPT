@@ -26,7 +26,6 @@ import { default as NextLink } from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
 import { useQueryClient } from "@tanstack/react-query";
 import { getGetV2ListLibraryAgentsQueryKey } from "@/app/api/__generated__/endpoints/library/library";
 
@@ -67,8 +66,7 @@ export default function useAgentGraph(
   >(null);
   const [xyNodes, setXYNodes] = useState<CustomNode[]>([]);
   const [xyEdges, setXYEdges] = useState<CustomEdge[]>([]);
-  const { state, completeStep, incrementRuns } = useOnboarding();
-  const betaBlocks = useGetFlag(Flag.BETA_BLOCKS);
+  const betaBlocks = useGetFlag(Flag.BETA_BLOCKS) as string[];
 
   // Filter blocks based on beta flags
   const availableBlocks = useMemo(() => {
@@ -235,13 +233,14 @@ export default function useAgentGraph(
         title: `${block.name} ${node.id}`,
         inputSchema: block.inputSchema,
         outputSchema: block.outputSchema,
+        isOutputStatic: block.staticOutput,
         hardcodedValues: node.input_default,
         uiType: block.uiType,
         metadata: metadata,
         connections: graph.links
           .filter((l) => [l.source_id, l.sink_id].includes(node.id))
           .map((link) => ({
-            edge_id: formatEdgeID(link),
+            id: formatEdgeID(link),
             source: link.source_id,
             sourceHandle: link.source_name,
             target: link.sink_id,
@@ -563,14 +562,13 @@ export default function useAgentGraph(
             setIsRunning(false);
             setIsStopping(false);
             setActiveExecutionID(null);
-            incrementRuns();
           }
         },
       );
     };
 
     fetchExecutions();
-  }, [flowID, flowExecutionID, incrementRuns]);
+  }, [flowID, flowExecutionID]);
 
   const prepareNodeInputData = useCallback(
     (node: CustomNode) => {
@@ -679,7 +677,7 @@ export default function useAgentGraph(
             ...payload,
             id: savedAgent.id,
           })
-        : await api.createGraph(payload);
+        : await api.createGraph(payload, "builder");
 
       console.debug("Response from the API:", newSavedAgent);
     }
@@ -751,8 +749,6 @@ export default function useAgentGraph(
       await queryClient.invalidateQueries({
         queryKey: getGetV2ListLibraryAgentsQueryKey(),
       });
-
-      completeStep("BUILDER_SAVE_AGENT");
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
@@ -765,7 +761,7 @@ export default function useAgentGraph(
     } finally {
       setIsSaving(false);
     }
-  }, [_saveAgent, toast, completeStep]);
+  }, [_saveAgent, toast]);
 
   const saveAndRun = useCallback(
     async (
@@ -780,7 +776,6 @@ export default function useAgentGraph(
       let savedAgent: Graph;
       try {
         savedAgent = await _saveAgent();
-        completeStep("BUILDER_SAVE_AGENT");
       } catch (error) {
         const errorMessage =
           error instanceof Error ? error.message : String(error);
@@ -808,6 +803,7 @@ export default function useAgentGraph(
           savedAgent.version,
           inputs,
           credentialsInputs,
+          "builder",
         );
 
         setActiveExecutionID(graphExecution.id);
@@ -818,10 +814,6 @@ export default function useAgentGraph(
         path.set("flowVersion", savedAgent.version.toString());
         path.set("flowExecutionID", graphExecution.id);
         router.push(`${pathname}?${path.toString()}`);
-
-        if (state?.completedSteps.includes("BUILDER_SAVE_AGENT")) {
-          completeStep("BUILDER_RUN_AGENT");
-        }
       } catch (error) {
         // Check if this is a structured validation error from the backend
         if (error instanceof ApiError && error.isGraphValidationError()) {
@@ -871,12 +863,10 @@ export default function useAgentGraph(
     [
       _saveAgent,
       toast,
-      completeStep,
       api,
       searchParams,
       pathname,
       router,
-      state,
       isSaving,
       isRunning,
       processedUpdates,

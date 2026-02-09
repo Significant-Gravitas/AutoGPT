@@ -15,7 +15,6 @@ import {
 import { cn } from "@/lib/utils";
 import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-import { storage, Key as StorageKey } from "@/services/storage/local-storage";
 import { WalletIcon } from "@phosphor-icons/react";
 import { PopoverClose } from "@radix-ui/react-popover";
 import { X } from "lucide-react";
@@ -175,7 +174,6 @@ export function Wallet() {
   const [prevCredits, setPrevCredits] = useState<number | null>(credits);
   const [flash, setFlash] = useState(false);
   const [walletOpen, setWalletOpen] = useState(false);
-  const [lastSeenCredits, setLastSeenCredits] = useState<number | null>(null);
 
   const totalCount = useMemo(() => {
     return groups.reduce((acc, group) => acc + group.tasks.length, 0);
@@ -200,38 +198,6 @@ export function Wallet() {
     setCompletedCount(completed);
   }, [groups, state?.completedSteps]);
 
-  // Load last seen credits from localStorage once on mount
-  useEffect(() => {
-    const stored = storage.get(StorageKey.WALLET_LAST_SEEN_CREDITS);
-    if (stored !== undefined && stored !== null) {
-      const parsed = parseFloat(stored);
-      if (!Number.isNaN(parsed)) setLastSeenCredits(parsed);
-      else setLastSeenCredits(0);
-    } else {
-      setLastSeenCredits(0);
-    }
-  }, []);
-
-  // Auto-open once if never shown, otherwise open only when credits increase beyond last seen
-  useEffect(() => {
-    if (typeof credits !== "number") return;
-    // Open once for first-time users
-    if (state && state.walletShown === false) {
-      requestAnimationFrame(() => setWalletOpen(true));
-      // Mark as shown so it won't reopen on every reload
-      updateState({ walletShown: true });
-      return;
-    }
-    // Open if user gained more credits than last acknowledged
-    if (
-      lastSeenCredits !== null &&
-      credits > lastSeenCredits &&
-      walletOpen === false
-    ) {
-      requestAnimationFrame(() => setWalletOpen(true));
-    }
-  }, [credits, lastSeenCredits, state?.walletShown, updateState, walletOpen]);
-
   const onWalletOpen = useCallback(async () => {
     if (!state?.walletShown) {
       updateState({ walletShown: true });
@@ -250,31 +216,45 @@ export function Wallet() {
     [],
   );
 
-  // Confetti effect on the wallet button
+  // React to onboarding notifications emitted by the provider
   const handleNotification = useCallback(
     (notification: WebSocketNotification) => {
-      if (notification.type !== "onboarding") {
+      if (
+        notification.type !== "onboarding" ||
+        notification.event !== "step_completed"
+      ) {
         return;
       }
 
-      if (walletRef.current) {
-        // Fix confetti appearing in the top left corner
-        const rect = walletRef.current.getBoundingClientRect();
-        if (rect.width === 0 || rect.height === 0) {
-          return;
-        }
-        fetchCredits();
-        party.confetti(walletRef.current!, {
-          count: 30,
-          spread: 120,
-          shapes: ["square", "circle"],
-          size: party.variation.range(1, 2),
-          speed: party.variation.range(200, 300),
-          modules: [fadeOut],
-        });
+      // Always refresh credits when any onboarding step completes
+      fetchCredits();
+
+      // Only trigger confetti for tasks that are in displayed groups
+      if (!walletRef.current) {
+        return;
       }
+      const taskIds = groups
+        .flatMap((group) => group.tasks)
+        .map((task) => task.id);
+      if (!taskIds.includes(notification.step as OnboardingStep)) {
+        return;
+      }
+
+      const rect = walletRef.current.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) {
+        return;
+      }
+
+      party.confetti(walletRef.current, {
+        count: 30,
+        spread: 120,
+        shapes: ["square", "circle"],
+        size: party.variation.range(1, 2),
+        speed: party.variation.range(200, 300),
+        modules: [fadeOut],
+      });
     },
-    [],
+    [fetchCredits, fadeOut, groups],
   );
 
   // WebSocket setup for onboarding notifications
@@ -310,19 +290,7 @@ export function Wallet() {
   if (credits === null || !state) return null;
 
   return (
-    <Popover
-      open={walletOpen}
-      onOpenChange={(open) => {
-        setWalletOpen(open);
-        if (!open) {
-          // Persist the latest acknowledged credits so we only auto-open on future gains
-          if (typeof credits === "number") {
-            storage.set(StorageKey.WALLET_LAST_SEEN_CREDITS, String(credits));
-            setLastSeenCredits(credits);
-          }
-        }
-      }}
-    >
+    <Popover open={walletOpen} onOpenChange={(open) => setWalletOpen(open)}>
       <PopoverTrigger asChild>
         <div className="relative inline-block">
           <button

@@ -16,14 +16,14 @@ export const extendedButtonVariants = cva(
         primary:
           "bg-zinc-800 border-zinc-800 text-white hover:bg-zinc-900 hover:border-zinc-900 rounded-full disabled:text-white disabled:bg-zinc-200 disabled:border-zinc-200 disabled:opacity-1",
         secondary:
-          "bg-zinc-200 border-zinc-200 text-black hover:bg-zinc-400 hover:border-zinc-400 rounded-full disabled:text-zinc-300 disabled:bg-zinc-50 disabled:border-zinc-50 disabled:opacity-1",
+          "bg-zinc-200 border-zinc-200 text-black hover:bg-zinc-300 hover:border-zinc-300 rounded-full disabled:text-zinc-300 disabled:bg-zinc-50 disabled:border-zinc-50 disabled:opacity-1",
         destructive:
           "bg-red-500 border-red-500 text-white hover:bg-red-600 hover:border-red-600 rounded-full disabled:text-white disabled:bg-zinc-200 disabled:border-zinc-200 disabled:opacity-1",
         outline:
           "bg-transparent border-zinc-700 text-black hover:bg-zinc-100 hover:border-zinc-700 rounded-full disabled:border-zinc-200 disabled:text-zinc-200 disabled:opacity-1",
         ghost:
           "bg-transparent border-transparent text-black hover:bg-zinc-50 hover:border-zinc-50 rounded-full disabled:text-zinc-200 disabled:opacity-1",
-        icon: "bg-white text-black border border-zinc-600 hover:bg-zinc-100 rounded-[96px] disabled:opacity-1 !min-w-0",
+        icon: "bg-transparent text-black border border-zinc-300 hover:bg-zinc-100 hover:border-zinc-600 rounded-[96px] disabled:opacity-1 !min-w-0",
         link: cn(
           linkBaseClasses,
           linkVariantClasses.secondary,
@@ -32,7 +32,7 @@ export const extendedButtonVariants = cva(
         ),
       },
       size: {
-        small: "px-3 py-2 text-sm gap-1.5 h-[2.25rem]",
+        small: "px-3 py-2 text-sm gap-1.5 h-[2.25rem] min-w-[5.5rem]",
         large: "px-4 py-3 text-sm gap-2 h-[3.25rem]",
         icon: "p-3 !min-w-0",
       },
@@ -49,6 +49,7 @@ type BaseButtonProps = {
   leftIcon?: React.ReactNode;
   rightIcon?: React.ReactNode;
   asChild?: boolean;
+  withTooltip?: boolean;
 } & VariantProps<typeof extendedButtonVariants>;
 
 type ButtonAsButton = BaseButtonProps &

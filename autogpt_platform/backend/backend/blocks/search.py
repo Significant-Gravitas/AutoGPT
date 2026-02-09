@@ -18,6 +18,7 @@ from backend.data.model import (
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
+from backend.util.request import DEFAULT_USER_AGENT
 
 
 class GetWikipediaSummaryBlock(Block, GetRequest):
@@ -39,16 +40,32 @@ class GetWikipediaSummaryBlock(Block, GetRequest):
             output_schema=GetWikipediaSummaryBlock.Output,
             test_input={"topic": "Artificial Intelligence"},
             test_output=("summary", "summary content"),
-            test_mock={"get_request": lambda url, json: {"extract": "summary content"}},
+            test_mock={
+                "get_request": lambda url, headers, json: {"extract": "summary content"}
+            },
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         topic = input_data.topic
-        url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{topic}"
-        response = await self.get_request(url, json=True)
-        if "extract" not in response:
-            raise RuntimeError(f"Unable to parse Wikipedia response: {response}")
-        yield "summary", response["extract"]
+        # URL-encode the topic to handle spaces and special characters
+        encoded_topic = quote(topic, safe="")
+        url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{encoded_topic}"
+
+        # Set headers per Wikimedia robot policy (https://w.wiki/4wJS)
+        # - User-Agent: Required, must identify the bot
+        # - Accept-Encoding: gzip recommended to reduce bandwidth
+        headers = {
+            "User-Agent": DEFAULT_USER_AGENT,
+            "Accept-Encoding": "gzip, deflate",
+        }
+
+        try:
+            response = await self.get_request(url, headers=headers, json=True)
+            if "extract" not in response:
+                raise ValueError(f"Unable to parse Wikipedia response: {response}")
+            yield "summary", response["extract"]
+        except Exception as e:
+            raise ValueError(f"Failed to fetch Wikipedia summary: {e}") from e
 
 
 TEST_CREDENTIALS = APIKeyCredentials(

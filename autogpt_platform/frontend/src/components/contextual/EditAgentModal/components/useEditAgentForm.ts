@@ -6,6 +6,7 @@ import {
 import { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 import { StoreSubmissionEditRequest } from "@/app/api/__generated__/models/storeSubmissionEditRequest";
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import { validateYouTubeUrl } from "@/lib/utils";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQueryClient } from "@tanstack/react-query";
 import React from "react";
@@ -18,11 +19,13 @@ interface useEditAgentFormProps {
     agent_id: string;
   };
   onSuccess: (submission: StoreSubmission) => void;
+  onClose: () => void;
 }
 
 export const useEditAgentForm = ({
   submission,
   onSuccess,
+  onClose,
 }: useEditAgentFormProps) => {
   const editAgentSchema = z.object({
     title: z
@@ -35,22 +38,7 @@ export const useEditAgentForm = ({
       .max(200, "Subheader must be less than 200 characters"),
     youtubeLink: z
       .string()
-      .optional()
-      .refine((val) => {
-        if (!val) return true;
-        try {
-          const url = new URL(val);
-          const allowedHosts = [
-            "youtube.com",
-            "www.youtube.com",
-            "youtu.be",
-            "www.youtu.be",
-          ];
-          return allowedHosts.includes(url.hostname);
-        } catch {
-          return false;
-        }
-      }, "Please enter a valid YouTube URL"),
+      .refine(validateYouTubeUrl, "Please enter a valid YouTube URL"),
     category: z.string().min(1, "Category is required"),
     description: z
       .string()
@@ -59,25 +47,20 @@ export const useEditAgentForm = ({
     changes_summary: z
       .string()
       .min(1, "Changes summary is required")
-      .max(200, "Changes summary must be less than 200 characters"),
+      .max(500, "Changes summary must be less than 500 characters"),
+    agentOutputDemo: z
+      .string()
+      .refine(validateYouTubeUrl, "Please enter a valid YouTube URL"),
   });
 
   type EditAgentFormData = z.infer<typeof editAgentSchema>;
 
   const [images, setImages] = React.useState<string[]>(
-    submission.image_urls || [],
+    Array.from(new Set(submission.image_urls || [])), // Remove duplicates
   );
   const [isSubmitting, setIsSubmitting] = React.useState(false);
 
-  const { mutateAsync: editSubmission } = usePutV2EditStoreSubmission({
-    mutation: {
-      onSuccess: () => {
-        queryClient.invalidateQueries({
-          queryKey: getGetV2ListMySubmissionsQueryKey(),
-        });
-      },
-    },
-  });
+  const { mutateAsync: editSubmission } = usePutV2EditStoreSubmission();
 
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -91,6 +74,7 @@ export const useEditAgentForm = ({
       category: submission.categories?.[0] || "",
       description: submission.description,
       changes_summary: submission.changes_summary || "",
+      agentOutputDemo: submission.agent_output_demo_url || "",
     },
   });
 
@@ -134,6 +118,7 @@ export const useEditAgentForm = ({
           description: data.description,
           image_urls: images,
           video_url: data.youtubeLink || "",
+          agent_output_demo_url: data.agentOutputDemo || "",
           categories: filteredCategories,
           changes_summary: data.changes_summary,
         },
@@ -141,7 +126,20 @@ export const useEditAgentForm = ({
 
       // Extract the StoreSubmission from the response
       if (response.status === 200 && response.data) {
+        toast({
+          title: "Agent Updated",
+          description: "Your agent submission has been updated successfully.",
+          duration: 3000,
+          variant: "default",
+        });
+
+        queryClient.invalidateQueries({
+          queryKey: getGetV2ListMySubmissionsQueryKey(),
+        });
+
+        // Call onSuccess and explicitly close the modal
         onSuccess(response.data);
+        onClose();
       } else {
         throw new Error("Failed to update submission");
       }

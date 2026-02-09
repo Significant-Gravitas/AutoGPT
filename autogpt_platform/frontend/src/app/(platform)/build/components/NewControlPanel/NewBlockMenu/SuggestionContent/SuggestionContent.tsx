@@ -6,10 +6,15 @@ import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { blockMenuContainerStyle } from "../style";
 import { useBlockMenuStore } from "../../../../stores/blockMenuStore";
 import { DefaultStateType } from "../types";
+import { SearchHistoryChip } from "../SearchHistoryChip";
+import { HorizontalScroll } from "../HorizontalScroll";
 
 export const SuggestionContent = () => {
-  const { setIntegration, setDefaultState } = useBlockMenuStore();
+  const { setIntegration, setDefaultState, setSearchQuery, setSearchId } =
+    useBlockMenuStore();
   const { data, isLoading, isError, error, refetch } = useSuggestionContent();
+  const suggestions = data?.suggestions;
+  const hasRecentSearches = (suggestions?.recent_searches?.length ?? 0) > 0;
 
   if (isError) {
     return (
@@ -29,11 +34,45 @@ export const SuggestionContent = () => {
     );
   }
 
-  const suggestions = data?.suggestions;
-
   return (
     <div className={blockMenuContainerStyle}>
       <div className="w-full space-y-6 pb-4">
+        {/* Recent searches */}
+        {hasRecentSearches && (
+          <div className="space-y-2.5 px-4">
+            <p className="font-sans text-sm font-medium leading-[1.375rem] text-zinc-800">
+              Recent searches
+            </p>
+            <HorizontalScroll
+              wrapperClassName="-mx-8"
+              scrollContainerClassName="flex gap-2 overflow-x-auto px-8 [scrollbar-width:none] [-ms-overflow-style:'none'] [&::-webkit-scrollbar]:hidden"
+              dependencyList={[
+                suggestions?.recent_searches?.length ?? 0,
+                isLoading,
+              ]}
+            >
+              {!isLoading && suggestions
+                ? suggestions.recent_searches.map((entry, index) => (
+                    <SearchHistoryChip
+                      key={entry.search_id || `${entry.search_query}-${index}`}
+                      content={entry.search_query || "Untitled search"}
+                      onClick={() => {
+                        setSearchQuery(entry.search_query || "");
+                        setSearchId(entry.search_id || undefined);
+                      }}
+                    />
+                  ))
+                : Array(3)
+                    .fill(0)
+                    .map((_, index) => (
+                      <SearchHistoryChip.Skeleton
+                        key={`recent-search-skeleton-${index}`}
+                      />
+                    ))}
+            </HorizontalScroll>
+          </div>
+        )}
+
         {/* Integrations */}
         <div className="space-y-2.5 px-4">
           <p className="font-sans text-sm font-medium leading-[1.375rem] text-zinc-800">
