@@ -131,12 +131,12 @@ export function ActivityDropdown({
       >
         {filteredExecutions.length > 0 ? (
           <List
-            height={listHeight}
-            width={320} // Match dropdown width (w-80 = 20rem = 320px)
+            defaultHeight={listHeight}
             rowCount={filteredExecutions.length}
             rowHeight={itemHeight}
             rowProps={{ executions: filteredExecutions }}
             rowComponent={VirtualizedActivityItem}
+            style={{ width: 320, height: listHeight }}
           />
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-5 pb-8 pt-6">
