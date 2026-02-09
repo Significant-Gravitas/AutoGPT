@@ -1,10 +1,15 @@
 """Tests for block filtering in FindBlockTool."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from backend.api.features.chat.tools.find_block import FindBlockTool
-from backend.data.block import EXCLUDED_BLOCK_IDS, EXCLUDED_BLOCK_TYPES, BlockType
+import pytest
+
+from backend.api.features.chat.tools.find_block import (
+    COPILOT_EXCLUDED_BLOCK_IDS,
+    COPILOT_EXCLUDED_BLOCK_TYPES,
+    FindBlockTool,
+)
+from backend.data.block import BlockType
 
 from ._test_data import make_session, setup_test_data
 
@@ -33,18 +38,18 @@ class TestFindBlockFiltering:
     """Tests for block filtering in FindBlockTool."""
 
     def test_excluded_block_types_contains_expected_types(self):
-        """Verify EXCLUDED_BLOCK_TYPES contains all graph-only types."""
-        assert BlockType.INPUT in EXCLUDED_BLOCK_TYPES
-        assert BlockType.OUTPUT in EXCLUDED_BLOCK_TYPES
-        assert BlockType.WEBHOOK in EXCLUDED_BLOCK_TYPES
-        assert BlockType.WEBHOOK_MANUAL in EXCLUDED_BLOCK_TYPES
-        assert BlockType.NOTE in EXCLUDED_BLOCK_TYPES
-        assert BlockType.HUMAN_IN_THE_LOOP in EXCLUDED_BLOCK_TYPES
-        assert BlockType.AGENT in EXCLUDED_BLOCK_TYPES
+        """Verify COPILOT_EXCLUDED_BLOCK_TYPES contains all graph-only types."""
+        assert BlockType.INPUT in COPILOT_EXCLUDED_BLOCK_TYPES
+        assert BlockType.OUTPUT in COPILOT_EXCLUDED_BLOCK_TYPES
+        assert BlockType.WEBHOOK in COPILOT_EXCLUDED_BLOCK_TYPES
+        assert BlockType.WEBHOOK_MANUAL in COPILOT_EXCLUDED_BLOCK_TYPES
+        assert BlockType.NOTE in COPILOT_EXCLUDED_BLOCK_TYPES
+        assert BlockType.HUMAN_IN_THE_LOOP in COPILOT_EXCLUDED_BLOCK_TYPES
+        assert BlockType.AGENT in COPILOT_EXCLUDED_BLOCK_TYPES
 
     def test_excluded_block_ids_contains_smart_decision_maker(self):
-        """Verify SmartDecisionMakerBlock is in EXCLUDED_BLOCK_IDS."""
-        assert "3b191d9f-356f-482d-8238-ba04b6d18381" in EXCLUDED_BLOCK_IDS
+        """Verify SmartDecisionMakerBlock is in COPILOT_EXCLUDED_BLOCK_IDS."""
+        assert "3b191d9f-356f-482d-8238-ba04b6d18381" in COPILOT_EXCLUDED_BLOCK_IDS
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_excluded_block_type_filtered_from_results(self, setup_test_data):

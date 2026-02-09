@@ -13,9 +13,32 @@ from backend.api.features.chat.tools.models import (
     NoResultsResponse,
 )
 from backend.api.features.store.hybrid_search import unified_hybrid_search
-from backend.data.block import EXCLUDED_BLOCK_IDS, EXCLUDED_BLOCK_TYPES, get_block
+from backend.data.block import BlockType, get_block
 
 logger = logging.getLogger(__name__)
+
+_TARGET_RESULTS = 10
+# Over-fetch to compensate for post-hoc filtering of graph-only blocks.
+# ~16-17 blocks are currently excluded; 40 provides ample margin.
+_OVERFETCH_PAGE_SIZE = 40
+
+# Block types that only work within graphs and cannot run standalone in CoPilot.
+# NOTE: This does NOT affect the Builder UI which uses load_all_blocks() directly.
+COPILOT_EXCLUDED_BLOCK_TYPES = {
+    BlockType.INPUT,  # Graph interface definition - data enters via chat, not graph inputs
+    BlockType.OUTPUT,  # Graph interface definition - data exits via chat, not graph outputs
+    BlockType.WEBHOOK,  # Wait for external events - would hang forever in CoPilot
+    BlockType.WEBHOOK_MANUAL,  # Same as WEBHOOK
+    BlockType.NOTE,  # Visual annotation only - no runtime behavior
+    BlockType.HUMAN_IN_THE_LOOP,  # Pauses for human approval - CoPilot IS human-in-the-loop
+    BlockType.AGENT,  # AgentExecutorBlock requires execution_context - use run_agent tool
+}
+
+# Specific block IDs excluded from CoPilot (STANDARD type but still require graph context)
+COPILOT_EXCLUDED_BLOCK_IDS = {
+    # SmartDecisionMakerBlock - dynamically discovers downstream blocks via graph topology
+    "3b191d9f-356f-482d-8238-ba04b6d18381",
+}
 
 
 class FindBlockTool(BaseTool):
@@ -88,7 +111,7 @@ class FindBlockTool(BaseTool):
                 query=query,
                 content_types=[ContentType.BLOCK],
                 page=1,
-                page_size=10,
+                page_size=_OVERFETCH_PAGE_SIZE,
             )
 
             if not results:
@@ -113,8 +136,8 @@ class FindBlockTool(BaseTool):
 
                 # Skip blocks excluded from CoPilot (graph-only blocks)
                 if (
-                    block.block_type in EXCLUDED_BLOCK_TYPES
-                    or block.id in EXCLUDED_BLOCK_IDS
+                    block.block_type in COPILOT_EXCLUDED_BLOCK_TYPES
+                    or block.id in COPILOT_EXCLUDED_BLOCK_IDS
                 ):
                     continue
 
@@ -178,6 +201,19 @@ class FindBlockTool(BaseTool):
                         output_schema=output_schema,
                         required_inputs=required_inputs,
                     )
+                )
+
+                if len(blocks) >= _TARGET_RESULTS:
+                    break
+
+            if blocks and len(blocks) < _TARGET_RESULTS:
+                logger.debug(
+                    "find_block returned %d/%d results for query '%s' "
+                    "(filtered %d excluded/disabled blocks)",
+                    len(blocks),
+                    _TARGET_RESULTS,
+                    query,
+                    len(results) - len(blocks),
                 )
 
             if not blocks:

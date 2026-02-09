@@ -1,11 +1,12 @@
 """Tests for block execution guards in RunBlockTool."""
 
-import pytest
 from unittest.mock import MagicMock, patch
 
-from backend.api.features.chat.tools.run_block import RunBlockTool
+import pytest
+
 from backend.api.features.chat.tools.models import ErrorResponse
-from backend.data.block import EXCLUDED_BLOCK_IDS, EXCLUDED_BLOCK_TYPES, BlockType
+from backend.api.features.chat.tools.run_block import RunBlockTool
+from backend.data.block import BlockType
 
 from ._test_data import make_session, setup_test_data
 
@@ -37,9 +38,7 @@ class TestRunBlockFiltering:
         user = setup_test_data["user"]
         session = make_session(user_id=user.id)
 
-        input_block = make_mock_block(
-            "input-block-id", "Input Block", BlockType.INPUT
-        )
+        input_block = make_mock_block("input-block-id", "Input Block", BlockType.INPUT)
 
         with patch(
             "backend.api.features.chat.tools.run_block.get_block",

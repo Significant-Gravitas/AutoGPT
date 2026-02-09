@@ -13,7 +13,6 @@ from typing import Any
 
 from prisma.enums import ContentType
 
-from backend.data.block import EXCLUDED_BLOCK_IDS, EXCLUDED_BLOCK_TYPES
 from backend.data.db import query_raw_with_schema
 
 logger = logging.getLogger(__name__)
@@ -177,32 +176,22 @@ class BlockHandler(ContentHandler):
         )
 
         existing_ids = {row["contentId"] for row in existing_result}
+        missing_blocks = [
+            (block_id, block_cls)
+            for block_id, block_cls in all_blocks.items()
+            if block_id not in existing_ids
+        ]
 
-        # Filter blocks: exclude already-embedded, disabled, and graph-only blocks
-        # IMPORTANT: Filter BEFORE slicing to batch_size to avoid returning empty
-        # batches when all first N blocks are excluded (causing processing stall)
-        eligible_blocks = []
-        for block_id, block_cls in all_blocks.items():
-            if block_id in existing_ids:
-                continue
+        # Convert to ContentItem
+        items = []
+        for block_id, block_cls in missing_blocks[:batch_size]:
             try:
                 block_instance = block_cls()
+
+                # Skip disabled blocks - they shouldn't be indexed
                 if block_instance.disabled:
                     continue
-                if (
-                    block_instance.block_type in EXCLUDED_BLOCK_TYPES
-                    or block_id in EXCLUDED_BLOCK_IDS
-                ):
-                    continue
-                eligible_blocks.append((block_id, block_cls, block_instance))
-            except Exception as e:
-                logger.warning(f"Failed to instantiate block {block_id}: {e}")
-                continue
 
-        # Convert to ContentItem (now safe to slice after filtering)
-        items = []
-        for block_id, block_cls, block_instance in eligible_blocks[:batch_size]:
-            try:
                 # Build searchable text from block metadata
                 parts = []
                 if hasattr(block_instance, "name") and block_instance.name:
@@ -264,22 +253,14 @@ class BlockHandler(ContentHandler):
 
         all_blocks = get_blocks()
 
-        # Filter out disabled blocks and excluded blocks - they're not indexed
+        # Filter out disabled blocks - they're not indexed
         enabled_block_ids = []
         for block_id, block_cls in all_blocks.items():
             try:
-                block_instance = block_cls()
+                if not block_cls().disabled:
+                    enabled_block_ids.append(block_id)
             except Exception as e:
                 logger.warning(f"Failed to instantiate block {block_id}: {e}")
-                continue
-            if block_instance.disabled:
-                continue
-            if (
-                block_instance.block_type in EXCLUDED_BLOCK_TYPES
-                or block_id in EXCLUDED_BLOCK_IDS
-            ):
-                continue
-            enabled_block_ids.append(block_id)
         total_blocks = len(enabled_block_ids)
 
         if total_blocks == 0:
