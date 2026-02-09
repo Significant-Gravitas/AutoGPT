@@ -134,7 +134,7 @@ class RunBlockTool(BaseTool):
         logger.info(f"Executing block {block.name} ({block_id}) for user {user_id}")
 
         creds_manager = IntegrationCredentialsManager()
-        matched_credentials, missing_credentials = await self._check_block_credentials(
+        matched_credentials, missing_credentials = await self._match_block_credentials(
             user_id, block, input_data
         )
 
@@ -264,7 +264,7 @@ class RunBlockTool(BaseTool):
                 session_id=session_id,
             )
 
-    async def _check_block_credentials(
+    async def _match_block_credentials(
         self,
         user_id: str,
         block: AnyBlockSchema,
