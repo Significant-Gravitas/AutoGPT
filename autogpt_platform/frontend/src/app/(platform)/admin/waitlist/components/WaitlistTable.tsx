@@ -33,14 +33,22 @@ export function WaitlistTable() {
 
   const deleteWaitlistMutation = useDeleteV2DeleteWaitlist({
     mutation: {
-      onSuccess: () => {
-        toast({
-          title: "Success",
-          description: "Waitlist deleted successfully",
-        });
-        queryClient.invalidateQueries({
-          queryKey: getGetV2ListAllWaitlistsQueryKey(),
-        });
+      onSuccess: (response) => {
+        if (response.status === 200) {
+          toast({
+            title: "Success",
+            description: "Waitlist deleted successfully",
+          });
+          queryClient.invalidateQueries({
+            queryKey: getGetV2ListAllWaitlistsQueryKey(),
+          });
+        } else {
+          toast({
+            variant: "destructive",
+            title: "Error",
+            description: "Failed to delete waitlist",
+          });
+        }
       },
       onError: (error) => {
         console.error("Error deleting waitlist:", error);
