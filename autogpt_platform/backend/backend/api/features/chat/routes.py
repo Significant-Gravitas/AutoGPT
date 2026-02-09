@@ -434,9 +434,7 @@ async def resume_session_stream(
         try:
             while True:
                 try:
-                    chunk = await asyncio.wait_for(
-                        subscriber_queue.get(), timeout=30.0
-                    )
+                    chunk = await asyncio.wait_for(subscriber_queue.get(), timeout=30.0)
                     yield chunk.to_sse()
 
                     if isinstance(chunk, StreamFinish):
@@ -446,9 +444,7 @@ async def resume_session_stream(
         except GeneratorExit:
             pass
         except Exception as e:
-            logger.error(
-                f"Error in resume stream for session {session_id}: {e}"
-            )
+            logger.error(f"Error in resume stream for session {session_id}: {e}")
         finally:
             try:
                 await stream_registry.unsubscribe_from_task(
