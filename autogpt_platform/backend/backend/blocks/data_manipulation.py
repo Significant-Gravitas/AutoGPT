@@ -453,6 +453,7 @@ class AddToListBlock(Block):
                     "list": ["a", "b"],
                     "position": 1,
                 },
+                {"list": [0], "entry": 0},
             ],
             test_output=[
                 (
@@ -467,12 +468,13 @@ class AddToListBlock(Block):
                 ("updated_list", ["first_entry"]),
                 ("updated_list", ["a", "b", "c", "d"]),
                 ("updated_list", ["a", "f", "g", "e", "b"]),
+                ("updated_list", [0, 0]),
             ],
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         entries_added = input_data.entries.copy()
-        if input_data.entry:
+        if input_data.entry is not None:
             entries_added.append(input_data.entry)
 
         updated_list = input_data.list.copy()
