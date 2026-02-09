@@ -8,10 +8,9 @@ from backend.api.features.chat.tools.models import ErrorResponse
 from backend.api.features.chat.tools.run_block import RunBlockTool
 from backend.data.block import BlockType
 
-from ._test_data import make_session, setup_test_data
+from ._test_data import make_session
 
-# Prevent formatter from removing fixture imports
-setup_test_data = setup_test_data
+_TEST_USER_ID = "test-user-run-block"
 
 
 def make_mock_block(
@@ -33,10 +32,9 @@ class TestRunBlockFiltering:
     """Tests for block execution guards in RunBlockTool."""
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_excluded_block_type_returns_error(self, setup_test_data):
+    async def test_excluded_block_type_returns_error(self):
         """Attempting to execute a block with excluded BlockType returns error."""
-        user = setup_test_data["user"]
-        session = make_session(user_id=user.id)
+        session = make_session(user_id=_TEST_USER_ID)
 
         input_block = make_mock_block("input-block-id", "Input Block", BlockType.INPUT)
 
@@ -46,7 +44,7 @@ class TestRunBlockFiltering:
         ):
             tool = RunBlockTool()
             response = await tool._execute(
-                user_id=user.id,
+                user_id=_TEST_USER_ID,
                 session=session,
                 block_id="input-block-id",
                 input_data={},
@@ -57,10 +55,9 @@ class TestRunBlockFiltering:
         assert "designed for use within graphs only" in response.message
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_excluded_block_id_returns_error(self, setup_test_data):
+    async def test_excluded_block_id_returns_error(self):
         """Attempting to execute SmartDecisionMakerBlock returns error."""
-        user = setup_test_data["user"]
-        session = make_session(user_id=user.id)
+        session = make_session(user_id=_TEST_USER_ID)
 
         smart_decision_id = "3b191d9f-356f-482d-8238-ba04b6d18381"
         smart_block = make_mock_block(
@@ -73,7 +70,7 @@ class TestRunBlockFiltering:
         ):
             tool = RunBlockTool()
             response = await tool._execute(
-                user_id=user.id,
+                user_id=_TEST_USER_ID,
                 session=session,
                 block_id=smart_decision_id,
                 input_data={},
@@ -83,10 +80,9 @@ class TestRunBlockFiltering:
         assert "cannot be run directly in CoPilot" in response.message
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_non_excluded_block_passes_guard(self, setup_test_data):
+    async def test_non_excluded_block_passes_guard(self):
         """Non-excluded blocks pass the filtering guard (may fail later for other reasons)."""
-        user = setup_test_data["user"]
-        session = make_session(user_id=user.id)
+        session = make_session(user_id=_TEST_USER_ID)
 
         standard_block = make_mock_block(
             "standard-id", "HTTP Request", BlockType.STANDARD
@@ -98,7 +94,7 @@ class TestRunBlockFiltering:
         ):
             tool = RunBlockTool()
             response = await tool._execute(
-                user_id=user.id,
+                user_id=_TEST_USER_ID,
                 session=session,
                 block_id="standard-id",
                 input_data={},

@@ -11,10 +11,9 @@ from backend.api.features.chat.tools.find_block import (
 )
 from backend.data.block import BlockType
 
-from ._test_data import make_session, setup_test_data
+from ._test_data import make_session
 
-# Prevent formatter from removing fixture imports
-setup_test_data = setup_test_data
+_TEST_USER_ID = "test-user-find-block"
 
 
 def make_mock_block(
@@ -52,10 +51,9 @@ class TestFindBlockFiltering:
         assert "3b191d9f-356f-482d-8238-ba04b6d18381" in COPILOT_EXCLUDED_BLOCK_IDS
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_excluded_block_type_filtered_from_results(self, setup_test_data):
+    async def test_excluded_block_type_filtered_from_results(self):
         """Verify blocks with excluded BlockTypes are filtered from search results."""
-        user = setup_test_data["user"]
-        session = make_session(user_id=user.id)
+        session = make_session(user_id=_TEST_USER_ID)
 
         # Mock search returns an INPUT block (excluded) and a STANDARD block (included)
         search_results = [
@@ -85,7 +83,7 @@ class TestFindBlockFiltering:
             ):
                 tool = FindBlockTool()
                 response = await tool._execute(
-                    user_id=user.id, session=session, query="test"
+                    user_id=_TEST_USER_ID, session=session, query="test"
                 )
 
         # Should only return the standard block, not the INPUT block
@@ -94,10 +92,9 @@ class TestFindBlockFiltering:
         assert response.blocks[0].id == "standard-block-id"
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_excluded_block_id_filtered_from_results(self, setup_test_data):
+    async def test_excluded_block_id_filtered_from_results(self):
         """Verify SmartDecisionMakerBlock is filtered from search results."""
-        user = setup_test_data["user"]
-        session = make_session(user_id=user.id)
+        session = make_session(user_id=_TEST_USER_ID)
 
         smart_decision_id = "3b191d9f-356f-482d-8238-ba04b6d18381"
         search_results = [
@@ -130,7 +127,7 @@ class TestFindBlockFiltering:
             ):
                 tool = FindBlockTool()
                 response = await tool._execute(
-                    user_id=user.id, session=session, query="decision"
+                    user_id=_TEST_USER_ID, session=session, query="decision"
                 )
 
         # Should only return normal block, not SmartDecisionMakerBlock
