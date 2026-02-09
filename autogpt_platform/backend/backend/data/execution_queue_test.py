@@ -3,8 +3,6 @@
 import queue
 import threading
 
-import pytest
-
 from backend.data.execution import ExecutionQueue
 
 
