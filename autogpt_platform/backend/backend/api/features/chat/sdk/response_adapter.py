@@ -192,11 +192,20 @@ class SDKResponseAdapter:
                                     output_text += item.get("text", "")
                                 elif hasattr(item, "text"):
                                     output_text += getattr(item, "text", "")
-                            output = output_text or json.dumps(result_content)
+                            if output_text:
+                                output = output_text
+                            else:
+                                try:
+                                    output = json.dumps(result_content)
+                                except (TypeError, ValueError):
+                                    output = str(result_content)
                         elif isinstance(result_content, str):
                             output = result_content
                         else:
-                            output = json.dumps(result_content)
+                            try:
+                                output = json.dumps(result_content)
+                            except (TypeError, ValueError):
+                                output = str(result_content)
 
                         responses.append(
                             StreamToolOutputAvailable(
