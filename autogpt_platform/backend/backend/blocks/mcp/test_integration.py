@@ -8,15 +8,16 @@ against it — no mocking, real HTTP requests.
 import asyncio
 import json
 import threading
+from unittest.mock import patch
 
 import pytest
 from aiohttp import web
-from pydantic import SecretStr
 
 from backend.blocks.mcp.block import MCPToolBlock
 from backend.blocks.mcp.client import MCPClient
 from backend.blocks.mcp.test_server import create_test_mcp_app
-from backend.data.model import APIKeyCredentials
+
+MOCK_USER_ID = "test-user-integration"
 
 
 class _MCPTestServer:
@@ -87,15 +88,6 @@ def mcp_server_with_auth():
 def _make_client(url: str, auth_token: str | None = None) -> MCPClient:
     """Create an MCPClient for integration tests."""
     return MCPClient(url, auth_token=auth_token)
-
-
-def _make_fake_creds(api_key: str = "FAKE_API_KEY") -> APIKeyCredentials:
-    return APIKeyCredentials(
-        id="test-integration",
-        provider="mcp",
-        api_key=SecretStr(api_key),
-        title="test",
-    )
 
 
 # ── MCPClient integration tests ──────────────────────────────────────
@@ -231,17 +223,16 @@ class TestMCPToolBlockIntegration:
             selected_tool="get_weather",
             tool_input_schema=weather_tool.input_schema,
             tool_arguments={"city": "Paris"},
-            credentials={  # type: ignore
-                "provider": "mcp",
-                "id": "test",
-                "type": "api_key",
-                "title": "test",
-            },
         )
 
+        # Mock _resolve_auth_token since we don't have a real credentials store
+        async def mock_resolve(self, cred_id, uid, server_url=""):
+            return None  # Public server, no auth needed
+
         outputs = []
-        async for name, data in block.run(input_data, credentials=_make_fake_creds()):
-            outputs.append((name, data))
+        with patch.object(MCPToolBlock, "_resolve_auth_token", mock_resolve):
+            async for name, data in block.run(input_data, user_id=MOCK_USER_ID):
+                outputs.append((name, data))
 
         assert len(outputs) == 1
         assert outputs[0][0] == "result"
@@ -264,17 +255,15 @@ class TestMCPToolBlockIntegration:
             selected_tool="add_numbers",
             tool_input_schema=add_tool.input_schema,
             tool_arguments={"a": 42, "b": 58},
-            credentials={  # type: ignore
-                "provider": "mcp",
-                "id": "test",
-                "type": "api_key",
-                "title": "test",
-            },
         )
 
+        async def mock_resolve(self, cred_id, uid, server_url=""):
+            return None
+
         outputs = []
-        async for name, data in block.run(input_data, credentials=_make_fake_creds()):
-            outputs.append((name, data))
+        with patch.object(MCPToolBlock, "_resolve_auth_token", mock_resolve):
+            async for name, data in block.run(input_data, user_id=MOCK_USER_ID):
+                outputs.append((name, data))
 
         assert len(outputs) == 1
         assert outputs[0][0] == "result"
@@ -293,17 +282,15 @@ class TestMCPToolBlockIntegration:
                 "required": ["message"],
             },
             tool_arguments={"message": "Hello from AutoGPT!"},
-            credentials={  # type: ignore
-                "provider": "mcp",
-                "id": "test",
-                "type": "api_key",
-                "title": "test",
-            },
         )
 
+        async def mock_resolve(self, cred_id, uid, server_url=""):
+            return None
+
         outputs = []
-        async for name, data in block.run(input_data, credentials=_make_fake_creds()):
-            outputs.append((name, data))
+        with patch.object(MCPToolBlock, "_resolve_auth_token", mock_resolve):
+            async for name, data in block.run(input_data, user_id=MOCK_USER_ID):
+                outputs.append((name, data))
 
         assert len(outputs) == 1
         assert outputs[0][0] == "result"
@@ -317,17 +304,15 @@ class TestMCPToolBlockIntegration:
             server_url=mcp_server,
             selected_tool="nonexistent_tool",
             tool_arguments={},
-            credentials={  # type: ignore
-                "provider": "mcp",
-                "id": "test",
-                "type": "api_key",
-                "title": "test",
-            },
         )
 
+        async def mock_resolve(self, cred_id, uid, server_url=""):
+            return None
+
         outputs = []
-        async for name, data in block.run(input_data, credentials=_make_fake_creds()):
-            outputs.append((name, data))
+        with patch.object(MCPToolBlock, "_resolve_auth_token", mock_resolve):
+            async for name, data in block.run(input_data, user_id=MOCK_USER_ID):
+                outputs.append((name, data))
 
         assert len(outputs) == 1
         assert outputs[0][0] == "error"
@@ -348,19 +333,16 @@ class TestMCPToolBlockIntegration:
                 "required": ["message"],
             },
             tool_arguments={"message": "Authenticated!"},
-            credentials={  # type: ignore
-                "provider": "mcp",
-                "id": "test",
-                "type": "api_key",
-                "title": "test",
-            },
         )
 
+        # Mock _resolve_auth_token to return the test server's auth token
+        async def mock_resolve(self, cred_id, uid, server_url=""):
+            return token
+
         outputs = []
-        async for name, data in block.run(
-            input_data, credentials=_make_fake_creds(api_key=token)
-        ):
-            outputs.append((name, data))
+        with patch.object(MCPToolBlock, "_resolve_auth_token", mock_resolve):
+            async for name, data in block.run(input_data, user_id=MOCK_USER_ID):
+                outputs.append((name, data))
 
         assert len(outputs) == 1
         assert outputs[0][0] == "result"

@@ -244,9 +244,8 @@ async def mcp_oauth_login(
         client_id = "autogpt-platform"
 
     # Step 4: Store state token with OAuth metadata for the callback
-    scopes = (
-        (protected_resource or {}).get("scopes_supported")
-        or metadata.get("scopes_supported", [])
+    scopes = (protected_resource or {}).get("scopes_supported") or metadata.get(
+        "scopes_supported", []
     )
     state_token, code_challenge = await creds_manager.store.store_state_token(
         user_id,
@@ -364,7 +363,9 @@ async def mcp_oauth_callback(
                 and old.metadata.get("mcp_server_url") == meta["server_url"]
             ):
                 await creds_manager.store.delete_creds_by_id(user_id, old.id)
-                logger.info(f"Removed old MCP credential {old.id} for {meta['server_url']}")
+                logger.info(
+                    f"Removed old MCP credential {old.id} for {meta['server_url']}"
+                )
     except Exception:
         logger.debug("Could not clean up old MCP credentials", exc_info=True)
 

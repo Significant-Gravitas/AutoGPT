@@ -24,7 +24,7 @@ from backend.data.block import (
     BlockSchemaOutput,
     BlockType,
 )
-from backend.data.model import OAuth2Credentials, SchemaField
+from backend.data.model import APIKeyCredentials, OAuth2Credentials, SchemaField
 from backend.util.json import validate_with_jsonschema
 
 logger = logging.getLogger(__name__)
@@ -208,7 +208,7 @@ class MCPToolBlock(Block):
         # Fallback: look up by server_url (same approach as discover-tools)
         if not creds and server_url:
             logger.info(
-                f"credential_id not available, looking up credential by server_url"
+                "credential_id not available, looking up credential by server_url"
             )
             try:
                 mcp_creds = await store.get_creds_by_provider(
@@ -227,7 +227,9 @@ class MCPToolBlock(Block):
                             best = c
                 creds = best
             except Exception:
-                logger.debug("Could not look up MCP credentials by server_url", exc_info=True)
+                logger.debug(
+                    "Could not look up MCP credentials by server_url", exc_info=True
+                )
 
         if not creds:
             return None
@@ -240,7 +242,7 @@ class MCPToolBlock(Block):
             ):
                 creds = await self._refresh_mcp_oauth(creds, user_id, store)
             return creds.access_token.get_secret_value()
-        if hasattr(creds, "api_key") and creds.api_key:
+        if isinstance(creds, APIKeyCredentials) and creds.api_key:
             return creds.api_key.get_secret_value() or None
         return None
 
