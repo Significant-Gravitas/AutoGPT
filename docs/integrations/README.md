@@ -192,6 +192,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Get Current Time](block-integrations/text.md#get-current-time) | This block outputs the current time |
 | [Match Text Pattern](block-integrations/text.md#match-text-pattern) | Matches text against a regex pattern and forwards data to positive or negative output based on the match |
 | [Text Decoder](block-integrations/text.md#text-decoder) | Decodes a string containing escape sequences into actual text |
+| [Text Encoder](block-integrations/text.md#text-encoder) | Encodes a string by converting special characters into escape sequences |
 | [Text Replace](block-integrations/text.md#text-replace) | This block is used to replace a text with a new text |
 | [Text Split](block-integrations/text.md#text-split) | This block is used to split a text into a list of strings |
 | [Word Character Count](block-integrations/text.md#word-character-count) | Counts the number of words and characters in a given text |
@@ -232,6 +233,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Stagehand Extract](block-integrations/stagehand/blocks.md#stagehand-extract) | Extract structured data from a webpage |
 | [Stagehand Observe](block-integrations/stagehand/blocks.md#stagehand-observe) | Find suggested actions for your workflows |
 | [Unreal Text To Speech](block-integrations/llm.md#unreal-text-to-speech) | Converts text to speech using the Unreal Speech API |
+| [Video Narration](block-integrations/video/narration.md#video-narration) | Generate AI narration and add to video |
 
 ## Search and Information Retrieval
 
@@ -471,9 +473,13 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 
 | Block Name | Description |
 |------------|-------------|
-| [Add Audio To Video](block-integrations/multimedia.md#add-audio-to-video) | Block to attach an audio file to a video file using moviepy |
-| [Loop Video](block-integrations/multimedia.md#loop-video) | Block to loop a video to a given duration or number of repeats |
-| [Media Duration](block-integrations/multimedia.md#media-duration) | Block to get the duration of a media file |
+| [Add Audio To Video](block-integrations/video/add_audio.md#add-audio-to-video) | Block to attach an audio file to a video file using moviepy |
+| [Loop Video](block-integrations/video/loop.md#loop-video) | Block to loop a video to a given duration or number of repeats |
+| [Media Duration](block-integrations/video/duration.md#media-duration) | Block to get the duration of a media file |
+| [Video Clip](block-integrations/video/clip.md#video-clip) | Extract a time segment from a video |
+| [Video Concat](block-integrations/video/concat.md#video-concat) | Merge multiple video clips into one continuous video |
+| [Video Download](block-integrations/video/download.md#video-download) | Download video from URL (YouTube, Vimeo, news sites, direct links) |
+| [Video Text Overlay](block-integrations/video/text_overlay.md#video-text-overlay) | Add text overlay/caption to video |
 
 ## Productivity
 
