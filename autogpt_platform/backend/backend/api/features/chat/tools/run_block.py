@@ -18,8 +18,10 @@ from backend.data.model import CredentialsMetaInput
 from backend.data.workspace import get_or_create_workspace
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util.exceptions import BlockError
+from backend.util.workspace import WorkspaceManager
 
 from .base import BaseTool
+from .binary_output_processor import process_binary_outputs
 from .models import (
     BlockOutputResponse,
     ErrorResponse,
@@ -337,6 +339,16 @@ class RunBlockTool(BaseTool):
                 **exec_kwargs,
             ):
                 outputs[output_name].append(output_data)
+
+            # Post-process outputs to save binary content to workspace
+            workspace_manager = WorkspaceManager(
+                user_id=user_id,
+                workspace_id=workspace.id,
+                session_id=session.session_id,
+            )
+            outputs = await process_binary_outputs(
+                dict(outputs), workspace_manager, block.name
+            )
 
             return BlockOutputResponse(
                 message=f"Block '{block.name}' executed successfully",
