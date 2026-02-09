@@ -25,6 +25,8 @@ export type MCPToolDialogResult = {
   selectedTool: string;
   toolInputSchema: Record<string, any>;
   availableTools: Record<string, any>;
+  /** Credential ID from OAuth flow, null for public servers. */
+  credentialId: string | null;
 };
 
 interface MCPToolDialogProps {
@@ -56,6 +58,7 @@ export function MCPToolDialog({
   const [showManualToken, setShowManualToken] = useState(false);
   const [manualToken, setManualToken] = useState("");
   const [selectedTool, setSelectedTool] = useState<MCPTool | null>(null);
+  const [credentialId, setCredentialId] = useState<string | null>(null);
 
   const oauthLoadingRef = useRef(false);
   const stateTokenRef = useRef<string | null>(null);
@@ -120,6 +123,7 @@ export function MCPToolDialog({
     setAuthRequired(false);
     setShowManualToken(false);
     setSelectedTool(null);
+    setCredentialId(null);
     stateTokenRef.current = null;
   }, [cleanupOAuthListeners]);
 
@@ -186,8 +190,11 @@ export function MCPToolDialog({
       // Exchange code for tokens (stored server-side)
       setLoading(true);
       try {
-        await api.mcpOAuthCallback(data.code!, stateTokenRef.current!);
-        // Retry discovery — backend auto-uses stored credential
+        const callbackResult = await api.mcpOAuthCallback(
+          data.code!,
+          stateTokenRef.current!,
+        );
+        setCredentialId(callbackResult.credential_id);
         const result = await api.mcpDiscoverTools(serverUrl.trim());
         localStorage.setItem(STORAGE_KEY, serverUrl.trim());
         setTools(result.tools);
@@ -299,9 +306,10 @@ export function MCPToolDialog({
       selectedTool: selectedTool.name,
       toolInputSchema: selectedTool.input_schema,
       availableTools,
+      credentialId,
     });
     reset();
-  }, [selectedTool, tools, serverUrl, onConfirm, reset]);
+  }, [selectedTool, tools, serverUrl, credentialId, onConfirm, reset]);
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && handleClose()}>

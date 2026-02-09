@@ -8,9 +8,7 @@ dropdown and the input/output schema adapts dynamically.
 
 import json
 import logging
-from typing import Any, Literal
-
-from pydantic import SecretStr
+from typing import Any
 
 from backend.blocks.mcp.client import MCPClient, MCPClientError
 from backend.data.block import (
@@ -22,35 +20,10 @@ from backend.data.block import (
     BlockSchemaOutput,
     BlockType,
 )
-from backend.data.model import (
-    APIKeyCredentials,
-    CredentialsField,
-    CredentialsMetaInput,
-    OAuth2Credentials,
-    SchemaField,
-)
-from backend.integrations.providers import ProviderName
+from backend.data.model import OAuth2Credentials, SchemaField
 from backend.util.json import validate_with_jsonschema
 
 logger = logging.getLogger(__name__)
-
-MCPCredentials = APIKeyCredentials | OAuth2Credentials
-MCPCredentialsInput = CredentialsMetaInput[
-    Literal[ProviderName.MCP], Literal["api_key", "oauth2"]
-]
-
-TEST_CREDENTIALS = APIKeyCredentials(
-    id="01234567-89ab-cdef-0123-456789abcdef",
-    provider="mcp",
-    api_key=SecretStr("test-mcp-token"),
-    title="Mock MCP Credentials",
-)
-TEST_CREDENTIALS_INPUT = {
-    "provider": TEST_CREDENTIALS.provider,
-    "id": TEST_CREDENTIALS.id,
-    "type": TEST_CREDENTIALS.type,
-    "title": TEST_CREDENTIALS.title,
-}
 
 
 class MCPToolBlock(Block):
@@ -67,15 +40,14 @@ class MCPToolBlock(Block):
     """
 
     class Input(BlockSchemaInput):
-        # -- Static fields (always shown) --
-        credentials: MCPCredentialsInput = CredentialsField(
-            description="Credentials for the MCP server. Use an API key for Bearer "
-            "token auth, or OAuth2 for servers that support it. For public "
-            "servers, create a credential with any placeholder value.",
-        )
         server_url: str = SchemaField(
             description="URL of the MCP server (Streamable HTTP endpoint)",
             placeholder="https://mcp.example.com/mcp",
+        )
+        credential_id: str = SchemaField(
+            description="Credential ID from OAuth flow (empty for public servers)",
+            default="",
+            hidden=True,
         )
         available_tools: dict[str, Any] = SchemaField(
             description="Available tools on the MCP server. "
@@ -95,7 +67,6 @@ class MCPToolBlock(Block):
             hidden=True,
         )
 
-        # -- Dynamic field: actual arguments for the selected tool --
         tool_arguments: dict[str, Any] = SchemaField(
             description="Arguments to pass to the selected MCP tool. "
             "The fields here are defined by the tool's input schema.",
@@ -143,7 +114,6 @@ class MCPToolBlock(Block):
             block_type=BlockType.STANDARD,
             test_input={
                 "server_url": "https://mcp.example.com/mcp",
-                "credentials": TEST_CREDENTIALS_INPUT,
                 "selected_tool": "get_weather",
                 "tool_input_schema": {
                     "type": "object",
@@ -164,7 +134,6 @@ class MCPToolBlock(Block):
                     "temperature": 20,
                 },
             },
-            test_credentials=TEST_CREDENTIALS,
         )
 
     async def _call_mcp_tool(
@@ -220,24 +189,28 @@ class MCPToolBlock(Block):
             return output_parts[0]
         return output_parts if output_parts else None
 
-    @staticmethod
-    def _extract_auth_token(credentials: MCPCredentials) -> str | None:
-        """Extract a Bearer token from either API key or OAuth2 credentials."""
-        if isinstance(credentials, OAuth2Credentials):
-            return credentials.access_token.get_secret_value()
+    async def _resolve_auth_token(self, credential_id: str, user_id: str) -> str | None:
+        """Resolve a Bearer token from a stored credential ID."""
+        if not credential_id:
+            return None
+        from backend.util.clients import get_integration_credentials_store
 
-        if isinstance(credentials, APIKeyCredentials) and credentials.api_key:
-            token_value = credentials.api_key.get_secret_value()
-            if token_value:
-                return token_value
-
+        store = get_integration_credentials_store()
+        creds = await store.get_creds_by_id(user_id, credential_id)
+        if not creds:
+            logger.warning(f"Credential {credential_id} not found")
+            return None
+        if isinstance(creds, OAuth2Credentials):
+            return creds.access_token.get_secret_value()
+        if hasattr(creds, "api_key") and creds.api_key:
+            return creds.api_key.get_secret_value() or None
         return None
 
     async def run(
         self,
         input_data: Input,
         *,
-        credentials: MCPCredentials,
+        user_id: str,
         **kwargs,
     ) -> BlockOutput:
         if not input_data.server_url:
@@ -248,7 +221,7 @@ class MCPToolBlock(Block):
             yield "error", "No tool selected. Please select a tool from the dropdown."
             return
 
-        auth_token = self._extract_auth_token(credentials)
+        auth_token = await self._resolve_auth_token(input_data.credential_id, user_id)
 
         try:
             result = await self._call_mcp_tool(

@@ -68,6 +68,7 @@ export const Block: BlockComponent = ({
         selected_tool: result.selectedTool,
         tool_input_schema: result.toolInputSchema,
         available_tools: result.availableTools,
+        credential_id: result.credentialId ?? "",
       });
       setMcpDialogOpen(false);
     },
