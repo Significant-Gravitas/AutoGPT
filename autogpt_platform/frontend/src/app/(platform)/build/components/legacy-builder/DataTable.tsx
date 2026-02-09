@@ -1,6 +1,6 @@
 import { beautifyString } from "@/lib/utils";
 import { Clipboard, Maximize2 } from "lucide-react";
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { Button } from "../../../../../components/__legacy__/ui/button";
 import { ContentRenderer } from "../../../../../components/__legacy__/ui/render";
 import {
@@ -11,6 +11,12 @@ import {
   TableHeader,
   TableRow,
 } from "../../../../../components/__legacy__/ui/table";
+import type { OutputMetadata } from "@/components/contextual/OutputRenderers";
+import {
+  globalRegistry,
+  OutputItem,
+} from "@/components/contextual/OutputRenderers";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useToast } from "../../../../../components/molecules/Toast/use-toast";
 import ExpandableOutputDialog from "./ExpandableOutputDialog";
 
@@ -26,12 +32,24 @@ export default function DataTable({
   data,
 }: DataTableProps) {
   const { toast } = useToast();
+  const enableEnhancedOutputHandling = useGetFlag(
+    Flag.ENABLE_ENHANCED_OUTPUT_HANDLING,
+  );
   const [expandedDialog, setExpandedDialog] = useState<{
     isOpen: boolean;
     execId: string;
     pinName: string;
     data: any[];
   } | null>(null);
+
+  // Prepare renderers for each item when enhanced mode is enabled
+  const getItemRenderer = useMemo(() => {
+    if (!enableEnhancedOutputHandling) return null;
+    return (item: unknown) => {
+      const metadata: OutputMetadata = {};
+      return globalRegistry.getRenderer(item, metadata);
+    };
+  }, [enableEnhancedOutputHandling]);
 
   const copyData = (pin: string, data: string) => {
     navigator.clipboard.writeText(data).then(() => {
@@ -102,15 +120,31 @@ export default function DataTable({
                       <Clipboard size={18} />
                     </Button>
                   </div>
-                  {value.map((item, index) => (
-                    <React.Fragment key={index}>
-                      <ContentRenderer
-                        value={item}
-                        truncateLongData={truncateLongData}
-                      />
-                      {index < value.length - 1 && ", "}
-                    </React.Fragment>
-                  ))}
+                  {value.map((item, index) => {
+                    const renderer = getItemRenderer?.(item);
+                    if (enableEnhancedOutputHandling && renderer) {
+                      const metadata: OutputMetadata = {};
+                      return (
+                        <React.Fragment key={index}>
+                          <OutputItem
+                            value={item}
+                            metadata={metadata}
+                            renderer={renderer}
+                          />
+                          {index < value.length - 1 && ", "}
+                        </React.Fragment>
+                      );
+                    }
+                    return (
+                      <React.Fragment key={index}>
+                        <ContentRenderer
+                          value={item}
+                          truncateLongData={truncateLongData}
+                        />
+                        {index < value.length - 1 && ", "}
+                      </React.Fragment>
+                    );
+                  })}
                 </div>
               </TableCell>
             </TableRow>
