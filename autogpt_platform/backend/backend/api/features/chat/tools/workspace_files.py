@@ -2,9 +2,9 @@
 
 import base64
 import logging
-from typing import Any, Optional
+from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from backend.api.features.chat.model import ChatSession
 from backend.data.workspace import get_or_create_workspace
@@ -78,6 +78,65 @@ class WorkspaceDeleteResponse(ToolResponseBase):
     success: bool
 
 
+# Input models for workspace tools
+class ListWorkspaceFilesInput(BaseModel):
+    """Input parameters for list_workspace_files tool."""
+
+    path_prefix: str | None = None
+    limit: int = 50
+    include_all_sessions: bool = False
+
+    @field_validator("path_prefix", mode="before")
+    @classmethod
+    def strip_path(cls, v: Any) -> str | None:
+        return v.strip() if isinstance(v, str) else None
+
+
+class ReadWorkspaceFileInput(BaseModel):
+    """Input parameters for read_workspace_file tool."""
+
+    file_id: str | None = None
+    path: str | None = None
+    force_download_url: bool = False
+
+    @field_validator("file_id", "path", mode="before")
+    @classmethod
+    def strip_strings(cls, v: Any) -> str | None:
+        return v.strip() if isinstance(v, str) else None
+
+
+class WriteWorkspaceFileInput(BaseModel):
+    """Input parameters for write_workspace_file tool."""
+
+    filename: str = ""
+    content_base64: str = ""
+    path: str | None = None
+    mime_type: str | None = None
+    overwrite: bool = False
+
+    @field_validator("filename", "content_base64", mode="before")
+    @classmethod
+    def strip_required(cls, v: Any) -> str:
+        return v.strip() if isinstance(v, str) else (v if v is not None else "")
+
+    @field_validator("path", "mime_type", mode="before")
+    @classmethod
+    def strip_optional(cls, v: Any) -> str | None:
+        return v.strip() if isinstance(v, str) else None
+
+
+class DeleteWorkspaceFileInput(BaseModel):
+    """Input parameters for delete_workspace_file tool."""
+
+    file_id: str | None = None
+    path: str | None = None
+
+    @field_validator("file_id", "path", mode="before")
+    @classmethod
+    def strip_strings(cls, v: Any) -> str | None:
+        return v.strip() if isinstance(v, str) else None
+
+
 class ListWorkspaceFilesTool(BaseTool):
     """Tool for listing files in user's workspace."""
 
@@ -131,8 +190,9 @@ class ListWorkspaceFilesTool(BaseTool):
         self,
         user_id: str | None,
         session: ChatSession,
-        **kwargs,
+        **kwargs: Any,
     ) -> ToolResponseBase:
+        params = ListWorkspaceFilesInput(**kwargs)
         session_id = session.session_id
 
         if not user_id:
@@ -141,9 +201,7 @@ class ListWorkspaceFilesTool(BaseTool):
                 session_id=session_id,
             )
 
-        path_prefix: Optional[str] = kwargs.get("path_prefix")
-        limit = min(kwargs.get("limit", 50), 100)
-        include_all_sessions: bool = kwargs.get("include_all_sessions", False)
+        limit = min(params.limit, 100)
 
         try:
             workspace = await get_or_create_workspace(user_id)
@@ -151,13 +209,13 @@ class ListWorkspaceFilesTool(BaseTool):
             manager = WorkspaceManager(user_id, workspace.id, session_id)
 
             files = await manager.list_files(
-                path=path_prefix,
+                path=params.path_prefix,
                 limit=limit,
-                include_all_sessions=include_all_sessions,
+                include_all_sessions=params.include_all_sessions,
             )
             total = await manager.get_file_count(
-                path=path_prefix,
-                include_all_sessions=include_all_sessions,
+                path=params.path_prefix,
+                include_all_sessions=params.include_all_sessions,
             )
 
             file_infos = [
@@ -171,7 +229,9 @@ class ListWorkspaceFilesTool(BaseTool):
                 for f in files
             ]
 
-            scope_msg = "all sessions" if include_all_sessions else "current session"
+            scope_msg = (
+                "all sessions" if params.include_all_sessions else "current session"
+            )
             return WorkspaceFileListResponse(
                 files=file_infos,
                 total_count=total,
@@ -259,8 +319,9 @@ class ReadWorkspaceFileTool(BaseTool):
         self,
         user_id: str | None,
         session: ChatSession,
-        **kwargs,
+        **kwargs: Any,
     ) -> ToolResponseBase:
+        params = ReadWorkspaceFileInput(**kwargs)
         session_id = session.session_id
 
         if not user_id:
@@ -269,11 +330,7 @@ class ReadWorkspaceFileTool(BaseTool):
                 session_id=session_id,
             )
 
-        file_id: Optional[str] = kwargs.get("file_id")
-        path: Optional[str] = kwargs.get("path")
-        force_download_url: bool = kwargs.get("force_download_url", False)
-
-        if not file_id and not path:
+        if not params.file_id and not params.path:
             return ErrorResponse(
                 message="Please provide either file_id or path",
                 session_id=session_id,
@@ -285,21 +342,21 @@ class ReadWorkspaceFileTool(BaseTool):
             manager = WorkspaceManager(user_id, workspace.id, session_id)
 
             # Get file info
-            if file_id:
-                file_info = await manager.get_file_info(file_id)
+            if params.file_id:
+                file_info = await manager.get_file_info(params.file_id)
                 if file_info is None:
                     return ErrorResponse(
-                        message=f"File not found: {file_id}",
+                        message=f"File not found: {params.file_id}",
                         session_id=session_id,
                     )
-                target_file_id = file_id
+                target_file_id = params.file_id
             else:
                 # path is guaranteed to be non-None here due to the check above
-                assert path is not None
-                file_info = await manager.get_file_info_by_path(path)
+                assert params.path is not None
+                file_info = await manager.get_file_info_by_path(params.path)
                 if file_info is None:
                     return ErrorResponse(
-                        message=f"File not found at path: {path}",
+                        message=f"File not found at path: {params.path}",
                         session_id=session_id,
                     )
                 target_file_id = file_info.id
@@ -309,7 +366,7 @@ class ReadWorkspaceFileTool(BaseTool):
             is_text_file = self._is_text_mime_type(file_info.mimeType)
 
             # Return inline content for small text files (unless force_download_url)
-            if is_small_file and is_text_file and not force_download_url:
+            if is_small_file and is_text_file and not params.force_download_url:
                 content = await manager.read_file_by_id(target_file_id)
                 content_b64 = base64.b64encode(content).decode("utf-8")
 
@@ -429,8 +486,9 @@ class WriteWorkspaceFileTool(BaseTool):
         self,
         user_id: str | None,
         session: ChatSession,
-        **kwargs,
+        **kwargs: Any,
     ) -> ToolResponseBase:
+        params = WriteWorkspaceFileInput(**kwargs)
         session_id = session.session_id
 
         if not user_id:
@@ -439,19 +497,13 @@ class WriteWorkspaceFileTool(BaseTool):
                 session_id=session_id,
             )
 
-        filename: str = kwargs.get("filename", "")
-        content_b64: str = kwargs.get("content_base64", "")
-        path: Optional[str] = kwargs.get("path")
-        mime_type: Optional[str] = kwargs.get("mime_type")
-        overwrite: bool = kwargs.get("overwrite", False)
-
-        if not filename:
+        if not params.filename:
             return ErrorResponse(
                 message="Please provide a filename",
                 session_id=session_id,
             )
 
-        if not content_b64:
+        if not params.content_base64:
             return ErrorResponse(
                 message="Please provide content_base64",
                 session_id=session_id,
@@ -459,7 +511,7 @@ class WriteWorkspaceFileTool(BaseTool):
 
         # Decode content
         try:
-            content = base64.b64decode(content_b64)
+            content = base64.b64decode(params.content_base64)
         except Exception:
             return ErrorResponse(
                 message="Invalid base64-encoded content",
@@ -476,7 +528,7 @@ class WriteWorkspaceFileTool(BaseTool):
 
         try:
             # Virus scan
-            await scan_content_safe(content, filename=filename)
+            await scan_content_safe(content, filename=params.filename)
 
             workspace = await get_or_create_workspace(user_id)
             # Pass session_id for session-scoped file access
@@ -484,10 +536,10 @@ class WriteWorkspaceFileTool(BaseTool):
 
             file_record = await manager.write_file(
                 content=content,
-                filename=filename,
-                path=path,
-                mime_type=mime_type,
-                overwrite=overwrite,
+                filename=params.filename,
+                path=params.path,
+                mime_type=params.mime_type,
+                overwrite=params.overwrite,
             )
 
             return WorkspaceWriteResponse(
@@ -557,8 +609,9 @@ class DeleteWorkspaceFileTool(BaseTool):
         self,
         user_id: str | None,
         session: ChatSession,
-        **kwargs,
+        **kwargs: Any,
     ) -> ToolResponseBase:
+        params = DeleteWorkspaceFileInput(**kwargs)
         session_id = session.session_id
 
         if not user_id:
@@ -567,10 +620,7 @@ class DeleteWorkspaceFileTool(BaseTool):
                 session_id=session_id,
             )
 
-        file_id: Optional[str] = kwargs.get("file_id")
-        path: Optional[str] = kwargs.get("path")
-
-        if not file_id and not path:
+        if not params.file_id and not params.path:
             return ErrorResponse(
                 message="Please provide either file_id or path",
                 session_id=session_id,
@@ -583,15 +633,15 @@ class DeleteWorkspaceFileTool(BaseTool):
 
             # Determine the file_id to delete
             target_file_id: str
-            if file_id:
-                target_file_id = file_id
+            if params.file_id:
+                target_file_id = params.file_id
             else:
                 # path is guaranteed to be non-None here due to the check above
-                assert path is not None
-                file_info = await manager.get_file_info_by_path(path)
+                assert params.path is not None
+                file_info = await manager.get_file_info_by_path(params.path)
                 if file_info is None:
                     return ErrorResponse(
-                        message=f"File not found at path: {path}",
+                        message=f"File not found at path: {params.path}",
                         session_id=session_id,
                     )
                 target_file_id = file_info.id

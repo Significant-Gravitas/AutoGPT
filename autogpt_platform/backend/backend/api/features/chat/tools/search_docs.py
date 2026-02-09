@@ -4,6 +4,7 @@ import logging
 from typing import Any
 
 from prisma.enums import ContentType
+from pydantic import BaseModel, field_validator
 
 from backend.api.features.chat.model import ChatSession
 from backend.api.features.chat.tools.base import BaseTool
@@ -26,6 +27,18 @@ MAX_RESULTS = 5
 
 # Snippet length for preview
 SNIPPET_LENGTH = 200
+
+
+class SearchDocsInput(BaseModel):
+    """Input parameters for the search_docs tool."""
+
+    query: str = ""
+
+    @field_validator("query", mode="before")
+    @classmethod
+    def strip_string(cls, v: Any) -> str:
+        """Strip whitespace from query."""
+        return v.strip() if isinstance(v, str) else (v if v is not None else "")
 
 
 class SearchDocsTool(BaseTool):
@@ -91,24 +104,24 @@ class SearchDocsTool(BaseTool):
         self,
         user_id: str | None,
         session: ChatSession,
-        **kwargs,
+        **kwargs: Any,
     ) -> ToolResponseBase:
         """Search documentation and return relevant sections.
 
         Args:
             user_id: User ID (not required for docs)
             session: Chat session
-            query: Search query
+            **kwargs: Tool parameters
 
         Returns:
             DocSearchResultsResponse: List of matching documentation sections
             NoResultsResponse: No results found
             ErrorResponse: Error message
         """
-        query = kwargs.get("query", "").strip()
+        params = SearchDocsInput(**kwargs)
         session_id = session.session_id if session else None
 
-        if not query:
+        if not params.query:
             return ErrorResponse(
                 message="Please provide a search query.",
                 error="Missing query parameter",
@@ -118,7 +131,7 @@ class SearchDocsTool(BaseTool):
         try:
             # Search using hybrid search for DOCUMENTATION content type only
             results, total = await unified_hybrid_search(
-                query=query,
+                query=params.query,
                 content_types=[ContentType.DOCUMENTATION],
                 page=1,
                 page_size=MAX_RESULTS * 2,  # Fetch extra for deduplication
@@ -127,7 +140,7 @@ class SearchDocsTool(BaseTool):
 
             if not results:
                 return NoResultsResponse(
-                    message=f"No documentation found for '{query}'.",
+                    message=f"No documentation found for '{params.query}'.",
                     suggestions=[
                         "Try different keywords",
                         "Use more general terms",
@@ -162,7 +175,7 @@ class SearchDocsTool(BaseTool):
 
             if not deduplicated:
                 return NoResultsResponse(
-                    message=f"No documentation found for '{query}'.",
+                    message=f"No documentation found for '{params.query}'.",
                     suggestions=[
                         "Try different keywords",
                         "Use more general terms",
@@ -195,7 +208,7 @@ class SearchDocsTool(BaseTool):
                 message=f"Found {len(doc_results)} relevant documentation sections.",
                 results=doc_results,
                 count=len(doc_results),
-                query=query,
+                query=params.query,
                 session_id=session_id,
             )
 

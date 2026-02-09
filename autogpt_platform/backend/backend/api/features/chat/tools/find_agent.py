@@ -2,11 +2,25 @@
 
 from typing import Any
 
+from pydantic import BaseModel, field_validator
+
 from backend.api.features.chat.model import ChatSession
 
 from .agent_search import search_agents
 from .base import BaseTool
 from .models import ToolResponseBase
+
+
+class FindAgentInput(BaseModel):
+    """Input parameters for the find_agent tool."""
+
+    query: str = ""
+
+    @field_validator("query", mode="before")
+    @classmethod
+    def strip_string(cls, v: Any) -> str:
+        """Strip whitespace from query."""
+        return v.strip() if isinstance(v, str) else (v if v is not None else "")
 
 
 class FindAgentTool(BaseTool):
@@ -36,10 +50,11 @@ class FindAgentTool(BaseTool):
         }
 
     async def _execute(
-        self, user_id: str | None, session: ChatSession, **kwargs
+        self, user_id: str | None, session: ChatSession, **kwargs: Any
     ) -> ToolResponseBase:
+        params = FindAgentInput(**kwargs)
         return await search_agents(
-            query=kwargs.get("query", "").strip(),
+            query=params.query,
             source="marketplace",
             session_id=session.session_id,
             user_id=user_id,

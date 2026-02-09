@@ -5,6 +5,7 @@ import uuid
 from collections import defaultdict
 from typing import Any
 
+from pydantic import BaseModel, field_validator
 from pydantic_core import PydanticUndefined
 
 from backend.api.features.chat.model import ChatSession
@@ -31,6 +32,25 @@ from .models import (
 from .utils import build_missing_credentials_from_field_info
 
 logger = logging.getLogger(__name__)
+
+
+class RunBlockInput(BaseModel):
+    """Input parameters for the run_block tool."""
+
+    block_id: str = ""
+    input_data: dict[str, Any] = {}
+
+    @field_validator("block_id", mode="before")
+    @classmethod
+    def strip_block_id(cls, v: Any) -> str:
+        """Strip whitespace from block_id."""
+        return v.strip() if isinstance(v, str) else (v if v is not None else "")
+
+    @field_validator("input_data", mode="before")
+    @classmethod
+    def ensure_dict(cls, v: Any) -> dict[str, Any]:
+        """Ensure input_data is a dict."""
+        return v if isinstance(v, dict) else {}
 
 
 class RunBlockTool(BaseTool):
@@ -166,34 +186,26 @@ class RunBlockTool(BaseTool):
         self,
         user_id: str | None,
         session: ChatSession,
-        **kwargs,
+        **kwargs: Any,
     ) -> ToolResponseBase:
         """Execute a block with the given input data.
 
         Args:
             user_id: User ID (required)
             session: Chat session
-            block_id: Block UUID to execute
-            input_data: Input values for the block
+            **kwargs: Tool parameters
 
         Returns:
             BlockOutputResponse: Block execution outputs
             SetupRequirementsResponse: Missing credentials
             ErrorResponse: Error message
         """
-        block_id = kwargs.get("block_id", "").strip()
-        input_data = kwargs.get("input_data", {})
+        params = RunBlockInput(**kwargs)
         session_id = session.session_id
 
-        if not block_id:
+        if not params.block_id:
             return ErrorResponse(
                 message="Please provide a block_id",
-                session_id=session_id,
-            )
-
-        if not isinstance(input_data, dict):
-            return ErrorResponse(
-                message="input_data must be an object",
                 session_id=session_id,
             )
 
@@ -204,15 +216,15 @@ class RunBlockTool(BaseTool):
             )
 
         # Get the block
-        block = get_block(block_id)
+        block = get_block(params.block_id)
         if not block:
             return ErrorResponse(
-                message=f"Block '{block_id}' not found",
+                message=f"Block '{params.block_id}' not found",
                 session_id=session_id,
             )
         if block.disabled:
             return ErrorResponse(
-                message=f"Block '{block_id}' is disabled",
+                message=f"Block '{params.block_id}' is disabled",
                 session_id=session_id,
             )
 
@@ -233,7 +245,7 @@ class RunBlockTool(BaseTool):
 
         creds_manager = IntegrationCredentialsManager()
         matched_credentials, missing_credentials = await self._check_block_credentials(
-            user_id, block, input_data
+            user_id, block, params.input_data
         )
 
         if missing_credentials:
@@ -251,7 +263,7 @@ class RunBlockTool(BaseTool):
                 ),
                 session_id=session_id,
                 setup_info=SetupInfo(
-                    agent_id=block_id,
+                    agent_id=params.block_id,
                     agent_name=block.name,
                     user_readiness=UserReadiness(
                         has_all_credentials=False,
@@ -280,7 +292,7 @@ class RunBlockTool(BaseTool):
             # - node_exec_id = unique per block execution
             synthetic_graph_id = f"copilot-session-{session.session_id}"
             synthetic_graph_exec_id = f"copilot-session-{session.session_id}"
-            synthetic_node_id = f"copilot-node-{block_id}"
+            synthetic_node_id = f"copilot-node-{params.block_id}"
             synthetic_node_exec_id = (
                 f"copilot-{session.session_id}-{uuid.uuid4().hex[:8]}"
             )
@@ -315,8 +327,8 @@ class RunBlockTool(BaseTool):
 
             for field_name, cred_meta in matched_credentials.items():
                 # Inject metadata into input_data (for validation)
-                if field_name not in input_data:
-                    input_data[field_name] = cred_meta.model_dump()
+                if field_name not in params.input_data:
+                    params.input_data[field_name] = cred_meta.model_dump()
 
                 # Fetch actual credentials and pass as kwargs (for execution)
                 actual_credentials = await creds_manager.get(
@@ -333,14 +345,14 @@ class RunBlockTool(BaseTool):
             # Execute the block and collect outputs
             outputs: dict[str, list[Any]] = defaultdict(list)
             async for output_name, output_data in block.execute(
-                input_data,
+                params.input_data,
                 **exec_kwargs,
             ):
                 outputs[output_name].append(output_data)
 
             return BlockOutputResponse(
                 message=f"Block '{block.name}' executed successfully",
-                block_id=block_id,
+                block_id=params.block_id,
                 block_name=block.name,
                 outputs=dict(outputs),
                 success=True,

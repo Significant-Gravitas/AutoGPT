@@ -3,6 +3,8 @@
 import logging
 from typing import Any
 
+from pydantic import BaseModel, ConfigDict, field_validator
+
 from backend.api.features.chat.model import ChatSession
 
 from .agent_generator import (
@@ -25,6 +27,20 @@ from .models import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class EditAgentInput(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    agent_id: str = ""
+    changes: str = ""
+    context: str = ""
+    save: bool = True
+
+    @field_validator("agent_id", "changes", "context", mode="before")
+    @classmethod
+    def strip_strings(cls, v: Any) -> str:
+        return v.strip() if isinstance(v, str) else (v if v is not None else "")
 
 
 class EditAgentTool(BaseTool):
@@ -90,7 +106,7 @@ class EditAgentTool(BaseTool):
         self,
         user_id: str | None,
         session: ChatSession,
-        **kwargs,
+        **kwargs: Any,
     ) -> ToolResponseBase:
         """Execute the edit_agent tool.
 
@@ -99,35 +115,32 @@ class EditAgentTool(BaseTool):
         2. Generate updated agent (external service handles fixing and validation)
         3. Preview or save based on the save parameter
         """
-        agent_id = kwargs.get("agent_id", "").strip()
-        changes = kwargs.get("changes", "").strip()
-        context = kwargs.get("context", "")
-        save = kwargs.get("save", True)
+        params = EditAgentInput(**kwargs)
         session_id = session.session_id if session else None
 
         # Extract async processing params (passed by long-running tool handler)
         operation_id = kwargs.get("_operation_id")
         task_id = kwargs.get("_task_id")
 
-        if not agent_id:
+        if not params.agent_id:
             return ErrorResponse(
                 message="Please provide the agent ID to edit.",
                 error="Missing agent_id parameter",
                 session_id=session_id,
             )
 
-        if not changes:
+        if not params.changes:
             return ErrorResponse(
                 message="Please describe what changes you want to make.",
                 error="Missing changes parameter",
                 session_id=session_id,
             )
 
-        current_agent = await get_agent_as_json(agent_id, user_id)
+        current_agent = await get_agent_as_json(params.agent_id, user_id)
 
         if current_agent is None:
             return ErrorResponse(
-                message=f"Could not find agent with ID '{agent_id}' in your library.",
+                message=f"Could not find agent '{params.agent_id}' in your library.",
                 error="agent_not_found",
                 session_id=session_id,
             )
@@ -138,7 +151,7 @@ class EditAgentTool(BaseTool):
                 graph_id = current_agent.get("id")
                 library_agents = await get_all_relevant_agents_for_generation(
                     user_id=user_id,
-                    search_query=changes,
+                    search_query=params.changes,
                     exclude_graph_id=graph_id,
                     include_marketplace=True,
                 )
@@ -148,9 +161,11 @@ class EditAgentTool(BaseTool):
             except Exception as e:
                 logger.warning(f"Failed to fetch library agents: {e}")
 
-        update_request = changes
-        if context:
-            update_request = f"{changes}\n\nAdditional context:\n{context}"
+        update_request = params.changes
+        if params.context:
+            update_request = (
+                f"{params.changes}\n\nAdditional context:\n{params.context}"
+            )
 
         try:
             result = await generate_agent_patch(
@@ -174,7 +189,7 @@ class EditAgentTool(BaseTool):
             return ErrorResponse(
                 message="Failed to generate changes. The agent generation service may be unavailable or timed out. Please try again.",
                 error="update_generation_failed",
-                details={"agent_id": agent_id, "changes": changes[:100]},
+                details={"agent_id": params.agent_id, "changes": params.changes[:100]},
                 session_id=session_id,
             )
 
@@ -206,8 +221,8 @@ class EditAgentTool(BaseTool):
                 message=user_message,
                 error=f"update_generation_failed:{error_type}",
                 details={
-                    "agent_id": agent_id,
-                    "changes": changes[:100],
+                    "agent_id": params.agent_id,
+                    "changes": params.changes[:100],
                     "service_error": error_msg,
                     "error_type": error_type,
                 },
@@ -239,7 +254,7 @@ class EditAgentTool(BaseTool):
         node_count = len(updated_agent.get("nodes", []))
         link_count = len(updated_agent.get("links", []))
 
-        if not save:
+        if not params.save:
             return AgentPreviewResponse(
                 message=(
                     f"I've updated the agent. "
