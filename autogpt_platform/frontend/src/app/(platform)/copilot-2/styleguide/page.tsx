@@ -24,6 +24,29 @@ import { ResponseType } from "@/app/api/__generated__/models/responseType";
 // Helpers
 // ---------------------------------------------------------------------------
 
+function slugify(text: string) {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
+}
+
+const SECTIONS = [
+  "Messages",
+  "Tool: Find Blocks",
+  "Tool: Find Agents (Marketplace)",
+  "Tool: Find Agents (Library)",
+  "Tool: Search Docs",
+  "Tool: Get Doc Page",
+  "Tool: Run Block",
+  "Tool: Run Agent",
+  "Tool: Schedule Agent",
+  "Tool: Create Agent",
+  "Tool: Edit Agent",
+  "Tool: View Agent Output",
+  "Full Conversation Example",
+] as const;
+
 function Section({
   title,
   children,
@@ -32,7 +55,7 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <div className="mb-10">
+    <div id={slugify(title)} className="mb-10 scroll-mt-6">
       <h2 className="mb-4 border-b border-neutral-200 pb-2 text-lg font-semibold text-neutral-800">
         {title}
       </h2>
@@ -74,15 +97,36 @@ function uid() {
 export default function StyleguidePage() {
   return (
     <CopilotChatActionsProvider onSend={(msg) => alert(`onSend: ${msg}`)}>
-      <div className="h-[calc(100vh-72px)] overflow-y-auto bg-[#f8f8f9]">
-        <div className="mx-auto max-w-3xl px-4 py-10">
-          <h1 className="mb-1 text-2xl font-bold text-neutral-900">
-            Copilot Styleguide
-          </h1>
-          <p className="mb-8 text-sm text-neutral-500">
-            Static showcase of all chat message types, tool states &amp;
-            variants.
+      <div className="flex h-[calc(100vh-72px)] bg-[#f8f8f9]">
+        {/* Sidebar */}
+        <nav className="sticky top-0 hidden h-full w-56 shrink-0 overflow-y-auto border-r border-neutral-200 bg-white px-3 py-6 lg:block">
+          <p className="mb-3 px-2 text-[11px] font-semibold uppercase tracking-wider text-neutral-400">
+            Sections
           </p>
+          <ul className="space-y-0.5">
+            {SECTIONS.map((title) => (
+              <li key={title}>
+                <a
+                  href={`#${slugify(title)}`}
+                  className="block rounded-md px-2 py-1.5 text-[13px] text-neutral-600 transition-colors hover:bg-neutral-100 hover:text-neutral-900"
+                >
+                  {title.replace(/^Tool: /, "")}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </nav>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto">
+          <div className="mx-auto max-w-3xl px-4 py-10">
+            <h1 className="mb-1 text-2xl font-bold text-neutral-900">
+              Copilot Styleguide
+            </h1>
+            <p className="mb-8 text-sm text-neutral-500">
+              Static showcase of all chat message types, tool states &amp;
+              variants.
+            </p>
 
           {/* ============================================================= */}
           {/* MESSAGE TYPES                                                  */}
@@ -560,6 +604,131 @@ export default function StyleguidePage() {
                     details: {
                       block_id: "weather-block-123",
                       timeout_ms: 30000,
+                    },
+                  },
+                }}
+              />
+            </SubSection>
+
+            <SubSection label="Output available (JSON object output — interactive viewer)">
+              <RunBlockTool
+                part={{
+                  type: "tool-run_block",
+                  toolCallId: uid(),
+                  state: "output-available",
+                  input: { block_id: "api-block-456" },
+                  output: {
+                    type: ResponseType.block_output,
+                    block_id: "api-block-456",
+                    block_name: "API Request",
+                    message: "Successfully fetched user profile data.",
+                    outputs: {
+                      response: [
+                        {
+                          id: 42,
+                          name: "Jane Doe",
+                          email: "jane@example.com",
+                          roles: ["admin", "editor"],
+                          settings: {
+                            theme: "dark",
+                            notifications: true,
+                            language: "en",
+                          },
+                        },
+                      ],
+                    },
+                  },
+                }}
+              />
+            </SubSection>
+
+            <SubSection label="Output available (image URL — ImageRenderer)">
+              <RunBlockTool
+                part={{
+                  type: "tool-run_block",
+                  toolCallId: uid(),
+                  state: "output-available",
+                  input: { block_id: "image-gen-789" },
+                  output: {
+                    type: ResponseType.block_output,
+                    block_id: "image-gen-789",
+                    block_name: "Image Generator",
+                    message: "Generated image successfully.",
+                    outputs: {
+                      image: [
+                        "https://picsum.photos/seed/styleguide/600/400",
+                      ],
+                    },
+                  },
+                }}
+              />
+            </SubSection>
+
+            <SubSection label="Output available (markdown text — MarkdownRenderer)">
+              <RunBlockTool
+                part={{
+                  type: "tool-run_block",
+                  toolCallId: uid(),
+                  state: "output-available",
+                  input: { block_id: "summarizer-101" },
+                  output: {
+                    type: ResponseType.block_output,
+                    block_id: "summarizer-101",
+                    block_name: "Text Summarizer",
+                    message: "Document summarized successfully.",
+                    outputs: {
+                      summary: [
+                        "## Executive Summary\n\nThe quarterly report shows **strong growth** across all departments:\n\n- Revenue increased by *23%* compared to Q3\n- Customer satisfaction score: `4.8/5.0`\n- New user sign-ups doubled\n\n### Key Takeaways\n\n1. **Product launches** drove the majority of growth\n2. **Marketing campaigns** exceeded ROI targets\n3. **Infrastructure costs** remained flat despite scaling\n\n> Overall, this was our strongest quarter to date.\n\n| Metric | Q3 | Q4 | Change |\n|--------|-----|-----|--------|\n| Revenue | $2.1M | $2.6M | +23% |\n| Users | 10k | 20k | +100% |\n| NPS | 72 | 78 | +6 |",
+                      ],
+                    },
+                  },
+                }}
+              />
+            </SubSection>
+
+            <SubSection label="Output available (plain text — TextRenderer)">
+              <RunBlockTool
+                part={{
+                  type: "tool-run_block",
+                  toolCallId: uid(),
+                  state: "output-available",
+                  input: { block_id: "translate-202" },
+                  output: {
+                    type: ResponseType.block_output,
+                    block_id: "translate-202",
+                    block_name: "Translate Text",
+                    message: "Translation completed.",
+                    outputs: {
+                      translated_text: [
+                        "Bonjour le monde! Ceci est un exemple de texte traduit du bloc de traduction.",
+                      ],
+                    },
+                  },
+                }}
+              />
+            </SubSection>
+
+            <SubSection label="Output available (multiple items with expand)">
+              <RunBlockTool
+                part={{
+                  type: "tool-run_block",
+                  toolCallId: uid(),
+                  state: "output-available",
+                  input: { block_id: "scraper-303" },
+                  output: {
+                    type: ResponseType.block_output,
+                    block_id: "scraper-303",
+                    block_name: "Web Scraper",
+                    message: "Scraped 6 articles from the feed.",
+                    outputs: {
+                      articles: [
+                        { title: "AI Advances in 2026", url: "https://example.com/1", score: 142 },
+                        { title: "New Framework Released", url: "https://example.com/2", score: 98 },
+                        { title: "Open Source Milestone", url: "https://example.com/3", score: 87 },
+                        { title: "Cloud Computing Trends", url: "https://example.com/4", score: 76 },
+                        { title: "Developer Survey Results", url: "https://example.com/5", score: 64 },
+                        { title: "Security Best Practices", url: "https://example.com/6", score: 51 },
+                      ],
                     },
                   },
                 }}
@@ -1111,6 +1280,57 @@ export default function StyleguidePage() {
               />
             </SubSection>
 
+            <SubSection label="Output available (rich outputs — JSON + markdown + image)">
+              <ViewAgentOutputTool
+                part={{
+                  type: "tool-view_agent_output",
+                  toolCallId: uid(),
+                  state: "output-available",
+                  input: {
+                    agent_name: "Research Agent",
+                    execution_id: "exec-rich-456",
+                  },
+                  output: {
+                    type: ResponseType.agent_output,
+                    agent_id: "agent-456",
+                    agent_name: "Research Agent",
+                    message: "Research completed with multiple output types.",
+                    library_agent_link: "/library/agents/lib-agent-456",
+                    execution: {
+                      execution_id: "exec-rich-456",
+                      status: "completed",
+                      inputs_summary: {
+                        topic: "Artificial Intelligence in Healthcare",
+                        depth: "comprehensive",
+                        format: "report",
+                      },
+                      outputs: {
+                        report: [
+                          "## AI in Healthcare: 2026 Landscape\n\n### Key Findings\n\n- **Diagnostic accuracy** improved by 34% with AI-assisted imaging\n- Drug discovery timelines reduced from *10 years to 3 years*\n- Patient outcomes improved across `87%` of pilot programs\n\n> AI is not replacing doctors — it's augmenting their capabilities.\n\n### Adoption by Region\n\n| Region | Adoption Rate | Growth |\n|--------|--------------|--------|\n| North America | 78% | +15% |\n| Europe | 62% | +22% |\n| Asia Pacific | 71% | +31% |",
+                        ],
+                        metadata: [
+                          {
+                            sources_analyzed: 142,
+                            confidence_score: 0.94,
+                            processing_time_ms: 3420,
+                            model_version: "v2.3.1",
+                            categories: [
+                              "healthcare",
+                              "machine-learning",
+                              "diagnostics",
+                            ],
+                          },
+                        ],
+                        chart: [
+                          "https://picsum.photos/seed/chart-demo/500/300",
+                        ],
+                      },
+                    },
+                  },
+                }}
+              />
+            </SubSection>
+
             <SubSection label="Output available (no execution selected)">
               <ViewAgentOutputTool
                 part={{
@@ -1281,6 +1501,7 @@ export default function StyleguidePage() {
               </ConversationContent>
             </Conversation>
           </Section>
+        </div>
         </div>
       </div>
     </CopilotChatActionsProvider>

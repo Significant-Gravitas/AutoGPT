@@ -57,7 +57,10 @@ export function RunBlockTool({ part }: Props) {
       {hasExpandableContent && output && (
         <ToolAccordion
           {...getAccordionMeta(output)}
-          defaultExpanded={isRunBlockSetupRequirementsOutput(output)}
+          defaultExpanded={
+            isRunBlockBlockOutput(output) ||
+            isRunBlockSetupRequirementsOutput(output)
+          }
         >
           {isRunBlockBlockOutput(output) && <BlockOutputCard output={output} />}
 

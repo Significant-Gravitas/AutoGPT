@@ -65,7 +65,10 @@ export function ContentCardTitle({
   className?: string;
 }) {
   return (
-    <Text variant="body-medium" className={cn("truncate text-zinc-800", className)}>
+    <Text
+      variant="body-medium"
+      className={cn("truncate text-zinc-800", className)}
+    >
       {children}
     </Text>
   );
@@ -79,7 +82,10 @@ export function ContentCardSubtitle({
   className?: string;
 }) {
   return (
-    <Text variant="small" className={cn("mt-0.5 truncate text-zinc-800", className)}>
+    <Text
+      variant="small"
+      className={cn("mt-0.5 truncate font-mono text-zinc-800", className)}
+    >
       {children}
     </Text>
   );
@@ -93,7 +99,9 @@ export function ContentCardDescription({
   className?: string;
 }) {
   return (
-    <Text variant="small" className={cn("mt-2 text-zinc-800", className)}>{children}</Text>
+    <Text variant="body" className={cn("mt-2 text-zinc-800", className)}>
+      {children}
+    </Text>
   );
 }
 
@@ -108,7 +116,11 @@ export function ContentMessage({
   children: React.ReactNode;
   className?: string;
 }) {
-  return <Text variant="body" className={cn("text-zinc-800", className)}>{children}</Text>;
+  return (
+    <Text variant="body" className={cn("text-zinc-800", className)}>
+      {children}
+    </Text>
+  );
 }
 
 export function ContentHint({
@@ -119,7 +131,7 @@ export function ContentHint({
   className?: string;
 }) {
   return (
-    <Text variant="small" className={cn("italic text-neutral-800", className)}>
+    <Text variant="small" className={cn("text-neutral-500", className)}>
       {children}
     </Text>
   );

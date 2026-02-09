@@ -1,23 +1,27 @@
 "use client";
 
+import {
+  ClarificationQuestionsWidget,
+  type ClarifyingQuestion as WidgetClarifyingQuestion,
+} from "@/components/contextual/Chat/components/ClarificationQuestionsWidget/ClarificationQuestionsWidget";
+import { WarningDiamondIcon } from "@phosphor-icons/react";
 import type { ToolUIPart } from "ai";
+import { useCopilotChatActions } from "../../components/CopilotChatActionsProvider/useCopilotChatActions";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
-import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
+import { OrbitLoader } from "../../components/OrbitLoader/OrbitLoader";
+import { ProgressBar } from "../../components/ProgressBar/ProgressBar";
 import {
   ContentCardDescription,
-  ContentCardSubtitle,
   ContentCodeBlock,
   ContentGrid,
   ContentHint,
   ContentLink,
   ContentMessage,
 } from "../../components/ToolAccordion/AccordionContent";
-import { useCopilotChatActions } from "../../components/CopilotChatActionsProvider/useCopilotChatActions";
+import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
+import { useAsymptoticProgress } from "../../hooks/useAsymptoticProgress";
 import {
-  ClarificationQuestionsWidget,
-  type ClarifyingQuestion as WidgetClarifyingQuestion,
-} from "@/components/contextual/Chat/components/ClarificationQuestionsWidget/ClarificationQuestionsWidget";
-import {
+  AccordionIcon,
   formatMaybeJson,
   getAnimationText,
   getCreateAgentToolOutput,
@@ -28,7 +32,6 @@ import {
   isOperationInProgressOutput,
   isOperationPendingOutput,
   isOperationStartedOutput,
-  AccordionIcon,
   ToolIcon,
   truncateText,
   type CreateAgentToolOutput,
@@ -48,7 +51,8 @@ interface Props {
 
 function getAccordionMeta(output: CreateAgentToolOutput): {
   icon: React.ReactNode;
-  title: string;
+  title: React.ReactNode;
+  titleClassName?: string;
   description?: string;
 } {
   const icon = <AccordionIcon />;
@@ -76,9 +80,16 @@ function getAccordionMeta(output: CreateAgentToolOutput): {
     isOperationPendingOutput(output) ||
     isOperationInProgressOutput(output)
   ) {
-    return { icon, title: "Creating agent" };
+    return {
+      icon: <OrbitLoader size={32} />,
+      title: "Creating agent, this may take a few minutes. Sit back and relax.",
+    };
   }
-  return { icon, title: "Error" };
+  return {
+    icon: <WarningDiamondIcon size={32} weight="light" className="text-red-500" />,
+    title: "Error",
+    titleClassName: "text-red-500",
+  };
 }
 
 export function CreateAgentTool({ part }: Props) {
@@ -90,6 +101,12 @@ export function CreateAgentTool({ part }: Props) {
   const output = getCreateAgentToolOutput(part);
   const isError =
     part.state === "output-error" || (!!output && isErrorOutput(output));
+  const isOperating =
+    !!output &&
+    (isOperationStartedOutput(output) ||
+      isOperationPendingOutput(output) ||
+      isOperationInProgressOutput(output));
+  const progress = useAsymptoticProgress(isOperating);
   const hasExpandableContent =
     part.state === "output-available" &&
     !!output &&
@@ -102,12 +119,20 @@ export function CreateAgentTool({ part }: Props) {
       isErrorOutput(output));
 
   function handleClarificationAnswers(answers: Record<string, string>) {
-    const contextMessage = Object.entries(answers)
-      .map(([keyword, answer]) => `${keyword}: ${answer}`)
-      .join("\n");
+    const questions =
+      output && isClarificationNeededOutput(output)
+        ? (output.questions ?? [])
+        : [];
+
+    const contextMessage = questions
+      .map((q) => {
+        const answer = answers[q.keyword] || "";
+        return `> ${q.question}\n\n${answer}`;
+      })
+      .join("\n\n");
 
     onSend(
-      `I have the answers to your questions:\n\n${contextMessage}\n\nPlease proceed with creating the agent.`,
+      `**Here are my answers:**\n\n${contextMessage}\n\nPlease proceed with creating the agent.`,
     );
   }
 
@@ -124,26 +149,13 @@ export function CreateAgentTool({ part }: Props) {
       {hasExpandableContent && output && (
         <ToolAccordion
           {...getAccordionMeta(output)}
-          defaultExpanded={isClarificationNeededOutput(output)}
+          defaultExpanded={isOperating || isClarificationNeededOutput(output)}
         >
-          {(isOperationStartedOutput(output) ||
-            isOperationPendingOutput(output)) && (
+          {isOperating && (
             <ContentGrid>
-              <ContentMessage>{output.message}</ContentMessage>
-              <ContentCardSubtitle>
-                Operation: {output.operation_id}
-              </ContentCardSubtitle>
+              <ProgressBar value={progress} className="max-w-[280px]" />
               <ContentHint>
-                Check your library in a few minutes.
-              </ContentHint>
-            </ContentGrid>
-          )}
-
-          {isOperationInProgressOutput(output) && (
-            <ContentGrid>
-              <ContentMessage>{output.message}</ContentMessage>
-              <ContentHint>
-                Please wait for the current operation to finish.
+                This could take a few minutes, grab a coffee ☕
               </ContentHint>
             </ContentGrid>
           )}

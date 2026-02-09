@@ -1,17 +1,20 @@
 "use client";
 
+import { WarningDiamondIcon } from "@phosphor-icons/react";
 import type { ToolUIPart } from "ai";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
+import { OrbitLoader } from "../../components/OrbitLoader/OrbitLoader";
+import { ProgressBar } from "../../components/ProgressBar/ProgressBar";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
 import {
   ContentCardDescription,
-  ContentCardSubtitle,
   ContentCodeBlock,
   ContentGrid,
   ContentHint,
   ContentLink,
   ContentMessage,
 } from "../../components/ToolAccordion/AccordionContent";
+import { useAsymptoticProgress } from "../../hooks/useAsymptoticProgress";
 import { useCopilotChatActions } from "../../components/CopilotChatActionsProvider/useCopilotChatActions";
 import {
   ClarificationQuestionsWidget,
@@ -49,6 +52,7 @@ interface Props {
 function getAccordionMeta(output: EditAgentToolOutput): {
   icon: React.ReactNode;
   title: string;
+  titleClassName?: string;
   description?: string;
 } {
   const icon = <AccordionIcon />;
@@ -76,9 +80,13 @@ function getAccordionMeta(output: EditAgentToolOutput): {
     isOperationPendingOutput(output) ||
     isOperationInProgressOutput(output)
   ) {
-    return { icon, title: "Editing agent" };
+    return { icon: <OrbitLoader size={32} />, title: "Editing agent" };
   }
-  return { icon, title: "Error" };
+  return {
+    icon: <WarningDiamondIcon size={32} weight="light" className="text-red-500" />,
+    title: "Error",
+    titleClassName: "text-red-500",
+  };
 }
 
 export function EditAgentTool({ part }: Props) {
@@ -90,6 +98,12 @@ export function EditAgentTool({ part }: Props) {
   const output = getEditAgentToolOutput(part);
   const isError =
     part.state === "output-error" || (!!output && isErrorOutput(output));
+  const isOperating =
+    !!output &&
+    (isOperationStartedOutput(output) ||
+      isOperationPendingOutput(output) ||
+      isOperationInProgressOutput(output));
+  const progress = useAsymptoticProgress(isOperating);
   const hasExpandableContent =
     part.state === "output-available" &&
     !!output &&
@@ -102,12 +116,20 @@ export function EditAgentTool({ part }: Props) {
       isErrorOutput(output));
 
   function handleClarificationAnswers(answers: Record<string, string>) {
-    const contextMessage = Object.entries(answers)
-      .map(([keyword, answer]) => `${keyword}: ${answer}`)
-      .join("\n");
+    const questions =
+      output && isClarificationNeededOutput(output)
+        ? (output.questions ?? [])
+        : [];
+
+    const contextMessage = questions
+      .map((q) => {
+        const answer = answers[q.keyword] || "";
+        return `> ${q.question}\n\n${answer}`;
+      })
+      .join("\n\n");
 
     onSend(
-      `I have the answers to your questions:\n\n${contextMessage}\n\nPlease proceed with editing the agent.`,
+      `**Here are my answers:**\n\n${contextMessage}\n\nPlease proceed with editing the agent.`,
     );
   }
 
@@ -124,26 +146,13 @@ export function EditAgentTool({ part }: Props) {
       {hasExpandableContent && output && (
         <ToolAccordion
           {...getAccordionMeta(output)}
-          defaultExpanded={isClarificationNeededOutput(output)}
+          defaultExpanded={isOperating || isClarificationNeededOutput(output)}
         >
-          {(isOperationStartedOutput(output) ||
-            isOperationPendingOutput(output)) && (
+          {isOperating && (
             <ContentGrid>
-              <ContentMessage>{output.message}</ContentMessage>
-              <ContentCardSubtitle>
-                Operation: {output.operation_id}
-              </ContentCardSubtitle>
+              <ProgressBar value={progress} className="max-w-[280px]" />
               <ContentHint>
-                Check your library in a few minutes.
-              </ContentHint>
-            </ContentGrid>
-          )}
-
-          {isOperationInProgressOutput(output) && (
-            <ContentGrid>
-              <ContentMessage>{output.message}</ContentMessage>
-              <ContentHint>
-                Please wait for the current operation to finish.
+                This could take a few minutes, grab a coffee ☕
               </ContentHint>
             </ContentGrid>
           )}

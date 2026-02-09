@@ -10,6 +10,7 @@ import {
   WarningDiamondIcon,
 } from "@phosphor-icons/react";
 import type { ToolUIPart } from "ai";
+import { PulseLoader } from "../../components/PulseLoader/PulseLoader";
 
 export interface RunAgentInput {
   username_agent_slug?: string;
@@ -167,13 +168,10 @@ export function ToolIcon({
   if (isError) {
     return <WarningDiamondIcon size={14} weight="regular" className="text-red-500" />;
   }
-  return (
-    <PlayIcon
-      size={14}
-      weight="regular"
-      className={isStreaming ? "text-neutral-500" : "text-neutral-400"}
-    />
-  );
+  if (isStreaming) {
+    return <PulseLoader size={40} className="text-neutral-700" />;
+  }
+  return <PlayIcon size={14} weight="regular" className="text-neutral-400" />;
 }
 
 export function AccordionIcon() {
@@ -203,7 +201,7 @@ export function getAccordionMeta(output: RunAgentToolOutput): {
         ? output.status.trim()
         : "started";
     return {
-      icon,
+      icon: <PulseLoader size={28} className="text-neutral-700" />,
       title: output.graph_name,
       description: `Status: ${statusText}`,
     };

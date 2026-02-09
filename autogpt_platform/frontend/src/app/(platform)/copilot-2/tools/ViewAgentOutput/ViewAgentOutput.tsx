@@ -1,8 +1,13 @@
 "use client";
 
 import type { ToolUIPart } from "ai";
-import React, { useState } from "react";
+import React from "react";
 import { getGetWorkspaceDownloadFileByIdUrl } from "@/app/api/__generated__/endpoints/workspace/workspace";
+import {
+  globalRegistry,
+  OutputItem,
+} from "@/components/contextual/OutputRenderers";
+import type { OutputMetadata } from "@/components/contextual/OutputRenderers";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
 import {
@@ -41,6 +46,65 @@ interface Props {
   part: ViewAgentOutputToolPart;
 }
 
+function isWorkspaceRef(value: unknown): value is string {
+  return typeof value === "string" && value.startsWith("workspace://");
+}
+
+function resolveForRenderer(value: unknown): {
+  value: unknown;
+  metadata?: OutputMetadata;
+} {
+  if (!isWorkspaceRef(value)) return { value };
+
+  const withoutPrefix = value.replace("workspace://", "");
+  const fileId = withoutPrefix.split("#")[0];
+  const apiPath = getGetWorkspaceDownloadFileByIdUrl(fileId);
+  const url = `/api/proxy${apiPath}`;
+
+  const hashIndex = value.indexOf("#");
+  const mimeHint =
+    hashIndex !== -1 ? value.slice(hashIndex + 1) || undefined : undefined;
+
+  const metadata: OutputMetadata = {};
+  if (mimeHint) {
+    metadata.mimeType = mimeHint;
+    if (mimeHint.startsWith("image/")) metadata.type = "image";
+    else if (mimeHint.startsWith("video/")) metadata.type = "video";
+  }
+
+  return { value: url, metadata };
+}
+
+function RenderOutputValue({ value }: { value: unknown }) {
+  const resolved = resolveForRenderer(value);
+  const renderer = globalRegistry.getRenderer(
+    resolved.value,
+    resolved.metadata,
+  );
+
+  if (renderer) {
+    return (
+      <OutputItem
+        value={resolved.value}
+        metadata={resolved.metadata}
+        renderer={renderer}
+      />
+    );
+  }
+
+  // Fallback for audio workspace refs
+  if (
+    isWorkspaceRef(value) &&
+    resolved.metadata?.mimeType?.startsWith("audio/")
+  ) {
+    return (
+      <audio controls src={String(resolved.value)} className="mt-2 w-full" />
+    );
+  }
+
+  return null;
+}
+
 function getAccordionMeta(output: ViewAgentOutputToolOutput): {
   icon: React.ReactNode;
   title: string;
@@ -60,87 +124,6 @@ function getAccordionMeta(output: ViewAgentOutputToolOutput): {
     return { icon, title: "No results" };
   }
   return { icon, title: "Error" };
-}
-
-function resolveWorkspaceUrl(src: string): string {
-  if (src.startsWith("workspace://")) {
-    const withoutPrefix = src.replace("workspace://", "");
-    const fileId = withoutPrefix.split("#")[0];
-    const apiPath = getGetWorkspaceDownloadFileByIdUrl(fileId);
-    return `/api/proxy${apiPath}`;
-  }
-  return src;
-}
-
-function getWorkspaceMimeHint(src: string): string | undefined {
-  const hashIndex = src.indexOf("#");
-  if (hashIndex === -1) return undefined;
-  return src.slice(hashIndex + 1) || undefined;
-}
-
-function WorkspaceMedia({ value }: { value: string }) {
-  const [imgFailed, setImgFailed] = useState(false);
-  const resolvedUrl = resolveWorkspaceUrl(value);
-  const mime = getWorkspaceMimeHint(value);
-
-  if (mime?.startsWith("video/") || imgFailed) {
-    return (
-      <video
-        controls
-        className="mt-2 h-auto max-w-full rounded-md border border-zinc-200"
-        preload="metadata"
-      >
-        <source src={resolvedUrl} />
-      </video>
-    );
-  }
-
-  if (mime?.startsWith("audio/")) {
-    return <audio controls src={resolvedUrl} className="mt-2 w-full" />;
-  }
-
-  return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      src={resolvedUrl}
-      alt="Output media"
-      className="mt-2 h-auto max-w-full rounded-md border border-zinc-200"
-      loading="lazy"
-      onError={() => setImgFailed(true)}
-    />
-  );
-}
-
-function isWorkspaceRef(value: unknown): value is string {
-  return typeof value === "string" && value.startsWith("workspace://");
-}
-
-function renderOutputValue(value: unknown): React.ReactNode {
-  if (isWorkspaceRef(value)) {
-    return <WorkspaceMedia value={value} />;
-  }
-  if (Array.isArray(value)) {
-    const workspaceItems = value.filter(isWorkspaceRef);
-    if (workspaceItems.length > 0) {
-      return (
-        <>
-          {value.map((item, i) =>
-            isWorkspaceRef(item) ? (
-              <WorkspaceMedia key={i} value={item} />
-            ) : (
-              <pre
-                key={i}
-                className="mt-1 whitespace-pre-wrap text-xs text-muted-foreground"
-              >
-                {formatMaybeJson(item)}
-              </pre>
-            ),
-          )}
-        </>
-      );
-    }
-  }
-  return null;
 }
 
 export function ViewAgentOutputTool({ part }: Props) {
@@ -204,34 +187,33 @@ export function ViewAgentOutputTool({ part }: Props) {
                       <ContentCardTitle className="text-xs">
                         Inputs summary
                       </ContentCardTitle>
-                      <pre className="mt-2 whitespace-pre-wrap text-xs text-muted-foreground">
-                        {formatMaybeJson(output.execution.inputs_summary)}
-                      </pre>
+                      <div className="mt-2">
+                        <RenderOutputValue
+                          value={output.execution.inputs_summary}
+                        />
+                      </div>
                     </ContentCard>
                   )}
 
                   {Object.entries(output.execution.outputs ?? {}).map(
-                    ([key, items]) => {
-                      const mediaContent = renderOutputValue(items);
-                      return (
-                        <ContentCard key={key}>
-                          <div className="flex items-center justify-between gap-2">
-                            <ContentCardTitle className="text-xs">
-                              {key}
-                            </ContentCardTitle>
-                            <ContentBadge>
-                              {items.length} item
-                              {items.length === 1 ? "" : "s"}
-                            </ContentBadge>
-                          </div>
-                          {mediaContent || (
-                            <pre className="mt-2 whitespace-pre-wrap text-xs text-muted-foreground">
-                              {formatMaybeJson(items.slice(0, 3))}
-                            </pre>
-                          )}
-                        </ContentCard>
-                      );
-                    },
+                    ([key, items]) => (
+                      <ContentCard key={key}>
+                        <div className="flex items-center justify-between gap-2">
+                          <ContentCardTitle className="text-xs">
+                            {key}
+                          </ContentCardTitle>
+                          <ContentBadge>
+                            {items.length} item
+                            {items.length === 1 ? "" : "s"}
+                          </ContentBadge>
+                        </div>
+                        <div className="mt-2">
+                          {items.slice(0, 3).map((item, i) => (
+                            <RenderOutputValue key={i} value={item} />
+                          ))}
+                        </div>
+                      </ContentCard>
+                    ),
                   )}
                 </ContentGrid>
               ) : (

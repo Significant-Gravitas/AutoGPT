@@ -64,6 +64,7 @@ export function RunAgentTool({ part }: Props) {
         <ToolAccordion
           {...getAccordionMeta(output)}
           defaultExpanded={
+            isRunAgentExecutionStartedOutput(output) ||
             isRunAgentSetupRequirementsOutput(output) ||
             isRunAgentAgentDetailsOutput(output)
           }

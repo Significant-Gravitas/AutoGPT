@@ -5,13 +5,17 @@ import { getGetWorkspaceDownloadFileByIdUrl } from "@/app/api/__generated__/endp
 import { Button } from "@/components/atoms/Button/Button";
 import type { BlockOutputResponse } from "@/app/api/__generated__/models/blockOutputResponse";
 import {
+  globalRegistry,
+  OutputItem,
+} from "@/components/contextual/OutputRenderers";
+import type { OutputMetadata } from "@/components/contextual/OutputRenderers";
+import {
   ContentBadge,
   ContentCard,
   ContentCardTitle,
   ContentGrid,
   ContentMessage,
 } from "../../../../components/ToolAccordion/AccordionContent";
-import { formatMaybeJson } from "../../helpers";
 
 interface Props {
   output: BlockOutputResponse;
@@ -19,81 +23,59 @@ interface Props {
 
 const COLLAPSED_LIMIT = 3;
 
-function resolveWorkspaceUrl(src: string): string {
-  const withoutPrefix = src.replace("workspace://", "");
-  const fileId = withoutPrefix.split("#")[0];
-  const apiPath = getGetWorkspaceDownloadFileByIdUrl(fileId);
-  return `/api/proxy${apiPath}`;
-}
-
-function getWorkspaceMimeHint(src: string): string | undefined {
-  const hashIndex = src.indexOf("#");
-  if (hashIndex === -1) return undefined;
-  return src.slice(hashIndex + 1) || undefined;
-}
-
 function isWorkspaceRef(value: unknown): value is string {
   return typeof value === "string" && value.startsWith("workspace://");
 }
 
-function WorkspaceMedia({ value }: { value: string }) {
-  const [imgFailed, setImgFailed] = useState(false);
-  const resolvedUrl = resolveWorkspaceUrl(value);
-  const mime = getWorkspaceMimeHint(value);
+function resolveForRenderer(value: unknown): {
+  value: unknown;
+  metadata?: OutputMetadata;
+} {
+  if (!isWorkspaceRef(value)) return { value };
 
-  if (mime?.startsWith("video/") || imgFailed) {
+  const withoutPrefix = value.replace("workspace://", "");
+  const fileId = withoutPrefix.split("#")[0];
+  const apiPath = getGetWorkspaceDownloadFileByIdUrl(fileId);
+  const url = `/api/proxy${apiPath}`;
+
+  const hashIndex = value.indexOf("#");
+  const mimeHint =
+    hashIndex !== -1 ? value.slice(hashIndex + 1) || undefined : undefined;
+
+  const metadata: OutputMetadata = {};
+  if (mimeHint) {
+    metadata.mimeType = mimeHint;
+    if (mimeHint.startsWith("image/")) metadata.type = "image";
+    else if (mimeHint.startsWith("video/")) metadata.type = "video";
+  }
+
+  return { value: url, metadata };
+}
+
+function RenderOutputValue({ value }: { value: unknown }) {
+  const resolved = resolveForRenderer(value);
+  const renderer = globalRegistry.getRenderer(resolved.value, resolved.metadata);
+
+  if (renderer) {
     return (
-      <video
-        controls
-        className="mt-2 h-auto max-w-full rounded-md border border-zinc-200"
-        preload="metadata"
-      >
-        <source src={resolvedUrl} />
-      </video>
+      <OutputItem
+        value={resolved.value}
+        metadata={resolved.metadata}
+        renderer={renderer}
+      />
     );
   }
 
-  if (mime?.startsWith("audio/")) {
-    return <audio controls src={resolvedUrl} className="mt-2 w-full" />;
+  // Fallback for audio workspace refs
+  if (
+    isWorkspaceRef(value) &&
+    resolved.metadata?.mimeType?.startsWith("audio/")
+  ) {
+    return (
+      <audio controls src={String(resolved.value)} className="mt-2 w-full" />
+    );
   }
 
-  return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      src={resolvedUrl}
-      alt="Output media"
-      className="mt-2 h-auto max-w-full rounded-md border border-zinc-200"
-      loading="lazy"
-      onError={() => setImgFailed(true)}
-    />
-  );
-}
-
-function renderOutputValue(value: unknown): React.ReactNode {
-  if (isWorkspaceRef(value)) {
-    return <WorkspaceMedia value={value} />;
-  }
-  if (Array.isArray(value)) {
-    const hasWorkspace = value.some(isWorkspaceRef);
-    if (hasWorkspace) {
-      return (
-        <>
-          {value.map((item, i) =>
-            isWorkspaceRef(item) ? (
-              <WorkspaceMedia key={i} value={item} />
-            ) : (
-              <pre
-                key={i}
-                className="mt-1 whitespace-pre-wrap text-xs text-muted-foreground"
-              >
-                {formatMaybeJson(item)}
-              </pre>
-            ),
-          )}
-        </>
-      );
-    }
-  }
   return null;
 }
 
@@ -105,7 +87,6 @@ function OutputKeySection({
   items: unknown[];
 }) {
   const [expanded, setExpanded] = useState(false);
-  const mediaContent = renderOutputValue(items);
   const hasMoreItems = items.length > COLLAPSED_LIMIT;
   const visibleItems = expanded ? items : items.slice(0, COLLAPSED_LIMIT);
 
@@ -117,12 +98,12 @@ function OutputKeySection({
           {items.length} item{items.length === 1 ? "" : "s"}
         </ContentBadge>
       </div>
-      {mediaContent || (
-        <pre className="mt-2 whitespace-pre-wrap text-xs text-muted-foreground">
-          {formatMaybeJson(visibleItems)}
-        </pre>
-      )}
-      {!mediaContent && hasMoreItems && (
+      <div className="mt-2">
+        {visibleItems.map((item, i) => (
+          <RenderOutputValue key={i} value={item} />
+        ))}
+      </div>
+      {hasMoreItems && (
         <Button
           variant="ghost"
           size="small"

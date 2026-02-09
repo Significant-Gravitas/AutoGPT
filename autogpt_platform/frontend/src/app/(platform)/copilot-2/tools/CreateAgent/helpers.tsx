@@ -6,8 +6,13 @@ import type { OperationInProgressResponse } from "@/app/api/__generated__/models
 import type { OperationPendingResponse } from "@/app/api/__generated__/models/operationPendingResponse";
 import type { OperationStartedResponse } from "@/app/api/__generated__/models/operationStartedResponse";
 import { ResponseType } from "@/app/api/__generated__/models/responseType";
-import { PlusCircleIcon, PlusIcon } from "@phosphor-icons/react";
+import {
+  PlusCircleIcon,
+  PlusIcon,
+  WarningDiamondIcon,
+} from "@phosphor-icons/react";
 import type { ToolUIPart } from "ai";
+import { OrbitLoader } from "../../components/OrbitLoader/OrbitLoader";
 
 export type CreateAgentToolOutput =
   | OperationStartedResponse
@@ -150,19 +155,13 @@ export function ToolIcon({
   isStreaming?: boolean;
   isError?: boolean;
 }) {
-  return (
-    <PlusIcon
-      size={14}
-      weight="regular"
-      className={
-        isError
-          ? "text-red-500"
-          : isStreaming
-            ? "text-neutral-500"
-            : "text-neutral-400"
-      }
-    />
-  );
+  if (isError) {
+    return <WarningDiamondIcon size={14} weight="regular" className="text-red-500" />;
+  }
+  if (isStreaming) {
+    return <OrbitLoader size={24} />;
+  }
+  return <PlusIcon size={14} weight="regular" className="text-neutral-400" />;
 }
 
 export function AccordionIcon() {

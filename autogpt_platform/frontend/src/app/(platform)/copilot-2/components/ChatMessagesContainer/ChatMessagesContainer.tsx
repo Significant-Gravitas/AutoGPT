@@ -8,9 +8,10 @@ import {
   MessageContent,
   MessageResponse,
 } from "@/components/ai-elements/message";
+import { getGetWorkspaceDownloadFileByIdUrl } from "@/app/api/__generated__/endpoints/workspace/workspace";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { UIDataTypes, UIMessage, UITools, ToolUIPart } from "ai";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { FindBlocksTool } from "../../tools/FindBlocks/FindBlocks";
 import { FindAgentsTool } from "../../tools/FindAgents/FindAgents";
 import { SearchDocsTool } from "../../tools/SearchDocs/SearchDocs";
@@ -19,6 +20,75 @@ import { RunAgentTool } from "../../tools/RunAgent/RunAgent";
 import { ViewAgentOutputTool } from "../../tools/ViewAgentOutput/ViewAgentOutput";
 import { CreateAgentTool } from "../../tools/CreateAgent/CreateAgent";
 import { EditAgentTool } from "../../tools/EditAgent/EditAgent";
+
+// ---------------------------------------------------------------------------
+// Workspace media support
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolve workspace:// URLs in markdown text to proxy download URLs.
+ * Detects MIME type from the hash fragment (e.g. workspace://id#video/mp4)
+ * and prefixes the alt text with "video:" so the custom img component can
+ * render a <video> element instead.
+ */
+function resolveWorkspaceUrls(text: string): string {
+  return text.replace(
+    /!\[([^\]]*)\]\(workspace:\/\/([^)#\s]+)(?:#([^)\s]*))?\)/g,
+    (_match, alt: string, fileId: string, mimeHint?: string) => {
+      const apiPath = getGetWorkspaceDownloadFileByIdUrl(fileId);
+      const url = `/api/proxy${apiPath}`;
+      if (mimeHint?.startsWith("video/")) {
+        return `![video:${alt || "Video"}](${url})`;
+      }
+      return `![${alt || "Image"}](${url})`;
+    },
+  );
+}
+
+/**
+ * Custom img component for Streamdown that renders <video> elements
+ * for workspace video files (detected via "video:" alt-text prefix).
+ * Falls back to <video> when an <img> fails to load for workspace files.
+ */
+function WorkspaceMediaImage(props: React.JSX.IntrinsicElements["img"]) {
+  const { src, alt, ...rest } = props;
+  const [imgFailed, setImgFailed] = useState(false);
+  const isWorkspace = src?.includes("/workspace/files/") ?? false;
+
+  if (!src) return null;
+
+  if (alt?.startsWith("video:") || (imgFailed && isWorkspace)) {
+    return (
+      <span className="my-2 inline-block">
+        <video
+          controls
+          className="h-auto max-w-full rounded-md border border-zinc-200"
+          preload="metadata"
+        >
+          <source src={src} />
+          Your browser does not support the video tag.
+        </video>
+      </span>
+    );
+  }
+
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={src}
+      alt={alt || "Image"}
+      className="h-auto max-w-full rounded-md border border-zinc-200"
+      loading="lazy"
+      onError={() => {
+        if (isWorkspace) setImgFailed(true);
+      }}
+      {...rest}
+    />
+  );
+}
+
+/** Stable components override for Streamdown (avoids re-creating on every render). */
+const STREAMDOWN_COMPONENTS = { img: WorkspaceMediaImage };
 
 const THINKING_PHRASES = [
   "Thinking...",
@@ -102,8 +172,11 @@ export const ChatMessagesContainer = ({
                   switch (part.type) {
                     case "text":
                       return (
-                        <MessageResponse key={`${message.id}-${i}`}>
-                          {part.text}
+                        <MessageResponse
+                          key={`${message.id}-${i}`}
+                          components={STREAMDOWN_COMPONENTS}
+                        >
+                          {resolveWorkspaceUrls(part.text)}
                         </MessageResponse>
                       );
                     case "tool-find_block":

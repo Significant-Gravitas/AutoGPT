@@ -1,8 +1,8 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { Button } from "@/components/atoms/Button/Button";
 import type { ExecutionStartedResponse } from "@/app/api/__generated__/models/executionStartedResponse";
+import { Button } from "@/components/atoms/Button/Button";
+import { useRouter } from "next/navigation";
 import {
   ContentCard,
   ContentCardDescription,
@@ -26,9 +26,8 @@ export function ExecutionStartedCard({ output }: Props) {
         <ContentCardDescription>{output.message}</ContentCardDescription>
         {output.library_agent_link && (
           <Button
-            variant="outline"
             size="small"
-            className="mt-3 w-full"
+            className="mt-3"
             onClick={() => router.push(output.library_agent_link!)}
           >
             View Execution
