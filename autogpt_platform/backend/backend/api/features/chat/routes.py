@@ -325,7 +325,7 @@ async def stream_chat_post(
             f"[TIMING] run_ai_generation STARTED, task={task_id}, session={session_id}, user={user_id}",
             extra={"json_fields": log_meta},
         )
-        first_chunk_time = None
+        first_chunk_time, ttfc = None, None
         chunk_count = 0
         try:
             # Emit a start event with task_id for reconnection
@@ -357,16 +357,14 @@ async def stream_chat_post(
                 chunk_count += 1
                 if first_chunk_time is None:
                     first_chunk_time = time_module.perf_counter()
+                    ttfc = first_chunk_time - gen_start_time
                     logger.info(
-                        f"[TIMING] FIRST AI CHUNK at {(first_chunk_time - gen_start_time)*1000:.1f}ms, type={type(chunk).__name__}",
+                        f"[TIMING] FIRST AI CHUNK at {ttfc:.2f}s, type={type(chunk).__name__}",
                         extra={
                             "json_fields": {
                                 **log_meta,
                                 "chunk_type": type(chunk).__name__,
-                                "time_to_first_chunk_ms": (
-                                    first_chunk_time - gen_start_time
-                                )
-                                * 1000,
+                                "time_to_first_chunk_ms": ttfc * 1000,
                             }
                         },
                     )
@@ -375,30 +373,33 @@ async def stream_chat_post(
 
             gen_end_time = time_module.perf_counter()
             total_time = (gen_end_time - gen_start_time) * 1000
-            ttfc = (
-                (first_chunk_time - gen_start_time) * 1000 if first_chunk_time else None
-            )
             logger.info(
-                f"[TIMING] run_ai_generation FINISHED in {total_time/1000:.1f}s; task={task_id}, session={session_id}, "
-                f"ttfc={ttfc:.1f}ms, n_chunks={chunk_count}",
+                f"[TIMING] run_ai_generation FINISHED in {total_time/1000:.1f}s; "
+                f"task={task_id}, session={session_id}, "
+                f"ttfc={ttfc or -1:.2f}s, n_chunks={chunk_count}",
                 extra={
                     "json_fields": {
                         **log_meta,
                         "total_time_ms": total_time,
-                        "time_to_first_chunk_ms": ttfc,
-                        "chunk_count": chunk_count,
+                        "time_to_first_chunk_ms": (
+                            ttfc * 1000 if ttfc is not None else None
+                        ),
+                        "n_chunks": chunk_count,
                     }
                 },
             )
 
-            # Mark task as completed
             await stream_registry.mark_task_completed(task_id, "completed")
         except Exception as e:
-            elapsed = (time_module.perf_counter() - gen_start_time) * 1000
+            elapsed = time_module.perf_counter() - gen_start_time
             logger.error(
-                f"[TIMING] run_ai_generation ERROR after {elapsed:.1f}ms: {e}",
+                f"[TIMING] run_ai_generation ERROR after {elapsed:.2f}s: {e}",
                 extra={
-                    "json_fields": {**log_meta, "elapsed_ms": elapsed, "error": str(e)}
+                    "json_fields": {
+                        **log_meta,
+                        "elapsed_ms": elapsed * 1000,
+                        "error": str(e),
+                    }
                 },
             )
             await stream_registry.mark_task_completed(task_id, "failed")
@@ -418,7 +419,8 @@ async def stream_chat_post(
 
         event_gen_start = time_module.perf_counter()
         logger.info(
-            f"[TIMING] event_generator STARTED, task={task_id}, session={session_id}, user={user_id}",
+            f"[TIMING] event_generator STARTED, task={task_id}, session={session_id}, "
+            f"user={user_id}",
             extra={"json_fields": log_meta},
         )
         subscriber_queue = None
@@ -438,7 +440,8 @@ async def stream_chat_post(
             )
             subscribe_time = (time_module.perf_counter() - subscribe_start) * 1000
             logger.info(
-                f"[TIMING] subscribe_to_task completed in {subscribe_time:.1f}ms, queue_ok={subscriber_queue is not None}",
+                f"[TIMING] subscribe_to_task completed in {subscribe_time:.1f}ms, "
+                f"queue_ok={subscriber_queue is not None}",
                 extra={
                     "json_fields": {
                         **log_meta,
@@ -473,21 +476,24 @@ async def stream_chat_post(
 
                     if not first_chunk_yielded:
                         first_chunk_yielded = True
-                        elapsed = (time_module.perf_counter() - event_gen_start) * 1000
+                        elapsed = time_module.perf_counter() - event_gen_start
                         logger.info(
-                            f"[TIMING] FIRST CHUNK from queue at {elapsed:.1f}ms, type={type(chunk).__name__}, wait={queue_wait_time:.1f}ms",
+                            f"[TIMING] FIRST CHUNK from queue at {elapsed:.2f}s, "
+                            f"type={type(chunk).__name__}, "
+                            f"wait={queue_wait_time:.1f}ms",
                             extra={
                                 "json_fields": {
                                     **log_meta,
                                     "chunk_type": type(chunk).__name__,
-                                    "elapsed_ms": elapsed,
+                                    "elapsed_ms": elapsed * 1000,
                                     "queue_wait_ms": queue_wait_time,
                                 }
                             },
                         )
                     elif chunks_yielded % 50 == 0:
                         logger.info(
-                            f"[TIMING] Chunk #{chunks_yielded}, type={type(chunk).__name__}",
+                            f"[TIMING] Chunk #{chunks_yielded}, "
+                            f"type={type(chunk).__name__}",
                             extra={
                                 "json_fields": {
                                     **log_meta,
@@ -501,16 +507,15 @@ async def stream_chat_post(
 
                     # Check for finish signal
                     if isinstance(chunk, StreamFinish):
-                        total_time = (
-                            time_module.perf_counter() - event_gen_start
-                        ) * 1000
+                        total_time = time_module.perf_counter() - event_gen_start
                         logger.info(
-                            f"[TIMING] StreamFinish received in {total_time/1000:.1f}s; n_chunks={chunks_yielded}",
+                            f"[TIMING] StreamFinish received in {total_time:.2f}s; "
+                            f"n_chunks={chunks_yielded}",
                             extra={
                                 "json_fields": {
                                     **log_meta,
                                     "chunks_yielded": chunks_yielded,
-                                    "total_time_ms": total_time,
+                                    "total_time_ms": total_time * 1000,
                                 }
                             },
                         )
@@ -558,14 +563,14 @@ async def stream_chat_post(
                         exc_info=True,
                     )
             # AI SDK protocol termination - always yield even if unsubscribe fails
-            total_time = (time_module.perf_counter() - event_gen_start) * 1000
+            total_time = time_module.perf_counter() - event_gen_start
             logger.info(
-                f"[TIMING] event_generator FINISHED in {total_time/1000:.1f}s; task={task_id}, session={session_id}, "
-                f"n_chunks={chunks_yielded}",
+                f"[TIMING] event_generator FINISHED in {total_time:.2f}s; "
+                f"task={task_id}, session={session_id}, n_chunks={chunks_yielded}",
                 extra={
                     "json_fields": {
                         **log_meta,
-                        "total_time_ms": total_time,
+                        "total_time_ms": total_time * 1000,
                         "chunks_yielded": chunks_yielded,
                     }
                 },
@@ -638,7 +643,7 @@ async def stream_chat_get(
             "Chat stream completed",
             extra={
                 "session_id": session_id,
-                "chunk_count": chunk_count,
+                "n_chunks": chunk_count,
                 "first_chunk_type": first_chunk_type,
             },
         )

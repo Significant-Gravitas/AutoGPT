@@ -396,19 +396,20 @@ async def stream_chat_completion(
         session = await get_chat_session(session_id, user_id)
         fetch_time = (time.monotonic() - fetch_start) * 1000
         logger.info(
-            f"[TIMING] get_chat_session took {fetch_time:.1f}ms, messages={len(session.messages) if session else 0}",
+            f"[TIMING] get_chat_session took {fetch_time:.1f}ms, "
+            f"n_messages={len(session.messages) if session else 0}",
             extra={
                 "json_fields": {
                     **log_meta,
                     "duration_ms": fetch_time,
-                    "message_count": len(session.messages) if session else 0,
+                    "n_messages": len(session.messages) if session else 0,
                 }
             },
         )
     else:
         logger.info(
             f"[TIMING] Using provided session, messages={len(session.messages)}",
-            extra={"json_fields": {**log_meta, "message_count": len(session.messages)}},
+            extra={"json_fields": {**log_meta, "n_messages": len(session.messages)}},
         )
 
     if not session:
@@ -951,8 +952,8 @@ async def _stream_chat_chunks(
 
     logger.info(
         f"[TIMING] _stream_chat_chunks STARTED, session={session.session_id}, "
-        f"user={session.user_id}, messages={len(session.messages)}",
-        extra={"json_fields": {**log_meta, "message_count": len(session.messages)}},
+        f"user={session.user_id}, n_messages={len(session.messages)}",
+        extra={"json_fields": {**log_meta, "n_messages": len(session.messages)}},
     )
 
     messages = session.to_openai_messages()
@@ -1100,12 +1101,13 @@ async def _stream_chat_chunks(
                                     time_module.perf_counter() - api_call_start
                                 ) * 1000
                                 logger.info(
-                                    f"[TIMING] FIRST CONTENT CHUNK at {ttfc:.1f}ms (since API call), chunks={chunk_count}",
+                                    f"[TIMING] FIRST CONTENT CHUNK at {ttfc:.1f}ms "
+                                    f"(since API call), n_chunks={chunk_count}",
                                     extra={
                                         "json_fields": {
                                             **log_meta,
                                             "time_to_first_chunk_ms": ttfc,
-                                            "chunk_count": chunk_count,
+                                            "n_chunks": chunk_count,
                                         }
                                     },
                                 )
@@ -1165,17 +1167,18 @@ async def _stream_chat_chunks(
                                         toolName=tool_calls[idx]["function"]["name"],
                                     )
                                     emitted_start_for_idx.add(idx)
-                stream_duration = (time_module.perf_counter() - api_call_start) * 1000
+                stream_duration = time_module.perf_counter() - api_call_start
                 logger.info(
-                    f"[TIMING] OpenAI stream COMPLETE, finish={finish_reason}, duration={stream_duration:.1f}ms, "
-                    f"chunks={chunk_count}, tools={len(tool_calls)}",
+                    f"[TIMING] OpenAI stream COMPLETE, finish_reason={finish_reason}, "
+                    f"duration={stream_duration:.2f}s, "
+                    f"n_chunks={chunk_count}, n_tool_calls={len(tool_calls)}",
                     extra={
                         "json_fields": {
                             **log_meta,
-                            "stream_duration_ms": stream_duration,
+                            "stream_duration_ms": stream_duration * 1000,
                             "finish_reason": finish_reason,
-                            "chunk_count": chunk_count,
-                            "tool_call_count": len(tool_calls),
+                            "n_chunks": chunk_count,
+                            "n_tool_calls": len(tool_calls),
                         }
                     },
                 )

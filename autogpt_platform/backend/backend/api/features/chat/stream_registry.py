@@ -368,7 +368,7 @@ async def subscribe_to_task(
         extra={
             "json_fields": {
                 **log_meta,
-                "replayed_count": replayed_count,
+                "n_messages_replayed": replayed_count,
                 "replay_last_id": replay_last_id,
             }
         },
@@ -395,12 +395,13 @@ async def subscribe_to_task(
 
     total_time = (time.perf_counter() - start_time) * 1000
     logger.info(
-        f"[TIMING] subscribe_to_task COMPLETED in {total_time:.1f}ms; task={task_id}, replayed={replayed_count}",
+        f"[TIMING] subscribe_to_task COMPLETED in {total_time:.1f}ms; task={task_id}, "
+        f"n_messages_replayed={replayed_count}",
         extra={
             "json_fields": {
                 **log_meta,
                 "total_time_ms": total_time,
-                "replayed_count": replayed_count,
+                "n_messages_replayed": replayed_count,
             }
         },
     )
@@ -467,7 +468,7 @@ async def _stream_listener(
                         "json_fields": {
                             **log_meta,
                             "xread_count": xread_count,
-                            "message_count": msg_count,
+                            "n_messages": msg_count,
                             "duration_ms": xread_time,
                         }
                     },
