@@ -13,6 +13,7 @@ export default function Page() {
     messages,
     status,
     error,
+    stop,
     isLoadingSession,
     isCreatingSession,
     createSession,
@@ -47,6 +48,7 @@ export default function Page() {
             isCreatingSession={isCreatingSession}
             onCreateSession={createSession}
             onSend={onSend}
+            onStop={stop}
           />
         </div>
       </div>

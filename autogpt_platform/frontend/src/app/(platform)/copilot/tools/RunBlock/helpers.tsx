@@ -8,7 +8,7 @@ import {
   WarningDiamondIcon,
 } from "@phosphor-icons/react";
 import type { ToolUIPart } from "ai";
-import { PulseLoader } from "../../components/PulseLoader/PulseLoader";
+import { SpinnerLoader } from "../../components/SpinnerLoader/SpinnerLoader";
 
 export interface RunBlockInput {
   block_id?: string;
@@ -120,7 +120,7 @@ export function ToolIcon({
     );
   }
   if (isStreaming) {
-    return <PulseLoader size={40} className="text-neutral-700" />;
+    return <SpinnerLoader size={40} className="text-neutral-700" />;
   }
   return <PlayIcon size={14} weight="regular" className="text-neutral-400" />;
 }
@@ -149,7 +149,7 @@ export function getAccordionMeta(output: RunBlockToolOutput): {
   if (isRunBlockBlockOutput(output)) {
     const keys = Object.keys(output.outputs ?? {});
     return {
-      icon: <PulseLoader size={32} className="text-neutral-700" />,
+      icon: <SpinnerLoader size={32} className="text-neutral-700" />,
       title: output.block_name,
       description:
         keys.length > 0

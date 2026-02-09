@@ -2,7 +2,7 @@ import { useGetV2ListSessions } from "@/app/api/__generated__/endpoints/chat/cha
 import { useBreakpoint } from "@/lib/hooks/useBreakpoint";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useChatSession } from "./useChatSession";
 
 export function useCopilotPage() {
@@ -22,38 +22,37 @@ export function useCopilotPage() {
   const isMobile =
     breakpoint === "base" || breakpoint === "sm" || breakpoint === "md";
 
-  const transport = sessionId
-    ? new DefaultChatTransport({
-        api: `/api/chat/sessions/${sessionId}/stream`,
-        prepareSendMessagesRequest: ({ messages }) => {
-          const last = messages[messages.length - 1];
-          return {
-            body: {
-              message: last.parts
-                ?.map((p) => (p.type === "text" ? p.text : ""))
-                .join(""),
-              is_user_message: last.role === "user",
-              context: null,
+  const transport = useMemo(
+    () =>
+      sessionId
+        ? new DefaultChatTransport({
+            api: `/api/chat/sessions/${sessionId}/stream`,
+            prepareSendMessagesRequest: ({ messages }) => {
+              const last = messages[messages.length - 1];
+              return {
+                body: {
+                  message: last.parts
+                    ?.map((p) => (p.type === "text" ? p.text : ""))
+                    .join(""),
+                  is_user_message: last.role === "user",
+                  context: null,
+                },
+              };
             },
-          };
-        },
-        // Resume uses GET on the same endpoint (no message param → backend resumes)
-        prepareReconnectToStreamRequest: () => ({
-          api: `/api/chat/sessions/${sessionId}/stream`,
-        }),
-      })
-    : null;
+          })
+        : null,
+    [sessionId],
+  );
 
-  const { messages, sendMessage, status, error, setMessages } = useChat({
+  const { messages, sendMessage, stop, status, error, setMessages } = useChat({
     id: sessionId ?? undefined,
     transport: transport ?? undefined,
-    resume: !!sessionId,
   });
 
   useEffect(() => {
     if (!hydratedMessages || hydratedMessages.length === 0) return;
     setMessages((prev) => {
-      if (prev.length > hydratedMessages.length) return prev;
+      if (prev.length >= hydratedMessages.length) return prev;
       return hydratedMessages;
     });
   }, [hydratedMessages, setMessages]);
@@ -89,36 +88,34 @@ export function useCopilotPage() {
   const sessions =
     sessionsResponse?.status === 200 ? sessionsResponse.data.sessions : [];
 
-  const handleOpenDrawer = useCallback(() => {
+  function handleOpenDrawer() {
     setIsDrawerOpen(true);
-  }, []);
+  }
 
-  const handleCloseDrawer = useCallback(() => {
+  function handleCloseDrawer() {
     setIsDrawerOpen(false);
-  }, []);
+  }
 
-  const handleDrawerOpenChange = useCallback((open: boolean) => {
+  function handleDrawerOpenChange(open: boolean) {
     setIsDrawerOpen(open);
-  }, []);
+  }
 
-  const handleSelectSession = useCallback(
-    (id: string) => {
-      setSessionId(id);
-      if (isMobile) setIsDrawerOpen(false);
-    },
-    [setSessionId, isMobile],
-  );
+  function handleSelectSession(id: string) {
+    setSessionId(id);
+    if (isMobile) setIsDrawerOpen(false);
+  }
 
-  const handleNewChat = useCallback(() => {
+  function handleNewChat() {
     setSessionId(null);
     if (isMobile) setIsDrawerOpen(false);
-  }, [setSessionId, isMobile]);
+  }
 
   return {
     sessionId,
     messages,
     status,
     error,
+    stop,
     isLoadingSession,
     isCreatingSession,
     createSession,

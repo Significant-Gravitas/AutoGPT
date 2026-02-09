@@ -15,6 +15,7 @@ export interface ChatContainerProps {
   isCreatingSession: boolean;
   onCreateSession: () => void | Promise<string>;
   onSend: (message: string) => void | Promise<void>;
+  onStop: () => void;
 }
 export const ChatContainer = ({
   messages,
@@ -25,6 +26,7 @@ export const ChatContainer = ({
   isCreatingSession,
   onCreateSession,
   onSend,
+  onStop,
 }: ChatContainerProps) => {
   const inputLayoutId = "copilot-2-chat-input";
 
@@ -52,7 +54,7 @@ export const ChatContainer = ({
                   onSend={onSend}
                   disabled={status === "streaming"}
                   isStreaming={status === "streaming"}
-                  onStop={() => {}}
+                  onStop={onStop}
                   placeholder="What else can I help with?"
                 />
               </motion.div>
