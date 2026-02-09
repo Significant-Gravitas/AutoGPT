@@ -139,7 +139,7 @@ class MCPClient:
         else:
             try:
                 body = response.json()
-            except (ValueError, Exception) as e:
+            except Exception as e:
                 raise MCPClientError(
                     f"MCP server returned non-JSON response: {e}"
                 ) from e

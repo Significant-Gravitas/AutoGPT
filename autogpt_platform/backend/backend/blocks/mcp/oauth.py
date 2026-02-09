@@ -167,7 +167,7 @@ class MCPOAuthHandler(BaseOAuthHandler):
             title=credentials.title,
             access_token=SecretStr(tokens["access_token"]),
             refresh_token=(
-                SecretStr(str(tokens["refresh_token"]))
+                SecretStr(tokens["refresh_token"])
                 if tokens.get("refresh_token")
                 else credentials.refresh_token
             ),
