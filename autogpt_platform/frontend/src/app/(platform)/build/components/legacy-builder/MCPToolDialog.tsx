@@ -38,7 +38,7 @@ interface MCPToolDialogProps {
 type DialogStep = "url" | "tool";
 
 const OAUTH_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
-const STORAGE_KEY = "mcp_last_server_url";
+
 
 export function MCPToolDialog({
   open,
@@ -71,23 +71,7 @@ export function MCPToolDialog({
   );
   const popupCheckRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const oauthHandledRef = useRef(false);
-  const autoConnectAttemptedRef = useRef(false);
-
-  // Pre-fill last used server URL when dialog opens (without auto-connecting)
-  useEffect(() => {
-    if (!open) {
-      autoConnectAttemptedRef.current = false;
-      return;
-    }
-
-    if (autoConnectAttemptedRef.current) return;
-    autoConnectAttemptedRef.current = true;
-
-    const lastUrl = localStorage.getItem(STORAGE_KEY);
-    if (lastUrl) {
-      setServerUrl(lastUrl);
-    }
-  }, [open]);
+  // (no auto-prefill — dialog starts fresh each time)
 
   // Clean up listeners on unmount
   useEffect(() => {
@@ -160,7 +144,6 @@ export function MCPToolDialog({
       setError(null);
       try {
         const result = await api.mcpDiscoverTools(url, authToken);
-        localStorage.setItem(STORAGE_KEY, url);
         setTools(result.tools);
         setServerName(result.server_name);
         setAuthRequired(false);
@@ -218,12 +201,19 @@ export function MCPToolDialog({
         );
         setCredentialId(callbackResult.credential_id);
         const result = await api.mcpDiscoverTools(serverUrl.trim());
-        localStorage.setItem(STORAGE_KEY, serverUrl.trim());
         setTools(result.tools);
         setServerName(result.server_name);
         setStep("tool");
       } catch (e: any) {
-        const message = e?.message || e?.detail || "Failed to complete sign-in";
+        const status = e?.status;
+        let message: string;
+        if (status === 401 || status === 403) {
+          message =
+            "Authentication succeeded but the server still rejected the request. " +
+            "The token audience may not match. Please try again.";
+        } else {
+          message = e?.message || e?.detail || "Failed to complete sign-in";
+        }
         setError(
           typeof message === "string" ? message : JSON.stringify(message),
         );
@@ -410,35 +400,14 @@ export function MCPToolDialog({
               />
             </div>
 
-            {/* Auth required: show sign-in panel */}
-            {authRequired && (
-              <div className="flex flex-col items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-slate-700 dark:bg-slate-800">
-                <p className="text-sm font-medium text-gray-600 dark:text-gray-300">
-                  This server requires authentication
-                </p>
-                <Button
-                  onClick={handleOAuthSignIn}
-                  disabled={oauthLoading || loading}
-                  className="w-full"
-                >
-                  {oauthLoading ? (
-                    <span className="flex items-center gap-2">
-                      <LoadingSpinner className="size-4" />
-                      Waiting for sign-in...
-                    </span>
-                  ) : (
-                    "Sign in"
-                  )}
-                </Button>
-                {!showManualToken && (
-                  <button
-                    onClick={() => setShowManualToken(true)}
-                    className="text-xs text-gray-500 underline hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
-                  >
-                    or enter a token manually
-                  </button>
-                )}
-              </div>
+            {/* Auth required: show manual token option */}
+            {authRequired && !showManualToken && (
+              <button
+                onClick={() => setShowManualToken(true)}
+                className="text-xs text-gray-500 underline hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+              >
+                or enter a token manually
+              </button>
             )}
 
             {/* Manual token entry — only visible when expanded */}
@@ -495,14 +464,20 @@ export function MCPToolDialog({
           </Button>
           {step === "url" && (
             <Button
-              onClick={handleDiscoverTools}
+              onClick={
+                authRequired && !showManualToken
+                  ? handleOAuthSignIn
+                  : handleDiscoverTools
+              }
               disabled={!serverUrl.trim() || loading || oauthLoading}
             >
-              {loading ? (
+              {loading || oauthLoading ? (
                 <span className="flex items-center gap-2">
                   <LoadingSpinner className="size-4" />
-                  Connecting...
+                  {oauthLoading ? "Waiting for sign-in..." : "Connecting..."}
                 </span>
+              ) : authRequired && !showManualToken ? (
+                "Sign in & Connect"
               ) : (
                 "Discover Tools"
               )}

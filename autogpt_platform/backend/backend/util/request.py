@@ -101,7 +101,7 @@ class HostResolver(abc.AbstractResolver):
     def __init__(self, ssl_hostname: str, ip_addresses: list[str]):
         self.ssl_hostname = ssl_hostname
         self.ip_addresses = ip_addresses
-        self._default = aiohttp.AsyncResolver()
+        self._default = aiohttp.ThreadedResolver()
 
     async def resolve(self, host, port=0, family=socket.AF_INET):
         if host == self.ssl_hostname:
@@ -467,7 +467,13 @@ class Requests:
             resolver = HostResolver(ssl_hostname=hostname, ip_addresses=ip_addresses)
             ssl_context = ssl.create_default_context()
             connector = aiohttp.TCPConnector(resolver=resolver, ssl=ssl_context)
-        session_kwargs = {}
+        else:
+            # Use ThreadedResolver for trusted origins to avoid c-ares DNS issues
+            # in subprocess environments (e.g. ExecutionManager on macOS).
+            connector = aiohttp.TCPConnector(
+                resolver=aiohttp.ThreadedResolver()
+            )
+        session_kwargs: dict = {}
         if connector:
             session_kwargs["connector"] = connector
 

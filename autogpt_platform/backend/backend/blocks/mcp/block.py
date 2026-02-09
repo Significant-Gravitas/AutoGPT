@@ -193,17 +193,50 @@ class MCPToolBlock(Block):
             return output_parts[0]
         return output_parts if output_parts else None
 
-    async def _resolve_auth_token(self, credential_id: str, user_id: str) -> str | None:
-        """Resolve a Bearer token from a stored credential ID, refreshing if needed."""
-        if not credential_id:
-            return None
+    async def _resolve_auth_token(
+        self, credential_id: str, user_id: str, server_url: str = ""
+    ) -> str | None:
+        """Resolve a Bearer token from a stored credential ID, refreshing if needed.
+
+        Falls back to looking up credentials by server_url when credential_id
+        is empty (e.g. when pruneEmptyValues strips it from the saved graph).
+        """
         from backend.integrations.credentials_store import IntegrationCredentialsStore
+        from backend.integrations.providers import ProviderName
 
         store = IntegrationCredentialsStore()
-        creds = await store.get_creds_by_id(user_id, credential_id)
+        creds = None
+
+        if credential_id:
+            creds = await store.get_creds_by_id(user_id, credential_id)
+
+        # Fallback: look up by server_url (same approach as discover-tools)
+        if not creds and server_url:
+            logger.info(
+                f"credential_id not available, looking up credential by server_url"
+            )
+            try:
+                mcp_creds = await store.get_creds_by_provider(
+                    user_id, str(ProviderName.MCP)
+                )
+                best: OAuth2Credentials | None = None
+                for c in mcp_creds:
+                    if (
+                        isinstance(c, OAuth2Credentials)
+                        and c.metadata.get("mcp_server_url") == server_url
+                    ):
+                        if best is None or (
+                            (c.access_token_expires_at or 0)
+                            > (best.access_token_expires_at or 0)
+                        ):
+                            best = c
+                creds = best
+            except Exception:
+                logger.debug("Could not look up MCP credentials by server_url", exc_info=True)
+
         if not creds:
-            logger.warning(f"Credential {credential_id} not found")
             return None
+
         if isinstance(creds, OAuth2Credentials):
             # Refresh if token expires within 5 minutes
             if (
@@ -266,7 +299,9 @@ class MCPToolBlock(Block):
             yield "error", "No tool selected. Please select a tool from the dropdown."
             return
 
-        auth_token = await self._resolve_auth_token(input_data.credential_id, user_id)
+        auth_token = await self._resolve_auth_token(
+            input_data.credential_id, user_id, server_url=input_data.server_url
+        )
 
         try:
             result = await self._call_mcp_tool(

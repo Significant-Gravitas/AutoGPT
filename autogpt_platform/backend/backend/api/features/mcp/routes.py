@@ -81,13 +81,24 @@ async def discover_tools(
             mcp_creds = await creds_manager.store.get_creds_by_provider(
                 user_id, str(ProviderName.MCP)
             )
+            # Find the freshest credential for this server URL
+            best_cred: OAuth2Credentials | None = None
             for cred in mcp_creds:
                 if (
                     isinstance(cred, OAuth2Credentials)
                     and cred.metadata.get("mcp_server_url") == request.server_url
                 ):
-                    auth_token = cred.access_token.get_secret_value()
-                    break
+                    if best_cred is None or (
+                        (cred.access_token_expires_at or 0)
+                        > (best_cred.access_token_expires_at or 0)
+                    ):
+                        best_cred = cred
+            if best_cred:
+                logger.info(
+                    f"Using MCP credential {best_cred.id} for {request.server_url}, "
+                    f"expires_at={best_cred.access_token_expires_at}"
+                )
+                auth_token = best_cred.access_token.get_secret_value()
         except Exception:
             logger.debug("Could not look up stored MCP credentials", exc_info=True)
 
@@ -115,6 +126,9 @@ async def discover_tools(
         )
     except HTTPClientError as e:
         if e.status_code in (401, 403):
+            logger.warning(
+                f"MCP server returned {e.status_code} for {request.server_url}: {e}"
+            )
             raise fastapi.HTTPException(
                 status_code=401,
                 detail="This MCP server requires authentication. "
@@ -174,29 +188,36 @@ async def mcp_oauth_login(
             detail=f"Failed to discover OAuth metadata: {e}",
         )
 
-    if not protected_resource or "authorization_servers" not in protected_resource:
+    metadata: dict[str, Any] | None = None
+
+    if protected_resource and "authorization_servers" in protected_resource:
+        auth_server_url = protected_resource["authorization_servers"][0]
+        resource_url = protected_resource.get("resource", request.server_url)
+
+        # Step 2a: Discover auth-server metadata (RFC 8414)
+        try:
+            metadata = await client.discover_auth_server_metadata(auth_server_url)
+        except Exception as e:
+            raise fastapi.HTTPException(
+                status_code=502,
+                detail=f"Failed to discover authorization server metadata: {e}",
+            )
+    else:
+        # Fallback: Some MCP servers (e.g. Linear) are their own auth server
+        # and serve OAuth metadata directly without protected-resource metadata.
+        # Don't assume a resource_url — omitting it lets the auth server choose
+        # the correct audience for the token (RFC 8707 resource is optional).
+        resource_url = None
+        try:
+            metadata = await client.discover_auth_server_metadata(request.server_url)
+        except Exception:
+            pass
+
+    if not metadata or "authorization_endpoint" not in metadata:
         raise fastapi.HTTPException(
             status_code=400,
             detail="This MCP server does not advertise OAuth support. "
             "You may need to provide an auth token manually.",
-        )
-
-    auth_server_url = protected_resource["authorization_servers"][0]
-    resource_url = protected_resource.get("resource", request.server_url)
-
-    # Step 2: Discover auth-server metadata (RFC 8414)
-    try:
-        metadata = await client.discover_auth_server_metadata(auth_server_url)
-    except Exception as e:
-        raise fastapi.HTTPException(
-            status_code=502,
-            detail=f"Failed to discover authorization server metadata: {e}",
-        )
-
-    if not metadata or "authorization_endpoint" not in metadata:
-        raise fastapi.HTTPException(
-            status_code=502,
-            detail="Authorization server metadata is missing required endpoints.",
         )
 
     authorize_url = metadata["authorization_endpoint"]
@@ -227,7 +248,10 @@ async def mcp_oauth_login(
         client_id = "autogpt-platform"
 
     # Step 4: Store state token with OAuth metadata for the callback
-    scopes = protected_resource.get("scopes_supported", [])
+    scopes = (
+        (protected_resource or {}).get("scopes_supported")
+        or metadata.get("scopes_supported", [])
+    )
     state_token, code_challenge = await creds_manager.store.store_state_token(
         user_id,
         str(ProviderName.MCP),
@@ -327,9 +351,26 @@ async def mcp_oauth_callback(
     credentials.metadata["mcp_server_url"] = meta["server_url"]
     credentials.metadata["mcp_client_id"] = meta["client_id"]
     credentials.metadata["mcp_client_secret"] = meta.get("client_secret", "")
+    credentials.metadata["mcp_token_url"] = meta["token_url"]
+    credentials.metadata["mcp_resource_url"] = meta.get("resource_url", "")
 
     hostname = urlparse(meta["server_url"]).hostname or meta["server_url"]
     credentials.title = f"MCP: {hostname}"
+
+    # Remove old MCP credentials for the same server to prevent stale token buildup
+    try:
+        old_creds = await creds_manager.store.get_creds_by_provider(
+            user_id, str(ProviderName.MCP)
+        )
+        for old in old_creds:
+            if (
+                isinstance(old, OAuth2Credentials)
+                and old.metadata.get("mcp_server_url") == meta["server_url"]
+            ):
+                await creds_manager.store.delete_creds_by_id(user_id, old.id)
+                logger.info(f"Removed old MCP credential {old.id} for {meta['server_url']}")
+    except Exception:
+        logger.debug("Could not clean up old MCP credentials", exc_info=True)
 
     await creds_manager.create(user_id, credentials)
 

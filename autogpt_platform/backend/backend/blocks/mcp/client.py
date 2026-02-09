@@ -60,6 +60,7 @@ class MCPClient:
         self.auth_token = auth_token
         self.trusted_origins = trusted_origins or []
         self._request_id = 0
+        self._session_id: str | None = None
 
     def _next_id(self) -> int:
         self._request_id += 1
@@ -72,6 +73,8 @@ class MCPClient:
         }
         if self.auth_token:
             headers["Authorization"] = f"Bearer {self.auth_token}"
+        if self._session_id:
+            headers["Mcp-Session-Id"] = self._session_id
         return headers
 
     def _build_jsonrpc_request(
@@ -132,6 +135,11 @@ class MCPClient:
             trusted_origins=self.trusted_origins,
         )
         response = await requests.post(self.server_url, json=payload)
+
+        # Capture session ID from response (MCP Streamable HTTP transport)
+        session_id = response.headers.get("Mcp-Session-Id")
+        if session_id:
+            self._session_id = session_id
 
         content_type = response.headers.get("content-type", "")
         if "text/event-stream" in content_type:

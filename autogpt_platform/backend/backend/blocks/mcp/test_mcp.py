@@ -573,7 +573,7 @@ class TestMCPToolBlock:
             captured_tokens.append(auth_token)
             return "ok"
 
-        async def mock_resolve(self, cred_id, uid):
+        async def mock_resolve(self, cred_id, uid, server_url=""):
             return "resolved-token"
 
         block._call_mcp_tool = mock_call  # type: ignore
