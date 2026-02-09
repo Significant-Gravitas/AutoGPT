@@ -6,6 +6,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
+import { SpecialBlockID } from "@/lib/autogpt-server-api";
 import { beautifyString, cn } from "@/lib/utils";
 import { useState } from "react";
 import { CustomNodeData } from "../CustomNode";
@@ -20,8 +21,15 @@ type Props = {
 
 export const NodeHeader = ({ data, nodeId }: Props) => {
   const updateNodeData = useNodeStore((state) => state.updateNodeData);
+  const isMCPWithTool =
+    data.block_id === SpecialBlockID.MCP_TOOL &&
+    !!data.hardcodedValues?.selected_tool;
+
   const title =
     (data.metadata?.customized_name as string) ||
+    (isMCPWithTool
+      ? `${data.hardcodedValues.server_name || "MCP"}: ${beautifyString(data.hardcodedValues.selected_tool)}`
+      : null) ||
     data.hardcodedValues?.agent_name ||
     data.title;
 

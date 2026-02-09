@@ -29,6 +29,10 @@ import {
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { GraphMeta } from "@/lib/autogpt-server-api";
+import {
+  MCPToolDialog,
+  type MCPToolDialogResult,
+} from "@/app/(platform)/build/components/legacy-builder/MCPToolDialog";
 import jaro from "jaro-winkler";
 import { getV1GetSpecificGraph } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { okData } from "@/app/api/helpers";
@@ -94,6 +98,7 @@ export function BlocksControl({
   const [searchQuery, setSearchQuery] = useState("");
   const deferredSearchQuery = useDeferredValue(searchQuery);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [mcpDialogOpen, setMcpDialogOpen] = useState(false);
 
   const blocks = useSearchableBlocks(_blocks);
 
@@ -186,10 +191,30 @@ export function BlocksControl({
     setSelectedCategory(null);
   }, []);
 
+  const handleMCPToolConfirm = useCallback(
+    (result: MCPToolDialogResult) => {
+      addBlock(SpecialBlockID.MCP_TOOL, "MCPToolBlock", {
+        server_url: result.serverUrl,
+        server_name: result.serverName,
+        selected_tool: result.selectedTool,
+        tool_input_schema: result.toolInputSchema,
+        available_tools: result.availableTools,
+      });
+      setMcpDialogOpen(false);
+    },
+    [addBlock],
+  );
+
   // Handler to add a block, fetching graph data on-demand for agent blocks
   const handleAddBlock = useCallback(
     async (block: _Block & { notAvailable: string | null }) => {
       if (block.notAvailable) return;
+
+      // For MCP blocks, open the configuration dialog instead of placing directly
+      if (block.id === SpecialBlockID.MCP_TOOL) {
+        setMcpDialogOpen(true);
+        return;
+      }
 
       // For agent blocks, fetch the full graph to get schemas
       if (block.uiType === BlockUIType.AGENT && block.hardcodedValues) {
@@ -230,162 +255,179 @@ export function BlocksControl({
   }, [blocks]);
 
   return (
-    <Popover
-      open={pinBlocksPopover ? true : undefined}
-      onOpenChange={(open) => open || resetFilters()}
-    >
-      <Tooltip delayDuration={500}>
-        <TooltipTrigger asChild>
-          <PopoverTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              data-id="blocks-control-popover-trigger"
-              data-testid="blocks-control-blocks-button"
-              name="Blocks"
-              className="dark:hover:bg-slate-800"
-            >
-              <IconToyBrick />
-            </Button>
-          </PopoverTrigger>
-        </TooltipTrigger>
-        <TooltipContent side="right">Blocks</TooltipContent>
-      </Tooltip>
-      <PopoverContent
-        side="right"
-        sideOffset={22}
-        align="start"
-        className="absolute -top-3 w-[17rem] rounded-xl border-none p-0 shadow-none md:w-[30rem]"
-        data-id="blocks-control-popover-content"
+    <>
+      <Popover
+        open={pinBlocksPopover ? true : undefined}
+        onOpenChange={(open) => open || resetFilters()}
       >
-        <Card className="p-3 pb-0 dark:bg-slate-900">
-          <CardHeader className="flex flex-col gap-x-8 gap-y-1 p-3 px-2">
-            <div className="items-center justify-between">
-              <Label
-                htmlFor="search-blocks"
-                className="whitespace-nowrap text-base font-bold text-black dark:text-white 2xl:text-xl"
-                data-id="blocks-control-label"
-                data-testid="blocks-control-blocks-label"
+        <Tooltip delayDuration={500}>
+          <TooltipTrigger asChild>
+            <PopoverTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                data-id="blocks-control-popover-trigger"
+                data-testid="blocks-control-blocks-button"
+                name="Blocks"
+                className="dark:hover:bg-slate-800"
               >
-                Blocks
-              </Label>
-            </div>
-            <div className="relative flex items-center">
-              <MagnifyingGlassIcon className="absolute m-2 h-5 w-5 text-gray-500 dark:text-gray-400" />
-              <Input
-                id="search-blocks"
-                type="text"
-                placeholder="Search blocks"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="rounded-lg px-8 py-5 dark:bg-slate-800 dark:text-white"
-                data-id="blocks-control-search-input"
-                autoComplete="off"
-              />
-            </div>
-            <div
-              className="mt-2 flex flex-wrap gap-2"
-              data-testid="blocks-categories-list"
-            >
-              {categories.map((category) => {
-                const color = getPrimaryCategoryColor([
-                  { category: category || "All", description: "" },
-                ]);
-                const colorClass =
-                  selectedCategory === category ? `${color}` : "";
-                return (
-                  <div
-                    key={category}
-                    data-testid="blocks-category"
-                    role="button"
-                    className={`cursor-pointer rounded-xl border px-2 py-2 text-xs font-medium dark:border-slate-700 dark:text-white ${colorClass}`}
-                    onClick={() =>
-                      setSelectedCategory(
-                        selectedCategory === category ? null : category,
-                      )
-                    }
-                  >
-                    {beautifyString((category || "All").toLowerCase())}
-                  </div>
-                );
-              })}
-            </div>
-          </CardHeader>
-          <CardContent className="overflow-scroll border-t border-t-gray-200 p-0 dark:border-t-slate-700">
-            <ScrollArea
-              className="h-[60vh] w-full"
-              data-id="blocks-control-scroll-area"
-            >
-              {filteredAvailableBlocks.map((block) => (
-                <Card
-                  key={block.uiKey || block.id}
-                  className={`m-2 my-4 flex h-20 shadow-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700 ${
-                    block.notAvailable
-                      ? "cursor-not-allowed opacity-50"
-                      : "cursor-move hover:shadow-lg"
-                  }`}
-                  data-id={`block-card-${block.id}`}
-                  draggable={!block.notAvailable}
-                  onDragStart={(e) => {
-                    if (block.notAvailable) return;
-                    e.dataTransfer.effectAllowed = "copy";
-                    e.dataTransfer.setData(
-                      "application/reactflow",
-                      JSON.stringify({
-                        blockId: block.id,
-                        blockName: block.name,
-                        hardcodedValues: block?.hardcodedValues || {},
-                      }),
-                    );
-                  }}
-                  onClick={() => handleAddBlock(block)}
-                  title={block.notAvailable ?? undefined}
+                <IconToyBrick />
+              </Button>
+            </PopoverTrigger>
+          </TooltipTrigger>
+          <TooltipContent side="right">Blocks</TooltipContent>
+        </Tooltip>
+        <PopoverContent
+          side="right"
+          sideOffset={22}
+          align="start"
+          className="absolute -top-3 w-[17rem] rounded-xl border-none p-0 shadow-none md:w-[30rem]"
+          data-id="blocks-control-popover-content"
+        >
+          <Card className="p-3 pb-0 dark:bg-slate-900">
+            <CardHeader className="flex flex-col gap-x-8 gap-y-1 p-3 px-2">
+              <div className="items-center justify-between">
+                <Label
+                  htmlFor="search-blocks"
+                  className="whitespace-nowrap text-base font-bold text-black dark:text-white 2xl:text-xl"
+                  data-id="blocks-control-label"
+                  data-testid="blocks-control-blocks-label"
                 >
-                  <div
-                    className={`-ml-px h-full w-3 rounded-l-xl ${getPrimaryCategoryColor(block.categories)}`}
-                  ></div>
-
-                  <div className="mx-3 flex flex-1 items-center justify-between">
-                    <div className="mr-2 min-w-0">
-                      <span
-                        className="block truncate pb-1 text-sm font-semibold dark:text-white"
-                        data-id={`block-name-${block.id}`}
-                        data-type={block.uiType}
-                        data-testid={`block-name-${block.id}`}
-                      >
-                        <TextRenderer
-                          value={beautifyString(block.name).replace(
-                            / Block$/,
-                            "",
-                          )}
-                          truncateLengthLimit={45}
-                        />
-                      </span>
-                      <span
-                        className="block break-all text-xs font-normal text-gray-500 dark:text-gray-400"
-                        data-testid={`block-description-${block.id}`}
-                      >
-                        <TextRenderer
-                          value={block.description}
-                          truncateLengthLimit={165}
-                        />
-                      </span>
-                    </div>
+                  Blocks
+                </Label>
+              </div>
+              <div className="relative flex items-center">
+                <MagnifyingGlassIcon className="absolute m-2 h-5 w-5 text-gray-500 dark:text-gray-400" />
+                <Input
+                  id="search-blocks"
+                  type="text"
+                  placeholder="Search blocks"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="rounded-lg px-8 py-5 dark:bg-slate-800 dark:text-white"
+                  data-id="blocks-control-search-input"
+                  autoComplete="off"
+                />
+              </div>
+              <div
+                className="mt-2 flex flex-wrap gap-2"
+                data-testid="blocks-categories-list"
+              >
+                {categories.map((category) => {
+                  const color = getPrimaryCategoryColor([
+                    { category: category || "All", description: "" },
+                  ]);
+                  const colorClass =
+                    selectedCategory === category ? `${color}` : "";
+                  return (
                     <div
-                      className="flex flex-shrink-0 items-center gap-1"
-                      data-id={`block-tooltip-${block.id}`}
-                      data-testid={`block-add`}
+                      key={category}
+                      data-testid="blocks-category"
+                      role="button"
+                      className={`cursor-pointer rounded-xl border px-2 py-2 text-xs font-medium dark:border-slate-700 dark:text-white ${colorClass}`}
+                      onClick={() =>
+                        setSelectedCategory(
+                          selectedCategory === category ? null : category,
+                        )
+                      }
                     >
-                      <PlusIcon className="h-6 w-6 rounded-lg bg-gray-200 stroke-black stroke-[0.5px] p-1 dark:bg-gray-700 dark:stroke-white" />
+                      {beautifyString((category || "All").toLowerCase())}
                     </div>
-                  </div>
-                </Card>
-              ))}
-            </ScrollArea>
-          </CardContent>
-        </Card>
-      </PopoverContent>
-    </Popover>
+                  );
+                })}
+              </div>
+            </CardHeader>
+            <CardContent className="overflow-scroll border-t border-t-gray-200 p-0 dark:border-t-slate-700">
+              <ScrollArea
+                className="h-[60vh] w-full"
+                data-id="blocks-control-scroll-area"
+              >
+                {filteredAvailableBlocks.map((block) => (
+                  <Card
+                    key={block.uiKey || block.id}
+                    className={`m-2 my-4 flex h-20 shadow-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700 ${
+                      block.notAvailable
+                        ? "cursor-not-allowed opacity-50"
+                        : block.id === SpecialBlockID.MCP_TOOL
+                          ? "cursor-pointer hover:shadow-lg"
+                          : "cursor-move hover:shadow-lg"
+                    }`}
+                    data-id={`block-card-${block.id}`}
+                    draggable={
+                      !block.notAvailable &&
+                      block.id !== SpecialBlockID.MCP_TOOL
+                    }
+                    onDragStart={(e) => {
+                      if (
+                        block.notAvailable ||
+                        block.id === SpecialBlockID.MCP_TOOL
+                      )
+                        return;
+                      e.dataTransfer.effectAllowed = "copy";
+                      e.dataTransfer.setData(
+                        "application/reactflow",
+                        JSON.stringify({
+                          blockId: block.id,
+                          blockName: block.name,
+                          hardcodedValues: block?.hardcodedValues || {},
+                        }),
+                      );
+                    }}
+                    onClick={() => handleAddBlock(block)}
+                    title={block.notAvailable ?? undefined}
+                  >
+                    <div
+                      className={`-ml-px h-full w-3 rounded-l-xl ${getPrimaryCategoryColor(block.categories)}`}
+                    ></div>
+
+                    <div className="mx-3 flex flex-1 items-center justify-between">
+                      <div className="mr-2 min-w-0">
+                        <span
+                          className="block truncate pb-1 text-sm font-semibold dark:text-white"
+                          data-id={`block-name-${block.id}`}
+                          data-type={block.uiType}
+                          data-testid={`block-name-${block.id}`}
+                        >
+                          <TextRenderer
+                            value={beautifyString(block.name).replace(
+                              / Block$/,
+                              "",
+                            )}
+                            truncateLengthLimit={45}
+                          />
+                        </span>
+                        <span
+                          className="block break-all text-xs font-normal text-gray-500 dark:text-gray-400"
+                          data-testid={`block-description-${block.id}`}
+                        >
+                          <TextRenderer
+                            value={block.description}
+                            truncateLengthLimit={165}
+                          />
+                        </span>
+                      </div>
+                      <div
+                        className="flex flex-shrink-0 items-center gap-1"
+                        data-id={`block-tooltip-${block.id}`}
+                        data-testid={`block-add`}
+                      >
+                        <PlusIcon className="h-6 w-6 rounded-lg bg-gray-200 stroke-black stroke-[0.5px] p-1 dark:bg-gray-700 dark:stroke-white" />
+                      </div>
+                    </div>
+                  </Card>
+                ))}
+              </ScrollArea>
+            </CardContent>
+          </Card>
+        </PopoverContent>
+      </Popover>
+
+      <MCPToolDialog
+        open={mcpDialogOpen}
+        onClose={() => setMcpDialogOpen(false)}
+        onConfirm={handleMCPToolConfirm}
+      />
+    </>
   );
 }
 

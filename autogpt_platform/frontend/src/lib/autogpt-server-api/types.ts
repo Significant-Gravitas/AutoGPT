@@ -753,9 +753,22 @@ export enum BlockUIType {
 
 export enum SpecialBlockID {
   AGENT = "e189baac-8c20-45a1-94a7-55177ea42565",
+  MCP_TOOL = "a0a4b1c2-d3e4-4f56-a7b8-c9d0e1f2a3b4",
   SMART_DECISION = "3b191d9f-356f-482d-8238-ba04b6d18381",
   OUTPUT = "363ae599-353e-4804-937e-b2ee3cef3da4",
 }
+
+export type MCPTool = {
+  name: string;
+  description: string;
+  input_schema: Record<string, any>;
+};
+
+export type MCPDiscoverToolsResponse = {
+  tools: MCPTool[];
+  server_name: string | null;
+  protocol_version: string | null;
+};
 
 export type AnalyticsMetrics = {
   metric_name: string;

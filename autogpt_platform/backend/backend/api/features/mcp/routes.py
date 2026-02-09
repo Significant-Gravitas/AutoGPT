@@ -1,0 +1,365 @@
+"""
+MCP (Model Context Protocol) API routes.
+
+Provides endpoints for MCP tool discovery and OAuth authentication so the
+frontend can list available tools on an MCP server before placing a block.
+"""
+
+import logging
+from typing import Annotated, Any
+from urllib.parse import urlparse
+
+import fastapi
+from autogpt_libs.auth import get_user_id
+from fastapi import Security
+from pydantic import BaseModel, Field
+
+from backend.blocks.mcp.client import MCPClient, MCPClientError
+from backend.blocks.mcp.oauth import MCPOAuthHandler
+from backend.data.model import OAuth2Credentials
+from backend.integrations.creds_manager import IntegrationCredentialsManager
+from backend.integrations.providers import ProviderName
+from backend.util.request import HTTPClientError, Requests
+from backend.util.settings import Settings
+
+logger = logging.getLogger(__name__)
+
+settings = Settings()
+router = fastapi.APIRouter(tags=["mcp"])
+creds_manager = IntegrationCredentialsManager()
+
+
+# ====================== Tool Discovery ====================== #
+
+
+class DiscoverToolsRequest(BaseModel):
+    """Request to discover tools on an MCP server."""
+
+    server_url: str = Field(description="URL of the MCP server")
+    auth_token: str | None = Field(
+        default=None,
+        description="Optional Bearer token for authenticated MCP servers",
+    )
+
+
+class MCPToolResponse(BaseModel):
+    """A single MCP tool returned by discovery."""
+
+    name: str
+    description: str
+    input_schema: dict[str, Any]
+
+
+class DiscoverToolsResponse(BaseModel):
+    """Response containing the list of tools available on an MCP server."""
+
+    tools: list[MCPToolResponse]
+    server_name: str | None = None
+    protocol_version: str | None = None
+
+
+@router.post(
+    "/discover-tools",
+    summary="Discover available tools on an MCP server",
+    response_model=DiscoverToolsResponse,
+)
+async def discover_tools(
+    request: DiscoverToolsRequest,
+    user_id: Annotated[str, Security(get_user_id)],
+) -> DiscoverToolsResponse:
+    """
+    Connect to an MCP server and return its available tools.
+
+    If the user has a stored MCP credential for this server URL, it will be
+    used automatically — no need to pass an explicit auth token.
+    """
+    auth_token = request.auth_token
+
+    # Auto-use stored MCP credential when no explicit token is provided
+    if not auth_token:
+        try:
+            mcp_creds = await creds_manager.store.get_creds_by_provider(
+                user_id, str(ProviderName.MCP)
+            )
+            for cred in mcp_creds:
+                if (
+                    isinstance(cred, OAuth2Credentials)
+                    and cred.metadata.get("mcp_server_url") == request.server_url
+                ):
+                    auth_token = cred.access_token.get_secret_value()
+                    break
+        except Exception:
+            logger.debug("Could not look up stored MCP credentials", exc_info=True)
+
+    try:
+        client = MCPClient(
+            request.server_url,
+            auth_token=auth_token,
+            trusted_origins=[request.server_url],
+        )
+
+        init_result = await client.initialize()
+        tools = await client.list_tools()
+
+        return DiscoverToolsResponse(
+            tools=[
+                MCPToolResponse(
+                    name=t.name,
+                    description=t.description,
+                    input_schema=t.input_schema,
+                )
+                for t in tools
+            ],
+            server_name=init_result.get("serverInfo", {}).get("name"),
+            protocol_version=init_result.get("protocolVersion"),
+        )
+    except HTTPClientError as e:
+        if e.status_code in (401, 403):
+            raise fastapi.HTTPException(
+                status_code=401,
+                detail="This MCP server requires authentication. "
+                "Please provide a valid auth token.",
+            )
+        raise fastapi.HTTPException(status_code=502, detail=str(e))
+    except MCPClientError as e:
+        raise fastapi.HTTPException(status_code=502, detail=str(e))
+    except Exception as e:
+        logger.exception("MCP tool discovery failed")
+        raise fastapi.HTTPException(
+            status_code=502,
+            detail=f"Failed to connect to MCP server: {str(e)}",
+        )
+
+
+# ======================== OAuth Flow ======================== #
+
+
+class MCPOAuthLoginRequest(BaseModel):
+    """Request to start an OAuth flow for an MCP server."""
+
+    server_url: str = Field(description="URL of the MCP server that requires OAuth")
+
+
+class MCPOAuthLoginResponse(BaseModel):
+    """Response with the OAuth login URL for the user to authenticate."""
+
+    login_url: str
+    state_token: str
+
+
+@router.post(
+    "/oauth/login",
+    summary="Initiate OAuth login for an MCP server",
+)
+async def mcp_oauth_login(
+    request: MCPOAuthLoginRequest,
+    user_id: Annotated[str, Security(get_user_id)],
+) -> MCPOAuthLoginResponse:
+    """
+    Discover OAuth metadata from the MCP server and return a login URL.
+
+    1. Discovers the protected-resource metadata (RFC 9728)
+    2. Fetches the authorization server metadata (RFC 8414)
+    3. Performs Dynamic Client Registration (RFC 7591) if available
+    4. Returns the authorization URL for the frontend to open in a popup
+    """
+    client = MCPClient(request.server_url, trusted_origins=[request.server_url])
+
+    # Step 1: Discover protected-resource metadata (RFC 9728)
+    try:
+        protected_resource = await client.discover_auth()
+    except Exception as e:
+        raise fastapi.HTTPException(
+            status_code=502,
+            detail=f"Failed to discover OAuth metadata: {e}",
+        )
+
+    if not protected_resource or "authorization_servers" not in protected_resource:
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail="This MCP server does not advertise OAuth support. "
+            "You may need to provide an auth token manually.",
+        )
+
+    auth_server_url = protected_resource["authorization_servers"][0]
+    resource_url = protected_resource.get("resource", request.server_url)
+
+    # Step 2: Discover auth-server metadata (RFC 8414)
+    try:
+        metadata = await client.discover_auth_server_metadata(auth_server_url)
+    except Exception as e:
+        raise fastapi.HTTPException(
+            status_code=502,
+            detail=f"Failed to discover authorization server metadata: {e}",
+        )
+
+    if not metadata or "authorization_endpoint" not in metadata:
+        raise fastapi.HTTPException(
+            status_code=502,
+            detail="Authorization server metadata is missing required endpoints.",
+        )
+
+    authorize_url = metadata["authorization_endpoint"]
+    token_url = metadata["token_endpoint"]
+    registration_endpoint = metadata.get("registration_endpoint")
+    revoke_url = metadata.get("revocation_endpoint")
+
+    # Step 3: Dynamic Client Registration (RFC 7591) if available
+    frontend_base_url = settings.config.frontend_base_url
+    if not frontend_base_url:
+        raise fastapi.HTTPException(
+            status_code=500,
+            detail="Frontend base URL is not configured.",
+        )
+    redirect_uri = f"{frontend_base_url}/auth/integrations/mcp_callback"
+
+    client_id = ""
+    client_secret = ""
+    if registration_endpoint:
+        reg_result = await _register_mcp_client(
+            registration_endpoint, redirect_uri, request.server_url
+        )
+        if reg_result:
+            client_id = reg_result.get("client_id", "")
+            client_secret = reg_result.get("client_secret", "")
+
+    if not client_id:
+        client_id = "autogpt-platform"
+
+    # Step 4: Store state token with OAuth metadata for the callback
+    scopes = protected_resource.get("scopes_supported", [])
+    state_token, code_challenge = await creds_manager.store.store_state_token(
+        user_id,
+        str(ProviderName.MCP),
+        scopes,
+        state_metadata={
+            "authorize_url": authorize_url,
+            "token_url": token_url,
+            "revoke_url": revoke_url,
+            "resource_url": resource_url,
+            "server_url": request.server_url,
+            "client_id": client_id,
+            "client_secret": client_secret,
+        },
+    )
+
+    # Step 5: Build and return the login URL
+    handler = MCPOAuthHandler(
+        client_id=client_id,
+        client_secret=client_secret,
+        redirect_uri=redirect_uri,
+        authorize_url=authorize_url,
+        token_url=token_url,
+        resource_url=resource_url,
+    )
+    login_url = handler.get_login_url(
+        scopes, state_token, code_challenge=code_challenge
+    )
+
+    return MCPOAuthLoginResponse(login_url=login_url, state_token=state_token)
+
+
+class MCPOAuthCallbackRequest(BaseModel):
+    """Request to exchange an OAuth code for tokens."""
+
+    code: str = Field(description="Authorization code from OAuth callback")
+    state_token: str = Field(description="State token for CSRF verification")
+
+
+class MCPOAuthCallbackResponse(BaseModel):
+    """Response after successfully storing OAuth credentials."""
+
+    credential_id: str
+
+
+@router.post(
+    "/oauth/callback",
+    summary="Exchange OAuth code for MCP tokens",
+)
+async def mcp_oauth_callback(
+    request: MCPOAuthCallbackRequest,
+    user_id: Annotated[str, Security(get_user_id)],
+) -> MCPOAuthCallbackResponse:
+    """
+    Exchange the authorization code for tokens and store the credential.
+
+    The frontend calls this after receiving the OAuth code from the popup.
+    On success, subsequent ``/discover-tools`` calls for the same server URL
+    will automatically use the stored credential.
+    """
+    valid_state = await creds_manager.store.verify_state_token(
+        user_id, request.state_token, str(ProviderName.MCP)
+    )
+    if not valid_state:
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail="Invalid or expired state token.",
+        )
+
+    meta = valid_state.state_metadata
+    frontend_base_url = settings.config.frontend_base_url
+    redirect_uri = f"{frontend_base_url}/auth/integrations/mcp_callback"
+
+    handler = MCPOAuthHandler(
+        client_id=meta["client_id"],
+        client_secret=meta.get("client_secret", ""),
+        redirect_uri=redirect_uri,
+        authorize_url=meta["authorize_url"],
+        token_url=meta["token_url"],
+        revoke_url=meta.get("revoke_url"),
+        resource_url=meta.get("resource_url"),
+    )
+
+    try:
+        credentials = await handler.exchange_code_for_tokens(
+            request.code, valid_state.scopes, valid_state.code_verifier
+        )
+    except Exception as e:
+        logger.exception("MCP OAuth token exchange failed")
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail=f"OAuth token exchange failed: {e}",
+        )
+
+    # Enrich credential metadata for future lookup and token refresh
+    if credentials.metadata is None:
+        credentials.metadata = {}
+    credentials.metadata["mcp_server_url"] = meta["server_url"]
+    credentials.metadata["mcp_client_id"] = meta["client_id"]
+    credentials.metadata["mcp_client_secret"] = meta.get("client_secret", "")
+
+    hostname = urlparse(meta["server_url"]).hostname or meta["server_url"]
+    credentials.title = f"MCP: {hostname}"
+
+    await creds_manager.create(user_id, credentials)
+
+    return MCPOAuthCallbackResponse(credential_id=credentials.id)
+
+
+# ======================== Helpers ======================== #
+
+
+async def _register_mcp_client(
+    registration_endpoint: str,
+    redirect_uri: str,
+    server_url: str,
+) -> dict[str, Any] | None:
+    """Attempt Dynamic Client Registration (RFC 7591) with an MCP auth server."""
+    try:
+        response = await Requests(raise_for_status=True).post(
+            registration_endpoint,
+            json={
+                "client_name": "AutoGPT Platform",
+                "redirect_uris": [redirect_uri],
+                "grant_types": ["authorization_code"],
+                "response_types": ["code"],
+                "token_endpoint_auth_method": "client_secret_post",
+            },
+        )
+        data = response.json()
+        if isinstance(data, dict) and "client_id" in data:
+            return data
+        return None
+    except Exception as e:
+        logger.warning(f"Dynamic client registration failed for {server_url}: {e}")
+        return None

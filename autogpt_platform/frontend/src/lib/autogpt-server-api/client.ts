@@ -33,6 +33,7 @@ import type {
   GraphMeta,
   GraphUpdateable,
   HostScopedCredentials,
+  MCPDiscoverToolsResponse,
   LibraryAgent,
   LibraryAgentID,
   LibraryAgentPreset,
@@ -790,6 +791,38 @@ export default class BackendAPI {
 
   async askOtto(query: OttoQuery): Promise<OttoResponse> {
     return this._request("POST", "/otto/ask", query);
+  }
+
+  ////////////////////////////////////////
+  ///////////// MCP FUNCTIONS ////////////
+  ////////////////////////////////////////
+
+  async mcpDiscoverTools(
+    serverUrl: string,
+    authToken?: string,
+  ): Promise<MCPDiscoverToolsResponse> {
+    return this._request("POST", "/mcp/discover-tools", {
+      server_url: serverUrl,
+      auth_token: authToken || null,
+    });
+  }
+
+  async mcpOAuthLogin(
+    serverUrl: string,
+  ): Promise<{ login_url: string; state_token: string }> {
+    return this._request("POST", "/mcp/oauth/login", {
+      server_url: serverUrl,
+    });
+  }
+
+  async mcpOAuthCallback(
+    code: string,
+    stateToken: string,
+  ): Promise<{ credential_id: string }> {
+    return this._request("POST", "/mcp/oauth/callback", {
+      code,
+      state_token: stateToken,
+    });
   }
 
   ////////////////////////////////////////

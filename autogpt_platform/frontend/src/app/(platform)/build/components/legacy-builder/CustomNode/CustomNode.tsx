@@ -21,6 +21,7 @@ import {
   GraphInputSchema,
   GraphOutputSchema,
   NodeExecutionResult,
+  SpecialBlockID,
 } from "@/lib/autogpt-server-api";
 import {
   beautifyString,
@@ -215,6 +216,29 @@ export const CustomNode = React.memo(
       }
     }
 
+    // MCP Tool block: display the selected tool's dynamic schema
+    const isMCPWithTool =
+      data.block_id === SpecialBlockID.MCP_TOOL &&
+      !!data.hardcodedValues?.tool_input_schema?.properties;
+
+    if (isMCPWithTool) {
+      const credentialsProp = data.inputSchema?.properties?.credentials;
+      const toolSchema = data.hardcodedValues.tool_input_schema;
+      const staticRequired = data.inputSchema?.required ?? [];
+
+      data.inputSchema = {
+        type: "object",
+        properties: {
+          ...(credentialsProp ? { credentials: credentialsProp } : {}),
+          ...(toolSchema.properties ?? {}),
+        },
+        required: [
+          ...staticRequired.filter((r: string) => r === "credentials"),
+          ...(toolSchema.required ?? []),
+        ],
+      } as BlockIORootSchema;
+    }
+
     const setHardcodedValues = useCallback(
       (values: any) => {
         updateNodeData(id, { hardcodedValues: values });
@@ -375,7 +399,9 @@ export const CustomNode = React.memo(
 
     const displayTitle =
       customTitle ||
-      beautifyString(data.blockType?.replace(/Block$/, "") || data.title);
+      (isMCPWithTool
+        ? `${data.hardcodedValues.server_name || "MCP"}: ${beautifyString(data.hardcodedValues.selected_tool || "")}`
+        : beautifyString(data.blockType?.replace(/Block$/, "") || data.title));
 
     useEffect(() => {
       isInitialSetup.current = false;
@@ -389,6 +415,15 @@ export const CustomNode = React.memo(
             data.inputSchema,
           ),
         });
+      } else if (isMCPWithTool) {
+        // MCP dialog already configured server_url, selected_tool, etc.
+        // Just ensure tool_arguments is initialized.
+        if (!data.hardcodedValues.tool_arguments) {
+          setHardcodedValues({
+            ...data.hardcodedValues,
+            tool_arguments: {},
+          });
+        }
       } else {
         setHardcodedValues(
           fillObjectDefaultsFromSchema(data.hardcodedValues, data.inputSchema),
@@ -525,8 +560,12 @@ export const CustomNode = React.memo(
           );
 
         default:
-          const getInputPropKey = (key: string) =>
-            nodeType == BlockUIType.AGENT ? `inputs.${key}` : key;
+          const getInputPropKey = (key: string) => {
+            if (nodeType == BlockUIType.AGENT) return `inputs.${key}`;
+            if (isMCPWithTool && key !== "credentials")
+              return `tool_arguments.${key}`;
+            return key;
+          };
 
           return keys.map(([propKey, propSchema]) => {
             const isRequired = data.inputSchema.required?.includes(propKey);
