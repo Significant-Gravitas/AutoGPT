@@ -4,13 +4,13 @@ Centralized service client helpers with thread caching.
 
 from typing import TYPE_CHECKING
 
-from autogpt_libs.utils.cache import cached, thread_cached
-
+from backend.util.cache import cached, thread_cached
 from backend.util.settings import Settings
 
 settings = Settings()
 
 if TYPE_CHECKING:
+    from openai import AsyncOpenAI
     from supabase import AClient, Client
 
     from backend.data.execution import (
@@ -34,12 +34,14 @@ def get_database_manager_client() -> "DatabaseManagerClient":
 
 
 @thread_cached
-def get_database_manager_async_client() -> "DatabaseManagerAsyncClient":
+def get_database_manager_async_client(
+    should_retry: bool = True,
+) -> "DatabaseManagerAsyncClient":
     """Get a thread-cached DatabaseManagerAsyncClient with request retry enabled."""
     from backend.executor import DatabaseManagerAsyncClient
     from backend.util.service import get_service_client
 
-    return get_service_client(DatabaseManagerAsyncClient, request_retry=True)
+    return get_service_client(DatabaseManagerAsyncClient, request_retry=should_retry)
 
 
 @thread_cached
@@ -118,7 +120,7 @@ def get_integration_credentials_store() -> "IntegrationCredentialsStore":
 # ============ Supabase Clients ============ #
 
 
-@cached()
+@cached(ttl_seconds=3600)
 def get_supabase() -> "Client":
     """Get a process-cached synchronous Supabase client instance."""
     from supabase import create_client
@@ -128,7 +130,7 @@ def get_supabase() -> "Client":
     )
 
 
-@cached()
+@cached(ttl_seconds=3600)
 async def get_async_supabase() -> "AClient":
     """Get a process-cached asynchronous Supabase client instance."""
     from supabase import create_async_client
@@ -136,6 +138,24 @@ async def get_async_supabase() -> "AClient":
     return await create_async_client(
         settings.secrets.supabase_url, settings.secrets.supabase_service_role_key
     )
+
+
+# ============ OpenAI Client ============ #
+
+
+@cached(ttl_seconds=3600)
+def get_openai_client() -> "AsyncOpenAI | None":
+    """
+    Get a process-cached async OpenAI client for embeddings.
+
+    Returns None if API key is not configured.
+    """
+    from openai import AsyncOpenAI
+
+    api_key = settings.secrets.openai_internal_api_key
+    if not api_key:
+        return None
+    return AsyncOpenAI(api_key=api_key)
 
 
 # ============ Notification Queue Helpers ============ #

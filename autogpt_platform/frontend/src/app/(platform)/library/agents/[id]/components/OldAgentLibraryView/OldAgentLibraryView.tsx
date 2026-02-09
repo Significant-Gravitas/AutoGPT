@@ -47,7 +47,6 @@ import { CreatePresetDialog } from "./components/create-preset-dialog";
 import { useAgentRunsInfinite } from "./use-agent-runs";
 import { AgentRunsSelectorList } from "./components/agent-runs-selector-list";
 import { AgentScheduleDetailsView } from "./components/agent-schedule-details-view";
-import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
 
 export function OldAgentLibraryView() {
   const { id: agentID }: { id: LibraryAgentID } = useParams();
@@ -84,11 +83,6 @@ export function OldAgentLibraryView() {
     useState<GraphExecutionMeta | null>(null);
   const [confirmingDeleteAgentPreset, setConfirmingDeleteAgentPreset] =
     useState<LibraryAgentPresetID | null>(null);
-  const {
-    state: onboardingState,
-    updateState: updateOnboardingState,
-    incrementRuns,
-  } = useOnboarding();
   const [copyAgentDialogOpen, setCopyAgentDialogOpen] = useState(false);
   const [creatingPresetFromExecutionID, setCreatingPresetFromExecutionID] =
     useState<GraphExecutionID | null>(null);
@@ -136,22 +130,6 @@ export function OldAgentLibraryView() {
     [api, graphVersions, loadingGraphVersions],
   );
 
-  // Reward user for viewing results of their onboarding agent
-  useEffect(() => {
-    if (
-      !onboardingState ||
-      !selectedRun ||
-      onboardingState.completedSteps.includes("GET_RESULTS")
-    )
-      return;
-
-    if (selectedRun.id === onboardingState.onboardingAgentExecutionId) {
-      updateOnboardingState({
-        completedSteps: [...onboardingState.completedSteps, "GET_RESULTS"],
-      });
-    }
-  }, [selectedRun, onboardingState, updateOnboardingState]);
-
   const lastRefresh = useRef<number>(0);
   const refreshPageData = useCallback(() => {
     if (Date.now() - lastRefresh.current < 2e3) return; // 2 second debounce
@@ -195,8 +173,9 @@ export function OldAgentLibraryView() {
     if (agentRuns.length > 0) {
       // select latest run
       const latestRun = agentRuns.reduce((latest, current) => {
-        if (latest.started_at && !current.started_at) return current;
-        else if (!latest.started_at) return latest;
+        if (!latest.started_at && !current.started_at) return latest;
+        if (!latest.started_at) return current;
+        if (!current.started_at) return latest;
         return latest.started_at > current.started_at ? latest : current;
       }, agentRuns[0]);
       selectRun(latestRun.id as GraphExecutionID);
@@ -285,10 +264,6 @@ export function OldAgentLibraryView() {
       (data) => {
         if (data.graph_id != agent?.graph_id) return;
 
-        if (data.status == "COMPLETED") {
-          incrementRuns();
-        }
-
         agentRunsQuery.upsertAgentRun(data);
         if (data.id === selectedView.id) {
           // Update currently viewed run
@@ -300,7 +275,7 @@ export function OldAgentLibraryView() {
     return () => {
       detachExecUpdateHandler();
     };
-  }, [api, agent?.graph_id, selectedView.id, incrementRuns]);
+  }, [api, agent?.graph_id, selectedView.id]);
 
   // Pre-load selectedRun based on selectedView
   useEffect(() => {
@@ -558,7 +533,6 @@ export function OldAgentLibraryView() {
             onCreateSchedule={onCreateSchedule}
             onCreatePreset={onCreatePreset}
             agentActions={agentActions}
-            runCount={agentRuns.length}
             recommendedScheduleCron={agent?.recommended_schedule_cron || null}
           />
         ) : selectedView.type == "preset" ? (
@@ -574,7 +548,6 @@ export function OldAgentLibraryView() {
             onUpdatePreset={onUpdatePreset}
             doDeletePreset={setConfirmingDeleteAgentPreset}
             agentActions={agentActions}
-            runCount={agentRuns.length}
           />
         ) : selectedView.type == "schedule" ? (
           selectedSchedule &&

@@ -1,17 +1,23 @@
 import re
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import SchemaField
 
 
 class CodeExtractionBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         text: str = SchemaField(
             description="Text containing code blocks to extract (e.g., AI response)",
             placeholder="Enter text containing code blocks",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         html: str = SchemaField(description="Extracted HTML code")
         css: str = SchemaField(description="Extracted CSS code")
         javascript: str = SchemaField(description="Extracted JavaScript code")

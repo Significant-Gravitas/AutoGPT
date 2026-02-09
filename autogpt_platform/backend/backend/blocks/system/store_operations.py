@@ -3,7 +3,13 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import SchemaField
 from backend.util.clients import get_database_manager_async_client
 
@@ -59,11 +65,11 @@ class GetStoreAgentDetailsBlock(Block):
     Block that retrieves detailed information about an agent from the store.
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         creator: str = SchemaField(description="The username of the agent creator")
         slug: str = SchemaField(description="The name of the agent")
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         found: bool = SchemaField(
             description="Whether the agent was found in the store"
         )
@@ -163,21 +169,21 @@ class SearchStoreAgentsBlock(Block):
     Block that searches for agents in the store based on various criteria.
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         query: str | None = SchemaField(
             description="Search query to find agents", default=None
         )
         category: str | None = SchemaField(
             description="Filter by category", default=None
         )
-        sort_by: Literal["rating", "runs", "name", "recent"] = SchemaField(
+        sort_by: Literal["rating", "runs", "name", "updated_at"] = SchemaField(
             description="How to sort the results", default="rating"
         )
         limit: int = SchemaField(
             description="Maximum number of results to return", default=10, ge=1, le=100
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         agents: list[StoreAgent] = SchemaField(
             description="List of agents matching the search criteria",
             default_factory=list,
@@ -272,24 +278,18 @@ class SearchStoreAgentsBlock(Block):
         self,
         query: str | None = None,
         category: str | None = None,
-        sort_by: str = "rating",
+        sort_by: Literal["rating", "runs", "name", "updated_at"] = "rating",
         limit: int = 10,
     ) -> SearchAgentsResponse:
         """
         Search for agents in the store using the existing store database function.
         """
         # Map our sort_by to the store's sorted_by parameter
-        sorted_by_map = {
-            "rating": "most_popular",
-            "runs": "most_runs",
-            "name": "alphabetical",
-            "recent": "recently_updated",
-        }
 
         result = await get_database_manager_async_client().get_store_agents(
             featured=False,
             creators=None,
-            sorted_by=sorted_by_map.get(sort_by, "most_popular"),
+            sorted_by=sort_by,
             search_query=query,
             category=category,
             page=1,

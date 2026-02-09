@@ -23,7 +23,13 @@ from backend.blocks.twitter._types import (
     TweetUserFieldsFilter,
 )
 from backend.blocks.twitter.tweepy_exceptions import handle_tweepy_exception
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import SchemaField
 
 
@@ -32,7 +38,7 @@ class TwitterUnpinListBlock(Block):
     Enables the authenticated user to unpin a List.
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: TwitterCredentialsInput = TwitterCredentialsField(
             ["list.write", "users.read", "tweet.read", "offline.access"]
         )
@@ -42,9 +48,8 @@ class TwitterUnpinListBlock(Block):
             placeholder="Enter list ID",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         success: bool = SchemaField(description="Whether the unpin was successful")
-        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(
@@ -96,7 +101,7 @@ class TwitterPinListBlock(Block):
     Enables the authenticated user to pin a List.
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: TwitterCredentialsInput = TwitterCredentialsField(
             ["list.write", "users.read", "tweet.read", "offline.access"]
         )
@@ -106,9 +111,8 @@ class TwitterPinListBlock(Block):
             placeholder="Enter list ID",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         success: bool = SchemaField(description="Whether the pin was successful")
-        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(
@@ -165,7 +169,7 @@ class TwitterGetPinnedListsBlock(Block):
             ["lists.read", "users.read", "offline.access"]
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         list_ids: list[str] = SchemaField(description="List IDs of the pinned lists")
         list_names: list[str] = SchemaField(
             description="List names of the pinned lists"
@@ -178,7 +182,6 @@ class TwitterGetPinnedListsBlock(Block):
             description="Additional data requested via expansions"
         )
         meta: dict = SchemaField(description="Metadata about the response")
-        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(

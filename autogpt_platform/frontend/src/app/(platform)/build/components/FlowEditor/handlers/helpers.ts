@@ -1,31 +1,4 @@
-/**
- * Handle ID Types for different input structures
- *
- * Examples:
- * SIMPLE: "message"
- * NESTED: "config.api_key"
- * ARRAY: "items_$_0", "items_$_1"
- * KEY_VALUE: "headers_#_Authorization", "params_#_limit"
- *
- * Note: All handle IDs are sanitized to remove spaces and special characters.
- * Spaces become underscores, and special characters are removed.
- * Example: "user name" becomes "user_name", "email@domain.com" becomes "emaildomaincom"
- */
-export enum HandleIdType {
-  SIMPLE = "SIMPLE",
-  NESTED = "NESTED",
-  ARRAY = "ARRAY",
-  KEY_VALUE = "KEY_VALUE",
-}
-
-const fromRjsfId = (id: string): string => {
-  if (!id) return "";
-  const parts = id.split("_");
-  const filtered = parts.filter(
-    (p) => p !== "root" && p !== "properties" && p.length > 0,
-  );
-  return filtered.join("_") || "";
-};
+// Here we are handling single level of nesting, if need more in future then i will update it
 
 const sanitizeForHandleId = (str: string): string => {
   if (!str) return "";
@@ -38,80 +11,53 @@ const sanitizeForHandleId = (str: string): string => {
     .replace(/^_|_$/g, ""); // Remove leading/trailing underscores
 };
 
-export const generateHandleId = (
-  mainKey: string,
-  nestedValues: string[] = [],
-  type: HandleIdType = HandleIdType.SIMPLE,
-): string => {
-  if (!mainKey) return "";
+const cleanTitleId = (id: string): string => {
+  if (!id) return "";
 
-  mainKey = fromRjsfId(mainKey);
-  mainKey = sanitizeForHandleId(mainKey);
-
-  if (type === HandleIdType.SIMPLE || nestedValues.length === 0) {
-    return mainKey;
+  if (id.endsWith("_title")) {
+    id = id.slice(0, -6);
   }
-
-  const sanitizedNestedValues = nestedValues.map((value) =>
-    sanitizeForHandleId(value),
+  const parts = id.split("_");
+  const filtered = parts.filter(
+    (p) => p !== "root" && p !== "properties" && p.length > 0,
   );
-
-  switch (type) {
-    case HandleIdType.NESTED:
-      return [mainKey, ...sanitizedNestedValues].join(".");
-
-    case HandleIdType.ARRAY:
-      return [mainKey, ...sanitizedNestedValues].join("_$_");
-
-    case HandleIdType.KEY_VALUE:
-      return [mainKey, ...sanitizedNestedValues].join("_#_");
-
-    default:
-      return mainKey;
-  }
+  const filtered_id = filtered.join("_") || "";
+  return filtered_id;
 };
 
-export const parseHandleId = (
-  handleId: string,
-): {
-  mainKey: string;
-  nestedValues: string[];
-  type: HandleIdType;
-} => {
-  if (!handleId) {
-    return { mainKey: "", nestedValues: [], type: HandleIdType.SIMPLE };
+export const generateHandleIdFromTitleId = (
+  fieldKey: string,
+  {
+    isObjectProperty,
+    isAdditionalProperty,
+    isArrayItem,
+  }: {
+    isArrayItem?: boolean;
+    isObjectProperty?: boolean;
+    isAdditionalProperty?: boolean;
+  } = {
+    isArrayItem: false,
+    isObjectProperty: false,
+    isAdditionalProperty: false,
+  },
+): string => {
+  if (!fieldKey) return "";
+
+  const filteredKey = cleanTitleId(fieldKey);
+  if (isAdditionalProperty || isArrayItem) {
+    return filteredKey;
+  }
+  const cleanedKey = sanitizeForHandleId(filteredKey);
+
+  if (isObjectProperty) {
+    // "config_api_key" -> "config.api_key"
+    const parts = cleanedKey.split("_");
+    if (parts.length >= 2) {
+      const baseName = parts[0];
+      const propertyName = parts.slice(1).join("_");
+      return `${baseName}.${propertyName}`;
+    }
   }
 
-  if (handleId.includes("_#_")) {
-    const parts = handleId.split("_#_");
-    return {
-      mainKey: parts[0],
-      nestedValues: parts.slice(1),
-      type: HandleIdType.KEY_VALUE,
-    };
-  }
-
-  if (handleId.includes("_$_")) {
-    const parts = handleId.split("_$_");
-    return {
-      mainKey: parts[0],
-      nestedValues: parts.slice(1),
-      type: HandleIdType.ARRAY,
-    };
-  }
-
-  if (handleId.includes(".")) {
-    const parts = handleId.split(".");
-    return {
-      mainKey: parts[0],
-      nestedValues: parts.slice(1),
-      type: HandleIdType.NESTED,
-    };
-  }
-
-  return {
-    mainKey: handleId,
-    nestedValues: [],
-    type: HandleIdType.SIMPLE,
-  };
+  return cleanedKey;
 };

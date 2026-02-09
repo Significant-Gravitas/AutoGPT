@@ -8,11 +8,19 @@ import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 import { Button } from "@/components/atoms/Button/Button";
 import { Props, usePublishAgentModal } from "./usePublishAgentModal";
+import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import {
+  PublishAuthPrompt,
+  PublishAuthPromptSkeleton,
+} from "./components/PublishAuthPrompt";
 
 export function PublishAgentModal({
   trigger,
   targetState,
   onStateChange,
+  preSelectedAgentId,
+  preSelectedAgentVersion,
+  showTrigger = true,
 }: Props) {
   const {
     // State
@@ -29,9 +37,24 @@ export function PublishAgentModal({
     handleGoToBuilder,
     handleSuccessFromInfo,
     handleBack,
-  } = usePublishAgentModal({ targetState, onStateChange });
+  } = usePublishAgentModal({
+    targetState,
+    onStateChange,
+    preSelectedAgentId,
+    preSelectedAgentVersion,
+  });
+
+  const { user, isUserLoading } = useSupabase();
 
   function renderContent() {
+    if (isUserLoading) {
+      return <PublishAuthPromptSkeleton />;
+    }
+
+    if (!user) {
+      return <PublishAuthPrompt />;
+    }
+
     switch (currentState.step) {
       case "select":
         return (
@@ -50,6 +73,7 @@ export function PublishAgentModal({
             selectedAgentId={selectedAgentId}
             selectedAgentVersion={selectedAgentVersion}
             initialData={initialData}
+            isMarketplaceUpdate={!!currentState.submissionData}
           />
         );
       case "review":
@@ -98,9 +122,11 @@ export function PublishAgentModal({
           },
         }}
       >
-        <Dialog.Trigger>
-          {trigger || <Button size="small">Publish Agent</Button>}
-        </Dialog.Trigger>
+        {showTrigger && (
+          <Dialog.Trigger>
+            {trigger || <Button size="small">Publish Agent</Button>}
+          </Dialog.Trigger>
+        )}
         <Dialog.Content>
           <div data-testid="publish-agent-modal">{renderContent()}</div>
         </Dialog.Content>

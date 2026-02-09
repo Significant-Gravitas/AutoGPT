@@ -1,34 +1,19 @@
 import {
   Connection as RFConnection,
-  Edge as RFEdge,
-  MarkerType,
   EdgeChange,
+  applyEdgeChanges,
 } from "@xyflow/react";
 import { useEdgeStore } from "@/app/(platform)/build/stores/edgeStore";
-import { useCallback, useMemo } from "react";
+import { useCallback } from "react";
+import { useNodeStore } from "../../../stores/nodeStore";
+import { useHistoryStore } from "../../../stores/historyStore";
+import { CustomEdge } from "./CustomEdge";
+import { getEdgeColorFromOutputType } from "../nodes/helpers";
 
 export const useCustomEdge = () => {
-  const connections = useEdgeStore((s) => s.connections);
-  const addConnection = useEdgeStore((s) => s.addConnection);
-  const removeConnection = useEdgeStore((s) => s.removeConnection);
-
-  const edges: RFEdge[] = useMemo(
-    () =>
-      connections.map((c) => ({
-        id: c.edge_id,
-        type: "custom",
-        source: c.source,
-        target: c.target,
-        sourceHandle: c.sourceHandle,
-        targetHandle: c.targetHandle,
-        markerEnd: {
-          type: MarkerType.ArrowClosed,
-          strokeWidth: 2,
-          color: "#555",
-        },
-      })),
-    [connections],
-  );
+  const edges = useEdgeStore((s) => s.edges);
+  const addEdge = useEdgeStore((s) => s.addEdge);
+  const setEdges = useEdgeStore((s) => s.setEdges);
 
   const onConnect = useCallback(
     (conn: RFConnection) => {
@@ -39,31 +24,58 @@ export const useCustomEdge = () => {
         !conn.targetHandle
       )
         return;
-      const exists = connections.some(
-        (c) =>
-          c.source === conn.source &&
-          c.target === conn.target &&
-          c.sourceHandle === conn.sourceHandle &&
-          c.targetHandle === conn.targetHandle,
+
+      const exists = edges.some(
+        (e) =>
+          e.source === conn.source &&
+          e.target === conn.target &&
+          e.sourceHandle === conn.sourceHandle &&
+          e.targetHandle === conn.targetHandle,
       );
       if (exists) return;
-      addConnection({
+
+      const nodes = useNodeStore.getState().nodes;
+      const sourceNode = nodes.find((n) => n.id === conn.source);
+      const isStatic = sourceNode?.data?.staticOutput;
+
+      const { colorClass, hexColor } = getEdgeColorFromOutputType(
+        sourceNode?.data?.outputSchema,
+        conn.sourceHandle,
+      );
+
+      addEdge({
         source: conn.source,
         target: conn.target,
         sourceHandle: conn.sourceHandle,
         targetHandle: conn.targetHandle,
+        data: {
+          isStatic,
+          edgeColorClass: colorClass,
+          edgeHexColor: hexColor,
+        },
       });
     },
-    [connections, addConnection],
+    [edges, addEdge],
   );
 
   const onEdgesChange = useCallback(
-    (changes: EdgeChange[]) => {
-      changes.forEach((ch) => {
-        if (ch.type === "remove") removeConnection(ch.id);
-      });
+    (changes: EdgeChange<CustomEdge>[]) => {
+      const hasRemoval = changes.some((change) => change.type === "remove");
+
+      const prevState = hasRemoval
+        ? {
+            nodes: useNodeStore.getState().nodes,
+            edges: edges,
+          }
+        : null;
+
+      setEdges(applyEdgeChanges(changes, edges));
+
+      if (prevState) {
+        useHistoryStore.getState().pushState(prevState);
+      }
     },
-    [removeConnection],
+    [edges, setEdges],
   );
 
   return { edges, onConnect, onEdgesChange };

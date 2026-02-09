@@ -3,7 +3,14 @@ from typing import Literal
 
 from pydantic import SecretStr
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
+from backend.data.execution import ExecutionContext
 from backend.data.model import (
     APIKeyCredentials,
     CredentialsField,
@@ -11,7 +18,9 @@ from backend.data.model import (
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
+from backend.util.file import store_media_file
 from backend.util.request import Requests
+from backend.util.type import MediaFileType
 
 TEST_CREDENTIALS = APIKeyCredentials(
     id="01234567-89ab-cdef-0123-456789abcdef",
@@ -29,7 +38,7 @@ TEST_CREDENTIALS_INPUT = {
 
 
 class CreateTalkingAvatarVideoBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput[
             Literal[ProviderName.D_ID], Literal["api_key"]
         ] = CredentialsField(
@@ -44,7 +53,7 @@ class CreateTalkingAvatarVideoBlock(Block):
             description="The voice provider to use", default="microsoft"
         )
         voice_id: str = SchemaField(
-            description="The voice ID to use, get list of voices [here](https://docs.agpt.co/server/d_id)",
+            description="The voice ID to use, see [available voice IDs](https://agpt.co/docs/platform/using-ai-services/d_id)",
             default="en-US-JennyNeural",
         )
         presenter_id: str = SchemaField(
@@ -70,9 +79,8 @@ class CreateTalkingAvatarVideoBlock(Block):
             description="Interval between polling attempts in seconds", default=10, ge=5
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         video_url: str = SchemaField(description="The URL of the created video")
-        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(
@@ -97,7 +105,7 @@ class CreateTalkingAvatarVideoBlock(Block):
             test_output=[
                 (
                     "video_url",
-                    "https://d-id.com/api/clips/abcd1234-5678-efgh-ijkl-mnopqrstuvwx/video",
+                    lambda x: x.startswith(("workspace://", "data:")),
                 ),
             ],
             test_mock={
@@ -105,9 +113,10 @@ class CreateTalkingAvatarVideoBlock(Block):
                     "id": "abcd1234-5678-efgh-ijkl-mnopqrstuvwx",
                     "status": "created",
                 },
+                # Use data URI to avoid HTTP requests during tests
                 "get_clip_status": lambda *args, **kwargs: {
                     "status": "done",
-                    "result_url": "https://d-id.com/api/clips/abcd1234-5678-efgh-ijkl-mnopqrstuvwx/video",
+                    "result_url": "data:video/mp4;base64,AAAA",
                 },
             },
             test_credentials=TEST_CREDENTIALS,
@@ -133,7 +142,12 @@ class CreateTalkingAvatarVideoBlock(Block):
         return response.json()
 
     async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+        self,
+        input_data: Input,
+        *,
+        credentials: APIKeyCredentials,
+        execution_context: ExecutionContext,
+        **kwargs,
     ) -> BlockOutput:
         # Create the clip
         payload = {
@@ -160,7 +174,14 @@ class CreateTalkingAvatarVideoBlock(Block):
         for _ in range(input_data.max_polling_attempts):
             status_response = await self.get_clip_status(credentials.api_key, clip_id)
             if status_response["status"] == "done":
-                yield "video_url", status_response["result_url"]
+                # Store the generated video to the user's workspace for persistence
+                video_url = status_response["result_url"]
+                stored_url = await store_media_file(
+                    file=MediaFileType(video_url),
+                    execution_context=execution_context,
+                    return_format="for_block_output",
+                )
+                yield "video_url", stored_url
                 return
             elif status_response["status"] == "error":
                 raise RuntimeError(

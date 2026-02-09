@@ -4,7 +4,14 @@ from typing import Any
 
 import regex  # Has built-in timeout support
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
+from backend.data.execution import ExecutionContext
 from backend.data.model import SchemaField
 from backend.util import json, text
 from backend.util.file import get_exec_file_path, store_media_file
@@ -14,7 +21,7 @@ formatter = text.TextFormatter()
 
 
 class MatchTextPatternBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         text: Any = SchemaField(description="Text to match")
         match: str = SchemaField(description="Pattern (Regex) to match")
         data: Any = SchemaField(description="Data to be forwarded to output")
@@ -23,7 +30,7 @@ class MatchTextPatternBlock(Block):
         )
         dot_all: bool = SchemaField(description="Dot matches all", default=True)
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         positive: Any = SchemaField(description="Output data if match is found")
         negative: Any = SchemaField(description="Output data if match is not found")
 
@@ -68,7 +75,7 @@ class MatchTextPatternBlock(Block):
 
 
 class ExtractTextInformationBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         text: Any = SchemaField(description="Text to parse")
         pattern: str = SchemaField(description="Pattern (Regex) to parse")
         group: int = SchemaField(description="Group number to extract", default=0)
@@ -78,7 +85,7 @@ class ExtractTextInformationBlock(Block):
         dot_all: bool = SchemaField(description="Dot matches all", default=True)
         find_all: bool = SchemaField(description="Find all matches", default=False)
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         positive: str = SchemaField(description="Extracted text")
         negative: str = SchemaField(description="Original text")
         matched_results: list[str] = SchemaField(description="List of matched results")
@@ -237,7 +244,7 @@ class ExtractTextInformationBlock(Block):
 
 
 class FillTextTemplateBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         values: dict[str, Any] = SchemaField(
             description="Values (dict) to be used in format. These values can be used by putting them in double curly braces in the format template. e.g. {{value_name}}.",
         )
@@ -250,7 +257,7 @@ class FillTextTemplateBlock(Block):
             description="Whether to escape special characters in the inserted values to be HTML-safe. Enable for HTML output, disable for plain text.",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         output: str = SchemaField(description="Formatted text")
 
     def __init__(self):
@@ -287,13 +294,13 @@ class FillTextTemplateBlock(Block):
 
 
 class CombineTextsBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         input: list[str] = SchemaField(description="text input to combine")
         delimiter: str = SchemaField(
             description="Delimiter to combine texts", default=""
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         output: str = SchemaField(description="Combined text")
 
     def __init__(self):
@@ -319,14 +326,14 @@ class CombineTextsBlock(Block):
 
 
 class TextSplitBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         text: str = SchemaField(description="The text to split.")
         delimiter: str = SchemaField(description="The delimiter to split the text by.")
         strip: bool = SchemaField(
             description="Whether to strip the text.", default=True
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         texts: list[str] = SchemaField(
             description="The text split into a list of strings."
         )
@@ -359,12 +366,12 @@ class TextSplitBlock(Block):
 
 
 class TextReplaceBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         text: str = SchemaField(description="The text to replace.")
         old: str = SchemaField(description="The old text to replace.")
         new: str = SchemaField(description="The new text to replace with.")
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         output: str = SchemaField(description="The text with the replaced text.")
 
     def __init__(self):
@@ -387,7 +394,7 @@ class TextReplaceBlock(Block):
 
 
 class FileReadBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         file_input: MediaFileType = SchemaField(
             description="The file to read from (URL, data URI, or local path)"
         )
@@ -417,7 +424,7 @@ class FileReadBlock(Block):
             advanced=True,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         content: str = SchemaField(
             description="File content, yielded as individual chunks when delimiter or size limits are applied"
         )
@@ -438,18 +445,21 @@ class FileReadBlock(Block):
         )
 
     async def run(
-        self, input_data: Input, *, graph_exec_id: str, user_id: str, **_kwargs
+        self, input_data: Input, *, execution_context: ExecutionContext, **_kwargs
     ) -> BlockOutput:
         # Store the media file properly (handles URLs, data URIs, etc.)
         stored_file_path = await store_media_file(
-            user_id=user_id,
-            graph_exec_id=graph_exec_id,
             file=input_data.file_input,
-            return_content=False,
+            execution_context=execution_context,
+            return_format="for_local_processing",
         )
 
-        # Get full file path
-        file_path = get_exec_file_path(graph_exec_id, stored_file_path)
+        # Get full file path (graph_exec_id validated by store_media_file above)
+        if not execution_context.graph_exec_id:
+            raise ValueError("execution_context.graph_exec_id is required")
+        file_path = get_exec_file_path(
+            execution_context.graph_exec_id, stored_file_path
+        )
 
         if not Path(file_path).exists():
             raise ValueError(f"File does not exist: {file_path}")

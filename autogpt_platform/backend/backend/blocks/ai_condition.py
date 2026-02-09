@@ -1,6 +1,7 @@
 from typing import Any
 
 from backend.blocks.llm import (
+    DEFAULT_LLM_MODEL,
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
     AIBlockBase,
@@ -10,7 +11,12 @@ from backend.blocks.llm import (
     LLMResponse,
     llm_call,
 )
-from backend.data.block import BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import APIKeyCredentials, NodeExecutionStats, SchemaField
 
 
@@ -23,7 +29,7 @@ class AIConditionBlock(AIBlockBase):
     It provides the same yes/no data pass-through functionality as the standard ConditionBlock.
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         input_value: Any = SchemaField(
             description="The input value to evaluate with the AI condition",
             placeholder="Enter the value to be evaluated (text, number, or any data)",
@@ -44,13 +50,13 @@ class AIConditionBlock(AIBlockBase):
         )
         model: LlmModel = SchemaField(
             title="LLM Model",
-            default=LlmModel.GPT4O,
+            default=DEFAULT_LLM_MODEL,
             description="The language model to use for evaluating the condition.",
             advanced=False,
         )
         credentials: AICredentials = AICredentialsField()
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         result: bool = SchemaField(
             description="The result of the AI condition evaluation (True or False)"
         )
@@ -76,7 +82,7 @@ class AIConditionBlock(AIBlockBase):
                 "condition": "the input is an email address",
                 "yes_value": "Valid email",
                 "no_value": "Not an email",
-                "model": LlmModel.GPT4O,
+                "model": DEFAULT_LLM_MODEL,
                 "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,

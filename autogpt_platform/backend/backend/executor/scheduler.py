@@ -2,6 +2,8 @@ import asyncio
 import logging
 import os
 import threading
+import time
+import uuid
 from enum import Enum
 from typing import Optional
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
@@ -31,10 +33,22 @@ from backend.monitoring import (
     process_existing_batches,
     process_weekly_summary,
     report_block_error_rates,
+    report_execution_accuracy_alerts,
     report_late_executions,
 )
+from backend.util.clients import (
+    get_database_manager_async_client,
+    get_database_manager_client,
+    get_scheduler_client,
+)
 from backend.util.cloud_storage import cleanup_expired_files_async
-from backend.util.exceptions import NotAuthorizedError, NotFoundError
+from backend.util.exceptions import (
+    GraphNotFoundError,
+    GraphNotInLibraryError,
+    GraphValidationError,
+    NotAuthorizedError,
+    NotFoundError,
+)
 from backend.util.logging import PrefixFilter
 from backend.util.retry import func_retry
 from backend.util.service import (
@@ -136,6 +150,7 @@ def execute_graph(**kwargs):
 async def _execute_graph(**kwargs):
     args = GraphExecutionJobArgs(**kwargs)
     start_time = asyncio.get_event_loop().time()
+    db = get_database_manager_async_client()
     try:
         logger.info(f"Executing recurring job for graph #{args.graph_id}")
         graph_exec: GraphExecutionWithNodes = await execution_utils.add_graph_execution(
@@ -145,6 +160,7 @@ async def _execute_graph(**kwargs):
             inputs=args.input_data,
             graph_credentials_inputs=args.input_credentials,
         )
+        await db.increment_onboarding_runs(args.user_id)
         elapsed = asyncio.get_event_loop().time() - start_time
         logger.info(
             f"Graph execution started with ID {graph_exec.id} for graph {args.graph_id} "
@@ -155,6 +171,12 @@ async def _execute_graph(**kwargs):
                 f"Graph execution {graph_exec.id} took {elapsed:.2f}s to create/publish - "
                 f"this is unusually slow and may indicate resource contention"
             )
+    except GraphNotFoundError as e:
+        await _handle_graph_not_available(e, args, start_time)
+    except GraphNotInLibraryError as e:
+        await _handle_graph_not_available(e, args, start_time)
+    except GraphValidationError:
+        await _handle_graph_validation_error(args)
     except Exception as e:
         elapsed = asyncio.get_event_loop().time() - start_time
         logger.error(
@@ -163,10 +185,190 @@ async def _execute_graph(**kwargs):
         )
 
 
+async def _handle_graph_validation_error(args: "GraphExecutionJobArgs") -> None:
+    logger.error(
+        f"Scheduled Graph {args.graph_id} failed validation. Unscheduling graph"
+    )
+    if args.schedule_id:
+        scheduler_client = get_scheduler_client()
+        await scheduler_client.delete_schedule(
+            schedule_id=args.schedule_id,
+            user_id=args.user_id,
+        )
+    else:
+        logger.error(
+            f"Unable to unschedule graph: {args.graph_id} as this is an old job with no associated schedule_id please remove manually"
+        )
+
+
+async def _handle_graph_not_available(
+    e: Exception, args: "GraphExecutionJobArgs", start_time: float
+) -> None:
+    elapsed = asyncio.get_event_loop().time() - start_time
+    logger.warning(
+        f"Scheduled execution blocked for deleted/archived graph {args.graph_id} "
+        f"(user {args.user_id}) after {elapsed:.2f}s: {e}"
+    )
+    # Clean up orphaned schedules for this graph
+    await _cleanup_orphaned_schedules_for_graph(args.graph_id, args.user_id)
+
+
+async def _cleanup_orphaned_schedules_for_graph(graph_id: str, user_id: str) -> None:
+    """
+    Clean up orphaned schedules for a specific graph when execution fails with GraphNotAccessibleError.
+    This happens when an agent is pulled from the Marketplace or deleted
+    but schedules still exist.
+    """
+    # Use scheduler client to access the scheduler service
+    scheduler_client = get_scheduler_client()
+
+    # Find all schedules for this graph and user
+    schedules = await scheduler_client.get_execution_schedules(
+        graph_id=graph_id, user_id=user_id
+    )
+
+    for schedule in schedules:
+        try:
+            await scheduler_client.delete_schedule(
+                schedule_id=schedule.id, user_id=user_id
+            )
+            logger.info(
+                f"Cleaned up orphaned schedule {schedule.id} for deleted/archived graph {graph_id}"
+            )
+        except Exception:
+            logger.exception(
+                f"Failed to delete orphaned schedule {schedule.id} for graph {graph_id}"
+            )
+
+
 def cleanup_expired_files():
     """Clean up expired files from cloud storage."""
     # Wait for completion
     run_async(cleanup_expired_files_async())
+
+
+def cleanup_oauth_tokens():
+    """Clean up expired OAuth tokens from the database."""
+
+    # Wait for completion
+    async def _cleanup():
+        db = get_database_manager_async_client()
+        return await db.cleanup_expired_oauth_tokens()
+
+    run_async(_cleanup())
+
+
+def execution_accuracy_alerts():
+    """Check execution accuracy and send alerts if drops are detected."""
+    return report_execution_accuracy_alerts()
+
+
+def ensure_embeddings_coverage():
+    """
+    Ensure all content types (store agents, blocks, docs) have embeddings for search.
+
+    Processes ALL missing embeddings in batches of 10 per content type until 100% coverage.
+    Missing embeddings = content invisible in hybrid search.
+
+    Schedule: Runs every 6 hours (balanced between coverage and API costs).
+    - Catches new content added between scheduled runs
+    - Batch size 10 per content type: gradual processing to avoid rate limits
+    - Manual trigger available via execute_ensure_embeddings_coverage endpoint
+    """
+    db_client = get_database_manager_client()
+    stats = db_client.get_embedding_stats()
+
+    # Check for error from get_embedding_stats() first
+    if "error" in stats:
+        logger.error(
+            f"Failed to get embedding stats: {stats['error']} - skipping backfill"
+        )
+        return {
+            "backfill": {"processed": 0, "success": 0, "failed": 0},
+            "cleanup": {"deleted": 0},
+            "error": stats["error"],
+        }
+
+    # Extract totals from new stats structure
+    totals = stats.get("totals", {})
+    without_embeddings = totals.get("without_embeddings", 0)
+    coverage_percent = totals.get("coverage_percent", 0)
+
+    total_processed = 0
+    total_success = 0
+    total_failed = 0
+
+    if without_embeddings == 0:
+        logger.info("All content has embeddings, skipping backfill")
+    else:
+        # Log per-content-type stats for visibility
+        by_type = stats.get("by_type", {})
+        for content_type, type_stats in by_type.items():
+            if type_stats.get("without_embeddings", 0) > 0:
+                logger.info(
+                    f"{content_type}: {type_stats['without_embeddings']} items without embeddings "
+                    f"({type_stats['coverage_percent']}% coverage)"
+                )
+
+        logger.info(
+            f"Total: {without_embeddings} items without embeddings "
+            f"({coverage_percent}% coverage) - processing all"
+        )
+
+        # Process in batches until no more missing embeddings
+        while True:
+            result = db_client.backfill_missing_embeddings(batch_size=100)
+
+            total_processed += result["processed"]
+            total_success += result["success"]
+            total_failed += result["failed"]
+
+            if result["processed"] == 0:
+                # No more missing embeddings
+                break
+
+            if result["success"] == 0 and result["processed"] > 0:
+                # All attempts in this batch failed - stop to avoid infinite loop
+                logger.error(
+                    f"All {result['processed']} embedding attempts failed - stopping backfill"
+                )
+                break
+
+            # Small delay between batches to avoid rate limits
+            time.sleep(1)
+
+        logger.info(
+            f"Embedding backfill completed: {total_success}/{total_processed} succeeded, "
+            f"{total_failed} failed"
+        )
+
+    # Clean up orphaned embeddings for blocks and docs
+    logger.info("Running cleanup for orphaned embeddings (blocks/docs)...")
+    cleanup_result = db_client.cleanup_orphaned_embeddings()
+    cleanup_totals = cleanup_result.get("totals", {})
+    cleanup_deleted = cleanup_totals.get("deleted", 0)
+
+    if cleanup_deleted > 0:
+        logger.info(f"Cleanup completed: deleted {cleanup_deleted} orphaned embeddings")
+        by_type = cleanup_result.get("by_type", {})
+        for content_type, type_result in by_type.items():
+            if type_result.get("deleted", 0) > 0:
+                logger.info(
+                    f"{content_type}: deleted {type_result['deleted']} orphaned embeddings"
+                )
+    else:
+        logger.info("Cleanup completed: no orphaned embeddings found")
+
+    return {
+        "backfill": {
+            "processed": total_processed,
+            "success": total_success,
+            "failed": total_failed,
+        },
+        "cleanup": {
+            "deleted": cleanup_deleted,
+        },
+    }
 
 
 # Monitoring functions are now imported from monitoring module
@@ -179,9 +381,11 @@ class Jobstores(Enum):
 
 
 class GraphExecutionJobArgs(BaseModel):
+    schedule_id: str | None = None
     user_id: str
     graph_id: str
     graph_version: int
+    agent_name: str | None = None
     cron: str
     input_data: BlockInput
     input_credentials: dict[str, CredentialsMetaInput] = Field(default_factory=dict)
@@ -248,7 +452,7 @@ class Scheduler(AppService):
             raise UnhealthyServiceError("Scheduler is still initializing")
 
         # Check if we're in the middle of cleanup
-        if self.cleaned_up:
+        if self._shutting_down:
             return await super().health_check()
 
         # Normal operation - check if scheduler is running
@@ -366,16 +570,62 @@ class Scheduler(AppService):
                 jobstore=Jobstores.EXECUTION.value,
             )
 
+            # OAuth Token Cleanup - configurable interval
+            self.scheduler.add_job(
+                cleanup_oauth_tokens,
+                id="cleanup_oauth_tokens",
+                trigger="interval",
+                replace_existing=True,
+                seconds=config.oauth_token_cleanup_interval_hours
+                * 3600,  # Convert hours to seconds
+                jobstore=Jobstores.EXECUTION.value,
+            )
+
+            # Execution Accuracy Monitoring - configurable interval
+            self.scheduler.add_job(
+                execution_accuracy_alerts,
+                id="report_execution_accuracy_alerts",
+                trigger="interval",
+                replace_existing=True,
+                seconds=config.execution_accuracy_check_interval_hours
+                * 3600,  # Convert hours to seconds
+                jobstore=Jobstores.EXECUTION.value,
+            )
+
+            # Embedding Coverage - Every 6 hours
+            # Ensures all approved agents have embeddings for hybrid search
+            # Critical: missing embeddings = agents invisible in search
+            self.scheduler.add_job(
+                ensure_embeddings_coverage,
+                id="ensure_embeddings_coverage",
+                trigger="interval",
+                hours=6,
+                replace_existing=True,
+                max_instances=1,  # Prevent overlapping runs
+                jobstore=Jobstores.EXECUTION.value,
+            )
+
         self.scheduler.add_listener(job_listener, EVENT_JOB_EXECUTED | EVENT_JOB_ERROR)
         self.scheduler.add_listener(job_missed_listener, EVENT_JOB_MISSED)
         self.scheduler.add_listener(job_max_instances_listener, EVENT_JOB_MAX_INSTANCES)
         self.scheduler.start()
 
+        # Run embedding backfill immediately on startup
+        # This ensures blocks/docs are searchable right away, not after 6 hours
+        # Safe to run on multiple pods - uses upserts and checks for existing embeddings
+        if self.register_system_tasks:
+            logger.info("Running embedding backfill on startup...")
+            try:
+                result = ensure_embeddings_coverage()
+                logger.info(f"Startup embedding backfill complete: {result}")
+            except Exception as e:
+                logger.error(f"Startup embedding backfill failed: {e}")
+                # Don't fail startup - the scheduled job will retry later
+
         # Keep the service running since BackgroundScheduler doesn't block
         super().run_service()
 
     def cleanup(self):
-        super().cleanup()
         if self.scheduler:
             logger.info("⏳ Shutting down scheduler...")
             self.scheduler.shutdown(wait=True)
@@ -390,7 +640,7 @@ class Scheduler(AppService):
             logger.info("⏳ Waiting for event loop thread to finish...")
             _event_loop_thread.join(timeout=SCHEDULER_OPERATION_TIMEOUT_SECONDS)
 
-        logger.info("Scheduler cleanup complete.")
+        super().cleanup()
 
     @expose
     def add_graph_execution_schedule(
@@ -428,11 +678,14 @@ class Scheduler(AppService):
         logger.info(
             f"Scheduling job for user {user_id} with timezone {user_timezone} (cron: {cron})"
         )
+        schedule_id = str(uuid.uuid4())
 
         job_args = GraphExecutionJobArgs(
+            schedule_id=schedule_id,
             user_id=user_id,
             graph_id=graph_id,
             graph_version=graph_version,
+            agent_name=name,
             cron=cron,
             input_data=input_data,
             input_credentials=input_credentials,
@@ -444,6 +697,7 @@ class Scheduler(AppService):
             trigger=CronTrigger.from_crontab(cron, timezone=user_timezone),
             jobstore=Jobstores.EXECUTION.value,
             replace_existing=True,
+            id=schedule_id,
         )
         logger.info(
             f"Added job {job.id} with cron schedule '{cron}' in timezone {user_timezone}, input data: {input_data}"
@@ -509,6 +763,21 @@ class Scheduler(AppService):
     def execute_cleanup_expired_files(self):
         """Manually trigger cleanup of expired cloud storage files."""
         return cleanup_expired_files()
+
+    @expose
+    def execute_cleanup_oauth_tokens(self):
+        """Manually trigger cleanup of expired OAuth tokens."""
+        return cleanup_oauth_tokens()
+
+    @expose
+    def execute_report_execution_accuracy_alerts(self):
+        """Manually trigger execution accuracy alert checking."""
+        return execution_accuracy_alerts()
+
+    @expose
+    def execute_ensure_embeddings_coverage(self):
+        """Manually trigger embedding backfill for approved store agents."""
+        return ensure_embeddings_coverage()
 
 
 class SchedulerClient(AppServiceClient):

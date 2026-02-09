@@ -1,6 +1,7 @@
 import logging
 import os
 from contextlib import asynccontextmanager
+from datetime import timedelta
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 from uuid import uuid4
 
@@ -82,55 +83,21 @@ async def disconnect():
         raise ConnectionError("Failed to disconnect from Prisma.")
 
 
-# Transaction timeout constant (in milliseconds)
-TRANSACTION_TIMEOUT = 30000  # 30 seconds - Increased from 15s to prevent timeout errors during graph creation under load
+# Transaction timeout constant:
+# increased from 15s to prevent timeout errors during graph creation under load.
+TRANSACTION_TIMEOUT = timedelta(seconds=30)
 
 
 @asynccontextmanager
-async def transaction(timeout: int = TRANSACTION_TIMEOUT):
+async def transaction(timeout: timedelta = TRANSACTION_TIMEOUT):
     """
     Create a database transaction with optional timeout.
 
     Args:
-        timeout: Transaction timeout in milliseconds. If None, uses TRANSACTION_TIMEOUT (15s).
+        timeout: Transaction timeout as a timedelta.
+            Defaults to `TRANSACTION_TIMEOUT` (30s).
     """
     async with prisma.tx(timeout=timeout) as tx:
-        yield tx
-
-
-@asynccontextmanager
-async def locked_transaction(key: str, timeout: int = TRANSACTION_TIMEOUT):
-    """
-    Create a transaction and take a per-key advisory *transaction* lock.
-
-    - Uses a 64-bit lock id via hashtextextended(key, 0) to avoid 32-bit collisions.
-    - Bound by lock_timeout and statement_timeout so it won't block indefinitely.
-    - Lock is held for the duration of the transaction and auto-released on commit/rollback.
-
-    Args:
-        key: String lock key (e.g., "usr_trx_<uuid>").
-        timeout: Transaction/lock/statement timeout in milliseconds.
-    """
-    async with transaction(timeout=timeout) as tx:
-        # Ensure we don't wait longer than desired
-        # Note: SET LOCAL doesn't support parameterized queries, must use string interpolation
-        await tx.execute_raw(f"SET LOCAL statement_timeout = '{int(timeout)}ms'")  # type: ignore[arg-type]
-        await tx.execute_raw(f"SET LOCAL lock_timeout = '{int(timeout)}ms'")  # type: ignore[arg-type]
-
-        # Block until acquired or lock_timeout hits
-        try:
-            await tx.execute_raw(
-                "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
-                key,
-            )
-        except Exception as e:
-            # Normalize PG's lock timeout error to TimeoutError for callers
-            if "lock timeout" in str(e).lower():
-                raise TimeoutError(
-                    f"Could not acquire lock for key={key!r} within {timeout}ms"
-                ) from e
-            raise
-
         yield tx
 
 
@@ -141,19 +108,103 @@ def get_database_schema() -> str:
     return query_params.get("schema", "public")
 
 
-async def query_raw_with_schema(query_template: str, *args) -> list[dict]:
-    """Execute raw SQL query with proper schema handling."""
+async def _raw_with_schema(
+    query_template: str,
+    *args,
+    execute: bool = False,
+    client: Prisma | None = None,
+) -> list[dict] | int:
+    """Internal: Execute raw SQL with proper schema handling.
+
+    Use query_raw_with_schema() or execute_raw_with_schema() instead.
+
+    Supports placeholders:
+        - {schema_prefix}: Table/type prefix (e.g., "platform".)
+        - {schema}: Raw schema name for application tables (e.g., platform)
+
+    Note on pgvector types:
+        Use unqualified ::vector and <=> operator in queries. PostgreSQL resolves
+        these via search_path, which includes the schema where pgvector is installed
+        on all environments (local, CI, dev).
+
+    Args:
+        query_template: SQL query with {schema_prefix} and/or {schema} placeholders
+        *args: Query parameters
+        execute: If False, executes SELECT query. If True, executes INSERT/UPDATE/DELETE.
+        client: Optional Prisma client for transactions (only used when execute=True).
+
+    Returns:
+        - list[dict] if execute=False (query results)
+        - int if execute=True (number of affected rows)
+
+    Example with vector type:
+        await execute_raw_with_schema(
+            'INSERT INTO {schema_prefix}"Embedding" (vec) VALUES ($1::vector)',
+            embedding_data
+        )
+    """
     schema = get_database_schema()
-    schema_prefix = f"{schema}." if schema != "public" else ""
-    formatted_query = query_template.format(schema_prefix=schema_prefix)
+    schema_prefix = f'"{schema}".' if schema != "public" else ""
+
+    formatted_query = query_template.format(
+        schema_prefix=schema_prefix,
+        schema=schema,
+    )
 
     import prisma as prisma_module
 
-    result = await prisma_module.get_client().query_raw(
-        formatted_query, *args  # type: ignore
-    )
+    db_client = client if client else prisma_module.get_client()
+
+    if execute:
+        result = await db_client.execute_raw(formatted_query, *args)  # type: ignore
+    else:
+        result = await db_client.query_raw(formatted_query, *args)  # type: ignore
 
     return result
+
+
+async def query_raw_with_schema(query_template: str, *args) -> list[dict]:
+    """Execute raw SQL SELECT query with proper schema handling.
+
+    Args:
+        query_template: SQL query with {schema_prefix} and/or {schema} placeholders
+        *args: Query parameters
+
+    Returns:
+        List of result rows as dictionaries
+
+    Example:
+        results = await query_raw_with_schema(
+            'SELECT * FROM {schema_prefix}"User" WHERE id = $1',
+            user_id
+        )
+    """
+    return await _raw_with_schema(query_template, *args, execute=False)  # type: ignore
+
+
+async def execute_raw_with_schema(
+    query_template: str,
+    *args,
+    client: Prisma | None = None,
+) -> int:
+    """Execute raw SQL command (INSERT/UPDATE/DELETE) with proper schema handling.
+
+    Args:
+        query_template: SQL query with {schema_prefix} and/or {schema} placeholders
+        *args: Query parameters
+        client: Optional Prisma client for transactions
+
+    Returns:
+        Number of affected rows
+
+    Example:
+        await execute_raw_with_schema(
+            'INSERT INTO {schema_prefix}"User" (id, name) VALUES ($1, $2)',
+            user_id, name,
+            client=tx  # Optional transaction client
+        )
+    """
+    return await _raw_with_schema(query_template, *args, execute=True, client=client)  # type: ignore
 
 
 class BaseDbModel(BaseModel):

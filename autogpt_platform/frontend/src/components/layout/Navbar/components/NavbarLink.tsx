@@ -2,14 +2,16 @@
 
 import { IconLaptop } from "@/components/__legacy__/ui/icons";
 import { cn } from "@/lib/utils";
-import {
-  CubeIcon,
-  HouseIcon,
-  StorefrontIcon,
-} from "@phosphor-icons/react/dist/ssr";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { ListChecksIcon } from "@phosphor-icons/react/dist/ssr";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Text } from "../../../atoms/Text/Text";
+import {
+  BuilderIcon,
+  HomepageIcon,
+  MarketplaceIcon,
+} from "./MenuIcon/MenuIcon";
 
 const iconWidthClass = "h-5 w-5";
 
@@ -20,7 +22,13 @@ interface Props {
 
 export function NavbarLink({ name, href }: Props) {
   const pathname = usePathname();
-  const isActive = pathname.includes(href);
+  const isChatEnabled = useGetFlag(Flag.CHAT);
+  const expectedHomeRoute = isChatEnabled ? "/copilot" : "/library";
+
+  const isActive =
+    href === expectedHomeRoute
+      ? pathname === "/" || pathname.startsWith(expectedHomeRoute)
+      : pathname.includes(href);
 
   return (
     <Link href={href} data-testid={`navbar-link-${name.toLowerCase()}`}>
@@ -32,20 +40,24 @@ export function NavbarLink({ name, href }: Props) {
         )}
       >
         {href === "/marketplace" && (
-          <StorefrontIcon
+          <div
             className={cn(
               iconWidthClass,
               isActive && "text-white dark:text-black",
             )}
-          />
+          >
+            <MarketplaceIcon />
+          </div>
         )}
         {href === "/build" && (
-          <CubeIcon
+          <div
             className={cn(
               iconWidthClass,
               isActive && "text-white dark:text-black",
             )}
-          />
+          >
+            <BuilderIcon />
+          </div>
         )}
         {href === "/monitor" && (
           <IconLaptop
@@ -55,16 +67,36 @@ export function NavbarLink({ name, href }: Props) {
             )}
           />
         )}
-        {href === "/library" && (
-          <HouseIcon
+        {href === "/copilot" && (
+          <div
             className={cn(
               iconWidthClass,
               isActive && "text-white dark:text-black",
             )}
-          />
+          >
+            <HomepageIcon />
+          </div>
         )}
+        {href === "/library" &&
+          (isChatEnabled ? (
+            <ListChecksIcon
+              className={cn(
+                iconWidthClass,
+                isActive && "text-white dark:text-black",
+              )}
+            />
+          ) : (
+            <div
+              className={cn(
+                iconWidthClass,
+                isActive && "text-white dark:text-black",
+              )}
+            >
+              <HomepageIcon />
+            </div>
+          ))}
         <Text
-          variant="h4"
+          variant="h5"
           className={cn(
             "hidden !font-poppins lg:block",
             isActive ? "!text-white" : "!text-black",

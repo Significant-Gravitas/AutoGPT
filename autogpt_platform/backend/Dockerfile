@@ -47,7 +47,9 @@ RUN poetry install --no-ansi --no-root
 
 # Generate Prisma client
 COPY autogpt_platform/backend/schema.prisma ./
-RUN poetry run prisma generate
+COPY autogpt_platform/backend/backend/data/partial_types.py ./backend/data/partial_types.py
+COPY autogpt_platform/backend/gen_prisma_types_stub.py ./
+RUN poetry run prisma generate && poetry run gen-prisma-stub
 
 FROM debian:13-slim AS server_dependencies
 
@@ -60,10 +62,12 @@ ENV POETRY_HOME=/opt/poetry \
     DEBIAN_FRONTEND=noninteractive
 ENV PATH=/opt/poetry/bin:$PATH
 
-# Install Python without upgrading system-managed packages
+# Install Python, FFmpeg, and ImageMagick (required for video processing blocks)
 RUN apt-get update && apt-get install -y \
     python3.13 \
     python3-pip \
+    ffmpeg \
+    imagemagick \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy only necessary files from builder
@@ -92,11 +96,13 @@ FROM server_dependencies AS migrate
 
 # Migration stage only needs schema and migrations - much lighter than full backend
 COPY autogpt_platform/backend/schema.prisma /app/autogpt_platform/backend/
+COPY autogpt_platform/backend/backend/data/partial_types.py /app/autogpt_platform/backend/backend/data/partial_types.py
 COPY autogpt_platform/backend/migrations /app/autogpt_platform/backend/migrations
 
 FROM server_dependencies AS server
 
 COPY autogpt_platform/backend /app/autogpt_platform/backend
+COPY docs /app/docs
 RUN poetry install --no-ansi --only-root
 
 ENV PORT=8000

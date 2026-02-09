@@ -1,3 +1,4 @@
+import asyncio
 from enum import Enum
 from typing import Literal
 
@@ -5,7 +6,14 @@ from pydantic import SecretStr
 from replicate.client import Client as ReplicateClient
 from replicate.helpers import FileOutput
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
+from backend.data.execution import ExecutionContext
 from backend.data.model import (
     APIKeyCredentials,
     CredentialsField,
@@ -13,11 +21,26 @@ from backend.data.model import (
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
-from backend.util.file import MediaFileType
+from backend.util.file import MediaFileType, store_media_file
 
 
 class GeminiImageModel(str, Enum):
     NANO_BANANA = "google/nano-banana"
+    NANO_BANANA_PRO = "google/nano-banana-pro"
+
+
+class AspectRatio(str, Enum):
+    MATCH_INPUT_IMAGE = "match_input_image"
+    ASPECT_1_1 = "1:1"
+    ASPECT_2_3 = "2:3"
+    ASPECT_3_2 = "3:2"
+    ASPECT_3_4 = "3:4"
+    ASPECT_4_3 = "4:3"
+    ASPECT_4_5 = "4:5"
+    ASPECT_5_4 = "5:4"
+    ASPECT_9_16 = "9:16"
+    ASPECT_16_9 = "16:9"
+    ASPECT_21_9 = "21:9"
 
 
 class OutputFormat(str, Enum):
@@ -42,7 +65,7 @@ TEST_CREDENTIALS_INPUT = {
 
 
 class AIImageCustomizerBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput[
             Literal[ProviderName.REPLICATE], Literal["api_key"]
         ] = CredentialsField(
@@ -62,15 +85,19 @@ class AIImageCustomizerBlock(Block):
             default=[],
             title="Input Images",
         )
+        aspect_ratio: AspectRatio = SchemaField(
+            description="Aspect ratio of the generated image",
+            default=AspectRatio.MATCH_INPUT_IMAGE,
+            title="Aspect Ratio",
+        )
         output_format: OutputFormat = SchemaField(
             description="Format of the output image",
             default=OutputFormat.PNG,
             title="Output Format",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         image_url: MediaFileType = SchemaField(description="URL of the generated image")
-        error: str = SchemaField(description="Error message if generation failed")
 
     def __init__(self):
         super().__init__(
@@ -86,15 +113,18 @@ class AIImageCustomizerBlock(Block):
                 "prompt": "Make the scene more vibrant and colorful",
                 "model": GeminiImageModel.NANO_BANANA,
                 "images": [],
+                "aspect_ratio": AspectRatio.MATCH_INPUT_IMAGE,
                 "output_format": OutputFormat.JPG,
                 "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_output=[
-                ("image_url", "https://replicate.delivery/generated-image.jpg"),
+                # Output will be a workspace ref or data URI depending on context
+                ("image_url", lambda x: x.startswith(("workspace://", "data:"))),
             ],
             test_mock={
+                # Use data URI to avoid HTTP requests during tests
                 "run_model": lambda *args, **kwargs: MediaFileType(
-                    "https://replicate.delivery/generated-image.jpg"
+                    "data:image/jpeg;base64,/9j/4AAQSkZJRgABAgAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAABAAEDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwD3+iiigD//2Q=="
                 ),
             },
             test_credentials=TEST_CREDENTIALS,
@@ -105,19 +135,38 @@ class AIImageCustomizerBlock(Block):
         input_data: Input,
         *,
         credentials: APIKeyCredentials,
-        graph_exec_id: str,
-        user_id: str,
+        execution_context: ExecutionContext,
         **kwargs,
     ) -> BlockOutput:
         try:
+            # Convert local file paths to Data URIs (base64) so Replicate can access them
+            processed_images = await asyncio.gather(
+                *(
+                    store_media_file(
+                        file=img,
+                        execution_context=execution_context,
+                        return_format="for_external_api",  # Get content for Replicate API
+                    )
+                    for img in input_data.images
+                )
+            )
+
             result = await self.run_model(
                 api_key=credentials.api_key,
                 model_name=input_data.model.value,
                 prompt=input_data.prompt,
-                images=input_data.images,
+                images=processed_images,
+                aspect_ratio=input_data.aspect_ratio.value,
                 output_format=input_data.output_format.value,
             )
-            yield "image_url", result
+
+            # Store the generated image to the user's workspace for persistence
+            stored_url = await store_media_file(
+                file=result,
+                execution_context=execution_context,
+                return_format="for_block_output",
+            )
+            yield "image_url", stored_url
         except Exception as e:
             yield "error", str(e)
 
@@ -127,12 +176,14 @@ class AIImageCustomizerBlock(Block):
         model_name: str,
         prompt: str,
         images: list[MediaFileType],
+        aspect_ratio: str,
         output_format: str,
     ) -> MediaFileType:
         client = ReplicateClient(api_token=api_key.get_secret_value())
 
         input_params: dict = {
             "prompt": prompt,
+            "aspect_ratio": aspect_ratio,
             "output_format": output_format,
         }
 

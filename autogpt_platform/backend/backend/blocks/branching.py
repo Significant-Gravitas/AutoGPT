@@ -1,7 +1,13 @@
 from enum import Enum
 from typing import Any
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import SchemaField
 from backend.util.type import convert
 
@@ -16,7 +22,7 @@ class ComparisonOperator(Enum):
 
 
 class ConditionBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         value1: Any = SchemaField(
             description="Enter the first value for comparison",
             placeholder="For example: 10 or 'hello' or True",
@@ -40,7 +46,7 @@ class ConditionBlock(Block):
             default=None,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         result: bool = SchemaField(
             description="The result of the condition evaluation (True or False)"
         )
@@ -100,7 +106,10 @@ class ConditionBlock(Block):
             ComparisonOperator.LESS_THAN_OR_EQUAL: lambda a, b: a <= b,
         }
 
-        result = comparison_funcs[operator](value1, value2)
+        try:
+            result = comparison_funcs[operator](value1, value2)
+        except Exception as e:
+            raise ValueError(f"Comparison failed: {e}") from e
 
         yield "result", result
 
@@ -111,7 +120,7 @@ class ConditionBlock(Block):
 
 
 class IfInputMatchesBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         input: Any = SchemaField(
             description="The input to match against",
             placeholder="For example: 10 or 'hello' or True",
@@ -131,7 +140,7 @@ class IfInputMatchesBlock(Block):
             default=None,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         result: bool = SchemaField(
             description="The result of the condition evaluation (True or False)"
         )

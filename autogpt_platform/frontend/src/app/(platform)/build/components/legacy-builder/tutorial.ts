@@ -1,7 +1,7 @@
 import Shepherd from "shepherd.js";
 import "shepherd.js/dist/css/shepherd.css";
-import { sendGAEvent } from "@/services/analytics/google-analytics";
 import { Key, storage } from "@/services/storage/local-storage";
+import { analytics } from "@/services/analytics";
 
 export const startTutorial = (
   emptyNodeList: (forceEmpty: boolean) => boolean,
@@ -328,16 +328,16 @@ export const startTutorial = (
     title: "Press Run",
     text: "Start your first flow by pressing the Run button!",
     attachTo: {
-      element: '[data-testid="primary-action-run-agent"]',
+      element: '[data-tutorial-id="primary-action-run-agent"]',
       on: "top",
     },
     advanceOn: {
-      selector: '[data-testid="primary-action-run-agent"]',
+      selector: '[data-tutorial-id="primary-action-run-agent"]',
       event: "click",
     },
     buttons: [],
     beforeShowPromise: () =>
-      waitForElement('[data-testid="primary-action-run-agent"]'),
+      waitForElement('[data-tutorial-id="primary-action-run-agent"]'),
     when: {
       hide: () => {
         setTimeout(() => {
@@ -508,16 +508,16 @@ export const startTutorial = (
     title: "Press Run Again",
     text: "Now, press the Run button again to execute the flow with the new Calculator Block added!",
     attachTo: {
-      element: '[data-testid="primary-action-run-agent"]',
+      element: '[data-tutorial-id="primary-action-run-agent"]',
       on: "top",
     },
     advanceOn: {
-      selector: '[data-testid="primary-action-run-agent"]',
+      selector: '[data-tutorial-id="primary-action-run-agent"]',
       event: "click",
     },
     buttons: [],
     beforeShowPromise: () =>
-      waitForElement('[data-testid="primary-action-run-agent"]'),
+      waitForElement('[data-tutorial-id="primary-action-run-agent"]'),
     when: {
       hide: () => {
         setTimeout(() => {
@@ -555,7 +555,7 @@ export const startTutorial = (
       "use client";
       console.debug("sendTutorialStep");
 
-      sendGAEvent("event", "tutorial_step_shown", { value: step.id });
+      analytics.sendGAEvent("event", "tutorial_step_shown", { value: step.id });
     });
   }
 

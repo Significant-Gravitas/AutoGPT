@@ -4,10 +4,12 @@
       "id": "test-agent-1",
       "graph_id": "test-agent-1",
       "graph_version": 1,
+      "owner_user_id": "3e53486c-cf57-477e-ba2a-cb02dc828e1a",
       "image_url": null,
       "creator_name": "Test Creator",
       "creator_image_url": "",
       "status": "COMPLETED",
+      "created_at": "2023-01-01T00:00:00",
       "updated_at": "2023-01-01T00:00:00",
       "name": "Test Agent 1",
       "description": "Test Description 1",
@@ -25,21 +27,34 @@
         "properties": {}
       },
       "has_external_trigger": false,
+      "has_human_in_the_loop": false,
+      "has_sensitive_action": false,
       "trigger_setup_info": null,
       "new_output": false,
+      "execution_count": 0,
+      "success_rate": null,
+      "avg_correctness_score": null,
+      "recent_executions": [],
       "can_access_graph": true,
       "is_latest_version": true,
       "is_favorite": false,
-      "recommended_schedule_cron": null
+      "recommended_schedule_cron": null,
+      "settings": {
+        "human_in_the_loop_safe_mode": true,
+        "sensitive_action_safe_mode": false
+      },
+      "marketplace_listing": null
     },
     {
       "id": "test-agent-2",
       "graph_id": "test-agent-2",
       "graph_version": 1,
+      "owner_user_id": "3e53486c-cf57-477e-ba2a-cb02dc828e1a",
       "image_url": null,
       "creator_name": "Test Creator",
       "creator_image_url": "",
       "status": "COMPLETED",
+      "created_at": "2023-01-01T00:00:00",
       "updated_at": "2023-01-01T00:00:00",
       "name": "Test Agent 2",
       "description": "Test Description 2",
@@ -57,12 +72,23 @@
         "properties": {}
       },
       "has_external_trigger": false,
+      "has_human_in_the_loop": false,
+      "has_sensitive_action": false,
       "trigger_setup_info": null,
       "new_output": false,
+      "execution_count": 0,
+      "success_rate": null,
+      "avg_correctness_score": null,
+      "recent_executions": [],
       "can_access_graph": false,
       "is_latest_version": true,
       "is_favorite": false,
-      "recommended_schedule_cron": null
+      "recommended_schedule_cron": null,
+      "settings": {
+        "human_in_the_loop_safe_mode": true,
+        "sensitive_action_safe_mode": false
+      },
+      "marketplace_listing": null
     }
   ],
   "pagination": {

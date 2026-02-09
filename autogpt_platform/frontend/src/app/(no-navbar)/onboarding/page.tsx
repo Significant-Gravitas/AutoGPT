@@ -1,37 +1,73 @@
-import BackendAPI from "@/lib/autogpt-server-api";
-import { redirect } from "next/navigation";
-import { finishOnboarding } from "./6-congrats/actions";
-import { shouldShowOnboarding } from "@/app/api/helpers";
+"use client";
+import { getV1OnboardingState } from "@/app/api/__generated__/endpoints/onboarding/onboarding";
+import { getOnboardingStatus, resolveResponse } from "@/app/api/helpers";
+import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 
-// Force dynamic rendering to avoid static generation issues with cookies
-export const dynamic = "force-dynamic";
+export default function OnboardingPage() {
+  const router = useRouter();
 
-export default async function OnboardingPage() {
-  const api = new BackendAPI();
-  const isOnboardingEnabled = await shouldShowOnboarding();
+  useEffect(() => {
+    async function redirectToStep() {
+      try {
+        // Check if onboarding is enabled (also gets chat flag for redirect)
+        const { shouldShowOnboarding } = await getOnboardingStatus();
 
-  if (!isOnboardingEnabled) {
-    redirect("/marketplace");
-  }
+        if (!shouldShowOnboarding) {
+          router.replace("/");
+          return;
+        }
 
-  const onboarding = await api.getUserOnboarding();
+        const onboarding = await resolveResponse(getV1OnboardingState());
 
-  // CONGRATS is the last step in intro onboarding
-  if (onboarding.completedSteps.includes("GET_RESULTS"))
-    redirect("/marketplace");
-  else if (onboarding.completedSteps.includes("CONGRATS")) finishOnboarding();
-  else if (onboarding.completedSteps.includes("AGENT_INPUT"))
-    redirect("/onboarding/5-run");
-  else if (onboarding.completedSteps.includes("AGENT_NEW_RUN"))
-    redirect("/onboarding/5-run");
-  else if (onboarding.completedSteps.includes("AGENT_CHOICE"))
-    redirect("/onboarding/5-run");
-  else if (onboarding.completedSteps.includes("INTEGRATIONS"))
-    redirect("/onboarding/4-agent");
-  else if (onboarding.completedSteps.includes("USAGE_REASON"))
-    redirect("/onboarding/3-services");
-  else if (onboarding.completedSteps.includes("WELCOME"))
-    redirect("/onboarding/2-reason");
+        // Handle completed onboarding
+        if (onboarding.completedSteps.includes("GET_RESULTS")) {
+          router.replace("/");
+          return;
+        }
 
-  redirect("/onboarding/1-welcome");
+        // Redirect to appropriate step based on completed steps
+        if (onboarding.completedSteps.includes("AGENT_INPUT")) {
+          router.push("/onboarding/5-run");
+          return;
+        }
+
+        if (onboarding.completedSteps.includes("AGENT_NEW_RUN")) {
+          router.push("/onboarding/5-run");
+          return;
+        }
+
+        if (onboarding.completedSteps.includes("AGENT_CHOICE")) {
+          router.push("/onboarding/5-run");
+          return;
+        }
+
+        if (onboarding.completedSteps.includes("INTEGRATIONS")) {
+          router.push("/onboarding/4-agent");
+          return;
+        }
+
+        if (onboarding.completedSteps.includes("USAGE_REASON")) {
+          router.push("/onboarding/3-services");
+          return;
+        }
+
+        if (onboarding.completedSteps.includes("WELCOME")) {
+          router.push("/onboarding/2-reason");
+          return;
+        }
+
+        // Default: redirect to first step
+        router.push("/onboarding/1-welcome");
+      } catch (error) {
+        console.error("Failed to determine onboarding step:", error);
+        router.replace("/");
+      }
+    }
+
+    redirectToStep();
+  }, [router]);
+
+  return <LoadingSpinner size="large" cover />;
 }

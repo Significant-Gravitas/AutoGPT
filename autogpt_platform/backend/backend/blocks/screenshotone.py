@@ -4,7 +4,14 @@ from typing import Literal
 
 from pydantic import SecretStr
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
+from backend.data.execution import ExecutionContext
 from backend.data.model import (
     APIKeyCredentials,
     CredentialsField,
@@ -25,7 +32,7 @@ class Format(str, Enum):
 class ScreenshotWebPageBlock(Block):
     """Block for taking screenshots using ScreenshotOne API"""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput[
             Literal[ProviderName.SCREENSHOTONE], Literal["api_key"]
         ] = CredentialsField(description="The ScreenshotOne API key")
@@ -56,9 +63,8 @@ class ScreenshotWebPageBlock(Block):
             description="Whether to enable caching", default=False
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         image: MediaFileType = SchemaField(description="The screenshot image data")
-        error: str = SchemaField(description="Error message if the screenshot failed")
 
     def __init__(self):
         super().__init__(
@@ -107,8 +113,7 @@ class ScreenshotWebPageBlock(Block):
     @staticmethod
     async def take_screenshot(
         credentials: APIKeyCredentials,
-        graph_exec_id: str,
-        user_id: str,
+        execution_context: ExecutionContext,
         url: str,
         viewport_width: int,
         viewport_height: int,
@@ -150,12 +155,11 @@ class ScreenshotWebPageBlock(Block):
 
         return {
             "image": await store_media_file(
-                graph_exec_id=graph_exec_id,
                 file=MediaFileType(
                     f"data:image/{format.value};base64,{b64encode(content).decode('utf-8')}"
                 ),
-                user_id=user_id,
-                return_content=True,
+                execution_context=execution_context,
+                return_format="for_block_output",
             )
         }
 
@@ -164,15 +168,13 @@ class ScreenshotWebPageBlock(Block):
         input_data: Input,
         *,
         credentials: APIKeyCredentials,
-        graph_exec_id: str,
-        user_id: str,
+        execution_context: ExecutionContext,
         **kwargs,
     ) -> BlockOutput:
         try:
             screenshot_data = await self.take_screenshot(
                 credentials=credentials,
-                graph_exec_id=graph_exec_id,
-                user_id=user_id,
+                execution_context=execution_context,
                 url=input_data.url,
                 viewport_width=input_data.viewport_width,
                 viewport_height=input_data.viewport_height,

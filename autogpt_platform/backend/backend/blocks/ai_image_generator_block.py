@@ -5,7 +5,8 @@ from pydantic import SecretStr
 from replicate.client import Client as ReplicateClient
 from replicate.helpers import FileOutput
 
-from backend.data.block import Block, BlockCategory, BlockSchema
+from backend.data.block import Block, BlockCategory, BlockSchemaInput, BlockSchemaOutput
+from backend.data.execution import ExecutionContext
 from backend.data.model import (
     APIKeyCredentials,
     CredentialsField,
@@ -13,6 +14,8 @@ from backend.data.model import (
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
+from backend.util.file import store_media_file
+from backend.util.type import MediaFileType
 
 
 class ImageSize(str, Enum):
@@ -60,6 +63,14 @@ SIZE_TO_RECRAFT_DIMENSIONS = {
     ImageSize.TALL: "1024x1536",
 }
 
+SIZE_TO_NANO_BANANA_RATIO = {
+    ImageSize.SQUARE: "1:1",
+    ImageSize.LANDSCAPE: "4:3",
+    ImageSize.PORTRAIT: "3:4",
+    ImageSize.WIDE: "16:9",
+    ImageSize.TALL: "9:16",
+}
+
 
 class ImageStyle(str, Enum):
     """
@@ -98,10 +109,11 @@ class ImageGenModel(str, Enum):
     FLUX_ULTRA = "Flux 1.1 Pro Ultra"
     RECRAFT = "Recraft v3"
     SD3_5 = "Stable Diffusion 3.5 Medium"
+    NANO_BANANA_PRO = "Nano Banana Pro"
 
 
 class AIImageGeneratorBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput[
             Literal[ProviderName.REPLICATE], Literal["api_key"]
         ] = CredentialsField(
@@ -135,9 +147,8 @@ class AIImageGeneratorBlock(Block):
             title="Image Style",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         image_url: str = SchemaField(description="URL of the generated image")
-        error: str = SchemaField(description="Error message if generation failed")
 
     def __init__(self):
         super().__init__(
@@ -157,11 +168,13 @@ class AIImageGeneratorBlock(Block):
             test_output=[
                 (
                     "image_url",
-                    "https://replicate.delivery/generated-image.webp",
+                    # Test output is a data URI since we now store images
+                    lambda x: x.startswith("data:image/"),
                 ),
             ],
             test_mock={
-                "_run_client": lambda *args, **kwargs: "https://replicate.delivery/generated-image.webp"
+                # Return a data URI directly so store_media_file doesn't need to download
+                "_run_client": lambda *args, **kwargs: "data:image/webp;base64,UklGRiQAAABXRUJQVlA4IBgAAAAwAQCdASoBAAEAAQAcJYgCdAEO"
             },
         )
 
@@ -262,6 +275,20 @@ class AIImageGeneratorBlock(Block):
                 )
                 return output
 
+            elif input_data.model == ImageGenModel.NANO_BANANA_PRO:
+                # Use Nano Banana Pro (Google Gemini 3 Pro Image)
+                input_params = {
+                    "prompt": modified_prompt,
+                    "aspect_ratio": SIZE_TO_NANO_BANANA_RATIO[input_data.size],
+                    "resolution": "2K",  # Default to 2K for good quality/cost balance
+                    "output_format": "jpg",
+                    "safety_filter_level": "block_only_high",  # Most permissive
+                }
+                output = await self._run_client(
+                    credentials, "google/nano-banana-pro", input_params
+                )
+                return output
+
         except Exception as e:
             raise RuntimeError(f"Failed to generate image: {str(e)}")
 
@@ -296,11 +323,24 @@ class AIImageGeneratorBlock(Block):
         style_text = style_map.get(style, "")
         return f"{style_text} of" if style_text else ""
 
-    async def run(self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs):
+    async def run(
+        self,
+        input_data: Input,
+        *,
+        credentials: APIKeyCredentials,
+        execution_context: ExecutionContext,
+        **kwargs,
+    ):
         try:
             url = await self.generate_image(input_data, credentials)
             if url:
-                yield "image_url", url
+                # Store the generated image to the user's workspace/execution folder
+                stored_url = await store_media_file(
+                    file=MediaFileType(url),
+                    execution_context=execution_context,
+                    return_format="for_block_output",
+                )
+                yield "image_url", stored_url
             else:
                 yield "error", "Image generation returned an empty result."
         except Exception as e:

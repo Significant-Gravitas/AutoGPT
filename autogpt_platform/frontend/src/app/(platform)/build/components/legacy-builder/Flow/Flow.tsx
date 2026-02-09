@@ -26,21 +26,23 @@ import {
   applyNodeChanges,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { CustomNode } from "../CustomNode/CustomNode";
+import { ConnectedEdge, CustomNode } from "../CustomNode/CustomNode";
 import "./flow.css";
 import {
+  BlockIORootSchema,
   BlockUIType,
   formatEdgeID,
   GraphExecutionID,
   GraphID,
+  GraphMeta,
   LibraryAgent,
+  SpecialBlockID,
 } from "@/lib/autogpt-server-api";
+import { getV1GetSpecificGraph } from "@/app/api/__generated__/endpoints/graphs/graphs";
+import { okData } from "@/app/api/helpers";
+import { IncompatibilityInfo } from "../../../hooks/useSubAgentUpdate/types";
 import { Key, storage } from "@/services/storage/local-storage";
-import {
-  getTypeColor,
-  findNewlyAddedBlockCoordinates,
-  beautifyString,
-} from "@/lib/utils";
+import { findNewlyAddedBlockCoordinates, getTypeColor } from "@/lib/utils";
 import { history } from "../history";
 import { CustomEdge } from "../CustomEdge/CustomEdge";
 import ConnectionLine from "../ConnectionLine";
@@ -64,20 +66,42 @@ import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import RunnerUIWrapper, { RunnerUIWrapperRef } from "../RunnerUIWrapper";
 import OttoChatWidget from "@/app/(platform)/build/components/legacy-builder/OttoChatWidget";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { useCopyPaste } from "../../../../../../hooks/useCopyPaste";
-import NewControlPanel from "@/app/(platform)/build/components/NewBlockMenu/NewControlPanel/NewControlPanel";
+import { useCopyPaste } from "../useCopyPaste";
+import NewControlPanel from "@/app/(platform)/build/components/NewControlPanel/NewControlPanel";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { BuildActionBar } from "../BuildActionBar";
+import { FloatingReviewsPanel } from "@/components/organisms/FloatingReviewsPanel/FloatingReviewsPanel";
+import { useFlowRealtime } from "@/app/(platform)/build/components/FlowEditor/Flow/useFlowRealtime";
+import { FloatingSafeModeToggle } from "../../FloatingSafeModeToogle";
 
 // This is for the history, this is the minimum distance a block must move before it is logged
 // It helps to prevent spamming the history with small movements especially when pressing on a input in a block
 const MINIMUM_MOVE_BEFORE_LOG = 50;
+
+export type ResolutionModeState = {
+  active: boolean;
+  nodeId: string | null;
+  incompatibilities: IncompatibilityInfo | null;
+  brokenEdgeIds: string[];
+  pendingUpdate: Record<string, unknown> | null; // The hardcoded values to apply after resolution
+};
 
 type BuilderContextType = {
   libraryAgent: LibraryAgent | null;
   visualizeBeads: "no" | "static" | "animate";
   setIsAnyModalOpen: (isOpen: boolean) => void;
   getNextNodeId: () => string;
+  getNodeTitle: (nodeID: string) => string | null;
+  availableFlows: GraphMeta[];
+  resolutionMode: ResolutionModeState;
+  enterResolutionMode: (
+    nodeId: string,
+    incompatibilities: IncompatibilityInfo,
+    brokenEdgeIds: string[],
+    pendingUpdate: Record<string, unknown>,
+  ) => void;
+  exitResolutionMode: () => void;
+  applyPendingUpdate: () => void;
 };
 
 export type NodeDimension = {
@@ -104,6 +128,7 @@ const FlowEditor: React.FC<{
     updateNode,
     getViewport,
     setViewport,
+    fitView,
     screenToFlowPosition,
   } = useReactFlow<CustomNode, CustomEdge>();
   const [nodeId, setNodeId] = useState<number>(1);
@@ -116,6 +141,7 @@ const FlowEditor: React.FC<{
   const [pinBlocksPopover, setPinBlocksPopover] = useState(false);
   // State to control if save popover should be pinned open
   const [pinSavePopover, setPinSavePopover] = useState(false);
+  const [hasAutoFramed, setHasAutoFramed] = useState(false);
 
   const {
     agentName,
@@ -148,6 +174,12 @@ const FlowEditor: React.FC<{
     flowExecutionID,
     visualizeBeads !== "no",
   );
+  const [immediateNodePositions, setImmediateNodePositions] = useState<
+    Record<string, { x: number; y: number }>
+  >(Object.fromEntries(nodes.map((node) => [node.id, node.position])));
+
+  // Add realtime execution status tracking for FloatingReviewsPanel
+  useFlowRealtime();
 
   const router = useRouter();
   const pathname = usePathname();
@@ -163,6 +195,92 @@ const FlowEditor: React.FC<{
 
   // It stores the dimension of all nodes with position as well
   const [nodeDimensions, setNodeDimensions] = useState<NodeDimension>({});
+
+  // Resolution mode state for sub-agent incompatible updates
+  const [resolutionMode, setResolutionMode] = useState<ResolutionModeState>({
+    active: false,
+    nodeId: null,
+    incompatibilities: null,
+    brokenEdgeIds: [],
+    pendingUpdate: null,
+  });
+
+  const enterResolutionMode = useCallback(
+    (
+      nodeId: string,
+      incompatibilities: IncompatibilityInfo,
+      brokenEdgeIds: string[],
+      pendingUpdate: Record<string, unknown>,
+    ) => {
+      setResolutionMode({
+        active: true,
+        nodeId,
+        incompatibilities,
+        brokenEdgeIds,
+        pendingUpdate,
+      });
+    },
+    [],
+  );
+
+  const exitResolutionMode = useCallback(() => {
+    setResolutionMode({
+      active: false,
+      nodeId: null,
+      incompatibilities: null,
+      brokenEdgeIds: [],
+      pendingUpdate: null,
+    });
+  }, []);
+
+  // Apply pending update after resolution mode completes
+  const applyPendingUpdate = useCallback(() => {
+    if (!resolutionMode.nodeId || !resolutionMode.pendingUpdate) return;
+
+    const node = nodes.find((n) => n.id === resolutionMode.nodeId);
+    if (node) {
+      const pendingUpdate = resolutionMode.pendingUpdate as {
+        [key: string]: any;
+      };
+      setNodes((nds) =>
+        nds.map((n) =>
+          n.id === resolutionMode.nodeId
+            ? { ...n, data: { ...n.data, hardcodedValues: pendingUpdate } }
+            : n,
+        ),
+      );
+    }
+    exitResolutionMode();
+    toast({
+      title: "Update complete",
+      description: "Agent has been updated to the new version.",
+    });
+  }, [resolutionMode, nodes, setNodes, exitResolutionMode, toast]);
+
+  // Check if all broken edges have been removed and auto-apply pending update
+  useEffect(() => {
+    if (!resolutionMode.active || resolutionMode.brokenEdgeIds.length === 0) {
+      return;
+    }
+
+    const currentEdgeIds = new Set(edges.map((e) => e.id));
+    const remainingBrokenEdges = resolutionMode.brokenEdgeIds.filter((id) =>
+      currentEdgeIds.has(id),
+    );
+
+    if (remainingBrokenEdges.length === 0) {
+      // All broken edges have been removed, apply pending update
+      applyPendingUpdate();
+    } else if (
+      remainingBrokenEdges.length !== resolutionMode.brokenEdgeIds.length
+    ) {
+      // Update the list of broken edges
+      setResolutionMode((prev) => ({
+        ...prev,
+        brokenEdgeIds: remainingBrokenEdges,
+      }));
+    }
+  }, [edges, resolutionMode, applyPendingUpdate]);
 
   // Set page title with or without graph name
   useEffect(() => {
@@ -241,6 +359,13 @@ const FlowEditor: React.FC<{
     const oldPosition = initialPositionRef.current[node.id];
     const newPosition = node.position;
 
+    // Clear immediate position, because on drag end it is no longer needed
+    setImmediateNodePositions((prevPositions) => {
+      const updatedPositions = { ...prevPositions };
+      delete updatedPositions[node.id];
+      return updatedPositions;
+    });
+
     // Calculate the movement distance
     if (!oldPosition || !newPosition) return;
 
@@ -278,6 +403,26 @@ const FlowEditor: React.FC<{
 
   const onNodesChange = useCallback(
     (nodeChanges: NodeChange<CustomNode>[]) => {
+      // Intercept position changes to update immediate positions & prevent excessive node re-renders
+      const draggingPosChanges = nodeChanges
+        .filter((c) => c.type === "position")
+        .filter((c) => c.dragging === true);
+      if (draggingPosChanges.length > 0) {
+        setImmediateNodePositions((prevPositions) => {
+          const newPositions = { ...prevPositions };
+          draggingPosChanges.forEach((change) => {
+            if (change.position) newPositions[change.id] = change.position;
+          });
+          return newPositions;
+        });
+
+        // Don't further process ongoing position changes
+        nodeChanges = nodeChanges.filter(
+          (change) => change.type !== "position" || change.dragging !== true,
+        );
+        if (nodeChanges.length === 0) return;
+      }
+
       // Persist the changes
       setNodes((prev) => applyNodeChanges(nodeChanges, prev));
 
@@ -396,17 +541,19 @@ const FlowEditor: React.FC<{
                 ...node.data.connections.filter(
                   (conn) =>
                     !removedEdges.some(
-                      (removedEdge) => removedEdge.id === conn.edge_id,
+                      (removedEdge) => removedEdge.id === conn.id,
                     ),
                 ),
                 // Add node connections for added edges
-                ...addedEdges.map((addedEdge) => ({
-                  edge_id: addedEdge.item.id,
-                  source: addedEdge.item.source,
-                  target: addedEdge.item.target,
-                  sourceHandle: addedEdge.item.sourceHandle!,
-                  targetHandle: addedEdge.item.targetHandle!,
-                })),
+                ...addedEdges.map(
+                  (addedEdge): ConnectedEdge => ({
+                    id: addedEdge.item.id,
+                    source: addedEdge.item.source,
+                    target: addedEdge.item.target,
+                    sourceHandle: addedEdge.item.sourceHandle!,
+                    targetHandle: addedEdge.item.targetHandle!,
+                  }),
+                ),
               ],
             },
           }));
@@ -432,13 +579,15 @@ const FlowEditor: React.FC<{
             data: {
               ...node.data,
               connections: [
-                ...replaceEdges.map((replaceEdge) => ({
-                  edge_id: replaceEdge.item.id,
-                  source: replaceEdge.item.source,
-                  target: replaceEdge.item.target,
-                  sourceHandle: replaceEdge.item.sourceHandle!,
-                  targetHandle: replaceEdge.item.targetHandle!,
-                })),
+                ...replaceEdges.map(
+                  (replaceEdge): ConnectedEdge => ({
+                    id: replaceEdge.item.id,
+                    source: replaceEdge.item.source,
+                    target: replaceEdge.item.target,
+                    sourceHandle: replaceEdge.item.sourceHandle!,
+                    targetHandle: replaceEdge.item.targetHandle!,
+                  }),
+                ),
               ],
             },
           })),
@@ -453,35 +602,26 @@ const FlowEditor: React.FC<{
     return uuidv4();
   }, []);
 
-  // Set the initial view port to center the canvas.
   useEffect(() => {
-    const { x, y } = getViewport();
-    if (nodes.length <= 0 || x !== 0 || y !== 0) {
+    if (nodes.length === 0) {
       return;
     }
 
-    const topLeft = { x: Infinity, y: Infinity };
-    const bottomRight = { x: -Infinity, y: -Infinity };
+    if (hasAutoFramed) {
+      return;
+    }
 
-    nodes.forEach((node) => {
-      const { x, y } = node.position;
-      topLeft.x = Math.min(topLeft.x, x);
-      topLeft.y = Math.min(topLeft.y, y);
-      // Rough estimate of the width and height of the node: 500x400.
-      bottomRight.x = Math.max(bottomRight.x, x + 500);
-      bottomRight.y = Math.max(bottomRight.y, y + 400);
+    const rafId = requestAnimationFrame(() => {
+      fitView({ padding: 0.2, duration: 800, maxZoom: 1 });
+      setHasAutoFramed(true);
     });
 
-    const centerX = (topLeft.x + bottomRight.x) / 2;
-    const centerY = (topLeft.y + bottomRight.y) / 2;
-    const zoom = 0.8;
+    return () => cancelAnimationFrame(rafId);
+  }, [fitView, hasAutoFramed, nodes.length]);
 
-    setViewport({
-      x: window.innerWidth / 2 - centerX * zoom,
-      y: window.innerHeight / 2 - centerY * zoom,
-      zoom: zoom,
-    });
-  }, [nodes, getViewport, setViewport]);
+  useEffect(() => {
+    setHasAutoFramed(false);
+  }, [flowID, flowVersion]);
 
   const navigateToNode = useCallback(
     (nodeId: string) => {
@@ -551,8 +691,94 @@ const FlowEditor: React.FC<{
     [getNode, updateNode, nodes],
   );
 
+  /* Shared helper to create and add a node */
+  const createAndAddNode = useCallback(
+    async (
+      blockID: string,
+      blockName: string,
+      hardcodedValues: Record<string, any>,
+      position: { x: number; y: number },
+    ): Promise<CustomNode | null> => {
+      const nodeSchema = availableBlocks.find((node) => node.id === blockID);
+      if (!nodeSchema) {
+        console.error(`Schema not found for block ID: ${blockID}`);
+        return null;
+      }
+
+      // For agent blocks, fetch the full graph to get schemas
+      let inputSchema: BlockIORootSchema = nodeSchema.inputSchema;
+      let outputSchema: BlockIORootSchema = nodeSchema.outputSchema;
+      let finalHardcodedValues = hardcodedValues;
+
+      if (blockID === SpecialBlockID.AGENT) {
+        const graphID = hardcodedValues.graph_id as string;
+        const graphVersion = hardcodedValues.graph_version as number;
+        const graphData = okData(
+          await getV1GetSpecificGraph(graphID, { version: graphVersion }),
+        );
+
+        if (graphData) {
+          inputSchema = graphData.input_schema as BlockIORootSchema;
+          outputSchema = graphData.output_schema as BlockIORootSchema;
+          finalHardcodedValues = {
+            ...hardcodedValues,
+            input_schema: graphData.input_schema,
+            output_schema: graphData.output_schema,
+          };
+        } else {
+          console.error("Failed to fetch graph data for agent block");
+        }
+      }
+
+      const newNode: CustomNode = {
+        id: nodeId.toString(),
+        type: "custom",
+        position,
+        data: {
+          blockType: blockName,
+          blockCosts: nodeSchema.costs || [],
+          title: `${blockName} ${nodeId}`,
+          description: nodeSchema.description,
+          categories: nodeSchema.categories,
+          inputSchema: inputSchema,
+          outputSchema: outputSchema,
+          hardcodedValues: finalHardcodedValues,
+          connections: [],
+          isOutputOpen: false,
+          block_id: blockID,
+          isOutputStatic: nodeSchema.staticOutput,
+          uiType: nodeSchema.uiType,
+        },
+      };
+
+      addNodes(newNode);
+      setNodeId((prevId) => prevId + 1);
+      clearNodesStatusAndOutput();
+
+      history.push({
+        type: "ADD_NODE",
+        payload: { node: { ...newNode, ...newNode.data } },
+        undo: () => deleteElements({ nodes: [{ id: newNode.id }] }),
+        redo: () => addNodes(newNode),
+      });
+
+      return newNode;
+    },
+    [
+      availableBlocks,
+      nodeId,
+      addNodes,
+      deleteElements,
+      clearNodesStatusAndOutput,
+    ],
+  );
+
   const addNode = useCallback(
-    (blockId: string, nodeType: string, hardcodedValues: any = {}) => {
+    async (
+      blockId: string,
+      nodeType: string,
+      hardcodedValues: Record<string, any> = {},
+    ) => {
       const nodeSchema = availableBlocks.find((node) => node.id === blockId);
       if (!nodeSchema) {
         console.error(`Schema not found for block ID: ${blockId}`);
@@ -571,73 +797,42 @@ const FlowEditor: React.FC<{
       // Alternative: We could also use D3 force, Intersection for this (React flow Pro examples)
 
       const { x, y } = getViewport();
-      const viewportCoordinates =
+      const position =
         nodeDimensions && Object.keys(nodeDimensions).length > 0
-          ? // we will get all the dimension of nodes, then store
-            findNewlyAddedBlockCoordinates(
+          ? findNewlyAddedBlockCoordinates(
               nodeDimensions,
               nodeSchema.uiType == BlockUIType.NOTE ? 300 : 500,
               60,
               1.0,
             )
-          : // we will get all the dimension of nodes, then store
-            {
+          : {
               x: window.innerWidth / 2 - x,
               y: window.innerHeight / 2 - y,
             };
 
-      const newNode: CustomNode = {
-        id: nodeId.toString(),
-        type: "custom",
-        position: viewportCoordinates, // Set the position to the calculated viewport center
-        data: {
-          blockType: nodeType,
-          blockCosts: nodeSchema.costs,
-          title: `${nodeType} ${nodeId}`,
-          description: nodeSchema.description,
-          categories: nodeSchema.categories,
-          inputSchema: nodeSchema.inputSchema,
-          outputSchema: nodeSchema.outputSchema,
-          hardcodedValues: hardcodedValues,
-          connections: [],
-          isOutputOpen: false,
-          block_id: blockId,
-          isOutputStatic: nodeSchema.staticOutput,
-          uiType: nodeSchema.uiType,
-        },
-      };
-
-      addNodes(newNode);
-      setNodeId((prevId) => prevId + 1);
-      clearNodesStatusAndOutput(); // Clear status and output when a new node is added
+      const newNode = await createAndAddNode(
+        blockId,
+        nodeType,
+        hardcodedValues,
+        position,
+      );
+      if (!newNode) return;
 
       setViewport(
         {
-          // Rough estimate of the dimension of the node is: 500x400px.
-          // Though we skip shifting the X, considering the block menu side-bar.
-          x: -viewportCoordinates.x * 0.8 + (window.innerWidth - 0.0) / 2,
-          y: -viewportCoordinates.y * 0.8 + (window.innerHeight - 400) / 2,
+          x: -position.x * 0.8 + (window.innerWidth - 0.0) / 2,
+          y: -position.y * 0.8 + (window.innerHeight - 400) / 2,
           zoom: 0.8,
         },
         { duration: 500 },
       );
-
-      history.push({
-        type: "ADD_NODE",
-        payload: { node: { ...newNode, ...newNode.data } },
-        undo: () => deleteElements({ nodes: [{ id: newNode.id }] }),
-        redo: () => addNodes(newNode),
-      });
     },
     [
-      nodeId,
       getViewport,
       setViewport,
       availableBlocks,
-      addNodes,
       nodeDimensions,
-      deleteElements,
-      clearNodesStatusAndOutput,
+      createAndAddNode,
     ],
   );
 
@@ -674,6 +869,21 @@ const FlowEditor: React.FC<{
   useEffect(() => {
     findNodeDimensions();
   }, [nodes, findNodeDimensions]);
+
+  const getNodeTitle = useCallback(
+    (nodeID: string) => {
+      const node = nodes.find((n) => n.data.backend_id === nodeID);
+      if (!node) return null;
+
+      return (
+        node.data.metadata?.customized_name ||
+        (node.data.uiType == BlockUIType.AGENT &&
+          node.data.hardcodedValues.agent_name) ||
+        node.data.blockType.replace(/Block$/, "")
+      );
+    },
+    [nodes],
+  );
 
   const handleCopyPaste = useCopyPaste(getNextNodeId);
 
@@ -720,6 +930,22 @@ const FlowEditor: React.FC<{
     [],
   );
 
+  // Track when we should run or schedule after save completes
+  const [shouldRunAfterSave, setShouldRunAfterSave] = useState(false);
+  const [shouldScheduleAfterSave, setShouldScheduleAfterSave] = useState(false);
+
+  // Effect to trigger runOrOpenInput or openRunInputDialog after saving completes
+  useEffect(() => {
+    if (!isSaving && shouldRunAfterSave) {
+      runnerUIRef.current?.runOrOpenInput();
+      setShouldRunAfterSave(false);
+    }
+    if (!isSaving && shouldScheduleAfterSave) {
+      runnerUIRef.current?.openRunInputDialog();
+      setShouldScheduleAfterSave(false);
+    }
+  }, [isSaving, shouldRunAfterSave, shouldScheduleAfterSave]);
+
   const handleRunButton = useCallback(async () => {
     if (isRunning) return;
     if (!savedAgent) {
@@ -729,7 +955,7 @@ const FlowEditor: React.FC<{
       return;
     }
     await saveAgent();
-    runnerUIRef.current?.runOrOpenInput();
+    setShouldRunAfterSave(true);
   }, [isRunning, savedAgent, toast, saveAgent]);
 
   const handleScheduleButton = useCallback(async () => {
@@ -741,7 +967,7 @@ const FlowEditor: React.FC<{
       return;
     }
     await saveAgent();
-    runnerUIRef.current?.openRunInputDialog();
+    setShouldScheduleAfterSave(true);
   }, [isScheduling, savedAgent, toast, saveAgent]);
 
   const isNewBlockEnabled = useGetFlag(Flag.NEW_BLOCK_MENU);
@@ -753,7 +979,7 @@ const FlowEditor: React.FC<{
   }, []);
 
   const onDrop = useCallback(
-    (event: React.DragEvent) => {
+    async (event: React.DragEvent) => {
       event.preventDefault();
 
       const blockData = event.dataTransfer.getData("application/reactflow");
@@ -768,71 +994,57 @@ const FlowEditor: React.FC<{
           y: event.clientY,
         });
 
-        // Find the block schema
-        const nodeSchema = availableBlocks.find((node) => node.id === blockId);
-        if (!nodeSchema) {
-          console.error(`Schema not found for block ID: ${blockId}`);
-          return;
-        }
-
-        // Create the new node at the drop position
-        const newNode: CustomNode = {
-          id: nodeId.toString(),
-          type: "custom",
+        await createAndAddNode(
+          blockId,
+          blockName,
+          hardcodedValues || {},
           position,
-          data: {
-            blockType: blockName,
-            blockCosts: nodeSchema.costs || [],
-            title: `${beautifyString(blockName)} ${nodeId}`,
-            description: nodeSchema.description,
-            categories: nodeSchema.categories,
-            inputSchema: nodeSchema.inputSchema,
-            outputSchema: nodeSchema.outputSchema,
-            hardcodedValues: hardcodedValues,
-            connections: [],
-            isOutputOpen: false,
-            block_id: blockId,
-            uiType: nodeSchema.uiType,
-          },
-        };
-
-        history.push({
-          type: "ADD_NODE",
-          payload: { node: { ...newNode, ...newNode.data } },
-          undo: () => {
-            deleteElements({ nodes: [{ id: newNode.id } as any], edges: [] });
-          },
-          redo: () => {
-            addNodes([newNode]);
-          },
-        });
-        addNodes([newNode]);
-        clearNodesStatusAndOutput();
-
-        setNodeId((prevId) => prevId + 1);
+        );
       } catch (error) {
         console.error("Failed to drop block:", error);
       }
     },
+    [screenToFlowPosition, createAndAddNode],
+  );
+
+  const buildContextValue: BuilderContextType = useMemo(
+    () => ({
+      libraryAgent,
+      visualizeBeads,
+      setIsAnyModalOpen,
+      getNextNodeId,
+      getNodeTitle,
+      availableFlows,
+      resolutionMode,
+      enterResolutionMode,
+      exitResolutionMode,
+      applyPendingUpdate,
+    }),
     [
-      nodeId,
-      availableBlocks,
-      nodes,
-      edges,
-      addNodes,
-      screenToFlowPosition,
-      deleteElements,
-      clearNodesStatusAndOutput,
+      libraryAgent,
+      visualizeBeads,
+      getNextNodeId,
+      getNodeTitle,
+      availableFlows,
+      resolutionMode,
+      enterResolutionMode,
+      applyPendingUpdate,
+      exitResolutionMode,
     ],
   );
 
   return (
-    <BuilderContext.Provider
-      value={{ libraryAgent, visualizeBeads, setIsAnyModalOpen, getNextNodeId }}
-    >
+    <BuilderContext.Provider value={buildContextValue}>
       <div className={className}>
         <ReactFlow
-          nodes={nodes}
+          nodes={nodes.map((node) =>
+            node.id in immediateNodePositions
+              ? {
+                  ...node,
+                  position: immediateNodePositions[node.id] || node.position,
+                }
+              : node,
+          )}
           edges={edges}
           nodeTypes={{ custom: CustomNode }}
           edgeTypes={{ custom: CustomEdge }}
@@ -852,6 +1064,12 @@ const FlowEditor: React.FC<{
         >
           <Controls />
           <Background className="dark:bg-slate-800" />
+          {savedAgent && (
+            <FloatingSafeModeToggle
+              graph={savedAgent}
+              className="right-2 top-32 p-2"
+            />
+          )}
           {isNewBlockEnabled ? (
             <NewControlPanel
               flowExecutionID={flowExecutionID}
@@ -912,6 +1130,7 @@ const FlowEditor: React.FC<{
               onClickScheduleButton={handleScheduleButton}
               isDisabled={!savedAgent}
               isRunning={isRunning}
+              resolutionModeActive={resolutionMode.active}
             />
           ) : (
             <Alert className="absolute bottom-4 left-1/2 z-20 w-auto -translate-x-1/2 select-none">
@@ -950,6 +1169,11 @@ const FlowEditor: React.FC<{
           saveAndRun={saveAndRun}
         />
       )}
+      <FloatingReviewsPanel
+        executionId={flowExecutionID || undefined}
+        graphId={flowID || undefined}
+        className="fixed bottom-24 right-4"
+      />
       <Suspense fallback={null}>
         <OttoChatWidget
           graphID={flowID}

@@ -1,6 +1,12 @@
 from typing import Any, List
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import SchemaField
 from backend.util.json import loads
 from backend.util.mock import MockObject
@@ -12,13 +18,13 @@ from backend.util.prompt import estimate_token_count_str
 
 
 class CreateDictionaryBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         values: dict[str, Any] = SchemaField(
             description="Key-value pairs to create the dictionary with",
             placeholder="e.g., {'name': 'Alice', 'age': 25}",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         dictionary: dict[str, Any] = SchemaField(
             description="The created dictionary containing the specified key-value pairs"
         )
@@ -62,10 +68,11 @@ class CreateDictionaryBlock(Block):
 
 
 class AddToDictionaryBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         dictionary: dict[Any, Any] = SchemaField(
             default_factory=dict,
             description="The dictionary to add the entry to. If not provided, a new dictionary will be created.",
+            advanced=False,
         )
         key: str = SchemaField(
             default="",
@@ -85,11 +92,10 @@ class AddToDictionaryBlock(Block):
             advanced=True,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         updated_dictionary: dict = SchemaField(
             description="The dictionary with the new entry added."
         )
-        error: str = SchemaField(description="Error message if the operation failed.")
 
     def __init__(self):
         super().__init__(
@@ -140,11 +146,11 @@ class AddToDictionaryBlock(Block):
 
 
 class FindInDictionaryBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         input: Any = SchemaField(description="Dictionary to lookup from")
         key: str | int = SchemaField(description="Key to lookup in the dictionary")
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         output: Any = SchemaField(description="Value found for the given key")
         missing: Any = SchemaField(
             description="Value of the input that missing the key"
@@ -153,7 +159,7 @@ class FindInDictionaryBlock(Block):
     def __init__(self):
         super().__init__(
             id="0e50422c-6dee-4145-83d6-3a5a392f65de",
-            description="Lookup the given key in the input dictionary/object/list and return the value.",
+            description="A block that looks up a value in a dictionary, list, or object by key or index and returns the corresponding value.",
             input_schema=FindInDictionaryBlock.Input,
             output_schema=FindInDictionaryBlock.Output,
             test_input=[
@@ -200,7 +206,7 @@ class FindInDictionaryBlock(Block):
 
 
 class RemoveFromDictionaryBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         dictionary: dict[Any, Any] = SchemaField(
             description="The dictionary to modify."
         )
@@ -209,12 +215,11 @@ class RemoveFromDictionaryBlock(Block):
             default=False, description="Whether to return the removed value."
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         updated_dictionary: dict[Any, Any] = SchemaField(
             description="The dictionary after removal."
         )
         removed_value: Any = SchemaField(description="The removed value if requested.")
-        error: str = SchemaField(description="Error message if the operation failed.")
 
     def __init__(self):
         super().__init__(
@@ -250,19 +255,18 @@ class RemoveFromDictionaryBlock(Block):
 
 
 class ReplaceDictionaryValueBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         dictionary: dict[Any, Any] = SchemaField(
             description="The dictionary to modify."
         )
         key: str | int = SchemaField(description="Key to replace the value for.")
         value: Any = SchemaField(description="The new value for the given key.")
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         updated_dictionary: dict[Any, Any] = SchemaField(
             description="The dictionary after replacement."
         )
         old_value: Any = SchemaField(description="The value that was replaced.")
-        error: str = SchemaField(description="Error message if the operation failed.")
 
     def __init__(self):
         super().__init__(
@@ -299,10 +303,10 @@ class ReplaceDictionaryValueBlock(Block):
 
 
 class DictionaryIsEmptyBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         dictionary: dict[Any, Any] = SchemaField(description="The dictionary to check.")
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         is_empty: bool = SchemaField(description="True if the dictionary is empty.")
 
     def __init__(self):
@@ -326,7 +330,7 @@ class DictionaryIsEmptyBlock(Block):
 
 
 class CreateListBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         values: List[Any] = SchemaField(
             description="A list of values to be combined into a new list.",
             placeholder="e.g., ['Alice', 25, True]",
@@ -342,11 +346,10 @@ class CreateListBlock(Block):
             advanced=True,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         list: List[Any] = SchemaField(
             description="The created list containing the specified values."
         )
-        error: str = SchemaField(description="Error message if list creation failed.")
 
     def __init__(self):
         super().__init__(
@@ -403,7 +406,7 @@ class CreateListBlock(Block):
 
 
 class AddToListBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         list: List[Any] = SchemaField(
             default_factory=list,
             advanced=False,
@@ -424,11 +427,10 @@ class AddToListBlock(Block):
             description="The position to insert the new entry. If not provided, the entry will be appended to the end of the list.",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         updated_list: List[Any] = SchemaField(
             description="The list with the new entry added."
         )
-        error: str = SchemaField(description="Error message if the operation failed.")
 
     def __init__(self):
         super().__init__(
@@ -483,11 +485,11 @@ class AddToListBlock(Block):
 
 
 class FindInListBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         list: List[Any] = SchemaField(description="The list to search in.")
         value: Any = SchemaField(description="The value to search for.")
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         index: int = SchemaField(description="The index of the value in the list.")
         found: bool = SchemaField(
             description="Whether the value was found in the list."
@@ -525,15 +527,14 @@ class FindInListBlock(Block):
 
 
 class GetListItemBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         list: List[Any] = SchemaField(description="The list to get the item from.")
         index: int = SchemaField(
             description="The 0-based index of the item (supports negative indices)."
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         item: Any = SchemaField(description="The item at the specified index.")
-        error: str = SchemaField(description="Error message if the operation failed.")
 
     def __init__(self):
         super().__init__(
@@ -560,7 +561,7 @@ class GetListItemBlock(Block):
 
 
 class RemoveFromListBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         list: List[Any] = SchemaField(description="The list to modify.")
         value: Any = SchemaField(
             default=None, description="Value to remove from the list."
@@ -573,10 +574,9 @@ class RemoveFromListBlock(Block):
             default=False, description="Whether to return the removed item."
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         updated_list: List[Any] = SchemaField(description="The list after removal.")
         removed_item: Any = SchemaField(description="The removed item if requested.")
-        error: str = SchemaField(description="Error message if the operation failed.")
 
     def __init__(self):
         super().__init__(
@@ -617,17 +617,16 @@ class RemoveFromListBlock(Block):
 
 
 class ReplaceListItemBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         list: List[Any] = SchemaField(description="The list to modify.")
         index: int = SchemaField(
             description="Index of the item to replace (supports negative indices)."
         )
         value: Any = SchemaField(description="The new value for the given index.")
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         updated_list: List[Any] = SchemaField(description="The list after replacement.")
         old_item: Any = SchemaField(description="The item that was replaced.")
-        error: str = SchemaField(description="Error message if the operation failed.")
 
     def __init__(self):
         super().__init__(
@@ -662,10 +661,10 @@ class ReplaceListItemBlock(Block):
 
 
 class ListIsEmptyBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         list: List[Any] = SchemaField(description="The list to check.")
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         is_empty: bool = SchemaField(description="True if the list is empty.")
 
     def __init__(self):
@@ -681,3 +680,58 @@ class ListIsEmptyBlock(Block):
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         yield "is_empty", len(input_data.list) == 0
+
+
+class ConcatenateListsBlock(Block):
+    class Input(BlockSchemaInput):
+        lists: List[List[Any]] = SchemaField(
+            description="A list of lists to concatenate together. All lists will be combined in order into a single list.",
+            placeholder="e.g., [[1, 2], [3, 4], [5, 6]]",
+        )
+
+    class Output(BlockSchemaOutput):
+        concatenated_list: List[Any] = SchemaField(
+            description="The concatenated list containing all elements from all input lists in order."
+        )
+        error: str = SchemaField(
+            description="Error message if concatenation failed due to invalid input types."
+        )
+
+    def __init__(self):
+        super().__init__(
+            id="3cf9298b-5817-4141-9d80-7c2cc5199c8e",
+            description="Concatenates multiple lists into a single list. All elements from all input lists are combined in order.",
+            categories={BlockCategory.BASIC},
+            input_schema=ConcatenateListsBlock.Input,
+            output_schema=ConcatenateListsBlock.Output,
+            test_input=[
+                {"lists": [[1, 2, 3], [4, 5, 6]]},
+                {"lists": [["a", "b"], ["c"], ["d", "e", "f"]]},
+                {"lists": [[1, 2], []]},
+                {"lists": []},
+            ],
+            test_output=[
+                ("concatenated_list", [1, 2, 3, 4, 5, 6]),
+                ("concatenated_list", ["a", "b", "c", "d", "e", "f"]),
+                ("concatenated_list", [1, 2]),
+                ("concatenated_list", []),
+            ],
+        )
+
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
+        concatenated = []
+        for idx, lst in enumerate(input_data.lists):
+            if lst is None:
+                # Skip None values to avoid errors
+                continue
+            if not isinstance(lst, list):
+                # Type validation: each item must be a list
+                # Strings are iterable and would cause extend() to iterate character-by-character
+                # Non-iterable types would raise TypeError
+                yield "error", (
+                    f"Invalid input at index {idx}: expected a list, got {type(lst).__name__}. "
+                    f"All items in 'lists' must be lists (e.g., [[1, 2], [3, 4]])."
+                )
+                return
+            concatenated.extend(lst)
+        yield "concatenated_list", concatenated

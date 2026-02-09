@@ -23,7 +23,13 @@ from backend.blocks.twitter._types import (
     UserExpansionsFilter,
 )
 from backend.blocks.twitter.tweepy_exceptions import handle_tweepy_exception
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import SchemaField
 
 
@@ -32,7 +38,7 @@ class TwitterRetweetBlock(Block):
     Retweets a tweet on Twitter
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: TwitterCredentialsInput = TwitterCredentialsField(
             ["tweet.read", "tweet.write", "users.read", "offline.access"]
         )
@@ -42,9 +48,8 @@ class TwitterRetweetBlock(Block):
             placeholder="Enter tweet ID",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         success: bool = SchemaField(description="Whether the retweet was successful")
-        error: str = SchemaField(description="Error message if the retweet failed")
 
     def __init__(self):
         super().__init__(
@@ -107,7 +112,7 @@ class TwitterRemoveRetweetBlock(Block):
     Removes a retweet on Twitter
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: TwitterCredentialsInput = TwitterCredentialsField(
             ["tweet.read", "tweet.write", "users.read", "offline.access"]
         )
@@ -117,11 +122,10 @@ class TwitterRemoveRetweetBlock(Block):
             placeholder="Enter tweet ID",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         success: bool = SchemaField(
             description="Whether the retweet was successfully removed"
         )
-        error: str = SchemaField(description="Error message if the removal failed")
 
     def __init__(self):
         super().__init__(
@@ -207,7 +211,7 @@ class TwitterGetRetweetersBlock(Block):
             default="",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         # Common Outputs that user commonly uses
         ids: list = SchemaField(description="List of user ids who retweeted")
         names: list = SchemaField(description="List of user names who retweeted")
@@ -224,8 +228,6 @@ class TwitterGetRetweetersBlock(Block):
         meta: dict = SchemaField(
             description="Provides metadata such as pagination info (next_token) or result counts"
         )
-
-        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(

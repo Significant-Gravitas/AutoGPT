@@ -1,77 +1,84 @@
-import React, {
-  useState,
-  useEffect,
-  useCallback,
-  useRef,
-  useContext,
-} from "react";
-import Link from "next/link";
-import { NodeProps, useReactFlow, Node as XYNode, Edge } from "@xyflow/react";
-import "@xyflow/react/dist/style.css";
-import "./customnode.css";
-import InputModalComponent from "../InputModalComponent";
-import OutputModalComponent from "../OutputModalComponent";
-import {
-  BlockIORootSchema,
-  BlockIOSubSchema,
-  BlockIOStringSubSchema,
-  Category,
-  NodeExecutionResult,
-  BlockUIType,
-  BlockCost,
-} from "@/lib/autogpt-server-api";
-import {
-  beautifyString,
-  cn,
-  getValue,
-  hasNonNullNonObjectValue,
-  isObject,
-  parseKeys,
-  setNestedProperty,
-} from "@/lib/utils";
-import { Button } from "@/components/atoms/Button/Button";
-import { TextRenderer } from "@/components/__legacy__/ui/render";
-import { history } from "../history";
-import NodeHandle from "../NodeHandle";
-import { NodeGenericInputField, NodeTextBoxInput } from "../NodeInputs";
-import { getPrimaryCategoryColor } from "@/lib/utils";
-import { BuilderContext } from "../Flow/Flow";
-import { Badge } from "../../../../../../components/__legacy__/ui/badge";
-import NodeOutputs from "../NodeOutputs";
-import { IconCoin } from "../../../../../../components/__legacy__/ui/icons";
-import * as Separator from "@radix-ui/react-separator";
-import * as ContextMenu from "@radix-ui/react-context-menu";
-import {
-  Alert,
-  AlertDescription,
-} from "../../../../../../components/molecules/Alert/Alert";
-import {
-  DotsVerticalIcon,
-  TrashIcon,
-  CopyIcon,
-  ExitIcon,
-  Pencil1Icon,
-} from "@radix-ui/react-icons";
-import { InfoIcon, Key } from "@phosphor-icons/react";
-import useCredits from "@/hooks/useCredits";
 import { getV1GetAyrshareSsoUrl } from "@/app/api/__generated__/endpoints/integrations/integrations";
-import { toast } from "@/components/molecules/Toast/use-toast";
 import { Input } from "@/components/__legacy__/ui/input";
+import { TextRenderer } from "@/components/__legacy__/ui/render";
+import { Button } from "@/components/atoms/Button/Button";
+import { Switch } from "@/components/atoms/Switch/Switch";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
-import { Switch } from "@/components/atoms/Switch/Switch";
+import { toast } from "@/components/molecules/Toast/use-toast";
+import useCredits from "@/hooks/useCredits";
+import {
+  BlockCost,
+  BlockIORootSchema,
+  BlockIOStringSubSchema,
+  BlockIOSubSchema,
+  BlockUIType,
+  Category,
+  GraphInputSchema,
+  GraphOutputSchema,
+  NodeExecutionResult,
+} from "@/lib/autogpt-server-api";
+import {
+  beautifyString,
+  cn,
+  fillObjectDefaultsFromSchema,
+  getPrimaryCategoryColor,
+  getValue,
+  hasNonNullNonObjectValue,
+  isObject,
+  parseKeys,
+  setNestedProperty,
+} from "@/lib/utils";
+import { InfoIcon, Key } from "@phosphor-icons/react";
+import * as ContextMenu from "@radix-ui/react-context-menu";
+import {
+  CopyIcon,
+  DotsVerticalIcon,
+  ExitIcon,
+  Pencil1Icon,
+  TrashIcon,
+} from "@radix-ui/react-icons";
+import * as Separator from "@radix-ui/react-separator";
+import { Edge, NodeProps, useReactFlow, Node as XYNode } from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
+import Link from "next/link";
+import React, {
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import { Badge } from "@/components/__legacy__/ui/badge";
+import { IconCoin } from "@/components/__legacy__/ui/icons";
+import { Alert, AlertDescription } from "@/components/molecules/Alert/Alert";
+import { BuilderContext } from "../Flow/Flow";
+import { history } from "../history";
+import InputModalComponent from "../InputModalComponent";
+import NodeHandle from "../NodeHandle";
+import { NodeGenericInputField, NodeTextBoxInput } from "../NodeInputs";
+import NodeOutputs from "../NodeOutputs";
+import OutputModalComponent from "../OutputModalComponent";
+import "./customnode.css";
+import { SubAgentUpdateBar } from "./SubAgentUpdateBar";
+import { IncompatibilityDialog } from "./IncompatibilityDialog";
+import {
+  useSubAgentUpdate,
+  createUpdatedAgentNodeInputs,
+  getBrokenEdgeIDs,
+} from "../../../hooks/useSubAgentUpdate";
 
-export type ConnectionData = Array<{
-  edge_id: string;
+export type ConnectedEdge = {
+  id: string;
   source: string;
   sourceHandle: string;
   target: string;
   targetHandle: string;
-}>;
+};
 
 export type CustomNodeData = {
   blockType: string;
@@ -82,7 +89,7 @@ export type CustomNodeData = {
   inputSchema: BlockIORootSchema;
   outputSchema: BlockIORootSchema;
   hardcodedValues: { [key: string]: any };
-  connections: ConnectionData;
+  connections: ConnectedEdge[];
   isOutputOpen: boolean;
   status?: NodeExecutionResult["status"];
   /** executionResults contains outputs across multiple executions
@@ -97,7 +104,7 @@ export type CustomNodeData = {
   errors?: { [key: string]: string };
   isOutputStatic?: boolean;
   uiType: BlockUIType;
-  metadata?: { [key: string]: any };
+  metadata?: { customized_name?: string; [key: string]: any };
 };
 
 export type CustomNode = XYNode<CustomNodeData, "custom">;
@@ -129,20 +136,199 @@ export const CustomNode = React.memo(
 
     let subGraphID = "";
 
-    if (data.uiType === BlockUIType.AGENT) {
-      // Display the graph's schema instead AgentExecutorBlock's schema.
-      data.inputSchema = data.hardcodedValues?.input_schema || {};
-      data.outputSchema = data.hardcodedValues?.output_schema || {};
-      subGraphID = data.hardcodedValues?.graph_id || subGraphID;
-    }
-
     if (!builderContext) {
       throw new Error(
         "BuilderContext consumer must be inside FlowEditor component",
       );
     }
 
-    const { libraryAgent, setIsAnyModalOpen, getNextNodeId } = builderContext;
+    const {
+      libraryAgent,
+      setIsAnyModalOpen,
+      getNextNodeId,
+      availableFlows,
+      resolutionMode,
+      enterResolutionMode,
+    } = builderContext;
+
+    // Check if this node is in resolution mode (moved up for schema merge logic)
+    const isInResolutionMode =
+      resolutionMode.active && resolutionMode.nodeId === id;
+
+    if (data.uiType === BlockUIType.AGENT) {
+      // Display the graph's schema instead AgentExecutorBlock's schema.
+      const currentInputSchema = data.hardcodedValues?.input_schema || {};
+      const currentOutputSchema = data.hardcodedValues?.output_schema || {};
+      subGraphID = data.hardcodedValues?.graph_id || subGraphID;
+
+      // During resolution mode, merge old connected inputs/outputs with new schema
+      if (isInResolutionMode && resolutionMode.pendingUpdate) {
+        const newInputSchema =
+          (resolutionMode.pendingUpdate.input_schema as BlockIORootSchema) ||
+          {};
+        const newOutputSchema =
+          (resolutionMode.pendingUpdate.output_schema as BlockIORootSchema) ||
+          {};
+
+        // Merge input schemas: start with new schema, add old connected inputs that are missing
+        const mergedInputProps = { ...newInputSchema.properties };
+        const incomp = resolutionMode.incompatibilities;
+        if (incomp && currentInputSchema.properties) {
+          // Add back missing inputs that have connections (so user can see/delete them)
+          incomp.missingInputs.forEach((inputName) => {
+            if (currentInputSchema.properties[inputName]) {
+              mergedInputProps[inputName] =
+                currentInputSchema.properties[inputName];
+            }
+          });
+          // Add back inputs with type mismatches (keep old type so connection still works visually)
+          incomp.inputTypeMismatches.forEach((mismatch) => {
+            if (currentInputSchema.properties[mismatch.name]) {
+              mergedInputProps[mismatch.name] =
+                currentInputSchema.properties[mismatch.name];
+            }
+          });
+        }
+
+        // Merge output schemas: start with new schema, add old connected outputs that are missing
+        const mergedOutputProps = { ...newOutputSchema.properties };
+        if (incomp && currentOutputSchema.properties) {
+          incomp.missingOutputs.forEach((outputName) => {
+            if (currentOutputSchema.properties[outputName]) {
+              mergedOutputProps[outputName] =
+                currentOutputSchema.properties[outputName];
+            }
+          });
+        }
+
+        data.inputSchema = {
+          ...newInputSchema,
+          properties: mergedInputProps,
+        };
+        data.outputSchema = {
+          ...newOutputSchema,
+          properties: mergedOutputProps,
+        };
+      } else {
+        data.inputSchema = currentInputSchema;
+        data.outputSchema = currentOutputSchema;
+      }
+    }
+
+    const setHardcodedValues = useCallback(
+      (values: any) => {
+        updateNodeData(id, { hardcodedValues: values });
+      },
+      [id, updateNodeData],
+    );
+
+    // Sub-agent update detection
+    const isAgentBlock = data.uiType === BlockUIType.AGENT;
+    const graphId = isAgentBlock ? data.hardcodedValues?.graph_id : undefined;
+    const graphVersion = isAgentBlock
+      ? data.hardcodedValues?.graph_version
+      : undefined;
+
+    const subAgentUpdate = useSubAgentUpdate(
+      id,
+      graphId,
+      graphVersion,
+      isAgentBlock
+        ? (data.hardcodedValues?.input_schema as GraphInputSchema)
+        : undefined,
+      isAgentBlock
+        ? (data.hardcodedValues?.output_schema as GraphOutputSchema)
+        : undefined,
+      data.connections,
+      availableFlows,
+    );
+
+    const [showIncompatibilityDialog, setShowIncompatibilityDialog] =
+      useState(false);
+
+    // Helper to check if a handle is broken (for resolution mode)
+    const isInputHandleBroken = useCallback(
+      (handleName: string): boolean => {
+        if (!isInResolutionMode || !resolutionMode.incompatibilities) {
+          return false;
+        }
+        const incomp = resolutionMode.incompatibilities;
+        return (
+          incomp.missingInputs.includes(handleName) ||
+          incomp.inputTypeMismatches.some((m) => m.name === handleName)
+        );
+      },
+      [isInResolutionMode, resolutionMode.incompatibilities],
+    );
+
+    const isOutputHandleBroken = useCallback(
+      (handleName: string): boolean => {
+        if (!isInResolutionMode || !resolutionMode.incompatibilities) {
+          return false;
+        }
+        return resolutionMode.incompatibilities.missingOutputs.includes(
+          handleName,
+        );
+      },
+      [isInResolutionMode, resolutionMode.incompatibilities],
+    );
+
+    // Handle update button click
+    const handleUpdateClick = useCallback(() => {
+      if (!subAgentUpdate.latestGraph) return;
+
+      if (subAgentUpdate.isCompatible) {
+        // Compatible update - directly apply
+        const updatedValues = createUpdatedAgentNodeInputs(
+          data.hardcodedValues,
+          subAgentUpdate.latestGraph,
+        );
+        setHardcodedValues(updatedValues);
+        toast({
+          title: "Agent updated",
+          description: `Updated to version ${subAgentUpdate.latestVersion}`,
+        });
+      } else {
+        // Incompatible update - show dialog
+        setShowIncompatibilityDialog(true);
+      }
+    }, [subAgentUpdate, data.hardcodedValues, setHardcodedValues]);
+
+    // Handle confirm incompatible update
+    const handleConfirmIncompatibleUpdate = useCallback(() => {
+      if (!subAgentUpdate.latestGraph || !subAgentUpdate.incompatibilities) {
+        return;
+      }
+
+      // Create the updated values but DON'T apply them yet
+      const updatedValues = createUpdatedAgentNodeInputs(
+        data.hardcodedValues,
+        subAgentUpdate.latestGraph,
+      );
+
+      // Get broken edge IDs
+      const brokenEdgeIds = getBrokenEdgeIDs(
+        data.connections,
+        subAgentUpdate.incompatibilities,
+        id,
+      );
+
+      // Enter resolution mode with pending update (don't apply schema yet)
+      enterResolutionMode(
+        id,
+        subAgentUpdate.incompatibilities,
+        brokenEdgeIds,
+        updatedValues,
+      );
+
+      setShowIncompatibilityDialog(false);
+    }, [
+      subAgentUpdate,
+      data.hardcodedValues,
+      data.connections,
+      id,
+      enterResolutionMode,
+    ]);
 
     useEffect(() => {
       if (data.executionResults || data.status) {
@@ -157,44 +343,6 @@ export const CustomNode = React.memo(
     useEffect(() => {
       setIsAnyModalOpen?.(isModalOpen || isOutputModalOpen);
     }, [isModalOpen, isOutputModalOpen, data, setIsAnyModalOpen]);
-
-    const fillDefaults = useCallback((obj: any, schema: any) => {
-      // Iterate over the schema properties
-      for (const key in schema.properties) {
-        if (schema.properties.hasOwnProperty(key)) {
-          const propertySchema = schema.properties[key];
-
-          // If the property is not in the object, initialize it with the default value
-          if (!obj.hasOwnProperty(key)) {
-            if (propertySchema.default !== undefined) {
-              obj[key] = propertySchema.default;
-            } else if (propertySchema.type === "object") {
-              // Recursively fill defaults for nested objects
-              obj[key] = fillDefaults({}, propertySchema);
-            } else if (propertySchema.type === "array") {
-              // Recursively fill defaults for arrays
-              obj[key] = fillDefaults([], propertySchema);
-            }
-          } else {
-            // If the property exists, recursively fill defaults for nested objects/arrays
-            if (propertySchema.type === "object") {
-              obj[key] = fillDefaults(obj[key], propertySchema);
-            } else if (propertySchema.type === "array") {
-              obj[key] = fillDefaults(obj[key], propertySchema);
-            }
-          }
-        }
-      }
-
-      return obj;
-    }, []);
-
-    const setHardcodedValues = useCallback(
-      (values: any) => {
-        updateNodeData(id, { hardcodedValues: values });
-      },
-      [id, updateNodeData],
-    );
 
     const handleTitleEdit = useCallback(() => {
       setIsEditingTitle(true);
@@ -231,17 +379,19 @@ export const CustomNode = React.memo(
 
     useEffect(() => {
       isInitialSetup.current = false;
+      if (data.backend_id) return; // don't auto-modify existing nodes
+
       if (data.uiType === BlockUIType.AGENT) {
         setHardcodedValues({
           ...data.hardcodedValues,
-          inputs: fillDefaults(
+          inputs: fillObjectDefaultsFromSchema(
             data.hardcodedValues.inputs ?? {},
             data.inputSchema,
           ),
         });
       } else {
         setHardcodedValues(
-          fillDefaults(data.hardcodedValues, data.inputSchema),
+          fillObjectDefaultsFromSchema(data.hardcodedValues, data.inputSchema),
         );
       }
     }, []);
@@ -286,6 +436,7 @@ export const CustomNode = React.memo(
                 isConnected={isOutputHandleConnected(propKey)}
                 schema={fieldSchema}
                 side="right"
+                isBroken={isOutputHandleBroken(propKey)}
               />
               {"properties" in fieldSchema &&
                 renderHandles(
@@ -394,6 +545,7 @@ export const CustomNode = React.memo(
               // For OUTPUT blocks, only show the 'value' (hides 'name') input connection handle
               !(nodeType == BlockUIType.OUTPUT && propKey == "name");
             const isConnected = isInputHandleConnected(propKey);
+
             return (
               !isHidden &&
               (isRequired || isAdvancedOpen || isConnected || !isAdvanced) && (
@@ -415,6 +567,7 @@ export const CustomNode = React.memo(
                       isRequired={isRequired}
                       schema={propSchema}
                       side="left"
+                      isBroken={isInputHandleBroken(propKey)}
                     />
                   ) : (
                     propKey !== "credentials" &&
@@ -675,6 +828,8 @@ export const CustomNode = React.memo(
           return "border-purple-200 dark:border-purple-800 border-4";
         case "queued":
           return "border-cyan-200 dark:border-cyan-800 border-4";
+        case "review":
+          return "border-orange-200 dark:border-orange-800 border-4";
         default:
           return "";
       }
@@ -694,13 +849,15 @@ export const CustomNode = React.memo(
           return "bg-purple-200 dark:bg-purple-800";
         case "queued":
           return "bg-cyan-200 dark:bg-cyan-800";
+        case "review":
+          return "bg-orange-200 dark:bg-orange-800";
         default:
           return "";
       }
     })();
 
     const hasAdvancedFields =
-      data.inputSchema &&
+      data.inputSchema?.properties &&
       Object.entries(data.inputSchema.properties).some(([key, value]) => {
         return (
           value.advanced === true && !data.inputSchema.required?.includes(key)
@@ -850,14 +1007,16 @@ export const CustomNode = React.memo(
                 {isTitleHovered && !isEditingTitle && (
                   <button
                     onClick={handleTitleEdit}
-                    className="cursor-pointer rounded p-1 opacity-0 transition-opacity hover:bg-gray-100 group-hover:opacity-100"
+                    className="cursor-pointer rounded p-1 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-gray-100"
                     aria-label="Edit title"
                   >
                     <Pencil1Icon className="h-4 w-4" />
                   </button>
                 )}
               </div>
-              <span className="text-xs text-gray-500">#{id.split("-")[0]}</span>
+              <span className="text-xs text-gray-500">
+                #{(data.backend_id || id).split("-")[0]}
+              </span>
 
               <div className="w-auto grow" />
 
@@ -896,6 +1055,22 @@ export const CustomNode = React.memo(
 
           <ContextMenuContent />
         </div>
+
+        {/* Sub-agent Update Bar - shown below header */}
+        {isAgentBlock && (subAgentUpdate.hasUpdate || isInResolutionMode) && (
+          <SubAgentUpdateBar
+            currentVersion={subAgentUpdate.currentVersion}
+            latestVersion={subAgentUpdate.latestVersion}
+            isCompatible={subAgentUpdate.isCompatible}
+            incompatibilities={
+              isInResolutionMode
+                ? resolutionMode.incompatibilities
+                : subAgentUpdate.incompatibilities
+            }
+            onUpdate={handleUpdateClick}
+            isInResolutionMode={isInResolutionMode}
+          />
+        )}
 
         {/* Body */}
         <div className="mx-5 my-6 rounded-b-xl">
@@ -1036,6 +1211,8 @@ export const CustomNode = React.memo(
                             data.status === "QUEUED",
                           "border-gray-600 bg-gray-600 font-black":
                             data.status === "INCOMPLETE",
+                          "border-orange-600 bg-orange-600 text-white":
+                            data.status === "REVIEW",
                         },
                   )}
                 >
@@ -1066,9 +1243,24 @@ export const CustomNode = React.memo(
     );
 
     return (
-      <ContextMenu.Root>
-        <ContextMenu.Trigger>{nodeContent()}</ContextMenu.Trigger>
-      </ContextMenu.Root>
+      <>
+        <ContextMenu.Root>
+          <ContextMenu.Trigger>{nodeContent()}</ContextMenu.Trigger>
+        </ContextMenu.Root>
+
+        {/* Incompatibility Dialog for sub-agent updates */}
+        {isAgentBlock && subAgentUpdate.incompatibilities && (
+          <IncompatibilityDialog
+            isOpen={showIncompatibilityDialog}
+            onClose={() => setShowIncompatibilityDialog(false)}
+            onConfirm={handleConfirmIncompatibleUpdate}
+            currentVersion={subAgentUpdate.currentVersion}
+            latestVersion={subAgentUpdate.latestVersion}
+            agentName={data.blockType || "Agent"}
+            incompatibilities={subAgentUpdate.incompatibilities}
+          />
+        )}
+      </>
     );
   },
   (prevProps, nextProps) => {

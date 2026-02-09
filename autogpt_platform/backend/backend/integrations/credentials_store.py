@@ -15,6 +15,7 @@ from backend.data.model import (
     OAuth2Credentials,
     OAuthState,
     UserIntegrations,
+    UserPasswordCredentials,
 )
 from backend.data.redis_client import get_redis_async
 from backend.util.settings import Settings
@@ -95,9 +96,9 @@ jina_credentials = APIKeyCredentials(
 )
 unreal_credentials = APIKeyCredentials(
     id="66f20754-1b81-48e4-91d0-f4f0dd82145f",
-    provider="unreal",
+    provider="unreal_speech",
     api_key=SecretStr(settings.secrets.unreal_speech_api_key),
-    title="Use Credits for Unreal",
+    title="Use Credits for Unreal Speech",
     expires_at=None,
 )
 open_router_credentials = APIKeyCredentials(
@@ -207,6 +208,30 @@ v0_credentials = APIKeyCredentials(
     expires_at=None,
 )
 
+webshare_proxy_credentials = UserPasswordCredentials(
+    id="a5b3c7d9-2e4f-4a6b-8c1d-9e0f1a2b3c4d",
+    provider="webshare_proxy",
+    username=SecretStr(settings.secrets.webshare_proxy_username),
+    password=SecretStr(settings.secrets.webshare_proxy_password),
+    title="Use Credits for Webshare Proxy",
+)
+
+openweathermap_credentials = APIKeyCredentials(
+    id="8b3d4e5f-6a7b-8c9d-0e1f-2a3b4c5d6e7f",
+    provider="openweathermap",
+    api_key=SecretStr(settings.secrets.openweathermap_api_key),
+    title="Use Credits for OpenWeatherMap",
+    expires_at=None,
+)
+
+elevenlabs_credentials = APIKeyCredentials(
+    id="f4a8b6c2-3d1e-4f5a-9b8c-7d6e5f4a3b2c",
+    provider="elevenlabs",
+    api_key=SecretStr(settings.secrets.elevenlabs_api_key),
+    title="Use Credits for ElevenLabs",
+    expires_at=None,
+)
+
 DEFAULT_CREDENTIALS = [
     ollama_credentials,
     revid_credentials,
@@ -233,7 +258,25 @@ DEFAULT_CREDENTIALS = [
     google_maps_credentials,
     llama_api_credentials,
     v0_credentials,
+    webshare_proxy_credentials,
+    openweathermap_credentials,
+    elevenlabs_credentials,
 ]
+
+SYSTEM_CREDENTIAL_IDS = {cred.id for cred in DEFAULT_CREDENTIALS}
+
+# Set of providers that have system credentials available
+SYSTEM_PROVIDERS = {cred.provider for cred in DEFAULT_CREDENTIALS}
+
+
+def is_system_credential(credential_id: str) -> bool:
+    """Check if a credential ID belongs to a system-managed credential."""
+    return credential_id in SYSTEM_CREDENTIAL_IDS
+
+
+def is_system_provider(provider: str) -> bool:
+    """Check if a provider has system-managed credentials available."""
+    return provider in SYSTEM_PROVIDERS
 
 
 class IntegrationCredentialsStore:
@@ -321,6 +364,19 @@ class IntegrationCredentialsStore:
             all_credentials.append(zerobounce_credentials)
         if settings.secrets.google_maps_api_key:
             all_credentials.append(google_maps_credentials)
+        if settings.secrets.llama_api_key:
+            all_credentials.append(llama_api_credentials)
+        if settings.secrets.v0_api_key:
+            all_credentials.append(v0_credentials)
+        if (
+            settings.secrets.webshare_proxy_username
+            and settings.secrets.webshare_proxy_password
+        ):
+            all_credentials.append(webshare_proxy_credentials)
+        if settings.secrets.openweathermap_api_key:
+            all_credentials.append(openweathermap_credentials)
+        if settings.secrets.elevenlabs_api_key:
+            all_credentials.append(elevenlabs_credentials)
         return all_credentials
 
     async def get_creds_by_id(
@@ -399,7 +455,15 @@ class IntegrationCredentialsStore:
     # ===================== OAUTH STATES ===================== #
 
     async def store_state_token(
-        self, user_id: str, provider: str, scopes: list[str], use_pkce: bool = False
+        self,
+        user_id: str,
+        provider: str,
+        scopes: list[str],
+        use_pkce: bool = False,
+        # New parameters for external API OAuth flows
+        callback_url: Optional[str] = None,
+        state_metadata: Optional[dict] = None,
+        initiated_by_api_key_id: Optional[str] = None,
     ) -> tuple[str, str]:
         token = secrets.token_urlsafe(32)
         expires_at = datetime.now(timezone.utc) + timedelta(minutes=10)
@@ -412,6 +476,10 @@ class IntegrationCredentialsStore:
             code_verifier=code_verifier,
             expires_at=int(expires_at.timestamp()),
             scopes=scopes,
+            # External API OAuth flow fields
+            callback_url=callback_url,
+            state_metadata=state_metadata or {},
+            initiated_by_api_key_id=initiated_by_api_key_id,
         )
 
         async with self.edit_user_integrations(user_id) as user_integrations:

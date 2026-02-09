@@ -18,6 +18,7 @@ class ProviderName(str, Enum):
     DISCORD = "discord"
     D_ID = "d_id"
     E2B = "e2b"
+    ELEVENLABS = "elevenlabs"
     FAL = "fal"
     GITHUB = "github"
     GOOGLE = "google"
@@ -49,6 +50,7 @@ class ProviderName(str, Enum):
     TODOIST = "todoist"
     UNREAL_SPEECH = "unreal_speech"
     V0 = "v0"
+    WEBSHARE_PROXY = "webshare_proxy"
     ZEROBOUNCE = "zerobounce"
 
     @classmethod

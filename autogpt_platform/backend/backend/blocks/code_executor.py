@@ -4,9 +4,15 @@ from typing import Any, Literal, Optional
 from e2b_code_interpreter import AsyncSandbox
 from e2b_code_interpreter import Result as E2BExecutionResult
 from e2b_code_interpreter.charts import Chart as E2BExecutionResultChart
-from pydantic import BaseModel, JsonValue, SecretStr
+from pydantic import BaseModel, Field, JsonValue, SecretStr
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import (
     APIKeyCredentials,
     CredentialsField,
@@ -61,7 +67,7 @@ class MainCodeExecutionResult(BaseModel):
     jpeg: Optional[str] = None
     pdf: Optional[str] = None
     latex: Optional[str] = None
-    json: Optional[JsonValue] = None  # type: ignore (reportIncompatibleMethodOverride)
+    json_data: Optional[JsonValue] = Field(None, alias="json")
     javascript: Optional[str] = None
     data: Optional[dict] = None
     chart: Optional[Chart] = None
@@ -159,7 +165,7 @@ class ExecuteCodeBlock(Block, BaseE2BExecutorMixin):
     # TODO : Add support to upload and download files
     # NOTE: Currently, you can only customize the CPU and Memory
     #       by creating a pre customized sandbox template
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput[
             Literal[ProviderName.E2B], Literal["api_key"]
         ] = CredentialsField(
@@ -217,7 +223,7 @@ class ExecuteCodeBlock(Block, BaseE2BExecutorMixin):
             advanced=True,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         main_result: MainCodeExecutionResult = SchemaField(
             title="Main Result", description="The main result from the code execution"
         )
@@ -232,7 +238,6 @@ class ExecuteCodeBlock(Block, BaseE2BExecutorMixin):
             description="Standard output logs from execution"
         )
         stderr_logs: str = SchemaField(description="Standard error logs from execution")
-        error: str = SchemaField(description="Error message if execution failed")
 
     def __init__(self):
         super().__init__(
@@ -296,7 +301,7 @@ class ExecuteCodeBlock(Block, BaseE2BExecutorMixin):
 
 
 class InstantiateCodeSandboxBlock(Block, BaseE2BExecutorMixin):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput[
             Literal[ProviderName.E2B], Literal["api_key"]
         ] = CredentialsField(
@@ -346,7 +351,7 @@ class InstantiateCodeSandboxBlock(Block, BaseE2BExecutorMixin):
             advanced=True,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         sandbox_id: str = SchemaField(description="ID of the sandbox instance")
         response: str = SchemaField(
             title="Text Result",
@@ -356,7 +361,6 @@ class InstantiateCodeSandboxBlock(Block, BaseE2BExecutorMixin):
             description="Standard output logs from execution"
         )
         stderr_logs: str = SchemaField(description="Standard error logs from execution")
-        error: str = SchemaField(description="Error message if execution failed")
 
     def __init__(self):
         super().__init__(
@@ -421,7 +425,7 @@ class InstantiateCodeSandboxBlock(Block, BaseE2BExecutorMixin):
 
 
 class ExecuteCodeStepBlock(Block, BaseE2BExecutorMixin):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput[
             Literal[ProviderName.E2B], Literal["api_key"]
         ] = CredentialsField(
@@ -454,7 +458,7 @@ class ExecuteCodeStepBlock(Block, BaseE2BExecutorMixin):
             default=False,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         main_result: MainCodeExecutionResult = SchemaField(
             title="Main Result", description="The main result from the code execution"
         )
@@ -469,7 +473,6 @@ class ExecuteCodeStepBlock(Block, BaseE2BExecutorMixin):
             description="Standard output logs from execution"
         )
         stderr_logs: str = SchemaField(description="Standard error logs from execution")
-        error: str = SchemaField(description="Error message if execution failed")
 
     def __init__(self):
         super().__init__(

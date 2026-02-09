@@ -18,14 +18,9 @@ export function AgentActivityDropdown() {
     recentFailures,
     isOpen,
     setIsOpen,
-    isAgentActivityEnabled,
   } = useAgentActivityDropdown();
 
   const activeCount = activeExecutions.length;
-
-  if (!isAgentActivityEnabled) {
-    return null;
-  }
 
   return (
     <Popover open={isOpen} onOpenChange={setIsOpen}>
@@ -53,8 +48,7 @@ export function AgentActivityDropdown() {
                 className="absolute bottom-[-2.5rem] left-1/2 z-50 hidden -translate-x-1/2 transform whitespace-nowrap rounded-small bg-white px-4 py-2 shadow-md group-hover:block"
               >
                 <Text variant="body-medium">
-                  {activeCount} running agent
-                  {activeCount > 1 ? "s" : ""}
+                  {activeCount} active agent{activeCount > 1 ? "s" : ""}
                 </Text>
               </div>
             </>

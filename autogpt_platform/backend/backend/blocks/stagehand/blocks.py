@@ -1,6 +1,7 @@
 import logging
 import signal
 import threading
+import warnings
 from contextlib import contextmanager
 from enum import Enum
 
@@ -21,10 +22,14 @@ from backend.sdk import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
+    BlockSchemaInput,
+    BlockSchemaOutput,
     CredentialsMetaInput,
     SchemaField,
 )
+
+# Suppress false positive cleanup warning of litellm (a dependency of stagehand)
+warnings.filterwarnings("ignore", module="litellm.llms.custom_httpx")
 
 # Store the original method
 original_register_signal_handlers = stagehand.main.Stagehand._register_signal_handlers
@@ -78,7 +83,7 @@ class StagehandRecommendedLlmModel(str, Enum):
     GPT41_MINI = "gpt-4.1-mini-2025-04-14"
 
     # Anthropic
-    CLAUDE_3_7_SONNET = "claude-3-7-sonnet-20250219"
+    CLAUDE_4_5_SONNET = "claude-sonnet-4-5-20250929"
 
     @property
     def provider_name(self) -> str:
@@ -118,7 +123,7 @@ class StagehandRecommendedLlmModel(str, Enum):
 
 
 class StagehandObserveBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         # Browserbase credentials (Stagehand provider) or raw API key
         stagehand_credentials: CredentialsMetaInput = (
             stagehand_provider.credentials_field(
@@ -132,7 +137,7 @@ class StagehandObserveBlock(Block):
         model: StagehandRecommendedLlmModel = SchemaField(
             title="LLM Model",
             description="LLM to use for Stagehand (provider is inferred)",
-            default=StagehandRecommendedLlmModel.CLAUDE_3_7_SONNET,
+            default=StagehandRecommendedLlmModel.CLAUDE_4_5_SONNET,
             advanced=False,
         )
         model_credentials: AICredentials = AICredentialsField()
@@ -151,7 +156,7 @@ class StagehandObserveBlock(Block):
             default=45000,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         selector: str = SchemaField(description="XPath selector to locate element.")
         description: str = SchemaField(description="Human-readable description")
         method: str | None = SchemaField(description="Suggested action method")
@@ -177,10 +182,7 @@ class StagehandObserveBlock(Block):
         **kwargs,
     ) -> BlockOutput:
 
-        logger.info(f"OBSERVE: Stagehand credentials: {stagehand_credentials}")
-        logger.info(
-            f"OBSERVE: Model credentials: {model_credentials} for provider {model_credentials.provider} secret: {model_credentials.api_key.get_secret_value()}"
-        )
+        logger.debug(f"OBSERVE: Using model provider {model_credentials.provider}")
 
         with disable_signal_handling():
             stagehand = Stagehand(
@@ -211,7 +213,7 @@ class StagehandObserveBlock(Block):
 
 
 class StagehandActBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         # Browserbase credentials (Stagehand provider) or raw API key
         stagehand_credentials: CredentialsMetaInput = (
             stagehand_provider.credentials_field(
@@ -225,7 +227,7 @@ class StagehandActBlock(Block):
         model: StagehandRecommendedLlmModel = SchemaField(
             title="LLM Model",
             description="LLM to use for Stagehand (provider is inferred)",
-            default=StagehandRecommendedLlmModel.CLAUDE_3_7_SONNET,
+            default=StagehandRecommendedLlmModel.CLAUDE_4_5_SONNET,
             advanced=False,
         )
         model_credentials: AICredentials = AICredentialsField()
@@ -252,7 +254,7 @@ class StagehandActBlock(Block):
             default=60000,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         success: bool = SchemaField(
             description="Whether the action was completed successfully"
         )
@@ -277,10 +279,7 @@ class StagehandActBlock(Block):
         **kwargs,
     ) -> BlockOutput:
 
-        logger.info(f"ACT: Stagehand credentials: {stagehand_credentials}")
-        logger.info(
-            f"ACT: Model credentials: {model_credentials} for provider {model_credentials.provider} secret: {model_credentials.api_key.get_secret_value()}"
-        )
+        logger.debug(f"ACT: Using model provider {model_credentials.provider}")
 
         with disable_signal_handling():
             stagehand = Stagehand(
@@ -311,7 +310,7 @@ class StagehandActBlock(Block):
 
 
 class StagehandExtractBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         # Browserbase credentials (Stagehand provider) or raw API key
         stagehand_credentials: CredentialsMetaInput = (
             stagehand_provider.credentials_field(
@@ -325,7 +324,7 @@ class StagehandExtractBlock(Block):
         model: StagehandRecommendedLlmModel = SchemaField(
             title="LLM Model",
             description="LLM to use for Stagehand (provider is inferred)",
-            default=StagehandRecommendedLlmModel.CLAUDE_3_7_SONNET,
+            default=StagehandRecommendedLlmModel.CLAUDE_4_5_SONNET,
             advanced=False,
         )
         model_credentials: AICredentials = AICredentialsField()
@@ -344,7 +343,7 @@ class StagehandExtractBlock(Block):
             default=45000,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         extraction: str = SchemaField(description="Extracted data from the page.")
 
     def __init__(self):
@@ -365,10 +364,7 @@ class StagehandExtractBlock(Block):
         **kwargs,
     ) -> BlockOutput:
 
-        logger.info(f"EXTRACT: Stagehand credentials: {stagehand_credentials}")
-        logger.info(
-            f"EXTRACT: Model credentials: {model_credentials} for provider {model_credentials.provider} secret: {model_credentials.api_key.get_secret_value()}"
-        )
+        logger.debug(f"EXTRACT: Using model provider {model_credentials.provider}")
 
         with disable_signal_handling():
             stagehand = Stagehand(

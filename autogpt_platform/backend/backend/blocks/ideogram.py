@@ -2,9 +2,14 @@ from enum import Enum
 from typing import Any, Dict, Literal, Optional
 
 from pydantic import SecretStr
-from requests.exceptions import RequestException
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import (
     APIKeyCredentials,
     CredentialsField,
@@ -84,7 +89,7 @@ class UpscaleOption(str, Enum):
 
 
 class IdeogramModelBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput[
             Literal[ProviderName.IDEOGRAM], Literal["api_key"]
         ] = CredentialsField(
@@ -154,9 +159,8 @@ class IdeogramModelBlock(Block):
             advanced=True,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         result: str = SchemaField(description="Generated image URL")
-        error: str = SchemaField(description="Error message if the model run failed")
 
     def __init__(self):
         super().__init__(
@@ -327,8 +331,8 @@ class IdeogramModelBlock(Block):
         try:
             response = await Requests().post(url, headers=headers, json=data)
             return response.json()["data"][0]["url"]
-        except RequestException as e:
-            raise Exception(f"Failed to fetch image with V3 endpoint: {str(e)}")
+        except Exception as e:
+            raise ValueError(f"Failed to fetch image with V3 endpoint: {e}") from e
 
     async def _run_model_legacy(
         self,
@@ -380,8 +384,8 @@ class IdeogramModelBlock(Block):
         try:
             response = await Requests().post(url, headers=headers, json=data)
             return response.json()["data"][0]["url"]
-        except RequestException as e:
-            raise Exception(f"Failed to fetch image with legacy endpoint: {str(e)}")
+        except Exception as e:
+            raise ValueError(f"Failed to fetch image with legacy endpoint: {e}") from e
 
     async def upscale_image(self, api_key: SecretStr, image_url: str):
         url = "https://api.ideogram.ai/upscale"
@@ -408,5 +412,5 @@ class IdeogramModelBlock(Block):
 
             return (response.json())["data"][0]["url"]
 
-        except RequestException as e:
-            raise Exception(f"Failed to upscale image: {str(e)}")
+        except Exception as e:
+            raise ValueError(f"Failed to upscale image: {e}") from e

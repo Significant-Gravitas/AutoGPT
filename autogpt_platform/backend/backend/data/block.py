@@ -13,6 +13,7 @@ from typing import (
     Optional,
     Sequence,
     Type,
+    TypeAlias,
     TypeVar,
     cast,
     get_origin,
@@ -20,7 +21,6 @@ from typing import (
 
 import jsonref
 import jsonschema
-from autogpt_libs.utils.cache import cached
 from prisma.models import AgentBlock
 from prisma.types import AgentBlockCreateInput
 from pydantic import BaseModel
@@ -28,6 +28,14 @@ from pydantic import BaseModel
 from backend.data.model import NodeExecutionStats
 from backend.integrations.providers import ProviderName
 from backend.util import json
+from backend.util.cache import cached
+from backend.util.exceptions import (
+    BlockError,
+    BlockExecutionError,
+    BlockInputError,
+    BlockOutputError,
+    BlockUnknownError,
+)
 from backend.util.settings import Config
 
 from .model import (
@@ -35,12 +43,15 @@ from .model import (
     Credentials,
     CredentialsFieldInfo,
     CredentialsMetaInput,
+    SchemaField,
     is_credentials_field_name,
 )
 
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
+    from backend.data.execution import ExecutionContext
+
     from .graph import Link
 
 app_config = Config()
@@ -62,6 +73,7 @@ class BlockType(Enum):
     AGENT = "Agent"
     AI = "AI"
     AYRSHARE = "Ayrshare"
+    HUMAN_IN_THE_LOOP = "Human In The Loop"
 
 
 class BlockCategory(Enum):
@@ -234,7 +246,9 @@ class BlockSchema(BaseModel):
                         f"is not of type {CredentialsMetaInput.__name__}"
                     )
 
-                credentials_fields[field_name].validate_credentials_field_schema(cls)
+                CredentialsMetaInput.validate_credentials_field_schema(
+                    cls.get_field_schema(field_name), field_name
+                )
 
             elif field_name in credentials_fields:
                 raise KeyError(
@@ -257,13 +271,60 @@ class BlockSchema(BaseModel):
         }
 
     @classmethod
+    def get_auto_credentials_fields(cls) -> dict[str, dict[str, Any]]:
+        """
+        Get fields that have auto_credentials metadata (e.g., GoogleDriveFileInput).
+
+        Returns a dict mapping kwarg_name -> {field_name, auto_credentials_config}
+
+        Raises:
+            ValueError: If multiple fields have the same kwarg_name, as this would
+                cause silent overwriting and only the last field would be processed.
+        """
+        result: dict[str, dict[str, Any]] = {}
+        schema = cls.jsonschema()
+        properties = schema.get("properties", {})
+
+        for field_name, field_schema in properties.items():
+            auto_creds = field_schema.get("auto_credentials")
+            if auto_creds:
+                kwarg_name = auto_creds.get("kwarg_name", "credentials")
+                if kwarg_name in result:
+                    raise ValueError(
+                        f"Duplicate auto_credentials kwarg_name '{kwarg_name}' "
+                        f"in fields '{result[kwarg_name]['field_name']}' and "
+                        f"'{field_name}' on {cls.__qualname__}"
+                    )
+                result[kwarg_name] = {
+                    "field_name": field_name,
+                    "config": auto_creds,
+                }
+        return result
+
+    @classmethod
     def get_credentials_fields_info(cls) -> dict[str, CredentialsFieldInfo]:
-        return {
-            field_name: CredentialsFieldInfo.model_validate(
+        result = {}
+
+        # Regular credentials fields
+        for field_name in cls.get_credentials_fields().keys():
+            result[field_name] = CredentialsFieldInfo.model_validate(
                 cls.get_field_schema(field_name), by_alias=True
             )
-            for field_name in cls.get_credentials_fields().keys()
-        }
+
+        # Auto-generated credentials fields (from GoogleDriveFileInput etc.)
+        for kwarg_name, info in cls.get_auto_credentials_fields().items():
+            config = info["config"]
+            # Build a schema-like dict that CredentialsFieldInfo can parse
+            auto_schema = {
+                "credentials_provider": [config.get("provider", "google")],
+                "credentials_types": [config.get("type", "oauth2")],
+                "credentials_scopes": config.get("scopes"),
+            }
+            result[kwarg_name] = CredentialsFieldInfo.model_validate(
+                auto_schema, by_alias=True
+            )
+
+        return result
 
     @classmethod
     def get_input_defaults(cls, data: BlockInput) -> BlockInput:
@@ -279,12 +340,40 @@ class BlockSchema(BaseModel):
         return cls.get_required_fields() - set(data)
 
 
-BlockSchemaInputType = TypeVar("BlockSchemaInputType", bound=BlockSchema)
-BlockSchemaOutputType = TypeVar("BlockSchemaOutputType", bound=BlockSchema)
+class BlockSchemaInput(BlockSchema):
+    """
+    Base schema class for block inputs.
+    All block input schemas should extend this class for consistency.
+    """
 
-
-class EmptySchema(BlockSchema):
     pass
+
+
+class BlockSchemaOutput(BlockSchema):
+    """
+    Base schema class for block outputs that includes a standard error field.
+    All block output schemas should extend this class to ensure consistent error handling.
+    """
+
+    error: str = SchemaField(
+        description="Error message if the operation failed", default=""
+    )
+
+
+BlockSchemaInputType = TypeVar("BlockSchemaInputType", bound=BlockSchemaInput)
+BlockSchemaOutputType = TypeVar("BlockSchemaOutputType", bound=BlockSchemaOutput)
+
+
+class EmptyInputSchema(BlockSchemaInput):
+    pass
+
+
+class EmptyOutputSchema(BlockSchemaOutput):
+    pass
+
+
+# For backward compatibility - will be deprecated
+EmptySchema = EmptyOutputSchema
 
 
 # --8<-- [start:BlockWebhookConfig]
@@ -344,8 +433,8 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         description: str = "",
         contributors: list[ContributorDetails] = [],
         categories: set[BlockCategory] | None = None,
-        input_schema: Type[BlockSchemaInputType] = EmptySchema,
-        output_schema: Type[BlockSchemaOutputType] = EmptySchema,
+        input_schema: Type[BlockSchemaInputType] = EmptyInputSchema,
+        output_schema: Type[BlockSchemaOutputType] = EmptyOutputSchema,
         test_input: BlockInput | list[BlockInput] | None = None,
         test_output: BlockTestOutput | list[BlockTestOutput] | None = None,
         test_mock: dict[str, Any] | None = None,
@@ -354,6 +443,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         static_output: bool = False,
         block_type: BlockType = BlockType.STANDARD,
         webhook_config: Optional[BlockWebhookConfig | BlockManualWebhookConfig] = None,
+        is_sensitive_action: bool = False,
     ):
         """
         Initialize the block with the given schema.
@@ -386,6 +476,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         self.static_output = static_output
         self.block_type = block_type
         self.webhook_config = webhook_config
+        self.is_sensitive_action = is_sensitive_action
         self.execution_stats: NodeExecutionStats = NodeExecutionStats()
 
         if self.webhook_config:
@@ -512,21 +603,131 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         )
 
     async def execute(self, input_data: BlockInput, **kwargs) -> BlockOutput:
-        if error := self.input_schema.validate_data(input_data):
-            raise ValueError(
-                f"Unable to execute block with invalid input data: {error}"
+        try:
+            async for output_name, output_data in self._execute(input_data, **kwargs):
+                yield output_name, output_data
+        except Exception as ex:
+            if isinstance(ex, BlockError):
+                raise ex
+            else:
+                raise (
+                    BlockExecutionError
+                    if isinstance(ex, ValueError)
+                    else BlockUnknownError
+                )(
+                    message=str(ex),
+                    block_name=self.name,
+                    block_id=self.id,
+                ) from ex
+
+    async def is_block_exec_need_review(
+        self,
+        input_data: BlockInput,
+        *,
+        user_id: str,
+        node_id: str,
+        node_exec_id: str,
+        graph_exec_id: str,
+        graph_id: str,
+        graph_version: int,
+        execution_context: "ExecutionContext",
+        **kwargs,
+    ) -> tuple[bool, BlockInput]:
+        """
+        Check if this block execution needs human review and handle the review process.
+
+        Returns:
+            Tuple of (should_pause, input_data_to_use)
+            - should_pause: True if execution should be paused for review
+            - input_data_to_use: The input data to use (may be modified by reviewer)
+        """
+        if not (
+            self.is_sensitive_action and execution_context.sensitive_action_safe_mode
+        ):
+            return False, input_data
+
+        from backend.blocks.helpers.review import HITLReviewHelper
+
+        # Handle the review request and get decision
+        decision = await HITLReviewHelper.handle_review_decision(
+            input_data=input_data,
+            user_id=user_id,
+            node_id=node_id,
+            node_exec_id=node_exec_id,
+            graph_exec_id=graph_exec_id,
+            graph_id=graph_id,
+            graph_version=graph_version,
+            block_name=self.name,
+            editable=True,
+        )
+
+        if decision is None:
+            # We're awaiting review - pause execution
+            return True, input_data
+
+        if not decision.should_proceed:
+            # Review was rejected, raise an error to stop execution
+            raise BlockExecutionError(
+                message=f"Block execution rejected by reviewer: {decision.message}",
+                block_name=self.name,
+                block_id=self.id,
             )
 
+        # Review was approved - use the potentially modified data
+        # ReviewResult.data must be a dict for block inputs
+        reviewed_data = decision.review_result.data
+        if not isinstance(reviewed_data, dict):
+            raise BlockExecutionError(
+                message=f"Review data must be a dict for block input, got {type(reviewed_data).__name__}",
+                block_name=self.name,
+                block_id=self.id,
+            )
+        return False, reviewed_data
+
+    async def _execute(self, input_data: BlockInput, **kwargs) -> BlockOutput:
+        # Check for review requirement only if running within a graph execution context
+        # Direct block execution (e.g., from chat) skips the review process
+        has_graph_context = all(
+            key in kwargs
+            for key in (
+                "node_exec_id",
+                "graph_exec_id",
+                "graph_id",
+                "execution_context",
+            )
+        )
+        if has_graph_context:
+            should_pause, input_data = await self.is_block_exec_need_review(
+                input_data, **kwargs
+            )
+            if should_pause:
+                return
+
+        # Validate the input data (original or reviewer-modified) once
+        if error := self.input_schema.validate_data(input_data):
+            raise BlockInputError(
+                message=f"Unable to execute block with invalid input data: {error}",
+                block_name=self.name,
+                block_id=self.id,
+            )
+
+        # Use the validated input data
         async for output_name, output_data in self.run(
             self.input_schema(**{k: v for k, v in input_data.items() if v is not None}),
             **kwargs,
         ):
             if output_name == "error":
-                raise RuntimeError(output_data)
+                raise BlockExecutionError(
+                    message=output_data, block_name=self.name, block_id=self.id
+                )
             if self.block_type == BlockType.STANDARD and (
                 error := self.output_schema.validate_field(output_name, output_data)
             ):
-                raise ValueError(f"Block produced an invalid output data: {error}")
+                raise BlockOutputError(
+                    message=f"Block produced an invalid output data: {error}",
+                    block_name=self.name,
+                    block_id=self.id,
+                )
             yield output_name, output_data
 
     def is_triggered_by_event_type(
@@ -546,6 +747,10 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         ]
 
 
+# Type alias for any block with standard input/output schemas
+AnyBlockSchema: TypeAlias = Block[BlockSchemaInput, BlockSchemaOutput]
+
+
 # ======================= Block Helper Functions ======================= #
 
 
@@ -556,7 +761,7 @@ def get_blocks() -> dict[str, Type[Block]]:
 
 
 def is_block_auth_configured(
-    block_cls: type["Block[BlockSchema, BlockSchema]"],
+    block_cls: type[AnyBlockSchema],
 ) -> bool:
     """
     Check if a block has a valid authentication method configured at runtime.
@@ -592,11 +797,6 @@ def is_block_auth_configured(
         logger.debug(
             f"Block {block_cls.__name__} has only optional credential inputs"
             " - will work without credentials configured"
-        )
-    if len(credential_inputs) > 1:
-        logger.warning(
-            f"Block {block_cls.__name__} has multiple credential inputs: "
-            f"{', '.join(credential_inputs.keys())}"
         )
 
     # Check if the credential inputs for this block are correctly configured
@@ -675,14 +875,13 @@ def is_block_auth_configured(
 
 
 async def initialize_blocks() -> None:
-    # First, sync all provider costs to blocks
-    # Imported here to avoid circular import
     from backend.sdk.cost_integration import sync_all_provider_costs
+    from backend.util.retry import func_retry
 
     sync_all_provider_costs()
 
-    for cls in get_blocks().values():
-        block = cls()
+    @func_retry
+    async def sync_block_to_db(block: Block) -> None:
         existing_block = await AgentBlock.prisma().find_first(
             where={"OR": [{"id": block.id}, {"name": block.name}]}
         )
@@ -695,7 +894,7 @@ async def initialize_blocks() -> None:
                     outputSchema=json.dumps(block.output_schema.jsonschema()),
                 )
             )
-            continue
+            return
 
         input_schema = json.dumps(block.input_schema.jsonschema())
         output_schema = json.dumps(block.output_schema.jsonschema())
@@ -715,14 +914,33 @@ async def initialize_blocks() -> None:
                 },
             )
 
+    failed_blocks: list[str] = []
+    for cls in get_blocks().values():
+        block = cls()
+        try:
+            await sync_block_to_db(block)
+        except Exception as e:
+            logger.warning(
+                f"Failed to sync block {block.name} to database: {e}. "
+                "Block is still available in memory.",
+                exc_info=True,
+            )
+            failed_blocks.append(block.name)
+
+    if failed_blocks:
+        logger.error(
+            f"Failed to sync {len(failed_blocks)} block(s) to database: "
+            f"{', '.join(failed_blocks)}. These blocks are still available in memory."
+        )
+
 
 # Note on the return type annotation: https://github.com/microsoft/pyright/issues/10281
-def get_block(block_id: str) -> Block[BlockSchema, BlockSchema] | None:
+def get_block(block_id: str) -> AnyBlockSchema | None:
     cls = get_blocks().get(block_id)
     return cls() if cls else None
 
 
-@cached()
+@cached(ttl_seconds=3600)
 def get_webhook_block_ids() -> Sequence[str]:
     return [
         id
@@ -731,10 +949,19 @@ def get_webhook_block_ids() -> Sequence[str]:
     ]
 
 
-@cached()
+@cached(ttl_seconds=3600)
 def get_io_block_ids() -> Sequence[str]:
     return [
         id
         for id, B in get_blocks().items()
         if B().block_type in (BlockType.INPUT, BlockType.OUTPUT)
+    ]
+
+
+@cached(ttl_seconds=3600)
+def get_human_in_the_loop_block_ids() -> Sequence[str]:
+    return [
+        id
+        for id, B in get_blocks().items()
+        if B().block_type == BlockType.HUMAN_IN_THE_LOOP
     ]

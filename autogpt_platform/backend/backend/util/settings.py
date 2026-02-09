@@ -1,5 +1,6 @@
 import json
 import os
+import re
 from enum import Enum
 from typing import Any, Dict, Generic, List, Set, Tuple, Type, TypeVar
 
@@ -14,6 +15,17 @@ from pydantic_settings import (
 from backend.util.data import get_data_path
 
 T = TypeVar("T", bound=BaseSettings)
+
+_SERVICE_NAME = "MainProcess"
+
+
+def get_service_name():
+    return _SERVICE_NAME
+
+
+def set_service_name(name: str):
+    global _SERVICE_NAME
+    _SERVICE_NAME = name
 
 
 class AppEnvironment(str, Enum):
@@ -58,6 +70,11 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         ge=1,
         le=1000,
         description="Maximum number of workers to use for graph execution.",
+    )
+
+    requeue_by_republishing: bool = Field(
+        default=True,
+        description="Send rate-limited messages to back of queue by republishing instead of front requeue to prevent blocking other users.",
     )
 
     # FastAPI Thread Pool Configuration
@@ -148,6 +165,12 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=60 * 60,
         description="Time in seconds for how far back to check for the late executions.",
     )
+    max_concurrent_graph_executions_per_user: int = Field(
+        default=25,
+        ge=1,
+        le=1000,
+        description="Maximum number of concurrent graph executions allowed per user per graph.",
+    )
 
     block_error_rate_threshold: float = Field(
         default=0.5,
@@ -160,6 +183,12 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     block_error_include_top_blocks: int = Field(
         default=3,
         description="Number of top blocks with most errors to show when no blocks exceed threshold (0 to disable).",
+    )
+
+    # Execution Accuracy Monitoring
+    execution_accuracy_check_interval_hours: int = Field(
+        default=24,
+        description="Interval in hours between execution accuracy alert checks.",
     )
 
     model_config = SettingsConfigDict(
@@ -234,8 +263,14 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The name of the Google Cloud Storage bucket for media files",
     )
 
+    workspace_storage_dir: str = Field(
+        default="",
+        description="Local directory for workspace file storage when GCS is not configured. "
+        "If empty, defaults to {app_data}/workspaces. Used for self-hosted deployments.",
+    )
+
     reddit_user_agent: str = Field(
-        default="AutoGPT:1.0 (by /u/autogpt)",
+        default="web:AutoGPT:v0.6.0 (by /u/autogpt)",
         description="The user agent for the Reddit API",
     )
 
@@ -248,6 +283,7 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default="localhost",
         description="The host for the RabbitMQ server",
     )
+
     rabbitmq_port: int = Field(
         default=5672,
         description="The port for the RabbitMQ server",
@@ -256,6 +292,21 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     rabbitmq_vhost: str = Field(
         default="/",
         description="The vhost for the RabbitMQ server",
+    )
+
+    redis_host: str = Field(
+        default="localhost",
+        description="The host for the Redis server",
+    )
+
+    redis_port: int = Field(
+        default=6379,
+        description="The port for the Redis server",
+    )
+
+    redis_password: str = Field(
+        default="",
+        description="The password for the Redis server (empty string if no password)",
     )
 
     postmark_sender_email: str = Field(
@@ -305,6 +356,19 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Whether to mark failed scans as clean or not",
     )
 
+    agentgenerator_host: str = Field(
+        default="",
+        description="The host for the Agent Generator service (empty to use built-in)",
+    )
+    agentgenerator_port: int = Field(
+        default=8000,
+        description="The port for the Agent Generator service",
+    )
+    agentgenerator_timeout: int = Field(
+        default=600,
+        description="The timeout in seconds for Agent Generator service requests (includes retries for rate limits)",
+    )
+
     enable_example_blocks: bool = Field(
         default=False,
         description="Whether to enable example blocks in production",
@@ -317,11 +381,25 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Hours between cloud storage cleanup runs (1-24 hours)",
     )
 
+    oauth_token_cleanup_interval_hours: int = Field(
+        default=6,
+        ge=1,
+        le=24,
+        description="Hours between OAuth token cleanup runs (1-24 hours)",
+    )
+
     upload_file_size_limit_mb: int = Field(
         default=256,
         ge=1,
         le=1024,
         description="Maximum file size in MB for file uploads (1-1024 MB)",
+    )
+
+    max_file_size_mb: int = Field(
+        default=100,
+        ge=1,
+        le=1024,
+        description="Maximum file size in MB for workspace files (1-1024 MB)",
     )
 
     # AutoMod configuration
@@ -379,6 +457,11 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Name of the event bus",
     )
 
+    notification_event_bus_name: str = Field(
+        default="notification_event",
+        description="Name of the websocket notification event bus",
+    )
+
     trust_endpoints_for_requests: List[str] = Field(
         default_factory=list,
         description="A whitelist of trusted internal endpoints for the backend to make requests to.",
@@ -389,34 +472,68 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Maximum message size limit for communication with the message bus",
     )
 
-    backend_cors_allow_origins: List[str] = Field(default=["http://localhost:3000"])
+    backend_cors_allow_origins: List[str] = Field(
+        default=["http://localhost:3000"],
+        description="Allowed Origins for CORS. Supports exact URLs (http/https) or entries prefixed with "
+        '"regex:" to match via regular expression.',
+    )
+
+    external_oauth_callback_origins: List[str] = Field(
+        default=["http://localhost:3000"],
+        description="Allowed callback URL origins for external OAuth flows. "
+        "External apps (like Autopilot) must have their callback URLs start with one of these origins.",
+    )
 
     @field_validator("backend_cors_allow_origins")
     @classmethod
     def validate_cors_allow_origins(cls, v: List[str]) -> List[str]:
-        out = []
-        port = None
-        has_localhost = False
-        has_127_0_0_1 = False
-        for url in v:
-            url = url.strip()
-            if url.startswith(("http://", "https://")):
-                if "localhost" in url:
-                    port = url.split(":")[2]
-                    has_localhost = True
-                if "127.0.0.1" in url:
-                    port = url.split(":")[2]
-                    has_127_0_0_1 = True
-                out.append(url)
-            else:
-                raise ValueError(f"Invalid URL: {url}")
+        validated: List[str] = []
+        localhost_ports: set[str] = set()
+        ip127_ports: set[str] = set()
 
-        if has_127_0_0_1 and not has_localhost:
-            out.append(f"http://localhost:{port}")
-        if has_localhost and not has_127_0_0_1:
-            out.append(f"http://127.0.0.1:{port}")
+        for raw_origin in v:
+            origin = raw_origin.strip()
+            if origin.startswith("regex:"):
+                pattern = origin[len("regex:") :]
+                if not pattern:
+                    raise ValueError("Invalid regex pattern: pattern cannot be empty")
+                try:
+                    re.compile(pattern)
+                except re.error as exc:
+                    raise ValueError(
+                        f"Invalid regex pattern '{pattern}': {exc}"
+                    ) from exc
+                validated.append(origin)
+                continue
 
-        return out
+            if origin.startswith(("http://", "https://")):
+                if "localhost" in origin:
+                    try:
+                        port = origin.split(":")[2]
+                        localhost_ports.add(port)
+                    except IndexError as exc:
+                        raise ValueError(
+                            "localhost origins must include an explicit port, e.g. http://localhost:3000"
+                        ) from exc
+                if "127.0.0.1" in origin:
+                    try:
+                        port = origin.split(":")[2]
+                        ip127_ports.add(port)
+                    except IndexError as exc:
+                        raise ValueError(
+                            "127.0.0.1 origins must include an explicit port, e.g. http://127.0.0.1:3000"
+                        ) from exc
+                validated.append(origin)
+                continue
+
+            raise ValueError(f"Invalid URL or regex origin: {origin}")
+
+        for port in ip127_ports - localhost_ports:
+            validated.append(f"http://localhost:{port}")
+        for port in localhost_ports - ip127_ports:
+            validated.append(f"http://127.0.0.1:{port}")
+
+        return validated
 
     @classmethod
     def settings_customise_sources(
@@ -465,16 +582,6 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
         description="The secret key to use for the unsubscribe user by token",
     )
 
-    # Cloudflare Turnstile credentials
-    turnstile_secret_key: str = Field(
-        default="",
-        description="Cloudflare Turnstile backend secret key",
-    )
-    turnstile_verify_url: str = Field(
-        default="https://challenges.cloudflare.com/turnstile/v0/siteverify",
-        description="Cloudflare Turnstile verify URL",
-    )
-
     # OAuth server credentials for integrations
     # --8<-- [start:OAuthServerCredentialsExample]
     github_client_id: str = Field(default="", description="GitHub OAuth client ID")
@@ -509,6 +616,12 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     open_router_api_key: str = Field(default="", description="Open Router API Key")
     llama_api_key: str = Field(default="", description="Llama API Key")
     v0_api_key: str = Field(default="", description="v0 by Vercel API key")
+    webshare_proxy_username: str = Field(
+        default="", description="Webshare Proxy Username"
+    )
+    webshare_proxy_password: str = Field(
+        default="", description="Webshare Proxy Password"
+    )
 
     reddit_client_id: str = Field(default="", description="Reddit client ID")
     reddit_client_secret: str = Field(default="", description="Reddit client secret")
@@ -543,6 +656,7 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     e2b_api_key: str = Field(default="", description="E2B API key")
     nvidia_api_key: str = Field(default="", description="Nvidia API key")
     mem0_api_key: str = Field(default="", description="Mem0 API key")
+    elevenlabs_api_key: str = Field(default="", description="ElevenLabs API key")
 
     linear_client_id: str = Field(default="", description="Linear client ID")
     linear_client_secret: str = Field(default="", description="Linear client secret")
@@ -571,6 +685,20 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
 
     ayrshare_api_key: str = Field(default="", description="Ayrshare API Key")
     ayrshare_jwt_key: str = Field(default="", description="Ayrshare private Key")
+
+    # Langfuse prompt management
+    langfuse_public_key: str = Field(default="", description="Langfuse public key")
+    langfuse_secret_key: str = Field(default="", description="Langfuse secret key")
+    langfuse_host: str = Field(
+        default="https://cloud.langfuse.com", description="Langfuse host URL"
+    )
+
+    # PostHog analytics
+    posthog_api_key: str = Field(default="", description="PostHog API key")
+    posthog_host: str = Field(
+        default="https://eu.i.posthog.com", description="PostHog host URL"
+    )
+
     # Add more secret fields as needed
     model_config = SettingsConfigDict(
         env_file=".env",

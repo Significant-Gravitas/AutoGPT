@@ -16,6 +16,12 @@ export default defineConfig({
       client: "react-query",
       httpClient: "fetch",
       indexFiles: false,
+      mock: {
+        type: "msw",
+        baseUrl: "http://localhost:3000/api/proxy",
+        generateEachHttpStatus: true,
+        delay: 0,
+      },
       override: {
         mutator: {
           path: "./mutators/custom-mutator.ts",
@@ -36,6 +42,12 @@ export default defineConfig({
             },
           },
           "getV2List favorite library agents": {
+            query: {
+              useInfinite: true,
+              useInfiniteQueryParam: "page",
+            },
+          },
+          "getV2List presets": {
             query: {
               useInfinite: true,
               useInfiniteQueryParam: "page",
@@ -65,6 +77,12 @@ export default defineConfig({
               useInfinite: true,
               useInfiniteQueryParam: "page",
               useQuery: true,
+            },
+          },
+          "getV2Builder search": {
+            query: {
+              useInfinite: true,
+              useInfiniteQueryParam: "page",
             },
           },
         },

@@ -5,7 +5,14 @@ from pydantic import SecretStr
 from replicate.client import Client as ReplicateClient
 from replicate.helpers import FileOutput
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
+from backend.data.execution import ExecutionContext
 from backend.data.model import (
     APIKeyCredentials,
     CredentialsField,
@@ -13,6 +20,7 @@ from backend.data.model import (
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
+from backend.util.exceptions import ModerationError
 from backend.util.file import MediaFileType, store_media_file
 
 TEST_CREDENTIALS = APIKeyCredentials(
@@ -57,7 +65,7 @@ class AspectRatio(str, Enum):
 
 
 class AIImageEditorBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput[
             Literal[ProviderName.REPLICATE], Literal["api_key"]
         ] = CredentialsField(
@@ -90,11 +98,10 @@ class AIImageEditorBlock(Block):
             title="Model",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         output_image: MediaFileType = SchemaField(
             description="URL of the transformed image"
         )
-        error: str = SchemaField(description="Error message if generation failed")
 
     def __init__(self):
         super().__init__(
@@ -115,10 +122,12 @@ class AIImageEditorBlock(Block):
                 "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_output=[
-                ("output_image", "https://replicate.com/output/edited-image.png"),
+                # Output will be a workspace ref or data URI depending on context
+                ("output_image", lambda x: x.startswith(("workspace://", "data:"))),
             ],
             test_mock={
-                "run_model": lambda *args, **kwargs: "https://replicate.com/output/edited-image.png",
+                # Use data URI to avoid HTTP requests during tests
+                "run_model": lambda *args, **kwargs: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
             },
             test_credentials=TEST_CREDENTIALS,
         )
@@ -128,8 +137,7 @@ class AIImageEditorBlock(Block):
         input_data: Input,
         *,
         credentials: APIKeyCredentials,
-        graph_exec_id: str,
-        user_id: str,
+        execution_context: ExecutionContext,
         **kwargs,
     ) -> BlockOutput:
         result = await self.run_model(
@@ -138,18 +146,25 @@ class AIImageEditorBlock(Block):
             prompt=input_data.prompt,
             input_image_b64=(
                 await store_media_file(
-                    graph_exec_id=graph_exec_id,
                     file=input_data.input_image,
-                    user_id=user_id,
-                    return_content=True,
+                    execution_context=execution_context,
+                    return_format="for_external_api",  # Get content for Replicate API
                 )
                 if input_data.input_image
                 else None
             ),
             aspect_ratio=input_data.aspect_ratio.value,
             seed=input_data.seed,
+            user_id=execution_context.user_id or "",
+            graph_exec_id=execution_context.graph_exec_id or "",
         )
-        yield "output_image", result
+        # Store the generated image to the user's workspace for persistence
+        stored_url = await store_media_file(
+            file=result,
+            execution_context=execution_context,
+            return_format="for_block_output",
+        )
+        yield "output_image", stored_url
 
     async def run_model(
         self,
@@ -159,6 +174,8 @@ class AIImageEditorBlock(Block):
         input_image_b64: Optional[str],
         aspect_ratio: str,
         seed: Optional[int],
+        user_id: str,
+        graph_exec_id: str,
     ) -> MediaFileType:
         client = ReplicateClient(api_token=api_key.get_secret_value())
         input_params = {
@@ -168,11 +185,21 @@ class AIImageEditorBlock(Block):
             **({"seed": seed} if seed is not None else {}),
         }
 
-        output: FileOutput | list[FileOutput] = await client.async_run(  # type: ignore
-            model_name,
-            input=input_params,
-            wait=False,
-        )
+        try:
+            output: FileOutput | list[FileOutput] = await client.async_run(  # type: ignore
+                model_name,
+                input=input_params,
+                wait=False,
+            )
+        except Exception as e:
+            if "flagged as sensitive" in str(e).lower():
+                raise ModerationError(
+                    message="Content was flagged as sensitive by the model provider",
+                    user_id=user_id,
+                    graph_exec_id=graph_exec_id,
+                    moderation_type="model_provider",
+                )
+            raise ValueError(f"Model execution failed: {e}") from e
 
         if isinstance(output, list) and output:
             output = output[0]

@@ -94,42 +94,36 @@ def configure_logging(force_cloud_logging: bool = False) -> None:
     config = LoggingConfig()
     log_handlers: list[logging.Handler] = []
 
+    structured_logging = config.enable_cloud_logging or force_cloud_logging
+
     # Console output handlers
-    stdout = logging.StreamHandler(stream=sys.stdout)
-    stdout.setLevel(config.level)
-    stdout.addFilter(BelowLevelFilter(logging.WARNING))
-    if config.level == logging.DEBUG:
-        stdout.setFormatter(AGPTFormatter(DEBUG_LOG_FORMAT))
-    else:
-        stdout.setFormatter(AGPTFormatter(SIMPLE_LOG_FORMAT))
+    if not structured_logging:
+        stdout = logging.StreamHandler(stream=sys.stdout)
+        stdout.setLevel(config.level)
+        stdout.addFilter(BelowLevelFilter(logging.WARNING))
+        if config.level == logging.DEBUG:
+            stdout.setFormatter(AGPTFormatter(DEBUG_LOG_FORMAT))
+        else:
+            stdout.setFormatter(AGPTFormatter(SIMPLE_LOG_FORMAT))
 
-    stderr = logging.StreamHandler()
-    stderr.setLevel(logging.WARNING)
-    if config.level == logging.DEBUG:
-        stderr.setFormatter(AGPTFormatter(DEBUG_LOG_FORMAT))
-    else:
-        stderr.setFormatter(AGPTFormatter(SIMPLE_LOG_FORMAT))
+        stderr = logging.StreamHandler()
+        stderr.setLevel(logging.WARNING)
+        if config.level == logging.DEBUG:
+            stderr.setFormatter(AGPTFormatter(DEBUG_LOG_FORMAT))
+        else:
+            stderr.setFormatter(AGPTFormatter(SIMPLE_LOG_FORMAT))
 
-    log_handlers += [stdout, stderr]
+        log_handlers += [stdout, stderr]
 
     # Cloud logging setup
-    if config.enable_cloud_logging or force_cloud_logging:
-        import google.cloud.logging
-        from google.cloud.logging.handlers import CloudLoggingHandler
-        from google.cloud.logging_v2.handlers.transports import (
-            BackgroundThreadTransport,
-        )
+    else:
+        # Use Google Cloud Structured Log Handler. Log entries are printed to stdout
+        # in a JSON format which is automatically picked up by Google Cloud Logging.
+        from google.cloud.logging.handlers import StructuredLogHandler
 
-        client = google.cloud.logging.Client()
-        # Use BackgroundThreadTransport to prevent blocking the main thread
-        # and deadlocks when gRPC calls to Google Cloud Logging hang
-        cloud_handler = CloudLoggingHandler(
-            client,
-            name="autogpt_logs",
-            transport=BackgroundThreadTransport,
-        )
-        cloud_handler.setLevel(config.level)
-        log_handlers.append(cloud_handler)
+        structured_log_handler = StructuredLogHandler(stream=sys.stdout)
+        structured_log_handler.setLevel(config.level)
+        log_handlers.append(structured_log_handler)
 
     # File logging setup
     if config.enable_file_logging:
@@ -185,7 +179,13 @@ def configure_logging(force_cloud_logging: bool = False) -> None:
 
     # Configure the root logger
     logging.basicConfig(
-        format=DEBUG_LOG_FORMAT if config.level == logging.DEBUG else SIMPLE_LOG_FORMAT,
+        format=(
+            "%(levelname)s  %(message)s"
+            if structured_logging
+            else (
+                DEBUG_LOG_FORMAT if config.level == logging.DEBUG else SIMPLE_LOG_FORMAT
+            )
+        ),
         level=config.level,
         handlers=log_handlers,
     )

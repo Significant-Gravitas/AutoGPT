@@ -10,9 +10,18 @@ from backend.blocks.fal._auth import (
     FalCredentialsField,
     FalCredentialsInput,
 )
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
+from backend.data.execution import ExecutionContext
 from backend.data.model import SchemaField
+from backend.util.file import store_media_file
 from backend.util.request import ClientResponseError, Requests
+from backend.util.type import MediaFileType
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +33,7 @@ class FalModel(str, Enum):
 
 
 class AIVideoGeneratorBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         prompt: str = SchemaField(
             description="Description of the video to generate.",
             placeholder="A dog running in a field.",
@@ -36,7 +45,7 @@ class AIVideoGeneratorBlock(Block):
         )
         credentials: FalCredentialsInput = FalCredentialsField()
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         video_url: str = SchemaField(description="The URL of the generated video.")
         error: str = SchemaField(
             description="Error message if video generation failed."
@@ -58,9 +67,13 @@ class AIVideoGeneratorBlock(Block):
                 "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,
-            test_output=[("video_url", "https://fal.media/files/example/video.mp4")],
+            test_output=[
+                # Output will be a workspace ref or data URI depending on context
+                ("video_url", lambda x: x.startswith(("workspace://", "data:"))),
+            ],
             test_mock={
-                "generate_video": lambda *args, **kwargs: "https://fal.media/files/example/video.mp4"
+                # Use data URI to avoid HTTP requests during tests
+                "generate_video": lambda *args, **kwargs: "data:video/mp4;base64,AAAA"
             },
         )
 
@@ -202,11 +215,22 @@ class AIVideoGeneratorBlock(Block):
             raise RuntimeError(f"API request failed: {str(e)}")
 
     async def run(
-        self, input_data: Input, *, credentials: FalCredentials, **kwargs
+        self,
+        input_data: Input,
+        *,
+        credentials: FalCredentials,
+        execution_context: ExecutionContext,
+        **kwargs,
     ) -> BlockOutput:
         try:
             video_url = await self.generate_video(input_data, credentials)
-            yield "video_url", video_url
+            # Store the generated video to the user's workspace for persistence
+            stored_url = await store_media_file(
+                file=MediaFileType(video_url),
+                execution_context=execution_context,
+                return_format="for_block_output",
+            )
+            yield "video_url", stored_url
         except Exception as e:
             error_message = str(e)
             yield "error", error_message

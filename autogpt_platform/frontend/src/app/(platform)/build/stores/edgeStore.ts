@@ -1,82 +1,205 @@
 import { create } from "zustand";
-import { convertConnectionsToBackendLinks } from "../components/FlowEditor/edges/helpers";
-
-export type Connection = {
-  edge_id: string;
-  source: string;
-  sourceHandle: string;
-  target: string;
-  targetHandle: string;
-};
+import { Link } from "@/app/api/__generated__/models/link";
+import { CustomEdge } from "../components/FlowEditor/edges/CustomEdge";
+import { customEdgeToLink, linkToCustomEdge } from "../components/helper";
+import { MarkerType } from "@xyflow/react";
+import { NodeExecutionResult } from "@/app/api/__generated__/models/nodeExecutionResult";
+import { cleanUpHandleId } from "@/components/renderers/InputRenderer/helpers";
+import { useHistoryStore } from "./historyStore";
+import { useNodeStore } from "./nodeStore";
 
 type EdgeStore = {
-  connections: Connection[];
+  edges: CustomEdge[];
 
-  setConnections: (connections: Connection[]) => void;
-  addConnection: (
-    conn: Omit<Connection, "edge_id"> & { edge_id?: string },
-  ) => Connection;
-  removeConnection: (edge_id: string) => void;
-  upsertMany: (conns: Connection[]) => void;
+  setEdges: (edges: CustomEdge[]) => void;
+  addEdge: (edge: Omit<CustomEdge, "id"> & { id?: string }) => CustomEdge;
+  removeEdge: (edgeId: string) => void;
+  upsertMany: (edges: CustomEdge[]) => void;
 
-  getNodeConnections: (nodeId: string) => Connection[];
+  removeEdgesByHandlePrefix: (nodeId: string, handlePrefix: string) => void;
+
+  getNodeEdges: (nodeId: string) => CustomEdge[];
   isInputConnected: (nodeId: string, handle: string) => boolean;
   isOutputConnected: (nodeId: string, handle: string) => boolean;
+  getBackendLinks: () => Link[];
+  addLinks: (links: Link[]) => void;
+
+  getAllHandleIdsOfANode: (nodeId: string) => string[];
+
+  updateEdgeBeads: (
+    targetNodeId: string,
+    executionResult: NodeExecutionResult,
+  ) => void;
+  resetEdgeBeads: () => void;
 };
 
-function makeEdgeId(conn: Omit<Connection, "edge_id">) {
-  return `${conn.source}:${conn.sourceHandle}->${conn.target}:${conn.targetHandle}`;
+function makeEdgeId(edge: Omit<CustomEdge, "id">) {
+  return `${edge.source}:${edge.sourceHandle}->${edge.target}:${edge.targetHandle}`;
 }
 
 export const useEdgeStore = create<EdgeStore>((set, get) => ({
-  connections: [],
+  edges: [],
 
-  setConnections: (connections) => set({ connections }),
+  setEdges: (edges) => set({ edges }),
 
-  addConnection: (conn) => {
-    const edge_id = conn.edge_id || makeEdgeId(conn);
-    const newConn: Connection = { edge_id, ...conn };
+  addEdge: (edge) => {
+    const id = edge.id || makeEdgeId(edge);
+    const newEdge: CustomEdge = {
+      type: "custom" as const,
+      markerEnd: {
+        type: MarkerType.ArrowClosed,
+        strokeWidth: 2,
+        color: "#555",
+      },
+      ...edge,
+      id,
+    };
 
-    set((state) => {
-      const exists = state.connections.some(
-        (c) =>
-          c.source === newConn.source &&
-          c.target === newConn.target &&
-          c.sourceHandle === newConn.sourceHandle &&
-          c.targetHandle === newConn.targetHandle,
-      );
-      if (exists) return state;
-      return { connections: [...state.connections, newConn] };
-    });
+    const exists = get().edges.some(
+      (e) =>
+        e.source === newEdge.source &&
+        e.target === newEdge.target &&
+        e.sourceHandle === newEdge.sourceHandle &&
+        e.targetHandle === newEdge.targetHandle,
+    );
+    if (exists) return newEdge;
+    const prevState = {
+      nodes: useNodeStore.getState().nodes,
+      edges: get().edges,
+    };
 
-    return { edge_id, ...conn };
+    set((state) => ({ edges: [...state.edges, newEdge] }));
+    useHistoryStore.getState().pushState(prevState);
+
+    return newEdge;
   },
 
-  removeConnection: (edge_id) =>
-    set((state) => ({
-      connections: state.connections.filter((c) => c.edge_id !== edge_id),
-    })),
+  removeEdge: (edgeId) => {
+    const prevState = {
+      nodes: useNodeStore.getState().nodes,
+      edges: get().edges,
+    };
 
-  upsertMany: (conns) =>
+    set((state) => ({
+      edges: state.edges.filter((e) => e.id !== edgeId),
+    }));
+    useHistoryStore.getState().pushState(prevState);
+  },
+
+  upsertMany: (edges) =>
     set((state) => {
-      const byKey = new Map(state.connections.map((c) => [c.edge_id, c]));
-      conns.forEach((c) => {
-        byKey.set(c.edge_id, c);
+      const byKey = new Map(state.edges.map((e) => [e.id, e]));
+      edges.forEach((e) => {
+        byKey.set(e.id, e);
       });
-      return { connections: Array.from(byKey.values()) };
+      return { edges: Array.from(byKey.values()) };
     }),
 
-  getNodeConnections: (nodeId) =>
-    get().connections.filter((c) => c.source === nodeId || c.target === nodeId),
+  removeEdgesByHandlePrefix: (nodeId, handlePrefix) =>
+    set((state) => ({
+      edges: state.edges.filter(
+        (e) =>
+          !(
+            e.target === nodeId &&
+            e.targetHandle &&
+            e.targetHandle.startsWith(handlePrefix)
+          ),
+      ),
+    })),
 
-  isInputConnected: (nodeId, handle) =>
-    get().connections.some(
-      (c) => c.target === nodeId && c.targetHandle === handle,
-    ),
+  getNodeEdges: (nodeId) =>
+    get().edges.filter((e) => e.source === nodeId || e.target === nodeId),
+
+  isInputConnected: (nodeId, handle) => {
+    const cleanedHandle = cleanUpHandleId(handle);
+    return get().edges.some(
+      (e) => e.target === nodeId && e.targetHandle === cleanedHandle,
+    );
+  },
 
   isOutputConnected: (nodeId, handle) =>
-    get().connections.some(
-      (c) => c.source === nodeId && c.sourceHandle === handle,
-    ),
-  getBackendLinks: () => convertConnectionsToBackendLinks(get().connections),
+    get().edges.some((e) => e.source === nodeId && e.sourceHandle === handle),
+
+  getBackendLinks: () => get().edges.map(customEdgeToLink),
+
+  addLinks: (links) => {
+    links.forEach((link) => {
+      get().addEdge(linkToCustomEdge(link));
+    });
+  },
+
+  getAllHandleIdsOfANode: (nodeId) =>
+    get()
+      .edges.filter((e) => e.target === nodeId)
+      .map((e) => e.targetHandle || ""),
+
+  updateEdgeBeads: (
+    targetNodeId: string,
+    executionResult: NodeExecutionResult,
+  ) => {
+    set((state) => {
+      let hasChanges = false;
+
+      const newEdges = state.edges.map((edge) => {
+        if (edge.target !== targetNodeId) {
+          return edge;
+        }
+
+        const beadData = new Map(edge.data?.beadData ?? new Map());
+
+        const inputValue = edge.targetHandle
+          ? executionResult.input_data[edge.targetHandle]
+          : undefined;
+
+        if (inputValue !== undefined && inputValue !== null) {
+          beadData.set(executionResult.node_exec_id, executionResult.status);
+        }
+
+        let beadUp = 0;
+        let beadDown = 0;
+
+        beadData.forEach((status) => {
+          beadUp++;
+          if (status !== "INCOMPLETE") {
+            beadDown++;
+          }
+        });
+
+        if (edge.data?.isStatic && beadUp > 0) {
+          beadUp = beadDown + 1;
+        }
+
+        if (edge.data?.beadUp === beadUp && edge.data?.beadDown === beadDown) {
+          return edge;
+        }
+
+        hasChanges = true;
+        return {
+          ...edge,
+          data: {
+            ...edge.data,
+            beadUp,
+            beadDown,
+            beadData,
+          },
+        };
+      });
+
+      return hasChanges ? { edges: newEdges } : state;
+    });
+  },
+
+  resetEdgeBeads: () => {
+    set((state) => ({
+      edges: state.edges.map((edge) => ({
+        ...edge,
+        data: {
+          ...edge.data,
+          beadUp: 0,
+          beadDown: 0,
+          beadData: new Map(),
+        },
+      })),
+    }));
+  },
 }));

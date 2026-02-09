@@ -1,15 +1,15 @@
+import { environment } from "@/services/environment";
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { getCookieSettings, isAdminPage, isProtectedPage } from "./helpers";
-import { getSupabaseUrl, getSupabaseAnonKey } from "../env-config";
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
     request,
   });
 
-  const supabaseUrl = getSupabaseUrl();
-  const supabaseKey = getSupabaseAnonKey();
+  const supabaseUrl = environment.getSupabaseUrl();
+  const supabaseKey = environment.getSupabaseAnonKey();
   const isAvailable = Boolean(supabaseUrl && supabaseKey);
 
   if (!isAvailable) {
@@ -57,14 +57,16 @@ export async function updateSession(request: NextRequest) {
       const attemptingAdminPage = isAdminPage(pathname);
 
       if (attemptingProtectedPage || attemptingAdminPage) {
+        const currentDest = url.pathname + url.search;
         url.pathname = "/login";
+        url.search = `?next=${encodeURIComponent(currentDest)}`;
         return NextResponse.redirect(url);
       }
     }
 
     // 2. Check if user is authenticated but lacks admin role when accessing admin pages
     if (user && userRole !== "admin" && isAdminPage(pathname)) {
-      url.pathname = "/marketplace";
+      url.pathname = "/";
       return NextResponse.redirect(url);
     }
 
