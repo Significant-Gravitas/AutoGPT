@@ -66,6 +66,12 @@ export async function GET(request: Request) {
           }
         } catch(e) { console.warn("postMessage failed:", e); }
 
+        // Method 3: localStorage (most reliable cross-tab fallback)
+        try {
+          localStorage.setItem("mcp_oauth_result", JSON.stringify(msg));
+          sent = true;
+        } catch(e) { console.warn("localStorage failed:", e); }
+
         var statusEl = document.getElementById("status");
         var spinnerEl = document.getElementById("spinner");
         spinnerEl.style.display = "none";

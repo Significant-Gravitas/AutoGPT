@@ -66,6 +66,10 @@ export function MCPToolDialog({
   const messageHandlerRef = useRef<((event: MessageEvent) => void) | null>(
     null,
   );
+  const storageHandlerRef = useRef<((event: StorageEvent) => void) | null>(
+    null,
+  );
+  const popupCheckRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const oauthHandledRef = useRef(false);
   const autoConnectAttemptedRef = useRef(false);
 
@@ -91,8 +95,14 @@ export function MCPToolDialog({
       if (messageHandlerRef.current) {
         window.removeEventListener("message", messageHandlerRef.current);
       }
+      if (storageHandlerRef.current) {
+        window.removeEventListener("storage", storageHandlerRef.current);
+      }
       if (broadcastChannelRef.current) {
         broadcastChannelRef.current.close();
+      }
+      if (popupCheckRef.current) {
+        clearInterval(popupCheckRef.current);
       }
     };
   }, []);
@@ -102,10 +112,22 @@ export function MCPToolDialog({
       window.removeEventListener("message", messageHandlerRef.current);
       messageHandlerRef.current = null;
     }
+    if (storageHandlerRef.current) {
+      window.removeEventListener("storage", storageHandlerRef.current);
+      storageHandlerRef.current = null;
+    }
     if (broadcastChannelRef.current) {
       broadcastChannelRef.current.close();
       broadcastChannelRef.current = null;
     }
+    if (popupCheckRef.current) {
+      clearInterval(popupCheckRef.current);
+      popupCheckRef.current = null;
+    }
+    // Clean up any stale localStorage entry
+    try {
+      localStorage.removeItem("mcp_oauth_result");
+    } catch {}
     setOauthLoading(false);
     oauthLoadingRef.current = false;
     oauthHandledRef.current = false;
@@ -244,14 +266,23 @@ export function MCPToolDialog({
         window.open(login_url, "_blank");
       }
 
+      // Clear any stale localStorage entry before starting
+      try {
+        localStorage.removeItem("mcp_oauth_result");
+      } catch {}
+
       // Listener 1: BroadcastChannel (works even when window.opener is null)
-      const bc = new BroadcastChannel("mcp_oauth");
-      bc.onmessage = (event) => {
-        if (event.data?.type === "mcp_oauth_result") {
-          handleOAuthResult(event.data);
-        }
-      };
-      broadcastChannelRef.current = bc;
+      try {
+        const bc = new BroadcastChannel("mcp_oauth");
+        bc.onmessage = (event) => {
+          if (event.data?.type === "mcp_oauth_result") {
+            handleOAuthResult(event.data);
+          }
+        };
+        broadcastChannelRef.current = bc;
+      } catch (e) {
+        console.warn("BroadcastChannel not available:", e);
+      }
 
       // Listener 2: window.postMessage (fallback)
       const handleMessage = (event: MessageEvent) => {
@@ -262,6 +293,43 @@ export function MCPToolDialog({
       };
       messageHandlerRef.current = handleMessage;
       window.addEventListener("message", handleMessage);
+
+      // Listener 3: localStorage (most reliable cross-tab fallback)
+      const handleStorage = (event: StorageEvent) => {
+        if (event.key === "mcp_oauth_result" && event.newValue) {
+          try {
+            const data = JSON.parse(event.newValue);
+            localStorage.removeItem("mcp_oauth_result");
+            handleOAuthResult(data);
+          } catch {}
+        }
+      };
+      storageHandlerRef.current = handleStorage;
+      window.addEventListener("storage", handleStorage);
+
+      // Fallback: detect popup close and check localStorage directly
+      const popupRef = popup;
+      popupCheckRef.current = setInterval(() => {
+        if (!oauthLoadingRef.current || oauthHandledRef.current) {
+          if (popupCheckRef.current) clearInterval(popupCheckRef.current);
+          return;
+        }
+        // Check if popup closed
+        if (popupRef && popupRef.closed) {
+          // Check localStorage for the result (storage event may not fire in same window)
+          try {
+            const stored = localStorage.getItem("mcp_oauth_result");
+            if (stored) {
+              const data = JSON.parse(stored);
+              localStorage.removeItem("mcp_oauth_result");
+              handleOAuthResult(data);
+              return;
+            }
+          } catch {}
+          // Popup closed without result after a short grace period
+          if (popupCheckRef.current) clearInterval(popupCheckRef.current);
+        }
+      }, 500);
 
       // Timeout
       setTimeout(() => {
@@ -344,8 +412,8 @@ export function MCPToolDialog({
 
             {/* Auth required: show sign-in panel */}
             {authRequired && (
-              <div className="flex flex-col items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950">
-                <p className="text-sm font-medium text-amber-700 dark:text-amber-300">
+              <div className="flex flex-col items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-slate-700 dark:bg-slate-800">
+                <p className="text-sm font-medium text-gray-600 dark:text-gray-300">
                   This server requires authentication
                 </p>
                 <Button
