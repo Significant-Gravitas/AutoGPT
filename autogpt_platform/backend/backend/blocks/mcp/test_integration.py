@@ -85,8 +85,8 @@ def mcp_server_with_auth():
 
 
 def _make_client(url: str, auth_token: str | None = None) -> MCPClient:
-    """Create an MCPClient with localhost trusted for integration tests."""
-    return MCPClient(url, auth_token=auth_token, trusted_origins=[url])
+    """Create an MCPClient for integration tests."""
+    return MCPClient(url, auth_token=auth_token)
 
 
 def _make_fake_creds(api_key: str = "FAKE_API_KEY") -> APIKeyCredentials:

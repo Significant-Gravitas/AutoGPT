@@ -54,11 +54,9 @@ class MCPClient:
         self,
         server_url: str,
         auth_token: str | None = None,
-        trusted_origins: list[str] | None = None,
     ):
         self.server_url = server_url.rstrip("/")
         self.auth_token = auth_token
-        self.trusted_origins = trusted_origins or []
         self._request_id = 0
         self._session_id: str | None = None
 
@@ -132,7 +130,6 @@ class MCPClient:
         requests = Requests(
             raise_for_status=True,
             extra_headers=headers,
-            trusted_origins=self.trusted_origins,
         )
         response = await requests.post(self.server_url, json=payload)
 
@@ -171,7 +168,6 @@ class MCPClient:
         requests = Requests(
             raise_for_status=False,
             extra_headers=headers,
-            trusted_origins=self.trusted_origins,
         )
         await requests.post(self.server_url, json=notification)
 
@@ -201,7 +197,6 @@ class MCPClient:
 
         requests = Requests(
             raise_for_status=False,
-            trusted_origins=self.trusted_origins,
         )
         for url in candidates:
             try:
@@ -243,7 +238,6 @@ class MCPClient:
 
         requests = Requests(
             raise_for_status=False,
-            trusted_origins=self.trusted_origins,
         )
         for url in candidates:
             try:

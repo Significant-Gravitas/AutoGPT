@@ -103,11 +103,7 @@ async def discover_tools(
             logger.debug("Could not look up stored MCP credentials", exc_info=True)
 
     try:
-        client = MCPClient(
-            request.server_url,
-            auth_token=auth_token,
-            trusted_origins=[request.server_url],
-        )
+        client = MCPClient(request.server_url, auth_token=auth_token)
 
         init_result = await client.initialize()
         tools = await client.list_tools()
@@ -177,7 +173,7 @@ async def mcp_oauth_login(
     3. Performs Dynamic Client Registration (RFC 7591) if available
     4. Returns the authorization URL for the frontend to open in a popup
     """
-    client = MCPClient(request.server_url, trusted_origins=[request.server_url])
+    client = MCPClient(request.server_url)
 
     # Step 1: Discover protected-resource metadata (RFC 9728)
     try:

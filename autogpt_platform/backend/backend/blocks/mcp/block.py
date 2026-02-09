@@ -148,12 +148,7 @@ class MCPToolBlock(Block):
         auth_token: str | None = None,
     ) -> Any:
         """Call a tool on the MCP server. Extracted for easy mocking in tests."""
-        # Trust the user-configured server URL to allow internal/localhost servers
-        client = MCPClient(
-            server_url,
-            auth_token=auth_token,
-            trusted_origins=[server_url],
-        )
+        client = MCPClient(server_url, auth_token=auth_token)
         await client.initialize()
         result = await client.call_tool(tool_name, arguments)
 

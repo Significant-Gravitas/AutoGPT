@@ -84,7 +84,6 @@ class TestDiscoverTools:
         MockClient.assert_called_once_with(
             "https://mcp.example.com/mcp",
             auth_token="my-secret-token",
-            trusted_origins=["https://mcp.example.com/mcp"],
         )
 
     def test_discover_tools_auto_uses_stored_credential(self):
@@ -124,7 +123,6 @@ class TestDiscoverTools:
         MockClient.assert_called_once_with(
             "https://mcp.example.com/mcp",
             auth_token="stored-token-123",
-            trusted_origins=["https://mcp.example.com/mcp"],
         )
 
     def test_discover_tools_mcp_error(self):
