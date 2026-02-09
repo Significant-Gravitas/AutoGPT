@@ -189,3 +189,53 @@ export function formatMaybeJson(value: unknown): string {
     return String(value);
   }
 }
+
+
+export function getAccordionMeta(output: RunAgentToolOutput): {
+  badgeText: string;
+  title: string;
+  description?: string;
+} {
+  if (isRunAgentExecutionStartedOutput(output)) {
+    const statusText =
+      typeof output.status === "string" && output.status.trim()
+        ? output.status.trim()
+        : "started";
+    return {
+      badgeText: "Run agent",
+      title: output.graph_name,
+      description: `Status: ${statusText}`,
+    };
+  }
+
+  if (isRunAgentAgentDetailsOutput(output)) {
+    return {
+      badgeText: "Run agent",
+      title: output.agent.name,
+      description: "Inputs required",
+    };
+  }
+
+  if (isRunAgentSetupRequirementsOutput(output)) {
+    const missingCredsCount = Object.keys(
+      (output.setup_info.user_readiness?.missing_credentials ?? {}) as Record<
+        string,
+        unknown
+      >,
+    ).length;
+    return {
+      badgeText: "Run agent",
+      title: output.setup_info.agent_name,
+      description:
+        missingCredsCount > 0
+          ? `Missing ${missingCredsCount} credential${missingCredsCount === 1 ? "" : "s"}`
+          : output.message,
+    };
+  }
+
+  if (isRunAgentNeedLoginOutput(output)) {
+    return { badgeText: "Run agent", title: "Sign in required" };
+  }
+
+  return { badgeText: "Run agent", title: "Error" };
+}

@@ -2,6 +2,8 @@
 
 import type { ToolUIPart } from "ai";
 import Link from "next/link";
+import React, { useState } from "react";
+import { getGetWorkspaceDownloadFileByIdUrl } from "@/app/api/__generated__/endpoints/workspace/workspace";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
 import {
@@ -44,6 +46,87 @@ function getAccordionMeta(output: ViewAgentOutputToolOutput): {
     return { badgeText: "Agent output", title: "No results" };
   }
   return { badgeText: "Agent output", title: "Error" };
+}
+
+function resolveWorkspaceUrl(src: string): string {
+  if (src.startsWith("workspace://")) {
+    const withoutPrefix = src.replace("workspace://", "");
+    const fileId = withoutPrefix.split("#")[0];
+    const apiPath = getGetWorkspaceDownloadFileByIdUrl(fileId);
+    return `/api/proxy${apiPath}`;
+  }
+  return src;
+}
+
+function getWorkspaceMimeHint(src: string): string | undefined {
+  const hashIndex = src.indexOf("#");
+  if (hashIndex === -1) return undefined;
+  return src.slice(hashIndex + 1) || undefined;
+}
+
+function WorkspaceMedia({ value }: { value: string }) {
+  const [imgFailed, setImgFailed] = useState(false);
+  const resolvedUrl = resolveWorkspaceUrl(value);
+  const mime = getWorkspaceMimeHint(value);
+
+  if (mime?.startsWith("video/") || imgFailed) {
+    return (
+      <video
+        controls
+        className="mt-2 h-auto max-w-full rounded-md border border-zinc-200"
+        preload="metadata"
+      >
+        <source src={resolvedUrl} />
+      </video>
+    );
+  }
+
+  if (mime?.startsWith("audio/")) {
+    return <audio controls src={resolvedUrl} className="mt-2 w-full" />;
+  }
+
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={resolvedUrl}
+      alt="Output media"
+      className="mt-2 h-auto max-w-full rounded-md border border-zinc-200"
+      loading="lazy"
+      onError={() => setImgFailed(true)}
+    />
+  );
+}
+
+function isWorkspaceRef(value: unknown): value is string {
+  return typeof value === "string" && value.startsWith("workspace://");
+}
+
+function renderOutputValue(value: unknown): React.ReactNode {
+  if (isWorkspaceRef(value)) {
+    return <WorkspaceMedia value={value} />;
+  }
+  if (Array.isArray(value)) {
+    const workspaceItems = value.filter(isWorkspaceRef);
+    if (workspaceItems.length > 0) {
+      return (
+        <>
+          {value.map((item, i) =>
+            isWorkspaceRef(item) ? (
+              <WorkspaceMedia key={i} value={item} />
+            ) : (
+              <pre
+                key={i}
+                className="mt-1 whitespace-pre-wrap text-xs text-muted-foreground"
+              >
+                {formatMaybeJson(item)}
+              </pre>
+            ),
+          )}
+        </>
+      );
+    }
+  }
+  return null;
 }
 
 export function ViewAgentOutputTool({ part }: Props) {
@@ -113,24 +196,30 @@ export function ViewAgentOutputTool({ part }: Props) {
                   )}
 
                   {Object.entries(output.execution.outputs ?? {}).map(
-                    ([key, items]) => (
-                      <div
-                        key={key}
-                        className="rounded-2xl border bg-background p-3"
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <p className="truncate text-xs font-medium text-foreground">
-                            {key}
-                          </p>
-                          <span className="shrink-0 rounded-full border bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
-                            {items.length} item{items.length === 1 ? "" : "s"}
-                          </span>
+                    ([key, items]) => {
+                      const mediaContent = renderOutputValue(items);
+                      return (
+                        <div
+                          key={key}
+                          className="rounded-2xl border bg-background p-3"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="truncate text-xs font-medium text-foreground">
+                              {key}
+                            </p>
+                            <span className="shrink-0 rounded-full border bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
+                              {items.length} item
+                              {items.length === 1 ? "" : "s"}
+                            </span>
+                          </div>
+                          {mediaContent || (
+                            <pre className="mt-2 whitespace-pre-wrap text-xs text-muted-foreground">
+                              {formatMaybeJson(items.slice(0, 3))}
+                            </pre>
+                          )}
                         </div>
-                        <pre className="mt-2 whitespace-pre-wrap text-xs text-muted-foreground">
-                          {formatMaybeJson(items.slice(0, 3))}
-                        </pre>
-                      </div>
-                    ),
+                      );
+                    },
                   )}
                 </div>
               ) : (
