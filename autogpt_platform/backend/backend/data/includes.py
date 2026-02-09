@@ -121,7 +121,7 @@ def library_agent_include(
                 "where": {"userId": user_id},
                 "order_by": {
                     "updatedAt": "desc"
-                },  # Uses updatedAt because it reflects when the executioncompleted or last progressed
+                },  # Uses updatedAt because it reflects when the execution completed or last progressed
                 "take": execution_limit,
             }
 
