@@ -1119,10 +1119,12 @@ async def _stream_chat_chunks(
                     error_details = _extract_api_error_details(e)
                     if error_details.get("response_body"):
                         body = error_details["response_body"]
-                        if isinstance(body, dict) and body.get("error", {}).get(
-                            "message"
-                        ):
-                            error_text = body["error"]["message"]
+                        if isinstance(body, dict):
+                            err = body.get("error")
+                            if isinstance(err, dict) and err.get("message"):
+                                error_text = err["message"]
+                            elif body.get("message"):
+                                error_text = body["message"]
 
                     if _is_region_blocked_error(e):
                         error_code = "MODEL_NOT_AVAILABLE_REGION"
