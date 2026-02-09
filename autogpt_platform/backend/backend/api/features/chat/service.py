@@ -1843,9 +1843,17 @@ def _extract_api_error_details(error: Exception) -> dict[str, Any]:
     return details
 
 
-def _sanitize_error_body(body: Any, max_length: int = 2000) -> dict[str, Any] | None:
+def _sanitize_error_body(
+    body: Any, max_length: int = 2000
+) -> dict[str, Any] | str | None:
     """Extract only safe fields from error response body to avoid logging sensitive data."""
     if not isinstance(body, dict):
+        # Non-dict bodies (e.g., HTML error pages) - return truncated string
+        if body is not None:
+            body_str = str(body)
+            if len(body_str) > max_length:
+                return body_str[:max_length] + "...[truncated]"
+            return body_str
         return None
 
     safe_fields = ("message", "type", "code", "param", "error")
