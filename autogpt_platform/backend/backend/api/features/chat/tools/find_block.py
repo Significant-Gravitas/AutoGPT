@@ -162,9 +162,17 @@ class FindBlockTool(BaseTool):
                     )
 
                 # Get credential field names to exclude from required inputs
-                credentials_fields = set(
-                    block.input_schema.get_credentials_fields().keys()
-                )
+                credentials_fields: set[str] = set()
+                try:
+                    credentials_fields = set(
+                        block.input_schema.get_credentials_fields().keys()
+                    )
+                except Exception as e:
+                    logger.debug(
+                        "Failed to get credentials fields for block %s: %s",
+                        block_id,
+                        e,
+                    )
 
                 # Extract input fields (excluding credentials)
                 required_inputs: list[BlockInputFieldInfo] = []
