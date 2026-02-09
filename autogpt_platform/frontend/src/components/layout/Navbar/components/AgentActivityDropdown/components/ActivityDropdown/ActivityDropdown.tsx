@@ -19,12 +19,16 @@ interface Props {
   recentFailures: AgentExecutionWithInfo[];
 }
 
+interface ActivityRowProps {
+  executions: AgentExecutionWithInfo[];
+}
+
 function VirtualizedActivityItem({
   index,
   style,
-  data,
-}: RowComponentProps<AgentExecutionWithInfo[]>) {
-  const execution = data[index];
+  executions,
+}: RowComponentProps<ActivityRowProps>) {
+  const execution = executions[index];
   return (
     <div style={style}>
       <ActivityItem execution={execution} />
@@ -129,10 +133,10 @@ export function ActivityDropdown({
           <List
             height={listHeight}
             width={320} // Match dropdown width (w-80 = 20rem = 320px)
-            itemCount={filteredExecutions.length}
-            itemSize={itemHeight}
-            itemData={filteredExecutions}
-            RowComponent={VirtualizedActivityItem}
+            rowCount={filteredExecutions.length}
+            rowHeight={itemHeight}
+            rowProps={{ executions: filteredExecutions }}
+            rowComponent={VirtualizedActivityItem}
           />
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-5 pb-8 pt-6">
