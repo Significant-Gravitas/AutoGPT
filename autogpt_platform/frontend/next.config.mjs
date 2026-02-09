@@ -1,8 +1,12 @@
 import { withSentryConfig } from "@sentry/nextjs";
 
+// Allow Docker builds to skip source-map generation (halves memory usage).
+// Defaults to true so Vercel/local builds are unaffected.
+const enableSourceMaps = process.env.NEXT_PUBLIC_SOURCEMAPS !== "false";
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  productionBrowserSourceMaps: true,
+  productionBrowserSourceMaps: enableSourceMaps,
   // Externalize OpenTelemetry packages to fix Turbopack HMR issues
   serverExternalPackages: [
     "@opentelemetry/instrumentation",
@@ -96,7 +100,7 @@ export default isDevelopmentBuild
 
       // This helps Sentry with sourcemaps... https://docs.sentry.io/platforms/javascript/guides/nextjs/sourcemaps/
       sourcemaps: {
-        disable: false,
+        disable: !enableSourceMaps,
         assets: [".next/**/*.js", ".next/**/*.js.map"],
         ignore: ["**/node_modules/**"],
         deleteSourcemapsAfterUpload: false, // Source is public anyway :)
