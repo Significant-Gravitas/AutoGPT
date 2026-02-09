@@ -8,6 +8,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 from urllib.parse import urlparse
 
+from pydantic import BaseModel
+
 from backend.util.cloud_storage import get_cloud_storage_handler
 from backend.util.request import Requests
 from backend.util.settings import Config
@@ -16,6 +18,35 @@ from backend.util.virus_scanner import scan_content_safe
 
 if TYPE_CHECKING:
     from backend.data.execution import ExecutionContext
+
+
+class WorkspaceUri(BaseModel):
+    """Parsed workspace:// URI."""
+
+    file_ref: str  # File ID or path (e.g. "abc123" or "/path/to/file.txt")
+    mime_type: str | None = None  # MIME type from fragment (e.g. "video/mp4")
+    is_path: bool = False  # True if file_ref is a path (starts with "/")
+
+
+def parse_workspace_uri(uri: str) -> WorkspaceUri:
+    """Parse a workspace:// URI into its components.
+
+    Examples:
+        "workspace://abc123"            → WorkspaceUri(file_ref="abc123", mime_type=None, is_path=False)
+        "workspace://abc123#video/mp4"  → WorkspaceUri(file_ref="abc123", mime_type="video/mp4", is_path=False)
+        "workspace:///path/to/file.txt" → WorkspaceUri(file_ref="/path/to/file.txt", mime_type=None, is_path=True)
+    """
+    raw = uri.removeprefix("workspace://")
+    mime_type: str | None = None
+    if "#" in raw:
+        raw, fragment = raw.split("#", 1)
+        mime_type = fragment or None
+    return WorkspaceUri(
+        file_ref=raw,
+        mime_type=mime_type,
+        is_path=raw.startswith("/"),
+    )
+
 
 # Return format options for store_media_file
 # - "for_local_processing": Returns local file path - use with ffmpeg, MoviePy, PIL, etc.
@@ -183,22 +214,20 @@ async def store_media_file(
                 "This file type is only available in CoPilot sessions."
             )
 
-        # Parse workspace reference
-        # workspace://abc123 - by file ID
-        # workspace:///path/to/file.txt - by virtual path
-        file_ref = file[12:]  # Remove "workspace://"
+        # Parse workspace reference (strips #mimeType fragment from file ID)
+        ws = parse_workspace_uri(file)
 
-        if file_ref.startswith("/"):
-            # Path reference
-            workspace_content = await workspace_manager.read_file(file_ref)
-            file_info = await workspace_manager.get_file_info_by_path(file_ref)
+        if ws.is_path:
+            # Path reference: workspace:///path/to/file.txt
+            workspace_content = await workspace_manager.read_file(ws.file_ref)
+            file_info = await workspace_manager.get_file_info_by_path(ws.file_ref)
             filename = sanitize_filename(
                 file_info.name if file_info else f"{uuid.uuid4()}.bin"
             )
         else:
-            # ID reference
-            workspace_content = await workspace_manager.read_file_by_id(file_ref)
-            file_info = await workspace_manager.get_file_info(file_ref)
+            # ID reference: workspace://abc123 or workspace://abc123#video/mp4
+            workspace_content = await workspace_manager.read_file_by_id(ws.file_ref)
+            file_info = await workspace_manager.get_file_info(ws.file_ref)
             filename = sanitize_filename(
                 file_info.name if file_info else f"{uuid.uuid4()}.bin"
             )
@@ -313,6 +342,14 @@ async def store_media_file(
         if not target_path.is_file():
             raise ValueError(f"Local file does not exist: {target_path}")
 
+        # Virus scan the local file before any further processing
+        local_content = target_path.read_bytes()
+        if len(local_content) > MAX_FILE_SIZE_BYTES:
+            raise ValueError(
+                f"File too large: {len(local_content)} bytes > {MAX_FILE_SIZE_BYTES} bytes"
+            )
+        await scan_content_safe(local_content, filename=sanitized_file)
+
     # Return based on requested format
     if return_format == "for_local_processing":
         # Use when processing files locally with tools like ffmpeg, MoviePy, PIL
@@ -334,7 +371,21 @@ async def store_media_file(
 
         # Don't re-save if input was already from workspace
         if is_from_workspace:
-            # Return original workspace reference
+            # Return original workspace reference, ensuring MIME type fragment
+            ws = parse_workspace_uri(file)
+            if not ws.mime_type:
+                # Add MIME type fragment if missing (older refs without it)
+                try:
+                    if ws.is_path:
+                        info = await workspace_manager.get_file_info_by_path(
+                            ws.file_ref
+                        )
+                    else:
+                        info = await workspace_manager.get_file_info(ws.file_ref)
+                    if info:
+                        return MediaFileType(f"{file}#{info.mimeType}")
+                except Exception:
+                    pass
             return MediaFileType(file)
 
         # Save new content to workspace
@@ -346,7 +397,7 @@ async def store_media_file(
             filename=filename,
             overwrite=True,
         )
-        return MediaFileType(f"workspace://{file_record.id}")
+        return MediaFileType(f"workspace://{file_record.id}#{file_record.mimeType}")
 
     else:
         raise ValueError(f"Invalid return_format: {return_format}")
