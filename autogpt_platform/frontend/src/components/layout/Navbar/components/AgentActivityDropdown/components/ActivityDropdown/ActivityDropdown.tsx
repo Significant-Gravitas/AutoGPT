@@ -4,7 +4,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
 import { Bell, MagnifyingGlass, X } from "@phosphor-icons/react";
-import { List } from "react-window";
+import { List, type RowComponentProps } from "react-window";
 import { AgentExecutionWithInfo } from "../../helpers";
 import { ActivityItem } from "../ActivityItem";
 import styles from "./styles.module.css";
@@ -19,13 +19,11 @@ interface Props {
   recentFailures: AgentExecutionWithInfo[];
 }
 
-interface VirtualizedItemProps {
-  index: number;
-  style: React.CSSProperties;
-  data: AgentExecutionWithInfo[];
-}
-
-function VirtualizedActivityItem({ index, style, data }: VirtualizedItemProps) {
+function VirtualizedActivityItem({
+  index,
+  style,
+  data,
+}: RowComponentProps<AgentExecutionWithInfo[]>) {
   const execution = data[index];
   return (
     <div style={style}>
@@ -134,9 +132,8 @@ export function ActivityDropdown({
             itemCount={filteredExecutions.length}
             itemSize={itemHeight}
             itemData={filteredExecutions}
-          >
-            {VirtualizedActivityItem}
-          </List>
+            RowComponent={VirtualizedActivityItem}
+          />
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-5 pb-8 pt-6">
             <div className="mx-auto inline-flex flex-col items-center justify-center rounded-full bg-bgLightGrey p-6">
