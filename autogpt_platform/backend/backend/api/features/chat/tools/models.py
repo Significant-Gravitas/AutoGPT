@@ -334,12 +334,13 @@ class BlockInfoSummary(BaseModel):
     id: str
     name: str
     description: str
-    categories: list[str]
-    input_schema: dict[str, Any]
-    output_schema: dict[str, Any]
     required_inputs: list[BlockInputFieldInfo] = Field(
         default_factory=list,
         description="List of required input fields for this block",
+    )
+    output_fields: list[BlockInputFieldInfo] = Field(
+        default_factory=list,
+        description="Output fields produced by this block",
     )
 
 
@@ -350,10 +351,6 @@ class BlockListResponse(ToolResponseBase):
     blocks: list[BlockInfoSummary]
     count: int
     query: str
-    usage_hint: str = Field(
-        default="To execute a block, call run_block with block_id set to the block's "
-        "'id' field and input_data containing the required fields from input_schema."
-    )
 
 
 class BlockOutputResponse(ToolResponseBase):
