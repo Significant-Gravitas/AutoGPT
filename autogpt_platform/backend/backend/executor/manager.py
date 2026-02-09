@@ -197,7 +197,6 @@ async def _acquire_auto_credentials(
         field_name = info["field_name"]
         field_data = input_data.get(field_name)
 
-        # Use shared helper to parse the field
         parsed = parse_auto_credential_field(
             field_name=field_name,
             info=info,
