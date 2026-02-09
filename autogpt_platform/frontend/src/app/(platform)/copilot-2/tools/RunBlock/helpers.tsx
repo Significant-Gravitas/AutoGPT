@@ -1,9 +1,13 @@
-import type { ToolUIPart } from "ai";
-import { PlayIcon } from "@phosphor-icons/react";
 import type { BlockOutputResponse } from "@/app/api/__generated__/models/blockOutputResponse";
 import type { ErrorResponse } from "@/app/api/__generated__/models/errorResponse";
 import { ResponseType } from "@/app/api/__generated__/models/responseType";
 import type { SetupRequirementsResponse } from "@/app/api/__generated__/models/setupRequirementsResponse";
+import {
+  PlayCircleIcon,
+  PlayIcon,
+  WarningDiamondIcon,
+} from "@phosphor-icons/react";
+import type { ToolUIPart } from "ai";
 
 export interface RunBlockInput {
   block_id?: string;
@@ -109,19 +113,20 @@ export function ToolIcon({
   isStreaming?: boolean;
   isError?: boolean;
 }) {
+  if (isError) {
+    return <WarningDiamondIcon size={14} weight="regular" className="text-red-500" />;
+  }
   return (
     <PlayIcon
       size={14}
       weight="regular"
-      className={
-        isError
-          ? "text-red-500"
-          : isStreaming
-            ? "text-neutral-500"
-            : "text-neutral-400"
-      }
+      className={isStreaming ? "text-neutral-500" : "text-neutral-400"}
     />
   );
+}
+
+export function AccordionIcon() {
+  return <PlayCircleIcon size={32} weight="light" />;
 }
 
 export function formatMaybeJson(value: unknown): string {
@@ -133,17 +138,18 @@ export function formatMaybeJson(value: unknown): string {
   }
 }
 
-
-
 export function getAccordionMeta(output: RunBlockToolOutput): {
-  badgeText: string;
+  icon: React.ReactNode;
   title: string;
+  titleClassName?: string;
   description?: string;
 } {
+  const icon = <AccordionIcon />;
+
   if (isRunBlockBlockOutput(output)) {
     const keys = Object.keys(output.outputs ?? {});
     return {
-      badgeText: "Run block",
+      icon,
       title: output.block_name,
       description:
         keys.length > 0
@@ -160,7 +166,7 @@ export function getAccordionMeta(output: RunBlockToolOutput): {
       >,
     ).length;
     return {
-      badgeText: "Run block",
+      icon,
       title: output.setup_info.agent_name,
       description:
         missingCredsCount > 0
@@ -169,5 +175,9 @@ export function getAccordionMeta(output: RunBlockToolOutput): {
     };
   }
 
-  return { badgeText: "Run block", title: "Error" };
+  return {
+    icon: <WarningDiamondIcon size={32} weight="light" className="text-red-500" />,
+    title: "Error",
+    titleClassName: "text-red-500",
+  };
 }

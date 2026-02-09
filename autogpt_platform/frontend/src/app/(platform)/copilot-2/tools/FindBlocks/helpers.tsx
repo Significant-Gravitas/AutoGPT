@@ -1,8 +1,7 @@
-import { ToolUIPart } from "ai";
 import type { BlockListResponse } from "@/app/api/__generated__/models/blockListResponse";
 import { ResponseType } from "@/app/api/__generated__/models/responseType";
+import { CubeIcon, PackageIcon } from "@phosphor-icons/react";
 import { FindBlockInput, FindBlockToolPart } from "./FindBlocks";
-import { PackageIcon } from "@phosphor-icons/react";
 
 export function parseOutput(output: unknown): BlockListResponse | null {
   if (!output) return null;
@@ -69,4 +68,8 @@ export function ToolIcon({
       }
     />
   );
+}
+
+export function AccordionIcon() {
+  return <CubeIcon size={32} weight="light" />;
 }

@@ -52,9 +52,9 @@ export function EmptySession({
     <div className="flex h-full flex-1 items-center justify-center overflow-y-auto bg-[#f8f8f9] px-0 py-5 md:px-6 md:py-10">
       <motion.div
         className="w-full max-w-3xl text-center"
-        initial={{ opacity: 0, y: 14, filter: "blur(6px)" }}
-        animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-        transition={{ type: "spring", bounce: 0.2, duration: 0.7 }}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.3 }}
       >
         <div className="mx-auto max-w-3xl">
           <Text variant="h3" className="mb-1 !text-[1.375rem] text-zinc-700">

@@ -3,6 +3,9 @@
 import type { ToolUIPart } from "ai";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
+import { BlockOutputCard } from "./components/BlockOutputCard/BlockOutputCard";
+import { ErrorCard } from "./components/ErrorCard/ErrorCard";
+import { SetupRequirementsCard } from "./components/SetupRequirementsCard/SetupRequirementsCard";
 import {
   getAccordionMeta,
   getAnimationText,
@@ -11,11 +14,7 @@ import {
   isRunBlockErrorOutput,
   isRunBlockSetupRequirementsOutput,
   ToolIcon,
-  type RunBlockToolOutput,
 } from "./helpers";
-import { BlockOutputCard } from "./components/BlockOutputCard/BlockOutputCard";
-import { SetupRequirementsCard } from "./components/SetupRequirementsCard/SetupRequirementsCard";
-import { ErrorCard } from "./components/ErrorCard/ErrorCard";
 
 export interface RunBlockToolPart {
   type: string;

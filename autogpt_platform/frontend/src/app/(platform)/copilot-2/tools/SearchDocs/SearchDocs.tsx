@@ -1,21 +1,33 @@
 "use client";
 
 import type { ToolUIPart } from "ai";
-import Link from "next/link";
 import { useMemo } from "react";
+
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
+import {
+  ContentCard,
+  ContentCardDescription,
+  ContentCardHeader,
+  ContentCardSubtitle,
+  ContentCardTitle,
+  ContentGrid,
+  ContentLink,
+  ContentMessage,
+  ContentSuggestionsList,
+} from "../../components/ToolAccordion/AccordionContent";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
 import {
+  AccordionIcon,
+  getAnimationText,
   getDocsToolOutput,
   getDocsToolTitle,
   getToolLabel,
-  getAnimationText,
   isDocPageOutput,
   isDocSearchResultsOutput,
   isErrorOutput,
   isNoResultsOutput,
-  ToolIcon,
   toDocsUrl,
+  ToolIcon,
   type DocsToolType,
 } from "./helpers";
 
@@ -97,96 +109,73 @@ export function SearchDocsTool({ part }: Props) {
 
       {hasExpandableContent && normalized && (
         <ToolAccordion
-          badgeText={normalized.label}
+          icon={<AccordionIcon toolType={part.type} />}
           title={normalized.title}
           description={accordionDescription}
         >
           {docSearchOutput && (
-            <div className="grid gap-2">
+            <ContentGrid>
               {docSearchOutput.results.map((r) => {
                 const href = r.doc_url ?? toDocsUrl(r.path);
                 return (
-                  <div
-                    key={r.path}
-                    className="rounded-2xl border bg-background p-3"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-foreground">
-                          {r.title}
-                        </p>
-                        <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                          {r.path}
-                          {r.section ? ` • ${r.section}` : ""}
-                        </p>
-                        <p className="mt-2 text-xs text-muted-foreground">
-                          {truncate(r.snippet, 240)}
-                        </p>
-                      </div>
-                      <Link
-                        href={href}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="shrink-0 text-xs font-medium text-purple-600 hover:text-purple-700"
-                      >
-                        Open
-                      </Link>
-                    </div>
-                  </div>
+                  <ContentCard key={r.path}>
+                    <ContentCardHeader
+                      action={<ContentLink href={href}>Open</ContentLink>}
+                    >
+                      <ContentCardTitle>{r.title}</ContentCardTitle>
+                      <ContentCardSubtitle>
+                        {r.path}
+                        {r.section ? ` • ${r.section}` : ""}
+                      </ContentCardSubtitle>
+                      <ContentCardDescription>
+                        {truncate(r.snippet, 240)}
+                      </ContentCardDescription>
+                    </ContentCardHeader>
+                  </ContentCard>
                 );
               })}
-            </div>
+            </ContentGrid>
           )}
 
           {docPageOutput && (
             <div>
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-foreground">
-                    {docPageOutput.title}
-                  </p>
-                  <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                    {docPageOutput.path}
-                  </p>
-                </div>
-                <Link
-                  href={docPageOutput.doc_url ?? toDocsUrl(docPageOutput.path)}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="shrink-0 text-xs font-medium text-purple-600 hover:text-purple-700"
-                >
-                  Open
-                </Link>
-              </div>
-              <p className="mt-2 whitespace-pre-wrap text-xs text-muted-foreground">
+              <ContentCardHeader
+                action={
+                  <ContentLink
+                    href={
+                      docPageOutput.doc_url ?? toDocsUrl(docPageOutput.path)
+                    }
+                  >
+                    Open
+                  </ContentLink>
+                }
+              >
+                <ContentCardTitle>{docPageOutput.title}</ContentCardTitle>
+                <ContentCardSubtitle>{docPageOutput.path}</ContentCardSubtitle>
+              </ContentCardHeader>
+              <ContentCardDescription className="whitespace-pre-wrap">
                 {truncate(docPageOutput.content, 800)}
-              </p>
+              </ContentCardDescription>
             </div>
           )}
 
           {noResultsOutput && (
             <div>
-              <p className="text-sm text-foreground">
-                {noResultsOutput.message}
-              </p>
+              <ContentMessage>{noResultsOutput.message}</ContentMessage>
               {noResultsOutput.suggestions &&
                 noResultsOutput.suggestions.length > 0 && (
-                  <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-muted-foreground">
-                    {noResultsOutput.suggestions.slice(0, 5).map((s) => (
-                      <li key={s}>{s}</li>
-                    ))}
-                  </ul>
+                  <ContentSuggestionsList items={noResultsOutput.suggestions} />
                 )}
             </div>
           )}
 
           {errorOutput && (
             <div>
-              <p className="text-sm text-foreground">{errorOutput.message}</p>
+              <ContentMessage>{errorOutput.message}</ContentMessage>
               {errorOutput.error && (
-                <p className="mt-2 text-xs text-muted-foreground">
+                <ContentCardDescription>
                   {errorOutput.error}
-                </p>
+                </ContentCardDescription>
               )}
             </div>
           )}

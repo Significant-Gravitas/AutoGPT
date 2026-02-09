@@ -3,6 +3,7 @@
 import type { ToolUIPart } from "ai";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
+import { ContentMessage } from "../../components/ToolAccordion/AccordionContent";
 import {
   getAccordionMeta,
   getAnimationText,
@@ -80,7 +81,7 @@ export function RunAgentTool({ part }: Props) {
           )}
 
           {isRunAgentNeedLoginOutput(output) && (
-            <p className="text-sm text-foreground">{output.message}</p>
+            <ContentMessage>{output.message}</ContentMessage>
           )}
 
           {isRunAgentErrorOutput(output) && <ErrorCard output={output} />}

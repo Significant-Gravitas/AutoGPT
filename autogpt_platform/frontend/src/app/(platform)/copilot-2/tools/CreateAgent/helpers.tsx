@@ -1,5 +1,3 @@
-import type { ToolUIPart } from "ai";
-import { PlusIcon } from "@phosphor-icons/react";
 import type { AgentPreviewResponse } from "@/app/api/__generated__/models/agentPreviewResponse";
 import type { AgentSavedResponse } from "@/app/api/__generated__/models/agentSavedResponse";
 import type { ClarificationNeededResponse } from "@/app/api/__generated__/models/clarificationNeededResponse";
@@ -8,6 +6,8 @@ import type { OperationInProgressResponse } from "@/app/api/__generated__/models
 import type { OperationPendingResponse } from "@/app/api/__generated__/models/operationPendingResponse";
 import type { OperationStartedResponse } from "@/app/api/__generated__/models/operationStartedResponse";
 import { ResponseType } from "@/app/api/__generated__/models/responseType";
+import { PlusCircleIcon, PlusIcon } from "@phosphor-icons/react";
+import type { ToolUIPart } from "ai";
 
 export type CreateAgentToolOutput =
   | OperationStartedResponse
@@ -163,6 +163,10 @@ export function ToolIcon({
       }
     />
   );
+}
+
+export function AccordionIcon() {
+  return <PlusCircleIcon size={32} weight="light" />;
 }
 
 export function formatMaybeJson(value: unknown): string {

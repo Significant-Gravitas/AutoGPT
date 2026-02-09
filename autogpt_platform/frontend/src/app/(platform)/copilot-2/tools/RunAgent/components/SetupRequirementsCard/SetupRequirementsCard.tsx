@@ -6,6 +6,12 @@ import { Button } from "@/components/atoms/Button/Button";
 import type { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
 import type { SetupRequirementsResponse } from "@/app/api/__generated__/models/setupRequirementsResponse";
 import { useCopilotChatActions } from "../../../../components/CopilotChatActionsProvider/useCopilotChatActions";
+import {
+  ContentBadge,
+  ContentCardDescription,
+  ContentCardTitle,
+  ContentMessage,
+} from "../../../../components/ToolAccordion/AccordionContent";
 import { coerceCredentialFields, coerceExpectedInputs } from "./helpers";
 
 interface Props {
@@ -45,7 +51,7 @@ export function SetupRequirementsCard({ output }: Props) {
 
   return (
     <div className="grid gap-2">
-      <p className="text-sm text-foreground">{output.message}</p>
+      <ContentMessage>{output.message}</ContentMessage>
 
       {credentialFields.length > 0 && (
         <div className="rounded-2xl border bg-background p-3">
@@ -71,22 +77,22 @@ export function SetupRequirementsCard({ output }: Props) {
 
       {expectedInputs.length > 0 && (
         <div className="rounded-2xl border bg-background p-3">
-          <p className="text-xs font-medium text-foreground">Expected inputs</p>
+          <ContentCardTitle className="text-xs">Expected inputs</ContentCardTitle>
           <div className="mt-2 grid gap-2">
             {expectedInputs.map((input) => (
               <div key={input.name} className="rounded-xl border p-2">
                 <div className="flex items-center justify-between gap-2">
-                  <p className="truncate text-xs font-medium text-foreground">
+                  <ContentCardTitle className="text-xs">
                     {input.title}
-                  </p>
-                  <span className="shrink-0 rounded-full border bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
+                  </ContentCardTitle>
+                  <ContentBadge>
                     {input.required ? "Required" : "Optional"}
-                  </span>
+                  </ContentBadge>
                 </div>
-                <p className="mt-1 text-xs text-muted-foreground">
+                <ContentCardDescription className="mt-1">
                   {input.name} &bull; {input.type}
                   {input.description ? ` \u2022 ${input.description}` : ""}
-                </p>
+                </ContentCardDescription>
               </div>
             ))}
           </div>

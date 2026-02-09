@@ -1,10 +1,15 @@
-import { ToolUIPart } from "ai";
-import { MagnifyingGlassIcon, SquaresFourIcon } from "@phosphor-icons/react";
 import type { AgentInfo } from "@/app/api/__generated__/models/agentInfo";
 import type { AgentsFoundResponse } from "@/app/api/__generated__/models/agentsFoundResponse";
 import type { ErrorResponse } from "@/app/api/__generated__/models/errorResponse";
 import type { NoResultsResponse } from "@/app/api/__generated__/models/noResultsResponse";
 import { ResponseType } from "@/app/api/__generated__/models/responseType";
+import {
+  FolderOpenIcon,
+  MagnifyingGlassIcon,
+  SquaresFourIcon,
+  StorefrontIcon,
+} from "@phosphor-icons/react";
+import { ToolUIPart } from "ai";
 
 export interface FindAgentInput {
   query: string;
@@ -173,4 +178,10 @@ export function ToolIcon({
       }
     />
   );
+}
+
+export function AccordionIcon({ toolType }: { toolType?: FindAgentsToolType }) {
+  const { source } = getSourceLabelFromToolType(toolType);
+  const IconComponent = source === "library" ? FolderOpenIcon : StorefrontIcon;
+  return <IconComponent size={32} weight="light" />;
 }

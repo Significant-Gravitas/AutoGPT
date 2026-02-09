@@ -1,9 +1,19 @@
 "use client";
 
 import { ToolUIPart } from "ai";
-import Link from "next/link";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
+import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
 import {
+  ContentBadge,
+  ContentCard,
+  ContentCardDescription,
+  ContentCardHeader,
+  ContentCardTitle,
+  ContentGrid,
+  ContentLink,
+} from "../../components/ToolAccordion/AccordionContent";
+import {
+  AccordionIcon,
   getAgentHref,
   getAnimationText,
   getFindAgentsOutput,
@@ -12,7 +22,6 @@ import {
   isErrorOutput,
   ToolIcon,
 } from "./helpers";
-import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
 
 export interface FindAgentsToolPart {
   type: string;
@@ -77,11 +86,11 @@ export function FindAgentsTool({ part }: Props) {
 
       {hasAgents && agentsFoundOutput && (
         <ToolAccordion
-          badgeText={sourceLabel}
+          icon={<AccordionIcon toolType={part.type} />}
           title="Agent results"
           description={accordionDescription}
         >
-          <div className="grid gap-2 sm:grid-cols-2">
+          <ContentGrid className="sm:grid-cols-2">
             {agentsFoundOutput.agents.map((agent) => {
               const href = getAgentHref(agent);
               const agentSource =
@@ -91,39 +100,26 @@ export function FindAgentsTool({ part }: Props) {
                     ? "Marketplace"
                     : null;
               return (
-                <div
-                  key={agent.id}
-                  className="rounded-2xl border bg-background p-3"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <p className="truncate text-sm font-medium text-foreground">
-                          {agent.name}
-                        </p>
-                        {agentSource && (
-                          <span className="shrink-0 rounded-full border bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
-                            {agentSource}
-                          </span>
-                        )}
-                      </div>
-                      <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
-                        {agent.description}
-                      </p>
+                <ContentCard key={agent.id}>
+                  <ContentCardHeader
+                    action={
+                      href ? <ContentLink href={href}>Open</ContentLink> : null
+                    }
+                  >
+                    <div className="flex items-center gap-2">
+                      <ContentCardTitle>{agent.name}</ContentCardTitle>
+                      {agentSource && (
+                        <ContentBadge>{agentSource}</ContentBadge>
+                      )}
                     </div>
-                    {href && (
-                      <Link
-                        href={href}
-                        className="shrink-0 text-xs font-medium text-purple-600 hover:text-purple-700"
-                      >
-                        Open
-                      </Link>
-                    )}
-                  </div>
-                </div>
+                    <ContentCardDescription className="mt-1 line-clamp-2">
+                      {agent.description}
+                    </ContentCardDescription>
+                  </ContentCardHeader>
+                </ContentCard>
               );
             })}
-          </div>
+          </ContentGrid>
         </ToolAccordion>
       )}
     </div>

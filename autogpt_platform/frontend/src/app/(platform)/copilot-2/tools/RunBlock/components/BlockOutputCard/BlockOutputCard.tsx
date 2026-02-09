@@ -4,6 +4,13 @@ import React, { useState } from "react";
 import { getGetWorkspaceDownloadFileByIdUrl } from "@/app/api/__generated__/endpoints/workspace/workspace";
 import { Button } from "@/components/atoms/Button/Button";
 import type { BlockOutputResponse } from "@/app/api/__generated__/models/blockOutputResponse";
+import {
+  ContentBadge,
+  ContentCard,
+  ContentCardTitle,
+  ContentGrid,
+  ContentMessage,
+} from "../../../../components/ToolAccordion/AccordionContent";
 import { formatMaybeJson } from "../../helpers";
 
 interface Props {
@@ -103,14 +110,12 @@ function OutputKeySection({
   const visibleItems = expanded ? items : items.slice(0, COLLAPSED_LIMIT);
 
   return (
-    <div className="rounded-2xl border bg-background p-3">
+    <ContentCard>
       <div className="flex items-center justify-between gap-2">
-        <p className="truncate text-xs font-medium text-foreground">
-          {outputKey}
-        </p>
-        <span className="shrink-0 rounded-full border bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
+        <ContentCardTitle className="text-xs">{outputKey}</ContentCardTitle>
+        <ContentBadge>
           {items.length} item{items.length === 1 ? "" : "s"}
-        </span>
+        </ContentBadge>
       </div>
       {mediaContent || (
         <pre className="mt-2 whitespace-pre-wrap text-xs text-muted-foreground">
@@ -127,18 +132,18 @@ function OutputKeySection({
           {expanded ? "Show less" : `Show all ${items.length} items`}
         </Button>
       )}
-    </div>
+    </ContentCard>
   );
 }
 
 export function BlockOutputCard({ output }: Props) {
   return (
-    <div className="grid gap-2">
-      <p className="text-sm text-foreground">{output.message}</p>
+    <ContentGrid>
+      <ContentMessage>{output.message}</ContentMessage>
 
       {Object.entries(output.outputs ?? {}).map(([key, items]) => (
         <OutputKeySection key={key} outputKey={key} items={items} />
       ))}
-    </div>
+    </ContentGrid>
   );
 }

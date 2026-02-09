@@ -7,8 +7,9 @@ import { useId } from "react";
 import { useToolAccordion } from "./useToolAccordion";
 
 interface Props {
-  badgeText: string;
+  icon: React.ReactNode;
   title: React.ReactNode;
+  titleClassName?: string;
   description?: React.ReactNode;
   children: React.ReactNode;
   className?: string;
@@ -18,8 +19,9 @@ interface Props {
 }
 
 export function ToolAccordion({
-  badgeText,
+  icon,
   title,
+  titleClassName,
   description,
   children,
   className,
@@ -36,7 +38,12 @@ export function ToolAccordion({
   });
 
   return (
-    <div className={cn("mt-2 w-full rounded-lg border px-3 py-2", className)}>
+    <div
+      className={cn(
+        "mt-2 w-full rounded-lg border border-slate-200 bg-slate-100 px-3 py-2",
+        className,
+      )}
+    >
       <button
         type="button"
         aria-expanded={isExpanded}
@@ -44,24 +51,22 @@ export function ToolAccordion({
         onClick={toggle}
         className="flex w-full items-center justify-between gap-3 py-1 text-left"
       >
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-            {badgeText}
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="flex shrink-0 items-center text-gray-800">
+            {icon}
           </span>
           <div className="min-w-0">
-            <p className="truncate text-sm font-medium text-foreground">
+            <p className={cn("truncate text-sm font-medium text-gray-800", titleClassName)}>
               {title}
             </p>
             {description && (
-              <p className="truncate text-xs text-muted-foreground">
-                {description}
-              </p>
+              <p className="truncate text-xs text-slate-800">{description}</p>
             )}
           </div>
         </div>
         <CaretDownIcon
           className={cn(
-            "h-4 w-4 shrink-0 text-muted-foreground transition-transform",
+            "h-4 w-4 shrink-0 text-slate-500 transition-transform",
             isExpanded && "rotate-180",
           )}
           weight="bold"

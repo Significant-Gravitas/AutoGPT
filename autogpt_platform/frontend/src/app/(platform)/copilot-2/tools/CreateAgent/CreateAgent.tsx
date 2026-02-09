@@ -1,9 +1,17 @@
 "use client";
 
 import type { ToolUIPart } from "ai";
-import Link from "next/link";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
+import {
+  ContentCardDescription,
+  ContentCardSubtitle,
+  ContentCodeBlock,
+  ContentGrid,
+  ContentHint,
+  ContentLink,
+  ContentMessage,
+} from "../../components/ToolAccordion/AccordionContent";
 import { useCopilotChatActions } from "../../components/CopilotChatActionsProvider/useCopilotChatActions";
 import {
   ClarificationQuestionsWidget,
@@ -20,6 +28,7 @@ import {
   isOperationInProgressOutput,
   isOperationPendingOutput,
   isOperationStartedOutput,
+  AccordionIcon,
   ToolIcon,
   truncateText,
   type CreateAgentToolOutput,
@@ -38,16 +47,18 @@ interface Props {
 }
 
 function getAccordionMeta(output: CreateAgentToolOutput): {
-  badgeText: string;
+  icon: React.ReactNode;
   title: string;
   description?: string;
 } {
+  const icon = <AccordionIcon />;
+
   if (isAgentSavedOutput(output)) {
-    return { badgeText: "Create agent", title: output.agent_name };
+    return { icon, title: output.agent_name };
   }
   if (isAgentPreviewOutput(output)) {
     return {
-      badgeText: "Create agent",
+      icon,
       title: output.agent_name,
       description: `${output.node_count} block${output.node_count === 1 ? "" : "s"}`,
     };
@@ -55,7 +66,7 @@ function getAccordionMeta(output: CreateAgentToolOutput): {
   if (isClarificationNeededOutput(output)) {
     const questions = output.questions ?? [];
     return {
-      badgeText: "Create agent",
+      icon,
       title: "Needs clarification",
       description: `${questions.length} question${questions.length === 1 ? "" : "s"}`,
     };
@@ -65,9 +76,9 @@ function getAccordionMeta(output: CreateAgentToolOutput): {
     isOperationPendingOutput(output) ||
     isOperationInProgressOutput(output)
   ) {
-    return { badgeText: "Create agent", title: "Creating agent" };
+    return { icon, title: "Creating agent" };
   }
-  return { badgeText: "Create agent", title: "Error" };
+  return { icon, title: "Error" };
 }
 
 export function CreateAgentTool({ part }: Props) {
@@ -117,64 +128,58 @@ export function CreateAgentTool({ part }: Props) {
         >
           {(isOperationStartedOutput(output) ||
             isOperationPendingOutput(output)) && (
-            <div className="grid gap-2">
-              <p className="text-sm text-foreground">{output.message}</p>
-              <p className="text-xs text-muted-foreground">
+            <ContentGrid>
+              <ContentMessage>{output.message}</ContentMessage>
+              <ContentCardSubtitle>
                 Operation: {output.operation_id}
-              </p>
-              <p className="text-xs italic text-muted-foreground">
+              </ContentCardSubtitle>
+              <ContentHint>
                 Check your library in a few minutes.
-              </p>
-            </div>
+              </ContentHint>
+            </ContentGrid>
           )}
 
           {isOperationInProgressOutput(output) && (
-            <div className="grid gap-2">
-              <p className="text-sm text-foreground">{output.message}</p>
-              <p className="text-xs italic text-muted-foreground">
+            <ContentGrid>
+              <ContentMessage>{output.message}</ContentMessage>
+              <ContentHint>
                 Please wait for the current operation to finish.
-              </p>
-            </div>
+              </ContentHint>
+            </ContentGrid>
           )}
 
           {isAgentSavedOutput(output) && (
-            <div className="grid gap-2">
-              <p className="text-sm text-foreground">{output.message}</p>
+            <ContentGrid>
+              <ContentMessage>{output.message}</ContentMessage>
               <div className="flex flex-wrap gap-2">
-                <Link
-                  href={output.library_agent_link}
-                  className="text-xs font-medium text-purple-600 hover:text-purple-700"
-                >
+                <ContentLink href={output.library_agent_link}>
                   Open in library
-                </Link>
-                <Link
-                  href={output.agent_page_link}
-                  className="text-xs font-medium text-purple-600 hover:text-purple-700"
-                >
+                </ContentLink>
+                <ContentLink href={output.agent_page_link}>
                   Open in builder
-                </Link>
+                </ContentLink>
               </div>
-              <pre className="whitespace-pre-wrap rounded-2xl border bg-muted/30 p-3 text-xs text-muted-foreground">
+              <ContentCodeBlock>
                 {truncateText(
                   formatMaybeJson({ agent_id: output.agent_id }),
                   800,
                 )}
-              </pre>
-            </div>
+              </ContentCodeBlock>
+            </ContentGrid>
           )}
 
           {isAgentPreviewOutput(output) && (
-            <div className="grid gap-2">
-              <p className="text-sm text-foreground">{output.message}</p>
+            <ContentGrid>
+              <ContentMessage>{output.message}</ContentMessage>
               {output.description?.trim() && (
-                <p className="text-xs text-muted-foreground">
+                <ContentCardDescription>
                   {output.description}
-                </p>
+                </ContentCardDescription>
               )}
-              <pre className="whitespace-pre-wrap rounded-2xl border bg-muted/30 p-3 text-xs text-muted-foreground">
+              <ContentCodeBlock>
                 {truncateText(formatMaybeJson(output.agent_json), 1600)}
-              </pre>
-            </div>
+              </ContentCodeBlock>
+            </ContentGrid>
           )}
 
           {isClarificationNeededOutput(output) && (
@@ -197,19 +202,19 @@ export function CreateAgentTool({ part }: Props) {
           )}
 
           {isErrorOutput(output) && (
-            <div className="grid gap-2">
-              <p className="text-sm text-foreground">{output.message}</p>
+            <ContentGrid>
+              <ContentMessage>{output.message}</ContentMessage>
               {output.error && (
-                <pre className="whitespace-pre-wrap rounded-2xl border bg-muted/30 p-3 text-xs text-muted-foreground">
+                <ContentCodeBlock>
                   {formatMaybeJson(output.error)}
-                </pre>
+                </ContentCodeBlock>
               )}
               {output.details && (
-                <pre className="whitespace-pre-wrap rounded-2xl border bg-muted/30 p-3 text-xs text-muted-foreground">
+                <ContentCodeBlock>
                   {formatMaybeJson(output.details)}
-                </pre>
+                </ContentCodeBlock>
               )}
-            </div>
+            </ContentGrid>
           )}
         </ToolAccordion>
       )}

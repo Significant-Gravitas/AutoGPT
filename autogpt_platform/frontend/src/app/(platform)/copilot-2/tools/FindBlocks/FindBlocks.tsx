@@ -2,11 +2,16 @@
 
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
+import {
+  ContentCard,
+  ContentCardDescription,
+  ContentCardTitle,
+} from "../../components/ToolAccordion/AccordionContent";
 import type { BlockListResponse } from "@/app/api/__generated__/models/blockListResponse";
 import type { BlockInfoSummary } from "@/app/api/__generated__/models/blockInfoSummary";
 import { ToolUIPart } from "ai";
 import { HorizontalScroll } from "@/app/(platform)/build/components/NewControlPanel/NewBlockMenu/HorizontalScroll";
-import { getAnimationText, parseOutput, ToolIcon } from "./helpers";
+import { AccordionIcon, getAnimationText, parseOutput, ToolIcon } from "./helpers";
 
 export interface FindBlockInput {
   query: string;
@@ -30,14 +35,12 @@ interface Props {
 
 function BlockCard({ block }: { block: BlockInfoSummary }) {
   return (
-    <div className="w-48 shrink-0 rounded-2xl border bg-background p-3">
-      <p className="truncate text-sm font-medium text-foreground">
-        {block.name}
-      </p>
-      <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+    <ContentCard className="w-48 shrink-0">
+      <ContentCardTitle>{block.name}</ContentCardTitle>
+      <ContentCardDescription className="mt-1 line-clamp-2">
         {block.description}
-      </p>
-    </div>
+      </ContentCardDescription>
+    </ContentCard>
   );
 }
 
@@ -68,7 +71,7 @@ export function FindBlocksTool({ part }: Props) {
 
       {hasBlocks && parsed && (
         <ToolAccordion
-          badgeText="Blocks"
+          icon={<AccordionIcon />}
           title="Block results"
           description={accordionDescription}
         >

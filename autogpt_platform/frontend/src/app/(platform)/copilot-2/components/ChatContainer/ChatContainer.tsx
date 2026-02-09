@@ -41,8 +41,9 @@ export const ChatContainer = ({
                 isLoading={isLoadingSession}
               />
               <motion.div
-                layoutId={inputLayoutId}
-                transition={{ type: "spring", bounce: 0.2, duration: 0.65 }}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.3 }}
                 className="relative px-3 pb-2 pt-2"
               >
                 <div className="pointer-events-none absolute left-0 right-0 top-[-18px] z-10 h-6 bg-gradient-to-b from-transparent to-[#f8f8f9]" />

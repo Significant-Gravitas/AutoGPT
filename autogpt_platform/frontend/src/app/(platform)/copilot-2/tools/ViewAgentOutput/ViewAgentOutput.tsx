@@ -1,11 +1,22 @@
 "use client";
 
 import type { ToolUIPart } from "ai";
-import Link from "next/link";
 import React, { useState } from "react";
 import { getGetWorkspaceDownloadFileByIdUrl } from "@/app/api/__generated__/endpoints/workspace/workspace";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
+import {
+  ContentBadge,
+  ContentCard,
+  ContentCardHeader,
+  ContentCardSubtitle,
+  ContentCardTitle,
+  ContentCodeBlock,
+  ContentGrid,
+  ContentLink,
+  ContentMessage,
+  ContentSuggestionsList,
+} from "../../components/ToolAccordion/AccordionContent";
 import {
   formatMaybeJson,
   getAnimationText,
@@ -13,6 +24,7 @@ import {
   isAgentOutputResponse,
   isErrorResponse,
   isNoResultsResponse,
+  AccordionIcon,
   ToolIcon,
   type ViewAgentOutputToolOutput,
 } from "./helpers";
@@ -30,22 +42,24 @@ interface Props {
 }
 
 function getAccordionMeta(output: ViewAgentOutputToolOutput): {
-  badgeText: string;
+  icon: React.ReactNode;
   title: string;
   description?: string;
 } {
+  const icon = <AccordionIcon />;
+
   if (isAgentOutputResponse(output)) {
     const status = output.execution?.status;
     return {
-      badgeText: "Agent output",
+      icon,
       title: output.agent_name,
       description: status ? `Status: ${status}` : output.message,
     };
   }
   if (isNoResultsResponse(output)) {
-    return { badgeText: "Agent output", title: "No results" };
+    return { icon, title: "No results" };
   }
-  return { badgeText: "Agent output", title: "Error" };
+  return { icon, title: "Error" };
 }
 
 function resolveWorkspaceUrl(src: string): string {
@@ -157,111 +171,106 @@ export function ViewAgentOutputTool({ part }: Props) {
       {hasExpandableContent && output && (
         <ToolAccordion {...getAccordionMeta(output)}>
           {isAgentOutputResponse(output) && (
-            <div className="grid gap-2">
-              <div className="flex items-start justify-between gap-3">
-                <p className="text-sm text-foreground">{output.message}</p>
-                {output.library_agent_link && (
-                  <Link
-                    href={output.library_agent_link}
-                    className="shrink-0 text-xs font-medium text-purple-600 hover:text-purple-700"
-                  >
-                    Open
-                  </Link>
-                )}
-              </div>
+            <ContentGrid>
+              <ContentCardHeader
+                className="gap-3"
+                action={
+                  output.library_agent_link ? (
+                    <ContentLink href={output.library_agent_link}>
+                      Open
+                    </ContentLink>
+                  ) : null
+                }
+              >
+                <ContentMessage>{output.message}</ContentMessage>
+              </ContentCardHeader>
 
               {output.execution ? (
-                <div className="grid gap-2">
-                  <div className="rounded-2xl border bg-background p-3">
-                    <p className="text-xs font-medium text-foreground">
+                <ContentGrid>
+                  <ContentCard>
+                    <ContentCardTitle className="text-xs">
                       Execution
-                    </p>
-                    <p className="mt-1 truncate text-xs text-muted-foreground">
+                    </ContentCardTitle>
+                    <ContentCardSubtitle className="mt-1">
                       {output.execution.execution_id}
-                    </p>
-                    <p className="mt-1 text-xs text-muted-foreground">
+                    </ContentCardSubtitle>
+                    <ContentCardSubtitle className="mt-1">
                       Status: {output.execution.status}
-                    </p>
-                  </div>
+                    </ContentCardSubtitle>
+                  </ContentCard>
 
                   {output.execution.inputs_summary && (
-                    <div className="rounded-2xl border bg-background p-3">
-                      <p className="text-xs font-medium text-foreground">
+                    <ContentCard>
+                      <ContentCardTitle className="text-xs">
                         Inputs summary
-                      </p>
+                      </ContentCardTitle>
                       <pre className="mt-2 whitespace-pre-wrap text-xs text-muted-foreground">
                         {formatMaybeJson(output.execution.inputs_summary)}
                       </pre>
-                    </div>
+                    </ContentCard>
                   )}
 
                   {Object.entries(output.execution.outputs ?? {}).map(
                     ([key, items]) => {
                       const mediaContent = renderOutputValue(items);
                       return (
-                        <div
-                          key={key}
-                          className="rounded-2xl border bg-background p-3"
-                        >
+                        <ContentCard key={key}>
                           <div className="flex items-center justify-between gap-2">
-                            <p className="truncate text-xs font-medium text-foreground">
+                            <ContentCardTitle className="text-xs">
                               {key}
-                            </p>
-                            <span className="shrink-0 rounded-full border bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
+                            </ContentCardTitle>
+                            <ContentBadge>
                               {items.length} item
                               {items.length === 1 ? "" : "s"}
-                            </span>
+                            </ContentBadge>
                           </div>
                           {mediaContent || (
                             <pre className="mt-2 whitespace-pre-wrap text-xs text-muted-foreground">
                               {formatMaybeJson(items.slice(0, 3))}
                             </pre>
                           )}
-                        </div>
+                        </ContentCard>
                       );
                     },
                   )}
-                </div>
+                </ContentGrid>
               ) : (
-                <div className="rounded-2xl border bg-background p-3">
-                  <p className="text-sm text-foreground">
-                    No execution selected.
-                  </p>
-                  <p className="mt-1 text-xs text-muted-foreground">
+                <ContentCard>
+                  <ContentMessage>No execution selected.</ContentMessage>
+                  <ContentCardSubtitle className="mt-1">
                     Try asking for a specific run or execution_id.
-                  </p>
-                </div>
+                  </ContentCardSubtitle>
+                </ContentCard>
               )}
-            </div>
+            </ContentGrid>
           )}
 
           {isNoResultsResponse(output) && (
-            <div className="grid gap-2">
-              <p className="text-sm text-foreground">{output.message}</p>
+            <ContentGrid>
+              <ContentMessage>{output.message}</ContentMessage>
               {output.suggestions && output.suggestions.length > 0 && (
-                <ul className="mt-1 list-disc space-y-1 pl-5 text-xs text-muted-foreground">
-                  {output.suggestions.slice(0, 5).map((s) => (
-                    <li key={s}>{s}</li>
-                  ))}
-                </ul>
+                <ContentSuggestionsList
+                  items={output.suggestions}
+                  className="mt-1"
+                />
               )}
-            </div>
+            </ContentGrid>
           )}
 
           {isErrorResponse(output) && (
-            <div className="grid gap-2">
-              <p className="text-sm text-foreground">{output.message}</p>
+            <ContentGrid>
+              <ContentMessage>{output.message}</ContentMessage>
               {output.error && (
-                <pre className="whitespace-pre-wrap rounded-2xl border bg-muted/30 p-3 text-xs text-muted-foreground">
+                <ContentCodeBlock>
                   {formatMaybeJson(output.error)}
-                </pre>
+                </ContentCodeBlock>
               )}
               {output.details && (
-                <pre className="whitespace-pre-wrap rounded-2xl border bg-muted/30 p-3 text-xs text-muted-foreground">
+                <ContentCodeBlock>
                   {formatMaybeJson(output.details)}
-                </pre>
+                </ContentCodeBlock>
               )}
-            </div>
+            </ContentGrid>
           )}
         </ToolAccordion>
       )}

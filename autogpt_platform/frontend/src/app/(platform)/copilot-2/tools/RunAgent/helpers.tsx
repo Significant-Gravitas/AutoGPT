@@ -1,11 +1,15 @@
-import type { ToolUIPart } from "ai";
-import { PlayIcon } from "@phosphor-icons/react";
 import type { AgentDetailsResponse } from "@/app/api/__generated__/models/agentDetailsResponse";
 import type { ErrorResponse } from "@/app/api/__generated__/models/errorResponse";
 import type { ExecutionStartedResponse } from "@/app/api/__generated__/models/executionStartedResponse";
 import type { NeedLoginResponse } from "@/app/api/__generated__/models/needLoginResponse";
 import { ResponseType } from "@/app/api/__generated__/models/responseType";
 import type { SetupRequirementsResponse } from "@/app/api/__generated__/models/setupRequirementsResponse";
+import {
+  PlayIcon,
+  RocketLaunchIcon,
+  WarningDiamondIcon,
+} from "@phosphor-icons/react";
+import type { ToolUIPart } from "ai";
 
 export interface RunAgentInput {
   username_agent_slug?: string;
@@ -111,12 +115,6 @@ function getAgentIdentifierText(
   return null;
 }
 
-function getExecutionModeText(input: RunAgentInput | undefined): string | null {
-  if (!input) return null;
-  const isSchedule = Boolean(input.schedule_name?.trim() || input.cron?.trim());
-  return isSchedule ? "Scheduled run" : "Run";
-}
-
 export function getAnimationText(part: {
   state: ToolUIPart["state"];
   input?: unknown;
@@ -166,19 +164,20 @@ export function ToolIcon({
   isStreaming?: boolean;
   isError?: boolean;
 }) {
+  if (isError) {
+    return <WarningDiamondIcon size={14} weight="regular" className="text-red-500" />;
+  }
   return (
     <PlayIcon
       size={14}
       weight="regular"
-      className={
-        isError
-          ? "text-red-500"
-          : isStreaming
-            ? "text-neutral-500"
-            : "text-neutral-400"
-      }
+      className={isStreaming ? "text-neutral-500" : "text-neutral-400"}
     />
   );
+}
+
+export function AccordionIcon() {
+  return <RocketLaunchIcon size={28} weight="light" />;
 }
 
 export function formatMaybeJson(value: unknown): string {
@@ -190,19 +189,21 @@ export function formatMaybeJson(value: unknown): string {
   }
 }
 
-
 export function getAccordionMeta(output: RunAgentToolOutput): {
-  badgeText: string;
+  icon: React.ReactNode;
   title: string;
+  titleClassName?: string;
   description?: string;
 } {
+  const icon = <AccordionIcon />;
+
   if (isRunAgentExecutionStartedOutput(output)) {
     const statusText =
       typeof output.status === "string" && output.status.trim()
         ? output.status.trim()
         : "started";
     return {
-      badgeText: "Run agent",
+      icon,
       title: output.graph_name,
       description: `Status: ${statusText}`,
     };
@@ -210,7 +211,7 @@ export function getAccordionMeta(output: RunAgentToolOutput): {
 
   if (isRunAgentAgentDetailsOutput(output)) {
     return {
-      badgeText: "Run agent",
+      icon,
       title: output.agent.name,
       description: "Inputs required",
     };
@@ -224,7 +225,7 @@ export function getAccordionMeta(output: RunAgentToolOutput): {
       >,
     ).length;
     return {
-      badgeText: "Run agent",
+      icon,
       title: output.setup_info.agent_name,
       description:
         missingCredsCount > 0
@@ -234,8 +235,12 @@ export function getAccordionMeta(output: RunAgentToolOutput): {
   }
 
   if (isRunAgentNeedLoginOutput(output)) {
-    return { badgeText: "Run agent", title: "Sign in required" };
+    return { icon, title: "Sign in required" };
   }
 
-  return { badgeText: "Run agent", title: "Error" };
+  return {
+    icon: <WarningDiamondIcon size={28} weight="light" className="text-red-500" />,
+    title: "Error",
+    titleClassName: "text-red-500",
+  };
 }

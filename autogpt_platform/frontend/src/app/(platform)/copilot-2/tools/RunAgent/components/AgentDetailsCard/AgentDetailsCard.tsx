@@ -1,11 +1,13 @@
 "use client";
 
-import { useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
-import { Button } from "@/components/atoms/Button/Button";
-import { FormRenderer } from "@/components/renderers/InputRenderer/FormRenderer";
 import type { AgentDetailsResponse } from "@/app/api/__generated__/models/agentDetailsResponse";
+import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
+import { FormRenderer } from "@/components/renderers/InputRenderer/FormRenderer";
+import { AnimatePresence, motion } from "framer-motion";
+import { useState } from "react";
 import { useCopilotChatActions } from "../../../../components/CopilotChatActionsProvider/useCopilotChatActions";
+import { ContentMessage } from "../../../../components/ToolAccordion/AccordionContent";
 import { buildInputSchema } from "./helpers";
 
 interface Props {
@@ -38,21 +40,16 @@ export function AgentDetailsCard({ output }: Props) {
 
   return (
     <div className="grid gap-2">
-      <p className="text-sm text-foreground">
+      <ContentMessage>
         Run this agent with example values or your own inputs.
-      </p>
+      </ContentMessage>
 
       <div className="flex gap-2 pt-4">
-        <Button
-          variant="outline"
-          size="small"
-          className="w-fit"
-          onClick={handleRunWithExamples}
-        >
+        <Button size="small" className="w-fit" onClick={handleRunWithExamples}>
           Run with example values
         </Button>
         <Button
-          variant="secondary"
+          variant="outline"
           size="small"
           className="w-fit"
           onClick={() => setShowInputForm((prev) => !prev)}
@@ -76,9 +73,9 @@ export function AgentDetailsCard({ output }: Props) {
             style={{ willChange: "height, opacity, filter" }}
           >
             <div className="mt-4 rounded-2xl border bg-background p-3 pt-4">
-              <p className="text-sm font-medium text-foreground">
+              <Text variant="body-medium">
                 Enter your inputs
-              </p>
+              </Text>
               <FormRenderer
                 jsonSchema={buildInputSchema(output.agent.inputs)!}
                 handleChange={(v) => setInputValues(v.formData ?? {})}
