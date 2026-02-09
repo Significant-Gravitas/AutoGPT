@@ -199,7 +199,7 @@ export function BlocksControl({
         selected_tool: result.selectedTool,
         tool_input_schema: result.toolInputSchema,
         available_tools: result.availableTools,
-        credential_id: result.credentialId ?? "",
+        credentials: result.credentials ?? undefined,
       });
       setMcpDialogOpen(false);
     },

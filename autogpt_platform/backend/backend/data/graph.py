@@ -39,6 +39,7 @@ from backend.util import type as type_utils
 from backend.util.exceptions import GraphNotAccessibleError, GraphNotInLibraryError
 from backend.util.json import SafeJson
 from backend.util.models import Pagination
+from backend.util.request import parse_url
 
 from .block import (
     AnyBlockSchema,
@@ -517,6 +518,21 @@ class GraphModel(Graph, GraphMeta):
                 },
                 "required": ["id", "provider", "type"],
             }
+
+            # Add a descriptive display title when URL-based discriminator values
+            # are present (e.g. "MCP: mcp.sentry.dev" instead of just "Mcp")
+            if (
+                field_info.discriminator
+                and not field_info.discriminator_mapping
+                and field_info.discriminator_values
+            ):
+                hostnames = sorted(
+                    parse_url(str(v)).netloc for v in field_info.discriminator_values
+                )
+                base_name = (
+                    next(iter(field_info.provider), "").replace("_", " ").upper()
+                )
+                field_schema["display_name"] = f"{base_name}: {', '.join(hostnames)}"
 
             # Add other (optional) field info items
             field_schema.update(

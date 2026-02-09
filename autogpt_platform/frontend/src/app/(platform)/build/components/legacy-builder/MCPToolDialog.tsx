@@ -16,7 +16,7 @@ import { LoadingSpinner } from "@/components/__legacy__/ui/loading";
 import { Badge } from "@/components/__legacy__/ui/badge";
 import { ScrollArea } from "@/components/__legacy__/ui/scroll-area";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
-import type { MCPTool } from "@/lib/autogpt-server-api";
+import type { CredentialsMetaInput, MCPTool } from "@/lib/autogpt-server-api";
 import { CaretDown } from "@phosphor-icons/react";
 
 export type MCPToolDialogResult = {
@@ -25,8 +25,8 @@ export type MCPToolDialogResult = {
   selectedTool: string;
   toolInputSchema: Record<string, any>;
   availableTools: Record<string, any>;
-  /** Credential ID from OAuth flow, null for public servers. */
-  credentialId: string | null;
+  /** Credentials meta from OAuth flow, null for public servers. */
+  credentials: CredentialsMetaInput | null;
 };
 
 interface MCPToolDialogProps {
@@ -57,7 +57,9 @@ export function MCPToolDialog({
   const [showManualToken, setShowManualToken] = useState(false);
   const [manualToken, setManualToken] = useState("");
   const [selectedTool, setSelectedTool] = useState<MCPTool | null>(null);
-  const [credentialId, setCredentialId] = useState<string | null>(null);
+  const [credentials, setCredentials] = useState<CredentialsMetaInput | null>(
+    null,
+  );
 
   const oauthLoadingRef = useRef(false);
   const stateTokenRef = useRef<string | null>(null);
@@ -69,6 +71,7 @@ export function MCPToolDialog({
     null,
   );
   const popupCheckRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const storagePollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const oauthHandledRef = useRef(false);
   // (no auto-prefill — dialog starts fresh each time)
 
@@ -86,6 +89,9 @@ export function MCPToolDialog({
       }
       if (popupCheckRef.current) {
         clearInterval(popupCheckRef.current);
+      }
+      if (storagePollRef.current) {
+        clearInterval(storagePollRef.current);
       }
     };
   }, []);
@@ -107,13 +113,18 @@ export function MCPToolDialog({
       clearInterval(popupCheckRef.current);
       popupCheckRef.current = null;
     }
+    if (storagePollRef.current) {
+      clearInterval(storagePollRef.current);
+      storagePollRef.current = null;
+    }
     // Clean up any stale localStorage entry
     try {
       localStorage.removeItem("mcp_oauth_result");
     } catch {}
     setOauthLoading(false);
     oauthLoadingRef.current = false;
-    oauthHandledRef.current = false;
+    // NOTE: do NOT reset oauthHandledRef here — it guards against double-handling
+    // and must only be reset when starting a new OAuth flow.
   }, []);
 
   const reset = useCallback(() => {
@@ -128,7 +139,7 @@ export function MCPToolDialog({
     setAuthRequired(false);
     setShowManualToken(false);
     setSelectedTool(null);
-    setCredentialId(null);
+    setCredentials(null);
     stateTokenRef.current = null;
   }, [cleanupOAuthListeners]);
 
@@ -198,7 +209,12 @@ export function MCPToolDialog({
           data.code!,
           stateTokenRef.current!,
         );
-        setCredentialId(callbackResult.credential_id);
+        setCredentials({
+          id: callbackResult.id,
+          provider: callbackResult.provider,
+          type: callbackResult.type,
+          title: callbackResult.title,
+        });
         const result = await api.mcpDiscoverTools(serverUrl.trim());
         setTools(result.tools);
         setServerName(result.server_name);
@@ -296,26 +312,47 @@ export function MCPToolDialog({
       storageHandlerRef.current = handleStorage;
       window.addEventListener("storage", handleStorage);
 
-      // Fallback: detect popup close and check localStorage directly
+      // Fallback 1: Poll localStorage periodically.
+      // StorageEvent only fires in OTHER windows, and BroadcastChannel can fail
+      // in some cross-origin popup scenarios. Direct polling is the most reliable.
+      storagePollRef.current = setInterval(() => {
+        if (!oauthLoadingRef.current || oauthHandledRef.current) {
+          if (storagePollRef.current) clearInterval(storagePollRef.current);
+          return;
+        }
+        try {
+          const stored = localStorage.getItem("mcp_oauth_result");
+          if (stored) {
+            const data = JSON.parse(stored);
+            localStorage.removeItem("mcp_oauth_result");
+            handleOAuthResult(data);
+          }
+        } catch {}
+      }, 500);
+
+      // Fallback 2: detect popup close (gives up if popup closed without result)
       const popupRef = popup;
       popupCheckRef.current = setInterval(() => {
         if (!oauthLoadingRef.current || oauthHandledRef.current) {
           if (popupCheckRef.current) clearInterval(popupCheckRef.current);
           return;
         }
-        // Check if popup closed
         if (popupRef && popupRef.closed) {
-          // Check localStorage for the result (storage event may not fire in same window)
-          try {
-            const stored = localStorage.getItem("mcp_oauth_result");
-            if (stored) {
-              const data = JSON.parse(stored);
-              localStorage.removeItem("mcp_oauth_result");
-              handleOAuthResult(data);
-              return;
-            }
-          } catch {}
-          // Popup closed without result after a short grace period
+          // Grace period: wait one more poll cycle for localStorage to be set
+          setTimeout(() => {
+            if (oauthHandledRef.current) return;
+            try {
+              const stored = localStorage.getItem("mcp_oauth_result");
+              if (stored) {
+                const data = JSON.parse(stored);
+                localStorage.removeItem("mcp_oauth_result");
+                handleOAuthResult(data);
+                return;
+              }
+            } catch {}
+            // Popup closed without result — give up
+            if (popupCheckRef.current) clearInterval(popupCheckRef.current);
+          }, 1000);
           if (popupCheckRef.current) clearInterval(popupCheckRef.current);
         }
       }, 500);
@@ -363,10 +400,10 @@ export function MCPToolDialog({
       selectedTool: selectedTool.name,
       toolInputSchema: selectedTool.input_schema,
       availableTools,
-      credentialId,
+      credentials,
     });
     reset();
-  }, [selectedTool, tools, serverUrl, credentialId, onConfirm, reset]);
+  }, [selectedTool, tools, serverUrl, credentials, onConfirm, reset]);
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && handleClose()}>

@@ -86,7 +86,8 @@ export function CredentialsInput({
     handleCredentialSelect,
   } = hookData;
 
-  const displayName = toDisplayName(provider);
+  const displayName =
+    (schema as any).display_name || toDisplayName(provider);
   const selectedCredentialIsSystem =
     selectedCredential && isSystemCredential(selectedCredential);
 

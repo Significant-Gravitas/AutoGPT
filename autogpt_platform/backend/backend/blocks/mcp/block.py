@@ -8,11 +8,9 @@ dropdown and the input/output schema adapts dynamically.
 
 import json
 import logging
-import time
-from typing import TYPE_CHECKING, Any
+from typing import Any, Literal
 
-if TYPE_CHECKING:
-    from backend.integrations.credentials_store import IntegrationCredentialsStore
+from pydantic import SecretStr
 
 from backend.blocks.mcp.client import MCPClient, MCPClientError
 from backend.data.block import (
@@ -24,10 +22,34 @@ from backend.data.block import (
     BlockSchemaOutput,
     BlockType,
 )
-from backend.data.model import APIKeyCredentials, OAuth2Credentials, SchemaField
+from backend.data.model import (
+    CredentialsField,
+    CredentialsMetaInput,
+    OAuth2Credentials,
+    SchemaField,
+)
+from backend.integrations.providers import ProviderName
 from backend.util.json import validate_with_jsonschema
 
 logger = logging.getLogger(__name__)
+
+TEST_CREDENTIALS = OAuth2Credentials(
+    id="test-mcp-cred",
+    provider="mcp",
+    access_token=SecretStr("mock-mcp-token"),
+    refresh_token=SecretStr("mock-refresh"),
+    scopes=[],
+    title="Mock MCP credential",
+)
+TEST_CREDENTIALS_INPUT = {
+    "provider": TEST_CREDENTIALS.provider,
+    "id": TEST_CREDENTIALS.id,
+    "type": TEST_CREDENTIALS.type,
+    "title": TEST_CREDENTIALS.title,
+}
+
+
+MCPCredentials = CredentialsMetaInput[Literal[ProviderName.MCP], Literal["oauth2"]]
 
 
 class MCPToolBlock(Block):
@@ -48,16 +70,10 @@ class MCPToolBlock(Block):
             description="URL of the MCP server (Streamable HTTP endpoint)",
             placeholder="https://mcp.example.com/mcp",
         )
-        credential_id: str = SchemaField(
-            description="Credential ID from OAuth flow (empty for public servers)",
-            default="",
-            hidden=True,
-        )
-        available_tools: dict[str, Any] = SchemaField(
-            description="Available tools on the MCP server. "
-            "This is populated automatically when a server URL is provided.",
+        credentials: MCPCredentials = CredentialsField(
+            discriminator="server_url",
+            description="MCP server OAuth credentials",
             default={},
-            hidden=True,
         )
         selected_tool: str = SchemaField(
             description="The MCP tool to execute",
@@ -116,8 +132,10 @@ class MCPToolBlock(Block):
             input_schema=MCPToolBlock.Input,
             output_schema=MCPToolBlock.Output,
             block_type=BlockType.STANDARD,
+            test_credentials=TEST_CREDENTIALS,
             test_input={
                 "server_url": "https://mcp.example.com/mcp",
+                "credentials": TEST_CREDENTIALS_INPUT,
                 "selected_tool": "get_weather",
                 "tool_input_schema": {
                     "type": "object",
@@ -188,104 +206,12 @@ class MCPToolBlock(Block):
             return output_parts[0]
         return output_parts if output_parts else None
 
-    async def _resolve_auth_token(
-        self, credential_id: str, user_id: str, server_url: str = ""
-    ) -> str | None:
-        """Resolve a Bearer token from a stored credential ID, refreshing if needed.
-
-        Falls back to looking up credentials by server_url when credential_id
-        is empty (e.g. when pruneEmptyValues strips it from the saved graph).
-        """
-        from backend.integrations.credentials_store import IntegrationCredentialsStore
-        from backend.integrations.providers import ProviderName
-
-        store = IntegrationCredentialsStore()
-        creds = None
-
-        if credential_id:
-            creds = await store.get_creds_by_id(user_id, credential_id)
-
-        # Fallback: look up by server_url (same approach as discover-tools)
-        if not creds and server_url:
-            logger.info(
-                "credential_id not available, looking up credential by server_url"
-            )
-            try:
-                mcp_creds = await store.get_creds_by_provider(
-                    user_id, str(ProviderName.MCP)
-                )
-                best: OAuth2Credentials | None = None
-                for c in mcp_creds:
-                    if (
-                        isinstance(c, OAuth2Credentials)
-                        and c.metadata.get("mcp_server_url") == server_url
-                    ):
-                        if best is None or (
-                            (c.access_token_expires_at or 0)
-                            > (best.access_token_expires_at or 0)
-                        ):
-                            best = c
-                creds = best
-            except Exception:
-                logger.debug(
-                    "Could not look up MCP credentials by server_url", exc_info=True
-                )
-
-        if not creds:
-            return None
-
-        if isinstance(creds, OAuth2Credentials):
-            # Refresh if token expires within 5 minutes
-            if (
-                creds.access_token_expires_at
-                and creds.access_token_expires_at < int(time.time()) + 300
-            ):
-                creds = await self._refresh_mcp_oauth(creds, user_id, store)
-            return creds.access_token.get_secret_value()
-        if isinstance(creds, APIKeyCredentials) and creds.api_key:
-            return creds.api_key.get_secret_value() or None
-        return None
-
-    async def _refresh_mcp_oauth(
-        self,
-        creds: OAuth2Credentials,
-        user_id: str,
-        store: "IntegrationCredentialsStore",
-    ) -> OAuth2Credentials:
-        """Refresh MCP OAuth tokens using metadata stored during the OAuth callback."""
-        from backend.blocks.mcp.oauth import MCPOAuthHandler
-
-        metadata = creds.metadata or {}
-        token_url = metadata.get("mcp_token_url")
-        if not token_url:
-            logger.warning(
-                f"Cannot refresh MCP credential {creds.id}: no token_url in metadata"
-            )
-            return creds
-
-        handler = MCPOAuthHandler(
-            client_id=metadata.get("mcp_client_id", ""),
-            client_secret=metadata.get("mcp_client_secret", ""),
-            redirect_uri="",  # Not needed for refresh
-            authorize_url="",  # Not needed for refresh
-            token_url=token_url,
-            resource_url=metadata.get("mcp_resource_url"),
-        )
-
-        try:
-            fresh = await handler.refresh_tokens(creds)
-            await store.update_creds(user_id, fresh)
-            logger.info(f"Refreshed MCP OAuth credential {creds.id}")
-            return fresh
-        except Exception:
-            logger.exception(f"Failed to refresh MCP OAuth credential {creds.id}")
-            return creds
-
     async def run(
         self,
         input_data: Input,
         *,
         user_id: str,
+        credentials: OAuth2Credentials | None = None,
         **kwargs,
     ) -> BlockOutput:
         if not input_data.server_url:
@@ -296,8 +222,8 @@ class MCPToolBlock(Block):
             yield "error", "No tool selected. Please select a tool from the dropdown."
             return
 
-        auth_token = await self._resolve_auth_token(
-            input_data.credential_id, user_id, server_url=input_data.server_url
+        auth_token = (
+            credentials.access_token.get_secret_value() if credentials else None
         )
 
         try:

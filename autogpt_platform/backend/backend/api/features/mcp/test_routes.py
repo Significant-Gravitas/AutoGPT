@@ -329,6 +329,9 @@ class TestOAuthCallback:
                 return_value=mock_creds
             )
 
+            # Mock old credential cleanup
+            mock_cm.store.get_creds_by_provider = AsyncMock(return_value=[])
+
             response = client.post(
                 "/oauth/callback",
                 json={"code": "auth-code-abc", "state_token": "state-token-123"},
@@ -336,7 +339,9 @@ class TestOAuthCallback:
 
         assert response.status_code == 200
         data = response.json()
-        assert "credential_id" in data
+        assert "id" in data
+        assert data["provider"] == "mcp"
+        assert data["type"] == "oauth2"
         mock_cm.create.assert_called_once()
 
     def test_oauth_callback_invalid_state(self):

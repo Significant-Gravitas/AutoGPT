@@ -14,6 +14,7 @@ from autogpt_libs.auth import get_user_id
 from fastapi import Security
 from pydantic import BaseModel, Field
 
+from backend.api.features.integrations.router import CredentialsMetaResponse
 from backend.blocks.mcp.client import MCPClient, MCPClientError
 from backend.blocks.mcp.oauth import MCPOAuthHandler
 from backend.data.model import OAuth2Credentials
@@ -298,7 +299,7 @@ class MCPOAuthCallbackResponse(BaseModel):
 async def mcp_oauth_callback(
     request: MCPOAuthCallbackRequest,
     user_id: Annotated[str, Security(get_user_id)],
-) -> MCPOAuthCallbackResponse:
+) -> CredentialsMetaResponse:
     """
     Exchange the authorization code for tokens and store the credential.
 
@@ -371,7 +372,15 @@ async def mcp_oauth_callback(
 
     await creds_manager.create(user_id, credentials)
 
-    return MCPOAuthCallbackResponse(credential_id=credentials.id)
+    return CredentialsMetaResponse(
+        id=credentials.id,
+        provider=credentials.provider,
+        type=credentials.type,
+        title=credentials.title,
+        scopes=credentials.scopes,
+        username=credentials.username,
+        host=credentials.metadata.get("mcp_server_url"),
+    )
 
 
 # ======================== Helpers ======================== #

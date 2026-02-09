@@ -4299,7 +4299,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MCPOAuthCallbackResponse"
+                  "$ref": "#/components/schemas/CredentialsMetaResponse"
                 }
               }
             }
@@ -7297,7 +7297,7 @@
           "host": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Host",
-            "description": "Host pattern for host-scoped credentials"
+            "description": "Host pattern for host-scoped or MCP server URL for MCP credentials"
           }
         },
         "type": "object",
@@ -8740,15 +8740,6 @@
         "required": ["code", "state_token"],
         "title": "MCPOAuthCallbackRequest",
         "description": "Request to exchange an OAuth code for tokens."
-      },
-      "MCPOAuthCallbackResponse": {
-        "properties": {
-          "credential_id": { "type": "string", "title": "Credential Id" }
-        },
-        "type": "object",
-        "required": ["credential_id"],
-        "title": "MCPOAuthCallbackResponse",
-        "description": "Response after successfully storing OAuth credentials."
       },
       "MCPOAuthLoginRequest": {
         "properties": {

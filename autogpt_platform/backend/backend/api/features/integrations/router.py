@@ -102,8 +102,18 @@ class CredentialsMetaResponse(BaseModel):
     scopes: list[str] | None
     username: str | None
     host: str | None = Field(
-        default=None, description="Host pattern for host-scoped credentials"
+        default=None,
+        description="Host pattern for host-scoped or MCP server URL for MCP credentials",
     )
+
+    @staticmethod
+    def get_host(cred: Credentials) -> str | None:
+        """Extract host from credential: HostScoped host or MCP server URL."""
+        if isinstance(cred, HostScopedCredentials):
+            return cred.host
+        if isinstance(cred, OAuth2Credentials) and cred.provider == ProviderName.MCP:
+            return (cred.metadata or {}).get("mcp_server_url")
+        return None
 
 
 @router.post("/{provider}/callback", summary="Exchange OAuth code for tokens")
@@ -179,9 +189,7 @@ async def callback(
         title=credentials.title,
         scopes=credentials.scopes,
         username=credentials.username,
-        host=(
-            credentials.host if isinstance(credentials, HostScopedCredentials) else None
-        ),
+        host=(CredentialsMetaResponse.get_host(credentials)),
     )
 
 
@@ -199,7 +207,7 @@ async def list_credentials(
             title=cred.title,
             scopes=cred.scopes if isinstance(cred, OAuth2Credentials) else None,
             username=cred.username if isinstance(cred, OAuth2Credentials) else None,
-            host=cred.host if isinstance(cred, HostScopedCredentials) else None,
+            host=CredentialsMetaResponse.get_host(cred),
         )
         for cred in credentials
     ]
@@ -222,7 +230,7 @@ async def list_credentials_by_provider(
             title=cred.title,
             scopes=cred.scopes if isinstance(cred, OAuth2Credentials) else None,
             username=cred.username if isinstance(cred, OAuth2Credentials) else None,
-            host=cred.host if isinstance(cred, HostScopedCredentials) else None,
+            host=CredentialsMetaResponse.get_host(cred),
         )
         for cred in credentials
     ]

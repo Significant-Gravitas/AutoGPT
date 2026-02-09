@@ -818,7 +818,7 @@ export default class BackendAPI {
   async mcpOAuthCallback(
     code: string,
     stateToken: string,
-  ): Promise<{ credential_id: string }> {
+  ): Promise<CredentialsMetaResponse> {
     return this._request("POST", "/mcp/oauth/callback", {
       code,
       state_token: stateToken,

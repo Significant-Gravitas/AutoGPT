@@ -270,7 +270,12 @@ async def execute_node(
 
     # Handle regular credentials fields
     for field_name, input_type in input_model.get_credentials_fields().items():
-        credentials_meta = input_type(**input_data[field_name])
+        field_value = input_data.get(field_name)
+        if not field_value or (
+            isinstance(field_value, dict) and not field_value.get("id")
+        ):
+            continue  # No credentials configured — block runs without
+        credentials_meta = input_type(**field_value)
         credentials, lock = await creds_manager.acquire(user_id, credentials_meta.id)
         creds_locks.append(lock)
         extra_exec_kwargs[field_name] = credentials

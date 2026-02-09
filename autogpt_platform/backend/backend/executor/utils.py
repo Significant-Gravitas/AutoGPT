@@ -339,16 +339,16 @@ async def _validate_node_input_credentials(
                 ] = "Invalid credentials: type/provider mismatch"
                 continue
 
-        # If node has optional credentials and any are missing, mark for skipping
-        # But only if there are no other errors for this node
+        # If node has optional credentials and any are missing, allow running without.
+        # The executor will pass credentials=None to the block's run().
         if (
             has_missing_credentials
             and node.credentials_optional
             and node.id not in credential_errors
         ):
-            nodes_to_skip.add(node.id)
             logger.info(
-                f"Node #{node.id} will be skipped: optional credentials not configured"
+                f"Node #{node.id}: optional credentials not configured, "
+                "running without"
             )
 
     return credential_errors, nodes_to_skip

@@ -603,11 +603,16 @@ class CredentialsFieldInfo(BaseModel, Generic[CP, CT]):
         ] = defaultdict(list)
 
         for field, key in fields:
-            if field.provider == frozenset([ProviderName.HTTP]):
-                # HTTP host-scoped credentials can have different hosts that reqires different credential sets.
-                # Group by host extracted from the URL
+            if (
+                field.discriminator
+                and not field.discriminator_mapping
+                and field.discriminator_values
+            ):
+                # URL-based discrimination (e.g. HTTP host-scoped, MCP server URL):
+                # Each unique host gets its own credential entry.
+                provider_prefix = next(iter(field.provider))
                 providers = frozenset(
-                    [cast(CP, "http")]
+                    [cast(CP, str(provider_prefix))]
                     + [
                         cast(CP, parse_url(str(value)).netloc)
                         for value in field.discriminator_values

@@ -149,6 +149,7 @@ export function useCredentialsInput({
     savedCredentials,
     oAuthCallback,
     isSystemProvider,
+    discriminatorValue,
   } = credentials;
 
   // Split credentials into user and system
@@ -157,10 +158,23 @@ export function useCredentialsInput({
 
   async function handleOAuthLogin() {
     setOAuthError(null);
-    const { login_url, state_token } = await api.oAuthLogin(
-      provider,
-      schema.credentials_scopes,
-    );
+
+    // MCP uses dynamic OAuth discovery per server URL
+    const isMCP = provider === "mcp" && !!discriminatorValue;
+    let login_url: string;
+    let state_token: string;
+
+    if (isMCP) {
+      ({ login_url, state_token } = await api.mcpOAuthLogin(
+        discriminatorValue!,
+      ));
+    } else {
+      ({ login_url, state_token } = await api.oAuthLogin(
+        provider,
+        schema.credentials_scopes,
+      ));
+    }
+
     setOAuth2FlowInProgress(true);
     const popup = window.open(login_url, "_blank", "popup=true");
 
@@ -205,29 +219,34 @@ export function useCredentialsInput({
 
       try {
         console.debug("Processing OAuth callback");
-        const credentials = await oAuthCallback(e.data.code, e.data.state);
+        // MCP uses its own callback endpoint
+        const credentials = isMCP
+          ? await api.mcpOAuthCallback(e.data.code, e.data.state)
+          : await oAuthCallback(e.data.code, e.data.state);
         console.debug("OAuth callback processed successfully");
 
-        // Check if the credential's scopes match the required scopes
-        const requiredScopes = schema.credentials_scopes;
-        if (requiredScopes && requiredScopes.length > 0) {
-          const grantedScopes = new Set(credentials.scopes || []);
-          const hasAllRequiredScopes = new Set(requiredScopes).isSubsetOf(
-            grantedScopes,
-          );
+        // Check if the credential's scopes match the required scopes (skip for MCP)
+        if (!isMCP) {
+          const requiredScopes = schema.credentials_scopes;
+          if (requiredScopes && requiredScopes.length > 0) {
+            const grantedScopes = new Set(credentials.scopes || []);
+            const hasAllRequiredScopes = new Set(requiredScopes).isSubsetOf(
+              grantedScopes,
+            );
 
-          if (!hasAllRequiredScopes) {
-            console.error(
-              `Newly created OAuth credential for ${providerName} has insufficient scopes. Required:`,
-              requiredScopes,
-              "Granted:",
-              credentials.scopes,
-            );
-            setOAuthError(
-              "Connection failed: the granted permissions don't match what's required. " +
-                "Please contact the application administrator.",
-            );
-            return;
+            if (!hasAllRequiredScopes) {
+              console.error(
+                `Newly created OAuth credential for ${providerName} has insufficient scopes. Required:`,
+                requiredScopes,
+                "Granted:",
+                credentials.scopes,
+              );
+              setOAuthError(
+                "Connection failed: the granted permissions don't match what's required. " +
+                  "Please contact the application administrator.",
+              );
+              return;
+            }
           }
         }
 
