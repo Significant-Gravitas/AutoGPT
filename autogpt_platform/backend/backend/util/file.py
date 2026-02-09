@@ -44,7 +44,7 @@ def sanitize_filename(filename: str) -> str:
         if "." in sanitized:
             name, ext = sanitized.rsplit(".", 1)
             # If extension is too long, it's likely not a file extension but just text
-            if len(ext) < 20:
+            if len(ext) <= 20:
                 max_name_length = MAX_FILENAME_LENGTH - len(ext) - 1
                 sanitized = name[:max_name_length] + "." + ext
             else:
