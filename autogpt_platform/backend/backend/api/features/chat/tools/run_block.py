@@ -58,14 +58,6 @@ class RunBlockTool(BaseTool):
                         "NEVER guess this - always get it from find_block first."
                     ),
                 },
-                "block_name": {
-                    "type": "string",
-                    "description": (
-                        "The block's human-readable 'name' field from "
-                        "find_block results. Include this for better user "
-                        "experience."
-                    ),
-                },
                 "input_data": {
                     "type": "object",
                     "description": (

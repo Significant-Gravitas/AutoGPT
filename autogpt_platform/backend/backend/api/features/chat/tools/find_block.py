@@ -178,8 +178,8 @@ class FindBlockTool(BaseTool):
                 message=(
                     f"Found {len(blocks)} block(s) matching '{query}'. "
                     "To execute a block, use run_block with the block's "
-                    "'id' and 'name' fields and provide 'input_data' "
-                    "matching the block's input_schema."
+                    "'id' field and provide 'input_data' matching the "
+                    "block's input_schema."
                 ),
                 blocks=blocks,
                 count=len(blocks),

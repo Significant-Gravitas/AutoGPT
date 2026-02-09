@@ -353,9 +353,8 @@ class BlockListResponse(ToolResponseBase):
     usage_hint: str = Field(
         default=(
             "To execute a block, call run_block with block_id set to "
-            "the block's 'id' field, block_name set to the block's 'name' "
-            "field, and input_data containing the required fields from "
-            "input_schema."
+            "the block's 'id' field and input_data containing the required "
+            "fields from input_schema."
         )
     )
 

@@ -62,11 +62,13 @@ export function getToolActionPhrase(toolName: string): string {
  *
  * @param toolName - The tool name
  * @param args - The tool arguments
+ * @param blocksById - Optional map of block IDs to block names for lookup
  * @returns Formatted user-friendly text to append to action phrase
  */
 export function formatToolArguments(
   toolName: string,
   args: ToolArguments | undefined,
+  blocksById?: Map<string, string>,
 ): string {
   if (!args || Object.keys(args).length === 0) {
     return "";
@@ -109,17 +111,16 @@ export function formatToolArguments(
       break;
 
     case "run_block":
-      // Prefer block_name if provided, otherwise fall back to block_id
-      if (args.block_name) {
-        // Beautify and remove redundant "Block" suffix (same pattern as blocks menu)
-        const displayName = beautifyString(args.block_name as string).replace(
-          / Block$/,
-          "",
-        );
-        return ` "${displayName}"`;
-      }
+      // Look up block name from blocksById map, fall back to block_id
       if (args.block_id) {
-        return ` "${args.block_id as string}"`;
+        const blockId = args.block_id as string;
+        const blockName = blocksById?.get(blockId);
+        if (blockName) {
+          // Beautify and remove redundant "Block" suffix (same pattern as blocks menu)
+          const displayName = beautifyString(blockName).replace(/ Block$/, "");
+          return ` "${displayName}"`;
+        }
+        return ` "${blockId}"`;
       }
       break;
 
