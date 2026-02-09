@@ -101,7 +101,6 @@ from backend.util.timezone_utils import (
 from backend.util.virus_scanner import scan_content_safe
 
 from .library import db as library_db
-from .library import model as library_model
 from .store.model import StoreAgentDetails
 
 
@@ -823,18 +822,16 @@ async def update_graph(
     graph: graph_db.Graph,
     user_id: Annotated[str, Security(get_user_id)],
 ) -> graph_db.GraphModel:
-    # Sanity check
     if graph.id and graph.id != graph_id:
         raise HTTPException(400, detail="Graph ID does not match ID in URI")
 
-    # Determine new version
     existing_versions = await graph_db.get_graph_all_versions(graph_id, user_id=user_id)
     if not existing_versions:
         raise HTTPException(404, detail=f"Graph #{graph_id} not found")
-    latest_version_number = max(g.version for g in existing_versions)
-    graph.version = latest_version_number + 1
 
+    graph.version = max(g.version for g in existing_versions) + 1
     current_active_version = next((v for v in existing_versions if v.is_active), None)
+
     graph = graph_db.make_graph_model(graph, user_id)
     graph.reassign_ids(user_id=user_id, reassign_graph_id=False)
     graph.validate_graph(for_run=False)
@@ -842,27 +839,23 @@ async def update_graph(
     new_graph_version = await graph_db.create_graph(graph, user_id=user_id)
 
     if new_graph_version.is_active:
-        # Keep the library agent up to date with the new active version
-        await _update_library_agent_version_and_settings(user_id, new_graph_version)
-
-        # Handle activation of the new graph first to ensure continuity
+        await library_db.update_library_agent_version_and_settings(
+            user_id, new_graph_version
+        )
         new_graph_version = await on_graph_activate(new_graph_version, user_id=user_id)
-        # Ensure new version is the only active version
         await graph_db.set_graph_active_version(
             graph_id=graph_id, version=new_graph_version.version, user_id=user_id
         )
         if current_active_version:
-            # Handle deactivation of the previously active version
             await on_graph_deactivate(current_active_version, user_id=user_id)
 
-    # Fetch new graph version *with sub-graphs* (needed for credentials input schema)
     new_graph_version_with_subgraphs = await graph_db.get_graph(
         graph_id,
         new_graph_version.version,
         user_id=user_id,
         include_subgraphs=True,
     )
-    assert new_graph_version_with_subgraphs  # make type checker happy
+    assert new_graph_version_with_subgraphs
     return new_graph_version_with_subgraphs
 
 
@@ -900,31 +893,13 @@ async def set_graph_active_version(
     )
 
     # Keep the library agent up to date with the new active version
-    await _update_library_agent_version_and_settings(user_id, new_active_graph)
+    await library_db.update_library_agent_version_and_settings(
+        user_id, new_active_graph
+    )
 
     if current_active_graph and current_active_graph.version != new_active_version:
         # Handle deactivation of the previously active version
         await on_graph_deactivate(current_active_graph, user_id=user_id)
-
-
-async def _update_library_agent_version_and_settings(
-    user_id: str, agent_graph: graph_db.GraphModel
-) -> library_model.LibraryAgent:
-    library = await library_db.update_agent_version_in_library(
-        user_id, agent_graph.id, agent_graph.version
-    )
-    updated_settings = GraphSettings.from_graph(
-        graph=agent_graph,
-        hitl_safe_mode=library.settings.human_in_the_loop_safe_mode,
-        sensitive_action_safe_mode=library.settings.sensitive_action_safe_mode,
-    )
-    if updated_settings != library.settings:
-        library = await library_db.update_library_agent(
-            library_agent_id=library.id,
-            user_id=user_id,
-            settings=updated_settings,
-        )
-    return library
 
 
 @v1_router.patch(

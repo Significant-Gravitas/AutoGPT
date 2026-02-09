@@ -38,8 +38,8 @@ export function AudioWaveform({
     // Create audio context and analyser
     const audioContext = new AudioContext();
     const analyser = audioContext.createAnalyser();
-    analyser.fftSize = 512;
-    analyser.smoothingTimeConstant = 0.8;
+    analyser.fftSize = 256;
+    analyser.smoothingTimeConstant = 0.3;
 
     // Connect the stream to the analyser
     const source = audioContext.createMediaStreamSource(stream);
@@ -73,10 +73,11 @@ export function AudioWaveform({
           maxAmplitude = Math.max(maxAmplitude, amplitude);
         }
 
-        // Map amplitude (0-128) to bar height
-        const normalized = (maxAmplitude / 128) * 255;
-        const height =
-          minBarHeight + (normalized / 255) * (maxBarHeight - minBarHeight);
+        // Normalize amplitude (0-128 range) to 0-1
+        const normalized = maxAmplitude / 128;
+        // Apply sensitivity boost (multiply by 4) and use sqrt curve to amplify quiet sounds
+        const boosted = Math.min(1, Math.sqrt(normalized) * 4);
+        const height = minBarHeight + boosted * (maxBarHeight - minBarHeight);
         newBars.push(height);
       }
 

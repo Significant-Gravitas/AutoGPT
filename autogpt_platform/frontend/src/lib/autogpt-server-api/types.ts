@@ -362,25 +362,14 @@ export type GraphMeta = {
   user_id: UserID;
   version: number;
   is_active: boolean;
+  created_at: Date;
   name: string;
   description: string;
   instructions?: string | null;
   recommended_schedule_cron: string | null;
   forked_from_id?: GraphID | null;
   forked_from_version?: number | null;
-  input_schema: GraphInputSchema;
-  output_schema: GraphOutputSchema;
-  credentials_input_schema: CredentialsInputSchema;
-} & (
-  | {
-      has_external_trigger: true;
-      trigger_setup_info: GraphTriggerInfo;
-    }
-  | {
-      has_external_trigger: false;
-      trigger_setup_info: null;
-    }
-);
+};
 
 export type GraphID = Brand<string, "GraphID">;
 
@@ -447,11 +436,22 @@ export type GraphTriggerInfo = {
 
 /* Mirror of backend/data/graph.py:Graph */
 export type Graph = GraphMeta & {
-  created_at: Date;
   nodes: Node[];
   links: Link[];
   sub_graphs: Omit<Graph, "sub_graphs">[]; // Flattened sub-graphs
-};
+  input_schema: GraphInputSchema;
+  output_schema: GraphOutputSchema;
+  credentials_input_schema: CredentialsInputSchema;
+} & (
+    | {
+        has_external_trigger: true;
+        trigger_setup_info: GraphTriggerInfo;
+      }
+    | {
+        has_external_trigger: false;
+        trigger_setup_info: null;
+      }
+  );
 
 export type GraphUpdateable = Omit<
   Graph,
