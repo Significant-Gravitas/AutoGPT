@@ -2139,7 +2139,10 @@ async def add_user_to_waitlist(
                             data={"unaffiliatedEmailUsers": current_emails},
                         )
                         # Mask email for logging to avoid PII exposure
-                        masked = email.split("@")[0][0] + "***@" + email.split("@")[1] if "@" in email else "***"
+                        parts = email.split("@") if "@" in email else []
+                        local = parts[0] if len(parts) > 0 else ""
+                        domain = parts[1] if len(parts) > 1 else "unknown"
+                        masked = (local[0] if local else "?") + "***@" + domain
                         logger.info(f"Email {masked} added to waitlist {waitlist_id}")
                     else:
                         logger.debug(f"Email already exists on waitlist {waitlist_id}")
