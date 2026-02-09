@@ -607,3 +607,98 @@ class TestMCPToolBlock:
 
         assert captured_tokens == [None]
         assert outputs == [("result", "ok")]
+
+    @pytest.mark.asyncio
+    async def test_resolve_auth_token_refreshes_expired(self):
+        """Verify _resolve_auth_token refreshes expired MCP OAuth tokens."""
+        import time
+
+        from pydantic import SecretStr
+
+        from backend.data.model import OAuth2Credentials
+
+        block = MCPToolBlock()
+        expired_creds = OAuth2Credentials(
+            id="cred-expired",
+            provider="mcp",
+            title="MCP: test",
+            access_token=SecretStr("old-token"),
+            refresh_token=SecretStr("refresh-tok"),
+            access_token_expires_at=int(time.time()) - 60,  # Already expired
+            scopes=[],
+            metadata={
+                "mcp_token_url": "https://auth.example.com/token",
+                "mcp_client_id": "client-id",
+                "mcp_client_secret": "client-secret",
+                "mcp_resource_url": "https://mcp.example.com",
+            },
+        )
+        fresh_creds = OAuth2Credentials(
+            id="cred-expired",
+            provider="mcp",
+            title="MCP: test",
+            access_token=SecretStr("fresh-token"),
+            refresh_token=SecretStr("refresh-tok"),
+            access_token_expires_at=int(time.time()) + 3600,
+            scopes=[],
+            metadata=expired_creds.metadata,
+        )
+
+        mock_store = AsyncMock()
+        mock_store.get_creds_by_id = AsyncMock(return_value=expired_creds)
+        mock_store.update_creds = AsyncMock()
+
+        mock_handler_instance = AsyncMock()
+        mock_handler_instance.refresh_tokens = AsyncMock(return_value=fresh_creds)
+
+        with (
+            patch(
+                "backend.integrations.credentials_store.IntegrationCredentialsStore",
+                return_value=mock_store,
+            ),
+            patch(
+                "backend.blocks.mcp.oauth.MCPOAuthHandler",
+                return_value=mock_handler_instance,
+            ),
+        ):
+            token = await block._resolve_auth_token("cred-expired", "user-1")
+
+        assert token == "fresh-token"
+        mock_handler_instance.refresh_tokens.assert_awaited_once_with(expired_creds)
+        mock_store.update_creds.assert_awaited_once_with("user-1", fresh_creds)
+
+    @pytest.mark.asyncio
+    async def test_resolve_auth_token_skips_refresh_if_valid(self):
+        """Verify _resolve_auth_token does NOT refresh tokens that are still valid."""
+        import time
+
+        from pydantic import SecretStr
+
+        from backend.data.model import OAuth2Credentials
+
+        block = MCPToolBlock()
+        valid_creds = OAuth2Credentials(
+            id="cred-valid",
+            provider="mcp",
+            title="MCP: test",
+            access_token=SecretStr("valid-token"),
+            refresh_token=SecretStr("refresh-tok"),
+            access_token_expires_at=int(time.time()) + 3600,  # Still valid
+            scopes=[],
+            metadata={
+                "mcp_token_url": "https://auth.example.com/token",
+            },
+        )
+
+        mock_store = AsyncMock()
+        mock_store.get_creds_by_id = AsyncMock(return_value=valid_creds)
+
+        with patch(
+            "backend.integrations.credentials_store.IntegrationCredentialsStore",
+            return_value=mock_store,
+        ):
+            token = await block._resolve_auth_token("cred-valid", "user-1")
+
+        assert token == "valid-token"
+        # update_creds should NOT have been called (no refresh needed)
+        mock_store.update_creds.assert_not_awaited()

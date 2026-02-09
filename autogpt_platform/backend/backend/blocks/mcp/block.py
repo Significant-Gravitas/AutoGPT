@@ -8,7 +8,11 @@ dropdown and the input/output schema adapts dynamically.
 
 import json
 import logging
-from typing import Any
+import time
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from backend.integrations.credentials_store import IntegrationCredentialsStore
 
 from backend.blocks.mcp.client import MCPClient, MCPClientError
 from backend.data.block import (
@@ -190,21 +194,62 @@ class MCPToolBlock(Block):
         return output_parts if output_parts else None
 
     async def _resolve_auth_token(self, credential_id: str, user_id: str) -> str | None:
-        """Resolve a Bearer token from a stored credential ID."""
+        """Resolve a Bearer token from a stored credential ID, refreshing if needed."""
         if not credential_id:
             return None
-        from backend.util.clients import get_integration_credentials_store
+        from backend.integrations.credentials_store import IntegrationCredentialsStore
 
-        store = get_integration_credentials_store()
+        store = IntegrationCredentialsStore()
         creds = await store.get_creds_by_id(user_id, credential_id)
         if not creds:
             logger.warning(f"Credential {credential_id} not found")
             return None
         if isinstance(creds, OAuth2Credentials):
+            # Refresh if token expires within 5 minutes
+            if (
+                creds.access_token_expires_at
+                and creds.access_token_expires_at < int(time.time()) + 300
+            ):
+                creds = await self._refresh_mcp_oauth(creds, user_id, store)
             return creds.access_token.get_secret_value()
         if hasattr(creds, "api_key") and creds.api_key:
             return creds.api_key.get_secret_value() or None
         return None
+
+    async def _refresh_mcp_oauth(
+        self,
+        creds: OAuth2Credentials,
+        user_id: str,
+        store: "IntegrationCredentialsStore",
+    ) -> OAuth2Credentials:
+        """Refresh MCP OAuth tokens using metadata stored during the OAuth callback."""
+        from backend.blocks.mcp.oauth import MCPOAuthHandler
+
+        metadata = creds.metadata or {}
+        token_url = metadata.get("mcp_token_url")
+        if not token_url:
+            logger.warning(
+                f"Cannot refresh MCP credential {creds.id}: no token_url in metadata"
+            )
+            return creds
+
+        handler = MCPOAuthHandler(
+            client_id=metadata.get("mcp_client_id", ""),
+            client_secret=metadata.get("mcp_client_secret", ""),
+            redirect_uri="",  # Not needed for refresh
+            authorize_url="",  # Not needed for refresh
+            token_url=token_url,
+            resource_url=metadata.get("mcp_resource_url"),
+        )
+
+        try:
+            fresh = await handler.refresh_tokens(creds)
+            await store.update_creds(user_id, fresh)
+            logger.info(f"Refreshed MCP OAuth credential {creds.id}")
+            return fresh
+        except Exception:
+            logger.exception(f"Failed to refresh MCP OAuth credential {creds.id}")
+            return creds
 
     async def run(
         self,
