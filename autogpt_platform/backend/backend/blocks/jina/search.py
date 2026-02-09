@@ -17,6 +17,7 @@ from backend.data.block import (
 )
 from backend.data.model import SchemaField
 from backend.util.exceptions import BlockExecutionError
+from backend.util.request import HTTPClientError, HTTPServerError
 
 
 class SearchTheWebBlock(Block, GetRequest):
@@ -119,5 +120,20 @@ class ExtractWebsiteContentBlock(Block, GetRequest):
                 "Authorization": f"Bearer {credentials.api_key.get_secret_value()}",
             }
 
-        content = await self.get_request(url, json=False, headers=headers)
+        try:
+            content = await self.get_request(url, json=False, headers=headers)
+        except HTTPClientError as e:
+            yield "error", f"Client error ({e.status_code}) fetching {input_data.url}: {e}"
+            return
+        except HTTPServerError as e:
+            yield "error", f"Server error ({e.status_code}) fetching {input_data.url}: {e}"
+            return
+        except Exception as e:
+            yield "error", f"Failed to fetch {input_data.url}: {e}"
+            return
+
+        if not content:
+            yield "error", f"No content returned for {input_data.url}"
+            return
+
         yield "content", content
