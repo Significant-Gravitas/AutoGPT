@@ -254,13 +254,11 @@ class BlockHandler(ContentHandler):
         all_blocks = get_blocks()
 
         # Filter out disabled blocks - they're not indexed
-        enabled_block_ids = []
-        for block_id, block_cls in all_blocks.items():
-            try:
-                if not block_cls().disabled:
-                    enabled_block_ids.append(block_id)
-            except Exception as e:
-                logger.warning(f"Failed to instantiate block {block_id}: {e}")
+        enabled_block_ids = [
+            block_id
+            for block_id, block_cls in all_blocks.items()
+            if not block_cls().disabled
+        ]
         total_blocks = len(enabled_block_ids)
 
         if total_blocks == 0:
