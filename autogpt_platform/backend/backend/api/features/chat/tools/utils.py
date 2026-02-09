@@ -295,7 +295,9 @@ def find_matching_credential(
             continue
         if cred.type not in field_info.supported_types:
             continue
-        if cred.type == "oauth2" and not _credential_has_required_scopes(cred, field_info):
+        if cred.type == "oauth2" and not _credential_has_required_scopes(
+            cred, field_info
+        ):
             continue
         if cred.type == "host_scoped" and not _credential_is_for_host(cred, field_info):
             continue

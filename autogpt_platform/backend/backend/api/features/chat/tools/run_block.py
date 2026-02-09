@@ -106,6 +106,9 @@ class RunBlockTool(BaseTool):
                     and discriminator_value in field_info.discriminator_mapping
                 ):
                     effective_field_info = field_info.discriminate(discriminator_value)
+                    # For host-scoped credentials, add the discriminator value
+                    # (e.g., URL) so _credential_is_for_host can match it
+                    effective_field_info.discriminator_values.add(discriminator_value)
                     logger.debug(
                         f"Discriminated provider for {field_name}: "
                         f"{discriminator_value} -> {effective_field_info.provider}"
