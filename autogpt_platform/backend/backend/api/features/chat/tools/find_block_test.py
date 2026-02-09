@@ -23,10 +23,12 @@ def make_mock_block(
     mock = MagicMock()
     mock.id = block_id
     mock.name = name
+    mock.description = f"{name} description"
     mock.block_type = block_type
     mock.disabled = disabled
     mock.input_schema = MagicMock()
     mock.input_schema.jsonschema.return_value = {"properties": {}, "required": []}
+    mock.input_schema.get_credentials_fields.return_value = {}
     mock.output_schema = MagicMock()
     mock.output_schema.jsonschema.return_value = {}
     mock.categories = []
