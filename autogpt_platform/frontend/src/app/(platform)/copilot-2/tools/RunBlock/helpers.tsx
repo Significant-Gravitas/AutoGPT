@@ -73,12 +73,6 @@ export function getRunBlockToolOutput(
   return parseOutput((part as { output?: unknown }).output);
 }
 
-function getBlockLabel(input: RunBlockInput | undefined): string | null {
-  const blockId = input?.block_id?.trim();
-  if (!blockId) return null;
-  return `Block ${blockId.slice(0, 8)}…`;
-}
-
 export function getAnimationText(part: {
   state: ToolUIPart["state"];
   input?: unknown;
@@ -137,4 +131,43 @@ export function formatMaybeJson(value: unknown): string {
   } catch {
     return String(value);
   }
+}
+
+
+
+export function getAccordionMeta(output: RunBlockToolOutput): {
+  badgeText: string;
+  title: string;
+  description?: string;
+} {
+  if (isRunBlockBlockOutput(output)) {
+    const keys = Object.keys(output.outputs ?? {});
+    return {
+      badgeText: "Run block",
+      title: output.block_name,
+      description:
+        keys.length > 0
+          ? `${keys.length} output key${keys.length === 1 ? "" : "s"}`
+          : output.message,
+    };
+  }
+
+  if (isRunBlockSetupRequirementsOutput(output)) {
+    const missingCredsCount = Object.keys(
+      (output.setup_info.user_readiness?.missing_credentials ?? {}) as Record<
+        string,
+        unknown
+      >,
+    ).length;
+    return {
+      badgeText: "Run block",
+      title: output.setup_info.agent_name,
+      description:
+        missingCredsCount > 0
+          ? `Missing ${missingCredsCount} credential${missingCredsCount === 1 ? "" : "s"}`
+          : output.message,
+    };
+  }
+
+  return { badgeText: "Run block", title: "Error" };
 }
