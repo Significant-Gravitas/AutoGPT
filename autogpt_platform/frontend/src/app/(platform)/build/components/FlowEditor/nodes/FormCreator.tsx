@@ -44,12 +44,10 @@ export const FormCreator: React.FC<FormCreatorProps> = React.memo(
           inputs: formData,
         };
       } else if (isMCPWithTool) {
-        // Separate credentials from tool arguments
-        const { credentials, ...toolArgs } = formData;
+        // All form fields are tool arguments (credentials handled by dialog)
         updatedValues = {
           ...getHardCodedValues(nodeId),
-          ...(credentials ? { credentials } : {}),
-          tool_arguments: toolArgs,
+          tool_arguments: formData,
         };
       } else {
         updatedValues = formData;
@@ -64,13 +62,7 @@ export const FormCreator: React.FC<FormCreatorProps> = React.memo(
     if (isAgent) {
       initialValues = hardcodedValues.inputs ?? {};
     } else if (isMCPWithTool) {
-      // Merge credentials + tool_arguments for the combined schema
-      initialValues = {
-        ...(hardcodedValues.credentials
-          ? { credentials: hardcodedValues.credentials }
-          : {}),
-        ...(hardcodedValues.tool_arguments ?? {}),
-      };
+      initialValues = hardcodedValues.tool_arguments ?? {};
     } else {
       initialValues = hardcodedValues;
     }

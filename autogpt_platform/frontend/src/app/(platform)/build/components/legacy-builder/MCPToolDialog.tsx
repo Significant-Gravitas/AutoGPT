@@ -66,33 +66,21 @@ export function MCPToolDialog({
   const oauthHandledRef = useRef(false);
   const autoConnectAttemptedRef = useRef(false);
 
-  // Attempt auto-connect when dialog opens with a stored server URL
+  // Pre-fill last used server URL when dialog opens (without auto-connecting)
   useEffect(() => {
     if (!open) {
       autoConnectAttemptedRef.current = false;
       return;
     }
 
-    const lastUrl = localStorage.getItem(STORAGE_KEY);
-    if (!lastUrl || autoConnectAttemptedRef.current) return;
+    if (autoConnectAttemptedRef.current) return;
     autoConnectAttemptedRef.current = true;
 
-    setServerUrl(lastUrl);
-    setLoading(true);
-    api
-      .mcpDiscoverTools(lastUrl)
-      .then((result) => {
-        setTools(result.tools);
-        setServerName(result.server_name);
-        setStep("tool");
-      })
-      .catch(() => {
-        // Stored credential expired or server changed — stay on URL step
-      })
-      .finally(() => {
-        setLoading(false);
-      });
-  }, [open, api]);
+    const lastUrl = localStorage.getItem(STORAGE_KEY);
+    if (lastUrl) {
+      setServerUrl(lastUrl);
+    }
+  }, [open]);
 
   // Clean up listeners on unmount
   useEffect(() => {

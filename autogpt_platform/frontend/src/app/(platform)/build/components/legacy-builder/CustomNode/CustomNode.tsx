@@ -222,20 +222,17 @@ export const CustomNode = React.memo(
       !!data.hardcodedValues?.tool_input_schema?.properties;
 
     if (isMCPWithTool) {
-      const credentialsProp = data.inputSchema?.properties?.credentials;
+      // Show only the tool's input parameters. Credentials are NOT included
+      // because authentication is handled by the MCP dialog's OAuth flow
+      // and stored server-side.
       const toolSchema = data.hardcodedValues.tool_input_schema;
-      const staticRequired = data.inputSchema?.required ?? [];
 
       data.inputSchema = {
         type: "object",
         properties: {
-          ...(credentialsProp ? { credentials: credentialsProp } : {}),
           ...(toolSchema.properties ?? {}),
         },
-        required: [
-          ...staticRequired.filter((r: string) => r === "credentials"),
-          ...(toolSchema.required ?? []),
-        ],
+        required: [...(toolSchema.required ?? [])],
       } as BlockIORootSchema;
     }
 
@@ -562,8 +559,7 @@ export const CustomNode = React.memo(
         default:
           const getInputPropKey = (key: string) => {
             if (nodeType == BlockUIType.AGENT) return `inputs.${key}`;
-            if (isMCPWithTool && key !== "credentials")
-              return `tool_arguments.${key}`;
+            if (isMCPWithTool) return `tool_arguments.${key}`;
             return key;
           };
 
