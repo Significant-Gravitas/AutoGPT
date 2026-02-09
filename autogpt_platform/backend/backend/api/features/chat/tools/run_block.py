@@ -8,7 +8,7 @@ from typing import Any
 from pydantic_core import PydanticUndefined
 
 from backend.api.features.chat.model import ChatSession
-from backend.data.block import get_block
+from backend.data.block import AnyBlockSchema, get_block
 from backend.data.execution import ExecutionContext
 from backend.data.model import CredentialsFieldInfo, CredentialsMetaInput
 from backend.data.workspace import get_or_create_workspace
@@ -79,7 +79,7 @@ class RunBlockTool(BaseTool):
 
     def _resolve_discriminated_credentials(
         self,
-        block: Any,
+        block: AnyBlockSchema,
         input_data: dict[str, Any],
     ) -> dict[str, CredentialsFieldInfo]:
         """Resolve credential requirements, applying discriminator logic where needed."""
@@ -121,7 +121,7 @@ class RunBlockTool(BaseTool):
     async def _check_block_credentials(
         self,
         user_id: str,
-        block: Any,
+        block: AnyBlockSchema,
         input_data: dict[str, Any] | None = None,
     ) -> tuple[dict[str, CredentialsMetaInput], list[CredentialsMetaInput]]:
         """
@@ -330,7 +330,7 @@ class RunBlockTool(BaseTool):
                 session_id=session_id,
             )
 
-    def _get_inputs_list(self, block: Any) -> list[dict[str, Any]]:
+    def _get_inputs_list(self, block: AnyBlockSchema) -> list[dict[str, Any]]:
         """Extract non-credential inputs from block schema."""
         schema = block.input_schema.jsonschema()
         credentials_fields = set(block.input_schema.get_credentials_fields().keys())
