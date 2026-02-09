@@ -39,7 +39,6 @@ type DialogStep = "url" | "tool";
 
 const OAUTH_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 
-
 export function MCPToolDialog({
   open,
   onClose,
@@ -526,11 +525,15 @@ function MCPToolCard({
   const required = new Set<string>(tool.input_schema?.required ?? []);
   const paramNames = Object.keys(properties);
 
-  // Strip XML-like tags and hints from description for cleaner display
-  const cleanDescription = (tool.description ?? "")
-    .replace(/<[^>]+>[^<]*<\/[^>]+>/g, "")
-    .replace(/<[^>]+>/g, "")
-    .trim();
+  // Strip XML-like tags from description for cleaner display.
+  // Loop to handle nested tags like <scr<script>ipt> (CodeQL fix).
+  let cleanDescription = tool.description ?? "";
+  let prev = "";
+  while (prev !== cleanDescription) {
+    prev = cleanDescription;
+    cleanDescription = cleanDescription.replace(/<[^>]*>/g, "");
+  }
+  cleanDescription = cleanDescription.trim();
 
   return (
     <button
