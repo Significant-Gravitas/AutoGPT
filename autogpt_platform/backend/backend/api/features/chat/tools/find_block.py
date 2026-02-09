@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 _TARGET_RESULTS = 10
 # Over-fetch to compensate for post-hoc filtering of graph-only blocks.
-# ~16-17 blocks are currently excluded; 40 provides ample margin.
+# 40 is 2x current removed; speed of query 10 vs 40 is minimial
 _OVERFETCH_PAGE_SIZE = 40
 
 # Block types that only work within graphs and cannot run standalone in CoPilot.
