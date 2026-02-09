@@ -377,21 +377,45 @@ async def stream_chat_completion(
         ValueError: If max_context_messages is exceeded
 
     """
+    completion_start = time.monotonic()
+
+    # Build log metadata for structured logging
+    log_meta = {"component": "ChatService", "session_id": session_id}
+    if user_id:
+        log_meta["user_id"] = user_id
+
     logger.info(
-        f"Streaming chat completion for session {session_id} for message {message} and user id {user_id}. Message is user message: {is_user_message}"
+        f"[TIMING] stream_chat_completion STARTED, session={session_id}, user={user_id}, "
+        f"message_len={len(message) if message else 0}, is_user={is_user_message}",
+        extra={
+            "json_fields": {
+                **log_meta,
+                "message_len": len(message) if message else 0,
+                "is_user_message": is_user_message,
+            }
+        },
     )
 
     # Only fetch from Redis if session not provided (initial call)
     if session is None:
+        fetch_start = time.monotonic()
         session = await get_chat_session(session_id, user_id)
+        fetch_time = (time.monotonic() - fetch_start) * 1000
         logger.info(
-            f"Fetched session from Redis: {session.session_id if session else 'None'}, "
-            f"message_count={len(session.messages) if session else 0}"
+            f"[TIMING] get_chat_session took {fetch_time:.1f}ms, "
+            f"n_messages={len(session.messages) if session else 0}",
+            extra={
+                "json_fields": {
+                    **log_meta,
+                    "duration_ms": fetch_time,
+                    "n_messages": len(session.messages) if session else 0,
+                }
+            },
         )
     else:
         logger.info(
-            f"Using provided session object: {session.session_id}, "
-            f"message_count={len(session.messages)}"
+            f"[TIMING] Using provided session, messages={len(session.messages)}",
+            extra={"json_fields": {**log_meta, "n_messages": len(session.messages)}},
         )
 
     if not session:
@@ -412,17 +436,25 @@ async def stream_chat_completion(
 
         # Track user message in PostHog
         if is_user_message:
+            posthog_start = time.monotonic()
             track_user_message(
                 user_id=user_id,
                 session_id=session_id,
                 message_length=len(message),
             )
+            posthog_time = (time.monotonic() - posthog_start) * 1000
+            logger.info(
+                f"[TIMING] track_user_message took {posthog_time:.1f}ms",
+                extra={"json_fields": {**log_meta, "duration_ms": posthog_time}},
+            )
 
-    logger.info(
-        f"Upserting session: {session.session_id} with user id {session.user_id}, "
-        f"message_count={len(session.messages)}"
-    )
+    upsert_start = time.monotonic()
     session = await upsert_chat_session(session)
+    upsert_time = (time.monotonic() - upsert_start) * 1000
+    logger.info(
+        f"[TIMING] upsert_chat_session took {upsert_time:.1f}ms",
+        extra={"json_fields": {**log_meta, "duration_ms": upsert_time}},
+    )
     assert session, "Session not found"
 
     # Generate title for new sessions on first user message (non-blocking)
@@ -460,7 +492,13 @@ async def stream_chat_completion(
             asyncio.create_task(_update_title())
 
     # Build system prompt with business understanding
+    prompt_start = time.monotonic()
     system_prompt, understanding = await _build_system_prompt(user_id)
+    prompt_time = (time.monotonic() - prompt_start) * 1000
+    logger.info(
+        f"[TIMING] _build_system_prompt took {prompt_time:.1f}ms",
+        extra={"json_fields": {**log_meta, "duration_ms": prompt_time}},
+    )
 
     # Initialize variables for streaming
     assistant_response = ChatMessage(
@@ -490,7 +528,11 @@ async def stream_chat_completion(
     text_block_id = str(uuid_module.uuid4())
 
     # Only yield message start for the initial call, not for continuations.
-    # This is the single place where StreamStart is emitted (removed from routes.py).
+    setup_time = (time.monotonic() - completion_start) * 1000
+    logger.info(
+        f"[TIMING] Setup complete, yielding StreamStart at {setup_time:.1f}ms",
+        extra={"json_fields": {**log_meta, "setup_time_ms": setup_time}},
+    )
     if not is_continuation:
         yield StreamStart(messageId=message_id, taskId=_task_id)
 
@@ -498,6 +540,10 @@ async def stream_chat_completion(
     yield StreamStartStep()
 
     try:
+        logger.info(
+            "[TIMING] Calling _stream_chat_chunks",
+            extra={"json_fields": log_meta},
+        )
         async for chunk in _stream_chat_chunks(
             session=session,
             tools=tools,
@@ -916,9 +962,21 @@ async def _stream_chat_chunks(
         SSE formatted JSON response objects
 
     """
+    import time as time_module
+
+    stream_chunks_start = time_module.perf_counter()
     model = config.model
 
-    logger.info("Starting pure chat stream")
+    # Build log metadata for structured logging
+    log_meta = {"component": "ChatService", "session_id": session.session_id}
+    if session.user_id:
+        log_meta["user_id"] = session.user_id
+
+    logger.info(
+        f"[TIMING] _stream_chat_chunks STARTED, session={session.session_id}, "
+        f"user={session.user_id}, n_messages={len(session.messages)}",
+        extra={"json_fields": {**log_meta, "n_messages": len(session.messages)}},
+    )
 
     messages = session.to_openai_messages()
     if system_prompt:
@@ -929,11 +987,17 @@ async def _stream_chat_chunks(
         messages = [system_message] + messages
 
     # Apply context window management
+    context_start = time_module.perf_counter()
     context_result = await _manage_context_window(
         messages=messages,
         model=model,
         api_key=config.api_key,
         base_url=config.base_url,
+    )
+    context_time = (time_module.perf_counter() - context_start) * 1000
+    logger.info(
+        f"[TIMING] _manage_context_window took {context_time:.1f}ms",
+        extra={"json_fields": {**log_meta, "duration_ms": context_time}},
     )
 
     if context_result.error:
@@ -969,9 +1033,19 @@ async def _stream_chat_chunks(
 
         while retry_count <= MAX_RETRIES:
             try:
+                elapsed = (time_module.perf_counter() - stream_chunks_start) * 1000
+                retry_info = (
+                    f" (retry {retry_count}/{MAX_RETRIES})" if retry_count > 0 else ""
+                )
                 logger.info(
-                    f"Creating OpenAI chat completion stream..."
-                    f"{f' (retry {retry_count}/{MAX_RETRIES})' if retry_count > 0 else ''}"
+                    f"[TIMING] Creating OpenAI stream at {elapsed:.1f}ms{retry_info}",
+                    extra={
+                        "json_fields": {
+                            **log_meta,
+                            "elapsed_ms": elapsed,
+                            "retry_count": retry_count,
+                        }
+                    },
                 )
 
                 # Build extra_body for OpenRouter tracing and PostHog analytics
@@ -988,6 +1062,7 @@ async def _stream_chat_chunks(
                         :128
                     ]  # OpenRouter limit
 
+                api_call_start = time_module.perf_counter()
                 stream = await client.chat.completions.create(
                     model=model,
                     messages=cast(list[ChatCompletionMessageParam], messages),
@@ -996,6 +1071,11 @@ async def _stream_chat_chunks(
                     stream=True,
                     stream_options=ChatCompletionStreamOptionsParam(include_usage=True),
                     extra_body=extra_body,
+                )
+                api_init_time = (time_module.perf_counter() - api_call_start) * 1000
+                logger.info(
+                    f"[TIMING] OpenAI stream object returned in {api_init_time:.1f}ms",
+                    extra={"json_fields": {**log_meta, "duration_ms": api_init_time}},
                 )
 
                 # Variables to accumulate tool calls
@@ -1007,10 +1087,13 @@ async def _stream_chat_chunks(
 
                 # Track if we've started the text block
                 text_started = False
+                first_content_chunk = True
+                chunk_count = 0
 
                 # Process the stream
                 chunk: ChatCompletionChunk
                 async for chunk in stream:
+                    chunk_count += 1
                     if chunk.usage:
                         yield StreamUsage(
                             promptTokens=chunk.usage.prompt_tokens,
@@ -1033,6 +1116,23 @@ async def _stream_chat_chunks(
                             if not text_started and text_block_id:
                                 yield StreamTextStart(id=text_block_id)
                                 text_started = True
+                            # Log timing for first content chunk
+                            if first_content_chunk:
+                                first_content_chunk = False
+                                ttfc = (
+                                    time_module.perf_counter() - api_call_start
+                                ) * 1000
+                                logger.info(
+                                    f"[TIMING] FIRST CONTENT CHUNK at {ttfc:.1f}ms "
+                                    f"(since API call), n_chunks={chunk_count}",
+                                    extra={
+                                        "json_fields": {
+                                            **log_meta,
+                                            "time_to_first_chunk_ms": ttfc,
+                                            "n_chunks": chunk_count,
+                                        }
+                                    },
+                                )
                             # Stream the text delta
                             text_response = StreamTextDelta(
                                 id=text_block_id or "",
@@ -1089,7 +1189,21 @@ async def _stream_chat_chunks(
                                         toolName=tool_calls[idx]["function"]["name"],
                                     )
                                     emitted_start_for_idx.add(idx)
-                logger.info(f"Stream complete. Finish reason: {finish_reason}")
+                stream_duration = time_module.perf_counter() - api_call_start
+                logger.info(
+                    f"[TIMING] OpenAI stream COMPLETE, finish_reason={finish_reason}, "
+                    f"duration={stream_duration:.2f}s, "
+                    f"n_chunks={chunk_count}, n_tool_calls={len(tool_calls)}",
+                    extra={
+                        "json_fields": {
+                            **log_meta,
+                            "stream_duration_ms": stream_duration * 1000,
+                            "finish_reason": finish_reason,
+                            "n_chunks": chunk_count,
+                            "n_tool_calls": len(tool_calls),
+                        }
+                    },
+                )
 
                 # Yield all accumulated tool calls after the stream is complete
                 # This ensures all tool call arguments have been fully received
@@ -1109,6 +1223,12 @@ async def _stream_chat_chunks(
                         # Re-raise to trigger retry logic in the parent function
                         raise
 
+                total_time = (time_module.perf_counter() - stream_chunks_start) * 1000
+                logger.info(
+                    f"[TIMING] _stream_chat_chunks COMPLETED in {total_time/1000:.1f}s; "
+                    f"session={session.session_id}, user={session.user_id}",
+                    extra={"json_fields": {**log_meta, "total_time_ms": total_time}},
+                )
                 yield StreamFinish()
                 return
             except Exception as e:
