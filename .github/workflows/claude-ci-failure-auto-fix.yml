@@ -42,7 +42,7 @@ jobs:
 
       - name: Get CI failure details
         id: failure_details
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const run = await github.rest.actions.getWorkflowRun({
