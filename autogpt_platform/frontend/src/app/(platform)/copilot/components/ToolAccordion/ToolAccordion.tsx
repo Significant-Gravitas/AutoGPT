@@ -56,7 +56,12 @@ export function ToolAccordion({
             {icon}
           </span>
           <div className="min-w-0">
-            <p className={cn("truncate text-sm font-medium text-gray-800", titleClassName)}>
+            <p
+              className={cn(
+                "truncate text-sm font-medium text-gray-800",
+                titleClassName,
+              )}
+            >
               {title}
             </p>
             {description && (

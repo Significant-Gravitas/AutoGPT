@@ -77,7 +77,9 @@ export function SetupRequirementsCard({ output }: Props) {
 
       {expectedInputs.length > 0 && (
         <div className="rounded-2xl border bg-background p-3">
-          <ContentCardTitle className="text-xs">Expected inputs</ContentCardTitle>
+          <ContentCardTitle className="text-xs">
+            Expected inputs
+          </ContentCardTitle>
           <div className="mt-2 grid gap-2">
             {expectedInputs.map((input) => (
               <div key={input.name} className="rounded-xl border p-2">

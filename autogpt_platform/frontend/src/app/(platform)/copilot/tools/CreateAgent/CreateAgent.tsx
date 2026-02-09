@@ -1,9 +1,5 @@
 "use client";
 
-import {
-  ClarificationQuestionsWidget,
-  type ClarifyingQuestion as WidgetClarifyingQuestion,
-} from "@/components/contextual/Chat/components/ClarificationQuestionsWidget/ClarificationQuestionsWidget";
 import { WarningDiamondIcon } from "@phosphor-icons/react";
 import type { ToolUIPart } from "ai";
 import { useCopilotChatActions } from "../../components/CopilotChatActionsProvider/useCopilotChatActions";
@@ -20,6 +16,10 @@ import {
 } from "../../components/ToolAccordion/AccordionContent";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
 import { useAsymptoticProgress } from "../../hooks/useAsymptoticProgress";
+import {
+  ClarificationQuestionsCard,
+  ClarifyingQuestion,
+} from "./components/ClarificationQuestionsCard";
 import {
   AccordionIcon,
   formatMaybeJson,
@@ -86,7 +86,9 @@ function getAccordionMeta(output: CreateAgentToolOutput): {
     };
   }
   return {
-    icon: <WarningDiamondIcon size={32} weight="light" className="text-red-500" />,
+    icon: (
+      <WarningDiamondIcon size={32} weight="light" className="text-red-500" />
+    ),
     title: "Error",
     titleClassName: "text-red-500",
   };
@@ -195,9 +197,9 @@ export function CreateAgentTool({ part }: Props) {
           )}
 
           {isClarificationNeededOutput(output) && (
-            <ClarificationQuestionsWidget
+            <ClarificationQuestionsCard
               questions={(output.questions ?? []).map((q) => {
-                const item: WidgetClarifyingQuestion = {
+                const item: ClarifyingQuestion = {
                   question: q.question,
                   keyword: q.keyword,
                 };

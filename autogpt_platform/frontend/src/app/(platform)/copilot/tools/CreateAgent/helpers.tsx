@@ -156,7 +156,9 @@ export function ToolIcon({
   isError?: boolean;
 }) {
   if (isError) {
-    return <WarningDiamondIcon size={14} weight="regular" className="text-red-500" />;
+    return (
+      <WarningDiamondIcon size={14} weight="regular" className="text-red-500" />
+    );
   }
   if (isStreaming) {
     return <OrbitLoader size={24} />;

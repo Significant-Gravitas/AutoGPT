@@ -73,9 +73,7 @@ export function AgentDetailsCard({ output }: Props) {
             style={{ willChange: "height, opacity, filter" }}
           >
             <div className="mt-4 rounded-2xl border bg-background p-3 pt-4">
-              <Text variant="body-medium">
-                Enter your inputs
-              </Text>
+              <Text variant="body-medium">Enter your inputs</Text>
               <FormRenderer
                 jsonSchema={buildInputSchema(output.agent.inputs)!}
                 handleChange={(v) => setInputValues(v.formData ?? {})}

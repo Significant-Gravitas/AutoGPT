@@ -12,10 +12,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
-import {
-  PlusCircleIcon,
-  PlusIcon,
-} from "@phosphor-icons/react";
+import { PlusCircleIcon, PlusIcon } from "@phosphor-icons/react";
 import { motion } from "framer-motion";
 import { parseAsString, useQueryState } from "nuqs";
 

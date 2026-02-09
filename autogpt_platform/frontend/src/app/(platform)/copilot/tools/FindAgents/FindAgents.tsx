@@ -2,7 +2,6 @@
 
 import { ToolUIPart } from "ai";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
-import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
 import {
   ContentBadge,
   ContentCard,
@@ -12,6 +11,7 @@ import {
   ContentGrid,
   ContentLink,
 } from "../../components/ToolAccordion/AccordionContent";
+import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
 import {
   AccordionIcon,
   getAgentHref,
@@ -59,7 +59,7 @@ export function FindAgentsTool({ part }: Props) {
     (typeof agentsFoundOutput.count !== "number" ||
       agentsFoundOutput.count > 0);
   const totalCount = agentsFoundOutput ? agentsFoundOutput.count : 0;
-  const { label: sourceLabel, source } = getSourceLabelFromToolType(part.type);
+  const { source } = getSourceLabelFromToolType(part.type);
   const scopeText =
     source === "library"
       ? "in your library"

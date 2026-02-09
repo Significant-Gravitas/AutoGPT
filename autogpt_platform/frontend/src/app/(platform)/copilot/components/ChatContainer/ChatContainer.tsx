@@ -1,5 +1,5 @@
 "use client";
-import { ChatInput } from "@/components/contextual/Chat/components/ChatInput/ChatInput";
+import { ChatInput } from "@/app/(platform)/copilot/components/ChatInput/ChatInput";
 import { UIDataTypes, UIMessage, UITools } from "ai";
 import { LayoutGroup, motion } from "framer-motion";
 import { ChatMessagesContainer } from "../ChatMessagesContainer/ChatMessagesContainer";

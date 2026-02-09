@@ -1,17 +1,17 @@
 "use client";
 
-import {
-  getGreetingName,
-  getInputPlaceholder,
-  getQuickActions,
-} from "@/app/(platform)/copilot/helpers";
+import { ChatInput } from "@/app/(platform)/copilot/components/ChatInput/ChatInput";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import { ChatInput } from "@/components/contextual/Chat/components/ChatInput/ChatInput";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { SpinnerGapIcon } from "@phosphor-icons/react";
 import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
+import {
+  getGreetingName,
+  getInputPlaceholder,
+  getQuickActions,
+} from "./helpers";
 
 interface Props {
   inputLayoutId: string;

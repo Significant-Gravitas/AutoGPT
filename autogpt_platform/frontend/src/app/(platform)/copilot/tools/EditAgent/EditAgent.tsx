@@ -2,10 +2,10 @@
 
 import { WarningDiamondIcon } from "@phosphor-icons/react";
 import type { ToolUIPart } from "ai";
+import { useCopilotChatActions } from "../../components/CopilotChatActionsProvider/useCopilotChatActions";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
 import { OrbitLoader } from "../../components/OrbitLoader/OrbitLoader";
 import { ProgressBar } from "../../components/ProgressBar/ProgressBar";
-import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
 import {
   ContentCardDescription,
   ContentCodeBlock,
@@ -14,13 +14,14 @@ import {
   ContentLink,
   ContentMessage,
 } from "../../components/ToolAccordion/AccordionContent";
+import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
 import { useAsymptoticProgress } from "../../hooks/useAsymptoticProgress";
-import { useCopilotChatActions } from "../../components/CopilotChatActionsProvider/useCopilotChatActions";
 import {
-  ClarificationQuestionsWidget,
-  type ClarifyingQuestion as WidgetClarifyingQuestion,
-} from "@/components/contextual/Chat/components/ClarificationQuestionsWidget/ClarificationQuestionsWidget";
+  ClarificationQuestionsCard,
+  ClarifyingQuestion,
+} from "../CreateAgent/components/ClarificationQuestionsCard";
 import {
+  AccordionIcon,
   formatMaybeJson,
   getAnimationText,
   getEditAgentToolOutput,
@@ -31,7 +32,6 @@ import {
   isOperationInProgressOutput,
   isOperationPendingOutput,
   isOperationStartedOutput,
-  AccordionIcon,
   ToolIcon,
   truncateText,
   type EditAgentToolOutput,
@@ -83,7 +83,9 @@ function getAccordionMeta(output: EditAgentToolOutput): {
     return { icon: <OrbitLoader size={32} />, title: "Editing agent" };
   }
   return {
-    icon: <WarningDiamondIcon size={32} weight="light" className="text-red-500" />,
+    icon: (
+      <WarningDiamondIcon size={32} weight="light" className="text-red-500" />
+    ),
     title: "Error",
     titleClassName: "text-red-500",
   };
@@ -192,9 +194,9 @@ export function EditAgentTool({ part }: Props) {
           )}
 
           {isClarificationNeededOutput(output) && (
-            <ClarificationQuestionsWidget
+            <ClarificationQuestionsCard
               questions={(output.questions ?? []).map((q) => {
-                const item: WidgetClarifyingQuestion = {
+                const item: ClarifyingQuestion = {
                   question: q.question,
                   keyword: q.keyword,
                 };

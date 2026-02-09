@@ -11,7 +11,12 @@ import type { BlockListResponse } from "@/app/api/__generated__/models/blockList
 import type { BlockInfoSummary } from "@/app/api/__generated__/models/blockInfoSummary";
 import { ToolUIPart } from "ai";
 import { HorizontalScroll } from "@/app/(platform)/build/components/NewControlPanel/NewBlockMenu/HorizontalScroll";
-import { AccordionIcon, getAnimationText, parseOutput, ToolIcon } from "./helpers";
+import {
+  AccordionIcon,
+  getAnimationText,
+  parseOutput,
+  ToolIcon,
+} from "./helpers";
 
 export interface FindBlockInput {
   query: string;

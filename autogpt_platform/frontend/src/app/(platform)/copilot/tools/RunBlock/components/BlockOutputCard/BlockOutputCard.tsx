@@ -54,7 +54,10 @@ function resolveForRenderer(value: unknown): {
 
 function RenderOutputValue({ value }: { value: unknown }) {
   const resolved = resolveForRenderer(value);
-  const renderer = globalRegistry.getRenderer(resolved.value, resolved.metadata);
+  const renderer = globalRegistry.getRenderer(
+    resolved.value,
+    resolved.metadata,
+  );
 
   if (renderer) {
     return (

@@ -115,7 +115,9 @@ export function ToolIcon({
   isError?: boolean;
 }) {
   if (isError) {
-    return <WarningDiamondIcon size={14} weight="regular" className="text-red-500" />;
+    return (
+      <WarningDiamondIcon size={14} weight="regular" className="text-red-500" />
+    );
   }
   if (isStreaming) {
     return <PulseLoader size={40} className="text-neutral-700" />;
@@ -174,7 +176,9 @@ export function getAccordionMeta(output: RunBlockToolOutput): {
   }
 
   return {
-    icon: <WarningDiamondIcon size={32} weight="light" className="text-red-500" />,
+    icon: (
+      <WarningDiamondIcon size={32} weight="light" className="text-red-500" />
+    ),
     title: "Error",
     titleClassName: "text-red-500",
   };
