@@ -134,7 +134,7 @@ class RunBlockTool(BaseTool):
         logger.info(f"Executing block {block.name} ({block_id}) for user {user_id}")
 
         creds_manager = IntegrationCredentialsManager()
-        matched_credentials, missing_credentials = await self._match_block_credentials(
+        matched_credentials, missing_credentials = await self._resolve_block_credentials(
             user_id, block, input_data
         )
 
@@ -264,22 +264,23 @@ class RunBlockTool(BaseTool):
                 session_id=session_id,
             )
 
-    async def _match_block_credentials(
+    async def _resolve_block_credentials(
         self,
         user_id: str,
         block: AnyBlockSchema,
         input_data: dict[str, Any] | None = None,
     ) -> tuple[dict[str, CredentialsMetaInput], list[CredentialsMetaInput]]:
         """
-        Check if user has required credentials for a block.
+        Resolve credentials for a block by matching user's available credentials.
 
         Args:
             user_id: User ID
-            block: Block to check credentials for
+            block: Block to resolve credentials for
             input_data: Input data for the block (used to determine provider via discriminator)
 
         Returns:
-            tuple[matched_credentials, missing_credentials]
+            tuple of (matched_credentials, missing_credentials) - matched credentials
+            are used for block execution, missing ones indicate setup requirements.
         """
         input_data = input_data or {}
         requirements = self._resolve_discriminated_credentials(block, input_data)
