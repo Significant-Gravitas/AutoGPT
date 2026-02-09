@@ -44,7 +44,7 @@ jobs:
         run: echo "key=${{ runner.os }}-pnpm-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml', 'autogpt_platform/frontend/package.json') }}" >> $GITHUB_OUTPUT
 
       - name: Cache dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.pnpm-store
           key: ${{ steps.cache-key.outputs.key }}
@@ -88,7 +88,7 @@ jobs:
           docker compose -f ../docker-compose.yml --profile local --profile deps_backend up -d
 
       - name: Restore dependencies cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.pnpm-store
           key: ${{ needs.setup.outputs.cache-key }}
