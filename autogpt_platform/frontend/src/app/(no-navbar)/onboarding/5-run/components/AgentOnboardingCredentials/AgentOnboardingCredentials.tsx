@@ -1,5 +1,5 @@
 import { CredentialsMetaInput } from "@/app/api/__generated__/models/credentialsMetaInput";
-import { GraphMeta } from "@/app/api/__generated__/models/graphMeta";
+import { GraphModel } from "@/app/api/__generated__/models/graphModel";
 import { CredentialsInput } from "@/components/contextual/CredentialsInput/CredentialsInput";
 import { useState } from "react";
 import { getSchemaDefaultCredentials } from "../../helpers";
@@ -9,7 +9,7 @@ type Credential = CredentialsMetaInput | undefined;
 type Credentials = Record<string, Credential>;
 
 type Props = {
-  agent: GraphMeta | null;
+  agent: GraphModel | null;
   siblingInputs?: Record<string, any>;
   onCredentialsChange: (
     credentials: Record<string, CredentialsMetaInput>,
