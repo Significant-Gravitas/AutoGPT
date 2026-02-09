@@ -531,12 +531,12 @@ class LLMResponse(BaseModel):
 
 def convert_openai_tool_fmt_to_anthropic(
     openai_tools: list[dict] | None = None,
-) -> list[ToolParam] | None:
+) -> Iterable[ToolParam] | anthropic.Omit:
     """
     Convert OpenAI tool format to Anthropic tool format.
     """
     if not openai_tools or len(openai_tools) == 0:
-        return None
+        return anthropic.omit
 
     anthropic_tools = []
     for tool in openai_tools:
@@ -596,10 +596,10 @@ def extract_openai_tool_calls(response) -> list[ToolContentBlock] | None:
 
 def get_parallel_tool_calls_param(
     llm_model: LlmModel, parallel_tool_calls: bool | None
-) -> bool | openai.NotGiven:
+) -> bool | openai.Omit:
     """Get the appropriate parallel_tool_calls parameter for OpenAI-compatible APIs."""
     if llm_model.startswith("o") or parallel_tool_calls is None:
-        return openai.NOT_GIVEN
+        return openai.omit
     return parallel_tool_calls
 
 
@@ -717,16 +717,14 @@ async def llm_call(
             api_key=credentials.api_key.get_secret_value()
         )
         try:
-            create_kwargs: dict[str, Any] = {
-                "model": llm_model.value,
-                "system": sysprompt,
-                "messages": messages,
-                "max_tokens": max_tokens,
-                "timeout": 600,
-            }
-            if an_tools:
-                create_kwargs["tools"] = an_tools
-            resp = await client.messages.create(**create_kwargs)
+            resp = await client.messages.create(
+                model=llm_model.value,
+                system=sysprompt,
+                messages=messages,
+                max_tokens=max_tokens,
+                tools=an_tools,
+                timeout=600,
+            )
 
             if not resp.content:
                 raise ValueError("No content returned from Anthropic.")
