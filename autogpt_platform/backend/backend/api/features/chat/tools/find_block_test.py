@@ -9,6 +9,7 @@ from backend.api.features.chat.tools.find_block import (
     COPILOT_EXCLUDED_BLOCK_TYPES,
     FindBlockTool,
 )
+from backend.api.features.chat.tools.models import BlockListResponse
 from backend.data.block import BlockType
 
 from ._test_data import make_session
@@ -89,7 +90,7 @@ class TestFindBlockFiltering:
                 )
 
         # Should only return the standard block, not the INPUT block
-        assert hasattr(response, "blocks")
+        assert isinstance(response, BlockListResponse)
         assert len(response.blocks) == 1
         assert response.blocks[0].id == "standard-block-id"
 
@@ -133,6 +134,6 @@ class TestFindBlockFiltering:
                 )
 
         # Should only return normal block, not SmartDecisionMakerBlock
-        assert hasattr(response, "blocks")
+        assert isinstance(response, BlockListResponse)
         assert len(response.blocks) == 1
         assert response.blocks[0].id == "normal-block-id"
