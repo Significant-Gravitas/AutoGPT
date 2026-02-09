@@ -6459,6 +6459,18 @@
                 "schema": { "$ref": "#/components/schemas/StoreWaitlistEntry" }
               }
             }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/workspace/files/{file_id}/download": {
       "get": {
         "tags": ["workspace"],
