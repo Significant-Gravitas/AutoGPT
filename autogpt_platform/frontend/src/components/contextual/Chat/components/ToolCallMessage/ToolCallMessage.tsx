@@ -35,10 +35,14 @@ export function ToolCallMessage({
 
   // Create a memoized map of block IDs to names
   const blocksById = useMemo(() => {
-    if (!blocksResponse?.data) return undefined;
-    const blocks = blocksResponse.data as Block[];
+    if (!blocksResponse) return undefined;
+    // Handle both response structures: direct array or { data: array }
+    const blocks = (
+      Array.isArray(blocksResponse) ? blocksResponse : blocksResponse.data
+    ) as Block[] | undefined;
+    if (!blocks) return undefined;
     return new Map(blocks.map((block) => [block.id, block.name]));
-  }, [blocksResponse?.data]);
+  }, [blocksResponse]);
 
   const actionPhrase = getToolActionPhrase(toolName);
   const argumentsText = formatToolArguments(
