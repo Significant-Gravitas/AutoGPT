@@ -1822,9 +1822,9 @@ def _extract_api_error_details(error: Exception) -> dict[str, Any]:
     }
 
     if hasattr(error, "code"):
-        details["code"] = error.code
+        details["code"] = getattr(error, "code", None)
     if hasattr(error, "param"):
-        details["param"] = error.param
+        details["param"] = getattr(error, "param", None)
 
     if isinstance(error, APIStatusError):
         details["status_code"] = error.status_code
