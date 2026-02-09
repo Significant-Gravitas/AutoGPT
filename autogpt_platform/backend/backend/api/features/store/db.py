@@ -2016,7 +2016,7 @@ def _waitlist_to_store_entry(
         agentOutputDemoUrl=waitlist.agentOutputDemoUrl,
         imageUrls=waitlist.imageUrls or [],
         description=waitlist.description,
-        categories=waitlist.categories,
+        categories=waitlist.categories or [],
     )
 
 
@@ -2177,7 +2177,7 @@ def _waitlist_to_admin_response(
         name=waitlist.name,
         subHeading=waitlist.subHeading,
         description=waitlist.description,
-        categories=waitlist.categories,
+        categories=waitlist.categories or [],
         imageUrls=waitlist.imageUrls or [],
         videoUrl=waitlist.videoUrl,
         agentOutputDemoUrl=waitlist.agentOutputDemoUrl,
