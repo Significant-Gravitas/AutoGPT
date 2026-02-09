@@ -4,7 +4,7 @@ import { ResponseType } from "@/app/api/__generated__/models/responseType";
 import { FindBlockInput, FindBlockToolPart } from "./FindBlocks";
 import { PackageIcon } from "@phosphor-icons/react";
 
-function parseOutput(output: unknown): BlockListResponse | null {
+export function parseOutput(output: unknown): BlockListResponse | null {
   if (!output) return null;
   if (typeof output === "string") {
     const trimmed = output.trim();

@@ -1,6 +1,7 @@
 "use client";
 import { useGetV2ListSessions } from "@/app/api/__generated__/endpoints/chat/chat";
 import { Button } from "@/components/atoms/Button/Button";
+import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Text } from "@/components/atoms/Text/Text";
 import {
   Sidebar,
@@ -14,7 +15,6 @@ import { cn } from "@/lib/utils";
 import {
   PlusCircleIcon,
   PlusIcon,
-  SpinnerGapIcon,
 } from "@phosphor-icons/react";
 import { motion } from "framer-motion";
 import { parseAsString, useQueryState } from "nuqs";
@@ -125,7 +125,7 @@ export function ChatSidebar() {
           >
             {isLoadingSessions ? (
               <div className="flex items-center justify-center py-4">
-                <SpinnerGapIcon className="h-5 w-5 animate-spin text-neutral-400" />
+                <LoadingSpinner size="small" className="text-neutral-400" />
               </div>
             ) : sessions.length === 0 ? (
               <p className="py-4 text-center text-sm text-neutral-500">
