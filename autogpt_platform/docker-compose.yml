@@ -53,6 +53,12 @@ services:
       file: ./docker-compose.platform.yml
       service: executor
 
+  copilot_executor:
+    <<: *agpt-services
+    extends:
+      file: ./docker-compose.platform.yml
+      service: copilot_executor
+
   websocket_server:
     <<: *agpt-services
     extends:
@@ -174,5 +180,6 @@ services:
       - deps
       - rest_server
       - executor
+      - copilot_executor
       - websocket_server
       - database_manager
