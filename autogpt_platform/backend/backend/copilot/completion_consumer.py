@@ -119,8 +119,9 @@ class ChatCompletionConsumer:
         """Lazily initialize Prisma client on first use."""
         if self._prisma is None:
             database_url = os.getenv("DATABASE_URL", "postgresql://localhost:5432")
-            self._prisma = Prisma(datasource={"url": database_url})
-            await self._prisma.connect()
+            prisma = Prisma(datasource={"url": database_url})
+            await prisma.connect()
+            self._prisma = prisma
             logger.info("[COMPLETION] Consumer Prisma client connected (lazy init)")
         return self._prisma
 

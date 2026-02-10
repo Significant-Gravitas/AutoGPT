@@ -5,16 +5,16 @@ from typing import Any
 
 from prisma.enums import ContentType
 
-from backend.api.features.chat.model import ChatSession
-from backend.api.features.chat.tools.base import BaseTool
-from backend.api.features.chat.tools.models import (
+from backend.api.features.store.hybrid_search import unified_hybrid_search
+from backend.copilot.model import ChatSession
+from backend.copilot.tools.base import BaseTool
+from backend.copilot.tools.models import (
     DocSearchResult,
     DocSearchResultsResponse,
     ErrorResponse,
     NoResultsResponse,
     ToolResponseBase,
 )
-from backend.api.features.store.hybrid_search import unified_hybrid_search
 
 logger = logging.getLogger(__name__)
 

@@ -3,7 +3,7 @@
 import logging
 from typing import Any
 
-from backend.api.features.chat.model import ChatSession
+from backend.copilot.model import ChatSession
 
 from .agent_generator import (
     AgentGeneratorNotConfiguredError,

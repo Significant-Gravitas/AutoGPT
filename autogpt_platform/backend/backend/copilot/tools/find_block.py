@@ -3,16 +3,16 @@ from typing import Any
 
 from prisma.enums import ContentType
 
-from backend.api.features.chat.model import ChatSession
-from backend.api.features.chat.tools.base import BaseTool, ToolResponseBase
-from backend.api.features.chat.tools.models import (
+from backend.api.features.store.hybrid_search import unified_hybrid_search
+from backend.copilot.model import ChatSession
+from backend.copilot.tools.base import BaseTool, ToolResponseBase
+from backend.copilot.tools.models import (
     BlockInfoSummary,
     BlockInputFieldInfo,
     BlockListResponse,
     ErrorResponse,
     NoResultsResponse,
 )
-from backend.api.features.store.hybrid_search import unified_hybrid_search
 from backend.data.block import BlockType, get_block
 
 logger = logging.getLogger(__name__)

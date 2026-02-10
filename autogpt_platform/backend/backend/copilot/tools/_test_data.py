@@ -6,11 +6,11 @@ import pytest
 from prisma.types import ProfileCreateInput
 from pydantic import SecretStr
 
-from backend.api.features.chat.model import ChatSession
 from backend.api.features.store import db as store_db
 from backend.blocks.firecrawl.scrape import FirecrawlScrapeBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.blocks.llm import AITextGeneratorBlock
+from backend.copilot.model import ChatSession
 from backend.data.db import prisma
 from backend.data.graph import Graph, Link, Node, create_graph
 from backend.data.model import APIKeyCredentials

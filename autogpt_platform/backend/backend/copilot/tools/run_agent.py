@@ -5,13 +5,10 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
-from backend.api.features.chat.config import ChatConfig
-from backend.api.features.chat.model import ChatSession
-from backend.api.features.chat.tracking import (
-    track_agent_run_success,
-    track_agent_scheduled,
-)
 from backend.api.features.library import db as library_db
+from backend.copilot.config import ChatConfig
+from backend.copilot.model import ChatSession
+from backend.copilot.tracking import track_agent_run_success, track_agent_scheduled
 from backend.data.graph import GraphModel
 from backend.data.model import CredentialsMetaInput
 from backend.data.user import get_user_by_id

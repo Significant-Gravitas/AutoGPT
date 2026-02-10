@@ -38,6 +38,7 @@ def main(**kwargs):
 
     from backend.api.rest_api import AgentServer
     from backend.api.ws_api import WebsocketServer
+    from backend.copilot.executor.manager import CoPilotExecutor
     from backend.executor import DatabaseManager, ExecutionManager, Scheduler
     from backend.notifications import NotificationManager
 
@@ -48,6 +49,7 @@ def main(**kwargs):
         WebsocketServer(),
         AgentServer(),
         ExecutionManager(),
+        CoPilotExecutor(),
         **kwargs,
     )
 

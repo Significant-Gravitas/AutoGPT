@@ -7,9 +7,9 @@ from typing import Any
 
 from pydantic import BaseModel, field_validator
 
-from backend.api.features.chat.model import ChatSession
 from backend.api.features.library import db as library_db
 from backend.api.features.library.model import LibraryAgent
+from backend.copilot.model import ChatSession
 from backend.data import execution as execution_db
 from backend.data.execution import ExecutionStatus, GraphExecution, GraphExecutionMeta
 

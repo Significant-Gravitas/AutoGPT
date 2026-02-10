@@ -3,7 +3,7 @@
 import logging
 from typing import Any
 
-from backend.api.features.chat.model import ChatSession
+from backend.copilot.model import ChatSession
 from backend.data.understanding import (
     BusinessUnderstandingInput,
     upsert_business_understanding,

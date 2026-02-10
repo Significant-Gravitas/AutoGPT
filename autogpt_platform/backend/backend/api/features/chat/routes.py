@@ -10,15 +10,22 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, 
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from backend.util.exceptions import NotFoundError
-
-from . import service as chat_service
-from . import stream_registry
-from .completion_handler import process_operation_failure, process_operation_success
-from .config import ChatConfig
-from .model import ChatSession, create_chat_session, get_chat_session, get_user_sessions
-from .response_model import StreamFinish, StreamHeartbeat
-from .tools.models import (
+from backend.copilot import service as chat_service
+from backend.copilot import stream_registry
+from backend.copilot.completion_handler import (
+    process_operation_failure,
+    process_operation_success,
+)
+from backend.copilot.config import ChatConfig
+from backend.copilot.executor.utils import enqueue_copilot_task
+from backend.copilot.model import (
+    ChatSession,
+    create_chat_session,
+    get_chat_session,
+    get_user_sessions,
+)
+from backend.copilot.response_model import StreamFinish, StreamHeartbeat
+from backend.copilot.tools.models import (
     AgentDetailsResponse,
     AgentOutputResponse,
     AgentPreviewResponse,
@@ -40,6 +47,7 @@ from .tools.models import (
     SetupRequirementsResponse,
     UnderstandingUpdatedResponse,
 )
+from backend.util.exceptions import NotFoundError
 
 config = ChatConfig()
 
@@ -301,7 +309,7 @@ async def stream_chat_post(
         extra={"json_fields": log_meta},
     )
 
-    session = await _validate_and_get_session(session_id, user_id)
+    _session = await _validate_and_get_session(session_id, user_id)  # noqa: F841
     logger.info(
         f"[TIMING] session validated in {(time.perf_counter() - stream_start_time)*1000:.1f}ms",
         extra={
@@ -336,82 +344,20 @@ async def stream_chat_post(
         },
     )
 
-    # Background task that runs the AI generation independently of SSE connection
-    async def run_ai_generation():
-        import time as time_module
+    # Enqueue the task to RabbitMQ for processing by the CoPilot executor
+    await enqueue_copilot_task(
+        task_id=task_id,
+        session_id=session_id,
+        user_id=user_id,
+        operation_id=operation_id,
+        message=request.message,
+        is_user_message=request.is_user_message,
+        context=request.context,
+    )
 
-        gen_start_time = time_module.perf_counter()
-        logger.info(
-            f"[TIMING] run_ai_generation STARTED, task={task_id}, session={session_id}, user={user_id}",
-            extra={"json_fields": log_meta},
-        )
-        first_chunk_time, ttfc = None, None
-        chunk_count = 0
-        try:
-            async for chunk in chat_service.stream_chat_completion(
-                session_id,
-                request.message,
-                is_user_message=request.is_user_message,
-                user_id=user_id,
-                session=session,  # Pass pre-fetched session to avoid double-fetch
-                context=request.context,
-                _task_id=task_id,  # Pass task_id so service emits start with taskId for reconnection
-            ):
-                chunk_count += 1
-                if first_chunk_time is None:
-                    first_chunk_time = time_module.perf_counter()
-                    ttfc = first_chunk_time - gen_start_time
-                    logger.info(
-                        f"[TIMING] FIRST AI CHUNK at {ttfc:.2f}s, type={type(chunk).__name__}",
-                        extra={
-                            "json_fields": {
-                                **log_meta,
-                                "chunk_type": type(chunk).__name__,
-                                "time_to_first_chunk_ms": ttfc * 1000,
-                            }
-                        },
-                    )
-                # Write to Redis (subscribers will receive via XREAD)
-                await stream_registry.publish_chunk(task_id, chunk)
-
-            gen_end_time = time_module.perf_counter()
-            total_time = (gen_end_time - gen_start_time) * 1000
-            logger.info(
-                f"[TIMING] run_ai_generation FINISHED in {total_time/1000:.1f}s; "
-                f"task={task_id}, session={session_id}, "
-                f"ttfc={ttfc or -1:.2f}s, n_chunks={chunk_count}",
-                extra={
-                    "json_fields": {
-                        **log_meta,
-                        "total_time_ms": total_time,
-                        "time_to_first_chunk_ms": (
-                            ttfc * 1000 if ttfc is not None else None
-                        ),
-                        "n_chunks": chunk_count,
-                    }
-                },
-            )
-            await stream_registry.mark_task_completed(task_id, "completed")
-        except Exception as e:
-            elapsed = time_module.perf_counter() - gen_start_time
-            logger.error(
-                f"[TIMING] run_ai_generation ERROR after {elapsed:.2f}s: {e}",
-                extra={
-                    "json_fields": {
-                        **log_meta,
-                        "elapsed_ms": elapsed * 1000,
-                        "error": str(e),
-                    }
-                },
-            )
-            await stream_registry.mark_task_completed(task_id, "failed")
-
-    # Start the AI generation in a background task
-    bg_task = asyncio.create_task(run_ai_generation())
-    await stream_registry.set_task_asyncio_task(task_id, bg_task)
     setup_time = (time.perf_counter() - stream_start_time) * 1000
     logger.info(
-        f"[TIMING] Background task started, setup={setup_time:.1f}ms",
+        f"[TIMING] Task enqueued to RabbitMQ, setup={setup_time:.1f}ms",
         extra={"json_fields": {**log_meta, "setup_time_ms": setup_time}},
     )
 

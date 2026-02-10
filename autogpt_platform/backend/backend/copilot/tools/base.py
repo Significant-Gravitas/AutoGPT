@@ -5,8 +5,8 @@ from typing import Any
 
 from openai.types.chat import ChatCompletionToolParam
 
-from backend.api.features.chat.model import ChatSession
-from backend.api.features.chat.response_model import StreamToolOutputAvailable
+from backend.copilot.model import ChatSession
+from backend.copilot.response_model import StreamToolOutputAvailable
 
 from .models import ErrorResponse, NeedLoginResponse, ToolResponseBase
 

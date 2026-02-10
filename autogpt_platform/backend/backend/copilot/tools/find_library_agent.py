@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from backend.api.features.chat.model import ChatSession
+from backend.copilot.model import ChatSession
 
 from .agent_search import search_agents
 from .base import BaseTool

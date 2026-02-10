@@ -4,9 +4,9 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from backend.api.features.chat.model import ChatSession
-from backend.api.features.chat.tools.base import BaseTool
-from backend.api.features.chat.tools.models import (
+from backend.copilot.model import ChatSession
+from backend.copilot.tools.base import BaseTool
+from backend.copilot.tools.models import (
     DocPageResponse,
     ErrorResponse,
     ToolResponseBase,

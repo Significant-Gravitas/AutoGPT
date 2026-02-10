@@ -11,7 +11,6 @@ settings = Settings()
 
 if TYPE_CHECKING:
     from openai import AsyncOpenAI
-    from supabase import AClient, Client
 
     from backend.data.execution import (
         AsyncRedisExecutionEventBus,
@@ -22,6 +21,7 @@ if TYPE_CHECKING:
     from backend.executor.scheduler import SchedulerClient
     from backend.integrations.credentials_store import IntegrationCredentialsStore
     from backend.notifications.notifications import NotificationManagerClient
+    from supabase import AClient, Client
 
 
 @thread_cached
@@ -102,6 +102,20 @@ async def get_async_execution_queue() -> "AsyncRabbitMQ":
     from backend.executor.utils import create_execution_queue_config
 
     client = AsyncRabbitMQ(create_execution_queue_config())
+    await client.connect()
+    return client
+
+
+# ============ CoPilot Queue Helpers ============ #
+
+
+@thread_cached
+async def get_async_copilot_queue() -> "AsyncRabbitMQ":
+    """Get a thread-cached AsyncRabbitMQ CoPilot queue client."""
+    from backend.copilot.executor.utils import create_copilot_queue_config
+    from backend.data.rabbitmq import AsyncRabbitMQ
+
+    client = AsyncRabbitMQ(create_copilot_queue_config())
     await client.connect()
     return client
 

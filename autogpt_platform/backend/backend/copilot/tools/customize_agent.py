@@ -3,9 +3,9 @@
 import logging
 from typing import Any
 
-from backend.api.features.chat.model import ChatSession
 from backend.api.features.store import db as store_db
 from backend.api.features.store.exceptions import AgentNotFoundError
+from backend.copilot.model import ChatSession
 
 from .agent_generator import (
     AgentGeneratorNotConfiguredError,

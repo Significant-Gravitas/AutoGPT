@@ -7,8 +7,8 @@ from typing import Any
 
 from pydantic_core import PydanticUndefined
 
-from backend.api.features.chat.model import ChatSession
-from backend.api.features.chat.tools.find_block import (
+from backend.copilot.model import ChatSession
+from backend.copilot.tools.find_block import (
     COPILOT_EXCLUDED_BLOCK_IDS,
     COPILOT_EXCLUDED_BLOCK_TYPES,
 )

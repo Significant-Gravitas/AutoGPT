@@ -3,8 +3,8 @@ from typing import TYPE_CHECKING, Any
 
 from openai.types.chat import ChatCompletionToolParam
 
-from backend.api.features.chat.model import ChatSession
-from backend.api.features.chat.tracking import track_tool_called
+from backend.copilot.model import ChatSession
+from backend.copilot.tracking import track_tool_called
 
 from .add_understanding import AddUnderstandingTool
 from .agent_output import AgentOutputTool
@@ -27,7 +27,7 @@ from .workspace_files import (
 )
 
 if TYPE_CHECKING:
-    from backend.api.features.chat.response_model import StreamToolOutputAvailable
+    from backend.copilot.response_model import StreamToolOutputAvailable
 
 logger = logging.getLogger(__name__)
 
