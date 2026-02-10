@@ -748,6 +748,10 @@ const FlowEditor: React.FC<{
           block_id: blockID,
           isOutputStatic: nodeSchema.staticOutput,
           uiType: nodeSchema.uiType,
+          // MCP blocks have optional credentials (public servers don't need auth)
+          ...(blockID === SpecialBlockID.MCP_TOOL && {
+            metadata: { credentials_optional: true },
+          }),
         },
       };
 
