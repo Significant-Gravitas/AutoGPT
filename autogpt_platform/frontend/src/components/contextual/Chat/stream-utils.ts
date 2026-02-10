@@ -77,6 +77,8 @@ export function normalizeStreamChunk(
         tool_name: chunk.toolName,
         arguments: {},
       };
+    default:
+      return null;
   }
 }
 

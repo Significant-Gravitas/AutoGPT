@@ -175,6 +175,13 @@ export function handleToolResponse(
   chunk: StreamChunk,
   deps: HandlerDependencies,
 ) {
+  if (chunk.result === undefined || chunk.tool_id === undefined) {
+    console.warn(
+      "[ChatContainer] Skipping tool_response chunk with missing result or tool_id; stream may have been partial.",
+    );
+    return;
+  }
+
   let toolName = chunk.tool_name || "unknown";
   if (!chunk.tool_name || chunk.tool_name === "unknown") {
     deps.setMessages((prev) => {
@@ -190,8 +197,8 @@ export function handleToolResponse(
     });
   }
   const responseMessage = parseToolResponse(
-    chunk.result!,
-    chunk.tool_id!,
+    chunk.result,
+    chunk.tool_id,
     toolName,
     new Date(),
   );
@@ -252,7 +259,7 @@ export function handleToolResponse(
     const toolCallIndex = prev.findIndex(
       (msg) => msg.type === "tool_call" && msg.toolId === chunk.tool_id,
     );
-    if (hasResponseForTool(prev, chunk.tool_id!)) {
+    if (hasResponseForTool(prev, chunk.tool_id)) {
       return prev;
     }
     if (toolCallIndex !== -1) {
