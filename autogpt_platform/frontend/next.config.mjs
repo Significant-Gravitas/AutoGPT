@@ -32,16 +32,19 @@ const nextConfig = {
       // compilation hooks and replace the buggy plugin's tap with a no-op.
       config.plugins.push({
         apply(compiler) {
-          compiler.hooks.compilation.tap("DisableCssMinimizer", (compilation) => {
-            compilation.hooks.processAssets.intercept({
-              register: (tap) => {
-                if (tap.name === "CssMinimizerPlugin") {
-                  return { ...tap, fn: async () => {} };
-                }
-                return tap;
-              },
-            });
-          });
+          compiler.hooks.compilation.tap(
+            "DisableCssMinimizer",
+            (compilation) => {
+              compilation.hooks.processAssets.intercept({
+                register: (tap) => {
+                  if (tap.name === "CssMinimizerPlugin") {
+                    return { ...tap, fn: async () => {} };
+                  }
+                  return tap;
+                },
+              });
+            },
+          );
         },
       });
     }
