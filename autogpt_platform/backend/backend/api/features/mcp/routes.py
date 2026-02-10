@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field
 from backend.api.features.integrations.router import CredentialsMetaResponse
 from backend.blocks.mcp.client import MCPClient, MCPClientError
 from backend.blocks.mcp.oauth import MCPOAuthHandler
-from backend.data.model import OAuth2Credentials
+from backend.data.model import Credentials, OAuth2Credentials
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.providers import ProviderName
 from backend.util.request import HTTPClientError, Requests
@@ -76,12 +76,15 @@ async def discover_tools(
     """
     auth_token = request.auth_token
 
-    # Auto-use stored MCP credential when no explicit token is provided
+    # Auto-use stored MCP credential when no explicit token is provided.
+    # Also check for the wrong provider string from Python 3.13 str(Enum) bug.
     if not auth_token:
         try:
-            mcp_creds = await creds_manager.store.get_creds_by_provider(
-                user_id, ProviderName.MCP.value
-            )
+            mcp_creds: list[Credentials] = []
+            for prov in (ProviderName.MCP.value, "ProviderName.MCP"):
+                mcp_creds.extend(
+                    await creds_manager.store.get_creds_by_provider(user_id, prov)
+                )
             # Find the freshest credential for this server URL
             best_cred: OAuth2Credentials | None = None
             for cred in mcp_creds:
@@ -353,11 +356,15 @@ async def mcp_oauth_callback(
     hostname = urlparse(meta["server_url"]).hostname or meta["server_url"]
     credentials.title = f"MCP: {hostname}"
 
-    # Remove old MCP credentials for the same server to prevent stale token buildup
+    # Remove old MCP credentials for the same server to prevent stale token buildup.
+    # Also clean up credentials stored with the wrong provider string
+    # ("ProviderName.MCP" instead of "mcp") from a Python 3.13 str(Enum) bug.
     try:
-        old_creds = await creds_manager.store.get_creds_by_provider(
-            user_id, ProviderName.MCP.value
-        )
+        old_creds: list[Credentials] = []
+        for prov in (ProviderName.MCP.value, "ProviderName.MCP"):
+            old_creds.extend(
+                await creds_manager.store.get_creds_by_provider(user_id, prov)
+            )
         for old in old_creds:
             if (
                 isinstance(old, OAuth2Credentials)
