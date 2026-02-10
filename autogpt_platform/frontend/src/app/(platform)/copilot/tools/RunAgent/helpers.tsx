@@ -10,7 +10,7 @@ import {
   WarningDiamondIcon,
 } from "@phosphor-icons/react";
 import type { ToolUIPart } from "ai";
-import { SpinnerLoader } from "../../components/SpinnerLoader/SpinnerLoader";
+import { OrbitLoader } from "../../components/OrbitLoader/OrbitLoader";
 
 export interface RunAgentInput {
   username_agent_slug?: string;
@@ -171,7 +171,7 @@ export function ToolIcon({
     );
   }
   if (isStreaming) {
-    return <SpinnerLoader size={40} className="text-neutral-700" />;
+    return <OrbitLoader size={24} />;
   }
   return <PlayIcon size={14} weight="regular" className="text-neutral-400" />;
 }
@@ -203,7 +203,7 @@ export function getAccordionMeta(output: RunAgentToolOutput): {
         ? output.status.trim()
         : "started";
     return {
-      icon: <SpinnerLoader size={28} className="text-neutral-700" />,
+      icon: <OrbitLoader size={28} className="text-neutral-700" />,
       title: output.graph_name,
       description: `Status: ${statusText}`,
     };

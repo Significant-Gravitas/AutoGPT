@@ -1382,14 +1382,14 @@ tzdata = "*"
 
 [[package]]
 name = "fastapi"
-version = "0.128.5"
+version = "0.128.6"
 description = "FastAPI framework, high performance, easy to learn, fast to code, ready for production"
 optional = false
 python-versions = ">=3.9"
 groups = ["main"]
 files = [
-    {file = "fastapi-0.128.5-py3-none-any.whl", hash = "sha256:bceec0de8aa6564599c5bcc0593b0d287703562c848271fca8546fd2c87bf4dd"},
-    {file = "fastapi-0.128.5.tar.gz", hash = "sha256:a7173579fc162d6471e3c6fbd9a4b7610c7a3b367bcacf6c4f90d5d022cab711"},
+    {file = "fastapi-0.128.6-py3-none-any.whl", hash = "sha256:bb1c1ef87d6086a7132d0ab60869d6f1ee67283b20fbf84ec0003bd335099509"},
+    {file = "fastapi-0.128.6.tar.gz", hash = "sha256:0cb3946557e792d731b26a42b04912f16367e3c3135ea8290f620e234f2b604f"},
 ]
 
 [package.dependencies]
@@ -3078,14 +3078,14 @@ type = ["pygobject-stubs", "pytest-mypy (>=1.0.1)", "shtab", "types-pywin32"]
 
 [[package]]
 name = "langfuse"
-version = "3.13.0"
+version = "3.14.1"
 description = "A client library for accessing langfuse"
 optional = false
 python-versions = "<4.0,>=3.10"
 groups = ["main"]
 files = [
-    {file = "langfuse-3.13.0-py3-none-any.whl", hash = "sha256:71912ddac1cc831a65df895eae538a556f564c094ae51473e747426e9ded1a9d"},
-    {file = "langfuse-3.13.0.tar.gz", hash = "sha256:dacea8111ca4442e97dbfec4f8d676cf9709b35357a26e468f8887b95de0012f"},
+    {file = "langfuse-3.14.1-py3-none-any.whl", hash = "sha256:17bed605dbfc9947cbd1738a715f6d27c1b80b6da9f2946586171958fa5820d0"},
+    {file = "langfuse-3.14.1.tar.gz", hash = "sha256:404a6104cd29353d7829aa417ec46565b04917e5599afdda96c5b0865f4bc991"},
 ]
 
 [package.dependencies]
@@ -8440,4 +8440,4 @@ cffi = ["cffi (>=1.17,<2.0) ; platform_python_implementation != \"PyPy\" and pyt
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.14"
-content-hash = "14686ee0e2dc446a75d0db145b08dc410dc31c357e25085bb0f9b0174711c4b1"
+content-hash = "fc135114e01de39c8adf70f6132045e7d44a19473c1279aee0978de65aad1655"
