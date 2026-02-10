@@ -9,6 +9,7 @@ independently of the rest of the test suite (they require network access).
 """
 
 import json
+import os
 
 import pytest
 
@@ -17,8 +18,12 @@ from backend.blocks.mcp.client import MCPClient
 # Public MCP server that requires no authentication
 OPENAI_DOCS_MCP_URL = "https://developers.openai.com/mcp"
 
+# Skip all tests in this module unless RUN_E2E env var is set
+pytestmark = pytest.mark.skipif(
+    not os.environ.get("RUN_E2E"), reason="set RUN_E2E=1 to run e2e tests"
+)
 
-@pytest.mark.e2e
+
 class TestRealMCPServer:
     """Tests against the live OpenAI docs MCP server."""
 
