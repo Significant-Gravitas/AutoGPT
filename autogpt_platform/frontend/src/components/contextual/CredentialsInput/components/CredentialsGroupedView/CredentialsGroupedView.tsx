@@ -38,13 +38,8 @@ export function CredentialsGroupedView({
   const allProviders = useContext(CredentialsProvidersContext);
 
   const { userCredentialFields, systemCredentialFields } = useMemo(
-    () =>
-      splitCredentialFieldsBySystem(
-        credentialFields,
-        allProviders,
-        inputCredentials,
-      ),
-    [credentialFields, allProviders, inputCredentials],
+    () => splitCredentialFieldsBySystem(credentialFields, allProviders),
+    [credentialFields, allProviders],
   );
 
   const hasSystemCredentials = systemCredentialFields.length > 0;

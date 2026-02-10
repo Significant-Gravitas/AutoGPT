@@ -52,7 +52,6 @@ function matchesDiscriminatorValues(
 export function splitCredentialFieldsBySystem(
   credentialFields: CredentialField[],
   allProviders: CredentialsProvidersContextType | null,
-  inputCredentials?: Record<string, unknown>,
 ) {
   if (!allProviders || credentialFields.length === 0) {
     return {
@@ -78,17 +77,9 @@ export function splitCredentialFieldsBySystem(
     }
   }
 
-  const sortByUnsetFirst = (a: CredentialField, b: CredentialField) => {
-    const aIsSet = Boolean(inputCredentials?.[a[0]]);
-    const bIsSet = Boolean(inputCredentials?.[b[0]]);
-
-    if (aIsSet === bIsSet) return 0;
-    return aIsSet ? 1 : -1;
-  };
-
   return {
-    userCredentialFields: userFields.sort(sortByUnsetFirst),
-    systemCredentialFields: systemFields.sort(sortByUnsetFirst),
+    userCredentialFields: userFields,
+    systemCredentialFields: systemFields,
   };
 }
 
