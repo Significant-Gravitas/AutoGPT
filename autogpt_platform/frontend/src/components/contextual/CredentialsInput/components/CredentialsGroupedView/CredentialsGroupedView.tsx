@@ -86,11 +86,13 @@ export function CredentialsGroupedView({
       const providerNames = schema.credentials_provider || [];
       const credentialTypes = schema.credentials_types || [];
       const requiredScopes = schema.credentials_scopes;
+      const discriminatorValues = schema.discriminator_values;
       const savedCredential = findSavedCredentialByProviderAndType(
         providerNames,
         credentialTypes,
         requiredScopes,
         allProviders,
+        discriminatorValues,
       );
 
       if (savedCredential) {
