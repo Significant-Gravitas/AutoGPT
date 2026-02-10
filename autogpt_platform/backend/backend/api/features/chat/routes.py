@@ -288,12 +288,36 @@ async def stream_chat_post(
 
     """
     import asyncio
+    import time
+
+    stream_start_time = time.perf_counter()
+    log_meta = {"component": "ChatStream", "session_id": session_id}
+    if user_id:
+        log_meta["user_id"] = user_id
+
+    logger.info(
+        f"[TIMING] stream_chat_post STARTED, session={session_id}, "
+        f"user={user_id}, message_len={len(request.message)}",
+        extra={"json_fields": log_meta},
+    )
 
     session = await _validate_and_get_session(session_id, user_id)
+    logger.info(
+        f"[TIMING] session validated in {(time.perf_counter() - stream_start_time)*1000:.1f}ms",
+        extra={
+            "json_fields": {
+                **log_meta,
+                "duration_ms": (time.perf_counter() - stream_start_time) * 1000,
+            }
+        },
+    )
 
     # Create a task in the stream registry for reconnection support
     task_id = str(uuid_module.uuid4())
     operation_id = str(uuid_module.uuid4())
+    log_meta["task_id"] = task_id
+
+    task_create_start = time.perf_counter()
     await stream_registry.create_task(
         task_id=task_id,
         session_id=session_id,
@@ -302,9 +326,27 @@ async def stream_chat_post(
         tool_name="chat",
         operation_id=operation_id,
     )
+    logger.info(
+        f"[TIMING] create_task completed in {(time.perf_counter() - task_create_start)*1000:.1f}ms",
+        extra={
+            "json_fields": {
+                **log_meta,
+                "duration_ms": (time.perf_counter() - task_create_start) * 1000,
+            }
+        },
+    )
 
     # Background task that runs the AI generation independently of SSE connection
     async def run_ai_generation():
+        import time as time_module
+
+        gen_start_time = time_module.perf_counter()
+        logger.info(
+            f"[TIMING] run_ai_generation STARTED, task={task_id}, session={session_id}, user={user_id}",
+            extra={"json_fields": log_meta},
+        )
+        first_chunk_time, ttfc = None, None
+        chunk_count = 0
         try:
             async for chunk in chat_service.stream_chat_completion(
                 session_id,
@@ -315,24 +357,77 @@ async def stream_chat_post(
                 context=request.context,
                 _task_id=task_id,  # Pass task_id so service emits start with taskId for reconnection
             ):
+                chunk_count += 1
+                if first_chunk_time is None:
+                    first_chunk_time = time_module.perf_counter()
+                    ttfc = first_chunk_time - gen_start_time
+                    logger.info(
+                        f"[TIMING] FIRST AI CHUNK at {ttfc:.2f}s, type={type(chunk).__name__}",
+                        extra={
+                            "json_fields": {
+                                **log_meta,
+                                "chunk_type": type(chunk).__name__,
+                                "time_to_first_chunk_ms": ttfc * 1000,
+                            }
+                        },
+                    )
                 # Write to Redis (subscribers will receive via XREAD)
                 await stream_registry.publish_chunk(task_id, chunk)
 
-            # Mark task as completed
+            gen_end_time = time_module.perf_counter()
+            total_time = (gen_end_time - gen_start_time) * 1000
+            logger.info(
+                f"[TIMING] run_ai_generation FINISHED in {total_time/1000:.1f}s; "
+                f"task={task_id}, session={session_id}, "
+                f"ttfc={ttfc or -1:.2f}s, n_chunks={chunk_count}",
+                extra={
+                    "json_fields": {
+                        **log_meta,
+                        "total_time_ms": total_time,
+                        "time_to_first_chunk_ms": (
+                            ttfc * 1000 if ttfc is not None else None
+                        ),
+                        "n_chunks": chunk_count,
+                    }
+                },
+            )
             await stream_registry.mark_task_completed(task_id, "completed")
         except Exception as e:
+            elapsed = time_module.perf_counter() - gen_start_time
             logger.error(
-                f"Error in background AI generation for session {session_id}: {e}"
+                f"[TIMING] run_ai_generation ERROR after {elapsed:.2f}s: {e}",
+                extra={
+                    "json_fields": {
+                        **log_meta,
+                        "elapsed_ms": elapsed * 1000,
+                        "error": str(e),
+                    }
+                },
             )
             await stream_registry.mark_task_completed(task_id, "failed")
 
     # Start the AI generation in a background task
     bg_task = asyncio.create_task(run_ai_generation())
     await stream_registry.set_task_asyncio_task(task_id, bg_task)
+    setup_time = (time.perf_counter() - stream_start_time) * 1000
+    logger.info(
+        f"[TIMING] Background task started, setup={setup_time:.1f}ms",
+        extra={"json_fields": {**log_meta, "setup_time_ms": setup_time}},
+    )
 
     # SSE endpoint that subscribes to the task's stream
     async def event_generator() -> AsyncGenerator[str, None]:
+        import time as time_module
+
+        event_gen_start = time_module.perf_counter()
+        logger.info(
+            f"[TIMING] event_generator STARTED, task={task_id}, session={session_id}, "
+            f"user={user_id}",
+            extra={"json_fields": log_meta},
+        )
         subscriber_queue = None
+        first_chunk_yielded = False
+        chunks_yielded = 0
         try:
             # Subscribe to the task stream (this replays existing messages + live updates)
             subscriber_queue = await stream_registry.subscribe_to_task(
@@ -347,22 +442,70 @@ async def stream_chat_post(
                 return
 
             # Read from the subscriber queue and yield to SSE
+            logger.info(
+                "[TIMING] Starting to read from subscriber_queue",
+                extra={"json_fields": log_meta},
+            )
             while True:
                 try:
                     chunk = await asyncio.wait_for(subscriber_queue.get(), timeout=30.0)
+                    chunks_yielded += 1
+
+                    if not first_chunk_yielded:
+                        first_chunk_yielded = True
+                        elapsed = time_module.perf_counter() - event_gen_start
+                        logger.info(
+                            f"[TIMING] FIRST CHUNK from queue at {elapsed:.2f}s, "
+                            f"type={type(chunk).__name__}",
+                            extra={
+                                "json_fields": {
+                                    **log_meta,
+                                    "chunk_type": type(chunk).__name__,
+                                    "elapsed_ms": elapsed * 1000,
+                                }
+                            },
+                        )
+
                     yield chunk.to_sse()
 
                     # Check for finish signal
                     if isinstance(chunk, StreamFinish):
+                        total_time = time_module.perf_counter() - event_gen_start
+                        logger.info(
+                            f"[TIMING] StreamFinish received in {total_time:.2f}s; "
+                            f"n_chunks={chunks_yielded}",
+                            extra={
+                                "json_fields": {
+                                    **log_meta,
+                                    "chunks_yielded": chunks_yielded,
+                                    "total_time_ms": total_time * 1000,
+                                }
+                            },
+                        )
                         break
                 except asyncio.TimeoutError:
-                    # Send heartbeat to keep connection alive
                     yield StreamHeartbeat().to_sse()
 
         except GeneratorExit:
+            logger.info(
+                f"[TIMING] GeneratorExit (client disconnected), chunks={chunks_yielded}",
+                extra={
+                    "json_fields": {
+                        **log_meta,
+                        "chunks_yielded": chunks_yielded,
+                        "reason": "client_disconnect",
+                    }
+                },
+            )
             pass  # Client disconnected - background task continues
         except Exception as e:
-            logger.error(f"Error in SSE stream for task {task_id}: {e}")
+            elapsed = (time_module.perf_counter() - event_gen_start) * 1000
+            logger.error(
+                f"[TIMING] event_generator ERROR after {elapsed:.1f}ms: {e}",
+                extra={
+                    "json_fields": {**log_meta, "elapsed_ms": elapsed, "error": str(e)}
+                },
+            )
         finally:
             # Unsubscribe when client disconnects or stream ends to prevent resource leak
             if subscriber_queue is not None:
@@ -376,6 +519,18 @@ async def stream_chat_post(
                         exc_info=True,
                     )
             # AI SDK protocol termination - always yield even if unsubscribe fails
+            total_time = time_module.perf_counter() - event_gen_start
+            logger.info(
+                f"[TIMING] event_generator FINISHED in {total_time:.2f}s; "
+                f"task={task_id}, session={session_id}, n_chunks={chunks_yielded}",
+                extra={
+                    "json_fields": {
+                        **log_meta,
+                        "total_time_ms": total_time * 1000,
+                        "chunks_yielded": chunks_yielded,
+                    }
+                },
+            )
             yield "data: [DONE]\n\n"
 
     return StreamingResponse(
@@ -431,10 +586,23 @@ async def resume_session_stream(
         return Response(status_code=204)
 
     async def event_generator() -> AsyncGenerator[str, None]:
+        chunk_count = 0
+        first_chunk_type: str | None = None
         try:
             while True:
                 try:
                     chunk = await asyncio.wait_for(subscriber_queue.get(), timeout=30.0)
+                    if chunk_count < 3:
+                        logger.info(
+                            "Resume stream chunk",
+                            extra={
+                                "session_id": session_id,
+                                "chunk_type": str(chunk.type),
+                            },
+                        )
+                    if not first_chunk_type:
+                        first_chunk_type = str(chunk.type)
+                    chunk_count += 1
                     yield chunk.to_sse()
 
                     if isinstance(chunk, StreamFinish):
@@ -455,6 +623,14 @@ async def resume_session_stream(
                     f"Error unsubscribing from task {active_task.task_id}: {unsub_err}",
                     exc_info=True,
                 )
+            logger.info(
+                "Resume stream completed",
+                extra={
+                    "session_id": session_id,
+                    "n_chunks": chunk_count,
+                    "first_chunk_type": first_chunk_type,
+                },
+            )
             yield "data: [DONE]\n\n"
 
     return StreamingResponse(
