@@ -120,7 +120,11 @@ async def discover_tools(
                 )
                 for t in tools
             ],
-            server_name=init_result.get("serverInfo", {}).get("name"),
+            server_name=(
+                init_result.get("serverInfo", {}).get("name")
+                or urlparse(request.server_url).hostname
+                or "MCP"
+            ),
             protocol_version=init_result.get("protocolVersion"),
         )
     except HTTPClientError as e:

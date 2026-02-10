@@ -83,14 +83,15 @@ export const Block: BlockComponent = ({
         available_tools: result.availableTools,
         credentials: result.credentials ?? undefined,
       });
-      // Persist the MCP title as customized_name in metadata so it survives
-      // save/load even if server_name is pruned from input_default.
-      if (customNode && result.selectedTool) {
-        const title = `${serverLabel}: ${beautifyString(result.selectedTool)}`;
+      if (customNode) {
+        const title = result.selectedTool
+          ? `${serverLabel}: ${beautifyString(result.selectedTool)}`
+          : undefined;
         updateNodeData(customNode.id, {
           metadata: {
             ...customNode.data.metadata,
-            customized_name: title,
+            credentials_optional: true,
+            ...(title && { customized_name: title }),
           },
         });
       }
@@ -104,7 +105,16 @@ export const Block: BlockComponent = ({
       setMcpDialogOpen(true);
       return;
     }
-    addBlockAndCenter(blockData);
+    const customNode = addBlockAndCenter(blockData);
+    // Set customized_name for agent blocks so the agent's name persists
+    if (customNode && blockData.id === SpecialBlockID.AGENT) {
+      updateNodeData(customNode.id, {
+        metadata: {
+          ...customNode.data.metadata,
+          customized_name: blockData.name,
+        },
+      });
+    }
   };
 
   const handleDragStart = (e: React.DragEvent<HTMLButtonElement>) => {

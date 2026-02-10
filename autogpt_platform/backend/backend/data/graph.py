@@ -809,6 +809,19 @@ class GraphModel(Graph, GraphMeta):
                         "'credentials' and `*_credentials` are reserved"
                     )
 
+            # Check custom block-level validation (e.g., MCP dynamic tool arguments).
+            # Blocks can override get_missing_input to report additional missing fields
+            # beyond the standard top-level required fields.
+            if for_run:
+                credential_fields = InputSchema.get_credentials_fields()
+                custom_missing = InputSchema.get_missing_input(node.input_default)
+                for field_name in custom_missing:
+                    if (
+                        field_name not in provided_inputs
+                        and field_name not in credential_fields
+                    ):
+                        node_errors[node.id][field_name] = "This field is required"
+
             # Get input schema properties and check dependencies
             input_fields = InputSchema.model_fields
 

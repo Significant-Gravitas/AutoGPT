@@ -42,7 +42,11 @@ import { getV1GetSpecificGraph } from "@/app/api/__generated__/endpoints/graphs/
 import { okData } from "@/app/api/helpers";
 import { IncompatibilityInfo } from "../../../hooks/useSubAgentUpdate/types";
 import { Key, storage } from "@/services/storage/local-storage";
-import { findNewlyAddedBlockCoordinates, getTypeColor } from "@/lib/utils";
+import {
+  beautifyString,
+  findNewlyAddedBlockCoordinates,
+  getTypeColor,
+} from "@/lib/utils";
 import { history } from "../history";
 import { CustomEdge } from "../CustomEdge/CustomEdge";
 import ConnectionLine from "../ConnectionLine";
@@ -748,9 +752,26 @@ const FlowEditor: React.FC<{
           block_id: blockID,
           isOutputStatic: nodeSchema.staticOutput,
           uiType: nodeSchema.uiType,
-          // MCP blocks have optional credentials (public servers don't need auth)
+          // Set customized_name at creation so it persists through save/load
           ...(blockID === SpecialBlockID.MCP_TOOL && {
-            metadata: { credentials_optional: true },
+            metadata: {
+              credentials_optional: true,
+              ...(finalHardcodedValues.selected_tool && {
+                customized_name: `${
+                  finalHardcodedValues.server_name ||
+                  (() => {
+                    try {
+                      return new URL(finalHardcodedValues.server_url).hostname;
+                    } catch {
+                      return "MCP";
+                    }
+                  })()
+                }: ${beautifyString(finalHardcodedValues.selected_tool)}`,
+              }),
+            },
+          }),
+          ...(blockID === SpecialBlockID.AGENT && {
+            metadata: { customized_name: blockName },
           }),
         },
       };
@@ -881,8 +902,6 @@ const FlowEditor: React.FC<{
 
       return (
         node.data.metadata?.customized_name ||
-        (node.data.uiType == BlockUIType.AGENT &&
-          node.data.hardcodedValues.agent_name) ||
         node.data.blockType.replace(/Block$/, "")
       );
     },

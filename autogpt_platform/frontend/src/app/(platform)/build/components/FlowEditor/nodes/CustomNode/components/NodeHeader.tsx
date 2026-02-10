@@ -6,7 +6,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
-import { SpecialBlockID } from "@/lib/autogpt-server-api";
 import { beautifyString, cn } from "@/lib/utils";
 import { useState } from "react";
 import { CustomNodeData } from "../CustomNode";
@@ -21,31 +20,8 @@ type Props = {
 
 export const NodeHeader = ({ data, nodeId }: Props) => {
   const updateNodeData = useNodeStore((state) => state.updateNodeData);
-  const isMCPWithTool =
-    data.block_id === SpecialBlockID.MCP_TOOL &&
-    !!data.hardcodedValues?.selected_tool;
 
-  // Derive MCP server label: prefer server_name, fall back to URL hostname.
-  let mcpServerLabel = "MCP";
-  if (isMCPWithTool) {
-    mcpServerLabel =
-      data.hardcodedValues.server_name ||
-      (() => {
-        try {
-          return new URL(data.hardcodedValues.server_url).hostname;
-        } catch {
-          return "MCP";
-        }
-      })();
-  }
-
-  const title =
-    (data.metadata?.customized_name as string) ||
-    (isMCPWithTool
-      ? `${mcpServerLabel}: ${beautifyString(data.hardcodedValues.selected_tool)}`
-      : null) ||
-    data.hardcodedValues?.agent_name ||
-    data.title;
+  const title = (data.metadata?.customized_name as string) || data.title;
 
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editedTitle, setEditedTitle] = useState(title);
