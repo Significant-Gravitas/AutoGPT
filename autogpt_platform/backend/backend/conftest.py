@@ -1,7 +1,7 @@
 import logging
 import os
 
-import pytest_asyncio
+import pytest
 from dotenv import load_dotenv
 
 from backend.util.logging import configure_logging
@@ -19,7 +19,7 @@ if not os.getenv("PRISMA_DEBUG"):
     prisma_logger.setLevel(logging.INFO)
 
 
-@pytest_asyncio.fixture(scope="session", loop_scope="session")
+@pytest.fixture(scope="session")
 async def server():
     from backend.util.test import SpinTestServer
 
@@ -27,7 +27,7 @@ async def server():
         yield server
 
 
-@pytest_asyncio.fixture(scope="session", loop_scope="session", autouse=True)
+@pytest.fixture(scope="session", autouse=True)
 async def graph_cleanup(server):
     created_graph_ids = []
     original_create_graph = server.agent_server.test_create_graph
