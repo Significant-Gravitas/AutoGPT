@@ -159,15 +159,11 @@ def _format_conversation_history(session: ChatSession) -> str:
         if msg.role == "user":
             history_parts.append(f"User: {msg.content or ''}")
         elif msg.role == "assistant":
-            history_parts.append(f"Assistant: {msg.content or ''}")
-            if msg.tool_calls:
-                for tc in msg.tool_calls:
-                    func = tc.get("function", {})
-                    history_parts.append(
-                        f"  [Called tool: {func.get('name', 'unknown')}]"
-                    )
-        elif msg.role == "tool":
-            history_parts.append(f"  [Tool result: {msg.content or ''}]")
+            # Only include text content, skip tool call metadata
+            # (tool calls are noise for history context)
+            if msg.content:
+                history_parts.append(f"Assistant: {msg.content}")
+        # Skip tool result messages — they're not useful for conversation context
 
     history_parts.append("</conversation_history>")
     history_parts.append("")
