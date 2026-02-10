@@ -5,11 +5,13 @@ import { shouldSkipAgentOutput } from "../../helpers";
 export interface LastToolResponseProps {
   message: ChatMessageData;
   prevMessage: ChatMessageData | undefined;
+  onSendMessage?: (content: string) => void;
 }
 
 export function LastToolResponse({
   message,
   prevMessage,
+  onSendMessage,
 }: LastToolResponseProps) {
   if (message.type !== "tool_response") return null;
 
@@ -21,6 +23,7 @@ export function LastToolResponse({
         toolId={message.toolId}
         toolName={message.toolName}
         result={message.result}
+        onSendMessage={onSendMessage}
       />
     </div>
   );

@@ -246,7 +246,9 @@ class BlockSchema(BaseModel):
                         f"is not of type {CredentialsMetaInput.__name__}"
                     )
 
-                credentials_fields[field_name].validate_credentials_field_schema(cls)
+                CredentialsMetaInput.validate_credentials_field_schema(
+                    cls.get_field_schema(field_name), field_name
+                )
 
             elif field_name in credentials_fields:
                 raise KeyError(
