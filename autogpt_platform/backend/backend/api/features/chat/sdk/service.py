@@ -6,7 +6,7 @@ import json
 import logging
 import os
 import uuid
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, AsyncIterator
 from typing import Any
 
 import openai
@@ -61,6 +61,58 @@ def _cleanup_sdk_tool_results() -> None:
             os.remove(path)
         except OSError:
             pass
+
+
+def _build_conversation_messages(
+    session: ChatSession,
+) -> AsyncIterator[dict[str, Any]]:
+    """Build an async iterator of SDK-compatible message dicts from session history.
+
+    Yields structured user/assistant turns that the SDK writes directly to the
+    CLI's stdin.  This gives the model native conversation context (enabling
+    turn-level compaction for long conversations) without any file I/O.
+
+    Only prior messages are yielded; the current (last) user message is
+    appended at the end so the SDK processes it as the new query.
+    """
+
+    async def _iter() -> AsyncIterator[dict[str, Any]]:
+        # Yield all messages except the last (current user message)
+        for msg in session.messages[:-1]:
+            if msg.role == "user":
+                yield {
+                    "type": "user",
+                    "message": {
+                        "role": "user",
+                        "content": msg.content or "",
+                    },
+                    "session_id": session.session_id,
+                }
+            elif msg.role == "assistant" and msg.content:
+                yield {
+                    "type": "assistant",
+                    "message": {
+                        "role": "assistant",
+                        "content": [{"type": "text", "text": msg.content}],
+                    },
+                    "session_id": session.session_id,
+                }
+            # Skip tool messages — the assistant's text already captures the
+            # key information and tool IDs won't match across sessions.
+
+        # Yield the current user message last
+        current = session.messages[-1] if session.messages else None
+        if current and current.role == "user":
+            yield {
+                "type": "user",
+                "message": {
+                    "role": "user",
+                    "content": current.content or "",
+                },
+                "session_id": session.session_id,
+            }
+
+    return _iter()
 
 
 DEFAULT_SYSTEM_PROMPT = """You are **Otto**, an AI Co-Pilot for AutoGPT and a Forward-Deployed Automation Engineer serving small business owners. Your mission is to help users automate business tasks with AI by delivering tangible value through working automations—not through documentation or lengthy explanations.
@@ -152,42 +204,6 @@ async def _build_system_prompt(
         context = "This is the first time you are meeting the user. Greet them and introduce them to the platform"
 
     return DEFAULT_SYSTEM_PROMPT.replace("{users_information}", context), understanding
-
-
-def _format_conversation_history(session: ChatSession) -> str:
-    """Format conversation history as a prompt context.
-
-    Passes full history to the SDK — the SDK handles context compaction
-    automatically when the context window approaches its limit.
-    """
-    if not session.messages:
-        return ""
-
-    # Get all messages except the last user message (which will be the prompt)
-    messages = session.messages[:-1] if session.messages else []
-    if not messages:
-        return ""
-
-    history_parts = ["<conversation_history>"]
-
-    for msg in messages:
-        if msg.role == "user":
-            history_parts.append(f"User: {msg.content or ''}")
-        elif msg.role == "assistant":
-            # Only include text content, skip tool call metadata
-            # (tool calls are noise for history context)
-            if msg.content:
-                history_parts.append(f"Assistant: {msg.content}")
-        # Skip tool result messages — they're not useful for conversation context
-
-    history_parts.append("</conversation_history>")
-    history_parts.append("")
-    history_parts.append(
-        "Continue this conversation. Respond to the user's latest message:"
-    )
-    history_parts.append("")
-
-    return "\n".join(history_parts)
 
 
 async def _generate_session_title(
@@ -310,127 +326,130 @@ async def stream_chat_completion_sdk(
                 mcp_servers={"copilot": mcp_server},  # type: ignore[arg-type]
                 allowed_tools=COPILOT_TOOL_NAMES,
                 hooks=create_security_hooks(user_id),  # type: ignore[arg-type]
-                continue_conversation=True,  # Enable conversation continuation
+                continue_conversation=True,
             )
 
             adapter = SDKResponseAdapter(message_id=message_id)
             adapter.set_task_id(task_id)
 
-            async with ClaudeSDKClient(options=options) as client:
-                # Build prompt with conversation history for context
-                # The SDK doesn't support replaying full conversation history,
-                # so we include it as context in the prompt
-                current_message = message or ""
-                if not current_message and session.messages:
-                    last_user = [m for m in session.messages if m.role == "user"]
-                    if last_user:
-                        current_message = last_user[-1].content or ""
+            try:
+                async with ClaudeSDKClient(options=options) as client:
+                    # Determine the current user message
+                    current_message = message or ""
+                    if not current_message and session.messages:
+                        last_user = [m for m in session.messages if m.role == "user"]
+                        if last_user:
+                            current_message = last_user[-1].content or ""
 
-                # Include conversation history if there are prior messages
-                if len(session.messages) > 1:
-                    history_context = _format_conversation_history(session)
-                    prompt = f"{history_context}{current_message}"
-                else:
-                    prompt = current_message
+                    # Guard against empty messages
+                    if not current_message.strip():
+                        yield StreamError(
+                            errorText="Message cannot be empty.",
+                            code="empty_prompt",
+                        )
+                        yield StreamFinish()
+                        return
 
-                logger.info(
-                    f"[SDK] Prompt built: {len(prompt)} chars, "
-                    f"{len(session.messages)} messages in session"
-                )
+                    # For multi-turn conversations, pass structured history
+                    # as an AsyncIterable so the CLI sees native turns and
+                    # can do turn-level compaction.  For first messages, just
+                    # send the string directly.
+                    if len(session.messages) > 1:
+                        history_iter = _build_conversation_messages(session)
+                        await client.query(history_iter, session_id=session_id)
+                        logger.info(
+                            f"[SDK] Structured history: "
+                            f"{len(session.messages) - 1} prior messages"
+                        )
+                    else:
+                        await client.query(current_message, session_id=session_id)
+                        logger.info("[SDK] New conversation")
 
-                # Guard against empty prompts
-                if not prompt.strip():
-                    yield StreamError(
-                        errorText="Message cannot be empty.",
-                        code="empty_prompt",
-                    )
-                    yield StreamFinish()
-                    return
+                    # Track assistant response to save to session
+                    # We may need multiple assistant messages if text comes after tool results
+                    assistant_response = ChatMessage(role="assistant", content="")
+                    accumulated_tool_calls: list[dict[str, Any]] = []
+                    has_appended_assistant = False
+                    has_tool_results = False  # Track if we've received tool results
 
-                await client.query(prompt, session_id=session_id)
+                    # Receive messages from the SDK
+                    async for sdk_msg in client.receive_messages():
+                        for response in adapter.convert_message(sdk_msg):
+                            if isinstance(response, StreamStart):
+                                continue
+                            yield response
 
-                # Track assistant response to save to session
-                # We may need multiple assistant messages if text comes after tool results
-                assistant_response = ChatMessage(role="assistant", content="")
-                accumulated_tool_calls: list[dict[str, Any]] = []
-                has_appended_assistant = False
-                has_tool_results = False  # Track if we've received tool results
+                            # Accumulate text deltas into assistant response
+                            if isinstance(response, StreamTextDelta):
+                                delta = response.delta or ""
+                                # After tool results, create new assistant message for post-tool text
+                                if has_tool_results and has_appended_assistant:
+                                    assistant_response = ChatMessage(
+                                        role="assistant", content=delta
+                                    )
+                                    accumulated_tool_calls = []  # Reset for new message
+                                    session.messages.append(assistant_response)
+                                    has_tool_results = False
+                                else:
+                                    assistant_response.content = (
+                                        assistant_response.content or ""
+                                    ) + delta
+                                    if not has_appended_assistant:
+                                        session.messages.append(assistant_response)
+                                        has_appended_assistant = True
 
-                # Receive messages from the SDK
-                async for sdk_msg in client.receive_messages():
-                    for response in adapter.convert_message(sdk_msg):
-                        if isinstance(response, StreamStart):
-                            continue
-                        yield response
-
-                        # Accumulate text deltas into assistant response
-                        if isinstance(response, StreamTextDelta):
-                            delta = response.delta or ""
-                            # After tool results, create new assistant message for post-tool text
-                            if has_tool_results and has_appended_assistant:
-                                assistant_response = ChatMessage(
-                                    role="assistant", content=delta
+                            # Track tool calls on the assistant message
+                            elif isinstance(response, StreamToolInputAvailable):
+                                accumulated_tool_calls.append(
+                                    {
+                                        "id": response.toolCallId,
+                                        "type": "function",
+                                        "function": {
+                                            "name": response.toolName,
+                                            "arguments": json.dumps(
+                                                response.input or {}
+                                            ),
+                                        },
+                                    }
                                 )
-                                accumulated_tool_calls = []  # Reset for new message
-                                session.messages.append(assistant_response)
-                                has_tool_results = False
-                            else:
-                                assistant_response.content = (
-                                    assistant_response.content or ""
-                                ) + delta
+                                # Update assistant message with tool calls
+                                assistant_response.tool_calls = accumulated_tool_calls
+                                # Append assistant message if not already (tool-only response)
                                 if not has_appended_assistant:
                                     session.messages.append(assistant_response)
                                     has_appended_assistant = True
 
-                        # Track tool calls on the assistant message
-                        elif isinstance(response, StreamToolInputAvailable):
-                            accumulated_tool_calls.append(
-                                {
-                                    "id": response.toolCallId,
-                                    "type": "function",
-                                    "function": {
-                                        "name": response.toolName,
-                                        "arguments": json.dumps(response.input or {}),
-                                    },
-                                }
-                            )
-                            # Update assistant message with tool calls
-                            assistant_response.tool_calls = accumulated_tool_calls
-                            # Append assistant message if not already (tool-only response)
-                            if not has_appended_assistant:
-                                session.messages.append(assistant_response)
-                                has_appended_assistant = True
-
-                        elif isinstance(response, StreamToolOutputAvailable):
-                            session.messages.append(
-                                ChatMessage(
-                                    role="tool",
-                                    content=(
-                                        response.output
-                                        if isinstance(response.output, str)
-                                        else str(response.output)
-                                    ),
-                                    tool_call_id=response.toolCallId,
+                            elif isinstance(response, StreamToolOutputAvailable):
+                                session.messages.append(
+                                    ChatMessage(
+                                        role="tool",
+                                        content=(
+                                            response.output
+                                            if isinstance(response.output, str)
+                                            else str(response.output)
+                                        ),
+                                        tool_call_id=response.toolCallId,
+                                    )
                                 )
-                            )
-                            has_tool_results = True
+                                has_tool_results = True
 
-                        elif isinstance(response, StreamFinish):
-                            stream_completed = True
+                            elif isinstance(response, StreamFinish):
+                                stream_completed = True
 
-                    # Break out of the message loop if we received finish signal
-                    if stream_completed:
-                        break
+                        # Break out of the message loop if we received finish signal
+                        if stream_completed:
+                            break
 
-                # Ensure assistant response is saved even if no text deltas
-                # (e.g., only tool calls were made)
-                if (
-                    assistant_response.content or assistant_response.tool_calls
-                ) and not has_appended_assistant:
-                    session.messages.append(assistant_response)
+                    # Ensure assistant response is saved even if no text deltas
+                    # (e.g., only tool calls were made)
+                    if (
+                        assistant_response.content or assistant_response.tool_calls
+                    ) and not has_appended_assistant:
+                        session.messages.append(assistant_response)
 
-            # Clean up SDK tool-result files to avoid accumulation
-            _cleanup_sdk_tool_results()
+            finally:
+                # Always clean up SDK tool-result files, even on error
+                _cleanup_sdk_tool_results()
 
         except ImportError:
             logger.warning(
