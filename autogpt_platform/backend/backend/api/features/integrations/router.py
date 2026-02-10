@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING, Annotated, List, Literal
+from typing import TYPE_CHECKING, Annotated, Any, List, Literal
 
 from autogpt_libs.auth import get_user_id
 from fastapi import (
@@ -14,7 +14,7 @@ from fastapi import (
     Security,
     status,
 )
-from pydantic import BaseModel, Field, SecretStr
+from pydantic import BaseModel, Field, SecretStr, model_validator
 from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR, HTTP_502_BAD_GATEWAY
 
 from backend.api.features.library.db import set_preset_webhook, update_preset
@@ -106,12 +106,30 @@ class CredentialsMetaResponse(BaseModel):
         description="Host pattern for host-scoped or MCP server URL for MCP credentials",
     )
 
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_provider(cls, data: Any) -> Any:
+        """Fix ``ProviderName.X`` format from Python 3.13 ``str(Enum)`` bug."""
+        if isinstance(data, dict):
+            prov = data.get("provider", "")
+            if isinstance(prov, str) and prov.startswith("ProviderName."):
+                member = prov.removeprefix("ProviderName.")
+                try:
+                    data = {**data, "provider": ProviderName[member].value}
+                except KeyError:
+                    pass
+        return data
+
     @staticmethod
     def get_host(cred: Credentials) -> str | None:
         """Extract host from credential: HostScoped host or MCP server URL."""
         if isinstance(cred, HostScopedCredentials):
             return cred.host
-        if isinstance(cred, OAuth2Credentials) and cred.provider == ProviderName.MCP:
+        if isinstance(cred, OAuth2Credentials) and cred.provider in (
+            ProviderName.MCP,
+            ProviderName.MCP.value,
+            "ProviderName.MCP",
+        ):
             return (cred.metadata or {}).get("mcp_server_url")
         return None
 

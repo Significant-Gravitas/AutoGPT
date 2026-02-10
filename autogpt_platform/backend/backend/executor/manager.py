@@ -274,7 +274,10 @@ async def execute_node(
         if not field_value or (
             isinstance(field_value, dict) and not field_value.get("id")
         ):
-            continue  # No credentials configured — block runs without
+            # No credentials configured — nullify so JSON schema validation
+            # doesn't choke on the empty default `{}`.
+            input_data[field_name] = None
+            continue  # Block runs without credentials
 
         credentials_meta = input_type(**field_value)
         # Write normalized values back so JSON schema validation also passes

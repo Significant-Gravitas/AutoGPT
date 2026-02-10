@@ -473,19 +473,21 @@ def test_node_credentials_optional_with_other_metadata():
 def test_mcp_credential_combine_different_servers():
     """Two MCP credential fields with different server URLs should produce
     separate entries when combined (not merged into one)."""
-    from backend.data.model import CredentialsFieldInfo
+    from backend.data.model import CredentialsFieldInfo, CredentialsType
     from backend.integrations.providers import ProviderName
+
+    oauth2_types: frozenset[CredentialsType] = frozenset(["oauth2"])
 
     field_sentry = CredentialsFieldInfo(
         credentials_provider=frozenset([ProviderName.MCP]),
-        credentials_types=frozenset(["oauth2"]),
+        credentials_types=oauth2_types,
         credentials_scopes=None,
         discriminator="server_url",
         discriminator_values={"https://mcp.sentry.dev/mcp"},
     )
     field_linear = CredentialsFieldInfo(
         credentials_provider=frozenset([ProviderName.MCP]),
-        credentials_types=frozenset(["oauth2"]),
+        credentials_types=oauth2_types,
         credentials_scopes=None,
         discriminator="server_url",
         discriminator_values={"https://mcp.linear.app/mcp"},
@@ -515,19 +517,21 @@ def test_mcp_credential_combine_different_servers():
 def test_mcp_credential_combine_same_server():
     """Two MCP credential fields with the same server URL should be combined
     into one credential entry."""
-    from backend.data.model import CredentialsFieldInfo
+    from backend.data.model import CredentialsFieldInfo, CredentialsType
     from backend.integrations.providers import ProviderName
+
+    oauth2_types: frozenset[CredentialsType] = frozenset(["oauth2"])
 
     field_a = CredentialsFieldInfo(
         credentials_provider=frozenset([ProviderName.MCP]),
-        credentials_types=frozenset(["oauth2"]),
+        credentials_types=oauth2_types,
         credentials_scopes=None,
         discriminator="server_url",
         discriminator_values={"https://mcp.sentry.dev/mcp"},
     )
     field_b = CredentialsFieldInfo(
         credentials_provider=frozenset([ProviderName.MCP]),
-        credentials_types=frozenset(["oauth2"]),
+        credentials_types=oauth2_types,
         credentials_scopes=None,
         discriminator="server_url",
         discriminator_values={"https://mcp.sentry.dev/mcp"},
@@ -548,18 +552,20 @@ def test_mcp_credential_combine_same_server():
 def test_mcp_credential_combine_no_discriminator_values():
     """MCP credential fields without discriminator_values should be merged
     into a single entry (backwards compat for blocks without server_url set)."""
-    from backend.data.model import CredentialsFieldInfo
+    from backend.data.model import CredentialsFieldInfo, CredentialsType
     from backend.integrations.providers import ProviderName
+
+    oauth2_types: frozenset[CredentialsType] = frozenset(["oauth2"])
 
     field_a = CredentialsFieldInfo(
         credentials_provider=frozenset([ProviderName.MCP]),
-        credentials_types=frozenset(["oauth2"]),
+        credentials_types=oauth2_types,
         credentials_scopes=None,
         discriminator="server_url",
     )
     field_b = CredentialsFieldInfo(
         credentials_provider=frozenset([ProviderName.MCP]),
-        credentials_types=frozenset(["oauth2"]),
+        credentials_types=oauth2_types,
         credentials_scopes=None,
         discriminator="server_url",
     )
