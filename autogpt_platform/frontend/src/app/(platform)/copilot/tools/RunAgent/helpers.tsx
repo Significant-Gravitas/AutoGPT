@@ -203,7 +203,7 @@ export function getAccordionMeta(output: RunAgentToolOutput): {
         ? output.status.trim()
         : "started";
     return {
-      icon: <SpinnerLoader size={28} className="text-neutral-700" />,
+      icon: <OrbitLoader size={28} className="text-neutral-700" />,
       title: output.graph_name,
       description: `Status: ${statusText}`,
     };
