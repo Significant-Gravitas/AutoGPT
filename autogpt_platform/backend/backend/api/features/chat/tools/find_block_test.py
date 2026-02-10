@@ -378,8 +378,9 @@ class TestFindBlockFiltering:
         print(f"Average chars per block: {avg_chars}")
 
         # The old response was ~90K for 10 blocks (~9K per block).
-        # With the optimized format (no raw JSON schemas) we expect ~1.5K per block.
-        assert avg_chars < 2000, (
-            f"Average chars per block ({avg_chars}) exceeds 2000. "
+        # Previous optimization reduced it to ~1.5K per block (no raw JSON schemas).
+        # Now with only id/name/description, we expect ~300 chars per block.
+        assert avg_chars < 500, (
+            f"Average chars per block ({avg_chars}) exceeds 500. "
             f"Total response: {total_chars} chars for {response.count} blocks."
         )

@@ -7,7 +7,6 @@ from backend.api.features.chat.model import ChatSession
 from backend.api.features.chat.tools.base import BaseTool, ToolResponseBase
 from backend.api.features.chat.tools.models import (
     BlockInfoSummary,
-    BlockInputFieldInfo,
     BlockListResponse,
     ErrorResponse,
     NoResultsResponse,
@@ -54,8 +53,8 @@ class FindBlockTool(BaseTool):
             "Blocks are reusable components that perform specific tasks like "
             "sending emails, making API calls, processing text, etc. "
             "IMPORTANT: Use this tool FIRST to get the block's 'id' before calling run_block. "
-            "The response includes each block's id, required_inputs, "
-            "and output_fields."
+            "The response includes each block's id, name, and description. "
+            "Call run_block with the block's id to see detailed inputs/outputs and execute it."
         )
 
     @property
@@ -141,78 +140,11 @@ class FindBlockTool(BaseTool):
                 ):
                     continue
 
-                # Get input/output schemas
-                input_schema: dict[str, Any] = {}
-                output_schema: dict[str, Any] = {}
-                try:
-                    input_schema = block.input_schema.jsonschema()
-                except Exception as e:
-                    logger.debug(
-                        "Failed to generate input schema for block %s: %s",
-                        block_id,
-                        e,
-                    )
-                try:
-                    output_schema = block.output_schema.jsonschema()
-                except Exception as e:
-                    logger.debug(
-                        "Failed to generate output schema for block %s: %s",
-                        block_id,
-                        e,
-                    )
-
-                # Get credential field names to exclude from required inputs
-                credentials_fields: set[str] = set()
-                try:
-                    credentials_fields = set(
-                        block.input_schema.get_credentials_fields().keys()
-                    )
-                except Exception as e:
-                    logger.debug(
-                        "Failed to get credentials fields for block %s: %s",
-                        block_id,
-                        e,
-                    )
-
-                # Extract input fields (excluding credentials)
-                required_inputs: list[BlockInputFieldInfo] = []
-                if input_schema:
-                    properties = input_schema.get("properties", {})
-                    required_fields = set(input_schema.get("required", []))
-
-                    for field_name, field_schema in properties.items():
-                        if field_name in credentials_fields:
-                            continue
-                        required_inputs.append(
-                            BlockInputFieldInfo(
-                                name=field_name,
-                                type=field_schema.get("type", "string"),
-                                description=field_schema.get("description", ""),
-                                required=field_name in required_fields,
-                                default=field_schema.get("default"),
-                            )
-                        )
-
-                # Extract output fields
-                output_fields: list[BlockInputFieldInfo] = []
-                if output_schema:
-                    out_props = output_schema.get("properties", {})
-                    for field_name, field_schema in out_props.items():
-                        output_fields.append(
-                            BlockInputFieldInfo(
-                                name=field_name,
-                                type=field_schema.get("type", "string"),
-                                description=field_schema.get("description", ""),
-                            )
-                        )
-
                 blocks.append(
                     BlockInfoSummary(
                         id=block_id,
                         name=block.name,
                         description=block.description or "",
-                        required_inputs=required_inputs,
-                        output_fields=output_fields,
                     )
                 )
 
@@ -241,8 +173,7 @@ class FindBlockTool(BaseTool):
             return BlockListResponse(
                 message=(
                     f"Found {len(blocks)} block(s) matching '{query}'. "
-                    "To execute a block, use run_block with the block's 'id' "
-                    "and provide 'input_data' matching required_inputs."
+                    "To see a block's inputs/outputs and execute it, use run_block with the block's 'id'."
                 ),
                 blocks=blocks,
                 count=len(blocks),

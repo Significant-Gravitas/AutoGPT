@@ -25,6 +25,7 @@ class ResponseType(str, Enum):
     AGENT_SAVED = "agent_saved"
     CLARIFICATION_NEEDED = "clarification_needed"
     BLOCK_LIST = "block_list"
+    BLOCK_DETAILS = "block_details"
     BLOCK_OUTPUT = "block_output"
     DOC_SEARCH_RESULTS = "doc_search_results"
     DOC_PAGE = "doc_page"
@@ -334,14 +335,6 @@ class BlockInfoSummary(BaseModel):
     id: str
     name: str
     description: str
-    required_inputs: list[BlockInputFieldInfo] = Field(
-        default_factory=list,
-        description="List of required input fields for this block",
-    )
-    output_fields: list[BlockInputFieldInfo] = Field(
-        default_factory=list,
-        description="Output fields produced by this block",
-    )
 
 
 class BlockListResponse(ToolResponseBase):
@@ -351,6 +344,25 @@ class BlockListResponse(ToolResponseBase):
     blocks: list[BlockInfoSummary]
     count: int
     query: str
+
+
+class BlockDetails(BaseModel):
+    """Detailed block information."""
+
+    id: str
+    name: str
+    description: str
+    inputs: dict[str, Any] = {}
+    outputs: dict[str, Any] = {}
+    credentials: list[CredentialsMetaInput] = []
+
+
+class BlockDetailsResponse(ToolResponseBase):
+    """Response for block details (first run_block attempt)."""
+
+    type: ResponseType = ResponseType.BLOCK_DETAILS
+    block: BlockDetails
+    user_authenticated: bool = False
 
 
 class BlockOutputResponse(ToolResponseBase):

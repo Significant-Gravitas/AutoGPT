@@ -21,6 +21,8 @@ from backend.util.exceptions import BlockError
 
 from .base import BaseTool
 from .models import (
+    BlockDetails,
+    BlockDetailsResponse,
     BlockOutputResponse,
     ErrorResponse,
     SetupInfo,
@@ -46,8 +48,8 @@ class RunBlockTool(BaseTool):
             "Execute a specific block with the provided input data. "
             "IMPORTANT: You MUST call find_block first to get the block's 'id' - "
             "do NOT guess or make up block IDs. "
-            "Use the 'id' from find_block results and provide input_data "
-            "matching the block's required_inputs."
+            "On first attempt (without input_data), returns detailed schema showing "
+            "required inputs and outputs. Then call again with proper input_data to execute."
         )
 
     @property
@@ -65,8 +67,9 @@ class RunBlockTool(BaseTool):
                 "input_data": {
                     "type": "object",
                     "description": (
-                        "Input values for the block. Use the 'required_inputs' field "
-                        "from find_block to see what fields are needed."
+                        "Input values for the block. "
+                        "First call with empty {} to see the block's schema, "
+                        "then call again with proper values to execute."
                     ),
                 },
             },
@@ -236,6 +239,26 @@ class RunBlockTool(BaseTool):
             user_id, block, input_data
         )
 
+        # Get block schemas for details/validation
+        input_schema: dict[str, Any] = {}
+        output_schema: dict[str, Any] = {}
+        try:
+            input_schema = block.input_schema.jsonschema()
+        except Exception as e:
+            logger.debug(
+                "Failed to generate input schema for block %s: %s",
+                block_id,
+                e,
+            )
+        try:
+            output_schema = block.output_schema.jsonschema()
+        except Exception as e:
+            logger.debug(
+                "Failed to generate output schema for block %s: %s",
+                block_id,
+                e,
+            )
+
         if missing_credentials:
             # Return setup requirements response with missing credentials
             credentials_fields_info = block.input_schema.get_credentials_fields_info()
@@ -266,6 +289,39 @@ class RunBlockTool(BaseTool):
                 ),
                 graph_id=None,
                 graph_version=None,
+            )
+
+        # Check if this is a first attempt (no input data provided for a block that has inputs)
+        # Return block details so user can see what inputs are needed
+        input_properties = input_schema.get("properties", {})
+        credentials_fields = set(block.input_schema.get_credentials_fields().keys())
+        non_credential_properties = {
+            k: v for k, v in input_properties.items() if k not in credentials_fields
+        }
+        provided_input_keys = set(input_data.keys()) - credentials_fields
+
+        # If block has non-credential inputs but none were provided, show details first
+        if non_credential_properties and not provided_input_keys:
+            # Get credentials info for the response
+            credentials_meta = []
+            for field_name, cred_meta in matched_credentials.items():
+                credentials_meta.append(cred_meta)
+
+            return BlockDetailsResponse(
+                message=(
+                    f"Block '{block.name}' details. "
+                    "Provide input_data matching the inputs schema to execute the block."
+                ),
+                session_id=session_id,
+                block=BlockDetails(
+                    id=block_id,
+                    name=block.name,
+                    description=block.description or "",
+                    inputs=input_schema,
+                    outputs=output_schema,
+                    credentials=credentials_meta,
+                ),
+                user_authenticated=True,
             )
 
         try:
