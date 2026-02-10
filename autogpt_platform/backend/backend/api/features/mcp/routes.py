@@ -120,6 +120,11 @@ async def discover_tools(
         raise fastapi.HTTPException(status_code=502, detail=str(e))
     except MCPClientError as e:
         raise fastapi.HTTPException(status_code=502, detail=str(e))
+    except Exception as e:
+        raise fastapi.HTTPException(
+            status_code=502,
+            detail=f"Failed to connect to MCP server: {e}",
+        )
 
     return DiscoverToolsResponse(
         tools=[
@@ -316,9 +321,15 @@ async def mcp_oauth_callback(
         resource_url=meta.get("resource_url"),
     )
 
-    credentials = await handler.exchange_code_for_tokens(
-        request.code, valid_state.scopes, valid_state.code_verifier
-    )
+    try:
+        credentials = await handler.exchange_code_for_tokens(
+            request.code, valid_state.scopes, valid_state.code_verifier
+        )
+    except Exception as e:
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail=f"OAuth token exchange failed: {e}",
+        )
 
     # Enrich credential metadata for future lookup and token refresh
     if credentials.metadata is None:

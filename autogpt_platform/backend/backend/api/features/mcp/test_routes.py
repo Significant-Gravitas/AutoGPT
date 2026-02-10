@@ -239,6 +239,7 @@ class TestOAuthLogin:
         with patch("backend.api.features.mcp.routes.MCPClient") as MockClient:
             instance = MockClient.return_value
             instance.discover_auth = AsyncMock(return_value=None)
+            instance.discover_auth_server_metadata = AsyncMock(return_value=None)
 
             response = client.post(
                 "/oauth/login",

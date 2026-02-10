@@ -110,9 +110,7 @@ class MCPOAuthHandler(BaseOAuthHandler):
             )
 
         if "access_token" not in tokens:
-            raise RuntimeError(
-                "OAuth token response missing 'access_token' field"
-            )
+            raise RuntimeError("OAuth token response missing 'access_token' field")
 
         now = int(time.time())
         expires_in = tokens.get("expires_in")
@@ -164,9 +162,7 @@ class MCPOAuthHandler(BaseOAuthHandler):
             )
 
         if "access_token" not in tokens:
-            raise RuntimeError(
-                "OAuth refresh response missing 'access_token' field"
-            )
+            raise RuntimeError("OAuth refresh response missing 'access_token' field")
 
         now = int(time.time())
         expires_in = tokens.get("expires_in")
