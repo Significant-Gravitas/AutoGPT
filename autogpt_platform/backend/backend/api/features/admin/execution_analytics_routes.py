@@ -194,8 +194,8 @@ async def get_execution_analytics_config(
         if first_enabled_slug is None:
             first_enabled_slug = registry_model.slug
 
-        model_enum = LlmModel(registry_model.slug)  # Create enum instance from slug
-        label = generate_model_label(model_enum)
+        model = LlmModel(registry_model.slug)
+        label = generate_model_label(model)
         # Add "(Recommended)" suffix to the recommended model
         if registry_model.slug == recommended_model_slug:
             label += " (Recommended)"

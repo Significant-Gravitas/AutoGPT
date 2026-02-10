@@ -39,16 +39,14 @@ async def _refresh_runtime_state() -> None:
         except Exception as e:
             logger.warning("Failed to clear /blocks cache: %s", e)
 
-        # Clear the v2 builder caches (if they exist)
+        # Clear the v2 builder caches
         try:
             from backend.api.features.builder import db as builder_db
 
-            if hasattr(builder_db, "_get_all_providers"):
-                builder_db._get_all_providers.cache_clear()
-                logger.info("Cleared v2 builder providers cache")
-            if hasattr(builder_db, "_build_cached_search_results"):
-                builder_db._build_cached_search_results.cache_clear()
-                logger.info("Cleared v2 builder search results cache")
+            builder_db._get_all_providers.cache_clear()
+            logger.info("Cleared v2 builder providers cache")
+            builder_db._build_cached_search_results.cache_clear()
+            logger.info("Cleared v2 builder search results cache")
         except Exception as e:
             logger.debug("Could not clear v2 builder cache: %s", e)
 

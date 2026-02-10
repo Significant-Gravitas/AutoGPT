@@ -83,7 +83,7 @@ class AIConditionBlock(AIBlockBase):
                 "condition": "the input is an email address",
                 "yes_value": "Valid email",
                 "no_value": "Not an email",
-                "model": "gpt-4o",  # Using string value - enum accepts any model slug dynamically
+                "model": LlmModel.default(),
                 "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,
