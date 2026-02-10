@@ -88,39 +88,27 @@ export async function POST(
 }
 
 /**
- * Legacy GET endpoint for backward compatibility
+ * Resume an active stream for a session.
+ *
+ * Called by the AI SDK's `useChat(resume: true)` on page load.
+ * Proxies to the backend which checks for an active stream and either
+ * replays it (200 + SSE) or returns 204 No Content.
  */
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ sessionId: string }> },
 ) {
   const { sessionId } = await params;
-  const searchParams = request.nextUrl.searchParams;
-  const message = searchParams.get("message");
-  const isUserMessage = searchParams.get("is_user_message");
-
-  if (!message) {
-    return new Response("Missing message parameter", { status: 400 });
-  }
 
   try {
-    // Get auth token from server-side session
     const token = await getServerAuthToken();
 
-    // Build backend URL
     const backendUrl = environment.getAGPTServerBaseUrl();
     const streamUrl = new URL(
       `/api/chat/sessions/${sessionId}/stream`,
       backendUrl,
     );
-    streamUrl.searchParams.set("message", message);
 
-    // Pass is_user_message parameter if provided
-    if (isUserMessage !== null) {
-      streamUrl.searchParams.set("is_user_message", isUserMessage);
-    }
-
-    // Forward request to backend with auth header
     const headers: Record<string, string> = {
       Accept: "text/event-stream",
       "Cache-Control": "no-cache",
@@ -136,6 +124,11 @@ export async function GET(
       headers,
     });
 
+    // 204 = no active stream to resume
+    if (response.status === 204) {
+      return new Response(null, { status: 204 });
+    }
+
     if (!response.ok) {
       const error = await response.text();
       return new Response(error, {
@@ -144,17 +137,17 @@ export async function GET(
       });
     }
 
-    // Return the SSE stream directly
     return new Response(response.body, {
       headers: {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache, no-transform",
         Connection: "keep-alive",
         "X-Accel-Buffering": "no",
+        "x-vercel-ai-ui-message-stream": "v1",
       },
     });
   } catch (error) {
-    console.error("SSE proxy error:", error);
+    console.error("Resume stream proxy error:", error);
     return new Response(
       JSON.stringify({
         error: "Failed to connect to chat service",

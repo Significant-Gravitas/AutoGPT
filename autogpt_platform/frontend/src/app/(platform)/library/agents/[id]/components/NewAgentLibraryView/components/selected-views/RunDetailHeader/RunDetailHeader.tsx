@@ -2,7 +2,7 @@ import { GraphExecution } from "@/app/api/__generated__/models/graphExecution";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { Text } from "@/components/atoms/Text/Text";
 import { ClockClockwiseIcon } from "@phosphor-icons/react";
-import moment from "moment";
+import { formatDistanceToNow, formatDistanceStrict } from "date-fns";
 import { AGENT_LIBRARY_SECTION_PADDING_X } from "../../../helpers";
 import { RunStatusBadge } from "../SelectedRunView/components/RunStatusBadge";
 
@@ -43,7 +43,10 @@ export function RunDetailHeader({ agent, run, scheduleRecurrence }: Props) {
           {run ? (
             <div className="mt-1 flex flex-wrap items-center gap-2 gap-y-1 text-zinc-400">
               <Text variant="small" className="text-zinc-500">
-                Started {moment(run.started_at).fromNow()}
+                Started{" "}
+                {run.started_at
+                  ? formatDistanceToNow(run.started_at, { addSuffix: true })
+                  : "—"}
               </Text>
               <span className="mx-1 inline-block text-zinc-200">|</span>
               <Text variant="small" className="text-zinc-500">
@@ -62,7 +65,7 @@ export function RunDetailHeader({ agent, run, scheduleRecurrence }: Props) {
                   <span className="mx-1 inline-block text-zinc-200">|</span>
                   <Text variant="small" className="text-zinc-500">
                     Duration:{" "}
-                    {moment.duration(run.stats.duration, "seconds").humanize()}
+                    {formatDistanceStrict(0, run.stats.duration * 1000)}
                   </Text>
                 </>
               )}

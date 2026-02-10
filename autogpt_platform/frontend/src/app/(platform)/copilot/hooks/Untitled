@@ -1,0 +1,10 @@
+import { parseAsString, useQueryState } from "nuqs";
+
+export function useCopilotSessionId() {
+  const [urlSessionId, setUrlSessionId] = useQueryState(
+    "sessionId",
+    parseAsString,
+  );
+
+  return { urlSessionId, setUrlSessionId };
+}

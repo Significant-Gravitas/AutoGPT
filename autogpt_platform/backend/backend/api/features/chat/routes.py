@@ -7,7 +7,7 @@ from collections.abc import AsyncGenerator
 from typing import Annotated
 
 from autogpt_libs import auth
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Security
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, Security
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -27,6 +27,28 @@ from .model import (
 )
 from .response_model import StreamError, StreamFinish, StreamHeartbeat, StreamStart
 from .sdk import service as sdk_service
+from .tools.models import (
+    AgentDetailsResponse,
+    AgentOutputResponse,
+    AgentPreviewResponse,
+    AgentSavedResponse,
+    AgentsFoundResponse,
+    BlockListResponse,
+    BlockOutputResponse,
+    ClarificationNeededResponse,
+    DocPageResponse,
+    DocSearchResultsResponse,
+    ErrorResponse,
+    ExecutionStartedResponse,
+    InputValidationErrorResponse,
+    NeedLoginResponse,
+    NoResultsResponse,
+    OperationInProgressResponse,
+    OperationPendingResponse,
+    OperationStartedResponse,
+    SetupRequirementsResponse,
+    UnderstandingUpdatedResponse,
+)
 from .tracking import track_user_message
 
 config = ChatConfig()
@@ -283,8 +305,6 @@ async def stream_chat_post(
     import time
 
     stream_start_time = time.perf_counter()
-
-    # Base log metadata (task_id added after creation)
     log_meta = {"component": "ChatStream", "session_id": session_id}
     if user_id:
         log_meta["user_id"] = user_id
@@ -431,7 +451,6 @@ async def stream_chat_post(
                     }
                 },
             )
-
             await stream_registry.mark_task_completed(task_id, "completed")
         except Exception as e:
             elapsed = time_module.perf_counter() - gen_start_time
@@ -482,34 +501,13 @@ async def stream_chat_post(
         chunks_yielded = 0
         try:
             # Subscribe to the task stream (this replays existing messages + live updates)
-            subscribe_start = time_module.perf_counter()
-            logger.info(
-                "[TIMING] Calling subscribe_to_task",
-                extra={"json_fields": log_meta},
-            )
             subscriber_queue = await stream_registry.subscribe_to_task(
                 task_id=task_id,
                 user_id=user_id,
                 last_message_id="0-0",  # Get all messages from the beginning
             )
-            subscribe_time = (time_module.perf_counter() - subscribe_start) * 1000
-            logger.info(
-                f"[TIMING] subscribe_to_task completed in {subscribe_time:.1f}ms, "
-                f"queue_ok={subscriber_queue is not None}",
-                extra={
-                    "json_fields": {
-                        **log_meta,
-                        "duration_ms": subscribe_time,
-                        "queue_obtained": subscriber_queue is not None,
-                    }
-                },
-            )
 
             if subscriber_queue is None:
-                logger.info(
-                    "[TIMING] subscriber_queue is None, yielding finish",
-                    extra={"json_fields": log_meta},
-                )
                 yield StreamFinish().to_sse()
                 yield "data: [DONE]\n\n"
                 return
@@ -521,11 +519,7 @@ async def stream_chat_post(
             )
             while True:
                 try:
-                    queue_wait_start = time_module.perf_counter()
                     chunk = await asyncio.wait_for(subscriber_queue.get(), timeout=30.0)
-                    queue_wait_time = (
-                        time_module.perf_counter() - queue_wait_start
-                    ) * 1000
                     chunks_yielded += 1
 
                     if not first_chunk_yielded:
@@ -533,26 +527,12 @@ async def stream_chat_post(
                         elapsed = time_module.perf_counter() - event_gen_start
                         logger.info(
                             f"[TIMING] FIRST CHUNK from queue at {elapsed:.2f}s, "
-                            f"type={type(chunk).__name__}, "
-                            f"wait={queue_wait_time:.1f}ms",
+                            f"type={type(chunk).__name__}",
                             extra={
                                 "json_fields": {
                                     **log_meta,
                                     "chunk_type": type(chunk).__name__,
                                     "elapsed_ms": elapsed * 1000,
-                                    "queue_wait_ms": queue_wait_time,
-                                }
-                            },
-                        )
-                    elif chunks_yielded % 50 == 0:
-                        logger.info(
-                            f"[TIMING] Chunk #{chunks_yielded}, "
-                            f"type={type(chunk).__name__}",
-                            extra={
-                                "json_fields": {
-                                    **log_meta,
-                                    "chunk_number": chunks_yielded,
-                                    "chunk_type": type(chunk).__name__,
                                 }
                             },
                         )
@@ -575,13 +555,6 @@ async def stream_chat_post(
                         )
                         break
                 except asyncio.TimeoutError:
-                    # Send heartbeat to keep connection alive
-                    logger.info(
-                        f"[TIMING] Heartbeat timeout, chunks_so_far={chunks_yielded}",
-                        extra={
-                            "json_fields": {**log_meta, "chunks_so_far": chunks_yielded}
-                        },
-                    )
                     yield StreamHeartbeat().to_sse()
 
         except GeneratorExit:
@@ -652,49 +625,90 @@ async def stream_chat_post(
 @router.get(
     "/sessions/{session_id}/stream",
 )
-async def stream_chat_get(
+async def resume_session_stream(
     session_id: str,
-    message: Annotated[str, Query(min_length=1, max_length=10000)],
     user_id: str | None = Depends(auth.get_user_id),
-    is_user_message: bool = Query(default=True),
 ):
     """
-    Stream chat responses for a session (GET - legacy endpoint).
+    Resume an active stream for a session.
 
-    Streams the AI/completion responses in real time over Server-Sent Events (SSE), including:
-      - Text fragments as they are generated
-      - Tool call UI elements (if invoked)
-      - Tool execution results
+    Called by the AI SDK's ``useChat(resume: true)`` on page load.
+    Checks for an active (in-progress) task on the session and either replays
+    the full SSE stream or returns 204 No Content if nothing is running.
 
     Args:
-        session_id: The chat session identifier to associate with the streamed messages.
-        message: The user's new message to process.
+        session_id: The chat session identifier.
         user_id: Optional authenticated user ID.
-        is_user_message: Whether the message is a user message.
-    Returns:
-        StreamingResponse: SSE-formatted response chunks.
 
+    Returns:
+        StreamingResponse (SSE) when an active stream exists,
+        or 204 No Content when there is nothing to resume.
     """
-    session = await _validate_and_get_session(session_id, user_id)
+    import asyncio
+
+    active_task, _last_id = await stream_registry.get_active_task_for_session(
+        session_id, user_id
+    )
+
+    if not active_task:
+        return Response(status_code=204)
+
+    subscriber_queue = await stream_registry.subscribe_to_task(
+        task_id=active_task.task_id,
+        user_id=user_id,
+        last_message_id="0-0",  # Full replay so useChat rebuilds the message
+    )
+
+    if subscriber_queue is None:
+        return Response(status_code=204)
 
     async def event_generator() -> AsyncGenerator[str, None]:
-        # Choose service based on configuration
-        use_sdk = config.use_claude_agent_sdk
-        stream_fn = (
-            sdk_service.stream_chat_completion_sdk
-            if use_sdk
-            else chat_service.stream_chat_completion
-        )
-        async for chunk in stream_fn(
-            session_id,
-            message,
-            is_user_message=is_user_message,
-            user_id=user_id,
-            session=session,  # Pass pre-fetched session to avoid double-fetch
-        ):
-            yield chunk.to_sse()
-        # AI SDK protocol termination
-        yield "data: [DONE]\n\n"
+        chunk_count = 0
+        first_chunk_type: str | None = None
+        try:
+            while True:
+                try:
+                    chunk = await asyncio.wait_for(subscriber_queue.get(), timeout=30.0)
+                    if chunk_count < 3:
+                        logger.info(
+                            "Resume stream chunk",
+                            extra={
+                                "session_id": session_id,
+                                "chunk_type": str(chunk.type),
+                            },
+                        )
+                    if not first_chunk_type:
+                        first_chunk_type = str(chunk.type)
+                    chunk_count += 1
+                    yield chunk.to_sse()
+
+                    if isinstance(chunk, StreamFinish):
+                        break
+                except asyncio.TimeoutError:
+                    yield StreamHeartbeat().to_sse()
+        except GeneratorExit:
+            pass
+        except Exception as e:
+            logger.error(f"Error in resume stream for session {session_id}: {e}")
+        finally:
+            try:
+                await stream_registry.unsubscribe_from_task(
+                    active_task.task_id, subscriber_queue
+                )
+            except Exception as unsub_err:
+                logger.error(
+                    f"Error unsubscribing from task {active_task.task_id}: {unsub_err}",
+                    exc_info=True,
+                )
+            logger.info(
+                "Resume stream completed",
+                extra={
+                    "session_id": session_id,
+                    "n_chunks": chunk_count,
+                    "first_chunk_type": first_chunk_type,
+                },
+            )
+            yield "data: [DONE]\n\n"
 
     return StreamingResponse(
         event_generator(),
@@ -702,8 +716,8 @@ async def stream_chat_get(
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",  # Disable nginx buffering
-            "x-vercel-ai-ui-message-stream": "v1",  # AI SDK protocol header
+            "X-Accel-Buffering": "no",
+            "x-vercel-ai-ui-message-stream": "v1",
         },
     )
 
@@ -1013,3 +1027,42 @@ async def health_check() -> dict:
         "service": "chat",
         "version": "0.1.0",
     }
+
+
+# ========== Schema Export (for OpenAPI / Orval codegen) ==========
+
+ToolResponseUnion = (
+    AgentsFoundResponse
+    | NoResultsResponse
+    | AgentDetailsResponse
+    | SetupRequirementsResponse
+    | ExecutionStartedResponse
+    | NeedLoginResponse
+    | ErrorResponse
+    | InputValidationErrorResponse
+    | AgentOutputResponse
+    | UnderstandingUpdatedResponse
+    | AgentPreviewResponse
+    | AgentSavedResponse
+    | ClarificationNeededResponse
+    | BlockListResponse
+    | BlockOutputResponse
+    | DocSearchResultsResponse
+    | DocPageResponse
+    | OperationStartedResponse
+    | OperationPendingResponse
+    | OperationInProgressResponse
+)
+
+
+@router.get(
+    "/schema/tool-responses",
+    response_model=ToolResponseUnion,
+    include_in_schema=True,
+    summary="[Dummy] Tool response type export for codegen",
+    description="This endpoint is not meant to be called. It exists solely to "
+    "expose tool response models in the OpenAPI schema for frontend codegen.",
+)
+async def _tool_response_schema() -> ToolResponseUnion:  # type: ignore[return]
+    """Never called at runtime. Exists only so Orval generates TS types."""
+    raise HTTPException(status_code=501, detail="Schema-only endpoint")
