@@ -368,7 +368,6 @@ async def stream_chat_completion(
 
     Raises:
         NotFoundError: If session_id is invalid
-        ValueError: If max_context_messages is exceeded
 
     """
     completion_start = time.monotonic()
