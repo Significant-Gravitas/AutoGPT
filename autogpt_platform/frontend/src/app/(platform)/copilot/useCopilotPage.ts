@@ -3,7 +3,6 @@ import { useBreakpoint } from "@/lib/hooks/useBreakpoint";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
-import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { useChatSession } from "./useChatSession";
 
@@ -11,7 +10,6 @@ export function useCopilotPage() {
   const { isUserLoading, isLoggedIn } = useSupabase();
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [pendingMessage, setPendingMessage] = useState<string | null>(null);
-  const router = useRouter();
 
   const {
     sessionId,
@@ -53,10 +51,6 @@ export function useCopilotPage() {
     id: sessionId ?? undefined,
     transport: transport ?? undefined,
   });
-
-  useEffect(() => {
-    if (!isUserLoading && !isLoggedIn) router.replace("/login");
-  }, [isUserLoading, isLoggedIn]);
 
   useEffect(() => {
     if (!hydratedMessages || hydratedMessages.length === 0) return;
