@@ -57,7 +57,8 @@ class TestDecomposeGoal:
 
             result = await core.decompose_goal("Build a chatbot")
 
-            mock_external.assert_called_once_with("Build a chatbot", "")
+            # library_agents defaults to None
+            mock_external.assert_called_once_with("Build a chatbot", "", None)
             assert result == expected_result
 
     @pytest.mark.asyncio
@@ -74,7 +75,8 @@ class TestDecomposeGoal:
 
             await core.decompose_goal("Build a chatbot", "Use Python")
 
-            mock_external.assert_called_once_with("Build a chatbot", "Use Python")
+            # library_agents defaults to None
+            mock_external.assert_called_once_with("Build a chatbot", "Use Python", None)
 
     @pytest.mark.asyncio
     async def test_returns_none_on_service_failure(self):
@@ -109,8 +111,7 @@ class TestGenerateAgent:
             instructions = {"type": "instructions", "steps": ["Step 1"]}
             result = await core.generate_agent(instructions)
 
-            mock_external.assert_called_once_with(instructions)
-            # Result should have id, version, is_active added if not present
+            mock_external.assert_called_once_with(instructions, None, None, None)
             assert result is not None
             assert result["name"] == "Test Agent"
             assert "id" in result
@@ -174,7 +175,9 @@ class TestGenerateAgentPatch:
             current_agent = {"nodes": [], "links": []}
             result = await core.generate_agent_patch("Add a node", current_agent)
 
-            mock_external.assert_called_once_with("Add a node", current_agent)
+            mock_external.assert_called_once_with(
+                "Add a node", current_agent, None, None, None
+            )
             assert result == expected_result
 
     @pytest.mark.asyncio

@@ -13,6 +13,7 @@ import aiohttp
 from gcloud.aio import storage as async_gcs_storage
 from google.cloud import storage as gcs_storage
 
+from backend.util.gcs_utils import download_with_fresh_session, generate_signed_url
 from backend.util.settings import Config
 
 logger = logging.getLogger(__name__)
@@ -251,7 +252,7 @@ class CloudStorageHandler:
             f"in_task: {current_task is not None}"
         )
 
-        # Parse bucket and blob name from path
+        # Parse bucket and blob name from path (path already has gcs:// prefix removed)
         parts = path.split("/", 1)
         if len(parts) != 2:
             raise ValueError(f"Invalid GCS path: {path}")
@@ -261,50 +262,19 @@ class CloudStorageHandler:
         # Authorization check
         self._validate_file_access(blob_name, user_id, graph_exec_id)
 
-        # Use a fresh client for each download to avoid session issues
-        # This is less efficient but more reliable with the executor's event loop
-        logger.info("[CloudStorage] Creating fresh GCS client for download")
-
-        # Create a new session specifically for this download
-        session = aiohttp.ClientSession(
-            connector=aiohttp.TCPConnector(limit=10, force_close=True)
+        logger.info(
+            f"[CloudStorage] About to download from GCS - bucket: {bucket_name}, blob: {blob_name}"
         )
 
-        async_client = None
         try:
-            # Create a new GCS client with the fresh session
-            async_client = async_gcs_storage.Storage(session=session)
-
-            logger.info(
-                f"[CloudStorage] About to download from GCS - bucket: {bucket_name}, blob: {blob_name}"
-            )
-
-            # Download content using the fresh client
-            content = await async_client.download(bucket_name, blob_name)
+            content = await download_with_fresh_session(bucket_name, blob_name)
             logger.info(
                 f"[CloudStorage] GCS download successful - size: {len(content)} bytes"
             )
-
-            # Clean up
-            await async_client.close()
-            await session.close()
-
             return content
-
+        except FileNotFoundError:
+            raise
         except Exception as e:
-            # Always try to clean up
-            if async_client is not None:
-                try:
-                    await async_client.close()
-                except Exception as cleanup_error:
-                    logger.warning(
-                        f"[CloudStorage] Error closing GCS client: {cleanup_error}"
-                    )
-            try:
-                await session.close()
-            except Exception as cleanup_error:
-                logger.warning(f"[CloudStorage] Error closing session: {cleanup_error}")
-
             # Log the specific error for debugging
             logger.error(
                 f"[CloudStorage] GCS download failed - error: {str(e)}, "
@@ -319,10 +289,6 @@ class CloudStorageHandler:
                     f"current_task: {current_task}, "
                     f"bucket: {bucket_name}, blob: redacted for privacy"
                 )
-
-            # Convert gcloud-aio exceptions to standard ones
-            if "404" in str(e) or "Not Found" in str(e):
-                raise FileNotFoundError(f"File not found: gcs://{path}")
             raise
 
     def _validate_file_access(
@@ -445,8 +411,7 @@ class CloudStorageHandler:
         graph_exec_id: str | None = None,
     ) -> str:
         """Generate signed URL for GCS with authorization."""
-
-        # Parse bucket and blob name from path
+        # Parse bucket and blob name from path (path already has gcs:// prefix removed)
         parts = path.split("/", 1)
         if len(parts) != 2:
             raise ValueError(f"Invalid GCS path: {path}")
@@ -456,20 +421,10 @@ class CloudStorageHandler:
         # Authorization check
         self._validate_file_access(blob_name, user_id, graph_exec_id)
 
-        # Use sync client for signed URLs since gcloud-aio doesn't support them
         sync_client = self._get_sync_gcs_client()
-        bucket = sync_client.bucket(bucket_name)
-        blob = bucket.blob(blob_name)
-
-        # Generate signed URL asynchronously using sync client
-        url = await asyncio.to_thread(
-            blob.generate_signed_url,
-            version="v4",
-            expiration=datetime.now(timezone.utc) + timedelta(hours=expiration_hours),
-            method="GET",
+        return await generate_signed_url(
+            sync_client, bucket_name, blob_name, expiration_hours * 3600
         )
-
-        return url
 
     async def delete_expired_files(self, provider: str = "gcs") -> int:
         """

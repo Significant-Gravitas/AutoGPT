@@ -172,7 +172,7 @@ test("multi-tab logout with WebSocket cleanup", async ({ context }) => {
   await page2.close();
 });
 
-test("logged in user is redirected from /login to /library", async ({
+test("logged in user is redirected from /login to /copilot", async ({
   page,
 }) => {
   const testUser = await getTestUser();

@@ -32,7 +32,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "22.18.0"
 
@@ -44,7 +44,7 @@ jobs:
         run: echo "key=${{ runner.os }}-pnpm-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml', 'autogpt_platform/frontend/package.json') }}" >> $GITHUB_OUTPUT
 
       - name: Cache dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.pnpm-store
           key: ${{ steps.cache-key.outputs.key }}
@@ -56,7 +56,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
   types:
-    runs-on: ubuntu-latest
+    runs-on: big-boi
     needs: setup
     strategy:
       fail-fast: false
@@ -68,7 +68,7 @@ jobs:
           submodules: recursive
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "22.18.0"
 
@@ -85,10 +85,10 @@ jobs:
 
       - name: Run docker compose
         run: |
-          docker compose -f ../docker-compose.yml --profile local --profile deps_backend up -d
+          docker compose -f ../docker-compose.yml --profile local up -d deps_backend
 
       - name: Restore dependencies cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.pnpm-store
           key: ${{ needs.setup.outputs.cache-key }}

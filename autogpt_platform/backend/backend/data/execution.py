@@ -1,9 +1,8 @@
 import logging
+import queue
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from enum import Enum
-from multiprocessing import Manager
-from queue import Empty
 from typing import (
     TYPE_CHECKING,
     Annotated,
@@ -83,11 +82,28 @@ class ExecutionContext(BaseModel):
 
     model_config = {"extra": "ignore"}
 
+    # Execution identity
+    user_id: Optional[str] = None
+    graph_id: Optional[str] = None
+    graph_exec_id: Optional[str] = None
+    graph_version: Optional[int] = None
+    node_id: Optional[str] = None
+    node_exec_id: Optional[str] = None
+
+    # Safety settings
     human_in_the_loop_safe_mode: bool = True
     sensitive_action_safe_mode: bool = False
+
+    # User settings
     user_timezone: str = "UTC"
+
+    # Execution hierarchy
     root_execution_id: Optional[str] = None
     parent_execution_id: Optional[str] = None
+
+    # Workspace
+    workspace_id: Optional[str] = None
+    session_id: Optional[str] = None
 
 
 # -------------------------- Models -------------------------- #
@@ -1183,12 +1199,16 @@ class NodeExecutionEntry(BaseModel):
 
 class ExecutionQueue(Generic[T]):
     """
-    Queue for managing the execution of agents.
-    This will be shared between different processes
+    Thread-safe queue for managing node execution within a single graph execution.
+
+    Note: Uses queue.Queue (not multiprocessing.Queue) since all access is from
+    threads within the same process. If migrating back to ProcessPoolExecutor,
+    replace with multiprocessing.Manager().Queue() for cross-process safety.
     """
 
     def __init__(self):
-        self.queue = Manager().Queue()
+        # Thread-safe queue (not multiprocessing) — see class docstring
+        self.queue: queue.Queue[T] = queue.Queue()
 
     def add(self, execution: T) -> T:
         self.queue.put(execution)
@@ -1203,7 +1223,7 @@ class ExecutionQueue(Generic[T]):
     def get_or_none(self) -> T | None:
         try:
             return self.queue.get_nowait()
-        except Empty:
+        except queue.Empty:
             return None
 
 
