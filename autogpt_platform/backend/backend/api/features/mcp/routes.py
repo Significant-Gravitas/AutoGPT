@@ -193,7 +193,7 @@ async def mcp_oauth_login(
 
     metadata: dict[str, Any] | None = None
 
-    if protected_resource and "authorization_servers" in protected_resource:
+    if protected_resource and protected_resource.get("authorization_servers"):
         auth_server_url = protected_resource["authorization_servers"][0]
         resource_url = protected_resource.get("resource", request.server_url)
 
@@ -216,7 +216,11 @@ async def mcp_oauth_login(
         except Exception:
             pass
 
-    if not metadata or "authorization_endpoint" not in metadata:
+    if (
+        not metadata
+        or "authorization_endpoint" not in metadata
+        or "token_endpoint" not in metadata
+    ):
         raise fastapi.HTTPException(
             status_code=400,
             detail="This MCP server does not advertise OAuth support. "

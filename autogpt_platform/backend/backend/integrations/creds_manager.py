@@ -9,7 +9,10 @@ from redis.asyncio.lock import Lock as AsyncRedisLock
 
 from backend.data.model import Credentials, OAuth2Credentials
 from backend.data.redis_client import get_redis_async
-from backend.integrations.credentials_store import IntegrationCredentialsStore
+from backend.integrations.credentials_store import (
+    IntegrationCredentialsStore,
+    provider_matches,
+)
 from backend.integrations.oauth import CREDENTIALS_BY_PROVIDER, HANDLERS_BY_NAME
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import MissingConfigError
@@ -137,7 +140,7 @@ class IntegrationCredentialsManager:
         self, user_id: str, credentials: OAuth2Credentials, lock: bool = True
     ) -> OAuth2Credentials:
         async with self._locked(user_id, credentials.id, "refresh"):
-            if credentials.provider == ProviderName.MCP.value:
+            if provider_matches(credentials.provider, ProviderName.MCP.value):
                 oauth_handler = _create_mcp_oauth_handler(credentials)
             else:
                 oauth_handler = await _get_provider_oauth_handler(credentials.provider)

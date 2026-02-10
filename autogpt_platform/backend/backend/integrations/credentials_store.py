@@ -23,7 +23,7 @@ from backend.util.settings import Settings
 settings = Settings()
 
 
-def _provider_matches(stored: str, expected: str) -> bool:
+def provider_matches(stored: str, expected: str) -> bool:
     """Compare provider strings, handling Python 3.13 ``str(StrEnum)`` bug.
 
     On Python 3.13, ``str(ProviderName.MCP)`` returns ``"ProviderName.MCP"``
@@ -410,7 +410,7 @@ class IntegrationCredentialsStore:
         self, user_id: str, provider: str
     ) -> list[Credentials]:
         credentials = await self.get_all_creds(user_id)
-        return [c for c in credentials if _provider_matches(c.provider, provider)]
+        return [c for c in credentials if provider_matches(c.provider, provider)]
 
     async def get_authorized_providers(self, user_id: str) -> list[str]:
         credentials = await self.get_all_creds(user_id)
@@ -531,7 +531,7 @@ class IntegrationCredentialsStore:
                     state
                     for state in oauth_states
                     if secrets.compare_digest(state.token, token)
-                    and _provider_matches(state.provider, provider)
+                    and provider_matches(state.provider, provider)
                     and state.expires_at > now.timestamp()
                 ),
                 None,
