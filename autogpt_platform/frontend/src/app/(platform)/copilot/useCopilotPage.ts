@@ -1,13 +1,18 @@
 import { useGetV2ListSessions } from "@/app/api/__generated__/endpoints/chat/chat";
 import { useBreakpoint } from "@/lib/hooks/useBreakpoint";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { useChatSession } from "./useChatSession";
 
 export function useCopilotPage() {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [pendingMessage, setPendingMessage] = useState<string | null>(null);
+
+  const isChatEnabled = useGetFlag(Flag.CHAT);
+  const router = useRouter();
 
   const {
     sessionId,
@@ -48,6 +53,12 @@ export function useCopilotPage() {
     id: sessionId ?? undefined,
     transport: transport ?? undefined,
   });
+
+  useEffect(() => {
+    if (!isChatEnabled) {
+      router.replace("/library");
+    }
+  }, [isChatEnabled]);
 
   useEffect(() => {
     if (!hydratedMessages || hydratedMessages.length === 0) return;
@@ -118,6 +129,7 @@ export function useCopilotPage() {
     stop,
     isLoadingSession,
     isCreatingSession,
+    isChatEnabled,
     createSession,
     onSend,
     // Mobile drawer

@@ -1,5 +1,6 @@
 "use client";
 
+import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { ChatContainer } from "./components/ChatContainer/ChatContainer";
 import { ChatSidebar } from "./components/ChatSidebar/ChatSidebar";
@@ -16,6 +17,7 @@ export default function Page() {
     stop,
     isLoadingSession,
     isCreatingSession,
+    isChatEnabled,
     createSession,
     onSend,
     // Mobile drawer
@@ -29,6 +31,10 @@ export default function Page() {
     handleSelectSession,
     handleNewChat,
   } = useCopilotPage();
+
+  if (!isChatEnabled) {
+    return <LoadingSpinner size="large" cover />;
+  }
 
   return (
     <SidebarProvider
