@@ -98,6 +98,8 @@ async def discover_tools(
                     ):
                         best_cred = cred
             if best_cred:
+                # Refresh the token if expired before using it
+                best_cred = await creds_manager.refresh_if_needed(user_id, best_cred)
                 logger.info(
                     f"Using MCP credential {best_cred.id} for {request.server_url}, "
                     f"expires_at={best_cred.access_token_expires_at}"
