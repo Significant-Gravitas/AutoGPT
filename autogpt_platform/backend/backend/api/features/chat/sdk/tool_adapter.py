@@ -16,6 +16,10 @@ from backend.api.features.chat.tools.base import BaseTool
 
 logger = logging.getLogger(__name__)
 
+# MCP server naming - the SDK prefixes tool names as "mcp__{server_name}__{tool}"
+MCP_SERVER_NAME = "copilot"
+MCP_TOOL_PREFIX = f"mcp__{MCP_SERVER_NAME}__"
+
 # Context variables to pass user/session info to tool execution
 _current_user_id: ContextVar[str | None] = ContextVar("current_user_id", default=None)
 _current_session: ContextVar[ChatSession | None] = ContextVar(
@@ -198,7 +202,7 @@ def create_copilot_mcp_server():
 
         # Create the MCP server
         server = create_sdk_mcp_server(
-            name="copilot",
+            name=MCP_SERVER_NAME,
             version="1.0.0",
             tools=sdk_tools,
         )
@@ -211,7 +215,7 @@ def create_copilot_mcp_server():
 
 
 # List of tool names for allowed_tools configuration
-COPILOT_TOOL_NAMES = [f"mcp__copilot__{name}" for name in TOOL_REGISTRY.keys()]
+COPILOT_TOOL_NAMES = [f"{MCP_TOOL_PREFIX}{name}" for name in TOOL_REGISTRY.keys()]
 
 # Also export the raw tool names for flexibility
 RAW_TOOL_NAMES = list(TOOL_REGISTRY.keys())

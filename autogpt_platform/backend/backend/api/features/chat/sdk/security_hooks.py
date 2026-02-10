@@ -8,6 +8,8 @@ import logging
 import re
 from typing import Any, cast
 
+from backend.api.features.chat.sdk.tool_adapter import MCP_TOOL_PREFIX
+
 logger = logging.getLogger(__name__)
 
 # Tools that are blocked entirely (CLI/system access)
@@ -136,7 +138,7 @@ def create_security_hooks(user_id: str | None) -> dict[str, Any]:
             tool_input = cast(dict[str, Any], input_data.get("tool_input", {}))
 
             # Strip MCP prefix for consistent validation
-            clean_name = tool_name.removeprefix("mcp__copilot__")
+            clean_name = tool_name.removeprefix(MCP_TOOL_PREFIX)
 
             # Validate basic tool access
             result = _validate_tool_access(clean_name, tool_input)
@@ -240,7 +242,7 @@ def create_strict_security_hooks(
             tool_input = cast(dict[str, Any], input_data.get("tool_input", {}))
 
             # Remove MCP prefix if present
-            clean_name = tool_name.removeprefix("mcp__copilot__")
+            clean_name = tool_name.removeprefix(MCP_TOOL_PREFIX)
 
             if clean_name not in allowed_set:
                 logger.warning(f"Blocked non-whitelisted tool: {tool_name}")
