@@ -1066,16 +1066,9 @@ async def _stream_chat_chunks(
                         :128
                     ]  # OpenRouter limit
 
-                # Enable extended thinking for Anthropic models
+                # Enable adaptive thinking for Anthropic models via OpenRouter
                 if config.thinking_enabled and "anthropic" in model.lower():
-                    extra_body["provider"] = {
-                        "anthropic": {
-                            "thinking": {
-                                "type": "enabled",
-                                "budget_tokens": config.thinking_budget_tokens,
-                            }
-                        }
-                    }
+                    extra_body["reasoning"] = {"enabled": True}
 
                 api_call_start = time_module.perf_counter()
                 stream = await client.chat.completions.create(
@@ -1840,16 +1833,9 @@ async def _generate_llm_continuation(
         if session_id:
             extra_body["session_id"] = session_id[:128]
 
-        # Enable extended thinking for Anthropic models
+        # Enable adaptive thinking for Anthropic models via OpenRouter
         if config.thinking_enabled and "anthropic" in config.model.lower():
-            extra_body["provider"] = {
-                "anthropic": {
-                    "thinking": {
-                        "type": "enabled",
-                        "budget_tokens": config.thinking_budget_tokens,
-                    }
-                }
-            }
+            extra_body["reasoning"] = {"enabled": True}
 
         retry_count = 0
         last_error: Exception | None = None
@@ -1981,16 +1967,9 @@ async def _generate_llm_continuation_with_streaming(
         if session_id:
             extra_body["session_id"] = session_id[:128]
 
-        # Enable extended thinking for Anthropic models
+        # Enable adaptive thinking for Anthropic models via OpenRouter
         if config.thinking_enabled and "anthropic" in config.model.lower():
-            extra_body["provider"] = {
-                "anthropic": {
-                    "thinking": {
-                        "type": "enabled",
-                        "budget_tokens": config.thinking_budget_tokens,
-                    }
-                }
-            }
+            extra_body["reasoning"] = {"enabled": True}
 
         # Make streaming LLM call (no tools - just text response)
         from typing import cast

@@ -96,13 +96,7 @@ class ChatConfig(BaseSettings):
     # Extended thinking configuration for Claude models
     thinking_enabled: bool = Field(
         default=True,
-        description="Enable extended thinking for Claude models",
-    )
-    thinking_budget_tokens: int = Field(
-        default=10000,
-        ge=1000,
-        le=100000,
-        description="Token budget for extended thinking (1000-100000)",
+        description="Enable adaptive thinking for Claude models via OpenRouter",
     )
 
     @field_validator("api_key", mode="before")
