@@ -18,6 +18,10 @@ class ResponseType(str, Enum):
     START = "start"
     FINISH = "finish"
 
+    # Step lifecycle (one LLM API call within a message)
+    START_STEP = "start-step"
+    FINISH_STEP = "finish-step"
+
     # Text streaming
     TEXT_START = "text-start"
     TEXT_DELTA = "text-delta"
@@ -57,11 +61,41 @@ class StreamStart(StreamBaseResponse):
         description="Task ID for SSE reconnection. Clients can reconnect using GET /tasks/{taskId}/stream",
     )
 
+    def to_sse(self) -> str:
+        """Convert to SSE format, excluding non-protocol fields like taskId."""
+        import json
+
+        data: dict[str, Any] = {
+            "type": self.type.value,
+            "messageId": self.messageId,
+        }
+        return f"data: {json.dumps(data)}\n\n"
+
 
 class StreamFinish(StreamBaseResponse):
     """End of message/stream."""
 
     type: ResponseType = ResponseType.FINISH
+
+
+class StreamStartStep(StreamBaseResponse):
+    """Start of a step (one LLM API call within a message).
+
+    The AI SDK uses this to add a step-start boundary to message.parts,
+    enabling visual separation between multiple LLM calls in a single message.
+    """
+
+    type: ResponseType = ResponseType.START_STEP
+
+
+class StreamFinishStep(StreamBaseResponse):
+    """End of a step (one LLM API call within a message).
+
+    The AI SDK uses this to reset activeTextParts and activeReasoningParts,
+    so the next LLM call in a tool-call continuation starts with clean state.
+    """
+
+    type: ResponseType = ResponseType.FINISH_STEP
 
 
 # ========== Text Streaming ==========
@@ -117,13 +151,24 @@ class StreamToolOutputAvailable(StreamBaseResponse):
     type: ResponseType = ResponseType.TOOL_OUTPUT_AVAILABLE
     toolCallId: str = Field(..., description="Tool call ID this responds to")
     output: str | dict[str, Any] = Field(..., description="Tool execution output")
-    # Additional fields for internal use (not part of AI SDK spec but useful)
+    # Keep these for internal backend use
     toolName: str | None = Field(
         default=None, description="Name of the tool that was executed"
     )
     success: bool = Field(
         default=True, description="Whether the tool execution succeeded"
     )
+
+    def to_sse(self) -> str:
+        """Convert to SSE format, excluding non-spec fields."""
+        import json
+
+        data = {
+            "type": self.type.value,
+            "toolCallId": self.toolCallId,
+            "output": self.output,
+        }
+        return f"data: {json.dumps(data)}\n\n"
 
 
 # ========== Other ==========

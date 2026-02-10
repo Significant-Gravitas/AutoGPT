@@ -3,7 +3,7 @@
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
 import { LightningIcon } from "@phosphor-icons/react";
-import moment from "moment";
+import { formatDistanceToNow } from "date-fns";
 import { IconWrapper } from "./IconWrapper";
 import { SidebarItemCard } from "./SidebarItemCard";
 import { TriggerActionsDropdown } from "./TriggerActionsDropdown";
@@ -31,7 +31,7 @@ export function TriggerListItem({
         </IconWrapper>
       }
       title={trigger.name}
-      description={moment(trigger.updated_at).fromNow()}
+      description={formatDistanceToNow(trigger.updated_at, { addSuffix: true })}
       onClick={onClick}
       selected={selected}
       actions={
