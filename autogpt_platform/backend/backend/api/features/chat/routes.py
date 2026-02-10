@@ -25,7 +25,7 @@ from .model import (
     get_user_sessions,
     upsert_chat_session,
 )
-from .response_model import StreamFinish, StreamHeartbeat, StreamStart
+from .response_model import StreamError, StreamFinish, StreamHeartbeat, StreamStart
 from .sdk import service as sdk_service
 from .tracking import track_user_message
 
@@ -296,7 +296,7 @@ async def stream_chat_post(
     )
     session = await _validate_and_get_session(session_id, user_id)
     logger.info(
-        f"[TIMING] session validated in {(time.perf_counter() - stream_start_time)*1000:.1f}ms",
+        f"[TIMING] session validated in {(time.perf_counter() - stream_start_time) * 1000:.1f}ms",
         extra={
             "json_fields": {
                 **log_meta,
@@ -342,7 +342,7 @@ async def stream_chat_post(
         operation_id=operation_id,
     )
     logger.info(
-        f"[TIMING] create_task completed in {(time.perf_counter() - task_create_start)*1000:.1f}ms",
+        f"[TIMING] create_task completed in {(time.perf_counter() - task_create_start) * 1000:.1f}ms",
         extra={
             "json_fields": {
                 **log_meta,
@@ -367,7 +367,7 @@ async def stream_chat_post(
             start_chunk = StreamStart(messageId=task_id, taskId=task_id)
             await stream_registry.publish_chunk(task_id, start_chunk)
             logger.info(
-                f"[TIMING] StreamStart published at {(time_module.perf_counter() - gen_start_time)*1000:.1f}ms",
+                f"[TIMING] StreamStart published at {(time_module.perf_counter() - gen_start_time) * 1000:.1f}ms",
                 extra={
                     "json_fields": {
                         **log_meta,
@@ -417,7 +417,7 @@ async def stream_chat_post(
             gen_end_time = time_module.perf_counter()
             total_time = (gen_end_time - gen_start_time) * 1000
             logger.info(
-                f"[TIMING] run_ai_generation FINISHED in {total_time/1000:.1f}s; "
+                f"[TIMING] run_ai_generation FINISHED in {total_time / 1000:.1f}s; "
                 f"task={task_id}, session={session_id}, "
                 f"ttfc={ttfc or -1:.2f}s, n_chunks={chunk_count}",
                 extra={
@@ -445,6 +445,17 @@ async def stream_chat_post(
                     }
                 },
             )
+            # Publish a StreamError so the frontend can display an error message
+            try:
+                await stream_registry.publish_chunk(
+                    task_id,
+                    StreamError(
+                        errorText="An error occurred. Please try again.",
+                        code="stream_error",
+                    ),
+                )
+            except Exception:
+                pass  # Best-effort; mark_task_completed will publish StreamFinish
             await stream_registry.mark_task_completed(task_id, "failed")
 
     # Start the AI generation in a background task
@@ -593,6 +604,12 @@ async def stream_chat_post(
                     "json_fields": {**log_meta, "elapsed_ms": elapsed, "error": str(e)}
                 },
             )
+            # Surface error to frontend so it doesn't appear stuck
+            yield StreamError(
+                errorText="An error occurred. Please try again.",
+                code="stream_error",
+            ).to_sse()
+            yield StreamFinish().to_sse()
         finally:
             # Unsubscribe when client disconnects or stream ends
             if subscriber_queue is not None:
