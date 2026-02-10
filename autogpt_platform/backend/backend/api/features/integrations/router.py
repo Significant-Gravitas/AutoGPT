@@ -40,7 +40,10 @@ from backend.data.user import get_user_integrations
 from backend.executor.utils import add_graph_execution
 from backend.integrations.ayrshare import AyrshareClient, SocialPlatform
 from backend.integrations.credentials_store import provider_matches
-from backend.integrations.creds_manager import IntegrationCredentialsManager
+from backend.integrations.creds_manager import (
+    IntegrationCredentialsManager,
+    create_mcp_oauth_handler,
+)
 from backend.integrations.oauth import CREDENTIALS_BY_PROVIDER, HANDLERS_BY_NAME
 from backend.integrations.providers import ProviderName
 from backend.integrations.webhooks import get_webhook_manager
@@ -351,11 +354,7 @@ async def delete_credentials(
     if isinstance(creds, OAuth2Credentials):
         if provider_matches(provider.value, ProviderName.MCP.value):
             # MCP uses dynamic per-server OAuth — create handler from metadata
-            from backend.integrations.creds_manager import (
-                _create_mcp_oauth_handler,
-            )
-
-            handler = _create_mcp_oauth_handler(creds)
+            handler = create_mcp_oauth_handler(creds)
         else:
             handler = _get_provider_oauth_handler(request, provider)
         tokens_revoked = await handler.revoke_tokens(creds)

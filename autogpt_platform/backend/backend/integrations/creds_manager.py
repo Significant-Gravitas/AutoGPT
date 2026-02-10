@@ -141,7 +141,7 @@ class IntegrationCredentialsManager:
     ) -> OAuth2Credentials:
         async with self._locked(user_id, credentials.id, "refresh"):
             if provider_matches(credentials.provider, ProviderName.MCP.value):
-                oauth_handler = _create_mcp_oauth_handler(credentials)
+                oauth_handler = create_mcp_oauth_handler(credentials)
             else:
                 oauth_handler = await _get_provider_oauth_handler(credentials.provider)
             if oauth_handler.needs_refresh(credentials):
@@ -244,7 +244,7 @@ async def _get_provider_oauth_handler(provider_name_str: str) -> "BaseOAuthHandl
     )
 
 
-def _create_mcp_oauth_handler(
+def create_mcp_oauth_handler(
     credentials: OAuth2Credentials,
 ) -> "BaseOAuthHandler":
     """Create an MCPOAuthHandler from credential metadata for token refresh.
