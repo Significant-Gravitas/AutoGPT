@@ -149,10 +149,7 @@ export function CreateAgentTool({ part }: Props) {
       </div>
 
       {hasExpandableContent && output && (
-        <ToolAccordion
-          {...getAccordionMeta(output)}
-          defaultExpanded={isOperating || isClarificationNeededOutput(output)}
-        >
+        <ToolAccordion {...getAccordionMeta(output)}>
           {isOperating && (
             <ContentGrid>
               <ProgressBar value={progress} className="max-w-[280px]" />
