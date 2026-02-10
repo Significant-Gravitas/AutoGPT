@@ -21,7 +21,12 @@ async def test_extract_website_content_returns_content(monkeypatch):
 
     monkeypatch.setattr(block, "get_request", fake_get_request)
 
-    results = [output async for output in block.run(input_data=input_data, credentials=TEST_CREDENTIALS)]
+    results = [
+        output
+        async for output in block.run(
+            input_data=input_data, credentials=TEST_CREDENTIALS
+        )
+    ]
 
     assert ("content", "page content") in results
     assert all(key != "error" for key, _ in results)
@@ -41,7 +46,12 @@ async def test_extract_website_content_handles_http_error(monkeypatch):
 
     monkeypatch.setattr(block, "get_request", fake_get_request)
 
-    results = [output async for output in block.run(input_data=input_data, credentials=TEST_CREDENTIALS)]
+    results = [
+        output
+        async for output in block.run(
+            input_data=input_data, credentials=TEST_CREDENTIALS
+        )
+    ]
 
     assert ("content", "page content") not in results
     error_messages = [value for key, value in results if key == "error"]
