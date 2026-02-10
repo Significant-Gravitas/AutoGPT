@@ -56,7 +56,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
   types:
-    runs-on: ubuntu-latest
+    runs-on: big-boi
     needs: setup
     strategy:
       fail-fast: false

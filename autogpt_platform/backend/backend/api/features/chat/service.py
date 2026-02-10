@@ -729,6 +729,10 @@ async def stream_chat_completion(
             logger.info(
                 f"Retryable error encountered. Attempt {retry_count + 1}/{config.max_retries}"
             )
+            # Close the current step before retrying so the recursive call's
+            # StreamStartStep doesn't produce unbalanced step events.
+            if not has_yielded_end:
+                yield StreamFinishStep()
             should_retry = True
         else:
             # Non-retryable error or max retries exceeded
