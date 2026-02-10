@@ -232,7 +232,7 @@ async def execute_node(
         input_data = _input_data.model_dump()
     elif isinstance(node_block, MCPToolBlock):
         _mcp_data = MCPToolBlock.Input(**node.input_default)
-        _mcp_data.tool_arguments = input_data
+        _mcp_data.tool_arguments = input_data.get("tool_arguments", {})
         input_data = _mcp_data.model_dump()
     data.inputs = input_data
 
