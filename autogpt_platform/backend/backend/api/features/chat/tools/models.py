@@ -351,8 +351,11 @@ class BlockListResponse(ToolResponseBase):
     count: int
     query: str
     usage_hint: str = Field(
-        default="To execute a block, call run_block with block_id set to the block's "
-        "'id' field and input_data containing the required fields from input_schema."
+        default=(
+            "To execute a block, call run_block with block_id set to "
+            "the block's 'id' field and input_data containing the required "
+            "fields from input_schema."
+        )
     )
 
 

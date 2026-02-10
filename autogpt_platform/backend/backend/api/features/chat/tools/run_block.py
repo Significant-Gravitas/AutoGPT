@@ -165,8 +165,9 @@ class RunBlockTool(BaseTool):
 
             return SetupRequirementsResponse(
                 message=(
-                    f"Block '{block.name}' requires credentials that are not configured. "
-                    "Please set up the required credentials before running this block."
+                    f"Block '{block.name}' requires credentials that are "
+                    "not configured. Please set up the required credentials "
+                    "before running this block."
                 ),
                 session_id=session_id,
                 setup_info=SetupInfo(

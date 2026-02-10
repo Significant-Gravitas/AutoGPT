@@ -1,6 +1,9 @@
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import type { ToolArguments } from "@/types/chat";
+import type { Block } from "@/lib/autogpt-server-api/types";
+import { useGetV1ListAvailableBlocks } from "@/app/api/__generated__/endpoints/blocks/blocks";
+import { useMemo } from "react";
 import { AIChatBubble } from "../AIChatBubble/AIChatBubble";
 import {
   formatToolArguments,
@@ -22,8 +25,31 @@ export function ToolCallMessage({
   isStreaming = false,
   className,
 }: ToolCallMessageProps) {
+  // Fetch blocks only when needed for run_block tool
+  const { data: blocksResponse } = useGetV1ListAvailableBlocks({
+    query: {
+      enabled: toolName === "run_block",
+      staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+    },
+  });
+
+  // Create a memoized map of block IDs to names
+  const blocksById = useMemo(() => {
+    if (!blocksResponse) return undefined;
+    // Handle both response structures: direct array or { data: array }
+    const blocks = (
+      Array.isArray(blocksResponse) ? blocksResponse : blocksResponse.data
+    ) as Block[] | undefined;
+    if (!blocks) return undefined;
+    return new Map(blocks.map((block) => [block.id, block.name]));
+  }, [blocksResponse]);
+
   const actionPhrase = getToolActionPhrase(toolName);
-  const argumentsText = formatToolArguments(toolName, toolArguments);
+  const argumentsText = formatToolArguments(
+    toolName,
+    toolArguments,
+    blocksById,
+  );
   const displayText = `${actionPhrase}${argumentsText}`;
   const IconComponent = getToolIcon(toolName);
 
