@@ -113,7 +113,7 @@ class MCPOAuthHandler(BaseOAuthHandler):
         expires_in = tokens.get("expires_in")
 
         return OAuth2Credentials(
-            provider=str(self.PROVIDER_NAME),
+            provider=getattr(self.PROVIDER_NAME, "value", self.PROVIDER_NAME),
             title=None,
             access_token=SecretStr(tokens["access_token"]),
             refresh_token=(
@@ -163,7 +163,7 @@ class MCPOAuthHandler(BaseOAuthHandler):
 
         return OAuth2Credentials(
             id=credentials.id,
-            provider=str(self.PROVIDER_NAME),
+            provider=getattr(self.PROVIDER_NAME, "value", self.PROVIDER_NAME),
             title=credentials.title,
             access_token=SecretStr(tokens["access_token"]),
             refresh_token=(

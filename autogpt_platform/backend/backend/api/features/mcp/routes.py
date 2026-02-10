@@ -80,7 +80,7 @@ async def discover_tools(
     if not auth_token:
         try:
             mcp_creds = await creds_manager.store.get_creds_by_provider(
-                user_id, str(ProviderName.MCP)
+                user_id, ProviderName.MCP.value
             )
             # Find the freshest credential for this server URL
             best_cred: OAuth2Credentials | None = None
@@ -250,7 +250,7 @@ async def mcp_oauth_login(
     )
     state_token, code_challenge = await creds_manager.store.store_state_token(
         user_id,
-        str(ProviderName.MCP),
+        ProviderName.MCP.value,
         scopes,
         state_metadata={
             "authorize_url": authorize_url,
@@ -308,7 +308,7 @@ async def mcp_oauth_callback(
     will automatically use the stored credential.
     """
     valid_state = await creds_manager.store.verify_state_token(
-        user_id, request.state_token, str(ProviderName.MCP)
+        user_id, request.state_token, ProviderName.MCP.value
     )
     if not valid_state:
         raise fastapi.HTTPException(
@@ -356,7 +356,7 @@ async def mcp_oauth_callback(
     # Remove old MCP credentials for the same server to prevent stale token buildup
     try:
         old_creds = await creds_manager.store.get_creds_by_provider(
-            user_id, str(ProviderName.MCP)
+            user_id, ProviderName.MCP.value
         )
         for old in old_creds:
             if (

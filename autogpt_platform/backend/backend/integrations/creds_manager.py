@@ -137,7 +137,7 @@ class IntegrationCredentialsManager:
         self, user_id: str, credentials: OAuth2Credentials, lock: bool = True
     ) -> OAuth2Credentials:
         async with self._locked(user_id, credentials.id, "refresh"):
-            if credentials.provider == str(ProviderName.MCP):
+            if credentials.provider == ProviderName.MCP.value:
                 oauth_handler = _create_mcp_oauth_handler(credentials)
             else:
                 oauth_handler = await _get_provider_oauth_handler(credentials.provider)
