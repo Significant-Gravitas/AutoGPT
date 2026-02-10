@@ -26,8 +26,13 @@ def _encode_cwd(cwd: str) -> str:
 
 
 def _get_project_dir(cwd: str) -> Path:
-    """Get the CLI project directory for a given working directory."""
-    return _CLAUDE_PROJECTS_DIR / _encode_cwd(cwd)
+    """Get the CLI project directory for a given working directory.
+
+    Resolves symlinks to match the CLI's behavior (e.g. /tmp -> /private/tmp
+    on macOS).
+    """
+    resolved = str(Path(cwd).resolve())
+    return _CLAUDE_PROJECTS_DIR / _encode_cwd(resolved)
 
 
 def write_session_file(
@@ -45,6 +50,7 @@ def write_session_file(
         return None
 
     session_id = session.session_id
+    resolved_cwd = str(Path(cwd).resolve())
     project_dir = _get_project_dir(cwd)
     project_dir.mkdir(parents=True, exist_ok=True)
 
@@ -62,7 +68,7 @@ def write_session_file(
                 "parentUuid": prev_uuid,
                 "isSidechain": False,
                 "userType": "external",
-                "cwd": cwd,
+                "cwd": resolved_cwd,
                 "sessionId": session_id,
                 "type": "user",
                 "message": {"role": "user", "content": msg.content},
@@ -77,7 +83,7 @@ def write_session_file(
                 "parentUuid": prev_uuid,
                 "isSidechain": False,
                 "userType": "external",
-                "cwd": cwd,
+                "cwd": resolved_cwd,
                 "sessionId": session_id,
                 "type": "assistant",
                 "message": {

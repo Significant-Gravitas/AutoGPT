@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from ..model import ChatMessage, ChatSession
-from .session_file import cleanup_session_file, write_session_file
+from .session_file import _get_project_dir, cleanup_session_file, write_session_file
 
 _NOW = datetime.now(UTC)
 
@@ -172,3 +172,51 @@ def test_cleanup_no_error_if_missing(tmp_path: Path):
         return_value=tmp_path,
     ):
         cleanup_session_file("nonexistent")  # Should not raise
+
+
+# -- _get_project_dir --------------------------------------------------------
+
+
+def test_get_project_dir_resolves_symlinks(tmp_path: Path):
+    """_get_project_dir should resolve symlinks so the path matches the CLI."""
+    # Create a symlink: tmp_path/link -> tmp_path/real
+    real_dir = tmp_path / "real"
+    real_dir.mkdir()
+    link = tmp_path / "link"
+    link.symlink_to(real_dir)
+
+    with patch(
+        "backend.api.features.chat.sdk.session_file._CLAUDE_PROJECTS_DIR",
+        tmp_path / "projects",
+    ):
+        result = _get_project_dir(str(link))
+
+    # Should resolve the symlink and encode the real path
+    expected_encoded = "-" + str(real_dir).lstrip("/").replace("/", "-")
+    assert result.name == expected_encoded
+
+
+def test_write_uses_resolved_cwd_in_messages(tmp_path: Path):
+    """The cwd field in JSONL messages should use the resolved path."""
+    session = _make_session(
+        [
+            ChatMessage(role="user", content="hello"),
+            ChatMessage(role="assistant", content="Hi!"),
+            ChatMessage(role="user", content="current"),
+        ],
+        session_id="sess-cwd",
+    )
+
+    with patch(
+        "backend.api.features.chat.sdk.session_file._get_project_dir",
+        return_value=tmp_path,
+    ):
+        write_session_file(session, cwd="/tmp")
+
+    file_path = tmp_path / "sess-cwd.jsonl"
+    lines = file_path.read_text().strip().split("\n")
+    for line in lines:
+        obj = json.loads(line)
+        # On macOS /tmp resolves to /private/tmp; on Linux stays /tmp
+        resolved = str(Path("/tmp").resolve())
+        assert obj["cwd"] == resolved

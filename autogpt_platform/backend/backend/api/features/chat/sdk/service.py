@@ -287,6 +287,7 @@ async def stream_chat_completion_sdk(
                 mcp_servers={"copilot": mcp_server},  # type: ignore[arg-type]
                 allowed_tools=COPILOT_TOOL_NAMES,
                 hooks=create_security_hooks(user_id),  # type: ignore[arg-type]
+                cwd="/tmp",
                 resume=resume_id,
             )
 
@@ -326,6 +327,9 @@ async def stream_chat_completion_sdk(
 
                     # Receive messages from the SDK
                     async for sdk_msg in client.receive_messages():
+                        logger.debug(
+                            f"[SDK] Received: {type(sdk_msg).__name__} {getattr(sdk_msg, 'subtype', '')}"
+                        )
                         for response in adapter.convert_message(sdk_msg):
                             if isinstance(response, StreamStart):
                                 continue
