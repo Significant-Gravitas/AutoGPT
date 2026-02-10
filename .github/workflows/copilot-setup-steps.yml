@@ -39,7 +39,7 @@ jobs:
           python-version: "3.11"  # Use standard version matching CI
 
       - name: Set up Python dependency cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/pypoetry
           key: poetry-${{ runner.os }}-${{ hashFiles('autogpt_platform/backend/poetry.lock') }}
@@ -76,7 +76,7 @@ jobs:
 
       # Frontend Node.js/pnpm setup (mirrors platform-frontend-ci.yml)
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "22"
 
@@ -89,7 +89,7 @@ jobs:
           echo "PNPM_HOME=$HOME/.pnpm-store" >> $GITHUB_ENV
 
       - name: Cache frontend dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.pnpm-store
           key: ${{ runner.os }}-pnpm-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml', 'autogpt_platform/frontend/package.json') }}
@@ -132,7 +132,7 @@ jobs:
       # Phase 1: Cache and load Docker images for faster setup
       - name: Set up Docker image cache
         id: docker-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/docker-cache
           # Use a versioned key for cache invalidation when image list changes
