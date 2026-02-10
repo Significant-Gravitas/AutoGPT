@@ -6,7 +6,7 @@ import json
 import logging
 import os
 import uuid
-from collections.abc import AsyncGenerator, AsyncIterator
+from collections.abc import AsyncGenerator
 from typing import Any
 
 import openai
@@ -38,6 +38,7 @@ from ..tracking import track_user_message
 from .anthropic_fallback import stream_with_anthropic
 from .response_adapter import SDKResponseAdapter
 from .security_hooks import create_security_hooks
+from .session_file import cleanup_session_file, write_session_file
 from .tool_adapter import (
     COPILOT_TOOL_NAMES,
     create_copilot_mcp_server,
@@ -61,58 +62,6 @@ def _cleanup_sdk_tool_results() -> None:
             os.remove(path)
         except OSError:
             pass
-
-
-def _build_conversation_messages(
-    session: ChatSession,
-) -> AsyncIterator[dict[str, Any]]:
-    """Build an async iterator of SDK-compatible message dicts from session history.
-
-    Yields structured user/assistant turns that the SDK writes directly to the
-    CLI's stdin.  This gives the model native conversation context (enabling
-    turn-level compaction for long conversations) without any file I/O.
-
-    Only prior messages are yielded; the current (last) user message is
-    appended at the end so the SDK processes it as the new query.
-    """
-
-    async def _iter() -> AsyncIterator[dict[str, Any]]:
-        # Yield all messages except the last (current user message)
-        for msg in session.messages[:-1]:
-            if msg.role == "user":
-                yield {
-                    "type": "user",
-                    "message": {
-                        "role": "user",
-                        "content": msg.content or "",
-                    },
-                    "session_id": session.session_id,
-                }
-            elif msg.role == "assistant" and msg.content:
-                yield {
-                    "type": "assistant",
-                    "message": {
-                        "role": "assistant",
-                        "content": [{"type": "text", "text": msg.content}],
-                    },
-                    "session_id": session.session_id,
-                }
-            # Skip tool messages — the assistant's text already captures the
-            # key information and tool IDs won't match across sessions.
-
-        # Yield the current user message last
-        current = session.messages[-1] if session.messages else None
-        if current and current.role == "user":
-            yield {
-                "type": "user",
-                "message": {
-                    "role": "user",
-                    "content": current.content or "",
-                },
-                "session_id": session.session_id,
-            }
-
-    return _iter()
 
 
 DEFAULT_SYSTEM_PROMPT = """You are **Otto**, an AI Co-Pilot for AutoGPT and a Forward-Deployed Automation Engineer serving small business owners. Your mission is to help users automate business tasks with AI by delivering tangible value through working automations—not through documentation or lengthy explanations.
@@ -321,12 +270,24 @@ async def stream_chat_completion_sdk(
             # Create MCP server with CoPilot tools
             mcp_server = create_copilot_mcp_server()
 
+            # For multi-turn conversations, write a session file so the CLI
+            # loads full user+assistant context via --resume.  This enables
+            # turn-level compaction for long conversations.
+            resume_id: str | None = None
+            if len(session.messages) > 1:
+                resume_id = write_session_file(session)
+                if resume_id:
+                    logger.info(
+                        f"[SDK] Wrote session file for --resume: "
+                        f"{len(session.messages) - 1} prior messages"
+                    )
+
             options = ClaudeAgentOptions(
                 system_prompt=system_prompt,
                 mcp_servers={"copilot": mcp_server},  # type: ignore[arg-type]
                 allowed_tools=COPILOT_TOOL_NAMES,
                 hooks=create_security_hooks(user_id),  # type: ignore[arg-type]
-                continue_conversation=True,
+                resume=resume_id,
             )
 
             adapter = SDKResponseAdapter(message_id=message_id)
@@ -350,20 +311,11 @@ async def stream_chat_completion_sdk(
                         yield StreamFinish()
                         return
 
-                    # For multi-turn conversations, pass structured history
-                    # as an AsyncIterable so the CLI sees native turns and
-                    # can do turn-level compaction.  For first messages, just
-                    # send the string directly.
-                    if len(session.messages) > 1:
-                        history_iter = _build_conversation_messages(session)
-                        await client.query(history_iter, session_id=session_id)
-                        logger.info(
-                            f"[SDK] Structured history: "
-                            f"{len(session.messages) - 1} prior messages"
-                        )
-                    else:
-                        await client.query(current_message, session_id=session_id)
-                        logger.info("[SDK] New conversation")
+                    await client.query(current_message, session_id=session_id)
+                    logger.info(
+                        "[SDK] Query sent"
+                        + (" (with --resume)" if resume_id else " (new)")
+                    )
 
                     # Track assistant response to save to session
                     # We may need multiple assistant messages if text comes after tool results
@@ -450,6 +402,9 @@ async def stream_chat_completion_sdk(
             finally:
                 # Always clean up SDK tool-result files, even on error
                 _cleanup_sdk_tool_results()
+                # Clean up session file written for --resume
+                if resume_id:
+                    cleanup_session_file(resume_id)
 
         except ImportError:
             logger.warning(
