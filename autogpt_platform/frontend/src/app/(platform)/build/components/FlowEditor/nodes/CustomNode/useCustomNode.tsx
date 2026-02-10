@@ -9,19 +9,25 @@ import { SpecialBlockID } from "@/lib/autogpt-server-api";
  * Build a dynamic input schema for MCP blocks.
  *
  * When a tool has been selected (tool_input_schema is populated), the block
- * renders only the selected tool's input parameters. Credentials are NOT
- * included because authentication is already handled by the MCP dialog's
- * OAuth flow and stored server-side.
+ * renders the selected tool's input parameters *plus* the credentials field
+ * so users can select/change the OAuth credential used for execution.
  *
  * Static fields like server_url, selected_tool, available_tools, and
  * tool_arguments are hidden because they're pre-configured from the dialog.
  */
 function buildMCPInputSchema(
   toolInputSchema: Record<string, any>,
+  blockInputSchema: Record<string, any>,
 ): Record<string, any> {
+  // Extract the credentials field from the block's original input schema
+  const credentialsSchema =
+    blockInputSchema?.properties?.credentials ?? undefined;
+
   return {
     type: "object",
     properties: {
+      // Credentials field first so the dropdown appears at the top
+      ...(credentialsSchema ? { credentials: credentialsSchema } : {}),
       ...(toolInputSchema.properties ?? {}),
     },
     required: [...(toolInputSchema.required ?? [])],
@@ -50,7 +56,10 @@ export const useCustomNode = ({
   const currentInputSchema = isAgent
     ? (data.hardcodedValues.input_schema ?? {})
     : isMCPWithTool
-      ? buildMCPInputSchema(data.hardcodedValues.tool_input_schema)
+      ? buildMCPInputSchema(
+          data.hardcodedValues.tool_input_schema,
+          data.inputSchema,
+        )
       : data.inputSchema;
   const currentOutputSchema = isAgent
     ? (data.hardcodedValues.output_schema ?? {})

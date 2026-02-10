@@ -206,6 +206,45 @@ class MCPToolBlock(Block):
             return output_parts[0]
         return output_parts if output_parts else None
 
+    @staticmethod
+    async def _auto_lookup_credential(
+        user_id: str, server_url: str
+    ) -> "OAuth2Credentials | None":
+        """Auto-lookup stored MCP credential for a server URL.
+
+        This is a fallback for nodes that don't have ``credentials`` explicitly
+        set (e.g. nodes created before the credential field was wired up).
+        """
+        from backend.data.model import Credentials
+        from backend.integrations.creds_manager import IntegrationCredentialsManager
+        from backend.integrations.providers import ProviderName
+
+        try:
+            mgr = IntegrationCredentialsManager()
+            mcp_creds: list[Credentials] = []
+            for prov in (ProviderName.MCP.value, "ProviderName.MCP"):
+                mcp_creds.extend(await mgr.store.get_creds_by_provider(user_id, prov))
+            best: OAuth2Credentials | None = None
+            for cred in mcp_creds:
+                if (
+                    isinstance(cred, OAuth2Credentials)
+                    and cred.metadata.get("mcp_server_url") == server_url
+                ):
+                    if best is None or (
+                        (cred.access_token_expires_at or 0)
+                        > (best.access_token_expires_at or 0)
+                    ):
+                        best = cred
+            if best:
+                best = await mgr.refresh_if_needed(user_id, best)
+                logger.info(
+                    "Auto-resolved MCP credential %s for %s", best.id, server_url
+                )
+            return best
+        except Exception:
+            logger.debug("Auto-lookup MCP credential failed", exc_info=True)
+            return None
+
     async def run(
         self,
         input_data: Input,
@@ -221,6 +260,14 @@ class MCPToolBlock(Block):
         if not input_data.selected_tool:
             yield "error", "No tool selected. Please select a tool from the dropdown."
             return
+
+        # If no credentials were injected by the executor (e.g. legacy nodes
+        # that don't have the credentials field set), try to auto-lookup
+        # the stored MCP credential for this server URL.
+        if credentials is None:
+            credentials = await self._auto_lookup_credential(
+                user_id, input_data.server_url
+            )
 
         auth_token = (
             credentials.access_token.get_secret_value() if credentials else None
