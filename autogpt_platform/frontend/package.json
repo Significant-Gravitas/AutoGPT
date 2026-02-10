@@ -7,7 +7,7 @@
   },
   "scripts": {
     "dev": "pnpm run generate:api:force && next dev --turbo",
-    "build": "next build",
+    "build": "cross-env NODE_OPTIONS=--max-old-space-size=16384 next build",
     "start": "next start",
     "start:standalone": "cd .next/standalone && node server.js",
     "lint": "next lint && prettier --check .",
@@ -93,7 +93,6 @@
     "launchdarkly-react-client-sdk": "3.9.0",
     "lodash": "4.17.21",
     "lucide-react": "0.552.0",
-    "moment": "2.30.1",
     "next": "15.4.10",
     "next-themes": "0.4.6",
     "nuqs": "2.7.2",
