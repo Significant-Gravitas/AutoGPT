@@ -138,12 +138,15 @@ def create_security_hooks(user_id: str | None) -> dict[str, Any]:
             tool_input = cast(dict[str, Any], input_data.get("tool_input", {}))
 
             # Strip MCP prefix for consistent validation
+            is_copilot_tool = tool_name.startswith(MCP_TOOL_PREFIX)
             clean_name = tool_name.removeprefix(MCP_TOOL_PREFIX)
 
-            # Validate basic tool access
-            result = _validate_tool_access(clean_name, tool_input)
-            if result:
-                return cast(SyncHookJSONOutput, result)
+            # Only block non-CoPilot tools; our MCP-registered tools
+            # (including Read for oversized results) are already sandboxed.
+            if not is_copilot_tool:
+                result = _validate_tool_access(clean_name, tool_input)
+                if result:
+                    return cast(SyncHookJSONOutput, result)
 
             # Validate user isolation
             result = _validate_user_isolation(clean_name, tool_input, user_id)
@@ -259,10 +262,13 @@ def create_strict_security_hooks(
                     },
                 )
 
-            # Run standard validations using clean_name for consistent checks
-            result = _validate_tool_access(clean_name, tool_input)
-            if result:
-                return cast(SyncHookJSONOutput, result)
+            # Only run blocklist check for non-CoPilot tools; whitelisted
+            # MCP tools are already sandboxed by tool_adapter.
+            is_copilot_tool = tool_name.startswith(MCP_TOOL_PREFIX)
+            if not is_copilot_tool:
+                result = _validate_tool_access(clean_name, tool_input)
+                if result:
+                    return cast(SyncHookJSONOutput, result)
 
             result = _validate_user_isolation(clean_name, tool_input, user_id)
             if result:

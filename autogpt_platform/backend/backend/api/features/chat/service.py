@@ -452,8 +452,9 @@ async def stream_chat_completion(
 
     # Generate title for new sessions on first user message (non-blocking)
     # Check: is_user_message, no title yet, and this is the first user message
-    if is_user_message and message and not session.title:
-        user_messages = [m for m in session.messages if m.role == "user"]
+    user_messages = [m for m in session.messages if m.role == "user"]
+    first_user_msg = message or (user_messages[0].content if user_messages else None)
+    if is_user_message and first_user_msg and not session.title:
         if len(user_messages) == 1:
             # First user message - generate title in background
             import asyncio
@@ -461,7 +462,7 @@ async def stream_chat_completion(
             # Capture only the values we need (not the session object) to avoid
             # stale data issues when the main flow modifies the session
             captured_session_id = session_id
-            captured_message = message
+            captured_message = first_user_msg
             captured_user_id = user_id
 
             async def _update_title():
