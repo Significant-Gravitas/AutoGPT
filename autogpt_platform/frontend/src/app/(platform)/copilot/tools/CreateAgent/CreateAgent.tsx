@@ -49,12 +49,7 @@ interface Props {
   part: CreateAgentToolPart;
 }
 
-function getAccordionMeta(output: CreateAgentToolOutput): {
-  icon: React.ReactNode;
-  title: React.ReactNode;
-  titleClassName?: string;
-  description?: string;
-} {
+function getAccordionMeta(output: CreateAgentToolOutput) {
   const icon = <AccordionIcon />;
 
   if (isAgentSavedOutput(output)) {
@@ -73,6 +68,7 @@ function getAccordionMeta(output: CreateAgentToolOutput): {
       icon,
       title: "Needs clarification",
       description: `${questions.length} question${questions.length === 1 ? "" : "s"}`,
+      expanded: true,
     };
   }
   if (
@@ -154,10 +150,7 @@ export function CreateAgentTool({ part }: Props) {
       </div>
 
       {hasExpandableContent && output && (
-        <ToolAccordion
-          {...getAccordionMeta(output)}
-          expanded={isClarificationNeededOutput(output)}
-        >
+        <ToolAccordion {...getAccordionMeta(output)}>
           {isOperating && (
             <ContentGrid>
               <ProgressBar value={progress} className="max-w-[280px]" />
