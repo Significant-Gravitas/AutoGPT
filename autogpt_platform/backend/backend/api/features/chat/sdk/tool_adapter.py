@@ -6,6 +6,7 @@ into in-process MCP tools that can be used with the Claude Agent SDK.
 
 import json
 import logging
+import os
 import uuid
 from contextvars import ContextVar
 from typing import Any
@@ -15,6 +16,13 @@ from backend.api.features.chat.tools import TOOL_REGISTRY
 from backend.api.features.chat.tools.base import BaseTool
 
 logger = logging.getLogger(__name__)
+
+# Safety-net truncation for extreme tool results (e.g. infinite loops).
+# Normal oversized results are handled by the SDK via the Read tool.
+MAX_TOOL_RESULT_CHARS = 500_000
+
+# Allowed base directory for the Read tool (SDK saves oversized tool results here)
+_SDK_TOOL_RESULTS_DIR = "/root/.claude/"
 
 # MCP server naming - the SDK prefixes tool names as "mcp__{server_name}__{tool}"
 MCP_SERVER_NAME = "copilot"
@@ -93,17 +101,26 @@ def create_tool_handler(base_tool: BaseTool):
             )
 
             # The result is a StreamToolOutputAvailable, extract the output
+            text = (
+                result.output
+                if isinstance(result.output, str)
+                else json.dumps(result.output)
+            )
+
+            # Safety-net truncation for extreme results (e.g. infinite loops).
+            # Normal oversized results are handled by the SDK + our Read tool.
+            if len(text) > MAX_TOOL_RESULT_CHARS:
+                logger.warning(
+                    f"Tool {base_tool.name} result truncated: "
+                    f"{len(text)} -> {MAX_TOOL_RESULT_CHARS} chars"
+                )
+                text = (
+                    text[:MAX_TOOL_RESULT_CHARS]
+                    + f"\n\n... [truncated — {len(text) - MAX_TOOL_RESULT_CHARS} chars omitted]"
+                )
+
             return {
-                "content": [
-                    {
-                        "type": "text",
-                        "text": (
-                            result.output
-                            if isinstance(result.output, str)
-                            else json.dumps(result.output)
-                        ),
-                    }
-                ],
+                "content": [{"type": "text", "text": text}],
                 "isError": not result.success,
             }
 
@@ -169,6 +186,66 @@ def get_tool_handlers() -> dict[str, Any]:
     return handlers
 
 
+async def _read_file_handler(args: dict[str, Any]) -> dict[str, Any]:
+    """Read a file with optional offset/limit. Restricted to SDK working directory.
+
+    After reading, the file is deleted to prevent accumulation in long-running pods.
+    """
+    file_path = args.get("file_path", "")
+    offset = args.get("offset", 0)
+    limit = args.get("limit", 2000)
+
+    # Security: only allow reads under the SDK's working directory
+    real_path = os.path.realpath(file_path)
+    if not real_path.startswith(_SDK_TOOL_RESULTS_DIR):
+        return {
+            "content": [{"type": "text", "text": f"Access denied: {file_path}"}],
+            "isError": True,
+        }
+
+    try:
+        with open(real_path) as f:
+            lines = f.readlines()
+        selected = lines[offset : offset + limit]
+        content = "".join(selected)
+        return {"content": [{"type": "text", "text": content}], "isError": False}
+    except FileNotFoundError:
+        return {
+            "content": [{"type": "text", "text": f"File not found: {file_path}"}],
+            "isError": True,
+        }
+    except Exception as e:
+        return {
+            "content": [{"type": "text", "text": f"Error reading file: {e}"}],
+            "isError": True,
+        }
+
+
+_READ_TOOL_NAME = "Read"
+_READ_TOOL_DESCRIPTION = (
+    "Read a file from the local filesystem. "
+    "Use offset and limit to read specific line ranges for large files."
+)
+_READ_TOOL_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "file_path": {
+            "type": "string",
+            "description": "The absolute path to the file to read",
+        },
+        "offset": {
+            "type": "integer",
+            "description": "Line number to start reading from (0-indexed). Default: 0",
+        },
+        "limit": {
+            "type": "integer",
+            "description": "Number of lines to read. Default: 2000",
+        },
+    },
+    "required": ["file_path"],
+}
+
+
 # Create the MCP server configuration
 def create_copilot_mcp_server():
     """Create an in-process MCP server configuration for CoPilot tools.
@@ -186,21 +263,22 @@ def create_copilot_mcp_server():
         sdk_tools = []
 
         for tool_name, base_tool in TOOL_REGISTRY.items():
-            # Get the handler
             handler = create_tool_handler(base_tool)
-
-            # Create the decorated tool
-            # The @tool decorator expects (name, description, schema)
-            # Pass full JSON schema with type, properties, and required
             decorated = tool(
                 tool_name,
                 base_tool.description,
                 _build_input_schema(base_tool),
             )(handler)
-
             sdk_tools.append(decorated)
 
-        # Create the MCP server
+        # Add the Read tool so the SDK can read back oversized tool results
+        read_tool = tool(
+            _READ_TOOL_NAME,
+            _READ_TOOL_DESCRIPTION,
+            _READ_TOOL_SCHEMA,
+        )(_read_file_handler)
+        sdk_tools.append(read_tool)
+
         server = create_sdk_mcp_server(
             name=MCP_SERVER_NAME,
             version="1.0.0",
@@ -215,7 +293,11 @@ def create_copilot_mcp_server():
 
 
 # List of tool names for allowed_tools configuration
-COPILOT_TOOL_NAMES = [f"{MCP_TOOL_PREFIX}{name}" for name in TOOL_REGISTRY.keys()]
+# Include the Read tool so the SDK can use it for oversized tool results
+COPILOT_TOOL_NAMES = [
+    *[f"{MCP_TOOL_PREFIX}{name}" for name in TOOL_REGISTRY.keys()],
+    f"{MCP_TOOL_PREFIX}{_READ_TOOL_NAME}",
+]
 
 # Also export the raw tool names for flexibility
 RAW_TOOL_NAMES = list(TOOL_REGISTRY.keys())

@@ -48,6 +48,22 @@ config = ChatConfig()
 # Set to hold background tasks to prevent garbage collection
 _background_tasks: set[asyncio.Task[Any]] = set()
 
+# SDK tool-results directory pattern
+_SDK_TOOL_RESULTS_GLOB = "/root/.claude/projects/*/tool-results/*"
+
+
+def _cleanup_sdk_tool_results() -> None:
+    """Remove SDK tool-result files to prevent disk accumulation."""
+    import glob
+    import os
+
+    for path in glob.glob(_SDK_TOOL_RESULTS_GLOB):
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+
+
 DEFAULT_SYSTEM_PROMPT = """You are **Otto**, an AI Co-Pilot for AutoGPT and a Forward-Deployed Automation Engineer serving small business owners. Your mission is to help users automate business tasks with AI by delivering tangible value through working automations—not through documentation or lengthy explanations.
 
 Here is everything you know about the current user from previous interactions:
@@ -413,6 +429,9 @@ async def stream_chat_completion_sdk(
                     assistant_response.content or assistant_response.tool_calls
                 ) and not has_appended_assistant:
                     session.messages.append(assistant_response)
+
+            # Clean up SDK tool-result files to avoid accumulation
+            _cleanup_sdk_tool_results()
 
         except ImportError:
             logger.warning(
