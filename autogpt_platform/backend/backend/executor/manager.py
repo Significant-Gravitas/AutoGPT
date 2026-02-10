@@ -280,7 +280,21 @@ async def execute_node(
         # Write normalized values back so JSON schema validation also passes
         # (model_validator may have fixed legacy formats like "ProviderName.MCP")
         input_data[field_name] = credentials_meta.model_dump(mode="json")
-        credentials, lock = await creds_manager.acquire(user_id, credentials_meta.id)
+        try:
+            credentials, lock = await creds_manager.acquire(
+                user_id, credentials_meta.id
+            )
+        except ValueError:
+            # Credential was deleted or doesn't exist.
+            # If the field has a default, run without credentials.
+            if input_model.model_fields[field_name].default is not None:
+                log_metadata.warning(
+                    f"Credentials #{credentials_meta.id} not found, "
+                    "running without (field has default)"
+                )
+                input_data[field_name] = input_model.model_fields[field_name].default
+                continue
+            raise
         creds_locks.append(lock)
         extra_exec_kwargs[field_name] = credentials
 
