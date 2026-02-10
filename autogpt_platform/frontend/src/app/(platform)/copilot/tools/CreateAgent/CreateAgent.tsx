@@ -155,7 +155,7 @@ export function CreateAgentTool({ part }: Props) {
         >
           {isOperating && (
             <ContentGrid>
-              <ProgressBar value={progress} className="max-w-[280px]" />
+              <ProgressBar value={progress} />
               <ContentHint>
                 This could take a few minutes, grab a coffee ☕
               </ContentHint>
