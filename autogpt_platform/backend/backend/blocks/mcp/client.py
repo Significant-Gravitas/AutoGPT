@@ -149,6 +149,11 @@ class MCPClient:
                     f"MCP server returned non-JSON response: {e}"
                 ) from e
 
+        if not isinstance(body, dict):
+            raise MCPClientError(
+                f"MCP server returned unexpected JSON type: {type(body).__name__}"
+            )
+
         # Handle JSON-RPC error
         if "error" in body:
             error = body["error"]
