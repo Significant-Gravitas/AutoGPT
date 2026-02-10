@@ -277,6 +277,9 @@ async def execute_node(
             continue  # No credentials configured — block runs without
 
         credentials_meta = input_type(**field_value)
+        # Write normalized values back so JSON schema validation also passes
+        # (model_validator may have fixed legacy formats like "ProviderName.MCP")
+        input_data[field_name] = credentials_meta.model_dump(mode="json")
         credentials, lock = await creds_manager.acquire(user_id, credentials_meta.id)
         creds_locks.append(lock)
         extra_exec_kwargs[field_name] = credentials

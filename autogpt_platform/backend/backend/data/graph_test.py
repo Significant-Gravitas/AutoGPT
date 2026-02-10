@@ -479,12 +479,14 @@ def test_mcp_credential_combine_different_servers():
     field_sentry = CredentialsFieldInfo(
         credentials_provider=frozenset([ProviderName.MCP]),
         credentials_types=frozenset(["oauth2"]),
+        credentials_scopes=None,
         discriminator="server_url",
         discriminator_values={"https://mcp.sentry.dev/mcp"},
     )
     field_linear = CredentialsFieldInfo(
         credentials_provider=frozenset([ProviderName.MCP]),
         credentials_types=frozenset(["oauth2"]),
+        credentials_scopes=None,
         discriminator="server_url",
         discriminator_values={"https://mcp.linear.app/mcp"},
     )
@@ -519,12 +521,14 @@ def test_mcp_credential_combine_same_server():
     field_a = CredentialsFieldInfo(
         credentials_provider=frozenset([ProviderName.MCP]),
         credentials_types=frozenset(["oauth2"]),
+        credentials_scopes=None,
         discriminator="server_url",
         discriminator_values={"https://mcp.sentry.dev/mcp"},
     )
     field_b = CredentialsFieldInfo(
         credentials_provider=frozenset([ProviderName.MCP]),
         credentials_types=frozenset(["oauth2"]),
+        credentials_scopes=None,
         discriminator="server_url",
         discriminator_values={"https://mcp.sentry.dev/mcp"},
     )
@@ -550,11 +554,13 @@ def test_mcp_credential_combine_no_discriminator_values():
     field_a = CredentialsFieldInfo(
         credentials_provider=frozenset([ProviderName.MCP]),
         credentials_types=frozenset(["oauth2"]),
+        credentials_scopes=None,
         discriminator="server_url",
     )
     field_b = CredentialsFieldInfo(
         credentials_provider=frozenset([ProviderName.MCP]),
         credentials_types=frozenset(["oauth2"]),
+        credentials_scopes=None,
         discriminator="server_url",
     )
 
