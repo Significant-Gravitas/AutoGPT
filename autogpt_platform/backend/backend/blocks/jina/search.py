@@ -17,7 +17,7 @@ from backend.data.block import (
 )
 from backend.data.model import SchemaField
 from backend.util.exceptions import BlockExecutionError
-from backend.util.request import HTTPClientError, HTTPServerError
+from backend.util.request import HTTPClientError, HTTPServerError, validate_url
 
 
 class SearchTheWebBlock(Block, GetRequest):
@@ -111,7 +111,12 @@ class ExtractWebsiteContentBlock(Block, GetRequest):
         self, input_data: Input, *, credentials: JinaCredentials, **kwargs
     ) -> BlockOutput:
         if input_data.raw_content:
-            url = input_data.url
+            try:
+                parsed_url, _, _ = await validate_url(input_data.url, [])
+                url = parsed_url.geturl()
+            except ValueError as e:
+                yield "error", f"Invalid URL: {e}"
+                return
             headers = {}
         else:
             url = f"https://r.jina.ai/{input_data.url}"

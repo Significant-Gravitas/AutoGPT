@@ -1,6 +1,7 @@
 import pytest
+from typing import cast
 
-from backend.blocks.jina._auth import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
+from backend.blocks.jina._auth import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT, JinaCredentialsInput
 from backend.blocks.jina.search import ExtractWebsiteContentBlock
 from backend.util.request import HTTPClientError
 
@@ -10,7 +11,7 @@ async def test_extract_website_content_returns_content(monkeypatch):
     block = ExtractWebsiteContentBlock()
     input_data = block.Input(
         url="https://example.com",
-        credentials=TEST_CREDENTIALS_INPUT,
+        credentials=cast(JinaCredentialsInput, TEST_CREDENTIALS_INPUT),
         raw_content=True,
     )
 
@@ -37,7 +38,7 @@ async def test_extract_website_content_handles_http_error(monkeypatch):
     block = ExtractWebsiteContentBlock()
     input_data = block.Input(
         url="https://example.com",
-        credentials=TEST_CREDENTIALS_INPUT,
+        credentials=cast(JinaCredentialsInput, TEST_CREDENTIALS_INPUT),
         raw_content=False,
     )
 
