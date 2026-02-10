@@ -1,7 +1,12 @@
-import pytest
 from typing import cast
 
-from backend.blocks.jina._auth import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT, JinaCredentialsInput
+import pytest
+
+from backend.blocks.jina._auth import (
+    TEST_CREDENTIALS,
+    TEST_CREDENTIALS_INPUT,
+    JinaCredentialsInput,
+)
 from backend.blocks.jina.search import ExtractWebsiteContentBlock
 from backend.util.request import HTTPClientError
 
