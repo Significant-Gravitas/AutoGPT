@@ -7,6 +7,7 @@ full SpinTestServer infrastructure.
 """
 
 import pytest
+import pytest_asyncio
 
 
 def pytest_configure(config: pytest.Config) -> None:
@@ -30,13 +31,13 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     )
 
 
-@pytest.fixture(scope="session")
-def server():
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
+async def server():
     """No-op override — MCP tests don't need the full platform server."""
     yield None
 
 
-@pytest.fixture(scope="session", autouse=True)
-def graph_cleanup(server):
+@pytest_asyncio.fixture(scope="session", loop_scope="session", autouse=True)
+async def graph_cleanup(server):
     """No-op override — MCP tests don't create graphs."""
     yield
