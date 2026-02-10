@@ -260,6 +260,20 @@ class MCPToolBlock(Block):
             yield "error", "No tool selected. Please select a tool from the dropdown."
             return
 
+        # Validate required tool arguments before calling the server.
+        # The executor-level validation is bypassed for MCP blocks because
+        # get_input_defaults() flattens tool_arguments, stripping tool_input_schema
+        # from the validation context.
+        required = set(input_data.tool_input_schema.get("required", []))
+        if required:
+            missing = required - set(input_data.tool_arguments.keys())
+            if missing:
+                yield "error", (
+                    f"Missing required argument(s): {', '.join(sorted(missing))}. "
+                    f"Please fill in all required fields marked with * in the block form."
+                )
+                return
+
         # If no credentials were injected by the executor (e.g. legacy nodes
         # that don't have the credentials field set), try to auto-lookup
         # the stored MCP credential for this server URL.

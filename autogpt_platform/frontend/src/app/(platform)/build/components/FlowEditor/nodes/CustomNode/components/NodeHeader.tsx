@@ -25,10 +25,24 @@ export const NodeHeader = ({ data, nodeId }: Props) => {
     data.block_id === SpecialBlockID.MCP_TOOL &&
     !!data.hardcodedValues?.selected_tool;
 
+  // Derive MCP server label: prefer server_name, fall back to URL hostname.
+  let mcpServerLabel = "MCP";
+  if (isMCPWithTool) {
+    mcpServerLabel =
+      data.hardcodedValues.server_name ||
+      (() => {
+        try {
+          return new URL(data.hardcodedValues.server_url).hostname;
+        } catch {
+          return "MCP";
+        }
+      })();
+  }
+
   const title =
     (data.metadata?.customized_name as string) ||
     (isMCPWithTool
-      ? `${data.hardcodedValues.server_name || "MCP"}: ${beautifyString(data.hardcodedValues.selected_tool)}`
+      ? `${mcpServerLabel}: ${beautifyString(data.hardcodedValues.selected_tool)}`
       : null) ||
     data.hardcodedValues?.agent_name ||
     data.title;
