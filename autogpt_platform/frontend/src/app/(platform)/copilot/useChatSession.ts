@@ -5,8 +5,8 @@ import {
   usePostV2CreateSession,
 } from "@/app/api/__generated__/endpoints/chat/chat";
 import { toast } from "@/components/molecules/Toast/use-toast";
-import { useQueryClient } from "@tanstack/react-query";
 import * as Sentry from "@sentry/nextjs";
+import { useQueryClient } from "@tanstack/react-query";
 import { parseAsString, useQueryState } from "nuqs";
 import { useEffect, useMemo, useRef } from "react";
 import { convertChatSessionMessagesToUiMessages } from "./helpers/convertChatSessionToUiMessages";
@@ -29,6 +29,7 @@ export function useChatSession() {
   // Invalidating ensures the next visit fetches fresh data from the API
   // instead of hydrating from stale cache that's missing recent messages.
   const prevSessionIdRef = useRef(sessionId);
+
   useEffect(() => {
     const prev = prevSessionIdRef.current;
     prevSessionIdRef.current = sessionId;

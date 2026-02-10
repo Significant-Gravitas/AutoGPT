@@ -1,18 +1,15 @@
 import { useGetV2ListSessions } from "@/app/api/__generated__/endpoints/chat/chat";
 import { useBreakpoint } from "@/lib/hooks/useBreakpoint";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
-import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { useChatSession } from "./useChatSession";
 
 export function useCopilotPage() {
+  const { isUserLoading, isLoggedIn } = useSupabase();
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [pendingMessage, setPendingMessage] = useState<string | null>(null);
-
-  const isChatEnabled = useGetFlag(Flag.CHAT);
-  const router = useRouter();
 
   const {
     sessionId,
@@ -36,9 +33,10 @@ export function useCopilotPage() {
               const last = messages[messages.length - 1];
               return {
                 body: {
-                  message: last.parts
-                    ?.map((p) => (p.type === "text" ? p.text : ""))
-                    .join(""),
+                  message: (
+                    last.parts?.map((p) => (p.type === "text" ? p.text : "")) ??
+                    []
+                  ).join(""),
                   is_user_message: last.role === "user",
                   context: null,
                 },
@@ -53,12 +51,6 @@ export function useCopilotPage() {
     id: sessionId ?? undefined,
     transport: transport ?? undefined,
   });
-
-  useEffect(() => {
-    if (!isChatEnabled) {
-      router.replace("/library");
-    }
-  }, [isChatEnabled]);
 
   useEffect(() => {
     if (!hydratedMessages || hydratedMessages.length === 0) return;
@@ -94,7 +86,10 @@ export function useCopilotPage() {
   }
 
   const { data: sessionsResponse, isLoading: isLoadingSessions } =
-    useGetV2ListSessions({ limit: 50 });
+    useGetV2ListSessions(
+      { limit: 50 },
+      { query: { enabled: !isUserLoading && isLoggedIn } },
+    );
 
   const sessions =
     sessionsResponse?.status === 200 ? sessionsResponse.data.sessions : [];
@@ -129,7 +124,8 @@ export function useCopilotPage() {
     stop,
     isLoadingSession,
     isCreatingSession,
-    isChatEnabled,
+    isUserLoading,
+    isLoggedIn,
     createSession,
     onSend,
     // Mobile drawer
