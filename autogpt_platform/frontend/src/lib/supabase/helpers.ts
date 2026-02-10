@@ -6,6 +6,7 @@ import { SupabaseClient } from "@supabase/supabase-js";
 export const PROTECTED_PAGES = [
   "/auth/authorize",
   "/auth/integrations",
+  "/copilot",
   "/monitor",
   "/build",
   "/onboarding",
