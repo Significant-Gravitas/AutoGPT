@@ -123,7 +123,7 @@ class TestMCPClient:
         client = MCPClient("https://mcp.example.com/mcp/")
         assert client.server_url == "https://mcp.example.com/mcp"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_send_request_success(self):
         client = MCPClient("https://mcp.example.com")
 
@@ -138,7 +138,7 @@ class TestMCPClient:
             result = await client._send_request("tools/list")
             assert result == {"tools": []}
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_send_request_error(self):
         client = MCPClient("https://mcp.example.com")
 
@@ -149,7 +149,7 @@ class TestMCPClient:
             with pytest.raises(MCPClientError, match="Invalid Request"):
                 await client._send_request("tools/list")
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_list_tools(self):
         client = MCPClient("https://mcp.example.com")
 
@@ -185,7 +185,7 @@ class TestMCPClient:
         assert tools[0].input_schema["properties"]["city"]["type"] == "string"
         assert tools[1].name == "search"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_list_tools_empty(self):
         client = MCPClient("https://mcp.example.com")
 
@@ -194,7 +194,7 @@ class TestMCPClient:
 
         assert tools == []
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_list_tools_none_result(self):
         client = MCPClient("https://mcp.example.com")
 
@@ -203,7 +203,7 @@ class TestMCPClient:
 
         assert tools == []
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_call_tool_success(self):
         client = MCPClient("https://mcp.example.com")
 
@@ -221,7 +221,7 @@ class TestMCPClient:
         assert len(result.content) == 1
         assert result.content[0]["type"] == "text"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_call_tool_error(self):
         client = MCPClient("https://mcp.example.com")
 
@@ -235,7 +235,7 @@ class TestMCPClient:
 
         assert result.is_error
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_call_tool_none_result(self):
         client = MCPClient("https://mcp.example.com")
 
@@ -244,7 +244,7 @@ class TestMCPClient:
 
         assert result.is_error
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_initialize(self):
         client = MCPClient("https://mcp.example.com")
 
@@ -340,13 +340,13 @@ class TestMCPToolBlock:
         missing = MCPToolBlock.Input.get_missing_input(data)
         assert missing == set()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_run_with_mock(self):
         """Test the block using the built-in test infrastructure."""
         block = MCPToolBlock()
         await execute_block_test(block)
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_run_missing_server_url(self):
         block = MCPToolBlock()
         input_data = MCPToolBlock.Input(
@@ -358,7 +358,7 @@ class TestMCPToolBlock:
             outputs.append((name, data))
         assert outputs == [("error", "MCP server URL is required")]
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_run_missing_tool(self):
         block = MCPToolBlock()
         input_data = MCPToolBlock.Input(
@@ -372,7 +372,7 @@ class TestMCPToolBlock:
             ("error", "No tool selected. Please select a tool from the dropdown.")
         ]
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_run_success(self):
         block = MCPToolBlock()
         input_data = MCPToolBlock.Input(
@@ -398,7 +398,7 @@ class TestMCPToolBlock:
         assert outputs[0][0] == "result"
         assert outputs[0][1] == {"temp": 20, "city": "London"}
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_run_mcp_error(self):
         block = MCPToolBlock()
         input_data = MCPToolBlock.Input(
@@ -418,7 +418,7 @@ class TestMCPToolBlock:
         assert outputs[0][0] == "error"
         assert "Tool not found" in outputs[0][1]
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_call_mcp_tool_parses_json_text(self):
         block = MCPToolBlock()
 
@@ -445,7 +445,7 @@ class TestMCPToolBlock:
 
         assert result == {"temp": 20}
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_call_mcp_tool_plain_text(self):
         block = MCPToolBlock()
 
@@ -472,7 +472,7 @@ class TestMCPToolBlock:
 
         assert result == "Hello, world!"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_call_mcp_tool_multiple_content(self):
         block = MCPToolBlock()
 
@@ -500,7 +500,7 @@ class TestMCPToolBlock:
 
         assert result == ["Part 1", {"part": 2}]
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_call_mcp_tool_error_result(self):
         block = MCPToolBlock()
 
@@ -522,7 +522,7 @@ class TestMCPToolBlock:
             with pytest.raises(MCPClientError, match="returned an error"):
                 await block._call_mcp_tool("https://mcp.example.com", "test_tool", {})
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_call_mcp_tool_image_content(self):
         block = MCPToolBlock()
 
@@ -557,7 +557,7 @@ class TestMCPToolBlock:
             "mimeType": "image/png",
         }
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_run_with_credentials(self):
         """Verify the block uses OAuth2Credentials and passes auth token."""
         from pydantic import SecretStr
@@ -594,7 +594,7 @@ class TestMCPToolBlock:
 
         assert captured_tokens == ["resolved-token"]
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_run_without_credentials(self):
         """Verify the block works without credentials (public server)."""
         block = MCPToolBlock()

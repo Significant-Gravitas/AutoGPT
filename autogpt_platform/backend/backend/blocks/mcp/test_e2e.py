@@ -27,7 +27,7 @@ pytestmark = pytest.mark.skipif(
 class TestRealMCPServer:
     """Tests against the live OpenAI docs MCP server."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_initialize(self):
         """Verify we can complete the MCP handshake with a real server."""
         client = MCPClient(OPENAI_DOCS_MCP_URL)
@@ -38,7 +38,7 @@ class TestRealMCPServer:
         assert result["serverInfo"]["name"] == "openai-docs-mcp"
         assert "tools" in result.get("capabilities", {})
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_list_tools(self):
         """Verify we can discover tools from a real MCP server."""
         client = MCPClient(OPENAI_DOCS_MCP_URL)
@@ -58,7 +58,7 @@ class TestRealMCPServer:
         assert "query" in search_tool.input_schema.get("properties", {})
         assert "query" in search_tool.input_schema.get("required", [])
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_call_tool_list_api_endpoints(self):
         """Call the list_api_endpoints tool and verify we get real data."""
         client = MCPClient(OPENAI_DOCS_MCP_URL)
@@ -75,7 +75,7 @@ class TestRealMCPServer:
         total = data.get("total", len(data.get("paths", [])))
         assert total > 50
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_call_tool_search(self):
         """Search for docs and verify we get results."""
         client = MCPClient(OPENAI_DOCS_MCP_URL)
@@ -87,7 +87,7 @@ class TestRealMCPServer:
         assert not result.is_error
         assert len(result.content) >= 1
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_sse_response_handling(self):
         """Verify the client correctly handles SSE responses from a real server.
 

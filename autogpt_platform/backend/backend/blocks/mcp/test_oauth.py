@@ -66,7 +66,7 @@ class TestMCPOAuthHandler:
         assert "code_challenge" not in url
         assert "code_challenge_method" not in url
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_exchange_code_for_tokens(self):
         handler = self._make_handler()
 
@@ -96,7 +96,7 @@ class TestMCPOAuthHandler:
         assert creds.scopes == ["read"]
         assert creds.access_token_expires_at is not None
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_refresh_tokens(self):
         handler = self._make_handler()
 
@@ -128,7 +128,7 @@ class TestMCPOAuthHandler:
         assert refreshed.refresh_token is not None
         assert refreshed.refresh_token.get_secret_value() == "new-refresh"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_refresh_tokens_no_refresh_token(self):
         handler = self._make_handler()
 
@@ -142,7 +142,7 @@ class TestMCPOAuthHandler:
         with pytest.raises(ValueError, match="No refresh token"):
             await handler._refresh_tokens(creds)
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_revoke_tokens_no_url(self):
         handler = self._make_handler(revoke_url=None)
 
@@ -156,7 +156,7 @@ class TestMCPOAuthHandler:
         result = await handler.revoke_tokens(creds)
         assert result is False
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_revoke_tokens_with_url(self):
         handler = self._make_handler(revoke_url="https://auth.example.com/revoke")
 
@@ -181,7 +181,7 @@ class TestMCPOAuthHandler:
 class TestMCPClientDiscovery:
     """Tests for MCPClient OAuth metadata discovery."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_discover_auth_found(self):
         client = MCPClient("https://mcp.example.com/mcp")
 
@@ -201,7 +201,7 @@ class TestMCPClientDiscovery:
         assert result is not None
         assert result["authorization_servers"] == ["https://auth.example.com"]
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_discover_auth_not_found(self):
         client = MCPClient("https://mcp.example.com/mcp")
 
@@ -215,7 +215,7 @@ class TestMCPClientDiscovery:
 
         assert result is None
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_discover_auth_server_metadata(self):
         client = MCPClient("https://mcp.example.com/mcp")
 

@@ -121,7 +121,7 @@ def _make_client(url: str, auth_token: str | None = None) -> MCPClient:
 class TestMCPClientIntegration:
     """Test MCPClient against a real local MCP server."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_initialize(self, mcp_server):
         client = _make_client(mcp_server)
         result = await client.initialize()
@@ -130,7 +130,7 @@ class TestMCPClientIntegration:
         assert result["serverInfo"]["name"] == "test-mcp-server"
         assert "tools" in result["capabilities"]
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_list_tools(self, mcp_server):
         client = _make_client(mcp_server)
         await client.initialize()
@@ -152,7 +152,7 @@ class TestMCPClientIntegration:
         assert "a" in add.input_schema["properties"]
         assert "b" in add.input_schema["properties"]
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_call_tool_get_weather(self, mcp_server):
         client = _make_client(mcp_server)
         await client.initialize()
@@ -167,7 +167,7 @@ class TestMCPClientIntegration:
         assert data["temperature"] == 22
         assert data["condition"] == "sunny"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_call_tool_add_numbers(self, mcp_server):
         client = _make_client(mcp_server)
         await client.initialize()
@@ -177,7 +177,7 @@ class TestMCPClientIntegration:
         data = json.loads(result.content[0]["text"])
         assert data["result"] == 10
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_call_tool_echo(self, mcp_server):
         client = _make_client(mcp_server)
         await client.initialize()
@@ -186,7 +186,7 @@ class TestMCPClientIntegration:
         assert not result.is_error
         assert result.content[0]["text"] == "Hello MCP!"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_call_unknown_tool(self, mcp_server):
         client = _make_client(mcp_server)
         await client.initialize()
@@ -195,7 +195,7 @@ class TestMCPClientIntegration:
         assert result.is_error
         assert "Unknown tool" in result.content[0]["text"]
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_auth_success(self, mcp_server_with_auth):
         url, token = mcp_server_with_auth
         client = _make_client(url, auth_token=token)
@@ -206,7 +206,7 @@ class TestMCPClientIntegration:
         tools = await client.list_tools()
         assert len(tools) == 3
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_auth_failure(self, mcp_server_with_auth):
         url, _ = mcp_server_with_auth
         client = _make_client(url, auth_token="wrong-token")
@@ -214,7 +214,7 @@ class TestMCPClientIntegration:
         with pytest.raises(Exception):
             await client.initialize()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_auth_missing(self, mcp_server_with_auth):
         url, _ = mcp_server_with_auth
         client = _make_client(url)
@@ -229,7 +229,7 @@ class TestMCPClientIntegration:
 class TestMCPToolBlockIntegration:
     """Test MCPToolBlock end-to-end against a real local MCP server."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_full_flow_get_weather(self, mcp_server):
         """Full flow: discover tools, select one, execute it."""
         # Step 1: Discover tools (simulating what the frontend/API would do)
@@ -261,7 +261,7 @@ class TestMCPToolBlockIntegration:
         assert result["temperature"] == 22
         assert result["condition"] == "sunny"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_full_flow_add_numbers(self, mcp_server):
         """Full flow for add_numbers tool."""
         client = _make_client(mcp_server)
@@ -285,7 +285,7 @@ class TestMCPToolBlockIntegration:
         assert outputs[0][0] == "result"
         assert outputs[0][1]["result"] == 100
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_full_flow_echo_plain_text(self, mcp_server):
         """Verify plain text (non-JSON) responses work."""
         block = MCPToolBlock()
@@ -308,7 +308,7 @@ class TestMCPToolBlockIntegration:
         assert outputs[0][0] == "result"
         assert outputs[0][1] == "Hello from AutoGPT!"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_full_flow_unknown_tool_yields_error(self, mcp_server):
         """Calling an unknown tool should yield an error output."""
         block = MCPToolBlock()
@@ -326,7 +326,7 @@ class TestMCPToolBlockIntegration:
         assert outputs[0][0] == "error"
         assert "returned an error" in outputs[0][1]
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_full_flow_with_auth(self, mcp_server_with_auth):
         """Full flow with authentication via credentials kwarg."""
         url, token = mcp_server_with_auth
@@ -363,7 +363,7 @@ class TestMCPToolBlockIntegration:
         assert outputs[0][0] == "result"
         assert outputs[0][1] == "Authenticated!"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_no_credentials_runs_without_auth(self, mcp_server):
         """Block runs without auth when no credentials are provided."""
         block = MCPToolBlock()
