@@ -47,16 +47,13 @@ export async function GET(request: Request) {
         var msg = ${safeJsonStringify(message)};
         var sent = false;
 
-        console.log("[MCP Callback] Script running, success:", msg.success, "code:", !!msg.code, "state:", !!msg.state);
-
         // Method 1: BroadcastChannel (reliable across tabs/popups, no opener needed)
         try {
           var bc = new BroadcastChannel("mcp_oauth");
           bc.postMessage({ type: "mcp_oauth_result", success: msg.success, code: msg.code, state: msg.state, message: msg.message });
           bc.close();
           sent = true;
-          console.log("[MCP Callback] BroadcastChannel message sent");
-        } catch(e) { console.warn("[MCP Callback] BroadcastChannel failed:", e); }
+        } catch(e) { /* BroadcastChannel not supported */ }
 
         // Method 2: window.opener.postMessage (fallback for same-origin popups)
         try {
@@ -66,18 +63,14 @@ export async function GET(request: Request) {
               window.location.origin
             );
             sent = true;
-            console.log("[MCP Callback] postMessage sent to opener");
-          } else {
-            console.log("[MCP Callback] window.opener not available (COOP or popup blocked)");
           }
-        } catch(e) { console.warn("[MCP Callback] postMessage failed:", e); }
+        } catch(e) { /* opener not available (COOP) */ }
 
         // Method 3: localStorage (most reliable cross-tab fallback)
         try {
           localStorage.setItem("mcp_oauth_result", JSON.stringify(msg));
           sent = true;
-          console.log("[MCP Callback] localStorage set");
-        } catch(e) { console.warn("[MCP Callback] localStorage failed:", e); }
+        } catch(e) { /* localStorage not available */ }
 
         var statusEl = document.getElementById("status");
         var spinnerEl = document.getElementById("spinner");

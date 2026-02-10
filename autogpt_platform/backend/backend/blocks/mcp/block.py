@@ -215,15 +215,14 @@ class MCPToolBlock(Block):
         This is a fallback for nodes that don't have ``credentials`` explicitly
         set (e.g. nodes created before the credential field was wired up).
         """
-        from backend.data.model import Credentials
         from backend.integrations.creds_manager import IntegrationCredentialsManager
         from backend.integrations.providers import ProviderName
 
         try:
             mgr = IntegrationCredentialsManager()
-            mcp_creds: list[Credentials] = []
-            for prov in (ProviderName.MCP.value, "ProviderName.MCP"):
-                mcp_creds.extend(await mgr.store.get_creds_by_provider(user_id, prov))
+            mcp_creds = await mgr.store.get_creds_by_provider(
+                user_id, ProviderName.MCP.value
+            )
             best: OAuth2Credentials | None = None
             for cred in mcp_creds:
                 if (
