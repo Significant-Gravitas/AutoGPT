@@ -97,18 +97,23 @@ function getAccordionMeta(output: CreateAgentToolOutput): {
 export function CreateAgentTool({ part }: Props) {
   const text = getAnimationText(part);
   const { onSend } = useCopilotChatActions();
+
   const isStreaming =
     part.state === "input-streaming" || part.state === "input-available";
 
   const output = getCreateAgentToolOutput(part);
+
   const isError =
     part.state === "output-error" || (!!output && isErrorOutput(output));
+
   const isOperating =
     !!output &&
     (isOperationStartedOutput(output) ||
       isOperationPendingOutput(output) ||
       isOperationInProgressOutput(output));
+
   const progress = useAsymptoticProgress(isOperating);
+
   const hasExpandableContent =
     part.state === "output-available" &&
     !!output &&
@@ -149,7 +154,10 @@ export function CreateAgentTool({ part }: Props) {
       </div>
 
       {hasExpandableContent && output && (
-        <ToolAccordion {...getAccordionMeta(output)}>
+        <ToolAccordion
+          {...getAccordionMeta(output)}
+          expanded={isClarificationNeededOutput(output)}
+        >
           {isOperating && (
             <ContentGrid>
               <ProgressBar value={progress} className="max-w-[280px]" />
