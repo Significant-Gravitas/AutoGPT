@@ -42,11 +42,12 @@ export function CredentialsSelect({
     }
   }
 
+  // Resolve the selected credential — treat stale/deleted IDs as unselected
   const selectedCredential = selectedCredentials
     ? credentials.find((c) => c.id === selectedCredentials.id)
     : null;
 
-  // When credentials exist and nothing is explicitly selected,
+  // When credentials exist and nothing is matched,
   // default to the first credential instead of "None"
   const effectiveCredential =
     selectedCredential ?? (credentials.length > 0 ? credentials[0] : null);
@@ -73,21 +74,21 @@ export function CredentialsSelect({
           provider: provider,
         };
 
-  // Default to the first credential when any are available
+  // Use matched credential ID (not the raw selectedCredentials.id which may be stale)
   const defaultValue =
-    selectedCredentials?.id ??
+    effectiveCredential?.id ??
     (credentials.length > 0 ? credentials[0].id : "__none__");
 
   // Notify parent when defaulting to a credential so the value is captured on submit
   const hasNotifiedDefault = useRef(false);
   useEffect(() => {
     if (hasNotifiedDefault.current) return;
-    if (selectedCredentials?.id) return;
+    if (selectedCredential) return; // Already matched — no need to override
     if (credentials.length > 0) {
       hasNotifiedDefault.current = true;
       onSelectCredential(credentials[0].id);
     }
-  }, [credentials, selectedCredentials?.id, onSelectCredential]);
+  }, [credentials, selectedCredential, onSelectCredential]);
 
   return (
     <div className="mb-4 w-full">
