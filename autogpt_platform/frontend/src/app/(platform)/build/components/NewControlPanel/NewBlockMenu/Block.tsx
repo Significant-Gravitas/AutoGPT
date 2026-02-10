@@ -65,18 +65,28 @@ export const Block: BlockComponent = ({
 
   const handleMCPToolConfirm = useCallback(
     (result: MCPToolDialogResult) => {
+      // Derive a display label: prefer server name, fall back to URL hostname.
+      let serverLabel = result.serverName;
+      if (!serverLabel) {
+        try {
+          serverLabel = new URL(result.serverUrl).hostname;
+        } catch {
+          serverLabel = "MCP";
+        }
+      }
+
       const customNode = addBlockAndCenter(blockData, {
         server_url: result.serverUrl,
-        server_name: result.serverName,
+        server_name: serverLabel,
         selected_tool: result.selectedTool,
         tool_input_schema: result.toolInputSchema,
         available_tools: result.availableTools,
         credentials: result.credentials ?? undefined,
       });
       // Persist the MCP title as customized_name in metadata so it survives
-      // save/load even if server_name is stripped from input_default.
-      if (customNode && result.serverName && result.selectedTool) {
-        const title = `${result.serverName}: ${beautifyString(result.selectedTool)}`;
+      // save/load even if server_name is pruned from input_default.
+      if (customNode && result.selectedTool) {
+        const title = `${serverLabel}: ${beautifyString(result.selectedTool)}`;
         updateNodeData(customNode.id, {
           metadata: {
             ...customNode.data.metadata,

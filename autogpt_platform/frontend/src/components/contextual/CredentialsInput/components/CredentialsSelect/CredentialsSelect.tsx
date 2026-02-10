@@ -49,8 +49,7 @@ export function CredentialsSelect({
   // When credentials exist and nothing is explicitly selected,
   // default to the first credential instead of "None"
   const effectiveCredential =
-    selectedCredential ??
-    (credentials.length > 0 ? credentials[0] : null);
+    selectedCredential ?? (credentials.length > 0 ? credentials[0] : null);
 
   const displayCredential = effectiveCredential
     ? {
