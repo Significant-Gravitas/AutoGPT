@@ -16,7 +16,6 @@ import {
   areSystemCredentialProvidersLoading,
   CredentialField,
   findSavedCredentialByProviderAndType,
-  findSavedUserCredentialByProviderAndType,
   hasMissingRequiredSystemCredentials,
   splitCredentialFieldsBySystem,
 } from "./helpers";
@@ -46,7 +45,6 @@ export function CredentialsGroupedView({
   const hasSystemCredentials = systemCredentialFields.length > 0;
   const hasUserCredentials = userCredentialFields.length > 0;
   const hasAttemptedAutoSelect = useRef(false);
-  const hasAttemptedUserAutoSelect = useRef(false);
 
   const isLoadingProviders = useMemo(
     () =>
@@ -111,49 +109,6 @@ export function CredentialsGroupedView({
     inputCredentials,
     onCredentialChange,
     isLoadingProviders,
-  ]);
-
-  // Auto-select user credentials when there is exactly one matching credential.
-  // This handles cases like MCP where the credential is optional but should
-  // still be pre-selected when only one credential matches the server URL.
-  useEffect(() => {
-    if (hasAttemptedUserAutoSelect.current) return;
-    if (!hasUserCredentials) return;
-    if (!allProviders) return;
-
-    for (const [key, schema] of userCredentialFields) {
-      const alreadySelected = inputCredentials?.[key];
-      if (alreadySelected) continue;
-
-      const providerNames = schema.credentials_provider || [];
-      const credentialTypes = schema.credentials_types || [];
-      const requiredScopes = schema.credentials_scopes;
-      const discriminatorValues = schema.discriminator_values;
-      const savedCredential = findSavedUserCredentialByProviderAndType(
-        providerNames,
-        credentialTypes,
-        requiredScopes,
-        allProviders,
-        discriminatorValues,
-      );
-
-      if (savedCredential) {
-        onCredentialChange(key, {
-          id: savedCredential.id,
-          provider: savedCredential.provider,
-          type: savedCredential.type as CredentialsType,
-          title: savedCredential.title,
-        });
-      }
-    }
-
-    hasAttemptedUserAutoSelect.current = true;
-  }, [
-    allProviders,
-    hasUserCredentials,
-    userCredentialFields,
-    inputCredentials,
-    onCredentialChange,
   ]);
 
   return (

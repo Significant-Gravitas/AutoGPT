@@ -56,13 +56,16 @@ export const Block: BlockComponent = ({
           { duration: 500 },
         );
       }, 50);
+      return customNode;
     },
     [addBlock, setViewport],
   );
 
+  const updateNodeData = useNodeStore((state) => state.updateNodeData);
+
   const handleMCPToolConfirm = useCallback(
     (result: MCPToolDialogResult) => {
-      addBlockAndCenter(blockData, {
+      const customNode = addBlockAndCenter(blockData, {
         server_url: result.serverUrl,
         server_name: result.serverName,
         selected_tool: result.selectedTool,
@@ -70,9 +73,20 @@ export const Block: BlockComponent = ({
         available_tools: result.availableTools,
         credentials: result.credentials ?? undefined,
       });
+      // Persist the MCP title as customized_name in metadata so it survives
+      // save/load even if server_name is stripped from input_default.
+      if (customNode && result.serverName && result.selectedTool) {
+        const title = `${result.serverName}: ${beautifyString(result.selectedTool)}`;
+        updateNodeData(customNode.id, {
+          metadata: {
+            ...customNode.data.metadata,
+            customized_name: title,
+          },
+        });
+      }
       setMcpDialogOpen(false);
     },
-    [addBlockAndCenter, blockData],
+    [addBlockAndCenter, blockData, updateNodeData],
   );
 
   const handleClick = () => {
