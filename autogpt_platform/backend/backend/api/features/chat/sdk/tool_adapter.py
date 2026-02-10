@@ -17,10 +17,6 @@ from backend.api.features.chat.tools.base import BaseTool
 
 logger = logging.getLogger(__name__)
 
-# Safety-net truncation for extreme tool results (e.g. infinite loops).
-# Normal oversized results are handled by the SDK via the Read tool.
-MAX_TOOL_RESULT_CHARS = 500_000
-
 # Allowed base directory for the Read tool (SDK saves oversized tool results here)
 _SDK_TOOL_RESULTS_DIR = "/root/.claude/"
 
@@ -106,18 +102,6 @@ def create_tool_handler(base_tool: BaseTool):
                 if isinstance(result.output, str)
                 else json.dumps(result.output)
             )
-
-            # Safety-net truncation for extreme results (e.g. infinite loops).
-            # Normal oversized results are handled by the SDK + our Read tool.
-            if len(text) > MAX_TOOL_RESULT_CHARS:
-                logger.warning(
-                    f"Tool {base_tool.name} result truncated: "
-                    f"{len(text)} -> {MAX_TOOL_RESULT_CHARS} chars"
-                )
-                text = (
-                    text[:MAX_TOOL_RESULT_CHARS]
-                    + f"\n\n... [truncated — {len(text) - MAX_TOOL_RESULT_CHARS} chars omitted]"
-                )
 
             return {
                 "content": [{"type": "text", "text": text}],

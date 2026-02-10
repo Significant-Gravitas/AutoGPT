@@ -1,8 +1,10 @@
 """Claude Agent SDK service layer for CoPilot chat completions."""
 
 import asyncio
+import glob
 import json
 import logging
+import os
 import uuid
 from collections.abc import AsyncGenerator
 from typing import Any
@@ -54,9 +56,6 @@ _SDK_TOOL_RESULTS_GLOB = "/root/.claude/projects/*/tool-results/*"
 
 def _cleanup_sdk_tool_results() -> None:
     """Remove SDK tool-result files to prevent disk accumulation."""
-    import glob
-    import os
-
     for path in glob.glob(_SDK_TOOL_RESULTS_GLOB):
         try:
             os.remove(path)
