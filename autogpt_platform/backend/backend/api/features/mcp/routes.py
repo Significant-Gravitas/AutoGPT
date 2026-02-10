@@ -105,33 +105,13 @@ async def discover_tools(
         except Exception:
             logger.debug("Could not look up stored MCP credentials", exc_info=True)
 
-    try:
-        client = MCPClient(request.server_url, auth_token=auth_token)
+    client = MCPClient(request.server_url, auth_token=auth_token)
 
+    try:
         init_result = await client.initialize()
         tools = await client.list_tools()
-
-        return DiscoverToolsResponse(
-            tools=[
-                MCPToolResponse(
-                    name=t.name,
-                    description=t.description,
-                    input_schema=t.input_schema,
-                )
-                for t in tools
-            ],
-            server_name=(
-                init_result.get("serverInfo", {}).get("name")
-                or urlparse(request.server_url).hostname
-                or "MCP"
-            ),
-            protocol_version=init_result.get("protocolVersion"),
-        )
     except HTTPClientError as e:
         if e.status_code in (401, 403):
-            logger.warning(
-                f"MCP server returned {e.status_code} for {request.server_url}: {e}"
-            )
             raise fastapi.HTTPException(
                 status_code=401,
                 detail="This MCP server requires authentication. "
@@ -140,12 +120,23 @@ async def discover_tools(
         raise fastapi.HTTPException(status_code=502, detail=str(e))
     except MCPClientError as e:
         raise fastapi.HTTPException(status_code=502, detail=str(e))
-    except Exception as e:
-        logger.exception("MCP tool discovery failed")
-        raise fastapi.HTTPException(
-            status_code=502,
-            detail=f"Failed to connect to MCP server: {str(e)}",
-        )
+
+    return DiscoverToolsResponse(
+        tools=[
+            MCPToolResponse(
+                name=t.name,
+                description=t.description,
+                input_schema=t.input_schema,
+            )
+            for t in tools
+        ],
+        server_name=(
+            init_result.get("serverInfo", {}).get("name")
+            or urlparse(request.server_url).hostname
+            or "MCP"
+        ),
+        protocol_version=init_result.get("protocolVersion"),
+    )
 
 
 # ======================== OAuth Flow ======================== #
@@ -183,13 +174,7 @@ async def mcp_oauth_login(
     client = MCPClient(request.server_url)
 
     # Step 1: Discover protected-resource metadata (RFC 9728)
-    try:
-        protected_resource = await client.discover_auth()
-    except Exception as e:
-        raise fastapi.HTTPException(
-            status_code=502,
-            detail=f"Failed to discover OAuth metadata: {e}",
-        )
+    protected_resource = await client.discover_auth()
 
     metadata: dict[str, Any] | None = None
 
@@ -198,23 +183,14 @@ async def mcp_oauth_login(
         resource_url = protected_resource.get("resource", request.server_url)
 
         # Step 2a: Discover auth-server metadata (RFC 8414)
-        try:
-            metadata = await client.discover_auth_server_metadata(auth_server_url)
-        except Exception as e:
-            raise fastapi.HTTPException(
-                status_code=502,
-                detail=f"Failed to discover authorization server metadata: {e}",
-            )
+        metadata = await client.discover_auth_server_metadata(auth_server_url)
     else:
         # Fallback: Some MCP servers (e.g. Linear) are their own auth server
         # and serve OAuth metadata directly without protected-resource metadata.
         # Don't assume a resource_url — omitting it lets the auth server choose
         # the correct audience for the token (RFC 8707 resource is optional).
         resource_url = None
-        try:
-            metadata = await client.discover_auth_server_metadata(request.server_url)
-        except Exception:
-            pass
+        metadata = await client.discover_auth_server_metadata(request.server_url)
 
     if (
         not metadata
@@ -340,16 +316,9 @@ async def mcp_oauth_callback(
         resource_url=meta.get("resource_url"),
     )
 
-    try:
-        credentials = await handler.exchange_code_for_tokens(
-            request.code, valid_state.scopes, valid_state.code_verifier
-        )
-    except Exception as e:
-        logger.exception("MCP OAuth token exchange failed")
-        raise fastapi.HTTPException(
-            status_code=400,
-            detail=f"OAuth token exchange failed: {e}",
-        )
+    credentials = await handler.exchange_code_for_tokens(
+        request.code, valid_state.scopes, valid_state.code_verifier
+    )
 
     # Enrich credential metadata for future lookup and token refresh
     if credentials.metadata is None:
