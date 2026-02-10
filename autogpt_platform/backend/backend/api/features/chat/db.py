@@ -45,10 +45,7 @@ async def create_chat_session(
         successfulAgentRuns=SafeJson({}),
         successfulAgentSchedules=SafeJson({}),
     )
-    return await PrismaChatSession.prisma().create(
-        data=data,
-        include={"Messages": True},
-    )
+    return await PrismaChatSession.prisma().create(data=data)
 
 
 async def update_chat_session(
