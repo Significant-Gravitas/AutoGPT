@@ -38,6 +38,11 @@ export type CredentialsProviderData = {
     code: string,
     state_token: string,
   ) => Promise<CredentialsMetaResponse>;
+  /** MCP-specific OAuth callback that uses dynamic per-server OAuth discovery. */
+  mcpOAuthCallback: (
+    code: string,
+    state_token: string,
+  ) => Promise<CredentialsMetaResponse>;
   createAPIKeyCredentials: (
     credentials: APIKeyCredentialsCreatable,
   ) => Promise<CredentialsMetaResponse>;
@@ -114,6 +119,24 @@ export default function CredentialsProvider({
         return credsMeta;
       } catch (error) {
         onFailToast("complete OAuth authentication")(error);
+        throw error;
+      }
+    },
+    [api, addCredentials, onFailToast],
+  );
+
+  /** Wraps `BackendAPI.mcpOAuthCallback`, and adds the result to the internal credentials store. */
+  const mcpOAuthCallback = useCallback(
+    async (
+      code: string,
+      state_token: string,
+    ): Promise<CredentialsMetaResponse> => {
+      try {
+        const credsMeta = await api.mcpOAuthCallback(code, state_token);
+        addCredentials("mcp", credsMeta);
+        return credsMeta;
+      } catch (error) {
+        onFailToast("complete MCP OAuth authentication")(error);
         throw error;
       }
     },
@@ -258,6 +281,7 @@ export default function CredentialsProvider({
                   isSystemProvider: systemProviders.has(provider),
                   oAuthCallback: (code: string, state_token: string) =>
                     oAuthCallback(provider, code, state_token),
+                  mcpOAuthCallback,
                   createAPIKeyCredentials: (
                     credentials: APIKeyCredentialsCreatable,
                   ) => createAPIKeyCredentials(provider, credentials),
@@ -286,6 +310,7 @@ export default function CredentialsProvider({
     createHostScopedCredentials,
     deleteCredentials,
     oAuthCallback,
+    mcpOAuthCallback,
     onFailToast,
   ]);
 

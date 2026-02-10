@@ -68,7 +68,7 @@ async def test_user(server, test_user_id: str):
     await PrismaUser.prisma().delete(where={"id": test_user_id})
 
 
-@pytest_asyncio.fixture
+@pytest_asyncio.fixture(loop_scope="session")
 async def test_oauth_app(test_user: str):
     """Create a test OAuth application in the database."""
     app_id = str(uuid.uuid4())
@@ -123,7 +123,7 @@ def pkce_credentials() -> tuple[str, str]:
     return generate_pkce()
 
 
-@pytest_asyncio.fixture
+@pytest_asyncio.fixture(loop_scope="session")
 async def client(server, test_user: str) -> AsyncGenerator[httpx.AsyncClient, None]:
     """
     Create an async HTTP client that talks directly to the FastAPI app.
@@ -288,7 +288,7 @@ async def test_authorize_invalid_client_returns_error(
     assert query_params["error"][0] == "invalid_client"
 
 
-@pytest_asyncio.fixture
+@pytest_asyncio.fixture(loop_scope="session")
 async def inactive_oauth_app(test_user: str):
     """Create an inactive test OAuth application in the database."""
     app_id = str(uuid.uuid4())
@@ -1005,7 +1005,7 @@ async def test_token_refresh_revoked(
     assert "revoked" in response.json()["detail"].lower()
 
 
-@pytest_asyncio.fixture
+@pytest_asyncio.fixture(loop_scope="session")
 async def other_oauth_app(test_user: str):
     """Create a second OAuth application for cross-app tests."""
     app_id = str(uuid.uuid4())

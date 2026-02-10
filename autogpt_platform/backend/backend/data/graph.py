@@ -463,6 +463,9 @@ class GraphModel(Graph, GraphMeta):
                     continue
                 if ProviderName.HTTP in field.provider:
                     continue
+                # MCP credentials are intentionally split by server URL
+                if ProviderName.MCP in field.provider:
+                    continue
 
                 # If this happens, that means a block implementation probably needs
                 # to be updated.
@@ -520,7 +523,7 @@ class GraphModel(Graph, GraphMeta):
             }
 
             # Add a descriptive display title when URL-based discriminator values
-            # are present (e.g. "MCP: mcp.sentry.dev" instead of just "Mcp")
+            # are present (e.g. "mcp.sentry.dev" instead of just "Mcp")
             if (
                 field_info.discriminator
                 and not field_info.discriminator_mapping
@@ -529,10 +532,7 @@ class GraphModel(Graph, GraphMeta):
                 hostnames = sorted(
                     parse_url(str(v)).netloc for v in field_info.discriminator_values
                 )
-                base_name = (
-                    next(iter(field_info.provider), "").replace("_", " ").upper()
-                )
-                field_schema["display_name"] = f"{base_name}: {', '.join(hostnames)}"
+                field_schema["display_name"] = ", ".join(hostnames)
 
             # Add other (optional) field info items
             field_schema.update(

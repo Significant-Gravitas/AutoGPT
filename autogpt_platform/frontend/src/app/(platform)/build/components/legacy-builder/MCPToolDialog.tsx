@@ -1,6 +1,12 @@
 "use client";
 
-import React, { useState, useCallback, useRef, useEffect } from "react";
+import React, {
+  useState,
+  useCallback,
+  useRef,
+  useEffect,
+  useContext,
+} from "react";
 import {
   Dialog,
   DialogContent,
@@ -18,6 +24,8 @@ import { ScrollArea } from "@/components/__legacy__/ui/scroll-area";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import type { CredentialsMetaInput, MCPTool } from "@/lib/autogpt-server-api";
 import { CaretDown } from "@phosphor-icons/react";
+import { openOAuthPopup } from "@/lib/oauth-popup";
+import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
 
 export type MCPToolDialogResult = {
   serverUrl: string;
@@ -37,14 +45,13 @@ interface MCPToolDialogProps {
 
 type DialogStep = "url" | "tool";
 
-const OAUTH_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
-
 export function MCPToolDialog({
   open,
   onClose,
   onConfirm,
 }: MCPToolDialogProps) {
   const api = useBackendAPI();
+  const allProviders = useContext(CredentialsProvidersContext);
 
   const [step, setStep] = useState<DialogStep>("url");
   const [serverUrl, setServerUrl] = useState("");
@@ -61,74 +68,19 @@ export function MCPToolDialog({
     null,
   );
 
-  const oauthLoadingRef = useRef(false);
-  const stateTokenRef = useRef<string | null>(null);
-  const broadcastChannelRef = useRef<BroadcastChannel | null>(null);
-  const messageHandlerRef = useRef<((event: MessageEvent) => void) | null>(
-    null,
-  );
-  const storageHandlerRef = useRef<((event: StorageEvent) => void) | null>(
-    null,
-  );
-  const popupCheckRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const storagePollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const oauthHandledRef = useRef(false);
-  // (no auto-prefill — dialog starts fresh each time)
+  const startOAuthRef = useRef(false);
+  const oauthAbortRef = useRef<((reason?: string) => void) | null>(null);
 
-  // Clean up listeners on unmount
+  // Clean up on unmount
   useEffect(() => {
     return () => {
-      if (messageHandlerRef.current) {
-        window.removeEventListener("message", messageHandlerRef.current);
-      }
-      if (storageHandlerRef.current) {
-        window.removeEventListener("storage", storageHandlerRef.current);
-      }
-      if (broadcastChannelRef.current) {
-        broadcastChannelRef.current.close();
-      }
-      if (popupCheckRef.current) {
-        clearInterval(popupCheckRef.current);
-      }
-      if (storagePollRef.current) {
-        clearInterval(storagePollRef.current);
-      }
+      oauthAbortRef.current?.();
     };
   }, []);
 
-  const cleanupOAuthListeners = useCallback(() => {
-    if (messageHandlerRef.current) {
-      window.removeEventListener("message", messageHandlerRef.current);
-      messageHandlerRef.current = null;
-    }
-    if (storageHandlerRef.current) {
-      window.removeEventListener("storage", storageHandlerRef.current);
-      storageHandlerRef.current = null;
-    }
-    if (broadcastChannelRef.current) {
-      broadcastChannelRef.current.close();
-      broadcastChannelRef.current = null;
-    }
-    if (popupCheckRef.current) {
-      clearInterval(popupCheckRef.current);
-      popupCheckRef.current = null;
-    }
-    if (storagePollRef.current) {
-      clearInterval(storagePollRef.current);
-      storagePollRef.current = null;
-    }
-    // Clean up any stale localStorage entry
-    try {
-      localStorage.removeItem("mcp_oauth_result");
-    } catch {}
-    setOauthLoading(false);
-    oauthLoadingRef.current = false;
-    // NOTE: do NOT reset oauthHandledRef here — it guards against double-handling
-    // and must only be reset when starting a new OAuth flow.
-  }, []);
-
   const reset = useCallback(() => {
-    cleanupOAuthListeners();
+    oauthAbortRef.current?.();
+    oauthAbortRef.current = null;
     setStep("url");
     setServerUrl("");
     setManualToken("");
@@ -137,11 +89,11 @@ export function MCPToolDialog({
     setLoading(false);
     setError(null);
     setAuthRequired(false);
+    setOauthLoading(false);
     setShowManualToken(false);
     setSelectedTool(null);
     setCredentials(null);
-    stateTokenRef.current = null;
-  }, [cleanupOAuthListeners]);
+  }, []);
 
   const handleClose = useCallback(() => {
     reset();
@@ -163,6 +115,10 @@ export function MCPToolDialog({
         if (e?.status === 401 || e?.status === 403) {
           setAuthRequired(true);
           setError(null);
+          // Automatically start OAuth sign-in instead of requiring a second click
+          setLoading(false);
+          startOAuthRef.current = true;
+          return;
         } else {
           const message =
             e?.message || e?.detail || "Failed to connect to MCP server";
@@ -182,44 +138,60 @@ export function MCPToolDialog({
     discoverTools(serverUrl.trim(), manualToken.trim() || undefined);
   }, [serverUrl, manualToken, discoverTools]);
 
-  const handleOAuthResult = useCallback(
-    async (data: {
-      success: boolean;
-      code?: string;
-      state?: string;
-      message?: string;
-    }) => {
-      // Prevent double-handling (BroadcastChannel + postMessage may both fire)
-      if (oauthHandledRef.current) return;
-      oauthHandledRef.current = true;
+  const handleOAuthSignIn = useCallback(async () => {
+    if (!serverUrl.trim()) return;
+    setError(null);
 
-      if (!data.success) {
-        setError(data.message || "OAuth authentication failed.");
-        cleanupOAuthListeners();
-        return;
-      }
+    // Abort any previous OAuth flow
+    oauthAbortRef.current?.();
 
-      cleanupOAuthListeners();
+    setOauthLoading(true);
+
+    try {
+      const { login_url, state_token } = await api.mcpOAuthLogin(
+        serverUrl.trim(),
+      );
+
+      const { promise, cleanup } = openOAuthPopup(login_url, {
+        stateToken: state_token,
+        useCrossOriginListeners: true,
+      });
+      oauthAbortRef.current = cleanup.abort;
+
+      const result = await promise;
+
+      // Exchange code for tokens via the credentials provider (updates cache)
+      setLoading(true);
+      setOauthLoading(false);
+
+      const mcpProvider = allProviders?.["mcp"];
+      const callbackResult = mcpProvider
+        ? await mcpProvider.mcpOAuthCallback(result.code, state_token)
+        : await api.mcpOAuthCallback(result.code, state_token);
+
+      setCredentials({
+        id: callbackResult.id,
+        provider: callbackResult.provider,
+        type: callbackResult.type,
+        title: callbackResult.title,
+      });
       setAuthRequired(false);
 
-      // Exchange code for tokens (stored server-side)
-      setLoading(true);
-      try {
-        const callbackResult = await api.mcpOAuthCallback(
-          data.code!,
-          stateTokenRef.current!,
+      // Discover tools now that we're authenticated
+      const toolsResult = await api.mcpDiscoverTools(serverUrl.trim());
+      setTools(toolsResult.tools);
+      setServerName(toolsResult.server_name);
+      setStep("tool");
+    } catch (e: any) {
+      // If server doesn't support OAuth → show manual token entry
+      if (e?.status === 400) {
+        setShowManualToken(true);
+        setError(
+          "This server does not support OAuth sign-in. Please enter a token manually.",
         );
-        setCredentials({
-          id: callbackResult.id,
-          provider: callbackResult.provider,
-          type: callbackResult.type,
-          title: callbackResult.title,
-        });
-        const result = await api.mcpDiscoverTools(serverUrl.trim());
-        setTools(result.tools);
-        setServerName(result.server_name);
-        setStep("tool");
-      } catch (e: any) {
+      } else if (e?.message === "OAuth flow timed out") {
+        setError("OAuth sign-in timed out. Please try again.");
+      } else {
         const status = e?.status;
         let message: string;
         if (status === 401 || status === 403) {
@@ -232,156 +204,21 @@ export function MCPToolDialog({
         setError(
           typeof message === "string" ? message : JSON.stringify(message),
         );
-      } finally {
-        setLoading(false);
       }
-    },
-    [api, serverUrl, cleanupOAuthListeners],
-  );
-
-  const handleOAuthSignIn = useCallback(async () => {
-    if (!serverUrl.trim()) return;
-    setError(null);
-    oauthHandledRef.current = false;
-
-    // Open popup SYNCHRONOUSLY (before async call) to avoid browser popup blockers
-    const width = 500;
-    const height = 700;
-    const left = window.screenX + (window.outerWidth - width) / 2;
-    const top = window.screenY + (window.outerHeight - height) / 2;
-    const popup = window.open(
-      "about:blank",
-      "mcp_oauth",
-      `width=${width},height=${height},left=${left},top=${top},scrollbars=yes`,
-    );
-
-    setOauthLoading(true);
-    oauthLoadingRef.current = true;
-
-    try {
-      const { login_url, state_token } = await api.mcpOAuthLogin(
-        serverUrl.trim(),
-      );
-      stateTokenRef.current = state_token;
-
-      if (popup && !popup.closed) {
-        popup.location.href = login_url;
-      } else {
-        // Popup was blocked — open in new tab as fallback
-        window.open(login_url, "_blank");
-      }
-
-      // Clear any stale localStorage entry before starting
-      try {
-        localStorage.removeItem("mcp_oauth_result");
-      } catch {}
-
-      // Listener 1: BroadcastChannel (works even when window.opener is null)
-      try {
-        const bc = new BroadcastChannel("mcp_oauth");
-        bc.onmessage = (event) => {
-          if (event.data?.type === "mcp_oauth_result") {
-            handleOAuthResult(event.data);
-          }
-        };
-        broadcastChannelRef.current = bc;
-      } catch (e) {
-        console.warn("BroadcastChannel not available:", e);
-      }
-
-      // Listener 2: window.postMessage (fallback)
-      const handleMessage = (event: MessageEvent) => {
-        if (event.origin !== window.location.origin) return;
-        if (event.data?.message_type === "mcp_oauth_result") {
-          handleOAuthResult(event.data);
-        }
-      };
-      messageHandlerRef.current = handleMessage;
-      window.addEventListener("message", handleMessage);
-
-      // Listener 3: localStorage (most reliable cross-tab fallback)
-      const handleStorage = (event: StorageEvent) => {
-        if (event.key === "mcp_oauth_result" && event.newValue) {
-          try {
-            const data = JSON.parse(event.newValue);
-            localStorage.removeItem("mcp_oauth_result");
-            handleOAuthResult(data);
-          } catch {}
-        }
-      };
-      storageHandlerRef.current = handleStorage;
-      window.addEventListener("storage", handleStorage);
-
-      // Fallback 1: Poll localStorage periodically.
-      // StorageEvent only fires in OTHER windows, and BroadcastChannel can fail
-      // in some cross-origin popup scenarios. Direct polling is the most reliable.
-      storagePollRef.current = setInterval(() => {
-        if (!oauthLoadingRef.current || oauthHandledRef.current) {
-          if (storagePollRef.current) clearInterval(storagePollRef.current);
-          return;
-        }
-        try {
-          const stored = localStorage.getItem("mcp_oauth_result");
-          if (stored) {
-            const data = JSON.parse(stored);
-            localStorage.removeItem("mcp_oauth_result");
-            handleOAuthResult(data);
-          }
-        } catch {}
-      }, 500);
-
-      // Fallback 2: detect popup close (gives up if popup closed without result)
-      const popupRef = popup;
-      popupCheckRef.current = setInterval(() => {
-        if (!oauthLoadingRef.current || oauthHandledRef.current) {
-          if (popupCheckRef.current) clearInterval(popupCheckRef.current);
-          return;
-        }
-        if (popupRef && popupRef.closed) {
-          // Grace period: wait one more poll cycle for localStorage to be set
-          setTimeout(() => {
-            if (oauthHandledRef.current) return;
-            try {
-              const stored = localStorage.getItem("mcp_oauth_result");
-              if (stored) {
-                const data = JSON.parse(stored);
-                localStorage.removeItem("mcp_oauth_result");
-                handleOAuthResult(data);
-                return;
-              }
-            } catch {}
-            // Popup closed without result — give up
-            if (popupCheckRef.current) clearInterval(popupCheckRef.current);
-          }, 1000);
-          if (popupCheckRef.current) clearInterval(popupCheckRef.current);
-        }
-      }, 500);
-
-      // Timeout
-      setTimeout(() => {
-        if (oauthLoadingRef.current) {
-          cleanupOAuthListeners();
-          setError("OAuth sign-in timed out. Please try again.");
-        }
-      }, OAUTH_TIMEOUT_MS);
-    } catch (e: any) {
-      if (popup && !popup.closed) popup.close();
-
-      // If server doesn't support OAuth → show manual token entry
-      if (e?.status === 400) {
-        setShowManualToken(true);
-        setError(
-          "This server does not support OAuth sign-in. Please enter a token manually.",
-        );
-      } else {
-        const message = e?.message || "Failed to initiate sign-in";
-        setError(
-          typeof message === "string" ? message : JSON.stringify(message),
-        );
-      }
-      cleanupOAuthListeners();
+    } finally {
+      setOauthLoading(false);
+      setLoading(false);
+      oauthAbortRef.current = null;
     }
-  }, [api, serverUrl, handleOAuthResult, cleanupOAuthListeners]);
+  }, [api, serverUrl, allProviders]);
+
+  // Auto-start OAuth sign-in when server returns 401/403
+  useEffect(() => {
+    if (authRequired && startOAuthRef.current) {
+      startOAuthRef.current = false;
+      handleOAuthSignIn();
+    }
+  }, [authRequired, handleOAuthSignIn]);
 
   const handleConfirm = useCallback(() => {
     if (!selectedTool) return;
@@ -403,7 +240,15 @@ export function MCPToolDialog({
       credentials,
     });
     reset();
-  }, [selectedTool, tools, serverUrl, credentials, onConfirm, reset]);
+  }, [
+    selectedTool,
+    tools,
+    serverUrl,
+    serverName,
+    credentials,
+    onConfirm,
+    reset,
+  ]);
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && handleClose()}>

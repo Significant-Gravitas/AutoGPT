@@ -137,7 +137,10 @@ class IntegrationCredentialsManager:
         self, user_id: str, credentials: OAuth2Credentials, lock: bool = True
     ) -> OAuth2Credentials:
         async with self._locked(user_id, credentials.id, "refresh"):
-            oauth_handler = await _get_provider_oauth_handler(credentials.provider)
+            if credentials.provider == str(ProviderName.MCP):
+                oauth_handler = _create_mcp_oauth_handler(credentials)
+            else:
+                oauth_handler = await _get_provider_oauth_handler(credentials.provider)
             if oauth_handler.needs_refresh(credentials):
                 logger.debug(
                     f"Refreshing '{credentials.provider}' "
@@ -235,4 +238,26 @@ async def _get_provider_oauth_handler(provider_name_str: str) -> "BaseOAuthHandl
         client_id=client_id,
         client_secret=client_secret,
         redirect_uri=f"{frontend_base_url}/auth/integrations/oauth_callback",
+    )
+
+
+def _create_mcp_oauth_handler(
+    credentials: OAuth2Credentials,
+) -> "BaseOAuthHandler":
+    """Create an MCPOAuthHandler from credential metadata for token refresh.
+
+    MCP OAuth handlers have dynamic endpoints discovered per-server, so they
+    can't be registered as singletons in HANDLERS_BY_NAME. Instead, the handler
+    is reconstructed from metadata stored on the credential during initial auth.
+    """
+    from backend.blocks.mcp.oauth import MCPOAuthHandler
+
+    meta = credentials.metadata or {}
+    return MCPOAuthHandler(
+        client_id=meta.get("mcp_client_id", ""),
+        client_secret=meta.get("mcp_client_secret", ""),
+        redirect_uri="",  # Not needed for token refresh
+        authorize_url="",  # Not needed for token refresh
+        token_url=meta.get("mcp_token_url", ""),
+        resource_url=meta.get("mcp_resource_url"),
     )

@@ -611,8 +611,10 @@ class CredentialsFieldInfo(BaseModel, Generic[CP, CT]):
                 # URL-based discrimination (e.g. HTTP host-scoped, MCP server URL):
                 # Each unique host gets its own credential entry.
                 provider_prefix = next(iter(field.provider))
+                # Use .value for enum types to get the plain string (e.g. "mcp" not "ProviderName.MCP")
+                prefix_str = getattr(provider_prefix, "value", str(provider_prefix))
                 providers = frozenset(
-                    [cast(CP, str(provider_prefix))]
+                    [cast(CP, prefix_str)]
                     + [
                         cast(CP, parse_url(str(value)).netloc)
                         for value in field.discriminator_values
