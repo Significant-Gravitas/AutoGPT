@@ -88,11 +88,14 @@ export function useCredentialsInput({
     }
   }, [credentials, onLoaded]);
 
-  // Unselect credential if not available
+  // Unselect credential if not available in the loaded credential list.
+  // Skip when no credentials have been loaded yet (empty list could mean
+  // the provider data hasn't finished loading, not that the credential is invalid).
   useEffect(() => {
     if (readOnly) return;
     if (!credentials || !("savedCredentials" in credentials)) return;
     const availableCreds = credentials.savedCredentials;
+    if (availableCreds.length === 0) return;
     if (
       selectedCredential &&
       !availableCreds.some((c) => c.id === selectedCredential.id)

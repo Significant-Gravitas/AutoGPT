@@ -108,6 +108,7 @@ class TestDiscoverTools:
             patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
         ):
             mock_cm.store.get_creds_by_provider = AsyncMock(return_value=[stored_cred])
+            mock_cm.refresh_if_needed = AsyncMock(return_value=stored_cred)
             instance = MockClient.return_value
             instance.initialize = AsyncMock(
                 return_value={"serverInfo": {}, "protocolVersion": "2025-03-26"}
