@@ -275,6 +275,7 @@ async def execute_node(
             isinstance(field_value, dict) and not field_value.get("id")
         ):
             continue  # No credentials configured — block runs without
+
         credentials_meta = input_type(**field_value)
         credentials, lock = await creds_manager.acquire(user_id, credentials_meta.id)
         creds_locks.append(lock)

@@ -29,6 +29,7 @@ from pydantic import (
     GetCoreSchemaHandler,
     SecretStr,
     field_serializer,
+    model_validator,
 )
 from pydantic_core import (
     CoreSchema,
@@ -498,6 +499,25 @@ class CredentialsMetaInput(BaseModel, Generic[CP, CT]):
     title: Optional[str] = None
     provider: CP
     type: CT
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_legacy_provider(cls, data: Any) -> Any:
+        """Fix ``ProviderName.X`` format from Python 3.13 ``str(Enum)`` bug.
+
+        Python 3.13 changed ``str(StrEnum)`` to return ``"ClassName.MEMBER"``
+        instead of the plain value.  Old stored credential references may have
+        ``provider: "ProviderName.MCP"`` instead of ``"mcp"``.
+        """
+        if isinstance(data, dict):
+            prov = data.get("provider", "")
+            if isinstance(prov, str) and prov.startswith("ProviderName."):
+                member = prov.removeprefix("ProviderName.")
+                try:
+                    data = {**data, "provider": ProviderName[member].value}
+                except KeyError:
+                    pass
+        return data
 
     @classmethod
     def allowed_providers(cls) -> tuple[ProviderName, ...] | None:

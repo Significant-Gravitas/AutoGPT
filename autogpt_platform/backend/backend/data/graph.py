@@ -578,8 +578,17 @@ class GraphModel(Graph, GraphMeta):
 
         for graph in [self] + self.sub_graphs:
             for node in graph.nodes:
-                # Track if this node requires credentials (credentials_optional=False means required)
-                node_required_map[node.id] = not node.credentials_optional
+                # A node's credentials are optional if either:
+                # 1. The node metadata says so (credentials_optional=True), or
+                # 2. All credential fields on the block have defaults (not required by schema)
+                block_required = node.block.input_schema.get_required_fields()
+                creds_required_by_schema = any(
+                    fname in block_required
+                    for fname in node.block.input_schema.get_credentials_fields()
+                )
+                node_required_map[node.id] = (
+                    not node.credentials_optional and creds_required_by_schema
+                )
 
                 for (
                     field_name,
