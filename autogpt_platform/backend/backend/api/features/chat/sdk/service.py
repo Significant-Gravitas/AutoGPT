@@ -142,8 +142,8 @@ async def _build_system_prompt(
 def _format_conversation_history(session: ChatSession) -> str:
     """Format conversation history as a prompt context.
 
-    The SDK handles context compaction automatically, but we apply
-    max_context_messages as a safety guard to limit initial prompt size.
+    Passes full history to the SDK — the SDK handles context compaction
+    automatically when the context window approaches its limit.
     """
     if not session.messages:
         return ""
@@ -153,19 +153,12 @@ def _format_conversation_history(session: ChatSession) -> str:
     if not messages:
         return ""
 
-    # Apply max_context_messages limit as a safety guard
-    # (SDK handles compaction, but this prevents excessively large initial prompts)
-    max_messages = config.max_context_messages
-    if len(messages) > max_messages:
-        messages = messages[-max_messages:]
-
     history_parts = ["<conversation_history>"]
 
     for msg in messages:
         if msg.role == "user":
             history_parts.append(f"User: {msg.content or ''}")
         elif msg.role == "assistant":
-            # Pass full content - SDK handles compaction automatically
             history_parts.append(f"Assistant: {msg.content or ''}")
             if msg.tool_calls:
                 for tc in msg.tool_calls:
@@ -174,11 +167,7 @@ def _format_conversation_history(session: ChatSession) -> str:
                         f"  [Called tool: {func.get('name', 'unknown')}]"
                     )
         elif msg.role == "tool":
-            # Truncate large tool results to avoid blowing context window
-            tool_content = msg.content or ""
-            if len(tool_content) > 500:
-                tool_content = tool_content[:500] + "... (truncated)"
-            history_parts.append(f"  [Tool result: {tool_content}]")
+            history_parts.append(f"  [Tool result: {msg.content or ''}]")
 
     history_parts.append("</conversation_history>")
     history_parts.append("")
@@ -332,6 +321,11 @@ async def stream_chat_completion_sdk(
                     prompt = f"{history_context}{current_message}"
                 else:
                     prompt = current_message
+
+                logger.info(
+                    f"[SDK] Prompt built: {len(prompt)} chars, "
+                    f"{len(session.messages)} messages in session"
+                )
 
                 # Guard against empty prompts
                 if not prompt.strip():

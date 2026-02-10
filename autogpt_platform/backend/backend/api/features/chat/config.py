@@ -27,13 +27,13 @@ class ChatConfig(BaseSettings):
     session_ttl: int = Field(default=43200, description="Session TTL in seconds")
 
     # Streaming Configuration
-    # Note: When using Claude Agent SDK, context management is handled automatically
-    # via the SDK's built-in compaction. This is mainly used for the fallback path.
+    # Only used by the non-SDK fallback path (Anthropic direct).
+    # The SDK path passes full history and relies on SDK's built-in compaction.
     max_context_messages: int = Field(
         default=100,
         ge=1,
         le=500,
-        description="Max context messages (SDK handles compaction automatically)",
+        description="Max context messages for non-SDK fallback path only",
     )
 
     stream_timeout: int = Field(default=300, description="Stream timeout in seconds")
