@@ -1,13 +1,11 @@
 """
 Conftest for MCP block tests.
 
-Override the session-scoped server and graph_cleanup fixtures from
-backend/conftest.py so that MCP integration tests don't spin up the
-full SpinTestServer infrastructure.
+Registers the e2e marker and --run-e2e CLI option so MCP end-to-end tests
+(which hit real external servers) can be gated behind a flag.
 """
 
 import pytest
-import pytest_asyncio
 
 
 def pytest_configure(config: pytest.Config) -> None:
@@ -29,15 +27,3 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     parser.addoption(
         "--run-e2e", action="store_true", default=False, help="run e2e tests"
     )
-
-
-@pytest_asyncio.fixture(scope="session", loop_scope="session")
-async def server():
-    """No-op override — MCP tests don't need the full platform server."""
-    yield None
-
-
-@pytest_asyncio.fixture(scope="session", loop_scope="session", autouse=True)
-async def graph_cleanup(server):
-    """No-op override — MCP tests don't create graphs."""
-    yield
