@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import uuid
 from collections.abc import AsyncGenerator
 from typing import Any
@@ -43,6 +44,14 @@ config = ChatConfig()
 
 # Set to hold background tasks to prevent garbage collection
 _background_tasks: set[asyncio.Task[Any]] = set()
+
+
+def _sanitize_session_id(session_id: str) -> str:
+    """Sanitize session_id to prevent path traversal and injection.
+
+    Only allows alphanumeric characters and hyphens, stripping everything else.
+    """
+    return re.sub(r"[^A-Za-z0-9-]", "", session_id)
 
 
 def _cleanup_sdk_tool_results(cwd: str) -> None:
@@ -239,7 +248,7 @@ async def stream_chat_completion_sdk(
     stream_completed = False
     # Use a session-specific temp dir to avoid cleanup race conditions
     # between concurrent sessions. Sanitize session_id to prevent path traversal.
-    safe_session_id = "".join(c for c in session_id if c.isalnum() or c == "-")
+    safe_session_id = _sanitize_session_id(session_id)
     sdk_cwd = f"/tmp/copilot-{safe_session_id}"
     os.makedirs(sdk_cwd, exist_ok=True)
 
