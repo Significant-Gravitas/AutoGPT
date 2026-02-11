@@ -10,7 +10,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from backend.util.json import dumps
+from backend.util.json import dumps as json_dumps
 
 
 class ResponseType(str, Enum):
@@ -205,7 +205,7 @@ class StreamError(StreamBaseResponse):
             "type": self.type.value,
             "errorText": self.errorText,
         }
-        return f"data: {dumps(data)}\n\n"
+        return f"data: {json_dumps(data)}\n\n"
 
 
 class StreamHeartbeat(StreamBaseResponse):
