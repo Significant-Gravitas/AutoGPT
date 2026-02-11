@@ -94,6 +94,9 @@
       "request": "launch",
       "program": "${workspaceFolder}/backend/test/e2e_test_data.py",
       "cwd": "${workspaceFolder}/backend",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/backend"
+      },
       "console": "integratedTerminal"
     }
   ],

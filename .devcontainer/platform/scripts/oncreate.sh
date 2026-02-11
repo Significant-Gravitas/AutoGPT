@@ -94,7 +94,10 @@ pnpm install --frozen-lockfile
 cd ..
 
 # =============================================================================
-# Pull Dependency Docker Images ONLY
+# Pull Dependency Docker Images
+# =============================================================================
+# Use docker compose pull to get exact versions from compose files
+# (single source of truth, no version drift)
 # =============================================================================
 echo "🐳 Pulling dependency Docker images..."
 
@@ -105,16 +108,8 @@ fi
 
 # Check if Docker is available
 if command -v docker &> /dev/null && docker info &> /dev/null; then
-    # Pull dependency images in parallel
-    docker pull supabase/gotrue:v2.170.0 &
-    docker pull supabase/studio:20250224-d10db0f &
-    docker pull kong:2.8.1 &
-    docker pull supabase/postgres:15.8.1.060 &
-    docker pull redis:latest &
-    docker pull rabbitmq:management &
-    
-    # Wait for all pulls to complete
-    wait
+    # Pull images defined in docker-compose.yml (single source of truth)
+    docker compose pull db redis rabbitmq kong auth || echo "⚠️ Some images may not have pulled"
     echo "✅ Dependency images pulled"
 else
     echo "⚠️ Docker not available during prebuild, images will be pulled on first start"

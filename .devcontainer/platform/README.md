@@ -118,7 +118,7 @@ Press `Ctrl+Shift+P` → "Tasks: Run Task":
 
 ## 📁 Project Structure
 
-```
+```text
 autogpt_platform/           # This folder
 ├── .devcontainer/          # Codespaces/devcontainer config
 ├── .vscode/                # VS Code settings

@@ -15,7 +15,7 @@
     },
     "ghcr.io/devcontainers/features/github-cli:1": {},
     "ghcr.io/devcontainers/features/node:1": {
-      "version": "21",
+      "version": "22",
       "nodeGypDependencies": true
     },
     "ghcr.io/devcontainers/features/python:1": {

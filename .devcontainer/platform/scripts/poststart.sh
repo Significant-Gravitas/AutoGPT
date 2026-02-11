@@ -13,7 +13,7 @@
 
 echo "🔄 Starting dependency services..."
 
-cd /workspaces/AutoGPT/autogpt_platform
+cd /workspaces/AutoGPT/autogpt_platform || { echo "❌ Failed to cd to workspace"; exit 1; }
 
 # Ensure Docker socket is available
 if [ -e /var/run/docker-host.sock ]; then
