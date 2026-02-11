@@ -11,12 +11,12 @@ from fastapi import FastAPI, HTTPException, Request, Security
 from fastapi.testclient import TestClient
 from pytest_mock import MockerFixture
 
-from autogpt_libs.auth.dependencies import (
+from backend.api.auth.dependencies import (
     get_user_id,
     requires_admin_user,
     requires_user,
 )
-from autogpt_libs.auth.models import User
+from backend.api.auth.models import User
 
 
 class TestAuthDependencies:
@@ -53,7 +53,7 @@ class TestAuthDependencies:
 
         # Mock get_jwt_payload to return our test payload
         mocker.patch(
-            "autogpt_libs.auth.dependencies.get_jwt_payload", return_value=jwt_payload
+            "backend.api.auth.dependencies.get_jwt_payload", return_value=jwt_payload
         )
         user = await requires_user(jwt_payload)
         assert isinstance(user, User)
@@ -70,7 +70,7 @@ class TestAuthDependencies:
         }
 
         mocker.patch(
-            "autogpt_libs.auth.dependencies.get_jwt_payload", return_value=jwt_payload
+            "backend.api.auth.dependencies.get_jwt_payload", return_value=jwt_payload
         )
         user = await requires_user(jwt_payload)
         assert user.user_id == "admin-456"
@@ -105,7 +105,7 @@ class TestAuthDependencies:
         }
 
         mocker.patch(
-            "autogpt_libs.auth.dependencies.get_jwt_payload", return_value=jwt_payload
+            "backend.api.auth.dependencies.get_jwt_payload", return_value=jwt_payload
         )
         user = await requires_admin_user(jwt_payload)
         assert user.user_id == "admin-789"
@@ -137,7 +137,7 @@ class TestAuthDependencies:
         jwt_payload = {"sub": "user-id-xyz", "role": "user"}
 
         mocker.patch(
-            "autogpt_libs.auth.dependencies.get_jwt_payload", return_value=jwt_payload
+            "backend.api.auth.dependencies.get_jwt_payload", return_value=jwt_payload
         )
         user_id = await get_user_id(request, jwt_payload)
         assert user_id == "user-id-xyz"
@@ -344,7 +344,7 @@ class TestAuthDependenciesEdgeCases:
     ):
         """Test that errors propagate correctly through dependencies."""
         # Import verify_user to test it directly since dependencies use FastAPI Security
-        from autogpt_libs.auth.jwt_utils import verify_user
+        from backend.api.auth.jwt_utils import verify_user
 
         with pytest.raises(HTTPException) as exc_info:
             verify_user(payload, admin_only=admin_only)
@@ -354,7 +354,7 @@ class TestAuthDependenciesEdgeCases:
     async def test_dependency_valid_user(self):
         """Test valid user case for dependency."""
         # Import verify_user to test it directly since dependencies use FastAPI Security
-        from autogpt_libs.auth.jwt_utils import verify_user
+        from backend.api.auth.jwt_utils import verify_user
 
         # Valid case
         user = verify_user({"sub": "user", "role": "user"}, admin_only=False)
@@ -376,16 +376,16 @@ class TestAdminImpersonation:
         }
 
         # Mock verify_user to return admin user data
-        mock_verify_user = mocker.patch("autogpt_libs.auth.dependencies.verify_user")
+        mock_verify_user = mocker.patch("backend.api.auth.dependencies.verify_user")
         mock_verify_user.return_value = Mock(
             user_id="admin-456", email="admin@example.com", role="admin"
         )
 
         # Mock logger to verify audit logging
-        mock_logger = mocker.patch("autogpt_libs.auth.dependencies.logger")
+        mock_logger = mocker.patch("backend.api.auth.dependencies.logger")
 
         mocker.patch(
-            "autogpt_libs.auth.dependencies.get_jwt_payload", return_value=jwt_payload
+            "backend.api.auth.dependencies.get_jwt_payload", return_value=jwt_payload
         )
 
         user_id = await get_user_id(request, jwt_payload)
@@ -412,13 +412,13 @@ class TestAdminImpersonation:
         }
 
         # Mock verify_user to return regular user data
-        mock_verify_user = mocker.patch("autogpt_libs.auth.dependencies.verify_user")
+        mock_verify_user = mocker.patch("backend.api.auth.dependencies.verify_user")
         mock_verify_user.return_value = Mock(
             user_id="regular-user", email="user@example.com", role="user"
         )
 
         mocker.patch(
-            "autogpt_libs.auth.dependencies.get_jwt_payload", return_value=jwt_payload
+            "backend.api.auth.dependencies.get_jwt_payload", return_value=jwt_payload
         )
 
         with pytest.raises(HTTPException) as exc_info:
@@ -439,7 +439,7 @@ class TestAdminImpersonation:
         }
 
         mocker.patch(
-            "autogpt_libs.auth.dependencies.get_jwt_payload", return_value=jwt_payload
+            "backend.api.auth.dependencies.get_jwt_payload", return_value=jwt_payload
         )
 
         user_id = await get_user_id(request, jwt_payload)
@@ -459,7 +459,7 @@ class TestAdminImpersonation:
         }
 
         mocker.patch(
-            "autogpt_libs.auth.dependencies.get_jwt_payload", return_value=jwt_payload
+            "backend.api.auth.dependencies.get_jwt_payload", return_value=jwt_payload
         )
 
         user_id = await get_user_id(request, jwt_payload)
@@ -479,16 +479,16 @@ class TestAdminImpersonation:
         }
 
         # Mock verify_user to return admin user data
-        mock_verify_user = mocker.patch("autogpt_libs.auth.dependencies.verify_user")
+        mock_verify_user = mocker.patch("backend.api.auth.dependencies.verify_user")
         mock_verify_user.return_value = Mock(
             user_id="admin-999", email="superadmin@company.com", role="admin"
         )
 
         # Mock logger to capture audit trail
-        mock_logger = mocker.patch("autogpt_libs.auth.dependencies.logger")
+        mock_logger = mocker.patch("backend.api.auth.dependencies.logger")
 
         mocker.patch(
-            "autogpt_libs.auth.dependencies.get_jwt_payload", return_value=jwt_payload
+            "backend.api.auth.dependencies.get_jwt_payload", return_value=jwt_payload
         )
 
         user_id = await get_user_id(request, jwt_payload)
@@ -515,7 +515,7 @@ class TestAdminImpersonation:
         }
 
         mocker.patch(
-            "autogpt_libs.auth.dependencies.get_jwt_payload", return_value=jwt_payload
+            "backend.api.auth.dependencies.get_jwt_payload", return_value=jwt_payload
         )
 
         user_id = await get_user_id(request, jwt_payload)
@@ -535,16 +535,16 @@ class TestAdminImpersonation:
         }
 
         # Mock verify_user to return admin user data
-        mock_verify_user = mocker.patch("autogpt_libs.auth.dependencies.verify_user")
+        mock_verify_user = mocker.patch("backend.api.auth.dependencies.verify_user")
         mock_verify_user.return_value = Mock(
             user_id="admin-456", email="admin@example.com", role="admin"
         )
 
         # Mock logger
-        mock_logger = mocker.patch("autogpt_libs.auth.dependencies.logger")
+        mock_logger = mocker.patch("backend.api.auth.dependencies.logger")
 
         mocker.patch(
-            "autogpt_libs.auth.dependencies.get_jwt_payload", return_value=jwt_payload
+            "backend.api.auth.dependencies.get_jwt_payload", return_value=jwt_payload
         )
 
         user_id = await get_user_id(request, jwt_payload)

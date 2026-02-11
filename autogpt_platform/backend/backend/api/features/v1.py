@@ -9,8 +9,8 @@ from typing import Annotated, Any, Sequence, get_args
 
 import pydantic
 import stripe
-from autogpt_libs.auth import get_user_id, requires_user
-from autogpt_libs.auth.jwt_utils import get_jwt_payload
+from backend.api.auth import get_user_id, requires_user
+from backend.api.auth.jwt_utils import get_jwt_payload
 from fastapi import (
     APIRouter,
     Body,

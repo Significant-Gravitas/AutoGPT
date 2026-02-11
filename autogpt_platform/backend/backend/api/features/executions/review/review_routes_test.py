@@ -25,7 +25,7 @@ FIXED_NOW = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=datetime.timezone.utc)
 @pytest_asyncio.fixture(loop_scope="session")
 async def client(server, mock_jwt_user) -> AsyncGenerator[httpx.AsyncClient, None]:
     """Create async HTTP client with auth overrides"""
-    from autogpt_libs.auth.jwt_utils import get_jwt_payload
+    from backend.api.auth.jwt_utils import get_jwt_payload
 
     # Override get_jwt_payload dependency to return our test user
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]

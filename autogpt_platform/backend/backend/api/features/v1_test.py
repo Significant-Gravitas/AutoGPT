@@ -25,7 +25,7 @@ client = fastapi.testclient.TestClient(app)
 @pytest.fixture(autouse=True)
 def setup_app_auth(mock_jwt_user, setup_test_user):
     """Setup auth overrides for all tests in this module"""
-    from autogpt_libs.auth.jwt_utils import get_jwt_payload
+    from backend.api.auth.jwt_utils import get_jwt_payload
 
     # setup_test_user fixture already executed and user is created in database
     # It returns the user_id which we don't need to await

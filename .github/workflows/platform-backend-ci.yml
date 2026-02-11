@@ -6,13 +6,11 @@ on:
     paths:
       - ".github/workflows/platform-backend-ci.yml"
       - "autogpt_platform/backend/**"
-      - "autogpt_platform/autogpt_libs/**"
   pull_request:
     branches: [master, dev, release-*]
     paths:
       - ".github/workflows/platform-backend-ci.yml"
       - "autogpt_platform/backend/**"
-      - "autogpt_platform/autogpt_libs/**"
   merge_group:
 
 concurrency:

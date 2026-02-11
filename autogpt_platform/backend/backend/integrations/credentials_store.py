@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from autogpt_libs.utils.synchronize import AsyncRedisKeyedMutex
+from backend.util.synchronize import AsyncRedisKeyedMutex
 from pydantic import SecretStr
 
 from backend.data.db import prisma

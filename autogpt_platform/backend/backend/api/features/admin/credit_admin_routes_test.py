@@ -6,7 +6,7 @@ import fastapi.testclient
 import prisma.enums
 import pytest
 import pytest_mock
-from autogpt_libs.auth.jwt_utils import get_jwt_payload
+from backend.api.auth.jwt_utils import get_jwt_payload
 from pytest_snapshot.plugin import Snapshot
 
 from backend.data.model import UserTransaction

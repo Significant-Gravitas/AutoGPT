@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from typing import Optional, cast
 from urllib.parse import quote_plus
 
-from autogpt_libs.auth.models import DEFAULT_USER_ID
+from backend.api.auth.models import DEFAULT_USER_ID
 from fastapi import HTTPException
 from prisma.enums import NotificationType
 from prisma.models import User as PrismaUser

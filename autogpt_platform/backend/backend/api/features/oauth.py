@@ -21,7 +21,7 @@ from datetime import datetime
 from typing import Literal, Optional
 from urllib.parse import urlencode
 
-from autogpt_libs.auth import get_user_id
+from backend.api.auth import get_user_id
 from fastapi import APIRouter, Body, HTTPException, Security, UploadFile, status
 from gcloud.aio import storage as async_storage
 from PIL import Image

@@ -1,7 +1,7 @@
 import logging
 import typing
 
-from autogpt_libs.auth import get_user_id, requires_admin_user
+from backend.api.auth import get_user_id, requires_admin_user
 from fastapi import APIRouter, Body, Security
 from prisma.enums import CreditTransactionType
 

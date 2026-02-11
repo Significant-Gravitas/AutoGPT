@@ -8,7 +8,7 @@ AutoGPT Platform is a monorepo containing:
 
 - **Backend** (`backend`): Python FastAPI server with async support
 - **Frontend** (`frontend`): Next.js React application
-- **Shared Libraries** (`autogpt_libs`): Common Python utilities
+- **Shared Libraries** (`backend/api/auth`, `backend/logging`): Auth, logging, and common utilities integrated into backend
 
 ## Component Documentation
 

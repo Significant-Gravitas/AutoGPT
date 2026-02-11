@@ -22,7 +22,7 @@ from datetime import datetime
 
 import prisma.enums
 import pytest
-from autogpt_libs.api_key.keysmith import APIKeySmith
+from backend.api.auth.api_key.keysmith import APIKeySmith
 from faker import Faker
 from prisma import Json, Prisma
 from prisma.types import (

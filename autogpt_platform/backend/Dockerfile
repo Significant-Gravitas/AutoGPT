@@ -39,8 +39,7 @@ ENV PATH=/opt/poetry/bin:$PATH
 
 RUN pip3 install poetry --break-system-packages
 
-# Copy and install dependencies
-COPY autogpt_platform/autogpt_libs /app/autogpt_platform/autogpt_libs
+# Copy and install dependencies (autogpt_libs merged into backend - OPEN-2998)
 COPY autogpt_platform/backend/poetry.lock autogpt_platform/backend/pyproject.toml /app/autogpt_platform/backend/
 WORKDIR /app/autogpt_platform/backend
 RUN poetry install --no-ansi --no-root
@@ -83,10 +82,8 @@ COPY --from=builder /root/.cache/prisma-python/binaries /root/.cache/prisma-pyth
 
 ENV PATH="/app/autogpt_platform/backend/.venv/bin:$PATH"
 
-RUN mkdir -p /app/autogpt_platform/autogpt_libs
+# autogpt_libs merged into backend (OPEN-2998)
 RUN mkdir -p /app/autogpt_platform/backend
-
-COPY autogpt_platform/autogpt_libs /app/autogpt_platform/autogpt_libs
 
 COPY autogpt_platform/backend/poetry.lock autogpt_platform/backend/pyproject.toml /app/autogpt_platform/backend/
 

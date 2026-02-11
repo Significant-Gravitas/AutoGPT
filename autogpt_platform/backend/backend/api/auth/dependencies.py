@@ -43,7 +43,7 @@ def get_optional_user_id(
 
     try:
         # Parse JWT token to get user ID
-        from autogpt_libs.auth.jwt_utils import parse_jwt_token
+        from backend.api.auth.jwt_utils import parse_jwt_token
 
         payload = parse_jwt_token(credentials.credentials)
         return payload.get("sub")

@@ -1,6 +1,6 @@
 from typing import Literal, Optional
 
-import autogpt_libs.auth as autogpt_auth_lib
+import backend.api.auth as autogpt_auth_lib
 from fastapi import APIRouter, Body, HTTPException, Query, Security, status
 from fastapi.responses import Response
 from prisma.enums import OnboardingStep

@@ -8,7 +8,7 @@ from typing import Annotated
 from urllib.parse import quote
 
 import fastapi
-from autogpt_libs.auth.dependencies import get_user_id, requires_user
+from backend.api.auth.dependencies import get_user_id, requires_user
 from fastapi.responses import Response
 
 from backend.data.workspace import get_workspace, get_workspace_file

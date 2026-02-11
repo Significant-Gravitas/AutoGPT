@@ -9,8 +9,8 @@ import fastapi.responses
 import pydantic
 import starlette.middleware.cors
 import uvicorn
-from autogpt_libs.auth import add_auth_responses_to_openapi
-from autogpt_libs.auth import verify_settings as verify_auth_settings
+from backend.api.auth import add_auth_responses_to_openapi
+from backend.api.auth import verify_settings as verify_auth_settings
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.routing import APIRoute
@@ -69,7 +69,7 @@ from .utils.openapi import sort_openapi
 settings = backend.util.settings.Settings()
 logger = logging.getLogger(__name__)
 
-logging.getLogger("autogpt_libs").setLevel(logging.INFO)
+logging.getLogger("backend.api.auth").setLevel(logging.INFO)
 
 
 @contextlib.contextmanager

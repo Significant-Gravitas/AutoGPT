@@ -5,7 +5,7 @@ import time
 import uuid
 from typing import Sequence, cast
 
-from autogpt_libs.auth import get_user_id
+from backend.api.auth import get_user_id
 
 from backend.api.rest_api import AgentServer
 from backend.data import db

@@ -16,7 +16,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Literal, Optional
 
-from autogpt_libs.api_key.keysmith import APIKeySmith
+from backend.api.auth.api_key.keysmith import APIKeySmith
 from prisma.enums import APIKeyPermission as APIPermission
 from prisma.models import OAuthAccessToken as PrismaOAuthAccessToken
 from prisma.models import OAuthApplication as PrismaOAuthApplication

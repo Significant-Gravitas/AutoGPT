@@ -132,7 +132,7 @@ def test_endpoint_success(snapshot: Snapshot):
 
 ### Testing with Authentication
 
-For the main API routes that use JWT authentication, auth is provided by the `autogpt_libs.auth` module. If the test actually uses the `user_id`, the recommended approach for testing is to mock the `get_jwt_payload` function, which underpins all higher-level auth functions used in the API (`requires_user`, `requires_admin_user`, `get_user_id`).
+For the main API routes that use JWT authentication, auth is provided by the `backend.api.auth` module. If the test actually uses the `user_id`, the recommended approach for testing is to mock the `get_jwt_payload` function, which underpins all higher-level auth functions used in the API (`requires_user`, `requires_admin_user`, `get_user_id`).
 
 If the test doesn't need the `user_id` specifically, mocking is not necessary as during tests auth is disabled anyway (see `conftest.py`).
 
@@ -158,7 +158,7 @@ client = fastapi.testclient.TestClient(app)
 @pytest.fixture(autouse=True)
 def setup_app_auth(mock_jwt_user):
     """Setup auth overrides for all tests in this module"""
-    from autogpt_libs.auth.jwt_utils import get_jwt_payload
+    from backend.api.auth.jwt_utils import get_jwt_payload
 
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user['get_jwt_payload']
     yield
@@ -171,7 +171,7 @@ For admin-only endpoints, use `mock_jwt_admin` instead:
 @pytest.fixture(autouse=True)
 def setup_app_auth(mock_jwt_admin):
     """Setup auth overrides for admin tests"""
-    from autogpt_libs.auth.jwt_utils import get_jwt_payload
+    from backend.api.auth.jwt_utils import get_jwt_payload
 
     app.dependency_overrides[get_jwt_payload] = mock_jwt_admin['get_jwt_payload']
     yield

@@ -8,8 +8,8 @@ from unittest import mock
 from fastapi import FastAPI
 from fastapi.openapi.utils import get_openapi
 
-from autogpt_libs.auth.helpers import add_auth_responses_to_openapi
-from autogpt_libs.auth.jwt_utils import bearer_jwt_auth
+from backend.api.auth.helpers import add_auth_responses_to_openapi
+from backend.api.auth.jwt_utils import bearer_jwt_auth
 
 
 def test_add_auth_responses_to_openapi_basic():
@@ -19,7 +19,7 @@ def test_add_auth_responses_to_openapi_basic():
     # Add some test endpoints with authentication
     from fastapi import Depends
 
-    from autogpt_libs.auth.dependencies import requires_user
+    from backend.api.auth.dependencies import requires_user
 
     @app.get("/protected", dependencies=[Depends(requires_user)])
     def protected_endpoint():
@@ -64,7 +64,7 @@ def test_add_auth_responses_to_openapi_with_security():
     # Mock endpoint with security
     from fastapi import Security
 
-    from autogpt_libs.auth.dependencies import get_user_id
+    from backend.api.auth.dependencies import get_user_id
 
     @app.get("/secured")
     def secured_endpoint(user_id: str = Security(get_user_id)):
@@ -130,7 +130,7 @@ def test_add_auth_responses_to_openapi_existing_responses():
 
     from fastapi import Security
 
-    from autogpt_libs.auth.jwt_utils import get_jwt_payload
+    from backend.api.auth.jwt_utils import get_jwt_payload
 
     @app.get(
         "/with-responses",
@@ -197,8 +197,8 @@ def test_add_auth_responses_to_openapi_multiple_security_schemes():
 
     from fastapi import Security
 
-    from autogpt_libs.auth.dependencies import requires_admin_user, requires_user
-    from autogpt_libs.auth.models import User
+    from backend.api.auth.dependencies import requires_admin_user, requires_user
+    from backend.api.auth.models import User
 
     @app.get("/multi-auth")
     def multi_auth(
@@ -237,7 +237,7 @@ def test_add_auth_responses_to_openapi_empty_components():
             del schema["components"]
         return schema
 
-    with mock.patch("autogpt_libs.auth.helpers.get_openapi", mock_get_openapi):
+    with mock.patch("backend.api.auth.helpers.get_openapi", mock_get_openapi):
         # Apply customization
         add_auth_responses_to_openapi(app)
 
@@ -255,7 +255,7 @@ def test_add_auth_responses_to_openapi_all_http_methods():
 
     from fastapi import Security
 
-    from autogpt_libs.auth.jwt_utils import get_jwt_payload
+    from backend.api.auth.jwt_utils import get_jwt_payload
 
     @app.get("/resource")
     def get_resource(jwt: dict = Security(get_jwt_payload)):
@@ -335,7 +335,7 @@ def test_endpoint_without_responses_section():
     from fastapi import Security
     from fastapi.openapi.utils import get_openapi as original_get_openapi
 
-    from autogpt_libs.auth.jwt_utils import get_jwt_payload
+    from backend.api.auth.jwt_utils import get_jwt_payload
 
     # Create endpoint
     @app.get("/no-responses")
@@ -353,7 +353,7 @@ def test_endpoint_without_responses_section():
                     del schema["paths"]["/no-responses"]["get"]["responses"]
         return schema
 
-    with mock.patch("autogpt_libs.auth.helpers.get_openapi", mock_get_openapi):
+    with mock.patch("backend.api.auth.helpers.get_openapi", mock_get_openapi):
         # Apply customization
         add_auth_responses_to_openapi(app)
 
@@ -388,7 +388,7 @@ def test_components_with_existing_responses():
         }
         return schema
 
-    with mock.patch("autogpt_libs.auth.helpers.get_openapi", mock_get_openapi):
+    with mock.patch("backend.api.auth.helpers.get_openapi", mock_get_openapi):
         # Apply customization
         add_auth_responses_to_openapi(app)
 
@@ -411,7 +411,7 @@ def test_openapi_schema_persistence():
 
     from fastapi import Security
 
-    from autogpt_libs.auth.jwt_utils import get_jwt_payload
+    from backend.api.auth.jwt_utils import get_jwt_payload
 
     @app.get("/test")
     def test_endpoint(jwt: dict = Security(get_jwt_payload)):

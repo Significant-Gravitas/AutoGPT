@@ -3,7 +3,7 @@ import logging
 from datetime import datetime
 from typing import Optional
 
-from autogpt_libs.auth import get_user_id, requires_admin_user
+from backend.api.auth import get_user_id, requires_admin_user
 from fastapi import APIRouter, HTTPException, Security
 from pydantic import BaseModel, Field
 

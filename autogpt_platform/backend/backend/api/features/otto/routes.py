@@ -1,6 +1,6 @@
 import logging
 
-from autogpt_libs.auth import get_user_id, requires_user
+from backend.api.auth import get_user_id, requires_user
 from fastapi import APIRouter, HTTPException, Security
 
 from .models import ApiResponse, ChatRequest

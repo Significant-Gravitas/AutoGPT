@@ -5,7 +5,7 @@ from functools import wraps
 from typing import Any, Awaitable, Callable, TypeVar
 
 import ldclient
-from autogpt_libs.auth.dependencies import get_optional_user_id
+from backend.api.auth.dependencies import get_optional_user_id
 from fastapi import HTTPException, Security
 from ldclient import Context, LDClient
 from ldclient.config import Config
