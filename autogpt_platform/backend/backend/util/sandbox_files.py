@@ -148,9 +148,7 @@ async def extract_sandbox_files(
                 continue
 
             # Check if it's a text file
-            is_text = any(
-                file_path.endswith(ext) for ext in TEXT_EXTENSIONS
-            ) or file_path.endswith("Dockerfile")
+            is_text = any(file_path.endswith(ext) for ext in TEXT_EXTENSIONS)
 
             # Skip non-text files if text_only mode
             if text_only and not is_text:
