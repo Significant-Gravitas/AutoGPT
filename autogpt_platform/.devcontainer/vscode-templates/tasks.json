@@ -1,0 +1,147 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Start All Services",
+      "type": "shell",
+      "command": "docker compose up -d",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "group": "build"
+    },
+    {
+      "label": "Stop All Services",
+      "type": "shell",
+      "command": "docker compose stop",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Start Core Services",
+      "type": "shell",
+      "command": "make start-core",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "group": "build"
+    },
+    {
+      "label": "Run Backend (Dev Mode)",
+      "type": "shell",
+      "command": "poetry run app",
+      "options": {
+        "cwd": "${workspaceFolder}/backend"
+      },
+      "problemMatcher": [],
+      "isBackground": true,
+      "group": {
+        "kind": "build",
+        "isDefault": false
+      }
+    },
+    {
+      "label": "Run Frontend (Dev Mode)",
+      "type": "shell",
+      "command": "pnpm dev",
+      "options": {
+        "cwd": "${workspaceFolder}/frontend"
+      },
+      "problemMatcher": [],
+      "isBackground": true,
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
+    },
+    {
+      "label": "Run Migrations",
+      "type": "shell",
+      "command": "make migrate",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Seed Test Data",
+      "type": "shell",
+      "command": "make test-data",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Format Code",
+      "type": "shell",
+      "command": "make format",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Backend: Run Tests",
+      "type": "shell",
+      "command": "poetry run test",
+      "options": {
+        "cwd": "${workspaceFolder}/backend"
+      },
+      "problemMatcher": [],
+      "group": "test"
+    },
+    {
+      "label": "Frontend: Run Tests",
+      "type": "shell",
+      "command": "pnpm test",
+      "options": {
+        "cwd": "${workspaceFolder}/frontend"
+      },
+      "problemMatcher": [],
+      "group": "test"
+    },
+    {
+      "label": "Frontend: Run E2E Tests",
+      "type": "shell",
+      "command": "pnpm test:e2e",
+      "options": {
+        "cwd": "${workspaceFolder}/frontend"
+      },
+      "problemMatcher": [],
+      "group": "test"
+    },
+    {
+      "label": "Generate API Client",
+      "type": "shell",
+      "command": "pnpm generate:api",
+      "options": {
+        "cwd": "${workspaceFolder}/frontend"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "View Docker Logs",
+      "type": "shell",
+      "command": "docker compose logs -f",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "isBackground": true
+    },
+    {
+      "label": "Reset Database",
+      "type": "shell",
+      "command": "make reset-db",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    }
+  ]
+}

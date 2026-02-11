@@ -1,0 +1,43 @@
+#!/bin/bash
+# =============================================================================
+# POSTSTART SCRIPT - Runs every time the codespace starts
+# =============================================================================
+# This script runs when:
+# 1. Codespace is first created (after postcreate)
+# 2. Codespace resumes from stopped state
+# 3. Codespace rebuilds
+#
+# It ensures services are running without doing heavy setup work.
+# =============================================================================
+
+echo "🔄 Starting services..."
+
+cd /workspaces/AutoGPT/autogpt_platform
+
+# Ensure Docker socket is available
+if [ -e /var/run/docker-host.sock ]; then
+    sudo ln -sf /var/run/docker-host.sock /var/run/docker.sock 2>/dev/null || true
+fi
+
+# Wait for Docker
+timeout 30 bash -c 'until docker info &>/dev/null; do sleep 1; done' || {
+    echo "⚠️ Docker not available, services may need manual start"
+    exit 0
+}
+
+# Start all services (will be no-op for already running ones)
+docker compose up -d
+
+# Quick health check
+echo "⏳ Waiting for services..."
+sleep 5
+
+# Check if key services are running
+if docker compose ps | grep -q "running"; then
+    echo "✅ Services are running"
+    echo ""
+    echo "📍 Frontend: http://localhost:3000"
+    echo "📍 API:      http://localhost:8006"
+else
+    echo "⚠️ Some services may not be running. Try: docker compose up -d"
+fi

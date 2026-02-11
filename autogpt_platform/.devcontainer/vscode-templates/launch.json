@@ -1,0 +1,107 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Backend: Debug FastAPI",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": [
+        "backend.rest:app",
+        "--reload",
+        "--host", "0.0.0.0",
+        "--port", "8006"
+      ],
+      "cwd": "${workspaceFolder}/backend",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/backend"
+      },
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      "name": "Backend: Debug Executor",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "backend.exec",
+      "cwd": "${workspaceFolder}/backend",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/backend"
+      },
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      "name": "Backend: Debug WebSocket",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "backend.ws",
+      "cwd": "${workspaceFolder}/backend",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/backend"
+      },
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      "name": "Frontend: Debug Next.js",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["dev"],
+      "cwd": "${workspaceFolder}/frontend",
+      "console": "integratedTerminal",
+      "serverReadyAction": {
+        "pattern": "- Local:.+(https?://\\S+)",
+        "uriFormat": "%s",
+        "action": "openExternally"
+      }
+    },
+    {
+      "name": "Frontend: Debug Next.js (Server-side)",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["dev"],
+      "cwd": "${workspaceFolder}/frontend",
+      "env": {
+        "NODE_OPTIONS": "--inspect"
+      },
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Tests: Run Backend Tests",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pytest",
+      "args": ["-v", "--tb=short"],
+      "cwd": "${workspaceFolder}/backend",
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      "name": "Tests: Run E2E Tests (Playwright)",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["test:e2e"],
+      "cwd": "${workspaceFolder}/frontend",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Scripts: Seed Test Data",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/backend/test/e2e_test_data.py",
+      "cwd": "${workspaceFolder}/backend",
+      "console": "integratedTerminal"
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Full Stack: Backend + Frontend",
+      "configurations": ["Backend: Debug FastAPI", "Frontend: Debug Next.js"],
+      "stopAll": true
+    }
+  ]
+}

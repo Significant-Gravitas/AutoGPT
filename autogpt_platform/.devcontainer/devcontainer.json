@@ -1,0 +1,158 @@
+{
+  "name": "AutoGPT Platform",
+  "dockerComposeFile": [
+    "../docker-compose.yml",
+    "docker-compose.devcontainer.yml"
+  ],
+  "service": "devcontainer",
+  "workspaceFolder": "/workspaces/AutoGPT/autogpt_platform",
+  "shutdownAction": "stopCompose",
+
+  // Features - Docker-in-Docker for full compose support
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {
+      "dockerDashComposeVersion": "v2"
+    },
+    "ghcr.io/devcontainers/features/github-cli:1": {},
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "21",
+      "nodeGypDependencies": true
+    },
+    "ghcr.io/devcontainers/features/python:1": {
+      "version": "3.13",
+      "installTools": true
+    }
+  },
+
+  // Lifecycle scripts
+  // onCreateCommand runs during prebuild - do heavy lifting here
+  "onCreateCommand": "bash .devcontainer/scripts/oncreate.sh",
+  
+  // postCreateCommand runs after container creation - user-specific setup
+  "postCreateCommand": "bash .devcontainer/scripts/postcreate.sh",
+  
+  // postStartCommand runs every time the container starts (including resume)
+  "postStartCommand": "bash .devcontainer/scripts/poststart.sh",
+
+  // Port forwarding
+  "forwardPorts": [
+    3000,   // Frontend
+    8006,   // REST API
+    8001,   // WebSocket
+    8000,   // Supabase Kong
+    5432,   // PostgreSQL
+    6379,   // Redis
+    15672,  // RabbitMQ Management
+    5555    // Supabase Studio
+  ],
+
+  "portsAttributes": {
+    "3000": { "label": "Frontend", "onAutoForward": "openBrowser" },
+    "8006": { "label": "REST API", "onAutoForward": "notify" },
+    "8001": { "label": "WebSocket", "onAutoForward": "silent" },
+    "8000": { "label": "Supabase", "onAutoForward": "silent" },
+    "5432": { "label": "PostgreSQL", "onAutoForward": "silent" },
+    "6379": { "label": "Redis", "onAutoForward": "silent" },
+    "15672": { "label": "RabbitMQ", "onAutoForward": "silent" },
+    "5555": { "label": "Supabase Studio", "onAutoForward": "silent" }
+  },
+
+  // VS Code customizations
+  "customizations": {
+    "vscode": {
+      "settings": {
+        // Python
+        "python.defaultInterpreterPath": "${workspaceFolder}/backend/.venv/bin/python",
+        "python.analysis.typeCheckingMode": "basic",
+        "python.testing.pytestEnabled": true,
+        "python.testing.pytestArgs": ["backend"],
+        
+        // Formatting
+        "[python]": {
+          "editor.defaultFormatter": "ms-python.black-formatter",
+          "editor.formatOnSave": true
+        },
+        "[typescript]": {
+          "editor.defaultFormatter": "esbenp.prettier-vscode",
+          "editor.formatOnSave": true
+        },
+        "[typescriptreact]": {
+          "editor.defaultFormatter": "esbenp.prettier-vscode",
+          "editor.formatOnSave": true
+        },
+        "[javascript]": {
+          "editor.defaultFormatter": "esbenp.prettier-vscode",
+          "editor.formatOnSave": true
+        },
+        
+        // Editor
+        "editor.rulers": [88, 120],
+        "editor.tabSize": 2,
+        "files.trimTrailingWhitespace": true,
+        
+        // Terminal
+        "terminal.integrated.defaultProfile.linux": "bash",
+        "terminal.integrated.cwd": "${workspaceFolder}",
+        
+        // Git
+        "git.autofetch": true,
+        "git.enableSmartCommit": true,
+        
+        // Prisma
+        "prisma.showPrismaDataPlatformNotification": false
+      },
+      
+      "extensions": [
+        // Python
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "ms-python.black-formatter",
+        "ms-python.isort",
+        
+        // JavaScript/TypeScript
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "bradlc.vscode-tailwindcss",
+        
+        // Database
+        "Prisma.prisma",
+        
+        // Testing
+        "ms-playwright.playwright",
+        
+        // GitHub
+        "GitHub.vscode-pull-request-github",
+        "GitHub.copilot",
+        "github.vscode-github-actions",
+        
+        // Utilities
+        "eamodio.gitlens",
+        "usernamehw.errorlens",
+        "christian-kohler.path-intellisense",
+        "mikestead.dotenv"
+      ]
+    },
+    
+    "codespaces": {
+      "openFiles": [
+        "README.md"
+      ]
+    }
+  },
+
+  // Environment variables
+  "containerEnv": {
+    "CODESPACES": "true",
+    "POETRY_VIRTUALENVS_IN_PROJECT": "true"
+  },
+
+  // Run as non-root for security
+  "remoteUser": "vscode",
+  
+  // Host requirements for performance
+  "hostRequirements": {
+    "cpus": 4,
+    "memory": "8gb",
+    "storage": "32gb"
+  }
+}
