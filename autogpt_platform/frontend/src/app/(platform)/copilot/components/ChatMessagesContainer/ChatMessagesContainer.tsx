@@ -122,7 +122,7 @@ export const ChatMessagesContainer = ({
   isLoading,
 }: ChatMessagesContainerProps) => {
   const [thinkingPhrase, setThinkingPhrase] = useState(getRandomPhrase);
-  const lastToastedErrorRef = useRef<string | null>(null);
+  const lastToastTimeRef = useRef(0);
 
   useEffect(() => {
     if (status === "submitted") {
@@ -130,15 +130,12 @@ export const ChatMessagesContainer = ({
     }
   }, [status]);
 
-  // Show a toast when a new error occurs
+  // Show a toast when a new error occurs, debounced to avoid spam
   useEffect(() => {
-    if (!error) {
-      lastToastedErrorRef.current = null;
-      return;
-    }
-    const key = error.message;
-    if (key === lastToastedErrorRef.current) return;
-    lastToastedErrorRef.current = key;
+    if (!error) return;
+    const now = Date.now();
+    if (now - lastToastTimeRef.current < 3_000) return;
+    lastToastTimeRef.current = now;
     toast({
       variant: "destructive",
       title: "Something went wrong",
