@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  playbook-client:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mount credentials file (Owner must ensure this exists, or use .env and remove this mount)
+      - ./playbook/credentials.py:/app/playbook/credentials.py
+      # Persist logs
+      - ./logs:/app/logs
+    # Load environment variables from .env if present
+    env_file:
+      - .env
+    environment:
+      - PYTHONUNBUFFERED=1
