@@ -8,6 +8,7 @@ from backend.api.features.chat.tools.models import BlockDetailsResponse
 from backend.api.features.chat.tools.run_block import RunBlockTool
 from backend.data.block import BlockType
 from backend.data.model import CredentialsMetaInput
+from backend.integrations.providers import ProviderName
 
 from ._test_data import make_session
 
@@ -130,7 +131,7 @@ async def test_run_block_returns_details_when_only_credentials_provided():
                 {
                     "credentials": CredentialsMetaInput(
                         id="cred-id",
-                        provider="test_provider",
+                        provider=ProviderName("test_provider"),
                         type="api_key",
                         title="Test Credential",
                     )
