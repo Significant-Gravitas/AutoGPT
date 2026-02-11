@@ -417,6 +417,9 @@ async def stream_chat_post(
                 session=session,  # Pass session with message already added
                 context=request.context,
             ):
+                # Skip duplicate StreamStart — we already published one above
+                if isinstance(chunk, StreamStart):
+                    continue
                 chunk_count += 1
                 if first_chunk_time is None:
                     first_chunk_time = time_module.perf_counter()
