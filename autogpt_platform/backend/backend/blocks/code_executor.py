@@ -280,7 +280,6 @@ class ExecuteCodeBlock(Block, BaseE2BExecutorMixin):
                 "Files written to /output directory during execution. "
                 "Each file has path, name, content, and workspace_ref (if stored)."
             ),
-            default=[],
         )
 
     def __init__(self):
