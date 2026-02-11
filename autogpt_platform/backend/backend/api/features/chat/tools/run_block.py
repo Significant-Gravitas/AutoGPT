@@ -68,6 +68,13 @@ class RunBlockTool(BaseTool):
                         "NEVER guess this - always get it from find_block first."
                     ),
                 },
+                "block_name": {
+                    "type": "string",
+                    "description": (
+                        "The block's human-readable name from find_block results. "
+                        "Used for display purposes in the UI."
+                    ),
+                },
                 "input_data": {
                     "type": "object",
                     "description": (
