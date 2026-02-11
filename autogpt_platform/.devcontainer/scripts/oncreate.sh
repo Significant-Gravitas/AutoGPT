@@ -2,9 +2,14 @@
 # =============================================================================
 # ONCREATE SCRIPT - Runs during prebuild
 # =============================================================================
-# This script is executed during the prebuild phase. Its job is to do all the
-# heavy lifting that takes time: installing dependencies, pulling Docker images,
-# generating code, etc. This makes codespace creation nearly instant.
+# This script runs during the prebuild phase (GitHub Actions).
+# It caches everything that's safe to cache:
+#   ✅ Dependency Docker images (postgres, redis, rabbitmq, etc.)
+#   ✅ Python packages (poetry install)
+#   ✅ Node packages (pnpm install)
+#
+# It does NOT build backend/frontend Docker images because those would
+# contain stale code from the prebuild branch, not the PR being reviewed.
 # =============================================================================
 
 set -e  # Exit on error
@@ -32,7 +37,7 @@ fi
 # Install Python dependencies
 poetry install --no-interaction --no-ansi
 
-# Generate Prisma client (can be done without DB)
+# Generate Prisma client (schema only, no DB needed)
 echo "🔧 Generating Prisma client..."
 poetry run prisma generate || true
 poetry run gen-prisma-stub || true
@@ -55,34 +60,36 @@ fi
 # Install Node dependencies
 pnpm install --frozen-lockfile
 
-# Generate API client types (if possible without backend running)
-pnpm generate:api-client || echo "API client generation skipped (backend not running)"
-
 cd ..
 
 # =============================================================================
-# Pull Docker Images (in parallel for speed)
+# Pull Dependency Docker Images ONLY
 # =============================================================================
-echo "🐳 Pulling Docker images..."
+# We only pull infrastructure images. Backend/Frontend run natively
+# to ensure we always use the current branch's code.
+# =============================================================================
+echo "🐳 Pulling dependency Docker images..."
 
 # Start Docker daemon if using docker-in-docker
 if [ -e /var/run/docker-host.sock ]; then
     sudo ln -sf /var/run/docker-host.sock /var/run/docker.sock || true
 fi
 
-# Pull images in parallel using background processes
+# Pull dependency images in parallel
 docker pull supabase/gotrue:v2.170.0 &
 docker pull supabase/studio:20250224-d10db0f &
 docker pull kong:2.8.1 &
 docker pull supabase/postgres:15.8.1.060 &
 docker pull redis:latest &
 docker pull rabbitmq:management &
-docker pull clamav/clamav-debian:latest &
 
 # Wait for all pulls to complete
 wait
 
-echo "✅ Docker images pulled"
+echo "✅ Dependency images pulled"
+
+# NOTE: We intentionally do NOT build backend/frontend images here.
+# Those need to use the current branch's code, not prebuild's code.
 
 # =============================================================================
 # Copy environment files
@@ -114,6 +121,13 @@ echo "=============================================="
 echo "✅ PREBUILD COMPLETE"
 echo "=============================================="
 echo ""
-echo "Dependencies installed, images pulled."
+echo "Cached:"
+echo "  ✅ Python packages (poetry)"
+echo "  ✅ Node packages (pnpm)"
+echo "  ✅ Dependency Docker images"
+echo ""
+echo "NOT cached (intentionally):"
+echo "  ❌ Backend/Frontend containers (would have stale code)"
+echo ""
 echo "The postcreate script will start services."
 echo ""

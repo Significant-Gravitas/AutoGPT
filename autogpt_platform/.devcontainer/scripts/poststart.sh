@@ -7,10 +7,11 @@
 # 2. Codespace resumes from stopped state
 # 3. Codespace rebuilds
 #
-# It ensures services are running without doing heavy setup work.
+# It ensures dependency services are running. Backend/Frontend are run
+# manually by the developer for hot-reload during development.
 # =============================================================================
 
-echo "🔄 Starting services..."
+echo "🔄 Starting dependency services..."
 
 cd /workspaces/AutoGPT/autogpt_platform
 
@@ -25,19 +26,19 @@ timeout 30 bash -c 'until docker info &>/dev/null; do sleep 1; done' || {
     exit 0
 }
 
-# Start all services (will be no-op for already running ones)
-docker compose up -d
+# Start only dependency services (not backend/frontend)
+docker compose up -d db redis rabbitmq kong auth
 
 # Quick health check
 echo "⏳ Waiting for services..."
 sleep 5
 
-# Check if key services are running
 if docker compose ps | grep -q "running"; then
-    echo "✅ Services are running"
+    echo "✅ Dependency services are running"
     echo ""
-    echo "📍 Frontend: http://localhost:3000"
-    echo "📍 API:      http://localhost:8006"
+    echo "🚀 Start development with:"
+    echo "   make run-backend   # Terminal 1"
+    echo "   make run-frontend  # Terminal 2"
 else
     echo "⚠️ Some services may not be running. Try: docker compose up -d"
 fi

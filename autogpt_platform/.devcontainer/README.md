@@ -11,9 +11,28 @@ This dev container provides a complete development environment for the AutoGPT P
 
 2. **Wait for setup** (~60 seconds with prebuild, ~5-10 min without)
 
-3. **Start developing!**
-   - Frontend auto-opens at `http://localhost:3000`
+3. **Start the servers:**
+   ```bash
+   # Terminal 1
+   make run-backend
+
+   # Terminal 2  
+   make run-frontend
+   ```
+
+4. **Start developing!**
+   - Frontend: `http://localhost:3000`
    - Login with: `test123@gmail.com` / `testpassword123`
+
+## 🏗️ Architecture
+
+**Dependencies run in Docker** (cached by prebuild):
+- PostgreSQL, Redis, RabbitMQ, Supabase Auth
+
+**Backend & Frontend run natively** (not cached):
+- This ensures you're always running the current branch's code
+- Enables hot-reload during development
+- VS Code debugger can attach directly
 
 ## 📍 Available Services
 
