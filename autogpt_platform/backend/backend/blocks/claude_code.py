@@ -1,7 +1,7 @@
 import json
 import shlex
 import uuid
-from typing import Literal, Optional
+from typing import TYPE_CHECKING, Literal, Optional
 
 from e2b import AsyncSandbox as BaseAsyncSandbox
 from pydantic import BaseModel, SecretStr
@@ -20,6 +20,10 @@ from backend.data.model import (
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
+from backend.util.sandbox_files import extract_and_store_sandbox_files
+
+if TYPE_CHECKING:
+    from backend.executor.utils import ExecutionContext
 
 
 class ClaudeCodeExecutionError(Exception):
@@ -181,6 +185,7 @@ class ClaudeCodeBlock(Block):
         relative_path: str  # Path relative to working directory (for GitHub, etc.)
         name: str
         content: str
+        workspace_ref: Optional[str] = None  # workspace://{id}#mime if stored
 
     class Output(BlockSchemaOutput):
         response: str = SchemaField(
@@ -189,7 +194,8 @@ class ClaudeCodeBlock(Block):
         files: list["ClaudeCodeBlock.FileOutput"] = SchemaField(
             description=(
                 "List of text files created/modified by Claude Code during this execution. "
-                "Each file has 'path', 'relative_path', 'name', and 'content' fields."
+                "Each file has 'path', 'relative_path', 'name', 'content', and 'workspace_ref' fields. "
+                "workspace_ref contains a workspace:// URI if the file was stored to workspace."
             )
         )
         conversation_history: str = SchemaField(
@@ -294,6 +300,7 @@ class ClaudeCodeBlock(Block):
         existing_sandbox_id: str,
         conversation_history: str,
         dispose_sandbox: bool,
+        execution_context: "ExecutionContext",
     ) -> tuple[str, list["ClaudeCodeBlock.FileOutput"], str, str, str]:
         """
         Execute Claude Code in an E2B sandbox.
@@ -449,10 +456,26 @@ class ClaudeCodeBlock(Block):
                 else:
                     new_conversation_history = turn_entry
 
-            # Extract files created/modified during this run
-            files = await self._extract_files(
-                sandbox, working_directory, start_timestamp
+            # Extract files created/modified during this run and store to workspace
+            sandbox_files = await extract_and_store_sandbox_files(
+                sandbox=sandbox,
+                working_directory=working_directory,
+                execution_context=execution_context,
+                since_timestamp=start_timestamp,
+                text_only=True,
             )
+
+            # Convert to FileOutput format
+            files = [
+                ClaudeCodeBlock.FileOutput(
+                    path=f.path,
+                    relative_path=f.relative_path,
+                    name=f.name,
+                    content=f.content,
+                    workspace_ref=f.workspace_ref,
+                )
+                for f in sandbox_files
+            ]
 
             return (
                 response,
@@ -471,140 +494,6 @@ class ClaudeCodeBlock(Block):
             if dispose_sandbox and sandbox:
                 await sandbox.kill()
 
-    async def _extract_files(
-        self,
-        sandbox: BaseAsyncSandbox,
-        working_directory: str,
-        since_timestamp: str | None = None,
-    ) -> list["ClaudeCodeBlock.FileOutput"]:
-        """
-        Extract text files created/modified during this Claude Code execution.
-
-        Args:
-            sandbox: The E2B sandbox instance
-            working_directory: Directory to search for files
-            since_timestamp: ISO timestamp - only return files modified after this time
-
-        Returns:
-            List of FileOutput objects with path, relative_path, name, and content
-        """
-        files: list[ClaudeCodeBlock.FileOutput] = []
-
-        # Text file extensions we can safely read as text
-        text_extensions = {
-            ".txt",
-            ".md",
-            ".html",
-            ".htm",
-            ".css",
-            ".js",
-            ".ts",
-            ".jsx",
-            ".tsx",
-            ".json",
-            ".xml",
-            ".yaml",
-            ".yml",
-            ".toml",
-            ".ini",
-            ".cfg",
-            ".conf",
-            ".py",
-            ".rb",
-            ".php",
-            ".java",
-            ".c",
-            ".cpp",
-            ".h",
-            ".hpp",
-            ".cs",
-            ".go",
-            ".rs",
-            ".swift",
-            ".kt",
-            ".scala",
-            ".sh",
-            ".bash",
-            ".zsh",
-            ".sql",
-            ".graphql",
-            ".env",
-            ".gitignore",
-            ".dockerfile",
-            "Dockerfile",
-            ".vue",
-            ".svelte",
-            ".astro",
-            ".mdx",
-            ".rst",
-            ".tex",
-            ".csv",
-            ".log",
-        }
-
-        try:
-            # List files recursively using find command
-            # Exclude node_modules and .git directories, but allow hidden files
-            # like .env and .gitignore (they're filtered by text_extensions later)
-            # Filter by timestamp to only get files created/modified during this run
-            safe_working_dir = shlex.quote(working_directory)
-            timestamp_filter = ""
-            if since_timestamp:
-                timestamp_filter = f"-newermt {shlex.quote(since_timestamp)} "
-            find_result = await sandbox.commands.run(
-                f"find {safe_working_dir} -type f "
-                f"{timestamp_filter}"
-                f"-not -path '*/node_modules/*' "
-                f"-not -path '*/.git/*' "
-                f"2>/dev/null"
-            )
-
-            if find_result.stdout:
-                for file_path in find_result.stdout.strip().split("\n"):
-                    if not file_path:
-                        continue
-
-                    # Check if it's a text file we can read
-                    is_text = any(
-                        file_path.endswith(ext) for ext in text_extensions
-                    ) or file_path.endswith("Dockerfile")
-
-                    if is_text:
-                        try:
-                            content = await sandbox.files.read(file_path)
-                            # Handle bytes or string
-                            if isinstance(content, bytes):
-                                content = content.decode("utf-8", errors="replace")
-
-                            # Extract filename from path
-                            file_name = file_path.split("/")[-1]
-
-                            # Calculate relative path by stripping working directory
-                            relative_path = file_path
-                            if file_path.startswith(working_directory):
-                                relative_path = file_path[len(working_directory) :]
-                                # Remove leading slash if present
-                                if relative_path.startswith("/"):
-                                    relative_path = relative_path[1:]
-
-                            files.append(
-                                ClaudeCodeBlock.FileOutput(
-                                    path=file_path,
-                                    relative_path=relative_path,
-                                    name=file_name,
-                                    content=content,
-                                )
-                            )
-                        except Exception:
-                            # Skip files that can't be read
-                            pass
-
-        except Exception:
-            # If file extraction fails, return empty results
-            pass
-
-        return files
-
     def _escape_prompt(self, prompt: str) -> str:
         """Escape the prompt for safe shell execution."""
         # Use single quotes and escape any single quotes in the prompt
@@ -617,6 +506,7 @@ class ClaudeCodeBlock(Block):
         *,
         e2b_credentials: APIKeyCredentials,
         anthropic_credentials: APIKeyCredentials,
+        execution_context: "ExecutionContext",
         **kwargs,
     ) -> BlockOutput:
         try:
@@ -637,6 +527,7 @@ class ClaudeCodeBlock(Block):
                 existing_sandbox_id=input_data.sandbox_id,
                 conversation_history=input_data.conversation_history,
                 dispose_sandbox=input_data.dispose_sandbox,
+                execution_context=execution_context,
             )
 
             yield "response", response
