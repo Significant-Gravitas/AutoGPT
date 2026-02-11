@@ -303,6 +303,7 @@ class ExecuteCodeBlock(Block, BaseE2BExecutorMixin):
                 ("results", []),
                 ("response", "Hello World"),
                 ("stdout_logs", "Hello World\n"),
+                ("files", []),
             ],
             test_mock={
                 "execute_code": lambda api_key, code, language, template_id, setup_commands, timeout, dispose_sandbox, execution_context, extract_files: (  # noqa

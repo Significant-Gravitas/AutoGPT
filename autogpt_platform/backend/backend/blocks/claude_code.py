@@ -258,6 +258,7 @@ class ClaudeCodeBlock(Block):
                             "relative_path": "index.html",
                             "name": "index.html",
                             "content": "<html>Hello World</html>",
+                            "workspace_ref": None,
                         }
                     ],
                 ),
@@ -278,6 +279,7 @@ class ClaudeCodeBlock(Block):
                             relative_path="index.html",
                             name="index.html",
                             content="<html>Hello World</html>",
+                            workspace_ref=None,
                         )
                     ],  # files
                     "User: Create a hello world HTML file\n"
