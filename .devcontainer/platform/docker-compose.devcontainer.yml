@@ -1,11 +1,11 @@
 # Docker Compose override for dev container
-# This extends the main docker-compose.yml to add a dev container service
+# This extends the main autogpt_platform/docker-compose.yml
 
 services:
   devcontainer:
     image: mcr.microsoft.com/devcontainers/base:ubuntu-24.04
     volumes:
-      # Mount the entire AutoGPT repo (parent of autogpt_platform)
+      # Mount the entire AutoGPT repo
       - ../..:/workspaces/AutoGPT:cached
       # Docker-in-Docker socket
       - /var/run/docker.sock:/var/run/docker-host.sock
@@ -38,7 +38,7 @@ services:
       - SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJzZXJ2aWNlX3JvbGUiLAogICAgImlzcyI6ICJzdXBhYmFzZS1kZW1vIiwKICAgICJpYXQiOiAxNjQxNzY5MjAwLAogICAgImV4cCI6IDE3OTk1MzU2MDAKfQ.DaYlNEoUrrEn2Ig7tqibS-PHK5vgusbcbo7X36XVt4Q
       - JWT_VERIFY_KEY=your-super-secret-jwt-token-with-at-least-32-characters-long
       
-      # Frontend URLs (Codespaces will rewrite these)
+      # Frontend URLs
       - NEXT_PUBLIC_SUPABASE_URL=http://localhost:8000
       - NEXT_PUBLIC_AGPT_SERVER_URL=http://localhost:8006/api
       - NEXT_PUBLIC_AGPT_WS_SERVER_URL=ws://localhost:8001/ws

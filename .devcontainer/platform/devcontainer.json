@@ -1,7 +1,7 @@
 {
   "name": "AutoGPT Platform",
   "dockerComposeFile": [
-    "../docker-compose.yml",
+    "../../autogpt_platform/docker-compose.yml",
     "docker-compose.devcontainer.yml"
   ],
   "service": "devcontainer",
@@ -24,15 +24,10 @@
     }
   },
 
-  // Lifecycle scripts
-  // onCreateCommand runs during prebuild - do heavy lifting here
-  "onCreateCommand": "bash .devcontainer/scripts/oncreate.sh",
-  
-  // postCreateCommand runs after container creation - user-specific setup
-  "postCreateCommand": "bash .devcontainer/scripts/postcreate.sh",
-  
-  // postStartCommand runs every time the container starts (including resume)
-  "postStartCommand": "bash .devcontainer/scripts/poststart.sh",
+  // Lifecycle scripts - paths relative to repo root
+  "onCreateCommand": "bash .devcontainer/platform/scripts/oncreate.sh",
+  "postCreateCommand": "bash .devcontainer/platform/scripts/postcreate.sh",
+  "postStartCommand": "bash .devcontainer/platform/scripts/poststart.sh",
 
   // Port forwarding
   "forwardPorts": [
