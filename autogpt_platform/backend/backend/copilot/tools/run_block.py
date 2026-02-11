@@ -13,9 +13,9 @@ from backend.copilot.tools.find_block import (
     COPILOT_EXCLUDED_BLOCK_TYPES,
 )
 from backend.data.block import AnyBlockSchema, get_block
+from backend.data.db_accessors import workspace_db
 from backend.data.execution import ExecutionContext
 from backend.data.model import CredentialsFieldInfo, CredentialsMetaInput
-from backend.data.workspace import get_or_create_workspace
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util.exceptions import BlockError
 
@@ -189,7 +189,7 @@ class RunBlockTool(BaseTool):
 
         try:
             # Get or create user's workspace for CoPilot file operations
-            workspace = await get_or_create_workspace(user_id)
+            workspace = await workspace_db().get_or_create_workspace(user_id)
 
             # Generate synthetic IDs for CoPilot context
             # Each chat session is treated as its own agent with one continuous run

@@ -12,12 +12,15 @@ settings = Settings()
 if TYPE_CHECKING:
     from openai import AsyncOpenAI
 
+    from backend.data.db_manager import (
+        DatabaseManagerAsyncClient,
+        DatabaseManagerClient,
+    )
     from backend.data.execution import (
         AsyncRedisExecutionEventBus,
         RedisExecutionEventBus,
     )
     from backend.data.rabbitmq import AsyncRabbitMQ, SyncRabbitMQ
-    from backend.executor import DatabaseManagerAsyncClient, DatabaseManagerClient
     from backend.executor.scheduler import SchedulerClient
     from backend.integrations.credentials_store import IntegrationCredentialsStore
     from backend.notifications.notifications import NotificationManagerClient
@@ -27,7 +30,7 @@ if TYPE_CHECKING:
 @thread_cached
 def get_database_manager_client() -> "DatabaseManagerClient":
     """Get a thread-cached DatabaseManagerClient with request retry enabled."""
-    from backend.executor import DatabaseManagerClient
+    from backend.data.db_manager import DatabaseManagerClient
     from backend.util.service import get_service_client
 
     return get_service_client(DatabaseManagerClient, request_retry=True)
@@ -38,7 +41,7 @@ def get_database_manager_async_client(
     should_retry: bool = True,
 ) -> "DatabaseManagerAsyncClient":
     """Get a thread-cached DatabaseManagerAsyncClient with request retry enabled."""
-    from backend.executor import DatabaseManagerAsyncClient
+    from backend.data.db_manager import DatabaseManagerAsyncClient
     from backend.util.service import get_service_client
 
     return get_service_client(DatabaseManagerAsyncClient, request_retry=should_retry)

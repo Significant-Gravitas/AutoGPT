@@ -7,10 +7,9 @@ from typing import Any
 
 from pydantic import BaseModel, field_validator
 
-from backend.api.features.library import db as library_db
 from backend.api.features.library.model import LibraryAgent
 from backend.copilot.model import ChatSession
-from backend.data import execution as execution_db
+from backend.data.db_accessors import execution_db, library_db
 from backend.data.execution import ExecutionStatus, GraphExecution, GraphExecutionMeta
 
 from .base import BaseTool
@@ -165,10 +164,12 @@ class AgentOutputTool(BaseTool):
         Resolve agent from provided identifiers.
         Returns (library_agent, error_message).
         """
+        lib_db = library_db()
+
         # Priority 1: Exact library agent ID
         if library_agent_id:
             try:
-                agent = await library_db.get_library_agent(library_agent_id, user_id)
+                agent = await lib_db.get_library_agent(library_agent_id, user_id)
                 return agent, None
             except Exception as e:
                 logger.warning(f"Failed to get library agent by ID: {e}")
@@ -182,7 +183,7 @@ class AgentOutputTool(BaseTool):
                 return None, f"Agent '{store_slug}' not found in marketplace"
 
             # Find in user's library by graph_id
-            agent = await library_db.get_library_agent_by_graph_id(user_id, graph.id)
+            agent = await lib_db.get_library_agent_by_graph_id(user_id, graph.id)
             if not agent:
                 return (
                     None,
@@ -194,7 +195,7 @@ class AgentOutputTool(BaseTool):
         # Priority 3: Fuzzy name search in library
         if agent_name:
             try:
-                response = await library_db.list_library_agents(
+                response = await lib_db.list_library_agents(
                     user_id=user_id,
                     search_term=agent_name,
                     page_size=5,
@@ -228,9 +229,11 @@ class AgentOutputTool(BaseTool):
         Fetch execution(s) based on filters.
         Returns (single_execution, available_executions_meta, error_message).
         """
+        exec_db = execution_db()
+
         # If specific execution_id provided, fetch it directly
         if execution_id:
-            execution = await execution_db.get_graph_execution(
+            execution = await exec_db.get_graph_execution(
                 user_id=user_id,
                 execution_id=execution_id,
                 include_node_executions=False,
@@ -240,7 +243,7 @@ class AgentOutputTool(BaseTool):
             return execution, [], None
 
         # Get completed executions with time filters
-        executions = await execution_db.get_graph_executions(
+        executions = await exec_db.get_graph_executions(
             graph_id=graph_id,
             user_id=user_id,
             statuses=[ExecutionStatus.COMPLETED],
@@ -254,7 +257,7 @@ class AgentOutputTool(BaseTool):
 
         # If only one execution, fetch full details
         if len(executions) == 1:
-            full_execution = await execution_db.get_graph_execution(
+            full_execution = await exec_db.get_graph_execution(
                 user_id=user_id,
                 execution_id=executions[0].id,
                 include_node_executions=False,
@@ -262,7 +265,7 @@ class AgentOutputTool(BaseTool):
             return full_execution, [], None
 
         # Multiple executions - return latest with full details, plus list of available
-        full_execution = await execution_db.get_graph_execution(
+        full_execution = await exec_db.get_graph_execution(
             user_id=user_id,
             execution_id=executions[0].id,
             include_node_executions=False,
@@ -380,7 +383,7 @@ class AgentOutputTool(BaseTool):
             and not input_data.store_slug
         ):
             # Fetch execution directly to get graph_id
-            execution = await execution_db.get_graph_execution(
+            execution = await execution_db().get_graph_execution(
                 user_id=user_id,
                 execution_id=input_data.execution_id,
                 include_node_executions=False,
@@ -392,7 +395,7 @@ class AgentOutputTool(BaseTool):
                 )
 
             # Find library agent by graph_id
-            agent = await library_db.get_library_agent_by_graph_id(
+            agent = await library_db().get_library_agent_by_graph_id(
                 user_id, execution.graph_id
             )
             if not agent:

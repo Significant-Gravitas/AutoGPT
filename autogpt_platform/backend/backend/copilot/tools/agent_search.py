@@ -4,8 +4,7 @@ import logging
 import re
 from typing import Literal
 
-from backend.api.features.library import db as library_db
-from backend.api.features.store import db as store_db
+from backend.data.db_accessors import library_db, store_db
 from backend.util.exceptions import DatabaseError, NotFoundError
 
 from .models import (
@@ -45,8 +44,10 @@ async def _get_library_agent_by_id(user_id: str, agent_id: str) -> AgentInfo | N
     Returns:
         AgentInfo if found, None otherwise
     """
+    lib_db = library_db()
+
     try:
-        agent = await library_db.get_library_agent_by_graph_id(user_id, agent_id)
+        agent = await lib_db.get_library_agent_by_graph_id(user_id, agent_id)
         if agent:
             logger.debug(f"Found library agent by graph_id: {agent.name}")
             return AgentInfo(
@@ -71,7 +72,7 @@ async def _get_library_agent_by_id(user_id: str, agent_id: str) -> AgentInfo | N
         )
 
     try:
-        agent = await library_db.get_library_agent(agent_id, user_id)
+        agent = await lib_db.get_library_agent(agent_id, user_id)
         if agent:
             logger.debug(f"Found library agent by library_id: {agent.name}")
             return AgentInfo(
@@ -133,7 +134,7 @@ async def search_agents(
     try:
         if source == "marketplace":
             logger.info(f"Searching marketplace for: {query}")
-            results = await store_db.get_store_agents(search_query=query, page_size=5)
+            results = await store_db().get_store_agents(search_query=query, page_size=5)
             for agent in results.agents:
                 agents.append(
                     AgentInfo(
@@ -159,7 +160,7 @@ async def search_agents(
 
             if not agents:
                 logger.info(f"Searching user library for: {query}")
-                results = await library_db.list_library_agents(
+                results = await library_db().list_library_agents(
                     user_id=user_id,  # type: ignore[arg-type]
                     search_term=query,
                     page_size=10,

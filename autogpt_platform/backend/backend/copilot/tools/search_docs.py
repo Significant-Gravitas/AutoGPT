@@ -5,7 +5,6 @@ from typing import Any
 
 from prisma.enums import ContentType
 
-from backend.api.features.store.hybrid_search import unified_hybrid_search
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.base import BaseTool
 from backend.copilot.tools.models import (
@@ -15,6 +14,7 @@ from backend.copilot.tools.models import (
     NoResultsResponse,
     ToolResponseBase,
 )
+from backend.data.db_accessors import search
 
 logger = logging.getLogger(__name__)
 
@@ -117,7 +117,7 @@ class SearchDocsTool(BaseTool):
 
         try:
             # Search using hybrid search for DOCUMENTATION content type only
-            results, total = await unified_hybrid_search(
+            results, total = await search().unified_hybrid_search(
                 query=query,
                 content_types=[ContentType.DOCUMENTATION],
                 page=1,

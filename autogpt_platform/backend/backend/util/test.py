@@ -10,6 +10,7 @@ from autogpt_libs.auth import get_user_id
 from backend.api.rest_api import AgentServer
 from backend.data import db
 from backend.data.block import Block, BlockSchema, initialize_blocks
+from backend.data.db_manager import DatabaseManager
 from backend.data.execution import (
     ExecutionContext,
     ExecutionStatus,
@@ -18,7 +19,7 @@ from backend.data.execution import (
 )
 from backend.data.model import _BaseCredentials
 from backend.data.user import create_default_user
-from backend.executor import DatabaseManager, ExecutionManager, Scheduler
+from backend.executor import ExecutionManager, Scheduler
 from backend.notifications.notifications import NotificationManager
 
 log = logging.getLogger(__name__)

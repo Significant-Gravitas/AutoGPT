@@ -5,9 +5,8 @@ import re
 import uuid
 from typing import Any, NotRequired, TypedDict
 
-from backend.api.features.library import db as library_db
-from backend.api.features.store import db as store_db
-from backend.data.graph import Graph, Link, Node, get_graph, get_store_listed_graphs
+from backend.data.db_accessors import graph_db, library_db, store_db
+from backend.data.graph import Graph, Link, Node
 from backend.util.exceptions import DatabaseError, NotFoundError
 
 from .service import (
@@ -145,8 +144,9 @@ async def get_library_agent_by_id(
     Returns:
         LibraryAgentSummary if found, None otherwise
     """
+    db = library_db()
     try:
-        agent = await library_db.get_library_agent_by_graph_id(user_id, agent_id)
+        agent = await db.get_library_agent_by_graph_id(user_id, agent_id)
         if agent:
             logger.debug(f"Found library agent by graph_id: {agent.name}")
             return LibraryAgentSummary(
@@ -163,7 +163,7 @@ async def get_library_agent_by_id(
         logger.debug(f"Could not fetch library agent by graph_id {agent_id}: {e}")
 
     try:
-        agent = await library_db.get_library_agent(agent_id, user_id)
+        agent = await db.get_library_agent(agent_id, user_id)
         if agent:
             logger.debug(f"Found library agent by library_id: {agent.name}")
             return LibraryAgentSummary(
@@ -215,7 +215,7 @@ async def get_library_agents_for_generation(
         List of LibraryAgentSummary with schemas and recent executions for sub-agent composition
     """
     try:
-        response = await library_db.list_library_agents(
+        response = await library_db().list_library_agents(
             user_id=user_id,
             search_term=search_query,
             page=1,
@@ -272,7 +272,7 @@ async def search_marketplace_agents_for_generation(
         List of LibraryAgentSummary with full input/output schemas
     """
     try:
-        response = await store_db.get_store_agents(
+        response = await store_db().get_store_agents(
             search_query=search_query,
             page=1,
             page_size=max_results,
@@ -286,7 +286,7 @@ async def search_marketplace_agents_for_generation(
             return []
 
         graph_ids = [agent.agent_graph_id for agent in agents_with_graphs]
-        graphs = await get_store_listed_graphs(*graph_ids)
+        graphs = await graph_db().get_store_listed_graphs(*graph_ids)
 
         results: list[LibraryAgentSummary] = []
         for agent in agents_with_graphs:
@@ -673,9 +673,10 @@ async def save_agent_to_library(
         Tuple of (created Graph, LibraryAgent)
     """
     graph = json_to_graph(agent_json)
+    db = library_db()
     if is_update:
-        return await library_db.update_graph_in_library(graph, user_id)
-    return await library_db.create_graph_in_library(graph, user_id)
+        return await db.update_graph_in_library(graph, user_id)
+    return await db.create_graph_in_library(graph, user_id)
 
 
 def graph_to_json(graph: Graph) -> dict[str, Any]:
@@ -735,12 +736,14 @@ async def get_agent_as_json(
     Returns:
         Agent as JSON dict or None if not found
     """
-    graph = await get_graph(agent_id, version=None, user_id=user_id)
+    db = graph_db()
+
+    graph = await db.get_graph(agent_id, version=None, user_id=user_id)
 
     if not graph and user_id:
         try:
-            library_agent = await library_db.get_library_agent(agent_id, user_id)
-            graph = await get_graph(
+            library_agent = await library_db().get_library_agent(agent_id, user_id)
+            graph = await db.get_graph(
                 library_agent.graph_id, version=None, user_id=user_id
             )
         except NotFoundError:

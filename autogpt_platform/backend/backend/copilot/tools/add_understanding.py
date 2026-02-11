@@ -4,10 +4,8 @@ import logging
 from typing import Any
 
 from backend.copilot.model import ChatSession
-from backend.data.understanding import (
-    BusinessUnderstandingInput,
-    upsert_business_understanding,
-)
+from backend.data.db_accessors import understanding_db
+from backend.data.understanding import BusinessUnderstandingInput
 
 from .base import BaseTool
 from .models import ErrorResponse, ToolResponseBase, UnderstandingUpdatedResponse
@@ -99,7 +97,9 @@ and automations for the user's specific needs."""
         ]
 
         # Upsert with merge
-        understanding = await upsert_business_understanding(user_id, input_data)
+        understanding = await understanding_db().upsert_business_understanding(
+            user_id, input_data
+        )
 
         # Build current understanding summary (filter out empty values)
         current_understanding = {

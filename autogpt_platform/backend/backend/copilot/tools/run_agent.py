@@ -5,13 +5,12 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
-from backend.api.features.library import db as library_db
 from backend.copilot.config import ChatConfig
 from backend.copilot.model import ChatSession
 from backend.copilot.tracking import track_agent_run_success, track_agent_scheduled
+from backend.data.db_accessors import graph_db, library_db, user_db
 from backend.data.graph import GraphModel
 from backend.data.model import CredentialsMetaInput
-from backend.data.user import get_user_by_id
 from backend.executor import utils as execution_utils
 from backend.util.clients import get_scheduler_client
 from backend.util.exceptions import DatabaseError, NotFoundError
@@ -197,7 +196,7 @@ class RunAgentTool(BaseTool):
 
             # Priority: library_agent_id if provided
             if has_library_id:
-                library_agent = await library_db.get_library_agent(
+                library_agent = await library_db().get_library_agent(
                     params.library_agent_id, user_id
                 )
                 if not library_agent:
@@ -206,9 +205,7 @@ class RunAgentTool(BaseTool):
                         session_id=session_id,
                     )
                 # Get the graph from the library agent
-                from backend.data.graph import get_graph
-
-                graph = await get_graph(
+                graph = await graph_db().get_graph(
                     library_agent.graph_id,
                     library_agent.graph_version,
                     user_id=user_id,
@@ -519,7 +516,7 @@ class RunAgentTool(BaseTool):
         library_agent = await get_or_create_library_agent(graph, user_id)
 
         # Get user timezone
-        user = await get_user_by_id(user_id)
+        user = await user_db().get_user_by_id(user_id)
         user_timezone = get_user_timezone_or_utc(user.timezone if user else timezone)
 
         # Create schedule

@@ -14,7 +14,7 @@ from prisma.types import (
     ChatSessionWhereInput,
 )
 
-from backend.data.db import transaction
+from backend.data import db
 from backend.util.json import SafeJson
 
 logger = logging.getLogger(__name__)
@@ -147,7 +147,7 @@ async def add_chat_messages_batch(
 
     created_messages = []
 
-    async with transaction() as tx:
+    async with db.transaction() as tx:
         for i, msg in enumerate(messages):
             # Build input dict dynamically rather than using ChatMessageCreateInput
             # directly because Prisma's TypedDict validation rejects optional fields

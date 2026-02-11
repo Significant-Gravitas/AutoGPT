@@ -7,7 +7,7 @@ from typing import Any, Optional
 from pydantic import BaseModel
 
 from backend.copilot.model import ChatSession
-from backend.data.workspace import get_or_create_workspace
+from backend.data.db_accessors import workspace_db
 from backend.util.settings import Config
 from backend.util.virus_scanner import scan_content_safe
 from backend.util.workspace import WorkspaceManager
@@ -146,7 +146,7 @@ class ListWorkspaceFilesTool(BaseTool):
         include_all_sessions: bool = kwargs.get("include_all_sessions", False)
 
         try:
-            workspace = await get_or_create_workspace(user_id)
+            workspace = await workspace_db().get_or_create_workspace(user_id)
             # Pass session_id for session-scoped file access
             manager = WorkspaceManager(user_id, workspace.id, session_id)
 
@@ -280,7 +280,7 @@ class ReadWorkspaceFileTool(BaseTool):
             )
 
         try:
-            workspace = await get_or_create_workspace(user_id)
+            workspace = await workspace_db().get_or_create_workspace(user_id)
             # Pass session_id for session-scoped file access
             manager = WorkspaceManager(user_id, workspace.id, session_id)
 
@@ -478,7 +478,7 @@ class WriteWorkspaceFileTool(BaseTool):
             # Virus scan
             await scan_content_safe(content, filename=filename)
 
-            workspace = await get_or_create_workspace(user_id)
+            workspace = await workspace_db().get_or_create_workspace(user_id)
             # Pass session_id for session-scoped file access
             manager = WorkspaceManager(user_id, workspace.id, session_id)
 
@@ -577,7 +577,7 @@ class DeleteWorkspaceFileTool(BaseTool):
             )
 
         try:
-            workspace = await get_or_create_workspace(user_id)
+            workspace = await workspace_db().get_or_create_workspace(user_id)
             # Pass session_id for session-scoped file access
             manager = WorkspaceManager(user_id, workspace.id, session_id)
 

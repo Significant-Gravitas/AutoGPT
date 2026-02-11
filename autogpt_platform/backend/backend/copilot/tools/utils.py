@@ -3,9 +3,8 @@
 import logging
 from typing import Any
 
-from backend.api.features.library import db as library_db
 from backend.api.features.library import model as library_model
-from backend.api.features.store import db as store_db
+from backend.data.db_accessors import library_db, store_db
 from backend.data.graph import GraphModel
 from backend.data.model import (
     Credentials,
@@ -38,13 +37,14 @@ async def fetch_graph_from_store_slug(
     Raises:
         DatabaseError: If there's a database error during lookup.
     """
+    sdb = store_db()
     try:
-        store_agent = await store_db.get_store_agent_details(username, agent_name)
+        store_agent = await sdb.get_store_agent_details(username, agent_name)
     except NotFoundError:
         return None, None
 
     # Get the graph from store listing version
-    graph = await store_db.get_available_graph(
+    graph = await sdb.get_available_graph(
         store_agent.store_listing_version_id, hide_nodes=False
     )
     return graph, store_agent
@@ -209,13 +209,13 @@ async def get_or_create_library_agent(
     Returns:
         LibraryAgent instance
     """
-    existing = await library_db.get_library_agent_by_graph_id(
+    existing = await library_db().get_library_agent_by_graph_id(
         graph_id=graph.id, user_id=user_id
     )
     if existing:
         return existing
 
-    library_agents = await library_db.create_library_agent(
+    library_agents = await library_db().create_library_agent(
         graph=graph,
         user_id=user_id,
         create_library_agents_for_sub_graphs=False,

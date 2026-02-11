@@ -23,24 +23,15 @@ from prisma.models import ChatMessage as PrismaChatMessage
 from prisma.models import ChatSession as PrismaChatSession
 from pydantic import BaseModel
 
+from backend.data.db_accessors import chat_db
 from backend.data.redis_client import get_redis_async
 from backend.util import json
 from backend.util.exceptions import DatabaseError, RedisError
 
-from . import db as chat_db
 from .config import ChatConfig
 
 logger = logging.getLogger(__name__)
 config = ChatConfig()
-
-
-def _parse_json_field(value: str | dict | list | None, default: Any = None) -> Any:
-    """Parse a JSON field that may be stored as string or already parsed."""
-    if value is None:
-        return default
-    if isinstance(value, str):
-        return json.loads(value)
-    return value
 
 
 # Redis cache key prefix for chat sessions
@@ -52,28 +43,7 @@ def _get_session_cache_key(session_id: str) -> str:
     return f"{CHAT_SESSION_CACHE_PREFIX}{session_id}"
 
 
-# Session-level locks to prevent race conditions during concurrent upserts.
-# Uses WeakValueDictionary to automatically garbage collect locks when no longer referenced,
-# preventing unbounded memory growth while maintaining lock semantics for active sessions.
-# Invalidation: Locks are auto-removed by GC when no coroutine holds a reference (after
-# async with lock: completes). Explicit cleanup also occurs in delete_chat_session().
-_session_locks: WeakValueDictionary[str, asyncio.Lock] = WeakValueDictionary()
-_session_locks_mutex = asyncio.Lock()
-
-
-async def _get_session_lock(session_id: str) -> asyncio.Lock:
-    """Get or create a lock for a specific session to prevent concurrent upserts.
-
-    Uses WeakValueDictionary for automatic cleanup: locks are garbage collected
-    when no coroutine holds a reference to them, preventing memory leaks from
-    unbounded growth of session locks.
-    """
-    async with _session_locks_mutex:
-        lock = _session_locks.get(session_id)
-        if lock is None:
-            lock = asyncio.Lock()
-            _session_locks[session_id] = lock
-        return lock
+# ===================== Chat data models ===================== #
 
 
 class ChatMessage(BaseModel):
@@ -261,38 +231,26 @@ class ChatSession(BaseModel):
         return messages
 
 
-async def _get_session_from_cache(session_id: str) -> ChatSession | None:
-    """Get a chat session from Redis cache."""
-    redis_key = _get_session_cache_key(session_id)
-    async_redis = await get_redis_async()
-    raw_session: bytes | None = await async_redis.get(redis_key)
-
-    if raw_session is None:
-        return None
-
-    try:
-        session = ChatSession.model_validate_json(raw_session)
-        logger.info(
-            f"Loading session {session_id} from cache: "
-            f"message_count={len(session.messages)}, "
-            f"roles={[m.role for m in session.messages]}"
-        )
-        return session
-    except Exception as e:
-        logger.error(f"Failed to deserialize session {session_id}: {e}", exc_info=True)
-        raise RedisError(f"Corrupted session data for {session_id}") from e
+def _parse_json_field(value: str | dict | list | None, default: Any = None) -> Any:
+    """Parse a JSON field that may be stored as string or already parsed."""
+    if value is None:
+        return default
+    if isinstance(value, str):
+        return json.loads(value)
+    return value
 
 
-async def _cache_session(session: ChatSession) -> None:
-    """Cache a chat session in Redis."""
-    redis_key = _get_session_cache_key(session.session_id)
-    async_redis = await get_redis_async()
-    await async_redis.setex(redis_key, config.session_ttl, session.model_dump_json())
+# ================ Chat cache + DB operations ================ #
+
+# NOTE: Database calls are automatically routed through DatabaseManager if Prisma is not
+#       connected directly.
 
 
 async def cache_chat_session(session: ChatSession) -> None:
-    """Cache a chat session without persisting to the database."""
-    await _cache_session(session)
+    """Cache a chat session in Redis (without persisting to the database)."""
+    redis_key = _get_session_cache_key(session.session_id)
+    async_redis = await get_redis_async()
+    await async_redis.setex(redis_key, config.session_ttl, session.model_dump_json())
 
 
 async def invalidate_session_cache(session_id: str) -> None:
@@ -308,80 +266,6 @@ async def invalidate_session_cache(session_id: str) -> None:
     except Exception as e:
         # Best-effort: log but don't fail - cache will expire naturally
         logger.warning(f"Failed to invalidate session cache for {session_id}: {e}")
-
-
-async def _get_session_from_db(session_id: str) -> ChatSession | None:
-    """Get a chat session from the database."""
-    prisma_session = await chat_db.get_chat_session(session_id)
-    if not prisma_session:
-        return None
-
-    messages = prisma_session.Messages
-    logger.info(
-        f"Loading session {session_id} from DB: "
-        f"has_messages={messages is not None}, "
-        f"message_count={len(messages) if messages else 0}, "
-        f"roles={[m.role for m in messages] if messages else []}"
-    )
-
-    return ChatSession.from_db(prisma_session, messages)
-
-
-async def _save_session_to_db(
-    session: ChatSession, existing_message_count: int
-) -> None:
-    """Save or update a chat session in the database."""
-    # Check if session exists in DB
-    existing = await chat_db.get_chat_session(session.session_id)
-
-    if not existing:
-        # Create new session
-        await chat_db.create_chat_session(
-            session_id=session.session_id,
-            user_id=session.user_id,
-        )
-        existing_message_count = 0
-
-    # Calculate total tokens from usage
-    total_prompt = sum(u.prompt_tokens for u in session.usage)
-    total_completion = sum(u.completion_tokens for u in session.usage)
-
-    # Update session metadata
-    await chat_db.update_chat_session(
-        session_id=session.session_id,
-        credentials=session.credentials,
-        successful_agent_runs=session.successful_agent_runs,
-        successful_agent_schedules=session.successful_agent_schedules,
-        total_prompt_tokens=total_prompt,
-        total_completion_tokens=total_completion,
-    )
-
-    # Add new messages (only those after existing count)
-    new_messages = session.messages[existing_message_count:]
-    if new_messages:
-        messages_data = []
-        for msg in new_messages:
-            messages_data.append(
-                {
-                    "role": msg.role,
-                    "content": msg.content,
-                    "name": msg.name,
-                    "tool_call_id": msg.tool_call_id,
-                    "refusal": msg.refusal,
-                    "tool_calls": msg.tool_calls,
-                    "function_call": msg.function_call,
-                }
-            )
-        logger.info(
-            f"Saving {len(new_messages)} new messages to DB for session {session.session_id}: "
-            f"roles={[m['role'] for m in messages_data]}, "
-            f"start_sequence={existing_message_count}"
-        )
-        await chat_db.add_chat_messages_batch(
-            session_id=session.session_id,
-            messages=messages_data,
-            start_sequence=existing_message_count,
-        )
 
 
 async def get_chat_session(
@@ -431,12 +315,51 @@ async def get_chat_session(
 
     # Cache the session from DB
     try:
-        await _cache_session(session)
+        await cache_chat_session(session)
         logger.info(f"Cached session {session_id} from database")
     except Exception as e:
         logger.warning(f"Failed to cache session {session_id}: {e}")
 
     return session
+
+
+async def _get_session_from_cache(session_id: str) -> ChatSession | None:
+    """Get a chat session from Redis cache."""
+    redis_key = _get_session_cache_key(session_id)
+    async_redis = await get_redis_async()
+    raw_session: bytes | None = await async_redis.get(redis_key)
+
+    if raw_session is None:
+        return None
+
+    try:
+        session = ChatSession.model_validate_json(raw_session)
+        logger.info(
+            f"Loading session {session_id} from cache: "
+            f"message_count={len(session.messages)}, "
+            f"roles={[m.role for m in session.messages]}"
+        )
+        return session
+    except Exception as e:
+        logger.error(f"Failed to deserialize session {session_id}: {e}", exc_info=True)
+        raise RedisError(f"Corrupted session data for {session_id}") from e
+
+
+async def _get_session_from_db(session_id: str) -> ChatSession | None:
+    """Get a chat session from the database."""
+    prisma_session = await chat_db().get_chat_session(session_id)
+    if not prisma_session:
+        return None
+
+    messages = prisma_session.Messages
+    logger.info(
+        f"Loading session {session_id} from DB: "
+        f"has_messages={messages is not None}, "
+        f"message_count={len(messages) if messages else 0}, "
+        f"roles={[m.role for m in messages] if messages else []}"
+    )
+
+    return ChatSession.from_db(prisma_session, messages)
 
 
 async def upsert_chat_session(
@@ -459,7 +382,7 @@ async def upsert_chat_session(
 
     async with lock:
         # Get existing message count from DB for incremental saves
-        existing_message_count = await chat_db.get_chat_session_message_count(
+        existing_message_count = await chat_db().get_chat_session_message_count(
             session.session_id
         )
 
@@ -476,7 +399,7 @@ async def upsert_chat_session(
 
         # Save to cache (best-effort, even if DB failed)
         try:
-            await _cache_session(session)
+            await cache_chat_session(session)
         except Exception as e:
             # If DB succeeded but cache failed, raise cache error
             if db_error is None:
@@ -497,6 +420,65 @@ async def upsert_chat_session(
         return session
 
 
+async def _save_session_to_db(
+    session: ChatSession, existing_message_count: int
+) -> None:
+    """Save or update a chat session in the database."""
+    db = chat_db()
+
+    # Check if session exists in DB
+    existing = await db.get_chat_session(session.session_id)
+
+    if not existing:
+        # Create new session
+        await db.create_chat_session(
+            session_id=session.session_id,
+            user_id=session.user_id,
+        )
+        existing_message_count = 0
+
+    # Calculate total tokens from usage
+    total_prompt = sum(u.prompt_tokens for u in session.usage)
+    total_completion = sum(u.completion_tokens for u in session.usage)
+
+    # Update session metadata
+    await db.update_chat_session(
+        session_id=session.session_id,
+        credentials=session.credentials,
+        successful_agent_runs=session.successful_agent_runs,
+        successful_agent_schedules=session.successful_agent_schedules,
+        total_prompt_tokens=total_prompt,
+        total_completion_tokens=total_completion,
+    )
+
+    # Add new messages (only those after existing count)
+    new_messages = session.messages[existing_message_count:]
+    if new_messages:
+        messages_data = []
+        for msg in new_messages:
+            messages_data.append(
+                {
+                    "role": msg.role,
+                    "content": msg.content,
+                    "name": msg.name,
+                    "tool_call_id": msg.tool_call_id,
+                    "refusal": msg.refusal,
+                    "tool_calls": msg.tool_calls,
+                    "function_call": msg.function_call,
+                }
+            )
+        logger.info(
+            f"Saving {len(new_messages)} new messages to DB for session {session.session_id}: "
+            f"roles={[m['role'] for m in messages_data]}, "
+            f"start_sequence={existing_message_count}"
+        )
+        await db.add_chat_messages_batch(
+            session_id=session.session_id,
+            messages=messages_data,
+            start_sequence=existing_message_count,
+        )
+
+
 async def create_chat_session(user_id: str) -> ChatSession:
     """Create a new chat session and persist it.
 
@@ -509,7 +491,7 @@ async def create_chat_session(user_id: str) -> ChatSession:
 
     # Create in database first - fail fast if this fails
     try:
-        await chat_db.create_chat_session(
+        await chat_db().create_chat_session(
             session_id=session.session_id,
             user_id=user_id,
         )
@@ -521,7 +503,7 @@ async def create_chat_session(user_id: str) -> ChatSession:
 
     # Cache the session (best-effort optimization, DB is source of truth)
     try:
-        await _cache_session(session)
+        await cache_chat_session(session)
     except Exception as e:
         logger.warning(f"Failed to cache new session {session.session_id}: {e}")
 
@@ -539,8 +521,9 @@ async def get_user_sessions(
         A tuple of (sessions, total_count) where total_count is the overall
         number of sessions for the user (not just the current page).
     """
-    prisma_sessions = await chat_db.get_user_chat_sessions(user_id, limit, offset)
-    total_count = await chat_db.get_user_session_count(user_id)
+    db = chat_db()
+    prisma_sessions = await db.get_user_chat_sessions(user_id, limit, offset)
+    total_count = await db.get_user_session_count(user_id)
 
     sessions = []
     for prisma_session in prisma_sessions:
@@ -563,7 +546,7 @@ async def delete_chat_session(session_id: str, user_id: str | None = None) -> bo
     """
     # Delete from database first (with optional user_id validation)
     # This confirms ownership before invalidating cache
-    deleted = await chat_db.delete_chat_session(session_id, user_id)
+    deleted = await chat_db().delete_chat_session(session_id, user_id)
 
     if not deleted:
         return False
@@ -598,7 +581,7 @@ async def update_session_title(session_id: str, title: str) -> bool:
         True if updated successfully, False otherwise.
     """
     try:
-        result = await chat_db.update_chat_session(session_id=session_id, title=title)
+        result = await chat_db().update_chat_session(session_id=session_id, title=title)
         if result is None:
             logger.warning(f"Session {session_id} not found for title update")
             return False
@@ -615,3 +598,29 @@ async def update_session_title(session_id: str, title: str) -> bool:
     except Exception as e:
         logger.error(f"Failed to update title for session {session_id}: {e}")
         return False
+
+
+# ==================== Chat session locks ==================== #
+
+_session_locks: WeakValueDictionary[str, asyncio.Lock] = WeakValueDictionary()
+_session_locks_mutex = asyncio.Lock()
+
+
+async def _get_session_lock(session_id: str) -> asyncio.Lock:
+    """Get or create a lock for a specific session to prevent concurrent upserts.
+
+    This was originally added to solve the specific problem of race conditions between
+    the session title thread and the conversation thread, which always occurs on the
+    same instance as we prevent rapid request sends on the frontend.
+
+    Uses WeakValueDictionary for automatic cleanup: locks are garbage collected
+    when no coroutine holds a reference to them, preventing memory leaks from
+    unbounded growth of session locks. Explicit cleanup also occurs
+    in `delete_chat_session()`.
+    """
+    async with _session_locks_mutex:
+        lock = _session_locks.get(session_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            _session_locks[session_id] = lock
+        return lock

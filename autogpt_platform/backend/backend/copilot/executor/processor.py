@@ -79,7 +79,10 @@ class CoPilotProcessor:
         """Initialize the processor when the worker thread starts.
 
         This method is called once per worker thread to set up the async event
-        loop, connect to Prisma, and initialize any required resources.
+        loop and initialize any required resources.
+
+        Database is accessed only through DatabaseManager, so we don't need to connect
+        to Prisma directly.
         """
         configure_logging()
         set_service_name("CoPilotExecutor")
@@ -90,22 +93,7 @@ class CoPilotProcessor:
         )
         self.execution_thread.start()
 
-        # Connect to Prisma in the worker's event loop
-        # This is required because the CoPilot service uses Prisma directly
-        # TODO: Use DatabaseManager, avoid direct Prisma connection(?)
-        asyncio.run_coroutine_threadsafe(
-            self._connect_prisma(), self.execution_loop
-        ).result(timeout=30.0)
-
         logger.info(f"[CoPilotExecutor] Worker {self.tid} started")
-
-    async def _connect_prisma(self):
-        """Connect to Prisma database in the worker's event loop."""
-        from backend.data import db
-
-        if not db.is_connected():
-            await db.connect()
-            logger.info(f"[CoPilotExecutor] Worker {self.tid} connected to Prisma")
 
     @error_logged(swallow=False)
     def execute(

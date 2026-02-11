@@ -3,7 +3,6 @@ from typing import Any
 
 from prisma.enums import ContentType
 
-from backend.api.features.store.hybrid_search import unified_hybrid_search
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.base import BaseTool, ToolResponseBase
 from backend.copilot.tools.models import (
@@ -14,6 +13,7 @@ from backend.copilot.tools.models import (
     NoResultsResponse,
 )
 from backend.data.block import BlockType, get_block
+from backend.data.db_accessors import search
 
 logger = logging.getLogger(__name__)
 
@@ -106,7 +106,7 @@ class FindBlockTool(BaseTool):
 
         try:
             # Search for blocks using hybrid search
-            results, total = await unified_hybrid_search(
+            results, total = await search().unified_hybrid_search(
                 query=query,
                 content_types=[ContentType.BLOCK],
                 page=1,

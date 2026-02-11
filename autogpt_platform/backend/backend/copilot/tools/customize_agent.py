@@ -3,9 +3,9 @@
 import logging
 from typing import Any
 
-from backend.api.features.store import db as store_db
 from backend.api.features.store.exceptions import AgentNotFoundError
 from backend.copilot.model import ChatSession
+from backend.data.db_accessors import store_db as get_store_db
 
 from .agent_generator import (
     AgentGeneratorNotConfiguredError,
@@ -136,6 +136,8 @@ class CustomizeAgentTool(BaseTool):
             )
 
         creator_username, agent_slug = parts
+
+        store_db = get_store_db()
 
         # Fetch the marketplace agent details
         try:

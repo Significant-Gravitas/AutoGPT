@@ -27,6 +27,7 @@ from openai.types.chat import (
     ChatCompletionToolParam,
 )
 
+from backend.data.db_accessors import chat_db
 from backend.data.redis_client import get_redis_async
 from backend.data.understanding import (
     format_understanding_for_prompt,
@@ -35,7 +36,6 @@ from backend.data.understanding import (
 from backend.util.exceptions import NotFoundError
 from backend.util.settings import AppEnvironment, Settings
 
-from . import db as chat_db
 from . import stream_registry
 from .config import ChatConfig
 from .model import (
@@ -1744,7 +1744,7 @@ async def _update_pending_operation(
     This is called by background tasks when long-running operations complete.
     """
     # Update the message in database
-    updated = await chat_db.update_tool_message_content(
+    updated = await chat_db().update_tool_message_content(
         session_id=session_id,
         tool_call_id=tool_call_id,
         new_content=result,

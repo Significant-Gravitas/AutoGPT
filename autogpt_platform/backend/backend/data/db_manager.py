@@ -4,14 +4,26 @@ from typing import TYPE_CHECKING, Callable, Concatenate, ParamSpec, TypeVar, cas
 
 from backend.api.features.library.db import (
     add_store_agent_to_library,
+    create_graph_in_library,
+    create_library_agent,
+    get_library_agent,
+    get_library_agent_by_graph_id,
     list_library_agents,
+    update_graph_in_library,
 )
-from backend.api.features.store.db import get_store_agent_details, get_store_agents
+from backend.api.features.store.db import (
+    get_agent,
+    get_available_graph,
+    get_store_agent_details,
+    get_store_agents,
+)
 from backend.api.features.store.embeddings import (
     backfill_missing_embeddings,
     cleanup_orphaned_embeddings,
     get_embedding_stats,
 )
+from backend.api.features.store.hybrid_search import unified_hybrid_search
+from backend.copilot import db as chat_db
 from backend.data import db
 from backend.data.analytics import (
     get_accuracy_trends_and_alerts,
@@ -48,6 +60,7 @@ from backend.data.graph import (
     get_graph_metadata,
     get_graph_settings,
     get_node,
+    get_store_listed_graphs,
     validate_graph_execution_permissions,
 )
 from backend.data.human_review import (
@@ -67,6 +80,10 @@ from backend.data.notifications import (
     remove_notifications_from_batch,
 )
 from backend.data.onboarding import increment_onboarding_runs
+from backend.data.understanding import (
+    get_business_understanding,
+    upsert_business_understanding,
+)
 from backend.data.user import (
     get_active_user_ids_in_timerange,
     get_user_by_id,
@@ -76,6 +93,7 @@ from backend.data.user import (
     get_user_notification_preference,
     update_user_integrations,
 )
+from backend.data.workspace import get_or_create_workspace
 from backend.util.service import (
     AppService,
     AppServiceClient,
@@ -107,6 +125,13 @@ async def _get_credits(user_id: str) -> int:
 
 
 class DatabaseManager(AppService):
+    """Database connection pooling service.
+
+    This service connects to the Prisma engine and exposes database
+    operations via RPC endpoints. It acts as a centralized connection pool
+    for all services that need database access.
+    """
+
     @asynccontextmanager
     async def lifespan(self, app: "FastAPI"):
         async with super().lifespan(app):
@@ -142,11 +167,15 @@ class DatabaseManager(AppService):
     def _(
         f: Callable[P, R], name: str | None = None
     ) -> Callable[Concatenate[object, P], R]:
+        """
+        Exposes a function as an RPC endpoint, and adds a virtual `self` param
+        to the function's type so it can be bound as a method.
+        """
         if name is not None:
             f.__name__ = name
         return cast(Callable[Concatenate[object, P], R], expose(f))
 
-    # Executions
+    # ============ Graph Executions ============ #
     get_child_graph_executions = _(get_child_graph_executions)
     get_graph_executions = _(get_graph_executions)
     get_graph_executions_count = _(get_graph_executions_count)
@@ -170,36 +199,37 @@ class DatabaseManager(AppService):
     get_frequently_executed_graphs = _(get_frequently_executed_graphs)
     get_marketplace_graphs_for_monitoring = _(get_marketplace_graphs_for_monitoring)
 
-    # Graphs
+    # ============ Graphs ============ #
     get_node = _(get_node)
     get_graph = _(get_graph)
     get_connected_output_nodes = _(get_connected_output_nodes)
     get_graph_metadata = _(get_graph_metadata)
     get_graph_settings = _(get_graph_settings)
+    get_store_listed_graphs = _(get_store_listed_graphs)
 
-    # Credits
+    # ============ Credits ============ #
     spend_credits = _(_spend_credits, name="spend_credits")
     get_credits = _(_get_credits, name="get_credits")
 
-    # User + User Metadata + User Integrations
+    # ============ User + Integrations ============ #
+    get_user_by_id = _(get_user_by_id)
     get_user_integrations = _(get_user_integrations)
     update_user_integrations = _(update_user_integrations)
 
-    # User Comms - async
+    # ============ User Comms ============ #
     get_active_user_ids_in_timerange = _(get_active_user_ids_in_timerange)
-    get_user_by_id = _(get_user_by_id)
     get_user_email_by_id = _(get_user_email_by_id)
     get_user_email_verification = _(get_user_email_verification)
     get_user_notification_preference = _(get_user_notification_preference)
 
-    # Human In The Loop
+    # ============ Human In The Loop ============ #
     cancel_pending_reviews_for_execution = _(cancel_pending_reviews_for_execution)
     check_approval = _(check_approval)
     get_or_create_human_review = _(get_or_create_human_review)
     has_pending_reviews_for_graph_exec = _(has_pending_reviews_for_graph_exec)
     update_review_processed_status = _(update_review_processed_status)
 
-    # Notifications - async
+    # ============ Notifications ============ #
     clear_all_user_notification_batches = _(clear_all_user_notification_batches)
     create_or_add_to_user_notification_batch = _(
         create_or_add_to_user_notification_batch
@@ -212,28 +242,55 @@ class DatabaseManager(AppService):
         get_user_notification_oldest_message_in_batch
     )
 
-    # Library
+    # ============ Library ============ #
     list_library_agents = _(list_library_agents)
     add_store_agent_to_library = _(add_store_agent_to_library)
+    create_graph_in_library = _(create_graph_in_library)
+    create_library_agent = _(create_library_agent)
+    get_library_agent = _(get_library_agent)
+    get_library_agent_by_graph_id = _(get_library_agent_by_graph_id)
+    update_graph_in_library = _(update_graph_in_library)
     validate_graph_execution_permissions = _(validate_graph_execution_permissions)
 
-    # Onboarding
+    # ============ Onboarding ============ #
     increment_onboarding_runs = _(increment_onboarding_runs)
 
-    # OAuth
+    # ============ OAuth ============ #
     cleanup_expired_oauth_tokens = _(cleanup_expired_oauth_tokens)
 
-    # Store
+    # ============ Store ============ #
     get_store_agents = _(get_store_agents)
     get_store_agent_details = _(get_store_agent_details)
+    get_agent = _(get_agent)
+    get_available_graph = _(get_available_graph)
 
-    # Store Embeddings
+    # ============ Search ============ #
     get_embedding_stats = _(get_embedding_stats)
     backfill_missing_embeddings = _(backfill_missing_embeddings)
     cleanup_orphaned_embeddings = _(cleanup_orphaned_embeddings)
+    unified_hybrid_search = _(unified_hybrid_search)
 
-    # Summary data - async
+    # ============ Summary Data ============ #
     get_user_execution_summary_data = _(get_user_execution_summary_data)
+
+    # ============ Workspace ============ #
+    get_or_create_workspace = _(get_or_create_workspace)
+
+    # ============ Understanding ============ #
+    get_business_understanding = _(get_business_understanding)
+    upsert_business_understanding = _(upsert_business_understanding)
+
+    # ============ CoPilot Chat Sessions ============ #
+    get_chat_session = _(chat_db.get_chat_session)
+    create_chat_session = _(chat_db.create_chat_session)
+    update_chat_session = _(chat_db.update_chat_session)
+    add_chat_message = _(chat_db.add_chat_message)
+    add_chat_messages_batch = _(chat_db.add_chat_messages_batch)
+    get_user_chat_sessions = _(chat_db.get_user_chat_sessions)
+    get_user_session_count = _(chat_db.get_user_session_count)
+    delete_chat_session = _(chat_db.delete_chat_session)
+    get_chat_session_message_count = _(chat_db.get_chat_session_message_count)
+    update_tool_message_content = _(chat_db.update_tool_message_content)
 
 
 class DatabaseManagerClient(AppServiceClient):
@@ -296,43 +353,50 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     def get_service_type(cls):
         return DatabaseManager
 
+    # ============ Graph Executions ============ #
     create_graph_execution = d.create_graph_execution
     get_child_graph_executions = d.get_child_graph_executions
     get_connected_output_nodes = d.get_connected_output_nodes
     get_latest_node_execution = d.get_latest_node_execution
-    get_graph = d.get_graph
-    get_graph_metadata = d.get_graph_metadata
-    get_graph_settings = d.get_graph_settings
     get_graph_execution = d.get_graph_execution
     get_graph_execution_meta = d.get_graph_execution_meta
-    get_node = d.get_node
+    get_graph_executions = d.get_graph_executions
     get_node_execution = d.get_node_execution
     get_node_executions = d.get_node_executions
-    get_user_by_id = d.get_user_by_id
-    get_user_integrations = d.get_user_integrations
-    upsert_execution_input = d.upsert_execution_input
-    upsert_execution_output = d.upsert_execution_output
-    get_execution_outputs_by_node_exec_id = d.get_execution_outputs_by_node_exec_id
     update_graph_execution_stats = d.update_graph_execution_stats
     update_node_execution_status = d.update_node_execution_status
     update_node_execution_status_batch = d.update_node_execution_status_batch
-    update_user_integrations = d.update_user_integrations
+    upsert_execution_input = d.upsert_execution_input
+    upsert_execution_output = d.upsert_execution_output
+    get_execution_outputs_by_node_exec_id = d.get_execution_outputs_by_node_exec_id
     get_execution_kv_data = d.get_execution_kv_data
     set_execution_kv_data = d.set_execution_kv_data
 
-    # Human In The Loop
+    # ============ Graphs ============ #
+    get_graph = d.get_graph
+    get_graph_metadata = d.get_graph_metadata
+    get_graph_settings = d.get_graph_settings
+    get_node = d.get_node
+    get_store_listed_graphs = d.get_store_listed_graphs
+
+    # ============ User + Integrations ============ #
+    get_user_by_id = d.get_user_by_id
+    get_user_integrations = d.get_user_integrations
+    update_user_integrations = d.update_user_integrations
+
+    # ============ Human In The Loop ============ #
     cancel_pending_reviews_for_execution = d.cancel_pending_reviews_for_execution
     check_approval = d.check_approval
     get_or_create_human_review = d.get_or_create_human_review
     update_review_processed_status = d.update_review_processed_status
 
-    # User Comms
+    # ============ User Comms ============ #
     get_active_user_ids_in_timerange = d.get_active_user_ids_in_timerange
     get_user_email_by_id = d.get_user_email_by_id
     get_user_email_verification = d.get_user_email_verification
     get_user_notification_preference = d.get_user_notification_preference
 
-    # Notifications
+    # ============ Notifications ============ #
     clear_all_user_notification_batches = d.clear_all_user_notification_batches
     create_or_add_to_user_notification_batch = (
         d.create_or_add_to_user_notification_batch
@@ -345,20 +409,49 @@ class DatabaseManagerAsyncClient(AppServiceClient):
         d.get_user_notification_oldest_message_in_batch
     )
 
-    # Library
+    # ============ Library ============ #
     list_library_agents = d.list_library_agents
     add_store_agent_to_library = d.add_store_agent_to_library
+    create_graph_in_library = d.create_graph_in_library
+    create_library_agent = d.create_library_agent
+    get_library_agent = d.get_library_agent
+    get_library_agent_by_graph_id = d.get_library_agent_by_graph_id
+    update_graph_in_library = d.update_graph_in_library
     validate_graph_execution_permissions = d.validate_graph_execution_permissions
 
-    # Onboarding
+    # ============ Onboarding ============ #
     increment_onboarding_runs = d.increment_onboarding_runs
 
-    # OAuth
+    # ============ OAuth ============ #
     cleanup_expired_oauth_tokens = d.cleanup_expired_oauth_tokens
 
-    # Store
+    # ============ Store ============ #
     get_store_agents = d.get_store_agents
     get_store_agent_details = d.get_store_agent_details
+    get_agent = d.get_agent
+    get_available_graph = d.get_available_graph
 
-    # Summary data
+    # ============ Search ============ #
+    unified_hybrid_search = d.unified_hybrid_search
+
+    # ============ Summary Data ============ #
     get_user_execution_summary_data = d.get_user_execution_summary_data
+
+    # ============ Workspace ============ #
+    get_or_create_workspace = d.get_or_create_workspace
+
+    # ============ Understanding ============ #
+    get_business_understanding = d.get_business_understanding
+    upsert_business_understanding = d.upsert_business_understanding
+
+    # ============ CoPilot Chat Sessions ============ #
+    get_chat_session = d.get_chat_session
+    create_chat_session = d.create_chat_session
+    update_chat_session = d.update_chat_session
+    add_chat_message = d.add_chat_message
+    add_chat_messages_batch = d.add_chat_messages_batch
+    get_user_chat_sessions = d.get_user_chat_sessions
+    get_user_session_count = d.get_user_session_count
+    delete_chat_session = d.delete_chat_session
+    get_chat_session_message_count = d.get_chat_session_message_count
+    update_tool_message_content = d.update_tool_message_content
