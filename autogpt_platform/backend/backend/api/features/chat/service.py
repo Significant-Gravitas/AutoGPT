@@ -80,6 +80,19 @@ settings = Settings()
 client = openai.AsyncOpenAI(api_key=config.api_key, base_url=config.base_url)
 
 
+def _apply_thinking_config(extra_body: dict[str, Any], model: str) -> None:
+    """Apply extended thinking configuration for Anthropic models via OpenRouter.
+
+    OpenRouter's reasoning API expects either:
+    - {"max_tokens": N} for explicit token budget
+    - {"effort": "high"} for automatic budget
+
+    See: https://openrouter.ai/docs/reasoning-tokens
+    """
+    if config.thinking_enabled and "anthropic" in model.lower():
+        extra_body["reasoning"] = {"max_tokens": config.thinking_budget_tokens}
+
+
 langfuse = get_client()
 
 # Redis key prefix for tracking running long-running operations
@@ -1066,9 +1079,8 @@ async def _stream_chat_chunks(
                         :128
                     ]  # OpenRouter limit
 
-                # Enable adaptive thinking for Anthropic models via OpenRouter
-                if config.thinking_enabled and "anthropic" in model.lower():
-                    extra_body["reasoning"] = {"enabled": True}
+                # Enable extended thinking for Anthropic models via OpenRouter
+                _apply_thinking_config(extra_body, model)
 
                 api_call_start = time_module.perf_counter()
                 stream = await client.chat.completions.create(
@@ -1833,9 +1845,8 @@ async def _generate_llm_continuation(
         if session_id:
             extra_body["session_id"] = session_id[:128]
 
-        # Enable adaptive thinking for Anthropic models via OpenRouter
-        if config.thinking_enabled and "anthropic" in config.model.lower():
-            extra_body["reasoning"] = {"enabled": True}
+        # Enable extended thinking for Anthropic models via OpenRouter
+        _apply_thinking_config(extra_body, config.model)
 
         retry_count = 0
         last_error: Exception | None = None
@@ -1967,9 +1978,8 @@ async def _generate_llm_continuation_with_streaming(
         if session_id:
             extra_body["session_id"] = session_id[:128]
 
-        # Enable adaptive thinking for Anthropic models via OpenRouter
-        if config.thinking_enabled and "anthropic" in config.model.lower():
-            extra_body["reasoning"] = {"enabled": True}
+        # Enable extended thinking for Anthropic models via OpenRouter
+        _apply_thinking_config(extra_body, config.model)
 
         # Make streaming LLM call (no tools - just text response)
         from typing import cast
