@@ -166,23 +166,31 @@ class RunBlockTool(BaseTool):
         )
 
         # Get block schemas for details/validation
-        input_schema: dict[str, Any] = {}
-        output_schema: dict[str, Any] = {}
         try:
-            input_schema = block.input_schema.jsonschema()
+            input_schema: dict[str, Any] = block.input_schema.jsonschema()
         except Exception as e:
-            logger.debug(
+            logger.warning(
                 "Failed to generate input schema for block %s: %s",
                 block_id,
                 e,
             )
+            return ErrorResponse(
+                message=f"Block '{block.name}' has an invalid input schema",
+                error=str(e),
+                session_id=session_id,
+            )
         try:
-            output_schema = block.output_schema.jsonschema()
+            output_schema: dict[str, Any] = block.output_schema.jsonschema()
         except Exception as e:
-            logger.debug(
+            logger.warning(
                 "Failed to generate output schema for block %s: %s",
                 block_id,
                 e,
+            )
+            return ErrorResponse(
+                message=f"Block '{block.name}' has an invalid output schema",
+                error=str(e),
+                session_id=session_id,
             )
 
         if missing_credentials:
@@ -217,17 +225,17 @@ class RunBlockTool(BaseTool):
                 graph_version=None,
             )
 
-        # Check if this is a first attempt (no input data provided for a block that has inputs)
+        # Check if this is a first attempt (required inputs missing)
         # Return block details so user can see what inputs are needed
-        input_properties = input_schema.get("properties", {})
         credentials_fields = set(block.input_schema.get_credentials_fields().keys())
-        non_credential_properties = {
-            k: v for k, v in input_properties.items() if k not in credentials_fields
-        }
+        required_keys = set(input_schema.get("required", []))
+        required_non_credential_keys = required_keys - credentials_fields
         provided_input_keys = set(input_data.keys()) - credentials_fields
 
-        # If block has non-credential inputs but none were provided, show details first
-        if non_credential_properties and not provided_input_keys:
+        # Show details when there are required non-credential inputs and none are provided
+        if required_non_credential_keys and not (
+            required_non_credential_keys & provided_input_keys
+        ):
             # Get credentials info for the response
             credentials_meta = []
             for field_name, cred_meta in matched_credentials.items():

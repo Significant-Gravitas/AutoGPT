@@ -7,6 +7,7 @@ import pytest
 from backend.api.features.chat.tools.models import BlockDetailsResponse
 from backend.api.features.chat.tools.run_block import RunBlockTool
 from backend.data.block import BlockType
+from backend.data.model import CredentialsMetaInput
 
 from ._test_data import make_session
 
@@ -65,7 +66,7 @@ async def test_run_block_returns_details_when_no_input_provided():
         # Mock credentials check to return no missing credentials
         with patch.object(
             RunBlockTool,
-            "_check_block_credentials",
+            "_resolve_block_credentials",
             new_callable=AsyncMock,
             return_value=({}, []),  # (matched_credentials, missing_credentials)
         ):
@@ -123,9 +124,19 @@ async def test_run_block_returns_details_when_only_credentials_provided():
     ):
         with patch.object(
             RunBlockTool,
-            "_check_block_credentials",
+            "_resolve_block_credentials",
             new_callable=AsyncMock,
-            return_value=({"credentials": MagicMock()}, []),
+            return_value=(
+                {
+                    "credentials": CredentialsMetaInput(
+                        id="cred-id",
+                        provider="test_provider",
+                        type="api_key",
+                        title="Test Credential",
+                    )
+                },
+                [],
+            ),
         ):
             tool = RunBlockTool()
             response = await tool._execute(
