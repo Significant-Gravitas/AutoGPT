@@ -193,6 +193,20 @@ class StreamError(StreamBaseResponse):
         default=None, description="Additional error details"
     )
 
+    def to_sse(self) -> str:
+        """Convert to SSE format, only emitting fields required by AI SDK protocol.
+
+        The AI SDK uses z.strictObject({type, errorText}) which rejects
+        any extra fields like `code` or `details`.
+        """
+        import json
+
+        data = {
+            "type": self.type.value,
+            "errorText": self.errorText,
+        }
+        return f"data: {json.dumps(data)}\n\n"
+
 
 class StreamHeartbeat(StreamBaseResponse):
     """Heartbeat to keep SSE connection alive during long-running operations.

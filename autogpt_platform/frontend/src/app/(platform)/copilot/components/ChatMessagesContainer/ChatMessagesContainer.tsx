@@ -10,8 +10,9 @@ import {
   MessageResponse,
 } from "@/components/ai-elements/message";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
+import { toast } from "@/components/molecules/Toast/use-toast";
 import { ToolUIPart, UIDataTypes, UIMessage, UITools } from "ai";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CreateAgentTool } from "../../tools/CreateAgent/CreateAgent";
 import { EditAgentTool } from "../../tools/EditAgent/EditAgent";
 import { FindAgentsTool } from "../../tools/FindAgents/FindAgents";
@@ -121,12 +122,30 @@ export const ChatMessagesContainer = ({
   isLoading,
 }: ChatMessagesContainerProps) => {
   const [thinkingPhrase, setThinkingPhrase] = useState(getRandomPhrase);
+  const lastToastedErrorRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (status === "submitted") {
       setThinkingPhrase(getRandomPhrase());
     }
   }, [status]);
+
+  // Show a toast when a new error occurs
+  useEffect(() => {
+    if (!error) {
+      lastToastedErrorRef.current = null;
+      return;
+    }
+    const key = error.message;
+    if (key === lastToastedErrorRef.current) return;
+    lastToastedErrorRef.current = key;
+    toast({
+      variant: "destructive",
+      title: "Something went wrong",
+      description:
+        "The assistant encountered an error. Please try sending your message again.",
+    });
+  }, [error]);
 
   const lastMessage = messages[messages.length - 1];
   const lastAssistantHasVisibleContent =
@@ -263,8 +282,12 @@ export const ChatMessagesContainer = ({
           </Message>
         )}
         {error && (
-          <div className="rounded-lg bg-red-50 p-3 text-red-600">
-            Error: {error.message}
+          <div className="rounded-lg bg-red-50 p-4 text-sm text-red-700">
+            <p className="font-medium">Something went wrong</p>
+            <p className="mt-1 text-red-600">
+              The assistant encountered an error. Please try sending your
+              message again.
+            </p>
           </div>
         )}
       </ConversationContent>

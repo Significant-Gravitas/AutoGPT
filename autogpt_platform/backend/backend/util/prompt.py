@@ -723,6 +723,25 @@ async def compress_context(
 
     # Filter out any None values that may have been introduced
     final_msgs: list[dict] = [m for m in msgs if m is not None]
+
+    # ---- STEP 6: Final tool-pair validation ---------------------------------
+    # After all compression steps, verify that every tool response has a
+    # matching tool_call in a preceding assistant message. Remove orphans
+    # to prevent API errors (e.g., Anthropic's "unexpected tool_use_id").
+    available_ids: set[str] = set()
+    orphan_ids: set[str] = set()
+    for m in final_msgs:
+        available_ids |= _extract_tool_call_ids_from_message(m)
+        for resp_id in _extract_tool_response_ids_from_message(m):
+            if resp_id not in available_ids:
+                orphan_ids.add(resp_id)
+    if orphan_ids:
+        logger.warning(
+            f"Removing {len(orphan_ids)} orphan tool response(s) after compression: "
+            f"{orphan_ids}"
+        )
+        final_msgs = _remove_orphan_tool_responses(final_msgs, orphan_ids)
+
     final_count = sum(_msg_tokens(m, enc) for m in final_msgs)
     error = None
     if final_count + reserve > target_tokens:
