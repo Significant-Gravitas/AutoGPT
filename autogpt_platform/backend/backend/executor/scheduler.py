@@ -24,9 +24,8 @@ from dotenv import load_dotenv
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import MetaData, create_engine
 
-from backend.blocks._base import BlockInput
 from backend.data.execution import GraphExecutionWithNodes
-from backend.data.model import CredentialsMetaInput
+from backend.data.model import BlockInput, CredentialsMetaInput
 from backend.executor import utils as execution_utils
 from backend.monitoring import (
     NotificationJobArgs,

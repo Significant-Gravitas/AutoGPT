@@ -24,13 +24,7 @@ from pydantic import BaseModel, BeforeValidator, Field
 from pydantic.fields import computed_field
 
 from backend.blocks import get_block, get_blocks
-from backend.blocks._base import (
-    AnyBlockSchema,
-    Block,
-    BlockInput,
-    BlockType,
-    EmptySchema,
-)
+from backend.blocks._base import AnyBlockSchema, Block, BlockType, EmptySchema
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.blocks.llm import LlmModel
@@ -38,6 +32,7 @@ from backend.data.db import prisma as db
 from backend.data.dynamic_fields import is_tool_pin, sanitize_pin_name
 from backend.data.includes import MAX_GRAPH_VERSIONS_FETCH
 from backend.data.model import (
+    BlockInput,
     CredentialsFieldInfo,
     CredentialsMetaInput,
     is_credentials_field_name,

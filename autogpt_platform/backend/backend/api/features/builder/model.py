@@ -15,7 +15,7 @@ FilterType = Literal[
     "my_agents",
 ]
 
-BlockType = Literal["all", "input", "action", "output"]
+BlockTypeFilter = Literal["all", "input", "action", "output"]
 
 
 class SearchEntry(BaseModel):

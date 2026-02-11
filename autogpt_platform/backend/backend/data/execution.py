@@ -40,7 +40,8 @@ from pydantic import BaseModel, ConfigDict, JsonValue, ValidationError
 from pydantic.fields import Field
 
 from backend.blocks import get_block, get_io_block_ids, get_webhook_block_ids
-from backend.blocks._base import BlockInput, BlockType, CompletedBlockOutput
+from backend.blocks._base import BlockType
+from backend.data.model import BlockInput, CompletedBlockOutput
 from backend.util import type as type_utils
 from backend.util.exceptions import DatabaseError
 from backend.util.json import SafeJson

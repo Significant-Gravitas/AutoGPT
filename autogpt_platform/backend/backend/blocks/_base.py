@@ -1,7 +1,6 @@
 import inspect
 import logging
 from abc import ABC, abstractmethod
-from collections.abc import AsyncGenerator as AsyncGen
 from enum import Enum
 from typing import (
     TYPE_CHECKING,
@@ -21,6 +20,16 @@ import jsonref
 import jsonschema
 from pydantic import BaseModel
 
+from backend.data.model import (
+    BlockInput,
+    BlockOutput,
+    BlockOutputEntry,
+    Credentials,
+    CredentialsFieldInfo,
+    CredentialsMetaInput,
+    SchemaField,
+    is_credentials_field_name,
+)
 from backend.integrations.providers import ProviderName
 from backend.util import json
 from backend.util.exceptions import (
@@ -32,30 +41,18 @@ from backend.util.exceptions import (
 )
 from backend.util.settings import Config
 
-from ..data.model import (
-    ContributorDetails,
-    Credentials,
-    CredentialsFieldInfo,
-    CredentialsMetaInput,
-    SchemaField,
-    is_credentials_field_name,
-)
-
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from backend.data.execution import ExecutionContext
-    from backend.data.model import NodeExecutionStats
+    from backend.data.model import ContributorDetails, NodeExecutionStats
 
     from ..data.graph import Link
 
 app_config = Config()
 
-BlockInput = dict[str, Any]  # Input: 1 input pin consumes 1 data.
-BlockOutputEntry = tuple[str, Any]  # Output data should be a tuple of (name, value).
-BlockOutput = AsyncGen[BlockOutputEntry, None]  # Output: 1 output pin produces n data.
+
 BlockTestOutput = BlockOutputEntry | tuple[str, Callable[[Any], bool]]
-CompletedBlockOutput = dict[str, list[Any]]  # Completed stream, collected as a dict.
 
 
 class BlockType(Enum):
@@ -426,7 +423,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         self,
         id: str = "",
         description: str = "",
-        contributors: list[ContributorDetails] = [],
+        contributors: list["ContributorDetails"] = [],
         categories: set[BlockCategory] | None = None,
         input_schema: Type[BlockSchemaInputType] = EmptyInputSchema,
         output_schema: Type[BlockSchemaOutputType] = EmptyOutputSchema,

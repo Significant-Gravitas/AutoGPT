@@ -9,13 +9,7 @@ from typing import Mapping, Optional, cast
 from pydantic import BaseModel, JsonValue, ValidationError
 
 from backend.blocks import get_block
-from backend.blocks._base import (
-    Block,
-    BlockCostType,
-    BlockInput,
-    BlockOutputEntry,
-    BlockType,
-)
+from backend.blocks._base import Block, BlockCostType, BlockType
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
 from backend.data import human_review as human_review_db
@@ -35,7 +29,12 @@ from backend.data.execution import (
     NodesInputMasks,
 )
 from backend.data.graph import GraphModel, Node
-from backend.data.model import USER_TIMEZONE_NOT_SET, CredentialsMetaInput
+from backend.data.model import (
+    USER_TIMEZONE_NOT_SET,
+    BlockInput,
+    BlockOutputEntry,
+    CredentialsMetaInput,
+)
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
 from backend.util.clients import (
     get_async_execution_event_bus,

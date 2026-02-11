@@ -41,7 +41,6 @@ from backend.api.model import (
     UploadFileResponse,
 )
 from backend.blocks import get_block, get_blocks
-from backend.blocks._base import BlockInput, CompletedBlockOutput
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
 from backend.data.auth import api_key as api_key_db
@@ -55,7 +54,12 @@ from backend.data.credit import (
     set_auto_top_up,
 )
 from backend.data.graph import GraphSettings
-from backend.data.model import CredentialsMetaInput, UserOnboarding
+from backend.data.model import (
+    BlockInput,
+    CompletedBlockOutput,
+    CredentialsMetaInput,
+    UserOnboarding,
+)
 from backend.data.notifications import NotificationPreference, NotificationPreferenceDTO
 from backend.data.onboarding import (
     FrontendOnboardingStep,
