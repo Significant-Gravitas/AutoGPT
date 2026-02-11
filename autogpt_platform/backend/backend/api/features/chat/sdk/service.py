@@ -238,8 +238,9 @@ async def stream_chat_completion_sdk(
 
     stream_completed = False
     # Use a session-specific temp dir to avoid cleanup race conditions
-    # between concurrent sessions.
-    sdk_cwd = f"/tmp/copilot-{session_id}"
+    # between concurrent sessions. Sanitize session_id to prevent path traversal.
+    safe_session_id = "".join(c for c in session_id if c.isalnum() or c == "-")
+    sdk_cwd = f"/tmp/copilot-{safe_session_id}"
     os.makedirs(sdk_cwd, exist_ok=True)
 
     try:
