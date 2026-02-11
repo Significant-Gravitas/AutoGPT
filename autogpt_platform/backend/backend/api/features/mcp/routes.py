@@ -309,6 +309,11 @@ async def mcp_oauth_callback(
 
     meta = valid_state.state_metadata
     frontend_base_url = settings.config.frontend_base_url
+    if not frontend_base_url:
+        raise fastapi.HTTPException(
+            status_code=500,
+            detail="Frontend base URL is not configured.",
+        )
     redirect_uri = f"{frontend_base_url}/auth/integrations/mcp_callback"
 
     handler = MCPOAuthHandler(

@@ -256,11 +256,17 @@ def create_mcp_oauth_handler(
     from backend.blocks.mcp.oauth import MCPOAuthHandler
 
     meta = credentials.metadata or {}
+    token_url = meta.get("mcp_token_url", "")
+    if not token_url:
+        raise ValueError(
+            f"MCP credential {credentials.id} is missing 'mcp_token_url' metadata; "
+            "cannot refresh tokens"
+        )
     return MCPOAuthHandler(
         client_id=meta.get("mcp_client_id", ""),
         client_secret=meta.get("mcp_client_secret", ""),
         redirect_uri="",  # Not needed for token refresh
         authorize_url="",  # Not needed for token refresh
-        token_url=meta.get("mcp_token_url", ""),
+        token_url=token_url,
         resource_url=meta.get("mcp_resource_url"),
     )
