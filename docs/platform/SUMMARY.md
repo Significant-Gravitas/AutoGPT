@@ -32,3 +32,8 @@
 
 * [API Introduction](integrating/api-guide.md)
 * [OAuth & SSO](integrating/oauth-guide.md)
+
+## Changelog
+
+* [What's New](changelog/README.md)
+  * [January 29 – February 11, 2026](changelog/january-29-february-11-2026.md)
