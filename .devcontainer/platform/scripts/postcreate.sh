@@ -13,6 +13,9 @@ set -e  # Exit on error
 
 echo "🚀 Setting up your development environment..."
 
+# Ensure PATH includes pipx binaries (where poetry is installed)
+export PATH="/usr/local/py-utils/bin:$PATH"
+
 cd /workspaces/AutoGPT/autogpt_platform
 
 # =============================================================================
@@ -64,9 +67,6 @@ echo "✅ RabbitMQ is ready"
 echo "🔄 Running database migrations..."
 
 cd backend
-
-# Ensure Poetry is in PATH
-export PATH="$HOME/.local/bin:$PATH"
 
 # Run migrations
 poetry run prisma migrate deploy
@@ -127,5 +127,5 @@ echo "🔑 Test Account:"
 echo "   Email:    test123@gmail.com"
 echo "   Password: testpassword123"
 echo ""
-echo "📚 Full docs: .devcontainer/README.md"
+echo "📚 Full docs: .devcontainer/platform/README.md"
 echo ""

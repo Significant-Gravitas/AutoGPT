@@ -17,6 +17,21 @@ set -x  # Print commands for debugging
 
 echo "🚀 Starting prebuild setup..."
 
+# =============================================================================
+# Install Poetry via pipx (pipx is installed by the Python devcontainer feature)
+# =============================================================================
+echo "📦 Installing Poetry..."
+
+# pipx is installed by the Python feature at /usr/local/py-utils/bin
+export PATH="/usr/local/py-utils/bin:$PATH"
+
+if ! command -v poetry &> /dev/null; then
+    pipx install poetry
+fi
+
+# Verify poetry is available
+poetry --version
+
 # Workspace is autogpt_platform
 cd /workspaces/AutoGPT/autogpt_platform
 
@@ -26,13 +41,6 @@ cd /workspaces/AutoGPT/autogpt_platform
 echo "📦 Installing backend dependencies..."
 
 cd backend
-
-# Install Poetry if not present
-if ! command -v poetry &> /dev/null; then
-    echo "Installing Poetry..."
-    curl -sSL https://install.python-poetry.org | python3 -
-    export PATH="$HOME/.local/bin:$PATH"
-fi
 
 # Install Python dependencies
 poetry install --no-interaction --no-ansi
@@ -51,7 +59,7 @@ echo "📦 Installing frontend dependencies..."
 
 cd frontend
 
-# Install pnpm if not present
+# pnpm should be installed by the Node feature, but ensure it's available
 if ! command -v pnpm &> /dev/null; then
     echo "Installing pnpm..."
     npm install -g pnpm
@@ -88,9 +96,6 @@ wait
 
 echo "✅ Dependency images pulled"
 
-# NOTE: We intentionally do NOT build backend/frontend images here.
-# Those need to use the current branch's code, not prebuild's code.
-
 # =============================================================================
 # Copy environment files
 # =============================================================================
@@ -122,12 +127,10 @@ echo "✅ PREBUILD COMPLETE"
 echo "=============================================="
 echo ""
 echo "Cached:"
-echo "  ✅ Python packages (poetry)"
+echo "  ✅ Poetry (via pipx)"
+echo "  ✅ Python packages"
 echo "  ✅ Node packages (pnpm)"
 echo "  ✅ Dependency Docker images"
-echo ""
-echo "NOT cached (intentionally):"
-echo "  ❌ Backend/Frontend containers (would have stale code)"
 echo ""
 echo "The postcreate script will start services."
 echo ""
