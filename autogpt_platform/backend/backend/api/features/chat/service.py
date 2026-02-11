@@ -245,12 +245,16 @@ async def _get_system_prompt_template(context: str) -> str:
     return DEFAULT_SYSTEM_PROMPT.format(users_information=context)
 
 
-async def _build_system_prompt(user_id: str | None) -> tuple[str, Any]:
+async def _build_system_prompt(
+    user_id: str | None, has_conversation_history: bool = False
+) -> tuple[str, Any]:
     """Build the full system prompt including business understanding if available.
 
     Args:
-        user_id: The user ID for fetching business understanding
-                     If "default" and this is the user's first session, will use "onboarding" instead.
+        user_id: The user ID for fetching business understanding.
+        has_conversation_history: Whether there's existing conversation history.
+            If True, we don't tell the model to greet/introduce (since they're
+            already in a conversation).
 
     Returns:
         Tuple of (compiled prompt string, business understanding object)
@@ -266,6 +270,8 @@ async def _build_system_prompt(user_id: str | None) -> tuple[str, Any]:
 
     if understanding:
         context = format_understanding_for_prompt(understanding)
+    elif has_conversation_history:
+        context = "No prior understanding saved yet. Continue the existing conversation naturally."
     else:
         context = "This is the first time you are meeting the user. Greet them and introduce them to the platform"
 
@@ -1229,7 +1235,7 @@ async def _stream_chat_chunks(
 
                 total_time = (time_module.perf_counter() - stream_chunks_start) * 1000
                 logger.info(
-                    f"[TIMING] _stream_chat_chunks COMPLETED in {total_time/1000:.1f}s; "
+                    f"[TIMING] _stream_chat_chunks COMPLETED in {total_time / 1000:.1f}s; "
                     f"session={session.session_id}, user={session.user_id}",
                     extra={"json_fields": {**log_meta, "total_time_ms": total_time}},
                 )
