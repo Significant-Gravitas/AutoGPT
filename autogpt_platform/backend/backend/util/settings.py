@@ -212,7 +212,7 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     )
 
     num_copilot_workers: int = Field(
-        default=10,
+        default=5,
         ge=1,
         le=100,
         description="Number of concurrent CoPilot executor workers",
