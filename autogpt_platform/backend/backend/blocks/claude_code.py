@@ -20,7 +20,10 @@ from backend.data.model import (
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
-from backend.util.sandbox_files import SandboxFileOutput, extract_and_store_sandbox_files
+from backend.util.sandbox_files import (
+    SandboxFileOutput,
+    extract_and_store_sandbox_files,
+)
 
 if TYPE_CHECKING:
     from backend.executor.utils import ExecutionContext

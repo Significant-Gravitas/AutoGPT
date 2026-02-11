@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel
 
 from backend.util.file import store_media_file
+from backend.util.type import MediaFileType
 
 if TYPE_CHECKING:
     from e2b import AsyncSandbox as BaseAsyncSandbox
@@ -160,6 +161,8 @@ async def extract_sandbox_files(
                 content = await sandbox.files.read(file_path, format="bytes")
                 if isinstance(content, str):
                     content = content.encode("utf-8")
+                elif isinstance(content, bytearray):
+                    content = bytes(content)
 
                 # Extract filename from path
                 file_name = file_path.split("/")[-1]
@@ -229,7 +232,7 @@ async def store_sandbox_files(
             )
 
             result = await store_media_file(
-                file=data_uri,
+                file=MediaFileType(data_uri),
                 execution_context=execution_context,
                 return_format="for_block_output",
             )
