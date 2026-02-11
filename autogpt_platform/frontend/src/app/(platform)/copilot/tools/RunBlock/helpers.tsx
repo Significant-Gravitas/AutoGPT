@@ -149,7 +149,7 @@ export function getAccordionMeta(output: RunBlockToolOutput): {
   if (isRunBlockBlockOutput(output)) {
     const keys = Object.keys(output.outputs ?? {});
     return {
-      icon: <OrbitLoader size={24} className="text-neutral-700" />,
+      icon,
       title: output.block_name,
       description:
         keys.length > 0
