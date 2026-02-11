@@ -34,6 +34,7 @@ from backend.api.features.chat.response_model import (
     StreamToolInputStart,
     StreamToolOutputAvailable,
 )
+from backend.api.features.chat.sdk.tool_adapter import MCP_TOOL_PREFIX
 
 logger = logging.getLogger(__name__)
 
@@ -89,17 +90,21 @@ class SDKResponseAdapter:
                 elif isinstance(block, ToolUseBlock):
                     self._end_text_if_open(responses)
 
+                    # Strip MCP prefix so frontend sees "find_block"
+                    # instead of "mcp__copilot__find_block".
+                    tool_name = block.name.removeprefix(MCP_TOOL_PREFIX)
+
                     responses.append(
-                        StreamToolInputStart(toolCallId=block.id, toolName=block.name)
+                        StreamToolInputStart(toolCallId=block.id, toolName=tool_name)
                     )
                     responses.append(
                         StreamToolInputAvailable(
                             toolCallId=block.id,
-                            toolName=block.name,
+                            toolName=tool_name,
                             input=block.input,
                         )
                     )
-                    self.current_tool_calls[block.id] = {"name": block.name}
+                    self.current_tool_calls[block.id] = {"name": tool_name}
 
         elif isinstance(sdk_message, UserMessage):
             # UserMessage carries tool results back from tool execution.

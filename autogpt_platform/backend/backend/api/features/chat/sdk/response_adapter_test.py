@@ -26,6 +26,7 @@ from backend.api.features.chat.response_model import (
 )
 
 from .response_adapter import SDKResponseAdapter
+from .tool_adapter import MCP_TOOL_PREFIX
 
 
 def _adapter() -> SDKResponseAdapter:
@@ -95,9 +96,16 @@ def test_multiple_text_deltas_reuse_block_id():
 
 
 def test_tool_use_emits_input_start_and_available():
+    """Tool names arrive with MCP prefix and should be stripped for the frontend."""
     adapter = _adapter()
     msg = AssistantMessage(
-        content=[ToolUseBlock(id="tool-1", name="find_agent", input={"q": "x"})],
+        content=[
+            ToolUseBlock(
+                id="tool-1",
+                name=f"{MCP_TOOL_PREFIX}find_agent",
+                input={"q": "x"},
+            )
+        ],
         model="test",
     )
     results = adapter.convert_message(msg)
@@ -105,8 +113,9 @@ def test_tool_use_emits_input_start_and_available():
     assert isinstance(results[0], StreamStartStep)
     assert isinstance(results[1], StreamToolInputStart)
     assert results[1].toolCallId == "tool-1"
-    assert results[1].toolName == "find_agent"
+    assert results[1].toolName == "find_agent"  # prefix stripped
     assert isinstance(results[2], StreamToolInputAvailable)
+    assert results[2].toolName == "find_agent"  # prefix stripped
     assert results[2].input == {"q": "x"}
 
 
@@ -114,7 +123,8 @@ def test_text_then_tool_ends_text_block():
     adapter = _adapter()
     text_msg = AssistantMessage(content=[TextBlock(text="thinking...")], model="test")
     tool_msg = AssistantMessage(
-        content=[ToolUseBlock(id="t1", name="tool", input={})], model="test"
+        content=[ToolUseBlock(id="t1", name=f"{MCP_TOOL_PREFIX}tool", input={})],
+        model="test",
     )
     adapter.convert_message(text_msg)  # opens step + text
     results = adapter.convert_message(tool_msg)
@@ -129,9 +139,10 @@ def test_text_then_tool_ends_text_block():
 
 def test_tool_result_emits_output_and_finish_step():
     adapter = _adapter()
-    # First register the tool call (opens step)
+    # First register the tool call (opens step) — SDK sends prefixed name
     tool_msg = AssistantMessage(
-        content=[ToolUseBlock(id="t1", name="find_agent", input={})], model="test"
+        content=[ToolUseBlock(id="t1", name=f"{MCP_TOOL_PREFIX}find_agent", input={})],
+        model="test",
     )
     adapter.convert_message(tool_msg)
 
@@ -143,7 +154,7 @@ def test_tool_result_emits_output_and_finish_step():
     assert len(results) == 2
     assert isinstance(results[0], StreamToolOutputAvailable)
     assert results[0].toolCallId == "t1"
-    assert results[0].toolName == "find_agent"
+    assert results[0].toolName == "find_agent"  # prefix stripped
     assert results[0].output == "found 3 agents"
     assert results[0].success is True
     assert isinstance(results[1], StreamFinishStep)
@@ -153,7 +164,10 @@ def test_tool_result_error():
     adapter = _adapter()
     adapter.convert_message(
         AssistantMessage(
-            content=[ToolUseBlock(id="t1", name="run_agent", input={})], model="test"
+            content=[
+                ToolUseBlock(id="t1", name=f"{MCP_TOOL_PREFIX}run_agent", input={})
+            ],
+            model="test",
         )
     )
     result_msg = UserMessage(
@@ -169,7 +183,8 @@ def test_tool_result_list_content():
     adapter = _adapter()
     adapter.convert_message(
         AssistantMessage(
-            content=[ToolUseBlock(id="t1", name="tool", input={})], model="test"
+            content=[ToolUseBlock(id="t1", name=f"{MCP_TOOL_PREFIX}tool", input={})],
+            model="test",
         )
     )
     result_msg = UserMessage(
@@ -251,7 +266,8 @@ def test_text_after_tool_gets_new_block_id():
     )
     adapter.convert_message(
         AssistantMessage(
-            content=[ToolUseBlock(id="t1", name="tool", input={})], model="test"
+            content=[ToolUseBlock(id="t1", name=f"{MCP_TOOL_PREFIX}tool", input={})],
+            model="test",
         )
     )
     # Send tool result (closes step)
@@ -292,7 +308,11 @@ def test_full_conversation_flow():
         adapter.convert_message(
             AssistantMessage(
                 content=[
-                    ToolUseBlock(id="t1", name="find_agent", input={"query": "email"})
+                    ToolUseBlock(
+                        id="t1",
+                        name=f"{MCP_TOOL_PREFIX}find_agent",
+                        input={"query": "email"},
+                    )
                 ],
                 model="test",
             )
