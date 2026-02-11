@@ -6,6 +6,7 @@ if TYPE_CHECKING:
 
 from pydantic import SecretStr
 
+from backend.data.execution import ExecutionContext
 from backend.sdk import (
     APIKeyCredentials,
     Block,
@@ -17,6 +18,8 @@ from backend.sdk import (
     Requests,
     SchemaField,
 )
+from backend.util.file import store_media_file
+from backend.util.type import MediaFileType
 
 from ._config import bannerbear
 
@@ -135,15 +138,17 @@ class BannerbearTextOverlayBlock(Block):
             },
             test_output=[
                 ("success", True),
-                ("image_url", "https://cdn.bannerbear.com/test-image.jpg"),
+                # Output will be a workspace ref or data URI depending on context
+                ("image_url", lambda x: x.startswith(("workspace://", "data:"))),
                 ("uid", "test-uid-123"),
                 ("status", "completed"),
             ],
             test_mock={
+                # Use data URI to avoid HTTP requests during tests
                 "_make_api_request": lambda *args, **kwargs: {
                     "uid": "test-uid-123",
                     "status": "completed",
-                    "image_url": "https://cdn.bannerbear.com/test-image.jpg",
+                    "image_url": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/9oACAEBAAA/APn+v//Z",
                 }
             },
             test_credentials=TEST_CREDENTIALS,
@@ -177,7 +182,12 @@ class BannerbearTextOverlayBlock(Block):
             raise Exception(error_msg)
 
     async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+        self,
+        input_data: Input,
+        *,
+        credentials: APIKeyCredentials,
+        execution_context: ExecutionContext,
+        **kwargs,
     ) -> BlockOutput:
         # Build the modifications array
         modifications = []
@@ -234,6 +244,18 @@ class BannerbearTextOverlayBlock(Block):
 
         # Synchronous request - image should be ready
         yield "success", True
-        yield "image_url", data.get("image_url", "")
+
+        # Store the generated image to workspace for persistence
+        image_url = data.get("image_url", "")
+        if image_url:
+            stored_url = await store_media_file(
+                file=MediaFileType(image_url),
+                execution_context=execution_context,
+                return_format="for_block_output",
+            )
+            yield "image_url", stored_url
+        else:
+            yield "image_url", ""
+
         yield "uid", data.get("uid", "")
         yield "status", data.get("status", "completed")

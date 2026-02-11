@@ -857,7 +857,7 @@ export const CustomNode = React.memo(
     })();
 
     const hasAdvancedFields =
-      data.inputSchema &&
+      data.inputSchema?.properties &&
       Object.entries(data.inputSchema.properties).some(([key, value]) => {
         return (
           value.advanced === true && !data.inputSchema.required?.includes(key)

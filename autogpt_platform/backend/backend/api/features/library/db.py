@@ -19,9 +19,12 @@ from backend.data.graph import GraphSettings
 from backend.data.includes import AGENT_PRESET_INCLUDE, library_agent_include
 from backend.data.model import CredentialsMetaInput
 from backend.integrations.creds_manager import IntegrationCredentialsManager
-from backend.integrations.webhooks.graph_lifecycle_hooks import on_graph_activate
+from backend.integrations.webhooks.graph_lifecycle_hooks import (
+    on_graph_activate,
+    on_graph_deactivate,
+)
 from backend.util.clients import get_scheduler_client
-from backend.util.exceptions import DatabaseError, NotFoundError
+from backend.util.exceptions import DatabaseError, InvalidInputError, NotFoundError
 from backend.util.json import SafeJson
 from backend.util.models import Pagination
 from backend.util.settings import Config
@@ -39,6 +42,7 @@ async def list_library_agents(
     sort_by: library_model.LibraryAgentSort = library_model.LibraryAgentSort.UPDATED_AT,
     page: int = 1,
     page_size: int = 50,
+    include_executions: bool = False,
 ) -> library_model.LibraryAgentResponse:
     """
     Retrieves a paginated list of LibraryAgent records for a given user.
@@ -49,6 +53,9 @@ async def list_library_agents(
         sort_by: Sorting field (createdAt, updatedAt, isFavorite, isCreatedByUser).
         page: Current page (1-indexed).
         page_size: Number of items per page.
+        include_executions: Whether to include execution data for status calculation.
+            Defaults to False for performance (UI fetches status separately).
+            Set to True when accurate status/metrics are needed (e.g., agent generator).
 
     Returns:
         A LibraryAgentResponse containing the list of agents and pagination details.
@@ -64,11 +71,11 @@ async def list_library_agents(
 
     if page < 1 or page_size < 1:
         logger.warning(f"Invalid pagination: page={page}, page_size={page_size}")
-        raise DatabaseError("Invalid pagination input")
+        raise InvalidInputError("Invalid pagination input")
 
     if search_term and len(search_term.strip()) > 100:
         logger.warning(f"Search term too long: {repr(search_term)}")
-        raise DatabaseError("Search term is too long")
+        raise InvalidInputError("Search term is too long")
 
     where_clause: prisma.types.LibraryAgentWhereInput = {
         "userId": user_id,
@@ -76,7 +83,6 @@ async def list_library_agents(
         "isArchived": False,
     }
 
-    # Build search filter if applicable
     if search_term:
         where_clause["OR"] = [
             {
@@ -93,7 +99,6 @@ async def list_library_agents(
             },
         ]
 
-    # Determine sorting
     order_by: prisma.types.LibraryAgentOrderByInput | None = None
 
     if sort_by == library_model.LibraryAgentSort.CREATED_AT:
@@ -105,7 +110,7 @@ async def list_library_agents(
         library_agents = await prisma.models.LibraryAgent.prisma().find_many(
             where=where_clause,
             include=library_agent_include(
-                user_id, include_nodes=False, include_executions=False
+                user_id, include_nodes=False, include_executions=include_executions
             ),
             order=order_by,
             skip=(page - 1) * page_size,
@@ -175,7 +180,7 @@ async def list_favorite_library_agents(
 
     if page < 1 or page_size < 1:
         logger.warning(f"Invalid pagination: page={page}, page_size={page_size}")
-        raise DatabaseError("Invalid pagination input")
+        raise InvalidInputError("Invalid pagination input")
 
     where_clause: prisma.types.LibraryAgentWhereInput = {
         "userId": user_id,
@@ -369,7 +374,7 @@ async def get_library_agent_by_graph_id(
 
 
 async def add_generated_agent_image(
-    graph: graph_db.BaseGraph,
+    graph: graph_db.GraphBaseMeta,
     user_id: str,
     library_agent_id: str,
 ) -> Optional[prisma.models.LibraryAgent]:
@@ -533,6 +538,92 @@ async def update_agent_version_in_library(
         )
 
     return library_model.LibraryAgent.from_db(lib)
+
+
+async def create_graph_in_library(
+    graph: graph_db.Graph,
+    user_id: str,
+) -> tuple[graph_db.GraphModel, library_model.LibraryAgent]:
+    """Create a new graph and add it to the user's library."""
+    graph.version = 1
+    graph_model = graph_db.make_graph_model(graph, user_id)
+    graph_model.reassign_ids(user_id=user_id, reassign_graph_id=True)
+
+    created_graph = await graph_db.create_graph(graph_model, user_id)
+
+    library_agents = await create_library_agent(
+        graph=created_graph,
+        user_id=user_id,
+        sensitive_action_safe_mode=True,
+        create_library_agents_for_sub_graphs=False,
+    )
+
+    if created_graph.is_active:
+        created_graph = await on_graph_activate(created_graph, user_id=user_id)
+
+    return created_graph, library_agents[0]
+
+
+async def update_graph_in_library(
+    graph: graph_db.Graph,
+    user_id: str,
+) -> tuple[graph_db.GraphModel, library_model.LibraryAgent]:
+    """Create a new version of an existing graph and update the library entry."""
+    existing_versions = await graph_db.get_graph_all_versions(graph.id, user_id)
+    current_active_version = (
+        next((v for v in existing_versions if v.is_active), None)
+        if existing_versions
+        else None
+    )
+    graph.version = (
+        max(v.version for v in existing_versions) + 1 if existing_versions else 1
+    )
+
+    graph_model = graph_db.make_graph_model(graph, user_id)
+    graph_model.reassign_ids(user_id=user_id, reassign_graph_id=False)
+
+    created_graph = await graph_db.create_graph(graph_model, user_id)
+
+    library_agent = await get_library_agent_by_graph_id(user_id, created_graph.id)
+    if not library_agent:
+        raise NotFoundError(f"Library agent not found for graph {created_graph.id}")
+
+    library_agent = await update_library_agent_version_and_settings(
+        user_id, created_graph
+    )
+
+    if created_graph.is_active:
+        created_graph = await on_graph_activate(created_graph, user_id=user_id)
+        await graph_db.set_graph_active_version(
+            graph_id=created_graph.id,
+            version=created_graph.version,
+            user_id=user_id,
+        )
+        if current_active_version:
+            await on_graph_deactivate(current_active_version, user_id=user_id)
+
+    return created_graph, library_agent
+
+
+async def update_library_agent_version_and_settings(
+    user_id: str, agent_graph: graph_db.GraphModel
+) -> library_model.LibraryAgent:
+    """Update library agent to point to new graph version and sync settings."""
+    library = await update_agent_version_in_library(
+        user_id, agent_graph.id, agent_graph.version
+    )
+    updated_settings = GraphSettings.from_graph(
+        graph=agent_graph,
+        hitl_safe_mode=library.settings.human_in_the_loop_safe_mode,
+        sensitive_action_safe_mode=library.settings.sensitive_action_safe_mode,
+    )
+    if updated_settings != library.settings:
+        library = await update_library_agent(
+            library_agent_id=library.id,
+            user_id=user_id,
+            settings=updated_settings,
+        )
+    return library
 
 
 async def update_library_agent(

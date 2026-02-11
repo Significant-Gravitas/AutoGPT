@@ -35,7 +35,7 @@ from backend.data.model import (
 from backend.integrations.providers import ProviderName
 from backend.util import json
 from backend.util.logging import TruncatedLogger
-from backend.util.prompt import compress_prompt, estimate_token_count
+from backend.util.prompt import compress_context, estimate_token_count
 from backend.util.text import TextFormatter
 
 logger = TruncatedLogger(logging.getLogger(__name__), "[LLM-Block]")
@@ -237,8 +237,6 @@ class LlmModel(str, metaclass=LlmModelMeta):
         return self.metadata.max_output_tokens
 
 
-# MODEL_METADATA removed - all models now come from the database via llm_registry
-
 # Default model constant for backward compatibility
 # Uses the dynamic registry to get the default model
 DEFAULT_LLM_MODEL = LlmModel.default()
@@ -267,12 +265,12 @@ class LLMResponse(BaseModel):
 
 def convert_openai_tool_fmt_to_anthropic(
     openai_tools: list[dict] | None = None,
-) -> Iterable[ToolParam] | anthropic.NotGiven:
+) -> Iterable[ToolParam] | anthropic.Omit:
     """
     Convert OpenAI tool format to Anthropic tool format.
     """
     if not openai_tools or len(openai_tools) == 0:
-        return anthropic.NOT_GIVEN
+        return anthropic.omit
 
     anthropic_tools = []
     for tool in openai_tools:
@@ -332,7 +330,7 @@ def extract_openai_tool_calls(response) -> list[ToolContentBlock] | None:
 
 def get_parallel_tool_calls_param(
     llm_model: LlmModel, parallel_tool_calls: bool | None
-):
+) -> bool | openai.Omit:
     """Get the appropriate parallel_tool_calls parameter for OpenAI-compatible APIs."""
     # Check for o-series models (o1, o1-mini, o3-mini, etc.) which don't support
     # parallel tool calls. Use regex to avoid false positives like "openai/gpt-oss".
@@ -456,11 +454,17 @@ async def llm_call(
     effective_model = LlmModel(model_to_use)
 
     if compress_prompt_to_fit:
-        prompt = compress_prompt(
+        result = await compress_context(
             messages=prompt,
             target_tokens=context_window // 2,
             lossy_ok=True,
         )
+        if result.error:
+            logger.warning(
+                f"Prompt compression did not meet target: {result.error}. "
+                f"Proceeding with {result.token_count} tokens."
+            )
+        prompt = result.messages
 
     # Calculate available tokens based on context window and input length
     estimated_input_tokens = estimate_token_count(prompt)

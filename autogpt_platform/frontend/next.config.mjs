@@ -1,8 +1,12 @@
 import { withSentryConfig } from "@sentry/nextjs";
 
+// Allow Docker builds to skip source-map generation (halves memory usage).
+// Defaults to true so Vercel/local builds are unaffected.
+const enableSourceMaps = process.env.NEXT_PUBLIC_SOURCEMAPS !== "false";
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  productionBrowserSourceMaps: true,
+  productionBrowserSourceMaps: enableSourceMaps,
   // Externalize OpenTelemetry packages to fix Turbopack HMR issues
   serverExternalPackages: [
     "@opentelemetry/instrumentation",
@@ -14,9 +18,37 @@ const nextConfig = {
     serverActions: {
       bodySizeLimit: "256mb",
     },
-    // Increase body size limit for API routes (file uploads) - 256MB to match backend limit
-    proxyClientMaxBodySize: "256mb",
     middlewareClientMaxBodySize: "256mb",
+    // Limit parallel webpack workers to reduce peak memory during builds.
+    cpus: 2,
+  },
+  // Work around cssnano "Invalid array length" bug in Next.js's bundled
+  // cssnano-simple comment parser when processing very large CSS chunks.
+  // CSS is still bundled correctly; gzip handles most of the size savings anyway.
+  webpack: (config, { dev }) => {
+    if (!dev) {
+      // Next.js adds CssMinimizerPlugin internally (after user config), so we
+      // can't filter it from config.plugins. Instead, intercept the webpack
+      // compilation hooks and replace the buggy plugin's tap with a no-op.
+      config.plugins.push({
+        apply(compiler) {
+          compiler.hooks.compilation.tap(
+            "DisableCssMinimizer",
+            (compilation) => {
+              compilation.hooks.processAssets.intercept({
+                register: (tap) => {
+                  if (tap.name === "CssMinimizerPlugin") {
+                    return { ...tap, fn: async () => {} };
+                  }
+                  return tap;
+                },
+              });
+            },
+          );
+        },
+      });
+    }
+    return config;
   },
   images: {
     domains: [
@@ -54,9 +86,16 @@ const nextConfig = {
   transpilePackages: ["geist"],
 };
 
-const isDevelopmentBuild = process.env.NODE_ENV !== "production";
+// Only run the Sentry webpack plugin when we can actually upload source maps
+// (i.e. on Vercel with SENTRY_AUTH_TOKEN set). The Sentry *runtime* SDK
+// (imported in app code) still captures errors without the plugin.
+// Skipping the plugin saves ~1 GB of peak memory during `next build`.
+const skipSentryPlugin =
+  process.env.NODE_ENV !== "production" ||
+  !enableSourceMaps ||
+  !process.env.SENTRY_AUTH_TOKEN;
 
-export default isDevelopmentBuild
+export default skipSentryPlugin
   ? nextConfig
   : withSentryConfig(nextConfig, {
       // For all available options, see:
@@ -96,7 +135,7 @@ export default isDevelopmentBuild
 
       // This helps Sentry with sourcemaps... https://docs.sentry.io/platforms/javascript/guides/nextjs/sourcemaps/
       sourcemaps: {
-        disable: false,
+        disable: !enableSourceMaps,
         assets: [".next/**/*.js", ".next/**/*.js.map"],
         ignore: ["**/node_modules/**"],
         deleteSourcemapsAfterUpload: false, // Source is public anyway :)

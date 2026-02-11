@@ -66,50 +66,56 @@ async def event_broadcaster(manager: ConnectionManager):
     execution_bus = AsyncRedisExecutionEventBus()
     notification_bus = AsyncRedisNotificationEventBus()
 
-    async def execution_worker():
-        async for event in execution_bus.listen("*"):
-            await manager.send_execution_update(event)
+    try:
 
-    async def notification_worker():
-        async for notification in notification_bus.listen("*"):
-            await manager.send_notification(
-                user_id=notification.user_id,
-                payload=notification.payload,
+        async def execution_worker():
+            async for event in execution_bus.listen("*"):
+                await manager.send_execution_update(event)
+
+        async def notification_worker():
+            async for notification in notification_bus.listen("*"):
+                await manager.send_notification(
+                    user_id=notification.user_id,
+                    payload=notification.payload,
+                )
+
+        async def registry_refresh_worker():
+            """Listen for LLM registry refresh notifications and broadcast to all clients."""
+            from backend.data.llm_registry import REGISTRY_REFRESH_CHANNEL
+            from backend.data.redis_client import connect_async
+
+            redis = await connect_async()
+            pubsub = redis.pubsub()
+            await pubsub.subscribe(REGISTRY_REFRESH_CHANNEL)
+            logger.info(
+                "Subscribed to LLM registry refresh notifications for WebSocket broadcast"
             )
 
-    async def registry_refresh_worker():
-        """Listen for LLM registry refresh notifications and broadcast to all clients."""
-        from backend.data.llm_registry import REGISTRY_REFRESH_CHANNEL
-        from backend.data.redis_client import connect_async
+            async for message in pubsub.listen():
+                if (
+                    message["type"] == "message"
+                    and message["channel"] == REGISTRY_REFRESH_CHANNEL
+                ):
+                    logger.info(
+                        "Broadcasting LLM registry refresh to all WebSocket clients"
+                    )
+                    await manager.broadcast_to_all(
+                        method=WSMethod.NOTIFICATION,
+                        data={
+                            "type": "LLM_REGISTRY_REFRESH",
+                            "event": "registry_updated",
+                        },
+                    )
 
-        redis = await connect_async()
-        pubsub = redis.pubsub()
-        await pubsub.subscribe(REGISTRY_REFRESH_CHANNEL)
-        logger.info(
-            "Subscribed to LLM registry refresh notifications for WebSocket broadcast"
+        await asyncio.gather(
+            execution_worker(),
+            notification_worker(),
+            registry_refresh_worker(),
         )
-
-        async for message in pubsub.listen():
-            if (
-                message["type"] == "message"
-                and message["channel"] == REGISTRY_REFRESH_CHANNEL
-            ):
-                logger.info(
-                    "Broadcasting LLM registry refresh to all WebSocket clients"
-                )
-                await manager.broadcast_to_all(
-                    method=WSMethod.NOTIFICATION,
-                    data={
-                        "type": "LLM_REGISTRY_REFRESH",
-                        "event": "registry_updated",
-                    },
-                )
-
-    await asyncio.gather(
-        execution_worker(),
-        notification_worker(),
-        registry_refresh_worker(),
-    )
+    finally:
+        # Ensure PubSub connections are closed on any exit to prevent leaks
+        await execution_bus.close()
+        await notification_bus.close()
 
 
 async def authenticate_websocket(websocket: WebSocket) -> str:

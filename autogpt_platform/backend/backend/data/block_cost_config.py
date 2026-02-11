@@ -35,6 +35,7 @@ from backend.blocks.replicate.replicate_block import ReplicateModelBlock
 from backend.blocks.smart_decision_maker import SmartDecisionMakerBlock
 from backend.blocks.talking_head import CreateTalkingAvatarVideoBlock
 from backend.blocks.text_to_speech_block import UnrealTextToSpeechBlock
+from backend.blocks.video.narration import VideoNarrationBlock
 from backend.data import llm_registry
 from backend.data.block import Block, BlockCost, BlockCostType
 from backend.integrations.credentials_store import (
@@ -42,6 +43,7 @@ from backend.integrations.credentials_store import (
     anthropic_credentials,
     apollo_credentials,
     did_credentials,
+    elevenlabs_credentials,
     enrichlayer_credentials,
     groq_credentials,
     ideogram_credentials,
@@ -492,5 +494,17 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
                 },
             },
         ),
+    ],
+    VideoNarrationBlock: [
+        BlockCost(
+            cost_amount=5,  # ElevenLabs TTS cost
+            cost_filter={
+                "credentials": {
+                    "id": elevenlabs_credentials.id,
+                    "provider": elevenlabs_credentials.provider,
+                    "type": elevenlabs_credentials.type,
+                }
+            },
+        )
     ],
 }

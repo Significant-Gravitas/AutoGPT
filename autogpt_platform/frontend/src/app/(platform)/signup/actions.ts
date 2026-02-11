@@ -1,18 +1,16 @@
 "use server";
 
-import { getHomepageRoute } from "@/lib/constants";
 import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
 import { signupFormSchema } from "@/types/auth";
 import * as Sentry from "@sentry/nextjs";
 import { isWaitlistError, logWaitlistError } from "../../api/auth/utils";
-import { shouldShowOnboarding } from "../../api/helpers";
+import { getOnboardingStatus } from "../../api/helpers";
 
 export async function signup(
   email: string,
   password: string,
   confirmPassword: string,
   agreeToTerms: boolean,
-  isChatEnabled: boolean,
 ) {
   try {
     const parsed = signupFormSchema.safeParse({
@@ -59,10 +57,9 @@ export async function signup(
       await supabase.auth.setSession(data.session);
     }
 
-    const isOnboardingEnabled = await shouldShowOnboarding();
-    const next = isOnboardingEnabled
-      ? "/onboarding"
-      : getHomepageRoute(isChatEnabled);
+    // Get onboarding status from backend (includes chat flag evaluated for this user)
+    const { shouldShowOnboarding } = await getOnboardingStatus();
+    const next = shouldShowOnboarding ? "/onboarding" : "/";
 
     return { success: true, next };
   } catch (err) {

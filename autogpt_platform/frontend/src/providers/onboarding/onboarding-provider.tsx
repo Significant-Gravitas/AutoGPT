@@ -23,9 +23,7 @@ import {
   WebSocketNotification,
 } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
-import { getHomepageRoute } from "@/lib/constants";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -104,8 +102,6 @@ export default function OnboardingProvider({
   const pathname = usePathname();
   const router = useRouter();
   const { isLoggedIn } = useSupabase();
-  const isChatEnabled = useGetFlag(Flag.CHAT);
-  const homepageRoute = getHomepageRoute(isChatEnabled);
 
   useOnboardingTimezoneDetection();
 
@@ -150,7 +146,7 @@ export default function OnboardingProvider({
         if (isOnOnboardingRoute) {
           const enabled = await resolveResponse(getV1IsOnboardingEnabled());
           if (!enabled) {
-            router.push(homepageRoute);
+            router.push("/");
             return;
           }
         }
@@ -162,7 +158,7 @@ export default function OnboardingProvider({
           isOnOnboardingRoute &&
           shouldRedirectFromOnboarding(onboarding.completedSteps, pathname)
         ) {
-          router.push(homepageRoute);
+          router.push("/");
         }
       } catch (error) {
         console.error("Failed to initialize onboarding:", error);
@@ -177,7 +173,7 @@ export default function OnboardingProvider({
     }
 
     initializeOnboarding();
-  }, [api, homepageRoute, isOnOnboardingRoute, router, isLoggedIn, pathname]);
+  }, [api, isOnOnboardingRoute, router, isLoggedIn, pathname]);
 
   const handleOnboardingNotification = useCallback(
     (notification: WebSocketNotification) => {

@@ -3,9 +3,13 @@ import logging
 import time
 from asyncio import CancelledError
 from collections.abc import AsyncGenerator
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 
 import openai
+
+if TYPE_CHECKING:
+    from backend.util.prompt import CompressResult
+
 import orjson
 from langfuse import get_client
 from openai import (
@@ -15,15 +19,24 @@ from openai import (
     PermissionDeniedError,
     RateLimitError,
 )
-from openai.types.chat import ChatCompletionChunk, ChatCompletionToolParam
+from openai.types.chat import (
+    ChatCompletionChunk,
+    ChatCompletionMessageParam,
+    ChatCompletionStreamOptionsParam,
+    ChatCompletionSystemMessageParam,
+    ChatCompletionToolParam,
+)
 
+from backend.data.redis_client import get_redis_async
 from backend.data.understanding import (
     format_understanding_for_prompt,
     get_business_understanding,
 )
 from backend.util.exceptions import NotFoundError
-from backend.util.settings import Settings
+from backend.util.settings import AppEnvironment, Settings
 
+from . import db as chat_db
+from . import stream_registry
 from .config import ChatConfig
 from .model import (
     ChatMessage,
@@ -31,6 +44,7 @@ from .model import (
     Usage,
     cache_chat_session,
     get_chat_session,
+    invalidate_session_cache,
     update_session_title,
     upsert_chat_session,
 )
@@ -38,8 +52,10 @@ from .response_model import (
     StreamBaseResponse,
     StreamError,
     StreamFinish,
+    StreamFinishStep,
     StreamHeartbeat,
     StreamStart,
+    StreamStartStep,
     StreamTextDelta,
     StreamTextEnd,
     StreamTextStart,
@@ -48,8 +64,13 @@ from .response_model import (
     StreamToolOutputAvailable,
     StreamUsage,
 )
-from .tools import execute_tool, tools
-from .tools.models import ErrorResponse
+from .tools import execute_tool, get_tool, tools
+from .tools.models import (
+    ErrorResponse,
+    OperationInProgressResponse,
+    OperationPendingResponse,
+    OperationStartedResponse,
+)
 from .tracking import track_user_message
 
 logger = logging.getLogger(__name__)
@@ -61,11 +82,126 @@ client = openai.AsyncOpenAI(api_key=config.api_key, base_url=config.base_url)
 
 langfuse = get_client()
 
+# Redis key prefix for tracking running long-running operations
+# Used for idempotency across Kubernetes pods - prevents duplicate executions on browser refresh
+RUNNING_OPERATION_PREFIX = "chat:running_operation:"
 
-class LangfuseNotConfiguredError(Exception):
-    """Raised when Langfuse is required but not configured."""
+# Default system prompt used when Langfuse is not configured
+# This is a snapshot of the "CoPilot Prompt" from Langfuse (version 11)
+DEFAULT_SYSTEM_PROMPT = """You are **Otto**, an AI Co-Pilot for AutoGPT and a Forward-Deployed Automation Engineer serving small business owners. Your mission is to help users automate business tasks with AI by delivering tangible value through working automations—not through documentation or lengthy explanations.
 
-    pass
+Here is everything you know about the current user from previous interactions:
+
+<users_information>
+{users_information}
+</users_information>
+
+## YOUR CORE MANDATE
+
+You are action-oriented. Your success is measured by:
+- **Value Delivery**: Does the user think "wow, that was amazing" or "what was the point"?
+- **Demonstrable Proof**: Show working automations, not descriptions of what's possible
+- **Time Saved**: Focus on tangible efficiency gains
+- **Quality Output**: Deliver results that meet or exceed expectations
+
+## YOUR WORKFLOW
+
+Adapt flexibly to the conversation context. Not every interaction requires all stages:
+
+1. **Explore & Understand**: Learn about the user's business, tasks, and goals. Use `add_understanding` to capture important context that will improve future conversations.
+
+2. **Assess Automation Potential**: Help the user understand whether and how AI can automate their task.
+
+3. **Prepare for AI**: Provide brief, actionable guidance on prerequisites (data, access, etc.).
+
+4. **Discover or Create Agents**:
+   - **Always check the user's library first** with `find_library_agent` (these may be customized to their needs)
+   - Search the marketplace with `find_agent` for pre-built automations
+   - Find reusable components with `find_block`
+   - Create custom solutions with `create_agent` if nothing suitable exists
+   - Modify existing library agents with `edit_agent`
+
+5. **Execute**: Run automations immediately, schedule them, or set up webhooks using `run_agent`. Test specific components with `run_block`.
+
+6. **Show Results**: Display outputs using `agent_output`.
+
+## AVAILABLE TOOLS
+
+**Understanding & Discovery:**
+- `add_understanding`: Create a memory about the user's business or use cases for future sessions
+- `search_docs`: Search platform documentation for specific technical information
+- `get_doc_page`: Retrieve full text of a specific documentation page
+
+**Agent Discovery:**
+- `find_library_agent`: Search the user's existing agents (CHECK HERE FIRST—these may be customized)
+- `find_agent`: Search the marketplace for pre-built automations
+- `find_block`: Find pre-written code units that perform specific tasks (agents are built from blocks)
+
+**Agent Creation & Editing:**
+- `create_agent`: Create a new automation agent
+- `edit_agent`: Modify an agent in the user's library
+
+**Execution & Output:**
+- `run_agent`: Run an agent now, schedule it, or set up a webhook trigger
+- `run_block`: Test or run a specific block independently
+- `agent_output`: View results from previous agent runs
+
+## BEHAVIORAL GUIDELINES
+
+**Be Concise:**
+- Target 2-5 short lines maximum
+- Make every word count—no repetition or filler
+- Use lightweight structure for scannability (bullets, numbered lists, short prompts)
+- Avoid jargon (blocks, slugs, cron) unless the user asks
+
+**Be Proactive:**
+- Suggest next steps before being asked
+- Anticipate needs based on conversation context and user information
+- Look for opportunities to expand scope when relevant
+- Reveal capabilities through action, not explanation
+
+**Use Tools Effectively:**
+- Select the right tool for each task
+- **Always check `find_library_agent` before searching the marketplace**
+- Use `add_understanding` to capture valuable business context
+- When tool calls fail, try alternative approaches
+
+## CRITICAL REMINDER
+
+You are NOT a chatbot. You are NOT documentation. You are a partner who helps busy business owners get value quickly by showing proof through working automations. Bias toward action over explanation."""
+
+# Module-level set to hold strong references to background tasks.
+# This prevents asyncio from garbage collecting tasks before they complete.
+# Tasks are automatically removed on completion via done_callback.
+_background_tasks: set[asyncio.Task] = set()
+
+
+async def _mark_operation_started(tool_call_id: str) -> bool:
+    """Mark a long-running operation as started (Redis-based).
+
+    Returns True if successfully marked (operation was not already running),
+    False if operation was already running (lost race condition).
+    Raises exception if Redis is unavailable (fail-closed).
+    """
+    redis = await get_redis_async()
+    key = f"{RUNNING_OPERATION_PREFIX}{tool_call_id}"
+    # SETNX with TTL - atomic "set if not exists"
+    result = await redis.set(key, "1", ex=config.long_running_operation_ttl, nx=True)
+    return result is not None
+
+
+async def _mark_operation_completed(tool_call_id: str) -> None:
+    """Mark a long-running operation as completed (remove Redis key).
+
+    This is best-effort - if Redis fails, the TTL will eventually clean up.
+    """
+    try:
+        redis = await get_redis_async()
+        key = f"{RUNNING_OPERATION_PREFIX}{tool_call_id}"
+        await redis.delete(key)
+    except Exception as e:
+        # Non-critical: TTL will clean up eventually
+        logger.warning(f"Failed to delete running operation key {tool_call_id}: {e}")
 
 
 def _is_langfuse_configured() -> bool:
@@ -73,6 +209,40 @@ def _is_langfuse_configured() -> bool:
     return bool(
         settings.secrets.langfuse_public_key and settings.secrets.langfuse_secret_key
     )
+
+
+async def _get_system_prompt_template(context: str) -> str:
+    """Get the system prompt, trying Langfuse first with fallback to default.
+
+    Args:
+        context: The user context/information to compile into the prompt.
+
+    Returns:
+        The compiled system prompt string.
+    """
+    if _is_langfuse_configured():
+        try:
+            # cache_ttl_seconds=0 disables SDK caching to always get the latest prompt
+            # Use asyncio.to_thread to avoid blocking the event loop
+            # In non-production environments, fetch the latest prompt version
+            # instead of the production-labeled version for easier testing
+            label = (
+                None
+                if settings.config.app_env == AppEnvironment.PRODUCTION
+                else "latest"
+            )
+            prompt = await asyncio.to_thread(
+                langfuse.get_prompt,
+                config.langfuse_prompt_name,
+                label=label,
+                cache_ttl_seconds=0,
+            )
+            return prompt.compile(users_information=context)
+        except Exception as e:
+            logger.warning(f"Failed to fetch prompt from Langfuse, using default: {e}")
+
+    # Fallback to default prompt
+    return DEFAULT_SYSTEM_PROMPT.format(users_information=context)
 
 
 async def _build_system_prompt(user_id: str | None) -> tuple[str, Any]:
@@ -83,12 +253,8 @@ async def _build_system_prompt(user_id: str | None) -> tuple[str, Any]:
                      If "default" and this is the user's first session, will use "onboarding" instead.
 
     Returns:
-        Tuple of (compiled prompt string, Langfuse prompt object for tracing)
+        Tuple of (compiled prompt string, business understanding object)
     """
-
-    # cache_ttl_seconds=0 disables SDK caching to always get the latest prompt
-    prompt = langfuse.get_prompt(config.langfuse_prompt_name, cache_ttl_seconds=0)
-
     # If user is authenticated, try to fetch their business understanding
     understanding = None
     if user_id:
@@ -97,12 +263,13 @@ async def _build_system_prompt(user_id: str | None) -> tuple[str, Any]:
         except Exception as e:
             logger.warning(f"Failed to fetch business understanding: {e}")
             understanding = None
+
     if understanding:
         context = format_understanding_for_prompt(understanding)
     else:
         context = "This is the first time you are meeting the user. Greet them and introduce them to the platform"
 
-    compiled = prompt.compile(users_information=context)
+    compiled = await _get_system_prompt_template(context)
     return compiled, understanding
 
 
@@ -186,6 +353,10 @@ async def stream_chat_completion(
     retry_count: int = 0,
     session: ChatSession | None = None,
     context: dict[str, str] | None = None,  # {url: str, content: str}
+    _continuation_message_id: (
+        str | None
+    ) = None,  # Internal: reuse message ID for tool call continuations
+    _task_id: str | None = None,  # Internal: task ID for SSE reconnection support
 ) -> AsyncGenerator[StreamBaseResponse, None]:
     """Main entry point for streaming chat completions with database handling.
 
@@ -206,31 +377,45 @@ async def stream_chat_completion(
         ValueError: If max_context_messages is exceeded
 
     """
-    logger.info(
-        f"Streaming chat completion for session {session_id} for message {message} and user id {user_id}. Message is user message: {is_user_message}"
-    )
+    completion_start = time.monotonic()
 
-    # Check if Langfuse is configured - required for chat functionality
-    if not _is_langfuse_configured():
-        logger.error("Chat request failed: Langfuse is not configured")
-        yield StreamError(
-            errorText="Chat service is not available. Langfuse must be configured "
-            "with LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY environment variables."
-        )
-        yield StreamFinish()
-        return
+    # Build log metadata for structured logging
+    log_meta = {"component": "ChatService", "session_id": session_id}
+    if user_id:
+        log_meta["user_id"] = user_id
+
+    logger.info(
+        f"[TIMING] stream_chat_completion STARTED, session={session_id}, user={user_id}, "
+        f"message_len={len(message) if message else 0}, is_user={is_user_message}",
+        extra={
+            "json_fields": {
+                **log_meta,
+                "message_len": len(message) if message else 0,
+                "is_user_message": is_user_message,
+            }
+        },
+    )
 
     # Only fetch from Redis if session not provided (initial call)
     if session is None:
+        fetch_start = time.monotonic()
         session = await get_chat_session(session_id, user_id)
+        fetch_time = (time.monotonic() - fetch_start) * 1000
         logger.info(
-            f"Fetched session from Redis: {session.session_id if session else 'None'}, "
-            f"message_count={len(session.messages) if session else 0}"
+            f"[TIMING] get_chat_session took {fetch_time:.1f}ms, "
+            f"n_messages={len(session.messages) if session else 0}",
+            extra={
+                "json_fields": {
+                    **log_meta,
+                    "duration_ms": fetch_time,
+                    "n_messages": len(session.messages) if session else 0,
+                }
+            },
         )
     else:
         logger.info(
-            f"Using provided session object: {session.session_id}, "
-            f"message_count={len(session.messages)}"
+            f"[TIMING] Using provided session, messages={len(session.messages)}",
+            extra={"json_fields": {**log_meta, "n_messages": len(session.messages)}},
         )
 
     if not session:
@@ -251,17 +436,25 @@ async def stream_chat_completion(
 
         # Track user message in PostHog
         if is_user_message:
+            posthog_start = time.monotonic()
             track_user_message(
                 user_id=user_id,
                 session_id=session_id,
                 message_length=len(message),
             )
+            posthog_time = (time.monotonic() - posthog_start) * 1000
+            logger.info(
+                f"[TIMING] track_user_message took {posthog_time:.1f}ms",
+                extra={"json_fields": {**log_meta, "duration_ms": posthog_time}},
+            )
 
-    logger.info(
-        f"Upserting session: {session.session_id} with user id {session.user_id}, "
-        f"message_count={len(session.messages)}"
-    )
+    upsert_start = time.monotonic()
     session = await upsert_chat_session(session)
+    upsert_time = (time.monotonic() - upsert_start) * 1000
+    logger.info(
+        f"[TIMING] upsert_chat_session took {upsert_time:.1f}ms",
+        extra={"json_fields": {**log_meta, "duration_ms": upsert_time}},
+    )
     assert session, "Session not found"
 
     # Generate title for new sessions on first user message (non-blocking)
@@ -299,7 +492,13 @@ async def stream_chat_completion(
             asyncio.create_task(_update_title())
 
     # Build system prompt with business understanding
+    prompt_start = time.monotonic()
     system_prompt, understanding = await _build_system_prompt(user_id)
+    prompt_time = (time.monotonic() - prompt_start) * 1000
+    logger.info(
+        f"[TIMING] _build_system_prompt took {prompt_time:.1f}ms",
+        extra={"json_fields": {**log_meta, "duration_ms": prompt_time}},
+    )
 
     # Initialize variables for streaming
     assistant_response = ChatMessage(
@@ -315,6 +514,7 @@ async def stream_chat_completion(
     has_yielded_end = False
     has_yielded_error = False
     has_done_tool_call = False
+    has_long_running_tool_call = False  # Track if we had a long-running tool call
     has_received_text = False
     text_streaming_ended = False
     tool_response_messages: list[ChatMessage] = []
@@ -323,20 +523,33 @@ async def stream_chat_completion(
     # Generate unique IDs for AI SDK protocol
     import uuid as uuid_module
 
-    message_id = str(uuid_module.uuid4())
+    is_continuation = _continuation_message_id is not None
+    message_id = _continuation_message_id or str(uuid_module.uuid4())
     text_block_id = str(uuid_module.uuid4())
 
-    # Yield message start
-    yield StreamStart(messageId=message_id)
+    # Only yield message start for the initial call, not for continuations.
+    setup_time = (time.monotonic() - completion_start) * 1000
+    logger.info(
+        f"[TIMING] Setup complete, yielding StreamStart at {setup_time:.1f}ms",
+        extra={"json_fields": {**log_meta, "setup_time_ms": setup_time}},
+    )
+    if not is_continuation:
+        yield StreamStart(messageId=message_id, taskId=_task_id)
+
+    # Emit start-step before each LLM call (AI SDK uses this to add step boundaries)
+    yield StreamStartStep()
 
     try:
+        logger.info(
+            "[TIMING] Calling _stream_chat_chunks",
+            extra={"json_fields": log_meta},
+        )
         async for chunk in _stream_chat_chunks(
             session=session,
             tools=tools,
             system_prompt=system_prompt,
             text_block_id=text_block_id,
         ):
-
             if isinstance(chunk, StreamTextStart):
                 # Emit text-start before first text delta
                 if not has_received_text:
@@ -394,13 +607,34 @@ async def stream_chat_completion(
                     if isinstance(chunk.output, str)
                     else orjson.dumps(chunk.output).decode("utf-8")
                 )
-                tool_response_messages.append(
-                    ChatMessage(
-                        role="tool",
-                        content=result_content,
-                        tool_call_id=chunk.toolCallId,
+                # Skip saving long-running operation responses - messages already saved in _yield_tool_call
+                # Use JSON parsing instead of substring matching to avoid false positives
+                is_long_running_response = False
+                try:
+                    parsed = orjson.loads(result_content)
+                    if isinstance(parsed, dict) and parsed.get("type") in (
+                        "operation_started",
+                        "operation_in_progress",
+                    ):
+                        is_long_running_response = True
+                except (orjson.JSONDecodeError, TypeError):
+                    pass  # Not JSON or not a dict - treat as regular response
+                if is_long_running_response:
+                    # Remove from accumulated_tool_calls since assistant message was already saved
+                    accumulated_tool_calls[:] = [
+                        tc
+                        for tc in accumulated_tool_calls
+                        if tc["id"] != chunk.toolCallId
+                    ]
+                    has_long_running_tool_call = True
+                else:
+                    tool_response_messages.append(
+                        ChatMessage(
+                            role="tool",
+                            content=result_content,
+                            tool_call_id=chunk.toolCallId,
+                        )
                     )
-                )
                 has_done_tool_call = True
                 # Track if any tool execution failed
                 if not chunk.success:
@@ -409,6 +643,10 @@ async def stream_chat_completion(
                     )
                 yield chunk
             elif isinstance(chunk, StreamFinish):
+                if has_done_tool_call:
+                    # Tool calls happened — close the step but don't send message-level finish.
+                    # The continuation will open a new step, and finish will come at the end.
+                    yield StreamFinishStep()
                 if not has_done_tool_call:
                     # Emit text-end before finish if we received text but haven't closed it
                     if has_received_text and not text_streaming_ended:
@@ -440,6 +678,8 @@ async def stream_chat_completion(
                             has_saved_assistant_message = True
 
                     has_yielded_end = True
+                    # Emit finish-step before finish (resets AI SDK text/reasoning state)
+                    yield StreamFinishStep()
                     yield chunk
             elif isinstance(chunk, StreamError):
                 has_yielded_error = True
@@ -452,6 +692,9 @@ async def stream_chat_completion(
                         total_tokens=chunk.totalTokens,
                     )
                 )
+            elif isinstance(chunk, StreamHeartbeat):
+                # Pass through heartbeat to keep SSE connection alive
+                yield chunk
             else:
                 logger.error(f"Unknown chunk type: {type(chunk)}", exc_info=True)
 
@@ -486,6 +729,10 @@ async def stream_chat_completion(
             logger.info(
                 f"Retryable error encountered. Attempt {retry_count + 1}/{config.max_retries}"
             )
+            # Close the current step before retrying so the recursive call's
+            # StreamStartStep doesn't produce unbalanced step events.
+            if not has_yielded_end:
+                yield StreamFinishStep()
             should_retry = True
         else:
             # Non-retryable error or max retries exceeded
@@ -521,6 +768,7 @@ async def stream_chat_completion(
                 error_response = StreamError(errorText=error_message)
                 yield error_response
             if not has_yielded_end:
+                yield StreamFinishStep()
                 yield StreamFinish()
             return
 
@@ -535,6 +783,8 @@ async def stream_chat_completion(
             retry_count=retry_count + 1,
             session=session,
             context=context,
+            _continuation_message_id=message_id,  # Reuse message ID since start was already sent
+            _task_id=_task_id,
         ):
             yield chunk
         return  # Exit after retry to avoid double-saving in finally block
@@ -576,7 +826,14 @@ async def stream_chat_completion(
             logger.info(
                 f"Extended session messages, new message_count={len(session.messages)}"
             )
-        if messages_to_save or has_appended_streaming_message:
+        # Save if there are regular (non-long-running) tool responses or streaming message.
+        # Long-running tools save their own state, but we still need to save regular tools
+        # that may be in the same response.
+        has_regular_tool_responses = len(tool_response_messages) > 0
+        if has_regular_tool_responses or (
+            not has_long_running_tool_call
+            and (messages_to_save or has_appended_streaming_message)
+        ):
             await upsert_chat_session(session)
     else:
         logger.info(
@@ -585,7 +842,9 @@ async def stream_chat_completion(
         )
 
     # If we did a tool call, stream the chat completion again to get the next response
-    if has_done_tool_call:
+    # Skip only if ALL tools were long-running (they handle their own completion)
+    has_regular_tools = len(tool_response_messages) > 0
+    if has_done_tool_call and (has_regular_tools or not has_long_running_tool_call):
         logger.info(
             "Tool call executed, streaming chat completion again to get assistant response"
         )
@@ -595,6 +854,8 @@ async def stream_chat_completion(
             session=session,  # Pass session object to avoid Redis refetch
             context=context,
             tool_call_response=str(tool_response_messages),
+            _continuation_message_id=message_id,  # Reuse message ID to avoid duplicates
+            _task_id=_task_id,
         ):
             yield chunk
 
@@ -630,99 +891,58 @@ def _is_region_blocked_error(error: Exception) -> bool:
     return "not available in your region" in str(error).lower()
 
 
-async def _summarize_messages(
+async def _manage_context_window(
     messages: list,
     model: str,
     api_key: str | None = None,
     base_url: str | None = None,
-    timeout: float = 30.0,
-) -> str:
-    """Summarize a list of messages into concise context.
+) -> "CompressResult":
+    """
+    Manage context window using the unified compress_context function.
 
-    Uses the same model as the chat for higher quality summaries.
+    This is a thin wrapper that creates an OpenAI client for summarization
+    and delegates to the shared compression logic in prompt.py.
 
     Args:
-        messages: List of message dicts to summarize
-        model: Model to use for summarization (same as chat model)
-        api_key: API key for OpenAI client
-        base_url: Base URL for OpenAI client
-        timeout: Request timeout in seconds (default: 30.0)
+        messages: List of messages in OpenAI format
+        model: Model name for token counting and summarization
+        api_key: API key for summarization calls
+        base_url: Base URL for summarization calls
 
     Returns:
-        Summarized text
+        CompressResult with compacted messages and metadata
     """
-    # Format messages for summarization
-    conversation = []
-    for msg in messages:
-        role = msg.get("role", "")
-        content = msg.get("content", "")
-        # Include user, assistant, and tool messages (tool outputs are important context)
-        if content and role in ("user", "assistant", "tool"):
-            conversation.append(f"{role.upper()}: {content}")
-
-    conversation_text = "\n\n".join(conversation)
-
-    # Handle empty conversation
-    if not conversation_text:
-        return "No conversation history available."
-
-    # Truncate conversation to fit within summarization model's context
-    # gpt-4o-mini has 128k context, but we limit to ~25k tokens (~100k chars) for safety
-    MAX_CHARS = 100_000
-    if len(conversation_text) > MAX_CHARS:
-        conversation_text = conversation_text[:MAX_CHARS] + "\n\n[truncated]"
-
-    # Call LLM to summarize
     import openai
 
-    summarization_client = openai.AsyncOpenAI(
-        api_key=api_key, base_url=base_url, timeout=timeout
-    )
+    from backend.util.prompt import compress_context
 
-    response = await summarization_client.chat.completions.create(
-        model=model,
-        messages=[
-            {
-                "role": "system",
-                "content": (
-                    "Create a detailed summary of the conversation so far. "
-                    "This summary will be used as context when continuing the conversation.\n\n"
-                    "Before writing the summary, analyze each message chronologically to identify:\n"
-                    "- User requests and their explicit goals\n"
-                    "- Your approach and key decisions made\n"
-                    "- Technical specifics (file names, tool outputs, function signatures)\n"
-                    "- Errors encountered and resolutions applied\n\n"
-                    "You MUST include ALL of the following sections:\n\n"
-                    "## 1. Primary Request and Intent\n"
-                    "The user's explicit goals and what they are trying to accomplish.\n\n"
-                    "## 2. Key Technical Concepts\n"
-                    "Technologies, frameworks, tools, and patterns being used or discussed.\n\n"
-                    "## 3. Files and Resources Involved\n"
-                    "Specific files examined or modified, with relevant snippets and identifiers.\n\n"
-                    "## 4. Errors and Fixes\n"
-                    "Problems encountered, error messages, and their resolutions. "
-                    "Include any user feedback on fixes.\n\n"
-                    "## 5. Problem Solving\n"
-                    "Issues that have been resolved and how they were addressed.\n\n"
-                    "## 6. All User Messages\n"
-                    "A complete list of all user inputs (excluding tool outputs) to preserve their exact requests.\n\n"
-                    "## 7. Pending Tasks\n"
-                    "Work items the user explicitly requested that have not yet been completed.\n\n"
-                    "## 8. Current Work\n"
-                    "Precise description of what was being worked on most recently, including relevant context.\n\n"
-                    "## 9. Next Steps\n"
-                    "What should happen next, aligned with the user's most recent requests. "
-                    "Include verbatim quotes of recent instructions if relevant."
-                ),
-            },
-            {"role": "user", "content": f"Summarize:\n\n{conversation_text}"},
-        ],
-        max_tokens=1500,
-        temperature=0.3,
-    )
+    # Convert messages to dict format
+    messages_dict = []
+    for msg in messages:
+        if isinstance(msg, dict):
+            msg_dict = {k: v for k, v in msg.items() if v is not None}
+        else:
+            msg_dict = dict(msg)
+        messages_dict.append(msg_dict)
 
-    summary = response.choices[0].message.content
-    return summary or "No summary available."
+    # Only create client if api_key is provided (enables summarization)
+    # Use context manager to avoid socket leaks
+    if api_key:
+        async with openai.AsyncOpenAI(
+            api_key=api_key, base_url=base_url, timeout=30.0
+        ) as client:
+            return await compress_context(
+                messages=messages_dict,
+                model=model,
+                client=client,
+            )
+    else:
+        # No API key - use truncation-only mode
+        return await compress_context(
+            messages=messages_dict,
+            model=model,
+            client=None,
+        )
 
 
 async def _stream_chat_chunks(
@@ -746,15 +966,24 @@ async def _stream_chat_chunks(
         SSE formatted JSON response objects
 
     """
+    import time as time_module
+
+    stream_chunks_start = time_module.perf_counter()
     model = config.model
 
-    logger.info("Starting pure chat stream")
+    # Build log metadata for structured logging
+    log_meta = {"component": "ChatService", "session_id": session.session_id}
+    if session.user_id:
+        log_meta["user_id"] = session.user_id
 
-    # Build messages with system prompt prepended
+    logger.info(
+        f"[TIMING] _stream_chat_chunks STARTED, session={session.session_id}, "
+        f"user={session.user_id}, n_messages={len(session.messages)}",
+        extra={"json_fields": {**log_meta, "n_messages": len(session.messages)}},
+    )
+
     messages = session.to_openai_messages()
     if system_prompt:
-        from openai.types.chat import ChatCompletionSystemMessageParam
-
         system_message = ChatCompletionSystemMessageParam(
             role="system",
             content=system_prompt,
@@ -762,290 +991,44 @@ async def _stream_chat_chunks(
         messages = [system_message] + messages
 
     # Apply context window management
-    token_count = 0  # Initialize for exception handler
-    try:
-        from backend.util.prompt import estimate_token_count
+    context_start = time_module.perf_counter()
+    context_result = await _manage_context_window(
+        messages=messages,
+        model=model,
+        api_key=config.api_key,
+        base_url=config.base_url,
+    )
+    context_time = (time_module.perf_counter() - context_start) * 1000
+    logger.info(
+        f"[TIMING] _manage_context_window took {context_time:.1f}ms",
+        extra={"json_fields": {**log_meta, "duration_ms": context_time}},
+    )
 
-        # Convert to dict for token counting
-        # OpenAI message types are TypedDicts, so they're already dict-like
-        messages_dict = []
-        for msg in messages:
-            # TypedDict objects are already dicts, just filter None values
-            if isinstance(msg, dict):
-                msg_dict = {k: v for k, v in msg.items() if v is not None}
-            else:
-                # Fallback for unexpected types
-                msg_dict = dict(msg)
-            messages_dict.append(msg_dict)
-
-        # Estimate tokens using appropriate tokenizer
-        # Normalize model name for token counting (tiktoken only supports OpenAI models)
-        token_count_model = model
-        if "/" in model:
-            # Strip provider prefix (e.g., "anthropic/claude-opus-4.5" -> "claude-opus-4.5")
-            token_count_model = model.split("/")[-1]
-
-        # For Claude and other non-OpenAI models, approximate with gpt-4o tokenizer
-        # Most modern LLMs have similar tokenization (~1 token per 4 chars)
-        if "claude" in token_count_model.lower() or not any(
-            known in token_count_model.lower()
-            for known in ["gpt", "o1", "chatgpt", "text-"]
-        ):
-            token_count_model = "gpt-4o"
-
-        # Attempt token counting with error handling
-        try:
-            token_count = estimate_token_count(messages_dict, model=token_count_model)
-        except Exception as token_error:
-            # If token counting fails, use gpt-4o as fallback approximation
-            logger.warning(
-                f"Token counting failed for model {token_count_model}: {token_error}. "
-                "Using gpt-4o approximation."
-            )
-            token_count = estimate_token_count(messages_dict, model="gpt-4o")
-
-        # If over threshold, summarize old messages
-        if token_count > 120_000:
-            KEEP_RECENT = 15
-
-            # Check if we have a system prompt at the start
-            has_system_prompt = (
-                len(messages) > 0 and messages[0].get("role") == "system"
-            )
-
-            # Always attempt mitigation when over limit, even with few messages
-            if messages:
-                # Split messages based on whether system prompt exists
-                recent_messages = messages[-KEEP_RECENT:]
-
-                if has_system_prompt:
-                    # Keep system prompt separate, summarize everything between system and recent
-                    system_msg = messages[0]
-                    old_messages_dict = messages_dict[1:-KEEP_RECENT]
-                else:
-                    # No system prompt, summarize everything except recent
-                    system_msg = None
-                    old_messages_dict = messages_dict[:-KEEP_RECENT]
-
-                # Summarize any non-empty old messages (no minimum threshold)
-                # If we're over the token limit, we need to compress whatever we can
-                if old_messages_dict:
-                    # Summarize old messages using the same model as chat
-                    summary_text = await _summarize_messages(
-                        old_messages_dict,
-                        model=model,
-                        api_key=config.api_key,
-                        base_url=config.base_url,
-                    )
-
-                    # Build new message list
-                    # Use assistant role (not system) to prevent privilege escalation
-                    # of user-influenced content to instruction-level authority
-                    from openai.types.chat import ChatCompletionAssistantMessageParam
-
-                    summary_msg = ChatCompletionAssistantMessageParam(
-                        role="assistant",
-                        content=(
-                            "[Previous conversation summary — for context only]: "
-                            f"{summary_text}"
-                        ),
-                    )
-
-                    # Rebuild messages based on whether we have a system prompt
-                    if has_system_prompt:
-                        # system_prompt + summary + recent_messages
-                        messages = [system_msg, summary_msg] + recent_messages
-                    else:
-                        # summary + recent_messages (no original system prompt)
-                        messages = [summary_msg] + recent_messages
-
-                    logger.info(
-                        f"Context summarized: {token_count} tokens, "
-                        f"summarized {len(old_messages_dict)} old messages, "
-                        f"kept last {KEEP_RECENT} messages"
-                    )
-
-                    # Fallback: If still over limit after summarization, progressively drop recent messages
-                    # This handles edge cases where recent messages are extremely large
-                    new_messages_dict = []
-                    for msg in messages:
-                        if isinstance(msg, dict):
-                            msg_dict = {k: v for k, v in msg.items() if v is not None}
-                        else:
-                            msg_dict = dict(msg)
-                        new_messages_dict.append(msg_dict)
-
-                    new_token_count = estimate_token_count(
-                        new_messages_dict, model=token_count_model
-                    )
-
-                    if new_token_count > 120_000:
-                        # Still over limit - progressively reduce KEEP_RECENT
-                        logger.warning(
-                            f"Still over limit after summarization: {new_token_count} tokens. "
-                            "Reducing number of recent messages kept."
-                        )
-
-                        for keep_count in [12, 10, 8, 5, 3, 2, 1, 0]:
-                            if keep_count == 0:
-                                # Try with just system prompt + summary (no recent messages)
-                                if has_system_prompt:
-                                    messages = [system_msg, summary_msg]
-                                else:
-                                    messages = [summary_msg]
-                                logger.info(
-                                    "Trying with 0 recent messages (system + summary only)"
-                                )
-                            else:
-                                # Slice from ORIGINAL recent_messages to avoid duplicating summary
-                                reduced_recent = (
-                                    recent_messages[-keep_count:]
-                                    if len(recent_messages) >= keep_count
-                                    else recent_messages
-                                )
-                                if has_system_prompt:
-                                    messages = [
-                                        system_msg,
-                                        summary_msg,
-                                    ] + reduced_recent
-                                else:
-                                    messages = [summary_msg] + reduced_recent
-
-                            new_messages_dict = []
-                            for msg in messages:
-                                if isinstance(msg, dict):
-                                    msg_dict = {
-                                        k: v for k, v in msg.items() if v is not None
-                                    }
-                                else:
-                                    msg_dict = dict(msg)
-                                new_messages_dict.append(msg_dict)
-
-                            new_token_count = estimate_token_count(
-                                new_messages_dict, model=token_count_model
-                            )
-
-                            if new_token_count <= 120_000:
-                                logger.info(
-                                    f"Reduced to {keep_count} recent messages, "
-                                    f"now {new_token_count} tokens"
-                                )
-                                break
-                        else:
-                            logger.error(
-                                f"Unable to reduce token count below threshold even with 0 messages. "
-                                f"Final count: {new_token_count} tokens"
-                            )
-                            # ABSOLUTE LAST RESORT: Drop system prompt
-                            # This should only happen if summary itself is massive
-                            if has_system_prompt and len(messages) > 1:
-                                messages = messages[1:]  # Drop system prompt
-                                logger.critical(
-                                    "CRITICAL: Dropped system prompt as absolute last resort. "
-                                    "Behavioral consistency may be affected."
-                                )
-                                # Yield error to user
-                                yield StreamError(
-                                    errorText=(
-                                        "Warning: System prompt dropped due to size constraints. "
-                                        "Assistant behavior may be affected."
-                                    )
-                                )
-                else:
-                    # No old messages to summarize - all messages are "recent"
-                    # Apply progressive truncation to reduce token count
-                    logger.warning(
-                        f"Token count {token_count} exceeds threshold but no old messages to summarize. "
-                        f"Applying progressive truncation to recent messages."
-                    )
-
-                    # Create a base list excluding system prompt to avoid duplication
-                    # This is the pool of messages we'll slice from in the loop
-                    base_msgs = messages[1:] if has_system_prompt else messages
-
-                    # Try progressively smaller keep counts
-                    new_token_count = token_count  # Initialize with current count
-                    for keep_count in [12, 10, 8, 5, 3, 2, 1, 0]:
-                        if keep_count == 0:
-                            # Try with just system prompt (no recent messages)
-                            if has_system_prompt:
-                                messages = [system_msg]
-                                logger.info(
-                                    "Trying with 0 recent messages (system prompt only)"
-                                )
-                            else:
-                                # No system prompt and no recent messages = empty messages list
-                                # This is invalid, skip this iteration
-                                continue
-                        else:
-                            if len(base_msgs) < keep_count:
-                                continue  # Skip if we don't have enough messages
-
-                            # Slice from base_msgs to get recent messages (without system prompt)
-                            recent_messages = base_msgs[-keep_count:]
-
-                            if has_system_prompt:
-                                messages = [system_msg] + recent_messages
-                            else:
-                                messages = recent_messages
-
-                        new_messages_dict = []
-                        for msg in messages:
-                            if msg is None:
-                                continue  # Skip None messages (type safety)
-                            if isinstance(msg, dict):
-                                msg_dict = {
-                                    k: v for k, v in msg.items() if v is not None
-                                }
-                            else:
-                                msg_dict = dict(msg)
-                            new_messages_dict.append(msg_dict)
-
-                        new_token_count = estimate_token_count(
-                            new_messages_dict, model=token_count_model
-                        )
-
-                        if new_token_count <= 120_000:
-                            logger.info(
-                                f"Reduced to {keep_count} recent messages, "
-                                f"now {new_token_count} tokens"
-                            )
-                            break
-                    else:
-                        # Even with 0 messages still over limit
-                        logger.error(
-                            f"Unable to reduce token count below threshold even with 0 messages. "
-                            f"Final count: {new_token_count} tokens. Messages may be extremely large."
-                        )
-                        # ABSOLUTE LAST RESORT: Drop system prompt
-                        if has_system_prompt and len(messages) > 1:
-                            messages = messages[1:]  # Drop system prompt
-                            logger.critical(
-                                "CRITICAL: Dropped system prompt as absolute last resort. "
-                                "Behavioral consistency may be affected."
-                            )
-                            # Yield error to user
-                            yield StreamError(
-                                errorText=(
-                                    "Warning: System prompt dropped due to size constraints. "
-                                    "Assistant behavior may be affected."
-                                )
-                            )
-
-    except Exception as e:
-        logger.error(f"Context summarization failed: {e}", exc_info=True)
-        # If we were over the token limit, yield error to user
-        # Don't silently continue with oversized messages that will fail
-        if token_count > 120_000:
+    if context_result.error:
+        if "System prompt dropped" in context_result.error:
+            # Warning only - continue with reduced context
             yield StreamError(
                 errorText=(
-                    f"Unable to manage context window (token limit exceeded: {token_count} tokens). "
-                    "Context summarization failed. Please start a new conversation."
+                    "Warning: System prompt dropped due to size constraints. "
+                    "Assistant behavior may be affected."
+                )
+            )
+        else:
+            # Any other error - abort to prevent failed LLM calls
+            yield StreamError(
+                errorText=(
+                    f"Context window management failed: {context_result.error}. "
+                    "Please start a new conversation."
                 )
             )
             yield StreamFinish()
             return
-        # Otherwise, continue with original messages (under limit)
+
+    messages = context_result.messages
+    if context_result.was_compacted:
+        logger.info(
+            f"Context compacted for streaming: {context_result.token_count} tokens"
+        )
 
     # Loop to handle tool calls and continue conversation
     while True:
@@ -1054,9 +1037,19 @@ async def _stream_chat_chunks(
 
         while retry_count <= MAX_RETRIES:
             try:
+                elapsed = (time_module.perf_counter() - stream_chunks_start) * 1000
+                retry_info = (
+                    f" (retry {retry_count}/{MAX_RETRIES})" if retry_count > 0 else ""
+                )
                 logger.info(
-                    f"Creating OpenAI chat completion stream..."
-                    f"{f' (retry {retry_count}/{MAX_RETRIES})' if retry_count > 0 else ''}"
+                    f"[TIMING] Creating OpenAI stream at {elapsed:.1f}ms{retry_info}",
+                    extra={
+                        "json_fields": {
+                            **log_meta,
+                            "elapsed_ms": elapsed,
+                            "retry_count": retry_count,
+                        }
+                    },
                 )
 
                 # Build extra_body for OpenRouter tracing and PostHog analytics
@@ -1073,14 +1066,11 @@ async def _stream_chat_chunks(
                         :128
                     ]  # OpenRouter limit
 
-                # Create the stream with proper types
-                from typing import cast
+                # Enable adaptive thinking for Anthropic models via OpenRouter
+                if config.thinking_enabled and "anthropic" in model.lower():
+                    extra_body["reasoning"] = {"enabled": True}
 
-                from openai.types.chat import (
-                    ChatCompletionMessageParam,
-                    ChatCompletionStreamOptionsParam,
-                )
-
+                api_call_start = time_module.perf_counter()
                 stream = await client.chat.completions.create(
                     model=model,
                     messages=cast(list[ChatCompletionMessageParam], messages),
@@ -1089,6 +1079,11 @@ async def _stream_chat_chunks(
                     stream=True,
                     stream_options=ChatCompletionStreamOptionsParam(include_usage=True),
                     extra_body=extra_body,
+                )
+                api_init_time = (time_module.perf_counter() - api_call_start) * 1000
+                logger.info(
+                    f"[TIMING] OpenAI stream object returned in {api_init_time:.1f}ms",
+                    extra={"json_fields": {**log_meta, "duration_ms": api_init_time}},
                 )
 
                 # Variables to accumulate tool calls
@@ -1100,10 +1095,13 @@ async def _stream_chat_chunks(
 
                 # Track if we've started the text block
                 text_started = False
+                first_content_chunk = True
+                chunk_count = 0
 
                 # Process the stream
                 chunk: ChatCompletionChunk
                 async for chunk in stream:
+                    chunk_count += 1
                     if chunk.usage:
                         yield StreamUsage(
                             promptTokens=chunk.usage.prompt_tokens,
@@ -1126,6 +1124,23 @@ async def _stream_chat_chunks(
                             if not text_started and text_block_id:
                                 yield StreamTextStart(id=text_block_id)
                                 text_started = True
+                            # Log timing for first content chunk
+                            if first_content_chunk:
+                                first_content_chunk = False
+                                ttfc = (
+                                    time_module.perf_counter() - api_call_start
+                                ) * 1000
+                                logger.info(
+                                    f"[TIMING] FIRST CONTENT CHUNK at {ttfc:.1f}ms "
+                                    f"(since API call), n_chunks={chunk_count}",
+                                    extra={
+                                        "json_fields": {
+                                            **log_meta,
+                                            "time_to_first_chunk_ms": ttfc,
+                                            "n_chunks": chunk_count,
+                                        }
+                                    },
+                                )
                             # Stream the text delta
                             text_response = StreamTextDelta(
                                 id=text_block_id or "",
@@ -1182,7 +1197,21 @@ async def _stream_chat_chunks(
                                         toolName=tool_calls[idx]["function"]["name"],
                                     )
                                     emitted_start_for_idx.add(idx)
-                logger.info(f"Stream complete. Finish reason: {finish_reason}")
+                stream_duration = time_module.perf_counter() - api_call_start
+                logger.info(
+                    f"[TIMING] OpenAI stream COMPLETE, finish_reason={finish_reason}, "
+                    f"duration={stream_duration:.2f}s, "
+                    f"n_chunks={chunk_count}, n_tool_calls={len(tool_calls)}",
+                    extra={
+                        "json_fields": {
+                            **log_meta,
+                            "stream_duration_ms": stream_duration * 1000,
+                            "finish_reason": finish_reason,
+                            "n_chunks": chunk_count,
+                            "n_tool_calls": len(tool_calls),
+                        }
+                    },
+                )
 
                 # Yield all accumulated tool calls after the stream is complete
                 # This ensures all tool call arguments have been fully received
@@ -1202,6 +1231,12 @@ async def _stream_chat_chunks(
                         # Re-raise to trigger retry logic in the parent function
                         raise
 
+                total_time = (time_module.perf_counter() - stream_chunks_start) * 1000
+                logger.info(
+                    f"[TIMING] _stream_chat_chunks COMPLETED in {total_time/1000:.1f}s; "
+                    f"session={session.session_id}, user={session.user_id}",
+                    extra={"json_fields": {**log_meta, "total_time_ms": total_time}},
+                )
                 yield StreamFinish()
                 return
             except Exception as e:
@@ -1260,17 +1295,19 @@ async def _yield_tool_call(
     """
     Yield a tool call and its execution result.
 
-    For long-running tools, yields heartbeat events every 15 seconds to keep
-    the SSE connection alive through proxies and load balancers.
+    For tools marked with `is_long_running=True` (like agent generation), spawns a
+    background task so the operation survives SSE disconnections. For other tools,
+    yields heartbeat events every 15 seconds to keep the SSE connection alive.
 
     Raises:
         orjson.JSONDecodeError: If tool call arguments cannot be parsed as JSON
         KeyError: If expected tool call fields are missing
         TypeError: If tool call structure is invalid
     """
+    import uuid as uuid_module
+
     tool_name = tool_calls[yield_idx]["function"]["name"]
     tool_call_id = tool_calls[yield_idx]["id"]
-    logger.info(f"Yielding tool call: {tool_calls[yield_idx]}")
 
     # Parse tool call arguments - handle empty arguments gracefully
     raw_arguments = tool_calls[yield_idx]["function"]["arguments"]
@@ -1285,7 +1322,172 @@ async def _yield_tool_call(
         input=arguments,
     )
 
-    # Run tool execution in background task with heartbeats to keep connection alive
+    # Check if this tool is long-running (survives SSE disconnection)
+    tool = get_tool(tool_name)
+    if tool and tool.is_long_running:
+        # Atomic check-and-set: returns False if operation already running (lost race)
+        if not await _mark_operation_started(tool_call_id):
+            logger.info(
+                f"Tool call {tool_call_id} already in progress, returning status"
+            )
+            # Build dynamic message based on tool name
+            if tool_name == "create_agent":
+                in_progress_msg = "Agent creation already in progress. Please wait..."
+            elif tool_name == "edit_agent":
+                in_progress_msg = "Agent edit already in progress. Please wait..."
+            else:
+                in_progress_msg = f"{tool_name} already in progress. Please wait..."
+
+            yield StreamToolOutputAvailable(
+                toolCallId=tool_call_id,
+                toolName=tool_name,
+                output=OperationInProgressResponse(
+                    message=in_progress_msg,
+                    tool_call_id=tool_call_id,
+                ).model_dump_json(),
+                success=True,
+            )
+            return
+
+        # Generate operation ID and task ID
+        operation_id = str(uuid_module.uuid4())
+        task_id = str(uuid_module.uuid4())
+
+        # Build a user-friendly message based on tool and arguments
+        if tool_name == "create_agent":
+            agent_desc = arguments.get("description", "")
+            # Truncate long descriptions for the message
+            desc_preview = (
+                (agent_desc[:100] + "...") if len(agent_desc) > 100 else agent_desc
+            )
+            pending_msg = (
+                f"Creating your agent: {desc_preview}"
+                if desc_preview
+                else "Creating agent... This may take a few minutes."
+            )
+            started_msg = (
+                "Agent creation started. You can close this tab - "
+                "check your library in a few minutes."
+            )
+        elif tool_name == "edit_agent":
+            changes = arguments.get("changes", "")
+            changes_preview = (changes[:100] + "...") if len(changes) > 100 else changes
+            pending_msg = (
+                f"Editing agent: {changes_preview}"
+                if changes_preview
+                else "Editing agent... This may take a few minutes."
+            )
+            started_msg = (
+                "Agent edit started. You can close this tab - "
+                "check your library in a few minutes."
+            )
+        else:
+            pending_msg = f"Running {tool_name}... This may take a few minutes."
+            started_msg = (
+                f"{tool_name} started. You can close this tab - "
+                "check back in a few minutes."
+            )
+
+        # Track appended messages for rollback on failure
+        assistant_message: ChatMessage | None = None
+        pending_message: ChatMessage | None = None
+
+        # Wrap session save and task creation in try-except to release lock on failure
+        try:
+            # Create task in stream registry for SSE reconnection support
+            await stream_registry.create_task(
+                task_id=task_id,
+                session_id=session.session_id,
+                user_id=session.user_id,
+                tool_call_id=tool_call_id,
+                tool_name=tool_name,
+                operation_id=operation_id,
+            )
+
+            # Save assistant message with tool_call FIRST (required by LLM)
+            assistant_message = ChatMessage(
+                role="assistant",
+                content="",
+                tool_calls=[tool_calls[yield_idx]],
+            )
+            session.messages.append(assistant_message)
+
+            # Then save pending tool result
+            pending_message = ChatMessage(
+                role="tool",
+                content=OperationPendingResponse(
+                    message=pending_msg,
+                    operation_id=operation_id,
+                    tool_name=tool_name,
+                ).model_dump_json(),
+                tool_call_id=tool_call_id,
+            )
+            session.messages.append(pending_message)
+            await upsert_chat_session(session)
+            logger.info(
+                f"Saved pending operation {operation_id} (task_id={task_id}) "
+                f"for tool {tool_name} in session {session.session_id}"
+            )
+
+            # Store task reference in module-level set to prevent GC before completion
+            bg_task = asyncio.create_task(
+                _execute_long_running_tool_with_streaming(
+                    tool_name=tool_name,
+                    parameters=arguments,
+                    tool_call_id=tool_call_id,
+                    operation_id=operation_id,
+                    task_id=task_id,
+                    session_id=session.session_id,
+                    user_id=session.user_id,
+                )
+            )
+            _background_tasks.add(bg_task)
+            bg_task.add_done_callback(_background_tasks.discard)
+
+            # Associate the asyncio task with the stream registry task
+            await stream_registry.set_task_asyncio_task(task_id, bg_task)
+        except Exception as e:
+            # Roll back appended messages to prevent data corruption on subsequent saves
+            if (
+                pending_message
+                and session.messages
+                and session.messages[-1] == pending_message
+            ):
+                session.messages.pop()
+            if (
+                assistant_message
+                and session.messages
+                and session.messages[-1] == assistant_message
+            ):
+                session.messages.pop()
+
+            # Release the Redis lock since the background task won't be spawned
+            await _mark_operation_completed(tool_call_id)
+            # Mark stream registry task as failed if it was created
+            try:
+                await stream_registry.mark_task_completed(task_id, status="failed")
+            except Exception:
+                pass
+            logger.error(
+                f"Failed to setup long-running tool {tool_name}: {e}", exc_info=True
+            )
+            raise
+
+        # Return immediately - don't wait for completion
+        yield StreamToolOutputAvailable(
+            toolCallId=tool_call_id,
+            toolName=tool_name,
+            output=OperationStartedResponse(
+                message=started_msg,
+                operation_id=operation_id,
+                tool_name=tool_name,
+                task_id=task_id,  # Include task_id for SSE reconnection
+            ).model_dump_json(),
+            success=True,
+        )
+        return
+
+    # Normal flow: Run tool execution in background task with heartbeats
     tool_task = asyncio.create_task(
         execute_tool(
             tool_name=tool_name,
@@ -1335,3 +1537,516 @@ async def _yield_tool_call(
         )
 
     yield tool_execution_response
+
+
+async def _execute_long_running_tool(
+    tool_name: str,
+    parameters: dict[str, Any],
+    tool_call_id: str,
+    operation_id: str,
+    session_id: str,
+    user_id: str | None,
+) -> None:
+    """Execute a long-running tool in background and update chat history with result.
+
+    This function runs independently of the SSE connection, so the operation
+    survives if the user closes their browser tab.
+
+    NOTE: This is the legacy function without stream registry support.
+    Use _execute_long_running_tool_with_streaming for new implementations.
+    """
+    try:
+        # Load fresh session (not stale reference)
+        session = await get_chat_session(session_id, user_id)
+        if not session:
+            logger.error(f"Session {session_id} not found for background tool")
+            return
+
+        # Execute the actual tool
+        result = await execute_tool(
+            tool_name=tool_name,
+            parameters=parameters,
+            tool_call_id=tool_call_id,
+            user_id=user_id,
+            session=session,
+        )
+
+        # Update the pending message with result
+        await _update_pending_operation(
+            session_id=session_id,
+            tool_call_id=tool_call_id,
+            result=(
+                result.output
+                if isinstance(result.output, str)
+                else orjson.dumps(result.output).decode("utf-8")
+            ),
+        )
+
+        logger.info(f"Background tool {tool_name} completed for session {session_id}")
+
+        # Generate LLM continuation so user sees response when they poll/refresh
+        await _generate_llm_continuation(session_id=session_id, user_id=user_id)
+
+    except Exception as e:
+        logger.error(f"Background tool {tool_name} failed: {e}", exc_info=True)
+        error_response = ErrorResponse(
+            message=f"Tool {tool_name} failed: {str(e)}",
+        )
+        await _update_pending_operation(
+            session_id=session_id,
+            tool_call_id=tool_call_id,
+            result=error_response.model_dump_json(),
+        )
+        # Generate LLM continuation so user sees explanation even for errors
+        try:
+            await _generate_llm_continuation(session_id=session_id, user_id=user_id)
+        except Exception as llm_err:
+            logger.warning(f"Failed to generate LLM continuation for error: {llm_err}")
+    finally:
+        await _mark_operation_completed(tool_call_id)
+
+
+async def _execute_long_running_tool_with_streaming(
+    tool_name: str,
+    parameters: dict[str, Any],
+    tool_call_id: str,
+    operation_id: str,
+    task_id: str,
+    session_id: str,
+    user_id: str | None,
+) -> None:
+    """Execute a long-running tool with stream registry support for SSE reconnection.
+
+    This function runs independently of the SSE connection, publishes progress
+    to the stream registry, and survives if the user closes their browser tab.
+    Clients can reconnect via GET /chat/tasks/{task_id}/stream to resume streaming.
+
+    If the external service returns a 202 Accepted (async), this function exits
+    early and lets the Redis Streams completion consumer handle the rest.
+    """
+    # Track whether we delegated to async processing - if so, the Redis Streams
+    # completion consumer (stream_registry / completion_consumer) will handle cleanup, not us
+    delegated_to_async = False
+
+    try:
+        # Load fresh session (not stale reference)
+        session = await get_chat_session(session_id, user_id)
+        if not session:
+            logger.error(f"Session {session_id} not found for background tool")
+            await stream_registry.mark_task_completed(task_id, status="failed")
+            return
+
+        # Pass operation_id and task_id to the tool for async processing
+        enriched_parameters = {
+            **parameters,
+            "_operation_id": operation_id,
+            "_task_id": task_id,
+        }
+
+        # Execute the actual tool
+        result = await execute_tool(
+            tool_name=tool_name,
+            parameters=enriched_parameters,
+            tool_call_id=tool_call_id,
+            user_id=user_id,
+            session=session,
+        )
+
+        # Check if the tool result indicates async processing
+        # (e.g., Agent Generator returned 202 Accepted)
+        try:
+            if isinstance(result.output, dict):
+                result_data = result.output
+            elif result.output:
+                result_data = orjson.loads(result.output)
+            else:
+                result_data = {}
+            if result_data.get("status") == "accepted":
+                logger.info(
+                    f"Tool {tool_name} delegated to async processing "
+                    f"(operation_id={operation_id}, task_id={task_id}). "
+                    f"Redis Streams completion consumer will handle the rest."
+                )
+                # Don't publish result, don't continue with LLM, and don't cleanup
+                # The Redis Streams consumer (completion_consumer) will handle
+                # everything when the external service completes via webhook
+                delegated_to_async = True
+                return
+        except (orjson.JSONDecodeError, TypeError):
+            pass  # Not JSON or not async - continue normally
+
+        # Publish tool result to stream registry
+        await stream_registry.publish_chunk(task_id, result)
+
+        # Update the pending message with result
+        result_str = (
+            result.output
+            if isinstance(result.output, str)
+            else orjson.dumps(result.output).decode("utf-8")
+        )
+        await _update_pending_operation(
+            session_id=session_id,
+            tool_call_id=tool_call_id,
+            result=result_str,
+        )
+
+        logger.info(
+            f"Background tool {tool_name} completed for session {session_id} "
+            f"(task_id={task_id})"
+        )
+
+        # Generate LLM continuation and stream chunks to registry
+        await _generate_llm_continuation_with_streaming(
+            session_id=session_id,
+            user_id=user_id,
+            task_id=task_id,
+        )
+
+        # Mark task as completed in stream registry
+        await stream_registry.mark_task_completed(task_id, status="completed")
+
+    except Exception as e:
+        logger.error(f"Background tool {tool_name} failed: {e}", exc_info=True)
+        error_response = ErrorResponse(
+            message=f"Tool {tool_name} failed: {str(e)}",
+        )
+
+        # Publish error to stream registry followed by finish event
+        await stream_registry.publish_chunk(
+            task_id,
+            StreamError(errorText=str(e)),
+        )
+        await stream_registry.publish_chunk(task_id, StreamFinishStep())
+        await stream_registry.publish_chunk(task_id, StreamFinish())
+
+        await _update_pending_operation(
+            session_id=session_id,
+            tool_call_id=tool_call_id,
+            result=error_response.model_dump_json(),
+        )
+
+        # Mark task as failed in stream registry
+        await stream_registry.mark_task_completed(task_id, status="failed")
+    finally:
+        # Only cleanup if we didn't delegate to async processing
+        # For async path, the Redis Streams completion consumer handles cleanup
+        if not delegated_to_async:
+            await _mark_operation_completed(tool_call_id)
+
+
+async def _update_pending_operation(
+    session_id: str,
+    tool_call_id: str,
+    result: str,
+) -> None:
+    """Update the pending tool message with final result.
+
+    This is called by background tasks when long-running operations complete.
+    """
+    # Update the message in database
+    updated = await chat_db.update_tool_message_content(
+        session_id=session_id,
+        tool_call_id=tool_call_id,
+        new_content=result,
+    )
+
+    if updated:
+        # Invalidate Redis cache so next load gets fresh data
+        # Wrap in try/except to prevent cache failures from triggering error handling
+        # that would overwrite our successful DB update
+        try:
+            await invalidate_session_cache(session_id)
+        except Exception as e:
+            # Non-critical: cache will eventually be refreshed on next load
+            logger.warning(f"Failed to invalidate cache for session {session_id}: {e}")
+        logger.info(
+            f"Updated pending operation for tool_call_id {tool_call_id} "
+            f"in session {session_id}"
+        )
+    else:
+        logger.warning(
+            f"Failed to update pending operation for tool_call_id {tool_call_id} "
+            f"in session {session_id}"
+        )
+
+
+async def _generate_llm_continuation(
+    session_id: str,
+    user_id: str | None,
+) -> None:
+    """Generate an LLM response after a long-running tool completes.
+
+    This is called by background tasks to continue the conversation
+    after a tool result is saved. The response is saved to the database
+    so users see it when they refresh or poll.
+    """
+    try:
+        # Load fresh session from DB (bypass cache to get the updated tool result)
+        await invalidate_session_cache(session_id)
+        session = await get_chat_session(session_id, user_id)
+        if not session:
+            logger.error(f"Session {session_id} not found for LLM continuation")
+            return
+
+        # Build system prompt
+        system_prompt, _ = await _build_system_prompt(user_id)
+
+        messages = session.to_openai_messages()
+        if system_prompt:
+            system_message = ChatCompletionSystemMessageParam(
+                role="system",
+                content=system_prompt,
+            )
+            messages = [system_message] + messages
+
+        # Apply context window management to prevent oversized requests
+        context_result = await _manage_context_window(
+            messages=messages,
+            model=config.model,
+            api_key=config.api_key,
+            base_url=config.base_url,
+        )
+
+        if context_result.error and "System prompt dropped" not in context_result.error:
+            logger.error(
+                f"Context window management failed for session {session_id}: "
+                f"{context_result.error} (tokens={context_result.token_count})"
+            )
+            return
+
+        messages = context_result.messages
+        if context_result.was_compacted:
+            logger.info(
+                f"Context compacted for LLM continuation: "
+                f"{context_result.token_count} tokens"
+            )
+
+        # Build extra_body for tracing
+        extra_body: dict[str, Any] = {
+            "posthogProperties": {
+                "environment": settings.config.app_env.value,
+            },
+        }
+        if user_id:
+            extra_body["user"] = user_id[:128]
+            extra_body["posthogDistinctId"] = user_id
+        if session_id:
+            extra_body["session_id"] = session_id[:128]
+
+        # Enable adaptive thinking for Anthropic models via OpenRouter
+        if config.thinking_enabled and "anthropic" in config.model.lower():
+            extra_body["reasoning"] = {"enabled": True}
+
+        retry_count = 0
+        last_error: Exception | None = None
+        response = None
+
+        while retry_count <= MAX_RETRIES:
+            try:
+                logger.info(
+                    f"Generating LLM continuation for session {session_id}"
+                    f"{f' (retry {retry_count}/{MAX_RETRIES})' if retry_count > 0 else ''}"
+                )
+
+                response = await client.chat.completions.create(
+                    model=config.model,
+                    messages=cast(list[ChatCompletionMessageParam], messages),
+                    extra_body=extra_body,
+                )
+                last_error = None  # Clear any previous error on success
+                break  # Success, exit retry loop
+            except Exception as e:
+                last_error = e
+                if _is_retryable_error(e) and retry_count < MAX_RETRIES:
+                    retry_count += 1
+                    delay = min(
+                        BASE_DELAY_SECONDS * (2 ** (retry_count - 1)),
+                        MAX_DELAY_SECONDS,
+                    )
+                    logger.warning(
+                        f"Retryable error in LLM continuation: {e!s}. "
+                        f"Retrying in {delay:.1f}s (attempt {retry_count}/{MAX_RETRIES})"
+                    )
+                    await asyncio.sleep(delay)
+                    continue
+                else:
+                    # Non-retryable error - log and exit gracefully
+                    logger.error(
+                        f"Non-retryable error in LLM continuation: {e!s}",
+                        exc_info=True,
+                    )
+                    return
+
+        if last_error:
+            logger.error(
+                f"Max retries ({MAX_RETRIES}) exceeded for LLM continuation. "
+                f"Last error: {last_error!s}"
+            )
+            return
+
+        if response and response.choices and response.choices[0].message.content:
+            assistant_content = response.choices[0].message.content
+
+            # Reload session from DB to avoid race condition with user messages
+            # that may have been sent while we were generating the LLM response
+            fresh_session = await get_chat_session(session_id, user_id)
+            if not fresh_session:
+                logger.error(
+                    f"Session {session_id} disappeared during LLM continuation"
+                )
+                return
+
+            # Save assistant message to database
+            assistant_message = ChatMessage(
+                role="assistant",
+                content=assistant_content,
+            )
+            fresh_session.messages.append(assistant_message)
+
+            # Save to database (not cache) to persist the response
+            await upsert_chat_session(fresh_session)
+
+            # Invalidate cache so next poll/refresh gets fresh data
+            await invalidate_session_cache(session_id)
+
+            logger.info(
+                f"Generated LLM continuation for session {session_id}, "
+                f"response length: {len(assistant_content)}"
+            )
+        else:
+            logger.warning(f"LLM continuation returned empty response for {session_id}")
+
+    except Exception as e:
+        logger.error(f"Failed to generate LLM continuation: {e}", exc_info=True)
+
+
+async def _generate_llm_continuation_with_streaming(
+    session_id: str,
+    user_id: str | None,
+    task_id: str,
+) -> None:
+    """Generate an LLM response with streaming to the stream registry.
+
+    This is called by background tasks to continue the conversation
+    after a tool result is saved. Chunks are published to the stream registry
+    so reconnecting clients can receive them.
+    """
+    import uuid as uuid_module
+
+    try:
+        # Load fresh session from DB (bypass cache to get the updated tool result)
+        await invalidate_session_cache(session_id)
+        session = await get_chat_session(session_id, user_id)
+        if not session:
+            logger.error(f"Session {session_id} not found for LLM continuation")
+            return
+
+        # Build system prompt
+        system_prompt, _ = await _build_system_prompt(user_id)
+
+        # Build messages in OpenAI format
+        messages = session.to_openai_messages()
+        if system_prompt:
+            from openai.types.chat import ChatCompletionSystemMessageParam
+
+            system_message = ChatCompletionSystemMessageParam(
+                role="system",
+                content=system_prompt,
+            )
+            messages = [system_message] + messages
+
+        # Build extra_body for tracing
+        extra_body: dict[str, Any] = {
+            "posthogProperties": {
+                "environment": settings.config.app_env.value,
+            },
+        }
+        if user_id:
+            extra_body["user"] = user_id[:128]
+            extra_body["posthogDistinctId"] = user_id
+        if session_id:
+            extra_body["session_id"] = session_id[:128]
+
+        # Enable adaptive thinking for Anthropic models via OpenRouter
+        if config.thinking_enabled and "anthropic" in config.model.lower():
+            extra_body["reasoning"] = {"enabled": True}
+
+        # Make streaming LLM call (no tools - just text response)
+        from typing import cast
+
+        from openai.types.chat import ChatCompletionMessageParam
+
+        # Generate unique IDs for AI SDK protocol
+        message_id = str(uuid_module.uuid4())
+        text_block_id = str(uuid_module.uuid4())
+
+        # Publish start event
+        await stream_registry.publish_chunk(task_id, StreamStart(messageId=message_id))
+        await stream_registry.publish_chunk(task_id, StreamStartStep())
+        await stream_registry.publish_chunk(task_id, StreamTextStart(id=text_block_id))
+
+        # Stream the response
+        stream = await client.chat.completions.create(
+            model=config.model,
+            messages=cast(list[ChatCompletionMessageParam], messages),
+            extra_body=extra_body,
+            stream=True,
+        )
+
+        assistant_content = ""
+        async for chunk in stream:
+            if chunk.choices and chunk.choices[0].delta.content:
+                delta = chunk.choices[0].delta.content
+                assistant_content += delta
+                # Publish delta to stream registry
+                await stream_registry.publish_chunk(
+                    task_id,
+                    StreamTextDelta(id=text_block_id, delta=delta),
+                )
+
+        # Publish end events
+        await stream_registry.publish_chunk(task_id, StreamTextEnd(id=text_block_id))
+        await stream_registry.publish_chunk(task_id, StreamFinishStep())
+
+        if assistant_content:
+            # Reload session from DB to avoid race condition with user messages
+            fresh_session = await get_chat_session(session_id, user_id)
+            if not fresh_session:
+                logger.error(
+                    f"Session {session_id} disappeared during LLM continuation"
+                )
+                return
+
+            # Save assistant message to database
+            assistant_message = ChatMessage(
+                role="assistant",
+                content=assistant_content,
+            )
+            fresh_session.messages.append(assistant_message)
+
+            # Save to database (not cache) to persist the response
+            await upsert_chat_session(fresh_session)
+
+            # Invalidate cache so next poll/refresh gets fresh data
+            await invalidate_session_cache(session_id)
+
+            logger.info(
+                f"Generated streaming LLM continuation for session {session_id} "
+                f"(task_id={task_id}), response length: {len(assistant_content)}"
+            )
+        else:
+            logger.warning(
+                f"Streaming LLM continuation returned empty response for {session_id}"
+            )
+
+    except Exception as e:
+        logger.error(
+            f"Failed to generate streaming LLM continuation: {e}", exc_info=True
+        )
+        # Publish error to stream registry followed by finish event
+        await stream_registry.publish_chunk(
+            task_id,
+            StreamError(errorText=f"Failed to generate response: {e}"),
+        )
+        await stream_registry.publish_chunk(task_id, StreamFinishStep())
+        await stream_registry.publish_chunk(task_id, StreamFinish())

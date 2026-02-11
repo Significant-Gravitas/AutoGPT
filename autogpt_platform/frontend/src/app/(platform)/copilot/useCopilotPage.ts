@@ -1,230 +1,142 @@
-import {
-  getGetV2ListSessionsQueryKey,
-  postV2CreateSession,
-} from "@/app/api/__generated__/endpoints/chat/chat";
-import { useToast } from "@/components/molecules/Toast/use-toast";
-import { getHomepageRoute } from "@/lib/constants";
+import { useGetV2ListSessions } from "@/app/api/__generated__/endpoints/chat/chat";
+import { useBreakpoint } from "@/lib/hooks/useBreakpoint";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
-import {
-  Flag,
-  type FlagValues,
-  useGetFlag,
-} from "@/services/feature-flags/use-get-flag";
-import * as Sentry from "@sentry/nextjs";
-import { useQueryClient } from "@tanstack/react-query";
-import { useFlags } from "launchdarkly-react-client-sdk";
-import { useRouter } from "next/navigation";
-import { useEffect, useReducer } from "react";
-import { useCopilotStore } from "./copilot-page-store";
-import { getGreetingName, getQuickActions, type PageState } from "./helpers";
-import { useCopilotURLState } from "./useCopilotURLState";
-
-type CopilotState = {
-  pageState: PageState;
-  initialPrompts: Record<string, string>;
-  previousSessionId: string | null;
-};
-
-type CopilotAction =
-  | { type: "setPageState"; pageState: PageState }
-  | { type: "setInitialPrompt"; sessionId: string; prompt: string }
-  | { type: "setPreviousSessionId"; sessionId: string | null };
-
-function isSamePageState(next: PageState, current: PageState) {
-  if (next.type !== current.type) return false;
-  if (next.type === "creating" && current.type === "creating") {
-    return next.prompt === current.prompt;
-  }
-  if (next.type === "chat" && current.type === "chat") {
-    return (
-      next.sessionId === current.sessionId &&
-      next.initialPrompt === current.initialPrompt
-    );
-  }
-  return true;
-}
-
-function copilotReducer(
-  state: CopilotState,
-  action: CopilotAction,
-): CopilotState {
-  if (action.type === "setPageState") {
-    if (isSamePageState(action.pageState, state.pageState)) return state;
-    return { ...state, pageState: action.pageState };
-  }
-  if (action.type === "setInitialPrompt") {
-    if (state.initialPrompts[action.sessionId] === action.prompt) return state;
-    return {
-      ...state,
-      initialPrompts: {
-        ...state.initialPrompts,
-        [action.sessionId]: action.prompt,
-      },
-    };
-  }
-  if (action.type === "setPreviousSessionId") {
-    if (state.previousSessionId === action.sessionId) return state;
-    return { ...state, previousSessionId: action.sessionId };
-  }
-  return state;
-}
+import { useChat } from "@ai-sdk/react";
+import { DefaultChatTransport } from "ai";
+import { useEffect, useMemo, useState } from "react";
+import { useChatSession } from "./useChatSession";
 
 export function useCopilotPage() {
-  const router = useRouter();
-  const queryClient = useQueryClient();
-  const { user, isLoggedIn, isUserLoading } = useSupabase();
-  const { toast } = useToast();
+  const { isUserLoading, isLoggedIn } = useSupabase();
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [pendingMessage, setPendingMessage] = useState<string | null>(null);
 
-  const isNewChatModalOpen = useCopilotStore((s) => s.isNewChatModalOpen);
-  const setIsStreaming = useCopilotStore((s) => s.setIsStreaming);
-  const cancelNewChat = useCopilotStore((s) => s.cancelNewChat);
+  const {
+    sessionId,
+    setSessionId,
+    hydratedMessages,
+    isLoadingSession,
+    createSession,
+    isCreatingSession,
+  } = useChatSession();
 
-  const isChatEnabled = useGetFlag(Flag.CHAT);
-  const flags = useFlags<FlagValues>();
-  const homepageRoute = getHomepageRoute(isChatEnabled);
-  const envEnabled = process.env.NEXT_PUBLIC_LAUNCHDARKLY_ENABLED === "true";
-  const clientId = process.env.NEXT_PUBLIC_LAUNCHDARKLY_CLIENT_ID;
-  const isLaunchDarklyConfigured = envEnabled && Boolean(clientId);
-  const isFlagReady =
-    !isLaunchDarklyConfigured || flags[Flag.CHAT] !== undefined;
+  const breakpoint = useBreakpoint();
+  const isMobile =
+    breakpoint === "base" || breakpoint === "sm" || breakpoint === "md";
 
-  const [state, dispatch] = useReducer(copilotReducer, {
-    pageState: { type: "welcome" },
-    initialPrompts: {},
-    previousSessionId: null,
-  });
-
-  const greetingName = getGreetingName(user);
-  const quickActions = getQuickActions();
-
-  function setPageState(pageState: PageState) {
-    dispatch({ type: "setPageState", pageState });
-  }
-
-  function setInitialPrompt(sessionId: string, prompt: string) {
-    dispatch({ type: "setInitialPrompt", sessionId, prompt });
-  }
-
-  function setPreviousSessionId(sessionId: string | null) {
-    dispatch({ type: "setPreviousSessionId", sessionId });
-  }
-
-  const { setUrlSessionId } = useCopilotURLState({
-    pageState: state.pageState,
-    initialPrompts: state.initialPrompts,
-    previousSessionId: state.previousSessionId,
-    setPageState,
-    setInitialPrompt,
-    setPreviousSessionId,
-  });
-
-  useEffect(
-    function transitionNewChatToWelcome() {
-      if (state.pageState.type === "newChat") {
-        function setWelcomeState() {
-          dispatch({ type: "setPageState", pageState: { type: "welcome" } });
-        }
-
-        const timer = setTimeout(setWelcomeState, 300);
-
-        return function cleanup() {
-          clearTimeout(timer);
-        };
-      }
-    },
-    [state.pageState.type],
+  const transport = useMemo(
+    () =>
+      sessionId
+        ? new DefaultChatTransport({
+            api: `/api/chat/sessions/${sessionId}/stream`,
+            prepareSendMessagesRequest: ({ messages }) => {
+              const last = messages[messages.length - 1];
+              return {
+                body: {
+                  message: (
+                    last.parts?.map((p) => (p.type === "text" ? p.text : "")) ??
+                    []
+                  ).join(""),
+                  is_user_message: last.role === "user",
+                  context: null,
+                },
+              };
+            },
+          })
+        : null,
+    [sessionId],
   );
 
-  useEffect(
-    function ensureAccess() {
-      if (!isFlagReady) return;
-      if (isChatEnabled === false) {
-        router.replace(homepageRoute);
-      }
-    },
-    [homepageRoute, isChatEnabled, isFlagReady, router],
-  );
+  const { messages, sendMessage, stop, status, error, setMessages } = useChat({
+    id: sessionId ?? undefined,
+    transport: transport ?? undefined,
+  });
 
-  async function startChatWithPrompt(prompt: string) {
-    if (!prompt?.trim()) return;
-    if (state.pageState.type === "creating") return;
-
-    const trimmedPrompt = prompt.trim();
-    dispatch({
-      type: "setPageState",
-      pageState: { type: "creating", prompt: trimmedPrompt },
+  useEffect(() => {
+    if (!hydratedMessages || hydratedMessages.length === 0) return;
+    setMessages((prev) => {
+      if (prev.length >= hydratedMessages.length) return prev;
+      return hydratedMessages;
     });
+  }, [hydratedMessages, setMessages]);
 
-    try {
-      const sessionResponse = await postV2CreateSession({
-        body: JSON.stringify({}),
-      });
+  // Clear messages when session is null
+  useEffect(() => {
+    if (!sessionId) setMessages([]);
+  }, [sessionId, setMessages]);
 
-      if (sessionResponse.status !== 200 || !sessionResponse.data?.id) {
-        throw new Error("Failed to create session");
-      }
+  useEffect(() => {
+    if (!sessionId || !pendingMessage) return;
+    const msg = pendingMessage;
+    setPendingMessage(null);
+    sendMessage({ text: msg });
+  }, [sessionId, pendingMessage, sendMessage]);
 
-      const sessionId = sessionResponse.data.id;
+  async function onSend(message: string) {
+    const trimmed = message.trim();
+    if (!trimmed) return;
 
-      dispatch({
-        type: "setInitialPrompt",
-        sessionId,
-        prompt: trimmedPrompt,
-      });
-
-      await queryClient.invalidateQueries({
-        queryKey: getGetV2ListSessionsQueryKey(),
-      });
-
-      await setUrlSessionId(sessionId, { shallow: false });
-      dispatch({
-        type: "setPageState",
-        pageState: { type: "chat", sessionId, initialPrompt: trimmedPrompt },
-      });
-    } catch (error) {
-      console.error("[CopilotPage] Failed to start chat:", error);
-      toast({ title: "Failed to start chat", variant: "destructive" });
-      Sentry.captureException(error);
-      dispatch({ type: "setPageState", pageState: { type: "welcome" } });
+    if (sessionId) {
+      sendMessage({ text: trimmed });
+      return;
     }
+
+    setPendingMessage(trimmed);
+    await createSession();
   }
 
-  function handleQuickAction(action: string) {
-    startChatWithPrompt(action);
+  const { data: sessionsResponse, isLoading: isLoadingSessions } =
+    useGetV2ListSessions(
+      { limit: 50 },
+      { query: { enabled: !isUserLoading && isLoggedIn } },
+    );
+
+  const sessions =
+    sessionsResponse?.status === 200 ? sessionsResponse.data.sessions : [];
+
+  function handleOpenDrawer() {
+    setIsDrawerOpen(true);
   }
 
-  function handleSessionNotFound() {
-    router.replace("/copilot");
+  function handleCloseDrawer() {
+    setIsDrawerOpen(false);
   }
 
-  function handleStreamingChange(isStreamingValue: boolean) {
-    setIsStreaming(isStreamingValue);
+  function handleDrawerOpenChange(open: boolean) {
+    setIsDrawerOpen(open);
   }
 
-  function handleCancelNewChat() {
-    cancelNewChat();
+  function handleSelectSession(id: string) {
+    setSessionId(id);
+    if (isMobile) setIsDrawerOpen(false);
   }
 
-  function handleNewChatModalOpen(isOpen: boolean) {
-    if (!isOpen) cancelNewChat();
+  function handleNewChat() {
+    setSessionId(null);
+    if (isMobile) setIsDrawerOpen(false);
   }
 
   return {
-    state: {
-      greetingName,
-      quickActions,
-      isLoading: isUserLoading,
-      pageState: state.pageState,
-      isNewChatModalOpen,
-      isReady: isFlagReady && isChatEnabled !== false && isLoggedIn,
-    },
-    handlers: {
-      handleQuickAction,
-      startChatWithPrompt,
-      handleSessionNotFound,
-      handleStreamingChange,
-      handleCancelNewChat,
-      handleNewChatModalOpen,
-    },
+    sessionId,
+    messages,
+    status,
+    error,
+    stop,
+    isLoadingSession,
+    isCreatingSession,
+    isUserLoading,
+    isLoggedIn,
+    createSession,
+    onSend,
+    // Mobile drawer
+    isMobile,
+    isDrawerOpen,
+    sessions,
+    isLoadingSessions,
+    handleOpenDrawer,
+    handleCloseDrawer,
+    handleDrawerOpenChange,
+    handleSelectSession,
+    handleNewChat,
   };
 }

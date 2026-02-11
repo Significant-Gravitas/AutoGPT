@@ -11,10 +11,3 @@ export const API_KEY_HEADER_NAME = "X-API-Key";
 
 // Layout
 export const NAVBAR_HEIGHT_PX = 60;
-
-// Routes
-export function getHomepageRoute(isChatEnabled?: boolean | null): string {
-  if (isChatEnabled === true) return "/copilot";
-  if (isChatEnabled === false) return "/library";
-  return "/";
-}

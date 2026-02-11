@@ -1,8 +1,6 @@
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { getHomepageRoute } from "@/lib/constants";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { environment } from "@/services/environment";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { loginFormSchema, LoginProvider } from "@/types/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -22,17 +20,15 @@ export function useLoginPage() {
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [showNotAllowedModal, setShowNotAllowedModal] = useState(false);
   const isCloudEnv = environment.isCloud();
-  const isChatEnabled = useGetFlag(Flag.CHAT);
-  const homepageRoute = getHomepageRoute(isChatEnabled);
 
   // Get redirect destination from 'next' query parameter
   const nextUrl = searchParams.get("next");
 
   useEffect(() => {
     if (isLoggedIn && !isLoggingIn) {
-      router.push(nextUrl || homepageRoute);
+      router.push(nextUrl || "/");
     }
-  }, [homepageRoute, isLoggedIn, isLoggingIn, nextUrl, router]);
+  }, [isLoggedIn, isLoggingIn, nextUrl, router]);
 
   const form = useForm<z.infer<typeof loginFormSchema>>({
     resolver: zodResolver(loginFormSchema),
@@ -97,13 +93,8 @@ export function useLoginPage() {
         throw new Error(result.error || "Login failed");
       }
 
-      if (nextUrl) {
-        router.replace(nextUrl);
-      } else if (result.onboarding) {
-        router.replace("/onboarding");
-      } else {
-        router.replace(homepageRoute);
-      }
+      // Prefer URL's next parameter, then use backend-determined route
+      router.replace(nextUrl || result.next || "/");
     } catch (error) {
       toast({
         title:

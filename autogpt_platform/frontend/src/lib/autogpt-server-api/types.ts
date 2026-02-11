@@ -363,25 +363,14 @@ export type GraphMeta = {
   user_id: UserID;
   version: number;
   is_active: boolean;
+  created_at: Date;
   name: string;
   description: string;
   instructions?: string | null;
   recommended_schedule_cron: string | null;
   forked_from_id?: GraphID | null;
   forked_from_version?: number | null;
-  input_schema: GraphInputSchema;
-  output_schema: GraphOutputSchema;
-  credentials_input_schema: CredentialsInputSchema;
-} & (
-  | {
-      has_external_trigger: true;
-      trigger_setup_info: GraphTriggerInfo;
-    }
-  | {
-      has_external_trigger: false;
-      trigger_setup_info: null;
-    }
-);
+};
 
 export type GraphID = Brand<string, "GraphID">;
 
@@ -448,11 +437,22 @@ export type GraphTriggerInfo = {
 
 /* Mirror of backend/data/graph.py:Graph */
 export type Graph = GraphMeta & {
-  created_at: Date;
   nodes: Node[];
   links: Link[];
   sub_graphs: Omit<Graph, "sub_graphs">[]; // Flattened sub-graphs
-};
+  input_schema: GraphInputSchema;
+  output_schema: GraphOutputSchema;
+  credentials_input_schema: CredentialsInputSchema;
+} & (
+    | {
+        has_external_trigger: true;
+        trigger_setup_info: GraphTriggerInfo;
+      }
+    | {
+        has_external_trigger: false;
+        trigger_setup_info: null;
+      }
+  );
 
 export type GraphUpdateable = Omit<
   Graph,
@@ -517,7 +517,7 @@ export type GraphValidationErrorResponse = {
 
 /* *** LIBRARY *** */
 
-/* Mirror of backend/server/v2/library/model.py:LibraryAgent */
+/* Mirror of backend/api/features/library/model.py:LibraryAgent */
 export type LibraryAgent = {
   id: LibraryAgentID;
   graph_id: GraphID;
@@ -617,7 +617,7 @@ export enum LibraryAgentSortEnum {
 
 /* *** CREDENTIALS *** */
 
-/* Mirror of backend/server/integrations/router.py:CredentialsMetaResponse */
+/* Mirror of backend/api/features/integrations/router.py:CredentialsMetaResponse */
 export type CredentialsMetaResponse = {
   id: string;
   provider: CredentialsProviderName;
@@ -629,13 +629,13 @@ export type CredentialsMetaResponse = {
   is_system?: boolean;
 };
 
-/* Mirror of backend/server/integrations/router.py:CredentialsDeletionResponse */
+/* Mirror of backend/api/features/integrations/router.py:CredentialsDeletionResponse */
 export type CredentialsDeleteResponse = {
   deleted: true;
   revoked: boolean | null;
 };
 
-/* Mirror of backend/server/integrations/router.py:CredentialsDeletionNeedsConfirmationResponse */
+/* Mirror of backend/api/features/integrations/router.py:CredentialsDeletionNeedsConfirmationResponse */
 export type CredentialsDeleteNeedConfirmationResponse = {
   deleted: false;
   need_confirmation: true;
@@ -889,7 +889,7 @@ export type Schedule = {
 
 export type ScheduleID = Brand<string, "ScheduleID">;
 
-/* Mirror of backend/server/routers/v1.py:ScheduleCreationRequest */
+/* Mirror of backend/api/features/v1.py:ScheduleCreationRequest */
 export type ScheduleCreatable = {
   graph_id: GraphID;
   graph_version: number;
@@ -1004,6 +1004,7 @@ export type OnboardingStep =
   | "AGENT_INPUT"
   | "CONGRATS"
   // First Wins
+  | "VISIT_COPILOT"
   | "GET_RESULTS"
   | "MARKETPLACE_VISIT"
   | "MARKETPLACE_ADD_AGENT"
