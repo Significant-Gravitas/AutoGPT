@@ -231,9 +231,12 @@ async def store_sandbox_files(
                 execution_context=execution_context,
                 return_format="for_block_output",
             )
-            # Result is workspace://... or data:... depending on context
             if result.startswith("workspace://"):
                 workspace_ref = result
+            elif not file.is_text:
+                # Non-workspace context (graph execution): store_media_file
+                # returned a data URI — use it as content so binary data isn't lost.
+                content_str = result
         except Exception as e:
             logger.warning(f"Failed to store file {file.name} to workspace: {e}")
             # For binary files, fall back to data URI to prevent data loss
