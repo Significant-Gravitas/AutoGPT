@@ -48,6 +48,20 @@ _background_tasks: set[asyncio.Task[Any]] = set()
 
 _SDK_CWD_PREFIX = "/tmp/copilot-"
 
+# Appended to the system prompt to inform the agent about Bash restrictions.
+# The SDK already describes each tool (Read, Write, Edit, Glob, Grep, Bash),
+# but it doesn't know about our security hooks' command allowlist for Bash.
+_SDK_TOOL_SUPPLEMENT = """
+
+## Bash restrictions
+
+The Bash tool is restricted to safe, read-only data-processing commands:
+jq, grep, head, tail, cat, wc, sort, uniq, cut, tr, sed, awk, find, ls,
+echo, diff, base64, and similar utilities.
+Network commands (curl, wget), destructive commands (rm, chmod), and
+interpreters (python, node) are NOT available.
+"""
+
 
 def _make_sdk_cwd(session_id: str) -> str:
     """Create a safe, session-specific working directory path.
@@ -249,8 +263,7 @@ async def stream_chat_completion_sdk(
     system_prompt, _ = await _build_system_prompt(
         user_id, has_conversation_history=has_history
     )
-    set_execution_context(user_id, session, None)
-
+    system_prompt += _SDK_TOOL_SUPPLEMENT
     message_id = str(uuid.uuid4())
     text_block_id = str(uuid.uuid4())
     task_id = str(uuid.uuid4())
@@ -262,6 +275,8 @@ async def stream_chat_completion_sdk(
     # between concurrent sessions.
     sdk_cwd = _make_sdk_cwd(session_id)
     os.makedirs(sdk_cwd, exist_ok=True)
+
+    set_execution_context(user_id, session, None)
 
     try:
         try:

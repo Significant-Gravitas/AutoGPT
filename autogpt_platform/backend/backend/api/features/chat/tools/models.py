@@ -335,11 +335,17 @@ class BlockInfoSummary(BaseModel):
     name: str
     description: str
     categories: list[str]
-    input_schema: dict[str, Any]
-    output_schema: dict[str, Any]
+    input_schema: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Full JSON schema for block inputs",
+    )
+    output_schema: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Full JSON schema for block outputs",
+    )
     required_inputs: list[BlockInputFieldInfo] = Field(
         default_factory=list,
-        description="List of required input fields for this block",
+        description="List of input fields for this block",
     )
 
 
@@ -352,7 +358,7 @@ class BlockListResponse(ToolResponseBase):
     query: str
     usage_hint: str = Field(
         default="To execute a block, call run_block with block_id set to the block's "
-        "'id' field and input_data containing the required fields from input_schema."
+        "'id' field and input_data containing the fields listed in required_inputs."
     )
 
 

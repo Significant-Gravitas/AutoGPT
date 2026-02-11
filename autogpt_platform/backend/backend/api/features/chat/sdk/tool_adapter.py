@@ -276,9 +276,16 @@ def create_copilot_mcp_server():
         raise
 
 
+# SDK built-in tools allowed within the workspace directory.
+# Security hooks validate that file paths stay within sdk_cwd
+# and that Bash commands are restricted to a safe allowlist.
+_SDK_BUILTIN_TOOLS = ["Read", "Write", "Edit", "Glob", "Grep", "Bash"]
+
 # List of tool names for allowed_tools configuration
-# Include the Read tool so the SDK can use it for oversized tool results
+# Include MCP tools, the MCP Read tool for oversized results,
+# and SDK built-in file tools for workspace operations.
 COPILOT_TOOL_NAMES = [
     *[f"{MCP_TOOL_PREFIX}{name}" for name in TOOL_REGISTRY.keys()],
     f"{MCP_TOOL_PREFIX}{_READ_TOOL_NAME}",
+    *_SDK_BUILTIN_TOOLS,
 ]
