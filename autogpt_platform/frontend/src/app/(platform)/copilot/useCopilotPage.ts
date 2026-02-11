@@ -1,127 +1,142 @@
-import {
-  getGetV2ListSessionsQueryKey,
-  postV2CreateSession,
-} from "@/app/api/__generated__/endpoints/chat/chat";
-import { useToast } from "@/components/molecules/Toast/use-toast";
+import { useGetV2ListSessions } from "@/app/api/__generated__/endpoints/chat/chat";
+import { useBreakpoint } from "@/lib/hooks/useBreakpoint";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
-import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
-import { SessionKey, sessionStorage } from "@/services/storage/session-storage";
-import * as Sentry from "@sentry/nextjs";
-import { useQueryClient } from "@tanstack/react-query";
-import { useRouter } from "next/navigation";
-import { useEffect } from "react";
-import { useCopilotStore } from "./copilot-page-store";
-import { getGreetingName, getQuickActions } from "./helpers";
-import { useCopilotSessionId } from "./useCopilotSessionId";
+import { useChat } from "@ai-sdk/react";
+import { DefaultChatTransport } from "ai";
+import { useEffect, useMemo, useState } from "react";
+import { useChatSession } from "./useChatSession";
 
 export function useCopilotPage() {
-  const router = useRouter();
-  const queryClient = useQueryClient();
-  const { user, isLoggedIn, isUserLoading } = useSupabase();
-  const { toast } = useToast();
-  const { completeStep } = useOnboarding();
+  const { isUserLoading, isLoggedIn } = useSupabase();
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [pendingMessage, setPendingMessage] = useState<string | null>(null);
 
-  const { urlSessionId, setUrlSessionId } = useCopilotSessionId();
-  const setIsStreaming = useCopilotStore((s) => s.setIsStreaming);
-  const isCreating = useCopilotStore((s) => s.isCreatingSession);
-  const setIsCreating = useCopilotStore((s) => s.setIsCreatingSession);
+  const {
+    sessionId,
+    setSessionId,
+    hydratedMessages,
+    isLoadingSession,
+    createSession,
+    isCreatingSession,
+  } = useChatSession();
 
-  const greetingName = getGreetingName(user);
-  const quickActions = getQuickActions();
+  const breakpoint = useBreakpoint();
+  const isMobile =
+    breakpoint === "base" || breakpoint === "sm" || breakpoint === "md";
 
-  const hasSession = Boolean(urlSessionId);
-  const initialPrompt = urlSessionId
-    ? getInitialPrompt(urlSessionId)
-    : undefined;
+  const transport = useMemo(
+    () =>
+      sessionId
+        ? new DefaultChatTransport({
+            api: `/api/chat/sessions/${sessionId}/stream`,
+            prepareSendMessagesRequest: ({ messages }) => {
+              const last = messages[messages.length - 1];
+              return {
+                body: {
+                  message: (
+                    last.parts?.map((p) => (p.type === "text" ? p.text : "")) ??
+                    []
+                  ).join(""),
+                  is_user_message: last.role === "user",
+                  context: null,
+                },
+              };
+            },
+          })
+        : null,
+    [sessionId],
+  );
+
+  const { messages, sendMessage, stop, status, error, setMessages } = useChat({
+    id: sessionId ?? undefined,
+    transport: transport ?? undefined,
+  });
 
   useEffect(() => {
-    if (isLoggedIn) completeStep("VISIT_COPILOT");
-  }, [completeStep, isLoggedIn]);
+    if (!hydratedMessages || hydratedMessages.length === 0) return;
+    setMessages((prev) => {
+      if (prev.length >= hydratedMessages.length) return prev;
+      return hydratedMessages;
+    });
+  }, [hydratedMessages, setMessages]);
 
-  async function startChatWithPrompt(prompt: string) {
-    if (!prompt?.trim()) return;
-    if (isCreating) return;
+  // Clear messages when session is null
+  useEffect(() => {
+    if (!sessionId) setMessages([]);
+  }, [sessionId, setMessages]);
 
-    const trimmedPrompt = prompt.trim();
-    setIsCreating(true);
+  useEffect(() => {
+    if (!sessionId || !pendingMessage) return;
+    const msg = pendingMessage;
+    setPendingMessage(null);
+    sendMessage({ text: msg });
+  }, [sessionId, pendingMessage, sendMessage]);
 
-    try {
-      const sessionResponse = await postV2CreateSession({
-        body: JSON.stringify({}),
-      });
+  async function onSend(message: string) {
+    const trimmed = message.trim();
+    if (!trimmed) return;
 
-      if (sessionResponse.status !== 200 || !sessionResponse.data?.id) {
-        throw new Error("Failed to create session");
-      }
-
-      const sessionId = sessionResponse.data.id;
-      setInitialPrompt(sessionId, trimmedPrompt);
-
-      await queryClient.invalidateQueries({
-        queryKey: getGetV2ListSessionsQueryKey(),
-      });
-
-      await setUrlSessionId(sessionId, { shallow: true });
-    } catch (error) {
-      console.error("[CopilotPage] Failed to start chat:", error);
-      toast({ title: "Failed to start chat", variant: "destructive" });
-      Sentry.captureException(error);
-    } finally {
-      setIsCreating(false);
+    if (sessionId) {
+      sendMessage({ text: trimmed });
+      return;
     }
+
+    setPendingMessage(trimmed);
+    await createSession();
   }
 
-  function handleQuickAction(action: string) {
-    startChatWithPrompt(action);
+  const { data: sessionsResponse, isLoading: isLoadingSessions } =
+    useGetV2ListSessions(
+      { limit: 50 },
+      { query: { enabled: !isUserLoading && isLoggedIn } },
+    );
+
+  const sessions =
+    sessionsResponse?.status === 200 ? sessionsResponse.data.sessions : [];
+
+  function handleOpenDrawer() {
+    setIsDrawerOpen(true);
   }
 
-  function handleSessionNotFound() {
-    router.replace("/copilot");
+  function handleCloseDrawer() {
+    setIsDrawerOpen(false);
   }
 
-  function handleStreamingChange(isStreamingValue: boolean) {
-    setIsStreaming(isStreamingValue);
+  function handleDrawerOpenChange(open: boolean) {
+    setIsDrawerOpen(open);
+  }
+
+  function handleSelectSession(id: string) {
+    setSessionId(id);
+    if (isMobile) setIsDrawerOpen(false);
+  }
+
+  function handleNewChat() {
+    setSessionId(null);
+    if (isMobile) setIsDrawerOpen(false);
   }
 
   return {
-    state: {
-      greetingName,
-      quickActions,
-      isLoading: isUserLoading,
-      hasSession,
-      initialPrompt,
-    },
-    handlers: {
-      handleQuickAction,
-      startChatWithPrompt,
-      handleSessionNotFound,
-      handleStreamingChange,
-    },
+    sessionId,
+    messages,
+    status,
+    error,
+    stop,
+    isLoadingSession,
+    isCreatingSession,
+    isUserLoading,
+    isLoggedIn,
+    createSession,
+    onSend,
+    // Mobile drawer
+    isMobile,
+    isDrawerOpen,
+    sessions,
+    isLoadingSessions,
+    handleOpenDrawer,
+    handleCloseDrawer,
+    handleDrawerOpenChange,
+    handleSelectSession,
+    handleNewChat,
   };
-}
-
-function getInitialPrompt(sessionId: string): string | undefined {
-  try {
-    const prompts = JSON.parse(
-      sessionStorage.get(SessionKey.CHAT_INITIAL_PROMPTS) || "{}",
-    );
-    return prompts[sessionId];
-  } catch {
-    return undefined;
-  }
-}
-
-function setInitialPrompt(sessionId: string, prompt: string): void {
-  try {
-    const prompts = JSON.parse(
-      sessionStorage.get(SessionKey.CHAT_INITIAL_PROMPTS) || "{}",
-    );
-    prompts[sessionId] = prompt;
-    sessionStorage.set(
-      SessionKey.CHAT_INITIAL_PROMPTS,
-      JSON.stringify(prompts),
-    );
-  } catch {
-    // Ignore storage errors
-  }
 }

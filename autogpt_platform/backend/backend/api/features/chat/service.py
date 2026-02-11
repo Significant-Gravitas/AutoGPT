@@ -52,8 +52,10 @@ from .response_model import (
     StreamBaseResponse,
     StreamError,
     StreamFinish,
+    StreamFinishStep,
     StreamHeartbeat,
     StreamStart,
+    StreamStartStep,
     StreamTextDelta,
     StreamTextEnd,
     StreamTextStart,
@@ -351,6 +353,10 @@ async def stream_chat_completion(
     retry_count: int = 0,
     session: ChatSession | None = None,
     context: dict[str, str] | None = None,  # {url: str, content: str}
+    _continuation_message_id: (
+        str | None
+    ) = None,  # Internal: reuse message ID for tool call continuations
+    _task_id: str | None = None,  # Internal: task ID for SSE reconnection support
 ) -> AsyncGenerator[StreamBaseResponse, None]:
     """Main entry point for streaming chat completions with database handling.
 
@@ -517,16 +523,21 @@ async def stream_chat_completion(
     # Generate unique IDs for AI SDK protocol
     import uuid as uuid_module
 
-    message_id = str(uuid_module.uuid4())
+    is_continuation = _continuation_message_id is not None
+    message_id = _continuation_message_id or str(uuid_module.uuid4())
     text_block_id = str(uuid_module.uuid4())
 
-    # Yield message start
+    # Only yield message start for the initial call, not for continuations.
     setup_time = (time.monotonic() - completion_start) * 1000
     logger.info(
         f"[TIMING] Setup complete, yielding StreamStart at {setup_time:.1f}ms",
         extra={"json_fields": {**log_meta, "setup_time_ms": setup_time}},
     )
-    yield StreamStart(messageId=message_id)
+    if not is_continuation:
+        yield StreamStart(messageId=message_id, taskId=_task_id)
+
+    # Emit start-step before each LLM call (AI SDK uses this to add step boundaries)
+    yield StreamStartStep()
 
     try:
         logger.info(
@@ -632,6 +643,10 @@ async def stream_chat_completion(
                     )
                 yield chunk
             elif isinstance(chunk, StreamFinish):
+                if has_done_tool_call:
+                    # Tool calls happened — close the step but don't send message-level finish.
+                    # The continuation will open a new step, and finish will come at the end.
+                    yield StreamFinishStep()
                 if not has_done_tool_call:
                     # Emit text-end before finish if we received text but haven't closed it
                     if has_received_text and not text_streaming_ended:
@@ -663,6 +678,8 @@ async def stream_chat_completion(
                             has_saved_assistant_message = True
 
                     has_yielded_end = True
+                    # Emit finish-step before finish (resets AI SDK text/reasoning state)
+                    yield StreamFinishStep()
                     yield chunk
             elif isinstance(chunk, StreamError):
                 has_yielded_error = True
@@ -712,6 +729,10 @@ async def stream_chat_completion(
             logger.info(
                 f"Retryable error encountered. Attempt {retry_count + 1}/{config.max_retries}"
             )
+            # Close the current step before retrying so the recursive call's
+            # StreamStartStep doesn't produce unbalanced step events.
+            if not has_yielded_end:
+                yield StreamFinishStep()
             should_retry = True
         else:
             # Non-retryable error or max retries exceeded
@@ -747,6 +768,7 @@ async def stream_chat_completion(
                 error_response = StreamError(errorText=error_message)
                 yield error_response
             if not has_yielded_end:
+                yield StreamFinishStep()
                 yield StreamFinish()
             return
 
@@ -761,6 +783,8 @@ async def stream_chat_completion(
             retry_count=retry_count + 1,
             session=session,
             context=context,
+            _continuation_message_id=message_id,  # Reuse message ID since start was already sent
+            _task_id=_task_id,
         ):
             yield chunk
         return  # Exit after retry to avoid double-saving in finally block
@@ -830,6 +854,8 @@ async def stream_chat_completion(
             session=session,  # Pass session object to avoid Redis refetch
             context=context,
             tool_call_response=str(tool_response_messages),
+            _continuation_message_id=message_id,  # Reuse message ID to avoid duplicates
+            _task_id=_task_id,
         ):
             yield chunk
 
@@ -1039,6 +1065,10 @@ async def _stream_chat_chunks(
                     extra_body["session_id"] = session.session_id[
                         :128
                     ]  # OpenRouter limit
+
+                # Enable adaptive thinking for Anthropic models via OpenRouter
+                if config.thinking_enabled and "anthropic" in model.lower():
+                    extra_body["reasoning"] = {"enabled": True}
 
                 api_call_start = time_module.perf_counter()
                 stream = await client.chat.completions.create(
@@ -1686,6 +1716,7 @@ async def _execute_long_running_tool_with_streaming(
             task_id,
             StreamError(errorText=str(e)),
         )
+        await stream_registry.publish_chunk(task_id, StreamFinishStep())
         await stream_registry.publish_chunk(task_id, StreamFinish())
 
         await _update_pending_operation(
@@ -1801,6 +1832,10 @@ async def _generate_llm_continuation(
             extra_body["posthogDistinctId"] = user_id
         if session_id:
             extra_body["session_id"] = session_id[:128]
+
+        # Enable adaptive thinking for Anthropic models via OpenRouter
+        if config.thinking_enabled and "anthropic" in config.model.lower():
+            extra_body["reasoning"] = {"enabled": True}
 
         retry_count = 0
         last_error: Exception | None = None
@@ -1932,6 +1967,10 @@ async def _generate_llm_continuation_with_streaming(
         if session_id:
             extra_body["session_id"] = session_id[:128]
 
+        # Enable adaptive thinking for Anthropic models via OpenRouter
+        if config.thinking_enabled and "anthropic" in config.model.lower():
+            extra_body["reasoning"] = {"enabled": True}
+
         # Make streaming LLM call (no tools - just text response)
         from typing import cast
 
@@ -1943,6 +1982,7 @@ async def _generate_llm_continuation_with_streaming(
 
         # Publish start event
         await stream_registry.publish_chunk(task_id, StreamStart(messageId=message_id))
+        await stream_registry.publish_chunk(task_id, StreamStartStep())
         await stream_registry.publish_chunk(task_id, StreamTextStart(id=text_block_id))
 
         # Stream the response
@@ -1966,6 +2006,7 @@ async def _generate_llm_continuation_with_streaming(
 
         # Publish end events
         await stream_registry.publish_chunk(task_id, StreamTextEnd(id=text_block_id))
+        await stream_registry.publish_chunk(task_id, StreamFinishStep())
 
         if assistant_content:
             # Reload session from DB to avoid race condition with user messages
@@ -2007,4 +2048,5 @@ async def _generate_llm_continuation_with_streaming(
             task_id,
             StreamError(errorText=f"Failed to generate response: {e}"),
         )
+        await stream_registry.publish_chunk(task_id, StreamFinishStep())
         await stream_registry.publish_chunk(task_id, StreamFinish())
