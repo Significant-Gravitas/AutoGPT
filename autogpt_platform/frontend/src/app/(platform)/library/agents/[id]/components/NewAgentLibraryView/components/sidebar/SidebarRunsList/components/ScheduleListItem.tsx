@@ -3,7 +3,7 @@
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { ClockClockwiseIcon } from "@phosphor-icons/react";
-import moment from "moment";
+import { formatDistanceToNow } from "date-fns";
 import { IconWrapper } from "./IconWrapper";
 import { ScheduleActionsDropdown } from "./ScheduleActionsDropdown";
 import { SidebarItemCard } from "./SidebarItemCard";
@@ -26,7 +26,9 @@ export function ScheduleListItem({
   return (
     <SidebarItemCard
       title={schedule.name}
-      description={moment(schedule.next_run_time).fromNow()}
+      description={formatDistanceToNow(schedule.next_run_time, {
+        addSuffix: true,
+      })}
       onClick={onClick}
       selected={selected}
       icon={
