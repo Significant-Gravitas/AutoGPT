@@ -213,6 +213,9 @@ async def execute_node(
         block_name=node_block.name,
     )
 
+    if node_block.disabled:
+        raise ValueError(f"Block {node_block.id} is disabled and cannot be executed")
+
     # Sanity check: validate the execution input.
     input_data, error = validate_exec(node, data.inputs, resolve_input=False)
     if input_data is None:

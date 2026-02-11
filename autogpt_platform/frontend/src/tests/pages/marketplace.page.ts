@@ -9,6 +9,7 @@ export class MarketplacePage extends BasePage {
 
   async goto(page: Page) {
     await page.goto("/marketplace");
+    await page.waitForLoadState("networkidle").catch(() => {});
   }
 
   async getMarketplaceTitle(page: Page) {
@@ -109,16 +110,24 @@ export class MarketplacePage extends BasePage {
 
   async getFirstFeaturedAgent(page: Page) {
     const { getId } = getSelectors(page);
-    return getId("featured-store-card").first();
+    const card = getId("featured-store-card").first();
+    await card.waitFor({ state: "visible", timeout: 30000 });
+    return card;
   }
 
   async getFirstTopAgent() {
-    return this.page.locator('[data-testid="store-card"]:visible').first();
+    const card = this.page
+      .locator('[data-testid="store-card"]:visible')
+      .first();
+    await card.waitFor({ state: "visible", timeout: 30000 });
+    return card;
   }
 
   async getFirstCreatorProfile(page: Page) {
     const { getId } = getSelectors(page);
-    return getId("creator-card").first();
+    const card = getId("creator-card").first();
+    await card.waitFor({ state: "visible", timeout: 30000 });
+    return card;
   }
 
   async getSearchResultsCount(page: Page) {

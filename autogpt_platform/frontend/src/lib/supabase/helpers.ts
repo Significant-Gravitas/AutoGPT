@@ -1,4 +1,3 @@
-import { getHomepageRoute } from "@/lib/constants";
 import { environment } from "@/services/environment";
 import { Key, storage } from "@/services/storage/local-storage";
 import { type CookieOptions } from "@supabase/ssr";
@@ -7,6 +6,7 @@ import { SupabaseClient } from "@supabase/supabase-js";
 export const PROTECTED_PAGES = [
   "/auth/authorize",
   "/auth/integrations",
+  "/copilot",
   "/monitor",
   "/build",
   "/onboarding",
@@ -71,7 +71,7 @@ export function getRedirectPath(
   }
 
   if (isAdminPage(path) && userRole !== "admin") {
-    return getHomepageRoute();
+    return "/";
   }
 
   return null;

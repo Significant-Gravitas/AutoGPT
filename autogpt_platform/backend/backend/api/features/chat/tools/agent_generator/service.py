@@ -117,13 +117,16 @@ def _get_client() -> httpx.AsyncClient:
 
 
 async def decompose_goal_external(
-    description: str, context: str = ""
+    description: str,
+    context: str = "",
+    library_agents: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any] | None:
     """Call the external service to decompose a goal.
 
     Args:
         description: Natural language goal description
         context: Additional context (e.g., answers to previous questions)
+        library_agents: User's library agents available for sub-agent composition
 
     Returns:
         Dict with either:
@@ -136,11 +139,12 @@ async def decompose_goal_external(
     """
     client = _get_client()
 
-    # Build the request payload
-    payload: dict[str, Any] = {"description": description}
     if context:
-        # The external service uses user_instruction for additional context
-        payload["user_instruction"] = context
+        description = f"{description}\n\nAdditional context from user:\n{context}"
+
+    payload: dict[str, Any] = {"description": description}
+    if library_agents:
+        payload["library_agents"] = library_agents
 
     try:
         response = await client.post("/api/decompose-description", json=payload)
@@ -207,21 +211,46 @@ async def decompose_goal_external(
 
 async def generate_agent_external(
     instructions: dict[str, Any],
+    library_agents: list[dict[str, Any]] | None = None,
+    operation_id: str | None = None,
+    task_id: str | None = None,
 ) -> dict[str, Any] | None:
     """Call the external service to generate an agent from instructions.
 
     Args:
         instructions: Structured instructions from decompose_goal
+        library_agents: User's library agents available for sub-agent composition
+        operation_id: Operation ID for async processing (enables Redis Streams callback)
+        task_id: Task ID for async processing (enables Redis Streams callback)
 
     Returns:
-        Agent JSON dict on success, or error dict {"type": "error", ...} on error
+        Agent JSON dict, {"status": "accepted"} for async, or error dict {"type": "error", ...} on error
     """
     client = _get_client()
 
+    # Build request payload
+    payload: dict[str, Any] = {"instructions": instructions}
+    if library_agents:
+        payload["library_agents"] = library_agents
+    if operation_id and task_id:
+        payload["operation_id"] = operation_id
+        payload["task_id"] = task_id
+
     try:
-        response = await client.post(
-            "/api/generate-agent", json={"instructions": instructions}
-        )
+        response = await client.post("/api/generate-agent", json=payload)
+
+        # Handle 202 Accepted for async processing
+        if response.status_code == 202:
+            logger.info(
+                f"Agent Generator accepted async request "
+                f"(operation_id={operation_id}, task_id={task_id})"
+            )
+            return {
+                "status": "accepted",
+                "operation_id": operation_id,
+                "task_id": task_id,
+            }
+
         response.raise_for_status()
         data = response.json()
 
@@ -229,8 +258,7 @@ async def generate_agent_external(
             error_msg = data.get("error", "Unknown error from Agent Generator")
             error_type = data.get("error_type", "unknown")
             logger.error(
-                f"Agent Generator generation failed: {error_msg} "
-                f"(type: {error_type})"
+                f"Agent Generator generation failed: {error_msg} (type: {error_type})"
             )
             return _create_error_response(error_msg, error_type)
 
@@ -251,27 +279,52 @@ async def generate_agent_external(
 
 
 async def generate_agent_patch_external(
-    update_request: str, current_agent: dict[str, Any]
+    update_request: str,
+    current_agent: dict[str, Any],
+    library_agents: list[dict[str, Any]] | None = None,
+    operation_id: str | None = None,
+    task_id: str | None = None,
 ) -> dict[str, Any] | None:
     """Call the external service to generate a patch for an existing agent.
 
     Args:
         update_request: Natural language description of changes
         current_agent: Current agent JSON
+        library_agents: User's library agents available for sub-agent composition
+        operation_id: Operation ID for async processing (enables Redis Streams callback)
+        task_id: Task ID for async processing (enables Redis Streams callback)
 
     Returns:
-        Updated agent JSON, clarifying questions dict, or error dict on error
+        Updated agent JSON, clarifying questions dict, {"status": "accepted"} for async, or error dict on error
     """
     client = _get_client()
 
+    # Build request payload
+    payload: dict[str, Any] = {
+        "update_request": update_request,
+        "current_agent_json": current_agent,
+    }
+    if library_agents:
+        payload["library_agents"] = library_agents
+    if operation_id and task_id:
+        payload["operation_id"] = operation_id
+        payload["task_id"] = task_id
+
     try:
-        response = await client.post(
-            "/api/update-agent",
-            json={
-                "update_request": update_request,
-                "current_agent_json": current_agent,
-            },
-        )
+        response = await client.post("/api/update-agent", json=payload)
+
+        # Handle 202 Accepted for async processing
+        if response.status_code == 202:
+            logger.info(
+                f"Agent Generator accepted async update request "
+                f"(operation_id={operation_id}, task_id={task_id})"
+            )
+            return {
+                "status": "accepted",
+                "operation_id": operation_id,
+                "task_id": task_id,
+            }
+
         response.raise_for_status()
         data = response.json()
 
@@ -299,6 +352,77 @@ async def generate_agent_patch_external(
             )
 
         # Otherwise return the updated agent JSON
+        return data.get("agent_json")
+
+    except httpx.HTTPStatusError as e:
+        error_type, error_msg = _classify_http_error(e)
+        logger.error(error_msg)
+        return _create_error_response(error_msg, error_type)
+    except httpx.RequestError as e:
+        error_type, error_msg = _classify_request_error(e)
+        logger.error(error_msg)
+        return _create_error_response(error_msg, error_type)
+    except Exception as e:
+        error_msg = f"Unexpected error calling Agent Generator: {e}"
+        logger.error(error_msg)
+        return _create_error_response(error_msg, "unexpected_error")
+
+
+async def customize_template_external(
+    template_agent: dict[str, Any],
+    modification_request: str,
+    context: str = "",
+) -> dict[str, Any] | None:
+    """Call the external service to customize a template/marketplace agent.
+
+    Args:
+        template_agent: The template agent JSON to customize
+        modification_request: Natural language description of customizations
+        context: Additional context (e.g., answers to previous questions)
+
+    Returns:
+        Customized agent JSON, clarifying questions dict, or error dict on error
+    """
+    client = _get_client()
+
+    request = modification_request
+    if context:
+        request = f"{modification_request}\n\nAdditional context from user:\n{context}"
+
+    payload: dict[str, Any] = {
+        "template_agent_json": template_agent,
+        "modification_request": request,
+    }
+
+    try:
+        response = await client.post("/api/template-modification", json=payload)
+        response.raise_for_status()
+        data = response.json()
+
+        if not data.get("success"):
+            error_msg = data.get("error", "Unknown error from Agent Generator")
+            error_type = data.get("error_type", "unknown")
+            logger.error(
+                f"Agent Generator template customization failed: {error_msg} "
+                f"(type: {error_type})"
+            )
+            return _create_error_response(error_msg, error_type)
+
+        # Check if it's clarifying questions
+        if data.get("type") == "clarifying_questions":
+            return {
+                "type": "clarifying_questions",
+                "questions": data.get("questions", []),
+            }
+
+        # Check if it's an error passed through
+        if data.get("type") == "error":
+            return _create_error_response(
+                data.get("error", "Unknown error"),
+                data.get("error_type", "unknown"),
+            )
+
+        # Otherwise return the customized agent JSON
         return data.get("agent_json")
 
     except httpx.HTTPStatusError as e:
