@@ -743,6 +743,11 @@ class GraphModel(Graph, GraphMeta):
                 # For invalid blocks, we still raise immediately as this is a structural issue
                 raise ValueError(f"Invalid block {node.block_id} for node #{node.id}")
 
+            if block.disabled:
+                raise ValueError(
+                    f"Block {node.block_id} is disabled and cannot be used in graphs"
+                )
+
             node_input_mask = (
                 nodes_input_masks.get(node.id, {}) if nodes_input_masks else {}
             )
