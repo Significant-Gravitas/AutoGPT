@@ -98,6 +98,12 @@ class ChatConfig(BaseSettings):
         description="Use Claude Agent SDK for chat completions",
     )
 
+    # Extended thinking configuration for Claude models
+    thinking_enabled: bool = Field(
+        default=True,
+        description="Enable adaptive thinking for Claude models via OpenRouter",
+    )
+
     @field_validator("api_key", mode="before")
     @classmethod
     def get_api_key(cls, v):

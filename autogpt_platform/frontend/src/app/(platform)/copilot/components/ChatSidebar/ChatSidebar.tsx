@@ -121,8 +121,8 @@ export function ChatSidebar() {
             className="mt-4 flex flex-col gap-1"
           >
             {isLoadingSessions ? (
-              <div className="flex items-center justify-center py-4">
-                <LoadingSpinner size="small" className="text-neutral-400" />
+              <div className="flex min-h-[30rem] items-center justify-center py-4">
+                <LoadingSpinner size="small" className="text-neutral-600" />
               </div>
             ) : sessions.length === 0 ? (
               <p className="py-4 text-center text-sm text-neutral-500">
