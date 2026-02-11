@@ -728,9 +728,12 @@ class ConcatenateListsBlock(Block):
                 # Type validation: each item must be a list
                 # Strings are iterable and would cause extend() to iterate character-by-character
                 # Non-iterable types would raise TypeError
-                yield "error", (
-                    f"Invalid input at index {idx}: expected a list, got {type(lst).__name__}. "
-                    f"All items in 'lists' must be lists (e.g., [[1, 2], [3, 4]])."
+                yield (
+                    "error",
+                    (
+                        f"Invalid input at index {idx}: expected a list, got {type(lst).__name__}. "
+                        f"All items in 'lists' must be lists (e.g., [[1, 2], [3, 4]])."
+                    ),
                 )
                 return
             concatenated.extend(lst)

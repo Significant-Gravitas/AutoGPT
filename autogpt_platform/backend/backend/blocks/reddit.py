@@ -309,10 +309,13 @@ class PostRedditCommentBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: RedditCredentials, **kwargs
     ) -> BlockOutput:
-        yield "comment_id", self.reply_post(
-            credentials,
-            post_id=input_data.post_id,
-            comment=input_data.comment,
+        yield (
+            "comment_id",
+            self.reply_post(
+                credentials,
+                post_id=input_data.post_id,
+                comment=input_data.comment,
+            ),
         )
         yield "post_id", input_data.post_id
 

@@ -431,7 +431,7 @@ class UserCreditBase(ABC):
             current_balance, _ = await self._get_credits(user_id)
             if current_balance >= ceiling_balance:
                 raise ValueError(
-                    f"You already have enough balance of ${current_balance/100}, top-up is not required when you already have at least ${ceiling_balance/100}"
+                    f"You already have enough balance of ${current_balance / 100}, top-up is not required when you already have at least ${ceiling_balance / 100}"
                 )
 
         # Single unified atomic operation for all transaction types using UserBalance
@@ -570,7 +570,7 @@ class UserCreditBase(ABC):
         if amount < 0 and fail_insufficient_credits:
             current_balance, _ = await self._get_credits(user_id)
             raise InsufficientBalanceError(
-                message=f"Insufficient balance of ${current_balance/100}, where this will cost ${abs(amount)/100}",
+                message=f"Insufficient balance of ${current_balance / 100}, where this will cost ${abs(amount) / 100}",
                 user_id=user_id,
                 balance=current_balance,
                 amount=amount,
@@ -581,7 +581,6 @@ class UserCreditBase(ABC):
 
 
 class UserCredit(UserCreditBase):
-
     async def _send_refund_notification(
         self,
         notification_request: RefundRequestData,
@@ -733,7 +732,7 @@ class UserCredit(UserCreditBase):
         )
         if request.amount <= 0 or request.amount > transaction.amount:
             raise AssertionError(
-                f"Invalid amount to deduct ${request.amount/100} from ${transaction.amount/100} top-up"
+                f"Invalid amount to deduct ${request.amount / 100} from ${transaction.amount / 100} top-up"
             )
 
         balance, _ = await self._add_transaction(
@@ -787,12 +786,12 @@ class UserCredit(UserCreditBase):
 
         # If the user has enough balance, just let them win the dispute.
         if balance - amount >= settings.config.refund_credit_tolerance_threshold:
-            logger.warning(f"Accepting dispute from {user_id} for ${amount/100}")
+            logger.warning(f"Accepting dispute from {user_id} for ${amount / 100}")
             dispute.close()
             return
 
         logger.warning(
-            f"Adding extra info for dispute from {user_id} for ${amount/100}"
+            f"Adding extra info for dispute from {user_id} for ${amount / 100}"
         )
         # Retrieve recent transaction history to support our evidence.
         # This provides a concise timeline that shows service usage and proper credit application.

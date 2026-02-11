@@ -256,7 +256,6 @@ class ListFieldsFilter(BaseModel):
 
 # ---------  [Input Types] -------------
 class TweetExpansionInputs(BlockSchemaInput):
-
     expansions: ExpansionFilter | None = SchemaField(
         description="Choose what extra information you want to get with your tweets. For example:\n- Select 'Media_Keys' to get media details\n- Select 'Author_User_ID' to get user information\n- Select 'Place_ID' to get location details",
         placeholder="Pick the extra information you want to see",

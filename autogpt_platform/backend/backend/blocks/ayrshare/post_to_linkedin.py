@@ -123,12 +123,18 @@ class PostToLinkedInBlock(Block):
 
         client = create_ayrshare_client()
         if not client:
-            yield "error", "Ayrshare integration is not configured. Please set up the AYRSHARE_API_KEY."
+            yield (
+                "error",
+                "Ayrshare integration is not configured. Please set up the AYRSHARE_API_KEY.",
+            )
             return
 
         # Validate LinkedIn constraints
         if len(input_data.post) > 3000:
-            yield "error", f"LinkedIn post text exceeds 3,000 character limit ({len(input_data.post)} characters)"
+            yield (
+                "error",
+                f"LinkedIn post text exceeds 3,000 character limit ({len(input_data.post)} characters)",
+            )
             return
 
         if len(input_data.media_urls) > 9:
@@ -136,13 +142,19 @@ class PostToLinkedInBlock(Block):
             return
 
         if input_data.document_title and len(input_data.document_title) > 400:
-            yield "error", f"LinkedIn document title exceeds 400 character limit ({len(input_data.document_title)} characters)"
+            yield (
+                "error",
+                f"LinkedIn document title exceeds 400 character limit ({len(input_data.document_title)} characters)",
+            )
             return
 
         # Validate visibility option
         valid_visibility = ["public", "connections", "loggedin"]
         if input_data.visibility not in valid_visibility:
-            yield "error", f"LinkedIn visibility must be one of: {', '.join(valid_visibility)}"
+            yield (
+                "error",
+                f"LinkedIn visibility must be one of: {', '.join(valid_visibility)}",
+            )
             return
 
         # Check for document extensions

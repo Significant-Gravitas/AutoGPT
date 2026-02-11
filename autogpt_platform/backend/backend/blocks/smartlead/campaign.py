@@ -180,20 +180,22 @@ class AddLeadToCampaignBlock(Block):
                 ),
             ],
             test_mock={
-                "add_leads_to_campaign": lambda campaign_id, lead_list, credentials: AddLeadsToCampaignResponse(
-                    ok=True,
-                    upload_count=1,
-                    already_added_to_campaign=0,
-                    duplicate_count=0,
-                    invalid_email_count=0,
-                    is_lead_limit_exhausted=False,
-                    lead_import_stopped_count=0,
-                    error="",
-                    total_leads=1,
-                    block_count=0,
-                    invalid_emails=[],
-                    unsubscribed_leads=[],
-                    bounce_count=0,
+                "add_leads_to_campaign": lambda campaign_id, lead_list, credentials: (
+                    AddLeadsToCampaignResponse(
+                        ok=True,
+                        upload_count=1,
+                        already_added_to_campaign=0,
+                        duplicate_count=0,
+                        invalid_email_count=0,
+                        is_lead_limit_exhausted=False,
+                        lead_import_stopped_count=0,
+                        error="",
+                        total_leads=1,
+                        block_count=0,
+                        invalid_emails=[],
+                        unsubscribed_leads=[],
+                        bounce_count=0,
+                    )
                 )
             },
         )
@@ -295,9 +297,11 @@ class SaveCampaignSequencesBlock(Block):
                 ),
             ],
             test_mock={
-                "save_campaign_sequences": lambda campaign_id, sequences, credentials: SaveSequencesResponse(
-                    ok=True,
-                    message="Sequences saved successfully",
+                "save_campaign_sequences": lambda campaign_id, sequences, credentials: (
+                    SaveSequencesResponse(
+                        ok=True,
+                        message="Sequences saved successfully",
+                    )
                 )
             },
         )

@@ -569,7 +569,7 @@ async def _stream_listener(
                             if isinstance(chunk, StreamFinish):
                                 total_time = (time.perf_counter() - start_time) * 1000
                                 logger.info(
-                                    f"[TIMING] StreamFinish received in {total_time/1000:.1f}s; delivered={messages_delivered}",
+                                    f"[TIMING] StreamFinish received in {total_time / 1000:.1f}s; delivered={messages_delivered}",
                                     extra={
                                         "json_fields": {
                                             **log_meta,
@@ -620,7 +620,7 @@ async def _stream_listener(
         # Clean up listener task mapping on exit
         total_time = (time.perf_counter() - start_time) * 1000
         logger.info(
-            f"[TIMING] _stream_listener FINISHED in {total_time/1000:.1f}s; task={task_id}, "
+            f"[TIMING] _stream_listener FINISHED in {total_time / 1000:.1f}s; task={task_id}, "
             f"delivered={messages_delivered}, xread_count={xread_count}",
             extra={
                 "json_fields": {

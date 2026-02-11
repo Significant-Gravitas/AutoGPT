@@ -3,8 +3,6 @@ Comprehensive tests for auth helpers module to achieve 100% coverage.
 Tests OpenAPI schema generation and authentication response handling.
 """
 
-from unittest import mock
-
 from fastapi import FastAPI
 from fastapi.openapi.utils import get_openapi
 
@@ -226,9 +224,6 @@ def test_add_auth_responses_to_openapi_multiple_security_schemes():
 def test_add_auth_responses_to_openapi_empty_components():
     """Test when OpenAPI schema has no components section initially."""
     app = FastAPI()
-
-    # Store the original openapi method
-    original_openapi = app.openapi
 
     def mock_openapi():
         schema = get_openapi(
