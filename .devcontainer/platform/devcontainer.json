@@ -93,6 +93,7 @@
         // Git
         "git.autofetch": true,
         "git.enableSmartCommit": true,
+        "git.openRepositoryInParentFolders": "always",
         
         // Prisma
         "prisma.showPrismaDataPlatformNotification": false
