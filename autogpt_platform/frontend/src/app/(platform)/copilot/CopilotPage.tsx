@@ -1,11 +1,11 @@
 "use client";
 
-import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { ChatContainer } from "./components/ChatContainer/ChatContainer";
 import { ChatSidebar } from "./components/ChatSidebar/ChatSidebar";
 import { MobileDrawer } from "./components/MobileDrawer/MobileDrawer";
 import { MobileHeader } from "./components/MobileHeader/MobileHeader";
+import { ScaleLoader } from "./components/ScaleLoader/ScaleLoader";
 import { useCopilotPage } from "./useCopilotPage";
 
 export function CopilotPage() {
@@ -34,7 +34,11 @@ export function CopilotPage() {
   } = useCopilotPage();
 
   if (isUserLoading || !isLoggedIn) {
-    return <LoadingSpinner size="large" cover />;
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#f8f8f9]">
+        <ScaleLoader className="text-neutral-400" />
+      </div>
+    );
   }
 
   return (
