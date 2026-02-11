@@ -36,4 +36,4 @@
 ## Changelog
 
 * [What's New](changelog/README.md)
-  * [January 29 – February 11, 2026](changelog/january-29-february-11-2026.md)
+  * [Voice input, persistent files, and a smarter AI](changelog/january-29-february-11-2026.md)
