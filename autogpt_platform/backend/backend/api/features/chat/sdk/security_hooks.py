@@ -5,6 +5,7 @@ ensuring multi-user isolation and preventing unauthorized operations.
 """
 
 import logging
+import os
 import re
 from typing import Any, cast
 
@@ -20,12 +21,12 @@ BLOCKED_TOOLS = {
     "exec",
     "terminal",
     "command",
-    "Read",  # Block raw file read - use workspace tools instead
-    "Write",  # Block raw file write - use workspace tools instead
-    "Edit",  # Block raw file edit - use workspace tools instead
-    "Glob",  # Block raw file glob - use workspace tools instead
-    "Grep",  # Block raw file grep - use workspace tools instead
 }
+
+# Tools allowed only when their path argument stays within the SDK workspace.
+# The SDK uses these to handle oversized tool results (writes to tool-results/
+# files, then reads them back) and for workspace file operations.
+WORKSPACE_SCOPED_TOOLS = {"Read", "Write", "Edit", "Glob", "Grep"}
 
 # Dangerous patterns in tool inputs
 DANGEROUS_PATTERNS = [
@@ -45,7 +46,55 @@ DANGEROUS_PATTERNS = [
 ]
 
 
-def _validate_tool_access(tool_name: str, tool_input: dict[str, Any]) -> dict[str, Any]:
+def _deny(reason: str) -> dict[str, Any]:
+    """Return a hook denial response."""
+    return {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "deny",
+            "permissionDecisionReason": reason,
+        }
+    }
+
+
+def _validate_workspace_path(
+    tool_name: str, tool_input: dict[str, Any], sdk_cwd: str | None
+) -> dict[str, Any]:
+    """Validate that a workspace-scoped tool only accesses allowed paths.
+
+    Allowed directories:
+    - The SDK working directory (``/tmp/copilot-<session>/``)
+    - The SDK tool-results directory (``~/.claude/projects/…/tool-results/``)
+    """
+    path = tool_input.get("file_path") or tool_input.get("path") or ""
+    if not path:
+        # Glob/Grep without a path default to cwd which is already sandboxed
+        return {}
+
+    resolved = os.path.normpath(os.path.expanduser(path))
+
+    # Allow access within the SDK working directory
+    if sdk_cwd:
+        norm_cwd = os.path.normpath(sdk_cwd)
+        if resolved.startswith(norm_cwd + os.sep) or resolved == norm_cwd:
+            return {}
+
+    # Allow access to ~/.claude/projects/*/tool-results/ (big tool results)
+    claude_dir = os.path.normpath(os.path.expanduser("~/.claude/projects"))
+    if resolved.startswith(claude_dir + os.sep) and "tool-results" in resolved:
+        return {}
+
+    logger.warning(
+        f"Blocked {tool_name} outside workspace: {path} (resolved={resolved})"
+    )
+    return _deny(
+        f"Tool '{tool_name}' can only access files within the workspace directory."
+    )
+
+
+def _validate_tool_access(
+    tool_name: str, tool_input: dict[str, Any], sdk_cwd: str | None = None
+) -> dict[str, Any]:
     """Validate that a tool call is allowed.
 
     Returns:
@@ -54,16 +103,14 @@ def _validate_tool_access(tool_name: str, tool_input: dict[str, Any]) -> dict[st
     # Block forbidden tools
     if tool_name in BLOCKED_TOOLS:
         logger.warning(f"Blocked tool access attempt: {tool_name}")
-        return {
-            "hookSpecificOutput": {
-                "hookEventName": "PreToolUse",
-                "permissionDecision": "deny",
-                "permissionDecisionReason": (
-                    f"Tool '{tool_name}' is not available. "
-                    "Use the CoPilot-specific tools instead."
-                ),
-            }
-        }
+        return _deny(
+            f"Tool '{tool_name}' is not available. "
+            "Use the CoPilot-specific tools instead."
+        )
+
+    # Workspace-scoped tools: allowed only within the SDK workspace directory
+    if tool_name in WORKSPACE_SCOPED_TOOLS:
+        return _validate_workspace_path(tool_name, tool_input, sdk_cwd)
 
     # Check for dangerous patterns in tool input
     input_str = str(tool_input)
@@ -73,13 +120,7 @@ def _validate_tool_access(tool_name: str, tool_input: dict[str, Any]) -> dict[st
             logger.warning(
                 f"Blocked dangerous pattern in tool input: {pattern} in {tool_name}"
             )
-            return {
-                "hookSpecificOutput": {
-                    "hookEventName": "PreToolUse",
-                    "permissionDecision": "deny",
-                    "permissionDecisionReason": "Input contains blocked pattern",
-                }
-            }
+            return _deny("Input contains blocked pattern")
 
     return {}
 
@@ -108,7 +149,9 @@ def _validate_user_isolation(
     return {}
 
 
-def create_security_hooks(user_id: str | None) -> dict[str, Any]:
+def create_security_hooks(
+    user_id: str | None, sdk_cwd: str | None = None
+) -> dict[str, Any]:
     """Create the security hooks configuration for Claude Agent SDK.
 
     Includes security validation and observability hooks:
@@ -119,6 +162,7 @@ def create_security_hooks(user_id: str | None) -> dict[str, Any]:
 
     Args:
         user_id: Current user ID for isolation validation
+        sdk_cwd: SDK working directory for workspace-scoped tool validation
 
     Returns:
         Hooks configuration dict for ClaudeAgentOptions
@@ -144,7 +188,7 @@ def create_security_hooks(user_id: str | None) -> dict[str, Any]:
             # Only block non-CoPilot tools; our MCP-registered tools
             # (including Read for oversized results) are already sandboxed.
             if not is_copilot_tool:
-                result = _validate_tool_access(clean_name, tool_input)
+                result = _validate_tool_access(clean_name, tool_input, sdk_cwd)
                 if result:
                     return cast(SyncHookJSONOutput, result)
 

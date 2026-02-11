@@ -273,7 +273,7 @@ async def stream_chat_completion_sdk(
                 system_prompt=system_prompt,
                 mcp_servers={"copilot": mcp_server},  # type: ignore[arg-type]
                 allowed_tools=COPILOT_TOOL_NAMES,
-                hooks=create_security_hooks(user_id),  # type: ignore[arg-type]
+                hooks=create_security_hooks(user_id, sdk_cwd=sdk_cwd),  # type: ignore[arg-type]
                 cwd=sdk_cwd,
             )
 
