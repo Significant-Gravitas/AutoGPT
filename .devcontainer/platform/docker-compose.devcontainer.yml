@@ -1,5 +1,6 @@
-# Docker Compose override for dev container
-# This extends the main autogpt_platform/docker-compose.yml
+# Standalone devcontainer service
+# The platform services (db, redis, etc.) are started from within
+# the container using docker compose commands in the lifecycle scripts.
 
 services:
   devcontainer:
@@ -7,50 +8,14 @@ services:
     volumes:
       # Mount the entire AutoGPT repo
       - ../..:/workspaces/AutoGPT:cached
-      # Docker-in-Docker socket
-      - /var/run/docker.sock:/var/run/docker-host.sock
     
     # Keep container running
     command: sleep infinity
     
-    # Use host network for easy access to other services
-    network_mode: host
-    
+    # Environment for development
     environment:
-      # Codespaces detection
       - CODESPACES=true
-      
-      # Database - use localhost (host network mode)
-      - DATABASE_URL=postgresql://postgres:your-super-secret-and-long-postgres-password@localhost:5432/postgres?schema=platform&connect_timeout=60
-      - DIRECT_URL=postgresql://postgres:your-super-secret-and-long-postgres-password@localhost:5432/postgres?schema=platform&connect_timeout=60
-      - DB_HOST=localhost
-      - DB_PORT=5432
-      
-      # Redis
-      - REDIS_HOST=localhost
-      - REDIS_PORT=6379
-      
-      # RabbitMQ
-      - RABBITMQ_HOST=localhost
-      
-      # Supabase
-      - SUPABASE_URL=http://localhost:8000
-      - SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJzZXJ2aWNlX3JvbGUiLAogICAgImlzcyI6ICJzdXBhYmFzZS1kZW1vIiwKICAgICJpYXQiOiAxNjQxNzY5MjAwLAogICAgImV4cCI6IDE3OTk1MzU2MDAKfQ.DaYlNEoUrrEn2Ig7tqibS-PHK5vgusbcbo7X36XVt4Q
-      - JWT_VERIFY_KEY=your-super-secret-jwt-token-with-at-least-32-characters-long
-      
-      # Frontend URLs
-      - NEXT_PUBLIC_SUPABASE_URL=http://localhost:8000
-      - NEXT_PUBLIC_AGPT_SERVER_URL=http://localhost:8006/api
-      - NEXT_PUBLIC_AGPT_WS_SERVER_URL=ws://localhost:8001/ws
-      
-      # Backend URLs
-      - PLATFORM_BASE_URL=http://localhost:8000
-      - FRONTEND_BASE_URL=http://localhost:3000
-      
-      # Disable telemetry in dev
-      - NEXT_TELEMETRY_DISABLED=1
-      - DO_NOT_TRACK=1
-      
-      # Poetry
       - POETRY_VIRTUALENVS_IN_PROJECT=true
       - POETRY_NO_INTERACTION=1
+      - NEXT_TELEMETRY_DISABLED=1
+      - DO_NOT_TRACK=1

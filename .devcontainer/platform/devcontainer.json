@@ -1,9 +1,6 @@
 {
   "name": "AutoGPT Platform",
-  "dockerComposeFile": [
-    "../../autogpt_platform/docker-compose.yml",
-    "docker-compose.devcontainer.yml"
-  ],
+  "dockerComposeFile": "docker-compose.devcontainer.yml",
   "service": "devcontainer",
   "workspaceFolder": "/workspaces/AutoGPT/autogpt_platform",
   "shutdownAction": "stopCompose",
