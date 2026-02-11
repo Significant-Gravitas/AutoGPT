@@ -5,7 +5,9 @@ This module provides common file extraction and workspace storage functionality
 for blocks that run code in E2B sandboxes (Claude Code, Code Executor, etc.).
 """
 
+import base64
 import logging
+import mimetypes
 import shlex
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -217,18 +219,13 @@ async def store_sandbox_files(
         else:
             content_str = f"[Binary file: {len(file.content)} bytes]"
 
+        # Build data URI (needed for storage and as binary fallback)
+        mime_type = mimetypes.guess_type(file.name)[0] or "application/octet-stream"
+        data_uri = f"data:{mime_type};base64,{base64.b64encode(file.content).decode()}"
+
         # Try to store in workspace
         workspace_ref: str | None = None
         try:
-            # Convert bytes to data URI for store_media_file
-            import base64
-            import mimetypes
-
-            mime_type = mimetypes.guess_type(file.name)[0] or "application/octet-stream"
-            data_uri = (
-                f"data:{mime_type};base64,{base64.b64encode(file.content).decode()}"
-            )
-
             result = await store_media_file(
                 file=MediaFileType(data_uri),
                 execution_context=execution_context,

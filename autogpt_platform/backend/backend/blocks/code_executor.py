@@ -92,8 +92,8 @@ class CodeExecutionResult(MainCodeExecutionResult):
 class BaseE2BExecutorMixin:
     """Shared implementation methods for E2B executor blocks."""
 
-    # Default output directory for file extraction
-    OUTPUT_DIR = "/output"
+    # Default working directory in E2B sandboxes
+    WORKING_DIR = "/home/user"
 
     async def execute_code(
         self,
@@ -115,8 +115,8 @@ class BaseE2BExecutorMixin:
         3. Connect to existing sandbox and execute (ExecuteCodeStepBlock)
 
         Args:
-            extract_files: If True and execution_context provided, extract files from
-                           /output directory and store to workspace.
+            extract_files: If True and execution_context provided, extract files
+                           created/modified during execution and store to workspace.
         """  # noqa
         sandbox = None
         files: list[SandboxFileOutput] = []
@@ -131,12 +131,15 @@ class BaseE2BExecutorMixin:
                 sandbox = await AsyncSandbox.create(
                     api_key=api_key, template=template_id, timeout=timeout
                 )
-                # Create /output directory for file extraction
-                if extract_files:
-                    await sandbox.commands.run(f"mkdir -p {self.OUTPUT_DIR}")
                 if setup_commands:
                     for cmd in setup_commands:
                         await sandbox.commands.run(cmd)
+
+            # Capture timestamp before execution to scope file extraction
+            start_timestamp = None
+            if extract_files:
+                ts_result = await sandbox.commands.run("date -u +%Y-%m-%dT%H:%M:%S")
+                start_timestamp = ts_result.stdout.strip() if ts_result.stdout else None
 
             # Execute the code
             execution = await sandbox.run_code(
@@ -153,13 +156,13 @@ class BaseE2BExecutorMixin:
             stdout_logs = "".join(execution.logs.stdout)
             stderr_logs = "".join(execution.logs.stderr)
 
-            # Extract files from /output if requested
+            # Extract files created/modified during this execution
             if extract_files and execution_context:
                 files = await extract_and_store_sandbox_files(
                     sandbox=sandbox,
-                    working_directory=self.OUTPUT_DIR,
+                    working_directory=self.WORKING_DIR,
                     execution_context=execution_context,
-                    since_timestamp=None,  # Get all files in /output
+                    since_timestamp=start_timestamp,
                     text_only=False,  # Include binary files too
                 )
 
@@ -277,7 +280,7 @@ class ExecuteCodeBlock(Block, BaseE2BExecutorMixin):
         stderr_logs: str = SchemaField(description="Standard error logs from execution")
         files: list[SandboxFileOutput] = SchemaField(
             description=(
-                "Files written to /output directory during execution. "
+                "Files created or modified during execution. "
                 "Each file has path, name, content, and workspace_ref (if stored)."
             ),
         )

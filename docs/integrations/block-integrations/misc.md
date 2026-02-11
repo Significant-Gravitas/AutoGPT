@@ -215,7 +215,7 @@ The sandbox includes pip and npm pre-installed. Set timeout to limit execution t
 | response | Text output (if any) of the main execution result | str |
 | stdout_logs | Standard output logs from execution | str |
 | stderr_logs | Standard error logs from execution | str |
-| files | Files written to /output directory during execution. Each file has path, name, content, and workspace_ref (if stored). | List[SandboxFileOutput] |
+| files | Files created or modified during execution. Each file has path, name, content, and workspace_ref (if stored). | List[SandboxFileOutput] |
 
 ### Possible use case
 <!-- MANUAL: use_case -->
