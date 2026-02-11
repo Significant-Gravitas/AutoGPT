@@ -34,7 +34,10 @@ from backend.api.features.chat.response_model import (
     StreamToolInputStart,
     StreamToolOutputAvailable,
 )
-from backend.api.features.chat.sdk.tool_adapter import MCP_TOOL_PREFIX
+from backend.api.features.chat.sdk.tool_adapter import (
+    MCP_TOOL_PREFIX,
+    pop_pending_tool_output,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -114,7 +117,15 @@ class SDKResponseAdapter:
                 if isinstance(block, ToolResultBlock) and block.tool_use_id:
                     tool_info = self.current_tool_calls.get(block.tool_use_id, {})
                     tool_name = tool_info.get("name", "unknown")
-                    output = _extract_tool_output(block.content)
+
+                    # Prefer the stashed full output over the SDK's
+                    # (potentially truncated) ToolResultBlock content.
+                    # The SDK truncates large results, writing them to disk,
+                    # which breaks frontend widget parsing.
+                    output = pop_pending_tool_output(tool_name) or (
+                        _extract_tool_output(block.content)
+                    )
+
                     responses.append(
                         StreamToolOutputAvailable(
                             toolCallId=block.tool_use_id,

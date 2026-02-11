@@ -33,6 +33,13 @@ _current_tool_call_id: ContextVar[str | None] = ContextVar(
     "current_tool_call_id", default=None
 )
 
+# Stash for MCP tool outputs before the SDK potentially truncates them.
+# Keyed by tool_name → full output string. Consumed (popped) by the
+# response adapter when it builds StreamToolOutputAvailable.
+_pending_tool_outputs: ContextVar[dict[str, str]] = ContextVar(
+    "pending_tool_outputs", default=None  # type: ignore[arg-type]
+)
+
 
 def set_execution_context(
     user_id: str | None,
@@ -47,6 +54,7 @@ def set_execution_context(
     _current_user_id.set(user_id)
     _current_session.set(session)
     _current_tool_call_id.set(tool_call_id)
+    _pending_tool_outputs.set({})
 
 
 def get_execution_context() -> tuple[str | None, ChatSession | None, str | None]:
@@ -56,6 +64,22 @@ def get_execution_context() -> tuple[str | None, ChatSession | None, str | None]
         _current_session.get(),
         _current_tool_call_id.get(),
     )
+
+
+def pop_pending_tool_output(tool_name: str) -> str | None:
+    """Pop and return the stashed full output for *tool_name*.
+
+    The SDK CLI may truncate large tool results (writing them to disk and
+    replacing the content with a file reference). This stash keeps the
+    original MCP output so the response adapter can forward it to the
+    frontend for proper widget rendering.
+
+    Returns ``None`` if nothing was stashed for *tool_name*.
+    """
+    pending = _pending_tool_outputs.get(None)
+    if pending is None:
+        return None
+    return pending.pop(tool_name, None)
 
 
 def create_tool_handler(base_tool: BaseTool):
@@ -102,6 +126,12 @@ def create_tool_handler(base_tool: BaseTool):
                 if isinstance(result.output, str)
                 else json.dumps(result.output)
             )
+
+            # Stash the full output before the SDK potentially truncates it.
+            # The response adapter will pop this for frontend widget rendering.
+            pending = _pending_tool_outputs.get(None)
+            if pending is not None:
+                pending[base_tool.name] = text
 
             return {
                 "content": [{"type": "text", "text": text}],
