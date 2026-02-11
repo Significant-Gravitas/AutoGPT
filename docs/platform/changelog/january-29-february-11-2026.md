@@ -44,7 +44,7 @@ When building a new agent, AutoPilot searches your library for agents that can b
 
 Progress bar during generation so you're not staring at a blank screen. A "Your agent is ready!" prompt with buttons to test immediately or provide your own inputs. Cleaner formatting when AutoPilot asks you clarifying questions. And helpful error messages instead of generic failures. [*↗*](https://github.com/Significant-Gravitas/AutoGPT/pull/11974)
 
-## Redesigned homepage
+## Updated homepage text
 
 The homepage now says "Tell me about your work — I'll find what to automate" instead of assuming you already know what to build. The quick-start buttons have been rewritten too: [*↗*](https://github.com/Significant-Gravitas/AutoGPT/pull/11956)
 
