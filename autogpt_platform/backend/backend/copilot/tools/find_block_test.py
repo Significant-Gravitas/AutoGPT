@@ -76,12 +76,12 @@ class TestFindBlockFiltering:
             }.get(block_id)
 
         with patch(
-            "backend.api.features.chat.tools.find_block.unified_hybrid_search",
+            "backend.copilot.tools.find_block.unified_hybrid_search",
             new_callable=AsyncMock,
             return_value=(search_results, 2),
         ):
             with patch(
-                "backend.api.features.chat.tools.find_block.get_block",
+                "backend.copilot.tools.find_block.get_block",
                 side_effect=mock_get_block,
             ):
                 tool = FindBlockTool()
@@ -120,12 +120,12 @@ class TestFindBlockFiltering:
             }.get(block_id)
 
         with patch(
-            "backend.api.features.chat.tools.find_block.unified_hybrid_search",
+            "backend.copilot.tools.find_block.unified_hybrid_search",
             new_callable=AsyncMock,
             return_value=(search_results, 2),
         ):
             with patch(
-                "backend.api.features.chat.tools.find_block.get_block",
+                "backend.copilot.tools.find_block.get_block",
                 side_effect=mock_get_block,
             ):
                 tool = FindBlockTool()

@@ -151,7 +151,7 @@ class TestSearchMarketplaceAgentsForGeneration:
                 return_value=mock_response,
             ) as mock_search,
             patch(
-                "backend.api.features.chat.tools.agent_generator.core.get_store_listed_graphs",
+                "backend.copilot.tools.agent_generator.core.get_store_listed_graphs",
                 new_callable=AsyncMock,
                 return_value={"graph-123": mock_graph},
             ),
