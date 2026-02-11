@@ -238,7 +238,10 @@ async def store_sandbox_files(
             if result.startswith("workspace://"):
                 workspace_ref = result
         except Exception as e:
-            logger.debug(f"Failed to store file {file.name} to workspace: {e}")
+            logger.warning(f"Failed to store file {file.name} to workspace: {e}")
+            # For binary files, fall back to data URI to prevent data loss
+            if not file.is_text:
+                content_str = data_uri
 
         outputs.append(
             SandboxFileOutput(
