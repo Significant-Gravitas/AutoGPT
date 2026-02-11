@@ -219,7 +219,7 @@ class MultiAgentDebateStrategy(BaseMultiStepPromptStrategy):
                 ChatMessage.system(system_prompt),
                 ChatMessage.user(f'Task: """{task}"""'),
                 *messages,
-                ChatMessage.system(debate_context),
+                ChatMessage.user(debate_context),
                 ChatMessage.user(self._get_phase_instruction(task)),
             ],
             prefill_response='{\n    "thoughts":',

@@ -342,7 +342,7 @@ class Agent(BaseAgent[AnyActionProposal], Configurable[AgentSettings]):
         self, prompt: ChatPrompt, exception: Optional[Exception] = None
     ) -> AnyActionProposal:
         if exception:
-            prompt.messages.append(ChatMessage.system(f"Error: {exception}"))
+            prompt.messages.append(ChatMessage.user(f"Error: {exception}"))
 
         # Build thinking/reasoning kwargs from app config
         thinking_kwargs: dict[str, Any] = {}

@@ -99,7 +99,7 @@ class SkillComponent(
                 catalog_lines.append(
                     f"- **{name}**{loaded_marker}: {skill.metadata.description}"
                 )
-            yield ChatMessage.system("\n".join(catalog_lines))
+            yield ChatMessage.user("\n".join(catalog_lines))
 
         # Provide loaded skill content
         for name, skill in self._loaded_skills.items():
@@ -117,7 +117,7 @@ class SkillComponent(
                         loaded = " [loaded]" if f in skill.additional_files else ""
                         skill_content.append(f"- `{f}`{loaded}")
 
-                yield ChatMessage.system("\n".join(skill_content))
+                yield ChatMessage.user("\n".join(skill_content))
 
     # -------------------------------------------------------------------------
     # CommandProvider methods

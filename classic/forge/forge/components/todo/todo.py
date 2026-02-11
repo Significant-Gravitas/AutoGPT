@@ -208,7 +208,7 @@ class TodoComponent(
         if completed:
             lines.append(f"\n**Completed:** {len(completed)} task(s)")
 
-        yield ChatMessage.system("\n".join(lines))
+        yield ChatMessage.user("\n".join(lines))
 
     # -------------------------------------------------------------------------
     # Helper Methods

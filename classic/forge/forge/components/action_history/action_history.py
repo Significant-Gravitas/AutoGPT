@@ -93,7 +93,7 @@ class ActionHistoryComponent(
 
         if step_summaries:
             step_summaries_fmt = "\n\n".join(step_summaries)
-            yield ChatMessage.system(
+            yield ChatMessage.user(
                 f"## Progress on your Task so far\n"
                 "Here is a summary of the steps that you have executed so far, "
                 "use this as your consideration for determining the next action!\n"

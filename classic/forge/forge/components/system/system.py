@@ -85,7 +85,7 @@ class SystemComponent(DirectiveProvider, MessageProvider, CommandProvider):
 
     def get_messages(self) -> Iterator[ChatMessage]:
         # Clock
-        yield ChatMessage.system(
+        yield ChatMessage.user(
             f"## Clock\nThe current time and date is {time.strftime('%c')}"
         )
 

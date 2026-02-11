@@ -235,7 +235,7 @@ class LATSPromptStrategy(BaseMultiStepPromptStrategy):
                 ChatMessage.system(system_prompt),
                 ChatMessage.user(f'Task: """{task}"""'),
                 *messages,
-                ChatMessage.system(lats_context),
+                ChatMessage.user(lats_context),
                 ChatMessage.user(self._get_phase_instruction()),
             ],
             prefill_response='{\n    "thoughts":',
