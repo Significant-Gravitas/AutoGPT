@@ -241,7 +241,7 @@ class MCPToolBlock(Block):
                 )
             return best
         except Exception:
-            logger.debug("Auto-lookup MCP credential failed", exc_info=True)
+            logger.warning("Auto-lookup MCP credential failed", exc_info=True)
             return None
 
     async def run(

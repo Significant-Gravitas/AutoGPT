@@ -78,32 +78,29 @@ async def discover_tools(
 
     # Auto-use stored MCP credential when no explicit token is provided.
     if not auth_token:
-        try:
-            mcp_creds = await creds_manager.store.get_creds_by_provider(
-                user_id, ProviderName.MCP.value
-            )
-            # Find the freshest credential for this server URL
-            best_cred: OAuth2Credentials | None = None
-            for cred in mcp_creds:
-                if (
-                    isinstance(cred, OAuth2Credentials)
-                    and cred.metadata.get("mcp_server_url") == request.server_url
+        mcp_creds = await creds_manager.store.get_creds_by_provider(
+            user_id, ProviderName.MCP.value
+        )
+        # Find the freshest credential for this server URL
+        best_cred: OAuth2Credentials | None = None
+        for cred in mcp_creds:
+            if (
+                isinstance(cred, OAuth2Credentials)
+                and cred.metadata.get("mcp_server_url") == request.server_url
+            ):
+                if best_cred is None or (
+                    (cred.access_token_expires_at or 0)
+                    > (best_cred.access_token_expires_at or 0)
                 ):
-                    if best_cred is None or (
-                        (cred.access_token_expires_at or 0)
-                        > (best_cred.access_token_expires_at or 0)
-                    ):
-                        best_cred = cred
-            if best_cred:
-                # Refresh the token if expired before using it
-                best_cred = await creds_manager.refresh_if_needed(user_id, best_cred)
-                logger.info(
-                    f"Using MCP credential {best_cred.id} for {request.server_url}, "
-                    f"expires_at={best_cred.access_token_expires_at}"
-                )
-                auth_token = best_cred.access_token.get_secret_value()
-        except Exception:
-            logger.debug("Could not look up stored MCP credentials", exc_info=True)
+                    best_cred = cred
+        if best_cred:
+            # Refresh the token if expired before using it
+            best_cred = await creds_manager.refresh_if_needed(user_id, best_cred)
+            logger.info(
+                f"Using MCP credential {best_cred.id} for {request.server_url}, "
+                f"expires_at={best_cred.access_token_expires_at}"
+            )
+            auth_token = best_cred.access_token.get_secret_value()
 
     client = MCPClient(request.server_url, auth_token=auth_token)
 

@@ -54,7 +54,11 @@ class TestDiscoverTools:
             ),
         ]
 
-        with (patch("backend.api.features.mcp.routes.MCPClient") as MockClient,):
+        with (
+            patch("backend.api.features.mcp.routes.MCPClient") as MockClient,
+            patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
+        ):
+            mock_cm.store.get_creds_by_provider = AsyncMock(return_value=[])
             instance = MockClient.return_value
             instance.initialize = AsyncMock(
                 return_value={
@@ -143,7 +147,11 @@ class TestDiscoverTools:
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_discover_tools_mcp_error(self, client):
-        with patch("backend.api.features.mcp.routes.MCPClient") as MockClient:
+        with (
+            patch("backend.api.features.mcp.routes.MCPClient") as MockClient,
+            patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
+        ):
+            mock_cm.store.get_creds_by_provider = AsyncMock(return_value=[])
             instance = MockClient.return_value
             instance.initialize = AsyncMock(
                 side_effect=MCPClientError("Connection refused")
@@ -159,7 +167,11 @@ class TestDiscoverTools:
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_discover_tools_generic_error(self, client):
-        with patch("backend.api.features.mcp.routes.MCPClient") as MockClient:
+        with (
+            patch("backend.api.features.mcp.routes.MCPClient") as MockClient,
+            patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
+        ):
+            mock_cm.store.get_creds_by_provider = AsyncMock(return_value=[])
             instance = MockClient.return_value
             instance.initialize = AsyncMock(side_effect=Exception("Network timeout"))
 
@@ -173,7 +185,11 @@ class TestDiscoverTools:
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_discover_tools_auth_required(self, client):
-        with patch("backend.api.features.mcp.routes.MCPClient") as MockClient:
+        with (
+            patch("backend.api.features.mcp.routes.MCPClient") as MockClient,
+            patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
+        ):
+            mock_cm.store.get_creds_by_provider = AsyncMock(return_value=[])
             instance = MockClient.return_value
             instance.initialize = AsyncMock(
                 side_effect=HTTPClientError("HTTP 401 Error: Unauthorized", 401)
@@ -189,7 +205,11 @@ class TestDiscoverTools:
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_discover_tools_forbidden(self, client):
-        with patch("backend.api.features.mcp.routes.MCPClient") as MockClient:
+        with (
+            patch("backend.api.features.mcp.routes.MCPClient") as MockClient,
+            patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
+        ):
+            mock_cm.store.get_creds_by_provider = AsyncMock(return_value=[])
             instance = MockClient.return_value
             instance.initialize = AsyncMock(
                 side_effect=HTTPClientError("HTTP 403 Error: Forbidden", 403)
