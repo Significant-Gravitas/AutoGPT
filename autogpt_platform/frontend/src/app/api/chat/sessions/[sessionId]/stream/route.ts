@@ -68,7 +68,7 @@ function normalizeSSEEvent(event: string): string {
 
   if (dataLines.length === 0) return event;
 
-  const dataStr = dataLines.join("");
+  const dataStr = dataLines.join("\n");
   try {
     const parsed = JSON.parse(dataStr) as Record<string, unknown>;
     if (parsed.type === "error") {
