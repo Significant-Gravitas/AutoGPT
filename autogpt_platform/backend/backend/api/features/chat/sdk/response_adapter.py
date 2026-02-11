@@ -24,7 +24,9 @@ from backend.api.features.chat.response_model import (
     StreamBaseResponse,
     StreamError,
     StreamFinish,
+    StreamFinishStep,
     StreamStart,
+    StreamStartStep,
     StreamTextDelta,
     StreamTextEnd,
     StreamTextStart,
@@ -50,6 +52,7 @@ class SDKResponseAdapter:
         self.has_ended_text = False
         self.current_tool_calls: dict[str, dict[str, str]] = {}
         self.task_id: str | None = None
+        self.step_open = False
 
     def set_task_id(self, task_id: str) -> None:
         """Set the task ID for reconnection support."""
@@ -64,8 +67,17 @@ class SDKResponseAdapter:
                 responses.append(
                     StreamStart(messageId=self.message_id, taskId=self.task_id)
                 )
+                # Open the first step (matches non-SDK: StreamStart then StreamStartStep)
+                responses.append(StreamStartStep())
+                self.step_open = True
 
         elif isinstance(sdk_message, AssistantMessage):
+            # After tool results, the SDK sends a new AssistantMessage for the
+            # next LLM turn. Open a new step if the previous one was closed.
+            if not self.step_open:
+                responses.append(StreamStartStep())
+                self.step_open = True
+
             for block in sdk_message.content:
                 if isinstance(block, TextBlock):
                     if block.text:
@@ -90,7 +102,7 @@ class SDKResponseAdapter:
                     self.current_tool_calls[block.id] = {"name": block.name}
 
         elif isinstance(sdk_message, UserMessage):
-            # UserMessage carries tool results back from tool execution
+            # UserMessage carries tool results back from tool execution.
             content = sdk_message.content
             blocks = content if isinstance(content, list) else []
             for block in blocks:
@@ -107,11 +119,21 @@ class SDKResponseAdapter:
                         )
                     )
 
-        elif isinstance(sdk_message, ResultMessage):
-            if sdk_message.subtype == "success":
-                self._end_text_if_open(responses)
-                responses.append(StreamFinish())
+            # Close the current step after tool results — the next
+            # AssistantMessage will open a new step for the continuation.
+            if self.step_open:
+                responses.append(StreamFinishStep())
+                self.step_open = False
 
+        elif isinstance(sdk_message, ResultMessage):
+            self._end_text_if_open(responses)
+            # Close the step before finishing.
+            if self.step_open:
+                responses.append(StreamFinishStep())
+                self.step_open = False
+
+            if sdk_message.subtype == "success":
+                responses.append(StreamFinish())
             elif sdk_message.subtype in ("error", "error_during_execution"):
                 error_msg = getattr(sdk_message, "result", None) or "Unknown error"
                 responses.append(
