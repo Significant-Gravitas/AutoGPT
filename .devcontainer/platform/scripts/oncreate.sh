@@ -18,21 +18,55 @@ set -x  # Print commands for debugging
 echo "🚀 Starting prebuild setup..."
 
 # =============================================================================
-# Install Poetry via pipx (pipx is installed by the Python devcontainer feature)
+# Setup PATH for tools installed by devcontainer features
 # =============================================================================
-echo "📦 Installing Poetry..."
-
-# pipx is installed by the Python feature at /usr/local/py-utils/bin
+# Python feature installs pipx at /usr/local/py-utils/bin
+# Node feature installs nvm, node, pnpm at various locations
 export PATH="/usr/local/py-utils/bin:$PATH"
 
-if ! command -v poetry &> /dev/null; then
-    pipx install poetry
+# Source nvm if available (Node feature uses nvm)
+export NVM_DIR="${NVM_DIR:-/usr/local/share/nvm}"
+if [ -s "$NVM_DIR/nvm.sh" ]; then
+    . "$NVM_DIR/nvm.sh"
 fi
 
-# Verify poetry is available
-poetry --version
+# =============================================================================
+# Verify and Install Poetry
+# =============================================================================
+echo "📦 Setting up Poetry..."
 
-# Workspace is autogpt_platform
+if command -v poetry &> /dev/null; then
+    echo "  Poetry already installed: $(poetry --version)"
+else
+    echo "  Installing Poetry via pipx..."
+    if command -v pipx &> /dev/null; then
+        pipx install poetry
+    else
+        echo "  pipx not found, installing poetry via pip..."
+        pip install --user poetry
+        export PATH="$HOME/.local/bin:$PATH"
+    fi
+fi
+
+poetry --version || { echo "❌ Poetry installation failed"; exit 1; }
+
+# =============================================================================
+# Verify and Install pnpm
+# =============================================================================
+echo "📦 Setting up pnpm..."
+
+if command -v pnpm &> /dev/null; then
+    echo "  pnpm already installed: $(pnpm --version)"
+else
+    echo "  Installing pnpm via npm..."
+    npm install -g pnpm
+fi
+
+pnpm --version || { echo "❌ pnpm installation failed"; exit 1; }
+
+# =============================================================================
+# Navigate to workspace
+# =============================================================================
 cd /workspaces/AutoGPT/autogpt_platform
 
 # =============================================================================
@@ -41,8 +75,6 @@ cd /workspaces/AutoGPT/autogpt_platform
 echo "📦 Installing backend dependencies..."
 
 cd backend
-
-# Install Python dependencies
 poetry install --no-interaction --no-ansi
 
 # Generate Prisma client (schema only, no DB needed)
@@ -58,23 +90,11 @@ cd ..
 echo "📦 Installing frontend dependencies..."
 
 cd frontend
-
-# pnpm should be installed by the Node feature, but ensure it's available
-if ! command -v pnpm &> /dev/null; then
-    echo "Installing pnpm..."
-    npm install -g pnpm
-fi
-
-# Install Node dependencies
 pnpm install --frozen-lockfile
-
 cd ..
 
 # =============================================================================
 # Pull Dependency Docker Images ONLY
-# =============================================================================
-# We only pull infrastructure images. Backend/Frontend run natively
-# to ensure we always use the current branch's code.
 # =============================================================================
 echo "🐳 Pulling dependency Docker images..."
 
@@ -83,18 +103,22 @@ if [ -e /var/run/docker-host.sock ]; then
     sudo ln -sf /var/run/docker-host.sock /var/run/docker.sock || true
 fi
 
-# Pull dependency images in parallel
-docker pull supabase/gotrue:v2.170.0 &
-docker pull supabase/studio:20250224-d10db0f &
-docker pull kong:2.8.1 &
-docker pull supabase/postgres:15.8.1.060 &
-docker pull redis:latest &
-docker pull rabbitmq:management &
-
-# Wait for all pulls to complete
-wait
-
-echo "✅ Dependency images pulled"
+# Check if Docker is available
+if command -v docker &> /dev/null && docker info &> /dev/null; then
+    # Pull dependency images in parallel
+    docker pull supabase/gotrue:v2.170.0 &
+    docker pull supabase/studio:20250224-d10db0f &
+    docker pull kong:2.8.1 &
+    docker pull supabase/postgres:15.8.1.060 &
+    docker pull redis:latest &
+    docker pull rabbitmq:management &
+    
+    # Wait for all pulls to complete
+    wait
+    echo "✅ Dependency images pulled"
+else
+    echo "⚠️ Docker not available during prebuild, images will be pulled on first start"
+fi
 
 # =============================================================================
 # Copy environment files
@@ -103,20 +127,9 @@ echo "📄 Setting up environment files..."
 
 cd /workspaces/AutoGPT/autogpt_platform
 
-# Backend
-if [ ! -f backend/.env ]; then
-    cp backend/.env.default backend/.env
-fi
-
-# Frontend
-if [ ! -f frontend/.env ]; then
-    cp frontend/.env.default frontend/.env
-fi
-
-# Platform root
-if [ ! -f .env ]; then
-    cp .env.default .env
-fi
+[ ! -f backend/.env ] && cp backend/.env.default backend/.env
+[ ! -f frontend/.env ] && cp frontend/.env.default frontend/.env
+[ ! -f .env ] && cp .env.default .env
 
 # =============================================================================
 # Done!
@@ -127,10 +140,8 @@ echo "✅ PREBUILD COMPLETE"
 echo "=============================================="
 echo ""
 echo "Cached:"
-echo "  ✅ Poetry (via pipx)"
+echo "  ✅ Poetry $(poetry --version 2>/dev/null || echo '(check path)')"
+echo "  ✅ pnpm $(pnpm --version 2>/dev/null || echo '(check path)')"
 echo "  ✅ Python packages"
-echo "  ✅ Node packages (pnpm)"
-echo "  ✅ Dependency Docker images"
-echo ""
-echo "The postcreate script will start services."
+echo "  ✅ Node packages"
 echo ""
