@@ -5,6 +5,7 @@ import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import { useEffect, useMemo, useState } from "react";
 import { useChatSession } from "./useChatSession";
+import { useLongRunningToolPolling } from "./hooks/useLongRunningToolPolling";
 
 export function useCopilotPage() {
   const { isUserLoading, isLoggedIn } = useSupabase();
@@ -59,6 +60,11 @@ export function useCopilotPage() {
       return hydratedMessages;
     });
   }, [hydratedMessages, setMessages]);
+
+  // Poll session endpoint when a long-running tool (create_agent, edit_agent)
+  // is in progress. When the backend completes, the session data will contain
+  // the final tool output — this hook detects the change and updates messages.
+  useLongRunningToolPolling(sessionId, messages, setMessages);
 
   // Clear messages when session is null
   useEffect(() => {
