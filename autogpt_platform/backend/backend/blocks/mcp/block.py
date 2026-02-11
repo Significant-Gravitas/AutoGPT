@@ -131,7 +131,7 @@ class MCPToolBlock(Block):
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=MCPToolBlock.Input,
             output_schema=MCPToolBlock.Output,
-            block_type=BlockType.STANDARD,
+            block_type=BlockType.MCP_TOOL,
             test_credentials=TEST_CREDENTIALS,
             test_input={
                 "server_url": "https://mcp.example.com/mcp",

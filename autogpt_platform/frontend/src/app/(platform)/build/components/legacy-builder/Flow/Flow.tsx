@@ -753,7 +753,7 @@ const FlowEditor: React.FC<{
           isOutputStatic: nodeSchema.staticOutput,
           uiType: nodeSchema.uiType,
           // Set customized_name at creation so it persists through save/load
-          ...(blockID === SpecialBlockID.MCP_TOOL && {
+          ...(nodeSchema.uiType === BlockUIType.MCP_TOOL && {
             metadata: {
               credentials_optional: true,
               ...(finalHardcodedValues.selected_tool && {

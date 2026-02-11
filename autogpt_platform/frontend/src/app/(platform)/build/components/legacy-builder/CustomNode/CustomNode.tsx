@@ -21,7 +21,6 @@ import {
   GraphInputSchema,
   GraphOutputSchema,
   NodeExecutionResult,
-  SpecialBlockID,
 } from "@/lib/autogpt-server-api";
 import {
   beautifyString,
@@ -218,7 +217,7 @@ export const CustomNode = React.memo(
 
     // MCP Tool block: display the selected tool's dynamic schema
     const isMCPWithTool =
-      data.block_id === SpecialBlockID.MCP_TOOL &&
+      data.uiType === BlockUIType.MCP_TOOL &&
       !!data.hardcodedValues?.tool_input_schema?.properties;
 
     if (isMCPWithTool) {

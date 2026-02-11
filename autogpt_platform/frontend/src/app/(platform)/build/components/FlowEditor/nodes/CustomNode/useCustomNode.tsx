@@ -3,8 +3,6 @@ import { CustomNodeData } from "./CustomNode";
 import { BlockUIType } from "../../../types";
 import { useMemo } from "react";
 import { mergeSchemaForResolution } from "./helpers";
-import { SpecialBlockID } from "@/lib/autogpt-server-api";
-
 /**
  * Build a dynamic input schema for MCP blocks.
  *
@@ -50,7 +48,7 @@ export const useCustomNode = ({
 
   const isAgent = data.uiType === BlockUIType.AGENT;
   const isMCPWithTool =
-    data.block_id === SpecialBlockID.MCP_TOOL &&
+    data.uiType === BlockUIType.MCP_TOOL &&
     !!data.hardcodedValues?.tool_input_schema?.properties;
 
   const currentInputSchema = isAgent

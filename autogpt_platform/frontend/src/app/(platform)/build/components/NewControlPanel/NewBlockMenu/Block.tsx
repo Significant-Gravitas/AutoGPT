@@ -9,7 +9,7 @@ import { useControlPanelStore } from "../../../stores/controlPanelStore";
 import { blockDragPreviewStyle } from "./style";
 import { useReactFlow } from "@xyflow/react";
 import { useNodeStore } from "../../../stores/nodeStore";
-import { SpecialBlockID } from "@/lib/autogpt-server-api";
+import { BlockUIType, SpecialBlockID } from "@/lib/autogpt-server-api";
 import {
   MCPToolDialog,
   type MCPToolDialogResult,
@@ -41,7 +41,7 @@ export const Block: BlockComponent = ({
   const { addBlock } = useNodeStore();
   const [mcpDialogOpen, setMcpDialogOpen] = useState(false);
 
-  const isMCPBlock = blockData.id === SpecialBlockID.MCP_TOOL;
+  const isMCPBlock = blockData.uiType === BlockUIType.MCP_TOOL;
 
   const addBlockAndCenter = useCallback(
     (block: BlockInfo, hardcodedValues?: Record<string, any>) => {

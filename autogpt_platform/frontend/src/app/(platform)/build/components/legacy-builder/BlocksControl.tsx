@@ -212,7 +212,7 @@ export function BlocksControl({
       if (block.notAvailable) return;
 
       // For MCP blocks, open the configuration dialog instead of placing directly
-      if (block.id === SpecialBlockID.MCP_TOOL) {
+      if (block.uiType === BlockUIType.MCP_TOOL) {
         setMcpDialogOpen(true);
         return;
       }
@@ -349,19 +349,19 @@ export function BlocksControl({
                     className={`m-2 my-4 flex h-20 shadow-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700 ${
                       block.notAvailable
                         ? "cursor-not-allowed opacity-50"
-                        : block.id === SpecialBlockID.MCP_TOOL
+                        : block.uiType === BlockUIType.MCP_TOOL
                           ? "cursor-pointer hover:shadow-lg"
                           : "cursor-move hover:shadow-lg"
                     }`}
                     data-id={`block-card-${block.id}`}
                     draggable={
                       !block.notAvailable &&
-                      block.id !== SpecialBlockID.MCP_TOOL
+                      block.uiType !== BlockUIType.MCP_TOOL
                     }
                     onDragStart={(e) => {
                       if (
                         block.notAvailable ||
-                        block.id === SpecialBlockID.MCP_TOOL
+                        block.uiType === BlockUIType.MCP_TOOL
                       )
                         return;
                       e.dataTransfer.effectAllowed = "copy";
