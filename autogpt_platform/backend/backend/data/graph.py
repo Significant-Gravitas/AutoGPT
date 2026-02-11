@@ -24,7 +24,7 @@ from pydantic import BaseModel, BeforeValidator, Field
 from pydantic.fields import computed_field
 
 from backend.blocks import get_block, get_blocks
-from backend.blocks._base import AnyBlockSchema, Block, BlockType, EmptySchema
+from backend.blocks._base import Block, BlockType, EmptySchema
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.blocks.llm import LlmModel
@@ -47,6 +47,8 @@ from .db import BaseDbModel, query_raw_with_schema, transaction
 from .includes import AGENT_GRAPH_INCLUDE, AGENT_NODE_INCLUDE
 
 if TYPE_CHECKING:
+    from backend.blocks._base import AnyBlockSchema
+
     from .execution import NodesInputMasks
     from .integrations import Webhook
 
@@ -122,7 +124,7 @@ class Node(BaseDbModel):
         return self.metadata.get("credentials_optional", False)
 
     @property
-    def block(self) -> AnyBlockSchema | "_UnknownBlockBase":
+    def block(self) -> "AnyBlockSchema | _UnknownBlockBase":
         """Get the block for this node. Returns UnknownBlock if block is deleted/missing."""
         block = get_block(self.block_id)
         if not block:
