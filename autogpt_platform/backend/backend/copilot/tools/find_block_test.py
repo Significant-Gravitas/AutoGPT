@@ -4,13 +4,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.blocks._base import BlockType
 from backend.copilot.tools.find_block import (
     COPILOT_EXCLUDED_BLOCK_IDS,
     COPILOT_EXCLUDED_BLOCK_TYPES,
     FindBlockTool,
 )
 from backend.copilot.tools.models import BlockListResponse
-from backend.data.block import BlockType
 
 from ._test_data import make_session
 

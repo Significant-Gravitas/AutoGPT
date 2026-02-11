@@ -61,14 +61,7 @@ export function RunAgentTool({ part }: Props) {
       </div>
 
       {hasExpandableContent && output && (
-        <ToolAccordion
-          {...getAccordionMeta(output)}
-          defaultExpanded={
-            isRunAgentExecutionStartedOutput(output) ||
-            isRunAgentSetupRequirementsOutput(output) ||
-            isRunAgentAgentDetailsOutput(output)
-          }
-        >
+        <ToolAccordion {...getAccordionMeta(output)}>
           {isRunAgentExecutionStartedOutput(output) && (
             <ExecutionStartedCard output={output} />
           )}

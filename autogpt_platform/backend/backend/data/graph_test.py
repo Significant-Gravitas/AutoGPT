@@ -9,9 +9,9 @@ from pytest_snapshot.plugin import Snapshot
 
 import backend.api.features.store.model as store
 from backend.api.model import CreateGraph
+from backend.blocks._base import BlockSchema, BlockSchemaInput
 from backend.blocks.basic import StoreValueBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
-from backend.data.block import BlockSchema, BlockSchemaInput
 from backend.data.graph import Graph, Link, Node
 from backend.data.model import SchemaField
 from backend.data.user import DEFAULT_USER_ID

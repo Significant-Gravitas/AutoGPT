@@ -4,9 +4,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from backend.blocks._base import BlockType
 from backend.copilot.tools.models import ErrorResponse
 from backend.copilot.tools.run_block import RunBlockTool
-from backend.data.block import BlockType
 
 from ._test_data import make_session
 

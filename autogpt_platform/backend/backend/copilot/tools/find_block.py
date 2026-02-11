@@ -3,6 +3,8 @@ from typing import Any
 
 from prisma.enums import ContentType
 
+from backend.blocks import get_block
+from backend.blocks._base import BlockType
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.base import BaseTool, ToolResponseBase
 from backend.copilot.tools.models import (
@@ -12,7 +14,6 @@ from backend.copilot.tools.models import (
     ErrorResponse,
     NoResultsResponse,
 )
-from backend.data.block import BlockType, get_block
 from backend.data.db_accessors import search
 
 logger = logging.getLogger(__name__)

@@ -2,7 +2,7 @@ import asyncio
 import logging
 from typing import TYPE_CHECKING, Optional, cast, overload
 
-from backend.data.block import BlockSchema
+from backend.blocks._base import BlockSchema
 from backend.data.graph import set_node_webhook
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 

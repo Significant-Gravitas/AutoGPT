@@ -7,12 +7,13 @@ from typing import Any
 
 from pydantic_core import PydanticUndefined
 
+from backend.blocks import get_block
+from backend.blocks._base import AnyBlockSchema
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.find_block import (
     COPILOT_EXCLUDED_BLOCK_IDS,
     COPILOT_EXCLUDED_BLOCK_TYPES,
 )
-from backend.data.block import AnyBlockSchema, get_block
 from backend.data.db_accessors import workspace_db
 from backend.data.execution import ExecutionContext
 from backend.data.model import CredentialsFieldInfo, CredentialsMetaInput
