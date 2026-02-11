@@ -1,7 +1,5 @@
 version: 2
 updates:
-  # autogpt_libs merged into backend (OPEN-2998)
-
   # backend (Poetry project)
   - package-ecosystem: "pip"
     directory: "autogpt_platform/backend"
