@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+.env
+playbook/credentials.py
+.DS_Store

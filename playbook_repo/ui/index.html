@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Playbook Client</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Playbook Client</h1>
+            <div class="mode-selector">
+                <button id="btn-enterprise" class="active">Enterprise</button>
+                <button id="btn-academic">Academic</button>
+            </div>
+        </header>
+
+        <main>
+            <div class="orb-container">
+                <div class="orb"></div>
+                <div id="status-text">Ready</div>
+            </div>
+
+            <div id="controls">
+                <input type="file" id="file-upload" />
+                <button id="btn-upload">Upload & Extract</button>
+                <button id="btn-fetch-opportunities">Get Opportunities</button>
+            </div>
+
+            <div id="opportunities-section" class="hidden">
+                <h3>Opportunities</h3>
+                <ul id="opportunities-list"></ul>
+            </div>
+
+            <div id="workspace" class="hidden">
+                <div class="tabs">
+                    <button class="tab active" data-tab="data">Extracted Data</button>
+                    <button class="tab" data-tab="training">Training</button>
+                    <button class="tab" data-tab="execution">Execution</button>
+                </div>
+
+                <div id="tab-data" class="tab-content active">
+                    <div id="data-table-container"></div>
+                    <br>
+                    <button id="btn-start-training">Start Training</button>
+                </div>
+
+                <div id="tab-training" class="tab-content">
+                    <div class="mapping-interface">
+                        <div class="source-view">
+                            <h4>Source Data (Select Cell)</h4>
+                            <div id="source-data-view"></div>
+                        </div>
+                        <div class="target-view">
+                            <h4>Target Application</h4>
+                            <div class="form-group">
+                                <label>App:</label>
+                                <select id="target-app">
+                                    <option value="excel">Excel</option>
+                                    <option value="salesforce">Salesforce</option>
+                                    <option value="email">Email</option>
+                                    <option value="clipboard">Clipboard</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Field:</label>
+                                <input type="text" id="target-field" placeholder="e.g. colC or Amount">
+                            </div>
+                            <button id="btn-add-mapping">Add Mapping Rule</button>
+                        </div>
+                    </div>
+                    <h4>Current Mappings</h4>
+                    <ul id="mapping-list"></ul>
+                    <button id="btn-train-submit">Train (Submit Mappings)</button>
+                    <button id="btn-finish-training" disabled>Finish Training</button>
+                </div>
+
+                <div id="tab-execution" class="tab-content">
+                    <p>Execute the trained playbook on the uploaded file.</p>
+                    <button id="btn-execute">Execute</button>
+                    <div id="execution-results"></div>
+                </div>
+            </div>
+
+            <div id="logs-panel">
+                <h3>Logs</h3>
+                <div id="logs-content"></div>
+            </div>
+        </main>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>
