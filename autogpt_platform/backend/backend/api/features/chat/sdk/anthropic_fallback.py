@@ -11,6 +11,7 @@ import uuid
 from collections.abc import AsyncGenerator
 from typing import Any, cast
 
+from ..config import ChatConfig
 from ..model import ChatMessage, ChatSession
 from ..response_model import (
     StreamBaseResponse,
@@ -27,6 +28,10 @@ from ..response_model import (
 from .tool_adapter import get_tool_definitions, get_tool_handlers
 
 logger = logging.getLogger(__name__)
+config = ChatConfig()
+
+# Maximum tool-call iterations before stopping to prevent infinite loops
+_MAX_TOOL_ITERATIONS = 10
 
 
 async def stream_with_anthropic(
@@ -72,14 +77,15 @@ async def stream_with_anthropic(
         )
 
     has_started_text = False
-    max_iterations = 10
     accumulated_text = ""
     accumulated_tool_calls: list[dict[str, Any]] = []
 
-    for _ in range(max_iterations):
+    for _ in range(_MAX_TOOL_ITERATIONS):
         try:
             async with client.messages.stream(
-                model="claude-sonnet-4-20250514",
+                model=(
+                    config.model.split("/")[-1] if "/" in config.model else config.model
+                ),
                 max_tokens=4096,
                 system=system_prompt,
                 messages=cast(Any, anthropic_messages),

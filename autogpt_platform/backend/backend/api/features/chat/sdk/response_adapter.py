@@ -24,7 +24,6 @@ from backend.api.features.chat.response_model import (
     StreamBaseResponse,
     StreamError,
     StreamFinish,
-    StreamHeartbeat,
     StreamStart,
     StreamTextDelta,
     StreamTextEnd,
@@ -32,7 +31,6 @@ from backend.api.features.chat.response_model import (
     StreamToolInputAvailable,
     StreamToolInputStart,
     StreamToolOutputAvailable,
-    StreamUsage,
 )
 
 logger = logging.getLogger(__name__)
@@ -140,18 +138,6 @@ class SDKResponseAdapter:
         if self.has_started_text and not self.has_ended_text:
             responses.append(StreamTextEnd(id=self.text_block_id))
             self.has_ended_text = True
-
-    def create_heartbeat(self, tool_call_id: str | None = None) -> StreamHeartbeat:
-        """Create a heartbeat response."""
-        return StreamHeartbeat(toolCallId=tool_call_id)
-
-    def create_usage(self, prompt_tokens: int, completion_tokens: int) -> StreamUsage:
-        """Create a usage statistics response."""
-        return StreamUsage(
-            promptTokens=prompt_tokens,
-            completionTokens=completion_tokens,
-            totalTokens=prompt_tokens + completion_tokens,
-        )
 
 
 def _extract_tool_output(content: str | list[dict[str, str]] | None) -> str:

@@ -291,13 +291,17 @@ async def stream_chat_completion_sdk(
 
                             if isinstance(response, StreamTextDelta):
                                 delta = response.delta or ""
+                                # After tool results, start a new assistant
+                                # message for the post-tool text.
                                 if has_tool_results and has_appended_assistant:
                                     assistant_response = ChatMessage(
                                         role="assistant", content=delta
                                     )
                                     accumulated_tool_calls = []
-                                    session.messages.append(assistant_response)
+                                    has_appended_assistant = False
                                     has_tool_results = False
+                                    session.messages.append(assistant_response)
+                                    has_appended_assistant = True
                                 else:
                                     assistant_response.content = (
                                         assistant_response.content or ""

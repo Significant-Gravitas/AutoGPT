@@ -18,7 +18,7 @@ from backend.api.features.chat.tools.base import BaseTool
 logger = logging.getLogger(__name__)
 
 # Allowed base directory for the Read tool (SDK saves oversized tool results here)
-_SDK_TOOL_RESULTS_DIR = "/root/.claude/"
+_SDK_TOOL_RESULTS_DIR = os.path.expanduser("~/.claude/")
 
 # MCP server naming - the SDK prefixes tool names as "mcp__{server_name}__{tool}"
 MCP_SERVER_NAME = "copilot"
@@ -282,6 +282,3 @@ COPILOT_TOOL_NAMES = [
     *[f"{MCP_TOOL_PREFIX}{name}" for name in TOOL_REGISTRY.keys()],
     f"{MCP_TOOL_PREFIX}{_READ_TOOL_NAME}",
 ]
-
-# Also export the raw tool names for flexibility
-RAW_TOOL_NAMES = list(TOOL_REGISTRY.keys())
