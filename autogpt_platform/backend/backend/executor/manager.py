@@ -295,7 +295,7 @@ async def execute_node(
                     f"Credentials #{credentials_meta.id} not found, "
                     "running without (field has default)"
                 )
-                input_data[field_name] = input_model.model_fields[field_name].default
+                input_data[field_name] = None
                 continue
             raise
         creds_locks.append(lock)
