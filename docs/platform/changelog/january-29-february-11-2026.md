@@ -32,25 +32,13 @@ Ask AutoPilot to modify any marketplace agent before adding it to your library. 
 
 The entire chat system has been rebuilt on the Vercel AI SDK. More reliable message delivery, better markdown formatting, tool outputs shown in clean collapsible panels, and errors surfaced as brief notifications instead of breaking the chat. [*↗*](https://github.com/Significant-Gravitas/AutoGPT/pull/11901)
 
-{% columns %}
-
-{% column %}
-
-### Stay connected during long tasks
+## Stay connected during long tasks
 
 If your connection drops while AutoPilot is working (network hiccup, laptop sleep, switching tabs), it keeps going in the background, saves progress, and replays what you missed when you reconnect. [*↗*](https://github.com/Significant-Gravitas/AutoGPT/pull/11877)
 
-{% endcolumn %}
-
-{% column %}
-
-### New agents reuse your existing ones
+## New agents reuse your existing ones
 
 When building a new agent, AutoPilot searches your library for agents that can be incorporated as building blocks — so you don't rebuild from scratch. [*↗*](https://github.com/Significant-Gravitas/AutoGPT/pull/11889)
-
-{% endcolumn %}
-
-{% endcolumns %}
 
 ## Better agent creation
 
