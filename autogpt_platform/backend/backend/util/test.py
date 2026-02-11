@@ -6,7 +6,6 @@ import uuid
 from typing import Sequence, cast
 
 from backend.api.auth import get_user_id
-
 from backend.api.rest_api import AgentServer
 from backend.data import db
 from backend.data.block import Block, BlockSchema, initialize_blocks

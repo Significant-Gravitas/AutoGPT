@@ -413,9 +413,7 @@ def test_components_with_existing_responses():
     assert "HTTP401NotAuthenticatedError" in schema["components"]["responses"]
 
     # Verify our 401 response structure
-    error_response = schema["components"]["responses"][
-        "HTTP401NotAuthenticatedError"
-    ]
+    error_response = schema["components"]["responses"]["HTTP401NotAuthenticatedError"]
     assert error_response["description"] == "Authentication required"
 
 

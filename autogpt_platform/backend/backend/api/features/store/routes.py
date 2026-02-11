@@ -4,11 +4,11 @@ import typing
 import urllib.parse
 from typing import Literal
 
-import backend.api.auth
 import fastapi
 import fastapi.responses
 import prisma.enums
 
+import backend.api.auth
 import backend.data.graph
 import backend.util.json
 from backend.util.models import Pagination

@@ -2,11 +2,11 @@ import logging
 import tempfile
 import typing
 
-import backend.api.auth
 import fastapi
 import fastapi.responses
 import prisma.enums
 
+import backend.api.auth
 import backend.api.features.store.cache as store_cache
 import backend.api.features.store.db as store_db
 import backend.api.features.store.model as store_model

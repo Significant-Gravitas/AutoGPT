@@ -5,11 +5,11 @@ import uuid as uuid_module
 from collections.abc import AsyncGenerator
 from typing import Annotated
 
-from backend.api import auth
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, Security
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from backend.api import auth
 from backend.util.exceptions import NotFoundError
 
 from . import service as chat_service

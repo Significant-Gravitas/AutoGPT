@@ -40,8 +40,9 @@ from typing import Optional
 from urllib.parse import urlparse
 
 import click
-from backend.api.auth.api_key.keysmith import APIKeySmith
 from prisma.enums import APIKeyPermission
+
+from backend.api.auth.api_key.keysmith import APIKeySmith
 
 keysmith = APIKeySmith()
 
