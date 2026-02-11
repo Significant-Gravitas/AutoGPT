@@ -4,7 +4,7 @@ import uuid
 from typing import TYPE_CHECKING, Literal, Optional
 
 from e2b import AsyncSandbox as BaseAsyncSandbox
-from pydantic import BaseModel, SecretStr
+from pydantic import SecretStr
 
 from backend.data.block import (
     Block,
@@ -20,7 +20,7 @@ from backend.data.model import (
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
-from backend.util.sandbox_files import extract_and_store_sandbox_files
+from backend.util.sandbox_files import SandboxFileOutput, extract_and_store_sandbox_files
 
 if TYPE_CHECKING:
     from backend.executor.utils import ExecutionContext
@@ -178,20 +178,11 @@ class ClaudeCodeBlock(Block):
             advanced=True,
         )
 
-    class FileOutput(BaseModel):
-        """A file extracted from the sandbox."""
-
-        path: str
-        relative_path: str  # Path relative to working directory (for GitHub, etc.)
-        name: str
-        content: str
-        workspace_ref: Optional[str] = None  # workspace://{id}#mime if stored
-
     class Output(BlockSchemaOutput):
         response: str = SchemaField(
             description="The output/response from Claude Code execution"
         )
-        files: list["ClaudeCodeBlock.FileOutput"] = SchemaField(
+        files: list[SandboxFileOutput] = SchemaField(
             description=(
                 "List of text files created/modified by Claude Code during this execution. "
                 "Each file has 'path', 'relative_path', 'name', 'content', and 'workspace_ref' fields. "
@@ -274,7 +265,7 @@ class ClaudeCodeBlock(Block):
                 "execute_claude_code": lambda *args, **kwargs: (
                     "Created index.html with hello world content",  # response
                     [
-                        ClaudeCodeBlock.FileOutput(
+                        SandboxFileOutput(
                             path="/home/user/index.html",
                             relative_path="index.html",
                             name="index.html",
@@ -303,7 +294,7 @@ class ClaudeCodeBlock(Block):
         conversation_history: str,
         dispose_sandbox: bool,
         execution_context: "ExecutionContext",
-    ) -> tuple[str, list["ClaudeCodeBlock.FileOutput"], str, str, str]:
+    ) -> tuple[str, list[SandboxFileOutput], str, str, str]:
         """
         Execute Claude Code in an E2B sandbox.
 
@@ -467,21 +458,9 @@ class ClaudeCodeBlock(Block):
                 text_only=True,
             )
 
-            # Convert to FileOutput format
-            files = [
-                ClaudeCodeBlock.FileOutput(
-                    path=f.path,
-                    relative_path=f.relative_path,
-                    name=f.name,
-                    content=f.content,
-                    workspace_ref=f.workspace_ref,
-                )
-                for f in sandbox_files
-            ]
-
             return (
                 response,
-                files,
+                sandbox_files,  # Already SandboxFileOutput objects
                 new_conversation_history,
                 current_session_id,
                 sandbox_id,
