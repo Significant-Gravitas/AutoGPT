@@ -23,6 +23,14 @@ from prisma.types import (
 from pydantic import BaseModel, BeforeValidator, Field
 from pydantic.fields import computed_field
 
+from backend.blocks import get_block, get_blocks
+from backend.blocks._base import (
+    AnyBlockSchema,
+    Block,
+    BlockInput,
+    BlockType,
+    EmptySchema,
+)
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.blocks.llm import LlmModel
@@ -40,15 +48,6 @@ from backend.util.exceptions import GraphNotAccessibleError, GraphNotInLibraryEr
 from backend.util.json import SafeJson
 from backend.util.models import Pagination
 
-from .block import (
-    AnyBlockSchema,
-    Block,
-    BlockInput,
-    BlockType,
-    EmptySchema,
-    get_block,
-    get_blocks,
-)
 from .db import BaseDbModel, query_raw_with_schema, transaction
 from .includes import AGENT_GRAPH_INCLUDE, AGENT_NODE_INCLUDE
 

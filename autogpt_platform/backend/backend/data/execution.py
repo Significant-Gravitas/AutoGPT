@@ -39,6 +39,8 @@ from prisma.types import (
 from pydantic import BaseModel, ConfigDict, JsonValue, ValidationError
 from pydantic.fields import Field
 
+from backend.blocks import get_block, get_io_block_ids, get_webhook_block_ids
+from backend.blocks._base import BlockInput, BlockType, CompletedBlockOutput
 from backend.util import type as type_utils
 from backend.util.exceptions import DatabaseError
 from backend.util.json import SafeJson
@@ -47,14 +49,6 @@ from backend.util.retry import func_retry
 from backend.util.settings import Config
 from backend.util.truncate import truncate
 
-from .block import (
-    BlockInput,
-    BlockType,
-    CompletedBlockOutput,
-    get_block,
-    get_io_block_ids,
-    get_webhook_block_ids,
-)
 from .db import BaseDbModel, query_raw_with_schema
 from .event_bus import AsyncRedisEventBus, RedisEventBus
 from .includes import (

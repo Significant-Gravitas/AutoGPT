@@ -3,7 +3,7 @@ from enum import Enum
 
 from pydantic import BaseModel
 
-from backend.data.block import BlockSchemaInput
+from backend.blocks._base import BlockSchemaInput
 from backend.data.model import SchemaField
 
 # -------------- Tweets -----------------

@@ -13,7 +13,8 @@ from backend.api.features.chat.tools.models import (
     NoResultsResponse,
 )
 from backend.api.features.store.hybrid_search import unified_hybrid_search
-from backend.data.block import BlockType, get_block
+from backend.blocks import get_block
+from backend.blocks._base import BlockType
 
 logger = logging.getLogger(__name__)
 

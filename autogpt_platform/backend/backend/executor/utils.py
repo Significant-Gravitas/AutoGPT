@@ -8,19 +8,19 @@ from typing import Mapping, Optional, cast
 
 from pydantic import BaseModel, JsonValue, ValidationError
 
-from backend.data import execution as execution_db
-from backend.data import graph as graph_db
-from backend.data import human_review as human_review_db
-from backend.data import onboarding as onboarding_db
-from backend.data import user as user_db
-from backend.data.block import (
+from backend.blocks import get_block
+from backend.blocks._base import (
     Block,
     BlockCostType,
     BlockInput,
     BlockOutputEntry,
     BlockType,
-    get_block,
 )
+from backend.data import execution as execution_db
+from backend.data import graph as graph_db
+from backend.data import human_review as human_review_db
+from backend.data import onboarding as onboarding_db
+from backend.data import user as user_db
 from backend.data.block_cost_config import BLOCK_COSTS
 from backend.data.db import prisma
 

@@ -10,10 +10,10 @@ import backend.api.features.library.db as library_db
 import backend.api.features.library.model as library_model
 import backend.api.features.store.db as store_db
 import backend.api.features.store.model as store_model
-import backend.data.block
+import backend.blocks._base
 from backend.blocks import load_all_blocks
+from backend.blocks._base import AnyBlockSchema, BlockCategory, BlockInfo, BlockSchema
 from backend.blocks.llm import LlmModel
-from backend.data.block import AnyBlockSchema, BlockCategory, BlockInfo, BlockSchema
 from backend.data.db import query_raw_with_schema
 from backend.integrations.providers import ProviderName
 from backend.util.cache import cached
@@ -669,9 +669,9 @@ async def get_suggested_blocks(count: int = 5) -> list[BlockInfo]:
     for block_type in load_all_blocks().values():
         block: AnyBlockSchema = block_type()
         if block.disabled or block.block_type in (
-            backend.data.block.BlockType.INPUT,
-            backend.data.block.BlockType.OUTPUT,
-            backend.data.block.BlockType.AGENT,
+            backend.blocks._base.BlockType.INPUT,
+            backend.blocks._base.BlockType.OUTPUT,
+            backend.blocks._base.BlockType.AGENT,
         ):
             continue
         # Find the execution count for this block
