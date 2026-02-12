@@ -26,7 +26,6 @@ jobs:
   setup:
     runs-on: ubuntu-latest
     outputs:
-      cache-key: ${{ steps.cache-key.outputs.key }}
       components-changed: ${{ steps.filter.outputs.components }}
 
     steps:
@@ -44,18 +43,14 @@ jobs:
       - name: Enable corepack
         run: corepack enable
 
-      - name: Set up Node.js
+      - name: Set up Node
         uses: actions/setup-node@v6
         with:
           node-version: "22.18.0"
           cache: "pnpm"
           cache-dependency-path: autogpt_platform/frontend/pnpm-lock.yaml
 
-      - name: Generate cache key
-        id: cache-key
-        run: echo "key=${{ runner.os }}-pnpm-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml', 'autogpt_platform/frontend/package.json') }}" >> $GITHUB_OUTPUT
-
-      - name: Install dependencies
+      - name: Install dependencies to populate cache
         run: pnpm install --frozen-lockfile
 
   lint:
@@ -69,7 +64,7 @@ jobs:
       - name: Enable corepack
         run: corepack enable
 
-      - name: Set up Node.js
+      - name: Set up Node
         uses: actions/setup-node@v6
         with:
           node-version: "22.18.0"
@@ -100,7 +95,7 @@ jobs:
       - name: Enable corepack
         run: corepack enable
 
-      - name: Set up Node.js
+      - name: Set up Node
         uses: actions/setup-node@v6
         with:
           node-version: "22.18.0"
@@ -120,6 +115,7 @@ jobs:
           exitOnceUploaded: true
 
   e2e_test:
+    name: end-to-end tests
     runs-on: big-boi
 
     steps:
@@ -128,21 +124,11 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Enable corepack
-        run: corepack enable
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: "22.18.0"
-          cache: "pnpm"
-          cache-dependency-path: autogpt_platform/frontend/pnpm-lock.yaml
-
-      - name: Copy default supabase .env
+      - name: Set up Platform - Copy default supabase .env
         run: |
           cp ../.env.default ../.env
 
-      - name: Copy backend .env and set OpenAI API key
+      - name: Set up Platform - Copy backend .env and set OpenAI API key
         run: |
           cp ../backend/.env.default ../backend/.env
           echo "OPENAI_INTERNAL_API_KEY=${{ secrets.OPENAI_API_KEY }}" >> ../backend/.env
@@ -150,16 +136,16 @@ jobs:
           # Used by E2E test data script to generate embeddings for approved store agents
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 
-      - name: Set up Docker Buildx
+      - name: Set up Platform - Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
         with:
           driver: docker-container
           driver-opts: network=host
 
-      - name: Expose GitHub Actions cache env vars
+      - name: Set up Platform - Expose GHA cache to docker buildx CLI
         uses: crazy-max/ghaction-github-runtime@v3
 
-      - name: Build Docker images with cache
+      - name: Set up Platform - Build Docker images (with cache)
         working-directory: autogpt_platform
         run: |
           pip install pyyaml
@@ -180,19 +166,19 @@ jobs:
         env:
           NEXT_PUBLIC_PW_TEST: true
 
-      - name: Run docker compose
+      - name: Set up Platform - Run (docker compose up)
         run: docker compose -f ../docker-compose.resolved.yml up -d --no-build
         env:
           NEXT_PUBLIC_PW_TEST: true
 
-      - name: Wait for services to be ready
+      - name: Set up Platform - Wait for services to be ready
         run: |
           echo "Waiting for rest_server to be ready..."
           timeout 60 sh -c 'until curl -f http://localhost:8006/health 2>/dev/null; do sleep 2; done' || echo "Rest server health check timeout, continuing..."
           echo "Waiting for database to be ready..."
           timeout 60 sh -c 'until docker compose -f ../docker-compose.resolved.yml exec -T db pg_isready -U postgres 2>/dev/null; do sleep 2; done' || echo "Database ready check timeout, continuing..."
 
-      - name: Create E2E test data
+      - name: Set up tests - Create E2E test data
         run: |
           echo "Creating E2E test data..."
           # First try to run the script from inside the container
@@ -217,10 +203,20 @@ jobs:
             }
           fi
 
-      - name: Install dependencies
+      - name: Set up tests - Enable corepack
+        run: corepack enable
+
+      - name: Set up tests - Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22.18.0"
+          cache: "pnpm"
+          cache-dependency-path: autogpt_platform/frontend/pnpm-lock.yaml
+
+      - name: Set up tests - Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Install Browser 'chromium'
+      - name: Set up tests - Install browser 'chromium'
         run: pnpm playwright install --with-deps chromium
 
       - name: Run Playwright tests
@@ -262,7 +258,7 @@ jobs:
       - name: Enable corepack
         run: corepack enable
 
-      - name: Set up Node.js
+      - name: Set up Node
         uses: actions/setup-node@v6
         with:
           node-version: "22.18.0"
