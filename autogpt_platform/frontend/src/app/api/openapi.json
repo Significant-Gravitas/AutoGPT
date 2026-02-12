@@ -10495,9 +10495,7 @@
           "operation_started",
           "operation_pending",
           "operation_in_progress",
-          "input_validation_error",
-          "feature_request_search",
-          "feature_request_created"
+          "input_validation_error"
         ],
         "title": "ResponseType",
         "description": "Types of tool responses."

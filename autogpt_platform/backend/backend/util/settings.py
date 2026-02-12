@@ -658,9 +658,6 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     mem0_api_key: str = Field(default="", description="Mem0 API key")
     elevenlabs_api_key: str = Field(default="", description="ElevenLabs API key")
 
-    linear_api_key: str = Field(
-        default="", description="Linear API key for system-level operations"
-    )
     linear_client_id: str = Field(default="", description="Linear client ID")
     linear_client_secret: str = Field(default="", description="Linear client secret")
 
