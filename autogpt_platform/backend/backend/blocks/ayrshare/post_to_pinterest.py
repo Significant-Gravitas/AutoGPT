@@ -103,20 +103,32 @@ class PostToPinterestBlock(Block):
 
         client = create_ayrshare_client()
         if not client:
-            yield "error", "Ayrshare integration is not configured. Please set up the AYRSHARE_API_KEY."
+            yield (
+                "error",
+                "Ayrshare integration is not configured. Please set up the AYRSHARE_API_KEY.",
+            )
             return
 
         # Validate Pinterest constraints
         if len(input_data.post) > 500:
-            yield "error", f"Pinterest pin description exceeds 500 character limit ({len(input_data.post)} characters)"
+            yield (
+                "error",
+                f"Pinterest pin description exceeds 500 character limit ({len(input_data.post)} characters)",
+            )
             return
 
         if len(input_data.pin_title) > 100:
-            yield "error", f"Pinterest pin title exceeds 100 character limit ({len(input_data.pin_title)} characters)"
+            yield (
+                "error",
+                f"Pinterest pin title exceeds 100 character limit ({len(input_data.pin_title)} characters)",
+            )
             return
 
         if len(input_data.link) > 2048:
-            yield "error", f"Pinterest link URL exceeds 2048 character limit ({len(input_data.link)} characters)"
+            yield (
+                "error",
+                f"Pinterest link URL exceeds 2048 character limit ({len(input_data.link)} characters)",
+            )
             return
 
         if len(input_data.media_urls) == 0:
@@ -141,7 +153,10 @@ class PostToPinterestBlock(Block):
         # Validate alt text length
         for i, alt in enumerate(input_data.alt_text):
             if len(alt) > 500:
-                yield "error", f"Pinterest alt text {i+1} exceeds 500 character limit ({len(alt)} characters)"
+                yield (
+                    "error",
+                    f"Pinterest alt text {i + 1} exceeds 500 character limit ({len(alt)} characters)",
+                )
                 return
 
         # Convert datetime to ISO format if provided

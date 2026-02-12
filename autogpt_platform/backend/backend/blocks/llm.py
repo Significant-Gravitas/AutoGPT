@@ -692,7 +692,6 @@ async def llm_call(
             reasoning=reasoning,
         )
     elif provider == "anthropic":
-
         an_tools = convert_openai_tool_fmt_to_anthropic(tools)
 
         system_messages = [p["content"] for p in prompt if p["role"] == "system"]

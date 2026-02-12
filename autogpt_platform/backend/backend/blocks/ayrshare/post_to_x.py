@@ -126,16 +126,25 @@ class PostToXBlock(Block):
 
         client = create_ayrshare_client()
         if not client:
-            yield "error", "Ayrshare integration is not configured. Please set up the AYRSHARE_API_KEY."
+            yield (
+                "error",
+                "Ayrshare integration is not configured. Please set up the AYRSHARE_API_KEY.",
+            )
             return
 
         # Validate X constraints
         if not input_data.long_post and len(input_data.post) > 280:
-            yield "error", f"X post text exceeds 280 character limit ({len(input_data.post)} characters). Enable 'long_post' for Premium accounts."
+            yield (
+                "error",
+                f"X post text exceeds 280 character limit ({len(input_data.post)} characters). Enable 'long_post' for Premium accounts.",
+            )
             return
 
         if input_data.long_post and len(input_data.post) > 25000:
-            yield "error", f"X long post text exceeds 25,000 character limit ({len(input_data.post)} characters)"
+            yield (
+                "error",
+                f"X long post text exceeds 25,000 character limit ({len(input_data.post)} characters)",
+            )
             return
 
         if len(input_data.media_urls) > 4:
@@ -149,14 +158,20 @@ class PostToXBlock(Block):
                 return
 
             if input_data.poll_duration < 1 or input_data.poll_duration > 10080:
-                yield "error", "X poll duration must be between 1 and 10,080 minutes (7 days)"
+                yield (
+                    "error",
+                    "X poll duration must be between 1 and 10,080 minutes (7 days)",
+                )
                 return
 
         # Validate alt text
         if input_data.alt_text:
             for i, alt in enumerate(input_data.alt_text):
                 if len(alt) > 1000:
-                    yield "error", f"X alt text {i+1} exceeds 1,000 character limit ({len(alt)} characters)"
+                    yield (
+                        "error",
+                        f"X alt text {i + 1} exceeds 1,000 character limit ({len(alt)} characters)",
+                    )
                     return
 
         # Validate subtitle settings
@@ -168,7 +183,10 @@ class PostToXBlock(Block):
                 return
 
             if len(input_data.subtitle_name) > 150:
-                yield "error", f"Subtitle name exceeds 150 character limit ({len(input_data.subtitle_name)} characters)"
+                yield (
+                    "error",
+                    f"Subtitle name exceeds 150 character limit ({len(input_data.subtitle_name)} characters)",
+                )
                 return
 
         # Convert datetime to ISO format if provided

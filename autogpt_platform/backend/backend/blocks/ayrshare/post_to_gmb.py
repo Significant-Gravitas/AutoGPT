@@ -120,12 +120,18 @@ class PostToGMBBlock(Block):
 
         client = create_ayrshare_client()
         if not client:
-            yield "error", "Ayrshare integration is not configured. Please set up the AYRSHARE_API_KEY."
+            yield (
+                "error",
+                "Ayrshare integration is not configured. Please set up the AYRSHARE_API_KEY.",
+            )
             return
 
         # Validate GMB constraints
         if len(input_data.media_urls) > 1:
-            yield "error", "Google My Business supports only one image or video per post"
+            yield (
+                "error",
+                "Google My Business supports only one image or video per post",
+            )
             return
 
         # Validate offer coupon code length

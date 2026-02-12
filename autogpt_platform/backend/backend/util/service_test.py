@@ -154,7 +154,6 @@ class TestDynamicClientConnectionHealing:
                     self._connection_failure_count >= 3
                     and current_time - self._last_client_reset > 30
                 ):
-
                     # Clear cached clients to force recreation on next access
                     if hasattr(self, "sync_client"):
                         delattr(self, "sync_client")
@@ -204,12 +203,12 @@ class TestDynamicClientConnectionHealing:
         sync_after = self.client.sync_client
         async_after = self.client.async_client
 
-        assert (
-            sync_before is sync_after
-        ), "Sync client should not be reset before threshold"
-        assert (
-            async_before is async_after
-        ), "Async client should not be reset before threshold"
+        assert sync_before is sync_after, (
+            "Sync client should not be reset before threshold"
+        )
+        assert async_before is async_after, (
+            "Async client should not be reset before threshold"
+        )
         assert self.client._connection_failure_count == 2
 
     def test_no_reset_within_time_window(self):
@@ -229,12 +228,12 @@ class TestDynamicClientConnectionHealing:
         sync_after = self.client.sync_client
         async_after = self.client.async_client
 
-        assert (
-            sync_before is sync_after
-        ), "Sync client should not be reset within time window"
-        assert (
-            async_before is async_after
-        ), "Async client should not be reset within time window"
+        assert sync_before is sync_after, (
+            "Sync client should not be reset within time window"
+        )
+        assert async_before is async_after, (
+            "Async client should not be reset within time window"
+        )
         assert self.client._connection_failure_count == 3
 
     def test_reset_after_threshold_and_time(self):
@@ -254,15 +253,15 @@ class TestDynamicClientConnectionHealing:
         sync_after = self.client.sync_client
         async_after = self.client.async_client
 
-        assert (
-            sync_before is not sync_after
-        ), "Sync client should be reset after threshold"
-        assert (
-            async_before is not async_after
-        ), "Async client should be reset after threshold"
-        assert (
-            self.client._connection_failure_count == 0
-        ), "Failure count should be reset"
+        assert sync_before is not sync_after, (
+            "Sync client should be reset after threshold"
+        )
+        assert async_before is not async_after, (
+            "Async client should be reset after threshold"
+        )
+        assert self.client._connection_failure_count == 0, (
+            "Failure count should be reset"
+        )
 
     def test_reset_counters_after_healing(self):
         """Test that counters are properly reset after healing"""
@@ -314,9 +313,9 @@ class TestConnectionHealingIntegration:
             time_condition = current_time - last_reset_time > 30
             should_trigger_reset = failure_count >= 3 and time_condition
 
-            assert (
-                should_trigger_reset == should_reset
-            ), f"Time window logic failed for {current_time - last_reset_time} seconds ago"
+            assert should_trigger_reset == should_reset, (
+                f"Time window logic failed for {current_time - last_reset_time} seconds ago"
+            )
 
 
 def test_cached_property_behavior():

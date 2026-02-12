@@ -92,12 +92,12 @@ async def assert_sample_graph_executions(
     logger.info(f"Checking first StoreValueBlock execution: {exec}")
     assert exec.status == execution.ExecutionStatus.COMPLETED
     assert exec.graph_exec_id == graph_exec_id
-    assert (
-        exec.output_data in output_list
-    ), f"Output data: {exec.output_data} and {output_list}"
-    assert (
-        exec.input_data in input_list
-    ), f"Input data: {exec.input_data} and {input_list}"
+    assert exec.output_data in output_list, (
+        f"Output data: {exec.output_data} and {output_list}"
+    )
+    assert exec.input_data in input_list, (
+        f"Input data: {exec.input_data} and {input_list}"
+    )
     assert exec.node_id in [test_graph.nodes[0].id, test_graph.nodes[1].id]
 
     # Executing StoreValueBlock
@@ -105,12 +105,12 @@ async def assert_sample_graph_executions(
     logger.info(f"Checking second StoreValueBlock execution: {exec}")
     assert exec.status == execution.ExecutionStatus.COMPLETED
     assert exec.graph_exec_id == graph_exec_id
-    assert (
-        exec.output_data in output_list
-    ), f"Output data: {exec.output_data} and {output_list}"
-    assert (
-        exec.input_data in input_list
-    ), f"Input data: {exec.input_data} and {input_list}"
+    assert exec.output_data in output_list, (
+        f"Output data: {exec.output_data} and {output_list}"
+    )
+    assert exec.input_data in input_list, (
+        f"Input data: {exec.input_data} and {input_list}"
+    )
     assert exec.node_id in [test_graph.nodes[0].id, test_graph.nodes[1].id]
 
     # Executing FillTextTemplateBlock
@@ -301,7 +301,7 @@ async def test_static_input_link_on_graph(server: SpinTestServer):
     assert len(graph_exec.node_executions) == 8
     # The last 3 executions will be a+b=4+5=9
     for i, exec_data in enumerate(graph_exec.node_executions[-3:]):
-        logger.info(f"Checking execution {i+1} of last 3: {exec_data}")
+        logger.info(f"Checking execution {i + 1} of last 3: {exec_data}")
         assert exec_data.status == execution.ExecutionStatus.COMPLETED
         assert exec_data.output_data == {"result": [9]}
     logger.info("Completed test_static_input_link_on_graph")

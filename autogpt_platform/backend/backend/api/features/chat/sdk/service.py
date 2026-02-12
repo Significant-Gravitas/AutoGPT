@@ -119,7 +119,9 @@ def _cleanup_sdk_tool_results(cwd: str) -> None:
     # Security check 3: Validate project_dir is under ~/.claude/projects
     project_dir = os.path.normpath(project_dir)
     if not project_dir.startswith(claude_projects):
-        logger.warning(f"[SDK] Rejecting cleanup for escaped project path: {project_dir}")
+        logger.warning(
+            f"[SDK] Rejecting cleanup for escaped project path: {project_dir}"
+        )
         return
 
     results_dir = os.path.join(project_dir, "tool-results")
