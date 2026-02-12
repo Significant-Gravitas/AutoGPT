@@ -20,10 +20,8 @@ import jsonref
 import jsonschema
 from pydantic import BaseModel
 
+from backend.data.block import BlockInput, BlockOutput, BlockOutputEntry
 from backend.data.model import (
-    BlockInput,
-    BlockOutput,
-    BlockOutputEntry,
     Credentials,
     CredentialsFieldInfo,
     CredentialsMetaInput,

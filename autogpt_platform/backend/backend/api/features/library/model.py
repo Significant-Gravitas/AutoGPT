@@ -8,8 +8,8 @@ import pydantic
 
 from backend.data.graph import GraphModel, GraphSettings, GraphTriggerInfo
 from backend.data.model import (
-    BlockInput,
     CredentialsMetaInput,
+    GraphInput,
     is_credentials_field_name,
 )
 from backend.util.json import loads as json_loads
@@ -326,7 +326,7 @@ class LibraryAgentPresetCreatable(pydantic.BaseModel):
     graph_id: str
     graph_version: int
 
-    inputs: BlockInput
+    inputs: GraphInput
     credentials: dict[str, CredentialsMetaInput]
 
     name: str
@@ -355,7 +355,7 @@ class LibraryAgentPresetUpdatable(pydantic.BaseModel):
     Request model used when updating a preset for a library agent.
     """
 
-    inputs: Optional[BlockInput] = None
+    inputs: Optional[GraphInput] = None
     credentials: Optional[dict[str, CredentialsMetaInput]] = None
 
     name: Optional[str] = None
@@ -398,7 +398,7 @@ class LibraryAgentPreset(LibraryAgentPresetCreatable):
                 "Webhook must be included in AgentPreset query when webhookId is set"
             )
 
-        input_data: BlockInput = {}
+        input_data: GraphInput = {}
         input_credentials: dict[str, CredentialsMetaInput] = {}
 
         for preset_input in preset.InputPresets:
