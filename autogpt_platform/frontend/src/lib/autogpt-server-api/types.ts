@@ -759,18 +759,6 @@ export enum SpecialBlockID {
   OUTPUT = "363ae599-353e-4804-937e-b2ee3cef3da4",
 }
 
-export type MCPTool = {
-  name: string;
-  description: string;
-  input_schema: Record<string, any>;
-};
-
-export type MCPDiscoverToolsResponse = {
-  tools: MCPTool[];
-  server_name: string | null;
-  protocol_version: string | null;
-};
-
 export type AnalyticsMetrics = {
   metric_name: string;
   metric_value: number;

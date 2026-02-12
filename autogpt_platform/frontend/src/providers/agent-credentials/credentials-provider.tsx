@@ -8,6 +8,7 @@ import {
   HostScopedCredentials,
   UserPasswordCredentials,
 } from "@/lib/autogpt-server-api";
+import { postV2ExchangeOauthCodeForMcpTokens } from "@/app/api/__generated__/endpoints/mcp/mcp";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { toDisplayName } from "@/providers/agent-credentials/helper";
@@ -125,14 +126,18 @@ export default function CredentialsProvider({
     [api, addCredentials, onFailToast],
   );
 
-  /** Wraps `BackendAPI.mcpOAuthCallback`, and adds the result to the internal credentials store. */
+  /** Exchanges an MCP OAuth code for tokens and adds the result to the internal credentials store. */
   const mcpOAuthCallback = useCallback(
     async (
       code: string,
       state_token: string,
     ): Promise<CredentialsMetaResponse> => {
       try {
-        const credsMeta = await api.mcpOAuthCallback(code, state_token);
+        const response = await postV2ExchangeOauthCodeForMcpTokens({
+          code,
+          state_token,
+        });
+        const credsMeta = response.data;
         addCredentials("mcp", credsMeta);
         return credsMeta;
       } catch (error) {
@@ -140,7 +145,7 @@ export default function CredentialsProvider({
         throw error;
       }
     },
-    [api, addCredentials, onFailToast],
+    [addCredentials, onFailToast],
   );
 
   /** Wraps `BackendAPI.createAPIKeyCredentials`, and adds the result to the internal credentials store. */

@@ -5,6 +5,7 @@ import {
   BlockIOCredentialsSubSchema,
   CredentialsMetaInput,
 } from "@/lib/autogpt-server-api/types";
+import { postV2InitiateOauthLoginForAnMcpServer } from "@/app/api/__generated__/endpoints/mcp/mcp";
 import { openOAuthPopup } from "@/lib/oauth-popup";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
@@ -183,9 +184,11 @@ export function useCredentialsInput({
       let state_token: string;
 
       if (isMCP) {
-        ({ login_url, state_token } = await api.mcpOAuthLogin(
-          discriminatorValue!,
-        ));
+        const mcpLoginResponse =
+          await postV2InitiateOauthLoginForAnMcpServer({
+            server_url: discriminatorValue!,
+          });
+        ({ login_url, state_token } = mcpLoginResponse.data);
       } else {
         ({ login_url, state_token } = await api.oAuthLogin(
           provider,

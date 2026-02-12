@@ -21,8 +21,13 @@ import { Label } from "@/components/__legacy__/ui/label";
 import { LoadingSpinner } from "@/components/__legacy__/ui/loading";
 import { Badge } from "@/components/__legacy__/ui/badge";
 import { ScrollArea } from "@/components/__legacy__/ui/scroll-area";
-import { useBackendAPI } from "@/lib/autogpt-server-api/context";
-import type { CredentialsMetaInput, MCPTool } from "@/lib/autogpt-server-api";
+import type { CredentialsMetaInput } from "@/lib/autogpt-server-api";
+import type { MCPToolResponse } from "@/app/api/__generated__/models/mCPToolResponse";
+import {
+  postV2DiscoverAvailableToolsOnAnMcpServer,
+  postV2InitiateOauthLoginForAnMcpServer,
+  postV2ExchangeOauthCodeForMcpTokens,
+} from "@/app/api/__generated__/endpoints/mcp/mcp";
 import { CaretDown } from "@phosphor-icons/react";
 import { openOAuthPopup } from "@/lib/oauth-popup";
 import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
@@ -50,12 +55,11 @@ export function MCPToolDialog({
   onClose,
   onConfirm,
 }: MCPToolDialogProps) {
-  const api = useBackendAPI();
   const allProviders = useContext(CredentialsProvidersContext);
 
   const [step, setStep] = useState<DialogStep>("url");
   const [serverUrl, setServerUrl] = useState("");
-  const [tools, setTools] = useState<MCPTool[]>([]);
+  const [tools, setTools] = useState<MCPToolResponse[]>([]);
   const [serverName, setServerName] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -63,7 +67,7 @@ export function MCPToolDialog({
   const [oauthLoading, setOauthLoading] = useState(false);
   const [showManualToken, setShowManualToken] = useState(false);
   const [manualToken, setManualToken] = useState("");
-  const [selectedTool, setSelectedTool] = useState<MCPTool | null>(null);
+  const [selectedTool, setSelectedTool] = useState<MCPToolResponse | null>(null);
   const [credentials, setCredentials] = useState<CredentialsMetaInput | null>(
     null,
   );
@@ -105,9 +109,13 @@ export function MCPToolDialog({
       setLoading(true);
       setError(null);
       try {
-        const result = await api.mcpDiscoverTools(url, authToken);
-        setTools(result.tools);
-        setServerName(result.server_name);
+        const response =
+          await postV2DiscoverAvailableToolsOnAnMcpServer({
+            server_url: url,
+            auth_token: authToken || null,
+          });
+        setTools(response.data.tools);
+        setServerName(response.data.server_name ?? null);
         setAuthRequired(false);
         setShowManualToken(false);
         setStep("tool");
@@ -130,7 +138,7 @@ export function MCPToolDialog({
         setLoading(false);
       }
     },
-    [api],
+    [],
   );
 
   const handleDiscoverTools = useCallback(() => {
@@ -148,9 +156,10 @@ export function MCPToolDialog({
     setOauthLoading(true);
 
     try {
-      const { login_url, state_token } = await api.mcpOAuthLogin(
-        serverUrl.trim(),
-      );
+      const loginResponse = await postV2InitiateOauthLoginForAnMcpServer({
+        server_url: serverUrl.trim(),
+      });
+      const { login_url, state_token } = loginResponse.data;
 
       const { promise, cleanup } = openOAuthPopup(login_url, {
         stateToken: state_token,
@@ -165,9 +174,19 @@ export function MCPToolDialog({
       setOauthLoading(false);
 
       const mcpProvider = allProviders?.["mcp"];
-      const callbackResult = mcpProvider
-        ? await mcpProvider.mcpOAuthCallback(result.code, state_token)
-        : await api.mcpOAuthCallback(result.code, state_token);
+      let callbackResult;
+      if (mcpProvider) {
+        callbackResult = await mcpProvider.mcpOAuthCallback(
+          result.code,
+          state_token,
+        );
+      } else {
+        const cbResponse = await postV2ExchangeOauthCodeForMcpTokens({
+          code: result.code,
+          state_token,
+        });
+        callbackResult = cbResponse.data;
+      }
 
       setCredentials({
         id: callbackResult.id,
@@ -178,9 +197,12 @@ export function MCPToolDialog({
       setAuthRequired(false);
 
       // Discover tools now that we're authenticated
-      const toolsResult = await api.mcpDiscoverTools(serverUrl.trim());
-      setTools(toolsResult.tools);
-      setServerName(toolsResult.server_name);
+      const toolsResponse =
+        await postV2DiscoverAvailableToolsOnAnMcpServer({
+          server_url: serverUrl.trim(),
+        });
+      setTools(toolsResponse.data.tools);
+      setServerName(toolsResponse.data.server_name ?? null);
       setStep("tool");
     } catch (e: any) {
       // If server doesn't support OAuth → show manual token entry
@@ -210,7 +232,7 @@ export function MCPToolDialog({
       setLoading(false);
       oauthAbortRef.current = null;
     }
-  }, [api, serverUrl, allProviders]);
+  }, [serverUrl, allProviders]);
 
   // Auto-start OAuth sign-in when server returns 401/403
   useEffect(() => {
@@ -398,7 +420,7 @@ function MCPToolCard({
   selected,
   onSelect,
 }: {
-  tool: MCPTool;
+  tool: MCPToolResponse;
   selected: boolean;
   onSelect: () => void;
 }) {
