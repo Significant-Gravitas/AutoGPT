@@ -256,8 +256,8 @@ async def delete_llm_model(
     3. Deletes the model record
     4. Refreshes all caches and notifies executors
 
-    Example: DELETE /admin/llm/models/{id}?replacement_model_slug=gpt-4o
-    Example (no usage): DELETE /admin/llm/models/{id}
+    Example: DELETE /api/llm/admin/models/{id}?replacement_model_slug=gpt-4o
+    Example (no usage): DELETE /api/llm/admin/models/{id}
     """
     try:
         result = await llm_db.delete_model(

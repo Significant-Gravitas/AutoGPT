@@ -457,7 +457,7 @@ async def llm_call(
         result = await compress_context(
             messages=prompt,
             target_tokens=context_window // 2,
-            lossy_ok=True,
+            client=None,  # Truncation-only, no LLM summarization
         )
         if result.error:
             logger.warning(
