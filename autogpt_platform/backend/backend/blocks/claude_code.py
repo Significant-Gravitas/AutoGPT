@@ -258,6 +258,8 @@ class ClaudeCodeBlock(Block):
                             "relative_path": "index.html",
                             "name": "index.html",
                             "content": "<html>Hello World</html>",
+                            "is_binary": False,
+                            "content_base64": None,
                         }
                     ],
                 ),
@@ -278,6 +280,8 @@ class ClaudeCodeBlock(Block):
                             relative_path="index.html",
                             name="index.html",
                             content="<html>Hello World</html>",
+                            is_binary=False,
+                            content_base64=None,
                         )
                     ],  # files
                     "User: Create a hello world HTML file\n"
@@ -546,6 +550,7 @@ class ClaudeCodeBlock(Block):
             ".tex",
             ".csv",
             ".log",
+            ".svg",  # SVG is XML-based text
         }
 
         # Binary file extensions we can read and base64-encode
@@ -556,7 +561,6 @@ class ClaudeCodeBlock(Block):
             ".jpeg",
             ".gif",
             ".webp",
-            ".svg",
             ".ico",
             ".bmp",
             ".tiff",
@@ -608,14 +612,15 @@ class ClaudeCodeBlock(Block):
                     if not file_path:
                         continue
 
-                    # Check if it's a text file we can read
+                    # Check if it's a text file we can read (case-insensitive)
+                    file_path_lower = file_path.lower()
                     is_text = any(
-                        file_path.endswith(ext) for ext in text_extensions
+                        file_path_lower.endswith(ext) for ext in text_extensions
                     ) or file_path.endswith("Dockerfile")
 
                     # Check if it's a binary file we should extract
                     is_binary = any(
-                        file_path.lower().endswith(ext) for ext in binary_extensions
+                        file_path_lower.endswith(ext) for ext in binary_extensions
                     )
 
                     if is_text:
