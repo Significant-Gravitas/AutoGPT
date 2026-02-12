@@ -166,7 +166,7 @@ jobs:
         env:
           NEXT_PUBLIC_PW_TEST: true
 
-      - name: Set up Platform - Run (docker compose up)
+      - name: Set up Platform - Start (docker compose up)
         run: docker compose -f ../docker-compose.resolved.yml up -d --no-build
         env:
           NEXT_PUBLIC_PW_TEST: true
