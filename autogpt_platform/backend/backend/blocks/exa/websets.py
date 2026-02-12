@@ -1267,7 +1267,9 @@ class ExaWebsetSummaryBlock(Block):
                         (
                             e.format.value
                             if e.format and hasattr(e.format, "value")
-                            else str(e.format) if e.format else "text"
+                            else str(e.format)
+                            if e.format
+                            else "text"
                         )
                         for e in enrichments
                     )

@@ -168,7 +168,9 @@ def async_error_logged() -> Callable[
 ]: ...
 
 
-def async_error_logged(*, swallow: bool = True) -> (
+def async_error_logged(
+    *, swallow: bool = True
+) -> (
     Callable[
         [Callable[P, Coroutine[Any, Any, T]]],
         Callable[P, Coroutine[Any, Any, T | None]],
