@@ -232,10 +232,8 @@ class RunBlockTool(BaseTool):
         required_non_credential_keys = required_keys - credentials_fields
         provided_input_keys = set(input_data.keys()) - credentials_fields
 
-        # Show details when there are required non-credential inputs and none are provided
-        if required_non_credential_keys and not (
-            required_non_credential_keys & provided_input_keys
-        ):
+        # Show details when not all required non-credential inputs are provided
+        if not (required_non_credential_keys <= provided_input_keys):
             # Get credentials info for the response
             credentials_meta = []
             for field_name, cred_meta in matched_credentials.items():
