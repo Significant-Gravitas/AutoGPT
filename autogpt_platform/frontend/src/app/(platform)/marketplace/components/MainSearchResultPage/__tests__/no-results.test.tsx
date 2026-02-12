@@ -6,7 +6,7 @@ import { http, HttpResponse } from "msw";
 
 const defaultProps = {
   searchTerm: "nonexistent-search-term-xyz",
-  sort: undefined,
+  sort: "runs" as const,
 };
 
 describe("MainSearchResultPage - No Results", () => {

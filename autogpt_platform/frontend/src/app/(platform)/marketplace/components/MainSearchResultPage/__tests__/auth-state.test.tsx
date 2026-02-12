@@ -9,7 +9,7 @@ import {
 
 const defaultProps = {
   searchTerm: "test-search",
-  sort: undefined,
+  sort: "runs" as const,
 };
 
 describe("MainSearchResultPage - Auth State", () => {

@@ -22,7 +22,6 @@ test.describe("Marketplace Agent Page - Cross-Page Flows", () => {
     const richUser = getTestUserWithLibraryAgents();
     await loginPage.login(richUser.email, richUser.password);
     await hasUrl(page, "/marketplace");
-    await marketplacePage.goto(page);
 
     const firstStoreCard = await marketplacePage.getFirstTopAgent();
     await firstStoreCard.click();

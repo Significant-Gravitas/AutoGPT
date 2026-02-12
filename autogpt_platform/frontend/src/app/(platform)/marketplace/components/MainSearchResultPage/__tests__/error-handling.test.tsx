@@ -10,7 +10,7 @@ import { create500Handler } from "@/tests/integrations/helpers/create-500-handle
 
 const defaultProps = {
   searchTerm: "test-search",
-  sort: undefined,
+  sort: "runs" as const,
 };
 
 describe("MainSearchResultPage - Error Handling", () => {
