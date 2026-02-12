@@ -1053,6 +1053,7 @@
                       "$ref": "#/components/schemas/ClarificationNeededResponse"
                     },
                     { "$ref": "#/components/schemas/BlockListResponse" },
+                    { "$ref": "#/components/schemas/BlockDetailsResponse" },
                     { "$ref": "#/components/schemas/BlockOutputResponse" },
                     { "$ref": "#/components/schemas/DocSearchResultsResponse" },
                     { "$ref": "#/components/schemas/DocPageResponse" },
@@ -6957,6 +6958,58 @@
         "type": "string",
         "enum": ["run", "byte", "second"],
         "title": "BlockCostType"
+      },
+      "BlockDetails": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "name": { "type": "string", "title": "Name" },
+          "description": { "type": "string", "title": "Description" },
+          "inputs": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Inputs",
+            "default": {}
+          },
+          "outputs": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Outputs",
+            "default": {}
+          },
+          "credentials": {
+            "items": { "$ref": "#/components/schemas/CredentialsMetaInput" },
+            "type": "array",
+            "title": "Credentials",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": ["id", "name", "description"],
+        "title": "BlockDetails",
+        "description": "Detailed block information."
+      },
+      "BlockDetailsResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "block_details"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "block": { "$ref": "#/components/schemas/BlockDetails" },
+          "user_authenticated": {
+            "type": "boolean",
+            "title": "User Authenticated",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": ["message", "block"],
+        "title": "BlockDetailsResponse",
+        "description": "Response for block details (first run_block attempt)."
       },
       "BlockInfo": {
         "properties": {
