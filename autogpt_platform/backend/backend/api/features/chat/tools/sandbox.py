@@ -133,6 +133,9 @@ def _build_bwrap_command(
     """
     cmd = [
         "bwrap",
+        # Create a new user namespace so bwrap can set up sandboxing
+        # inside unprivileged Docker containers (no CAP_SYS_ADMIN needed).
+        "--unshare-user",
         # Wipe all inherited environment variables (API keys, secrets, etc.)
         "--clearenv",
     ]
@@ -164,17 +167,18 @@ def _build_bwrap_command(
 
     cmd.extend(
         [
-            # Writable workspace only
-            "--bind",
-            cwd,
-            cwd,
             # Fresh virtual filesystems
             "--dev",
             "/dev",
             "--proc",
             "/proc",
-            "--tmpdir",
+            "--tmpfs",
             "/tmp",
+            # Workspace bind AFTER --tmpfs /tmp so it's visible through the tmpfs.
+            # (workspace lives under /tmp/copilot-<session>)
+            "--bind",
+            cwd,
+            cwd,
             # Isolation
             "--unshare-net",
             "--die-with-parent",
