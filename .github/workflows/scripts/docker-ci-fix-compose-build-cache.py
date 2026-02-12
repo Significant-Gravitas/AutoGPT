@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Generate a docker-compose.ci.yml with cache configuration for all services
-that have a build key in the source compose file.
+Add cache configuration to a resolved docker-compose file for all services
+that have a build key.
 """
 
 import argparse
@@ -11,26 +11,21 @@ import yaml
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Generate docker-compose cache override file"
+        description="Add cache config to a resolved compose file"
     )
     parser.add_argument(
         "--source",
-        default="docker-compose.platform.yml",
-        help="Source compose file to read (default: docker-compose.platform.yml)",
-    )
-    parser.add_argument(
-        "--output",
-        default="docker-compose.ci.yml",
-        help="Output compose file to write (default: docker-compose.ci.yml)",
+        required=True,
+        help="Source compose file to read (should be output of `docker compose config`)",
     )
     parser.add_argument(
         "--cache-from",
-        default="type=local,src=/tmp/.buildx-cache",
+        default="type=gha",
         help="Cache source configuration",
     )
     parser.add_argument(
         "--cache-to",
-        default="type=local,dest=/tmp/.buildx-cache-new,mode=max",
+        default="type=gha,mode=max",
         help="Cache destination configuration",
     )
     parser.add_argument(
@@ -48,7 +43,7 @@ def main():
     with open(args.source, "r") as f:
         compose = yaml.safe_load(f)
 
-    ci_compose = {"services": {}}
+    modified_services = []
     for service_name, service_config in compose.get("services", {}).items():
         if "build" not in service_config:
             continue
@@ -73,19 +68,16 @@ def main():
                 if "type=gha" in args.cache_to:
                     cache_to = f"{args.cache_to},scope={scope}"
 
-        ci_compose["services"][service_name] = {
-            "build": {
-                "cache_from": [cache_from],
-                "cache_to": [cache_to],
-            }
-        }
+        service_config["build"]["cache_from"] = [cache_from]
+        service_config["build"]["cache_to"] = [cache_to]
+        modified_services.append(service_name)
 
-    with open(args.output, "w") as f:
-        yaml.dump(ci_compose, f, default_flow_style=False)
+    # Write back to the same file
+    with open(args.source, "w") as f:
+        yaml.dump(compose, f, default_flow_style=False, sort_keys=False)
 
-    services = list(ci_compose["services"].keys())
-    print(f"Generated {args.output} with cache config for {len(services)} services:")
-    for svc in services:
+    print(f"Added cache config to {len(modified_services)} services in {args.source}:")
+    for svc in modified_services:
         print(f"  - {svc}")
 
 

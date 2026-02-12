@@ -172,21 +172,27 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
         with:
+          driver: docker-container
           driver-opts: network=host
 
       - name: Build Docker images with cache
         working-directory: autogpt_platform
         run: |
           pip install pyyaml
-          python ../.github/workflows/scripts/generate-docker-ci-compose.py \
-            --source docker-compose.platform.yml \
-            --output docker-compose.ci.yml \
+
+          # Resolve extends and generate a flat compose file that bake can understand
+          docker compose -f docker-compose.yml config > docker-compose.resolved.yml
+
+          # Add cache configuration to the resolved compose file
+          python ../.github/workflows/scripts/docker-ci-fix-compose-build-cache.py \
+            --source docker-compose.resolved.yml \
             --cache-from "type=gha" \
             --cache-to "type=gha,mode=max" \
             --backend-scope "platform-backend-${{ hashFiles('autogpt_platform/backend/Dockerfile', 'autogpt_platform/backend/poetry.lock', 'autogpt_platform/backend/backend') }}" \
             --frontend-scope "platform-frontend-${{ hashFiles('autogpt_platform/frontend/Dockerfile', 'autogpt_platform/frontend/pnpm-lock.yaml', 'autogpt_platform/frontend/src') }}"
 
-          docker buildx bake --allow=fs.read=.. -f docker-compose.yml -f docker-compose.ci.yml --load
+          # Build with bake using the resolved compose file (now includes cache config)
+          docker buildx bake --allow=fs.read=.. -f docker-compose.resolved.yml --load
         env:
           NEXT_PUBLIC_PW_TEST: true
 
