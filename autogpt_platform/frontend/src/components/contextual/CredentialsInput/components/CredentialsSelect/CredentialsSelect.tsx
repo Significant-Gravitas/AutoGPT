@@ -1,5 +1,4 @@
 import { CredentialsMetaInput } from "@/app/api/__generated__/models/credentialsMetaInput";
-import { useEffect, useRef } from "react";
 import { getCredentialDisplayName } from "../../helpers";
 import { CredentialRow } from "../CredentialRow/CredentialRow";
 
@@ -42,23 +41,17 @@ export function CredentialsSelect({
     }
   }
 
-  // Resolve the selected credential — treat stale/deleted IDs as unselected
   const selectedCredential = selectedCredentials
     ? credentials.find((c) => c.id === selectedCredentials.id)
     : null;
 
-  // When credentials exist and nothing is matched,
-  // default to the first credential instead of "None"
-  const effectiveCredential =
-    selectedCredential ?? (credentials.length > 0 ? credentials[0] : null);
-
-  const displayCredential = effectiveCredential
+  const displayCredential = selectedCredential
     ? {
-        id: effectiveCredential.id,
-        title: effectiveCredential.title,
-        username: effectiveCredential.username,
-        type: effectiveCredential.type,
-        provider: effectiveCredential.provider,
+        id: selectedCredential.id,
+        title: selectedCredential.title,
+        username: selectedCredential.username,
+        type: selectedCredential.type,
+        provider: selectedCredential.provider,
       }
     : allowNone
       ? {
@@ -74,37 +67,16 @@ export function CredentialsSelect({
           provider: provider,
         };
 
-  // Use matched credential ID (not the raw selectedCredentials.id which may be stale)
-  const defaultValue =
-    effectiveCredential?.id ??
-    (credentials.length > 0 ? credentials[0].id : "__none__");
-
-  // Notify parent when defaulting to a credential so the value is captured on submit
-  const hasNotifiedDefault = useRef(false);
-  useEffect(() => {
-    if (hasNotifiedDefault.current) return;
-    if (selectedCredential) return; // Already matched — no need to override
-    if (credentials.length > 0) {
-      hasNotifiedDefault.current = true;
-      onSelectCredential(credentials[0].id);
-    }
-  }, [credentials, selectedCredential, onSelectCredential]);
-
   return (
     <div className="mb-4 w-full">
       <div className="relative">
         <select
-          value={defaultValue}
+          value={selectedCredentials?.id ?? "__none__"}
           onChange={handleValueChange}
           disabled={readOnly}
           className="absolute inset-0 z-10 cursor-pointer opacity-0"
           aria-label={`Select ${displayName} credential`}
         >
-          {credentials.map((credential) => (
-            <option key={credential.id} value={credential.id}>
-              {getCredentialDisplayName(credential, displayName)}
-            </option>
-          ))}
           {allowNone ? (
             <option value="__none__">None (skip this credential)</option>
           ) : (
@@ -112,6 +84,11 @@ export function CredentialsSelect({
               Select a credential
             </option>
           )}
+          {credentials.map((credential) => (
+            <option key={credential.id} value={credential.id}>
+              {getCredentialDisplayName(credential, displayName)}
+            </option>
+          ))}
         </select>
         <div className="rounded-medium border border-zinc-200 bg-white">
           <CredentialRow

@@ -13,7 +13,7 @@ import { BlockUIType, SpecialBlockID } from "@/lib/autogpt-server-api";
 import {
   MCPToolDialog,
   type MCPToolDialogResult,
-} from "@/app/(platform)/build/components/legacy-builder/MCPToolDialog";
+} from "@/app/(platform)/build/components/MCPToolDialog";
 
 interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   title?: string;

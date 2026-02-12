@@ -215,26 +215,6 @@ export const CustomNode = React.memo(
       }
     }
 
-    // MCP Tool block: display the selected tool's dynamic schema
-    const isMCPWithTool =
-      data.uiType === BlockUIType.MCP_TOOL &&
-      !!data.hardcodedValues?.tool_input_schema?.properties;
-
-    if (isMCPWithTool) {
-      // Show only the tool's input parameters. Credentials are NOT included
-      // because authentication is handled by the MCP dialog's OAuth flow
-      // and stored server-side.
-      const toolSchema = data.hardcodedValues.tool_input_schema;
-
-      data.inputSchema = {
-        type: "object",
-        properties: {
-          ...(toolSchema.properties ?? {}),
-        },
-        required: [...(toolSchema.required ?? [])],
-      } as BlockIORootSchema;
-    }
-
     const setHardcodedValues = useCallback(
       (values: any) => {
         updateNodeData(id, { hardcodedValues: values });
@@ -395,9 +375,7 @@ export const CustomNode = React.memo(
 
     const displayTitle =
       customTitle ||
-      (isMCPWithTool
-        ? `${data.hardcodedValues.server_name || "MCP"}: ${beautifyString(data.hardcodedValues.selected_tool || "")}`
-        : beautifyString(data.blockType?.replace(/Block$/, "") || data.title));
+      beautifyString(data.blockType?.replace(/Block$/, "") || data.title);
 
     useEffect(() => {
       isInitialSetup.current = false;
@@ -411,15 +389,6 @@ export const CustomNode = React.memo(
             data.inputSchema,
           ),
         });
-      } else if (isMCPWithTool) {
-        // MCP dialog already configured server_url, selected_tool, etc.
-        // Just ensure tool_arguments is initialized.
-        if (!data.hardcodedValues.tool_arguments) {
-          setHardcodedValues({
-            ...data.hardcodedValues,
-            tool_arguments: {},
-          });
-        }
       } else {
         setHardcodedValues(
           fillObjectDefaultsFromSchema(data.hardcodedValues, data.inputSchema),
@@ -556,11 +525,8 @@ export const CustomNode = React.memo(
           );
 
         default:
-          const getInputPropKey = (key: string) => {
-            if (nodeType == BlockUIType.AGENT) return `inputs.${key}`;
-            if (isMCPWithTool) return `tool_arguments.${key}`;
-            return key;
-          };
+          const getInputPropKey = (key: string) =>
+            nodeType == BlockUIType.AGENT ? `inputs.${key}` : key;
 
           return keys.map(([propKey, propSchema]) => {
             const isRequired = data.inputSchema.required?.includes(propKey);
