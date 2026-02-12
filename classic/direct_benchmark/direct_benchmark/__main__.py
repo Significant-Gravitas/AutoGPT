@@ -57,7 +57,10 @@ def cli():
     "--models",
     "-m",
     default=None,
-    help=f"Comma-separated model presets. Auto-detects from API keys if not specified. Available: {', '.join(MODEL_PRESETS.keys())}",
+    help=(
+        "Comma-separated model presets. Auto-detects from API keys if not specified. "
+        f"Available: {', '.join(MODEL_PRESETS.keys())}"
+    ),
 )
 @click.option(
     "--categories",
