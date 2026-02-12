@@ -183,73 +183,58 @@ class BlockHandler(ContentHandler):
         ]
 
         # Convert to ContentItem
+        from backend.blocks.llm import LlmModel
+
         items = []
         for block_id, block_cls in missing_blocks[:batch_size]:
             try:
                 block_instance = block_cls()
 
-                # Skip disabled blocks - they shouldn't be indexed
                 if block_instance.disabled:
                     continue
 
                 # Build searchable text from block metadata
                 parts = []
-                if hasattr(block_instance, "name") and block_instance.name:
+                if block_instance.name:
                     parts.append(block_instance.name)
-                if (
-                    hasattr(block_instance, "description")
-                    and block_instance.description
-                ):
+                if block_instance.description:
                     parts.append(block_instance.description)
-                if hasattr(block_instance, "categories") and block_instance.categories:
-                    # Convert BlockCategory enum to strings
+                if block_instance.categories:
                     parts.append(
                         " ".join(str(cat.value) for cat in block_instance.categories)
                     )
 
-                # Add input/output schema info
-                if hasattr(block_instance, "input_schema"):
-                    schema = block_instance.input_schema
-                    if hasattr(schema, "model_json_schema"):
-                        schema_dict = schema.model_json_schema()
-                        if "properties" in schema_dict:
-                            for prop_name, prop_info in schema_dict[
-                                "properties"
-                            ].items():
-                                if "description" in prop_info:
-                                    parts.append(
-                                        f"{prop_name}: {prop_info['description']}"
-                                    )
+                # Add input schema field descriptions
+                schema_dict = block_instance.input_schema.model_json_schema()
+                if "properties" in schema_dict:
+                    for prop_name, prop_info in schema_dict["properties"].items():
+                        if "description" in prop_info:
+                            parts.append(f"{prop_name}: {prop_info['description']}")
 
                 searchable_text = " ".join(parts)
 
-                # Convert categories set of enums to list of strings for JSON serialization
-                categories = getattr(block_instance, "categories", set())
                 categories_list = (
-                    [cat.value for cat in categories] if categories else []
+                    [cat.value for cat in block_instance.categories]
+                    if block_instance.categories
+                    else []
                 )
 
                 # Extract provider names from credentials fields
                 provider_names: list[str] = []
-                is_integration = False
-                if hasattr(block_instance, "input_schema"):
-                    credentials_info = (
-                        block_instance.input_schema.get_credentials_fields_info()
-                    )
-                    is_integration = len(credentials_info) > 0
-                    for info in credentials_info.values():
-                        for provider in info.provider:
-                            provider_names.append(provider.value.lower())
+                credentials_info = (
+                    block_instance.input_schema.get_credentials_fields_info()
+                )
+                is_integration = len(credentials_info) > 0
+                for info in credentials_info.values():
+                    for provider in info.provider:
+                        provider_names.append(provider.value.lower())
 
                 # Check if block has LlmModel field in input schema
                 has_llm_model_field = False
-                if hasattr(block_instance, "input_schema"):
-                    from backend.blocks.llm import LlmModel
-
-                    for field in block_instance.input_schema.model_fields.values():
-                        if field.annotation == LlmModel:
-                            has_llm_model_field = True
-                            break
+                for field in block_instance.input_schema.model_fields.values():
+                    if field.annotation == LlmModel:
+                        has_llm_model_field = True
+                        break
 
                 items.append(
                     ContentItem(
@@ -257,7 +242,7 @@ class BlockHandler(ContentHandler):
                         content_type=ContentType.BLOCK,
                         searchable_text=searchable_text,
                         metadata={
-                            "name": getattr(block_instance, "name", ""),
+                            "name": block_instance.name,
                             "categories": categories_list,
                             "providers": provider_names,
                             "has_llm_model_field": has_llm_model_field,

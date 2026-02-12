@@ -388,7 +388,13 @@ async def _hybrid_search_blocks(
     Search blocks using hybrid search with builder-specific filtering.
 
     Uses unified_hybrid_search for semantic + lexical search, then applies
-    post-filtering for block/integration types and LLM model bonus scoring.
+    post-filtering for block/integration types and scoring adjustments.
+
+    Scoring:
+        - Base: hybrid relevance score (0-1) scaled to 0-100, plus BLOCK_SCORE_BOOST
+          to prioritize blocks over marketplace agents in combined results
+        - +30 for exact name match, +15 for prefix name match
+        - +20 if the block has an LlmModel field and the query matches an LLM model name
 
     Args:
         query: The search query string
@@ -604,6 +610,8 @@ async def _get_static_counts():
         block: AnyBlockSchema = block_type()
         if block.disabled:
             continue
+        if block.id in EXCLUDED_BLOCK_IDS:
+            continue
 
         all_blocks += 1
 
@@ -757,8 +765,9 @@ async def get_suggested_blocks(count: int = 5) -> list[BlockInfo]:
     )
 
     # Get the top blocks based on execution count
-    # But ignore Input and Output blocks
+    # But ignore Input, Output, Agent, and excluded blocks
     blocks: list[tuple[BlockInfo, int]] = []
+    execution_counts = {row["block_id"]: row["execution_count"] for row in results}
 
     for block_type in load_all_blocks().values():
         block: AnyBlockSchema = block_type()
@@ -768,11 +777,9 @@ async def get_suggested_blocks(count: int = 5) -> list[BlockInfo]:
             backend.data.block.BlockType.AGENT,
         ):
             continue
-        # Find the execution count for this block
-        execution_count = next(
-            (row["execution_count"] for row in results if row["block_id"] == block.id),
-            0,
-        )
+        if block.id in EXCLUDED_BLOCK_IDS:
+            continue
+        execution_count = execution_counts.get(block.id, 0)
         blocks.append((block.get_info(), execution_count))
     # Sort blocks by execution count
     blocks.sort(key=lambda x: x[1], reverse=True)
