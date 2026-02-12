@@ -3,8 +3,14 @@
 import type { ToolUIPart } from "ai";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
-import { ContentMessage } from "../../components/ToolAccordion/AccordionContent";
 import {
+  ContentGrid,
+  ContentHint,
+  ContentMessage,
+} from "../../components/ToolAccordion/AccordionContent";
+import { MiniGame } from "../CreateAgent/components/MiniGame/MiniGame";
+import {
+  AccordionIcon,
   getAccordionMeta,
   getAnimationText,
   getRunAgentToolOutput,
@@ -59,6 +65,21 @@ export function RunAgentTool({ part }: Props) {
           className={isError ? "text-red-500" : undefined}
         />
       </div>
+
+      {isStreaming && !output && (
+        <ToolAccordion
+          icon={<AccordionIcon />}
+          title="Running agent, this may take a moment..."
+          expanded
+        >
+          <ContentGrid>
+            <MiniGame />
+            <ContentHint>
+              This could take a few minutes — play while you wait!
+            </ContentHint>
+          </ContentGrid>
+        </ToolAccordion>
+      )}
 
       {hasExpandableContent && output && (
         <ToolAccordion {...getAccordionMeta(output)}>
