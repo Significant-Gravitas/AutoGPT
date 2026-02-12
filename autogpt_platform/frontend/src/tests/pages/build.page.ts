@@ -27,7 +27,7 @@ export class BuildPage extends BasePage {
       await this.page
         .getByRole("button", { name: "Skip Tutorial", exact: true })
         .click({ timeout: 3000 });
-    } catch (_error) {
+    } catch (error) {
       console.info("Tutorial not shown or already dismissed");
     }
   }
