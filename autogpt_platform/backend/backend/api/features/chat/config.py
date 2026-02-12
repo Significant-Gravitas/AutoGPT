@@ -108,7 +108,7 @@ class ChatConfig(BaseSettings):
         "Increase if tool outputs exceed the limit.",
     )
     claude_agent_max_subtasks: int = Field(
-        default=3,
+        default=10,
         description="Max number of sub-agent Tasks the SDK can spawn per session.",
     )
 
