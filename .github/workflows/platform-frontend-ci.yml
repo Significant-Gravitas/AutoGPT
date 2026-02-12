@@ -175,6 +175,9 @@ jobs:
           driver: docker-container
           driver-opts: network=host
 
+      - name: Expose GitHub Actions cache env vars
+        uses: crazy-max/ghaction-github-runtime@v3
+
       - name: Build Docker images with cache
         working-directory: autogpt_platform
         run: |
