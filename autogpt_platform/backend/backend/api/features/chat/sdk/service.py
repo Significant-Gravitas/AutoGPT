@@ -112,7 +112,10 @@ def _make_sdk_cwd(session_id: str) -> str:
     assertion.
     """
     cwd = make_session_path(session_id)
-    assert cwd.startswith("/tmp/copilot-"), f"Path validation failed: {cwd}"
+    # Defence-in-depth: normpath + startswith is a CodeQL-recognised sanitizer
+    cwd = os.path.normpath(cwd)
+    if not cwd.startswith(_SDK_CWD_PREFIX):
+        raise ValueError(f"SDK cwd escaped prefix: {cwd}")
     return cwd
 
 

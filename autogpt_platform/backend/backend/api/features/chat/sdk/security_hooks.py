@@ -167,8 +167,11 @@ def _validate_bash_command(
     if "$(" in command or "`" in command:
         return _deny("Command substitution ($() or ``) is not allowed in Bash.")
 
-    # Block output redirection — Bash should be read-only
-    if re.search(r"(?<!\d)>{1,2}\s", command):
+    # Block output redirection — Bash should be read-only.
+    # Strip quoted strings first so `jq '.x > 5'` isn't a false positive,
+    # then check for unquoted > or >> (with or without surrounding spaces).
+    unquoted = re.sub(r"'[^']*'|\"[^\"]*\"", "", command)
+    if re.search(r"(?<![0-9&])>{1,2}", unquoted):
         return _deny("Output redirection (> or >>) is not allowed in Bash.")
 
     # Block /dev/ access (e.g., /dev/tcp for network)
