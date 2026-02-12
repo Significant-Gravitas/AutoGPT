@@ -90,7 +90,7 @@ def main():
 
         build_config = service_config["build"]
         dockerfile = build_config.get("dockerfile", "Dockerfile")
-        target = build_config.get("target", "default")
+        target = build_config.get("target", "latest")
         image_name = get_image_name(dockerfile, target)
 
         # Set image name for all services (needed for both builders and deduped)
@@ -105,17 +105,20 @@ def main():
         cache_from = args.cache_from
         cache_to = args.cache_to
 
-        # Determine scope based on Dockerfile path
+        # Determine scope based on Dockerfile path and target
+        # Each unique (dockerfile, target) combination gets its own cache scope
         if "type=gha" in args.cache_from or "type=gha" in args.cache_to:
             if "frontend" in dockerfile:
-                scope = args.frontend_scope
+                base_scope = args.frontend_scope
             elif "backend" in dockerfile:
-                scope = args.backend_scope
+                base_scope = args.backend_scope
             else:
                 # Skip services that don't clearly match frontend/backend
                 continue
 
-            if scope:
+            if base_scope:
+                # Append target to scope to differentiate e.g. migrate vs server
+                scope = f"{base_scope}-{target}"
                 if "type=gha" in args.cache_from:
                     cache_from = f"{args.cache_from},scope={scope}"
                 if "type=gha" in args.cache_to:
@@ -131,13 +134,20 @@ def main():
 
     print(f"Added cache config to {len(modified_services)} services in {args.source}:")
     for svc in modified_services:
+        svc_config = compose["services"][svc]
+        build_cfg = svc_config.get("build", {})
+        cache_from_val = build_cfg.get("cache_from", ["none"])[0]
+        cache_to_val = build_cfg.get("cache_to", ["none"])[0]
         print(f"  - {svc}")
+        print(f"      image: {svc_config.get('image', 'N/A')}")
+        print(f"      cache_from: {cache_from_val}")
+        print(f"      cache_to: {cache_to_val}")
     if services_to_dedupe:
         print(
             f"Deduplicated {len(services_to_dedupe)} services (will use pre-built images):"
         )
         for svc in services_to_dedupe:
-            print(f"  - {svc}")
+            print(f"  - {svc} -> {compose['services'][svc].get('image', 'N/A')}")
 
 
 if __name__ == "__main__":
