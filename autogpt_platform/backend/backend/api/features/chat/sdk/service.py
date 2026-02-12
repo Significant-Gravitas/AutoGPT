@@ -15,7 +15,6 @@ from ..config import ChatConfig
 from ..model import (
     ChatMessage,
     ChatSession,
-    Usage,
     get_chat_session,
     update_session_title,
     upsert_chat_session,
@@ -28,7 +27,6 @@ from ..response_model import (
     StreamTextDelta,
     StreamToolInputAvailable,
     StreamToolOutputAvailable,
-    StreamUsage,
 )
 from ..service import _build_system_prompt, _generate_session_title
 from ..tracking import track_user_message
@@ -373,7 +371,7 @@ async def stream_chat_completion_sdk(
             sdk_model = _resolve_sdk_model()
 
             # Initialize Langfuse tracing (no-op if not configured)
-            tracer = TracedSession(session_id, user_id, system_prompt, model=sdk_model)
+            tracer = TracedSession(session_id, user_id, system_prompt)
 
             # Merge security hooks with optional tracing hooks
             security_hooks = create_security_hooks(user_id, sdk_cwd=sdk_cwd)
@@ -387,9 +385,8 @@ async def stream_chat_completion_sdk(
                 hooks=combined_hooks,  # type: ignore[arg-type]
                 cwd=sdk_cwd,
                 max_buffer_size=config.claude_agent_max_buffer_size,
-                # Only pass model/env/budget when OpenRouter is configured
+                # Only pass model/env when OpenRouter is configured
                 **({"model": sdk_model, "env": sdk_env} if sdk_env else {}),
-                max_budget_usd=config.claude_agent_max_budget_usd,
             )
 
             adapter = SDKResponseAdapter(message_id=message_id)
@@ -442,19 +439,6 @@ async def stream_chat_completion_sdk(
                     tracer.log_sdk_message(sdk_msg)
                     for response in adapter.convert_message(sdk_msg):
                         if isinstance(response, StreamStart):
-                            continue
-
-                        # Persist usage but don't yield to the client —
-                        # the AI SDK schema has no "usage" event type and
-                        # z.strictObject validation would reject it.
-                        if isinstance(response, StreamUsage):
-                            session.usage.append(
-                                Usage(
-                                    prompt_tokens=response.promptTokens,
-                                    completion_tokens=response.completionTokens,
-                                    total_tokens=response.totalTokens,
-                                )
-                            )
                             continue
 
                         yield response

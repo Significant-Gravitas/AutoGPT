@@ -102,11 +102,6 @@ class ChatConfig(BaseSettings):
         description="Model for the Claude Agent SDK path. If None, derives from "
         "the `model` field by stripping the OpenRouter provider prefix.",
     )
-    claude_agent_max_budget_usd: float | None = Field(
-        default=None,
-        gt=0,
-        description="Max budget in USD per Claude Agent SDK session (None = unlimited)",
-    )
     claude_agent_max_buffer_size: int = Field(
         default=10 * 1024 * 1024,  # 10MB (default SDK is 1MB)
         description="Max buffer size in bytes for Claude Agent SDK JSON message parsing. "

@@ -10,6 +10,8 @@ import uuid
 from collections.abc import AsyncGenerator
 from typing import Any, cast
 
+import anthropic
+
 from ..config import ChatConfig
 from ..model import ChatMessage, ChatSession
 from ..response_model import (
@@ -22,7 +24,6 @@ from ..response_model import (
     StreamToolInputAvailable,
     StreamToolInputStart,
     StreamToolOutputAvailable,
-    StreamUsage,
 )
 from .tool_adapter import get_tool_definitions, get_tool_handlers
 
@@ -43,8 +44,6 @@ async def stream_with_anthropic(
     This function accumulates messages into the session for persistence.
     The caller should NOT yield an additional StreamFinish - this function handles it.
     """
-    import anthropic
-
     # Use config.api_key (CHAT_API_KEY > OPEN_ROUTER_API_KEY > OPENAI_API_KEY)
     # with config.base_url for OpenRouter routing — matching the non-SDK path.
     api_key = config.api_key
@@ -229,12 +228,6 @@ async def stream_with_anthropic(
                             ChatMessage(role="assistant", content=accumulated_text)
                         )
 
-                    yield StreamUsage(
-                        promptTokens=final_message.usage.input_tokens,
-                        completionTokens=final_message.usage.output_tokens,
-                        totalTokens=final_message.usage.input_tokens
-                        + final_message.usage.output_tokens,
-                    )
                     yield StreamFinish()
                     return
 
