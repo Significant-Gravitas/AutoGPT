@@ -23,6 +23,9 @@ import { useCopyPaste } from "./useCopyPaste";
 import { useFlow } from "./useFlow";
 import { useFlowRealtime } from "./useFlowRealtime";
 
+import "@xyflow/react/dist/style.css";
+import "./flow.css";
+
 export const Flow = () => {
   const [{ flowID, flowExecutionID }] = useQueryStates({
     flowID: parseAsString,
