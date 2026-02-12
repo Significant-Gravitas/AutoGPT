@@ -10,7 +10,7 @@ from backend.api.features.chat.tools.find_block import (
     FindBlockTool,
 )
 from backend.api.features.chat.tools.models import BlockListResponse
-from backend.data.block import BlockType
+from backend.blocks._base import BlockType
 
 from ._test_data import make_session
 

@@ -3,7 +3,7 @@ from collections import defaultdict
 from enum import Enum
 from typing import Any, Dict, List, Optional, Union
 
-from backend.data.block import (
+from backend.blocks._base import (
     Block,
     BlockCategory,
     BlockOutput,
