@@ -456,18 +456,21 @@ async def stream_chat_completion_sdk(
     yield StreamStart(messageId=message_id, taskId=task_id)
 
     stream_completed = False
-    # Use a session-specific temp dir to avoid cleanup race conditions
-    # between concurrent sessions.
-    sdk_cwd = _make_sdk_cwd(session_id)
-    os.makedirs(sdk_cwd, exist_ok=True)
-
-    set_execution_context(
-        user_id,
-        session,
-        long_running_callback=_build_long_running_callback(user_id),
-    )
+    # Initialise sdk_cwd before the try so the finally can reference it
+    # even if _make_sdk_cwd raises (in that case it stays as "").
+    sdk_cwd = ""
 
     try:
+        # Use a session-specific temp dir to avoid cleanup race conditions
+        # between concurrent sessions.
+        sdk_cwd = _make_sdk_cwd(session_id)
+        os.makedirs(sdk_cwd, exist_ok=True)
+
+        set_execution_context(
+            user_id,
+            session,
+            long_running_callback=_build_long_running_callback(user_id),
+        )
         try:
             from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 
@@ -641,7 +644,8 @@ async def stream_chat_completion_sdk(
         )
         yield StreamFinish()
     finally:
-        _cleanup_sdk_tool_results(sdk_cwd)
+        if sdk_cwd:
+            _cleanup_sdk_tool_results(sdk_cwd)
 
 
 async def _update_title_async(
