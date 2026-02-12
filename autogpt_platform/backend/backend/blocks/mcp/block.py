@@ -226,7 +226,7 @@ class MCPToolBlock(Block):
             for cred in mcp_creds:
                 if (
                     isinstance(cred, OAuth2Credentials)
-                    and cred.metadata.get("mcp_server_url") == server_url
+                    and (cred.metadata or {}).get("mcp_server_url") == server_url
                 ):
                     if best is None or (
                         (cred.access_token_expires_at or 0)
