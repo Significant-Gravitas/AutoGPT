@@ -50,7 +50,6 @@ if TYPE_CHECKING:
     from backend.blocks._base import AnyBlockSchema
 
     from .execution import NodesInputMasks
-    from .integrations import Webhook
 
 logger = logging.getLogger(__name__)
 
@@ -141,12 +140,10 @@ class NodeModel(Node):
     graph_version: int
 
     webhook_id: Optional[str] = None
-    webhook: Optional["Webhook"] = None
+    # webhook: Optional["Webhook"] = None  # deprecated
 
     @staticmethod
     def from_db(node: AgentNode, for_export: bool = False) -> "NodeModel":
-        from .integrations import Webhook
-
         obj = NodeModel(
             id=node.id,
             block_id=node.agentBlockId,
@@ -155,7 +152,6 @@ class NodeModel(Node):
             graph_id=node.agentGraphId,
             graph_version=node.agentGraphVersion,
             webhook_id=node.webhookId,
-            webhook=Webhook.from_db(node.Webhook) if node.Webhook else None,
         )
         obj.input_links = [Link.from_db(link) for link in node.Input or []]
         obj.output_links = [Link.from_db(link) for link in node.Output or []]
@@ -188,7 +184,6 @@ class NodeModel(Node):
 
         # Remove webhook info
         stripped_node.webhook_id = None
-        stripped_node.webhook = None
 
         return stripped_node
 
