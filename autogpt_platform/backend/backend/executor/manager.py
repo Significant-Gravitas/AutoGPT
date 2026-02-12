@@ -231,7 +231,15 @@ async def execute_node(
         input_data = _input_data.model_dump()
     elif isinstance(node_block, MCPToolBlock):
         _mcp_data = MCPToolBlock.Input(**node.input_default)
-        _mcp_data.tool_arguments = input_data.get("tool_arguments", {})
+        # Dynamic tool fields are flattened to top-level by validate_exec
+        # (via get_input_defaults). Collect them back into tool_arguments.
+        tool_schema = _mcp_data.tool_input_schema
+        tool_props = set(tool_schema.get("properties", {}).keys())
+        merged_args = {**_mcp_data.tool_arguments}
+        for key in tool_props:
+            if key in input_data:
+                merged_args[key] = input_data[key]
+        _mcp_data.tool_arguments = merged_args
         input_data = _mcp_data.model_dump()
     data.inputs = input_data
 
