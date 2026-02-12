@@ -40,6 +40,8 @@ class ResponseType(str, Enum):
     OPERATION_IN_PROGRESS = "operation_in_progress"
     # Input validation
     INPUT_VALIDATION_ERROR = "input_validation_error"
+    # Web fetch
+    WEB_FETCH = "web_fetch"
 
 
 # Base response model
@@ -427,3 +429,14 @@ class AsyncProcessingResponse(ToolResponseBase):
     status: str = "accepted"  # Must be "accepted" for detection
     operation_id: str | None = None
     task_id: str | None = None
+
+
+class WebFetchResponse(ToolResponseBase):
+    """Response for web_fetch tool."""
+
+    type: ResponseType = ResponseType.WEB_FETCH
+    url: str
+    status_code: int
+    content_type: str
+    content: str
+    truncated: bool = False
