@@ -82,13 +82,18 @@ def test_get_bulletin_from_web_exception(mock_get):
 
 
 def test_get_latest_bulletin_no_file(tmp_path, monkeypatch):
-    bulletin_path = tmp_path / "data" / "CURRENT_BULLETIN.md"
+    data_dir = tmp_path / "data"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    bulletin_path = data_dir / "CURRENT_BULLETIN.md"
     monkeypatch.chdir(tmp_path)
     # Ensure file doesn't exist
     if bulletin_path.exists():
         bulletin_path.unlink()
 
-    with patch("autogpt.app.utils.get_bulletin_from_web", return_value=""):
+    # When no local file exists and web returns new content, is_new should be True
+    with patch(
+        "autogpt.app.utils.get_bulletin_from_web", return_value="New bulletin content"
+    ):
         bulletin, is_new = get_latest_bulletin()
         assert is_new
 
