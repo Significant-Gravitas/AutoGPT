@@ -6,7 +6,7 @@ import pytest
 
 from backend.api.features.chat.tools.models import BlockDetailsResponse
 from backend.api.features.chat.tools.run_block import RunBlockTool
-from backend.data.block import BlockType
+from backend.blocks._base import BlockType
 from backend.data.model import CredentialsMetaInput
 from backend.integrations.providers import ProviderName
 
