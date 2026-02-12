@@ -55,6 +55,9 @@ jobs:
       - name: Install Python dependencies
         run: poetry install
 
+      - name: Install Playwright browsers
+        run: poetry run playwright install chromium
+
       - name: Run pytest with coverage
         run: |
           poetry run pytest -vv \

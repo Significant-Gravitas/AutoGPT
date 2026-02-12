@@ -19,6 +19,22 @@ from .models import (
 from .ui import console
 
 
+def get_default_model() -> str:
+    """Get the default model based on available API keys.
+
+    Returns the model preset name for the first available API key,
+    preferring Claude > OpenAI > Groq.
+    """
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        return "claude"
+    elif os.environ.get("OPENAI_API_KEY"):
+        return "openai"
+    elif os.environ.get("GROQ_API_KEY"):
+        return "groq"
+    # Fallback to openai (most commonly available in CI)
+    return "openai"
+
+
 @click.group()
 @click.version_option(version="0.1.0")
 def cli():
@@ -40,8 +56,8 @@ def cli():
 @click.option(
     "--models",
     "-m",
-    default="claude",
-    help=f"Comma-separated model presets. Available: {', '.join(MODEL_PRESETS.keys())}",
+    default=None,
+    help=f"Comma-separated model presets. Auto-detects from API keys if not specified. Available: {', '.join(MODEL_PRESETS.keys())}",
 )
 @click.option(
     "--categories",
@@ -232,7 +248,7 @@ def cli():
 )
 def run(
     strategies: str,
-    models: str,
+    models: Optional[str],
     categories: Optional[str],
     skip_categories: Optional[str],
     tests: Optional[str],
@@ -280,7 +296,11 @@ def run(
         console.print(f"Available: {STRATEGIES}")
         sys.exit(1)
 
-    # Parse models
+    # Parse models (auto-detect from API keys if not specified)
+    if models is None:
+        models = get_default_model()
+        console.print(f"[dim]Auto-detected model: {models}[/dim]")
+
     model_list = [m.strip() for m in models.split(",")]
     invalid_models = [m for m in model_list if m not in MODEL_PRESETS]
     if invalid_models:

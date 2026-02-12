@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allowedTools": [
+      "Read", "Grep", "Glob",
+      "Bash(ls:*)", "Bash(cat:*)", "Bash(grep:*)", "Bash(find:*)",
+      "Bash(git status:*)", "Bash(git diff:*)", "Bash(git log:*)", "Bash(git worktree:*)",
+      "Bash(tmux:*)", "Bash(sleep:*)", "Bash(branchlet:*)"
+    ]
+  }
+}
