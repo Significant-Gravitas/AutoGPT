@@ -61,9 +61,18 @@ class Webhook(BaseDbModel):
         )
 
 
+# LibraryAgentPreset import must be after Webhook definition to avoid
+# broken circular import:
+# integrations.py → library/model.py → integrations.py (for Webhook)
+from backend.api.features.library.model import LibraryAgentPreset  # noqa: E402
+
+# Resolve forward refs
+LibraryAgentPreset.model_rebuild()
+
+
 class WebhookWithRelations(Webhook):
     triggered_nodes: list[NodeModel]
-    triggered_presets: list["LibraryAgentPreset"]
+    triggered_presets: list[LibraryAgentPreset]
 
     @staticmethod
     def from_db(webhook: IntegrationWebhook):
@@ -81,11 +90,6 @@ class WebhookWithRelations(Webhook):
             ],
         )
 
-
-# LibraryAgentPreset import must be after WebhookWithRelations definition to avoid
-# broken circular import:
-# integrations.py → library/model.py → integrations.py (for Webhook)
-from backend.api.features.library.model import LibraryAgentPreset  # noqa: E402
 
 # --------------------- CRUD functions --------------------- #
 
