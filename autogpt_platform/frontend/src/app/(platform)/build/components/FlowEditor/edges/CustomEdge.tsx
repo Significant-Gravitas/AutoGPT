@@ -63,6 +63,16 @@ const CustomEdge = ({
 
   return (
     <>
+      {/* Invisible interaction path - wider hit area for hover detection */}
+      <path
+        d={edgePath}
+        fill="none"
+        stroke="transparent"
+        strokeWidth={20}
+        className="cursor-pointer"
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+      />
       <BaseEdge
         path={edgePath}
         markerEnd={markerEnd}
