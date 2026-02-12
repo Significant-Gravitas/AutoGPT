@@ -323,7 +323,6 @@ async def test_clean_graph(server: SpinTestServer):
     # Verify webhook info is removed (if any nodes had it)
     for node in cleaned_graph.nodes:
         assert node.webhook_id is None
-        assert node.webhook is None
 
 
 @pytest.mark.asyncio(loop_scope="session")

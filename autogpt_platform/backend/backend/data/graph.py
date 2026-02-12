@@ -24,13 +24,7 @@ from pydantic import BaseModel, BeforeValidator, Field
 from pydantic.fields import computed_field
 
 from backend.blocks import get_block, get_blocks
-from backend.blocks._base import (
-    AnyBlockSchema,
-    Block,
-    BlockInput,
-    BlockType,
-    EmptySchema,
-)
+from backend.blocks._base import Block, BlockType, EmptySchema
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.blocks.llm import LlmModel
@@ -38,6 +32,7 @@ from backend.data.db import prisma as db
 from backend.data.dynamic_fields import is_tool_pin, sanitize_pin_name
 from backend.data.includes import MAX_GRAPH_VERSIONS_FETCH
 from backend.data.model import (
+    BlockInput,
     CredentialsFieldInfo,
     CredentialsMetaInput,
     is_credentials_field_name,
@@ -52,8 +47,9 @@ from .db import BaseDbModel, query_raw_with_schema, transaction
 from .includes import AGENT_GRAPH_INCLUDE, AGENT_NODE_INCLUDE
 
 if TYPE_CHECKING:
+    from backend.blocks._base import AnyBlockSchema
+
     from .execution import NodesInputMasks
-    from .integrations import Webhook
 
 logger = logging.getLogger(__name__)
 
@@ -127,7 +123,7 @@ class Node(BaseDbModel):
         return self.metadata.get("credentials_optional", False)
 
     @property
-    def block(self) -> AnyBlockSchema | "_UnknownBlockBase":
+    def block(self) -> "AnyBlockSchema | _UnknownBlockBase":
         """Get the block for this node. Returns UnknownBlock if block is deleted/missing."""
         block = get_block(self.block_id)
         if not block:
@@ -144,12 +140,10 @@ class NodeModel(Node):
     graph_version: int
 
     webhook_id: Optional[str] = None
-    webhook: Optional["Webhook"] = None
+    # webhook: Optional["Webhook"] = None  # deprecated
 
     @staticmethod
     def from_db(node: AgentNode, for_export: bool = False) -> "NodeModel":
-        from .integrations import Webhook
-
         obj = NodeModel(
             id=node.id,
             block_id=node.agentBlockId,
@@ -158,7 +152,6 @@ class NodeModel(Node):
             graph_id=node.agentGraphId,
             graph_version=node.agentGraphVersion,
             webhook_id=node.webhookId,
-            webhook=Webhook.from_db(node.Webhook) if node.Webhook else None,
         )
         obj.input_links = [Link.from_db(link) for link in node.Input or []]
         obj.output_links = [Link.from_db(link) for link in node.Output or []]
@@ -191,7 +184,6 @@ class NodeModel(Node):
 
         # Remove webhook info
         stripped_node.webhook_id = None
-        stripped_node.webhook = None
 
         return stripped_node
 

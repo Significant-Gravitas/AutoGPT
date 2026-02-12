@@ -3,15 +3,12 @@ import logging
 import os
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING, Sequence, Type, TypeVar
+from typing import Sequence, Type, TypeVar
 
+from backend.blocks._base import AnyBlockSchema, BlockType
 from backend.util.cache import cached
 
 logger = logging.getLogger(__name__)
-
-
-if TYPE_CHECKING:
-    from backend.blocks._base import AnyBlockSchema, BlockType
 
 T = TypeVar("T")
 
@@ -125,12 +122,12 @@ def _all_subclasses(cls: type[T]) -> list[type[T]]:
 # ============== Block access helper functions ============== #
 
 
-def get_blocks() -> dict[str, Type[AnyBlockSchema]]:
+def get_blocks() -> dict[str, Type["AnyBlockSchema"]]:
     return load_all_blocks()
 
 
 # Note on the return type annotation: https://github.com/microsoft/pyright/issues/10281
-def get_block(block_id: str) -> AnyBlockSchema | None:
+def get_block(block_id: str) -> "AnyBlockSchema | None":
     cls = get_blocks().get(block_id)
     return cls() if cls else None
 

@@ -6,9 +6,12 @@ import prisma.enums
 import prisma.models
 import pydantic
 
-from backend.blocks._base import BlockInput
 from backend.data.graph import GraphModel, GraphSettings, GraphTriggerInfo
-from backend.data.model import CredentialsMetaInput, is_credentials_field_name
+from backend.data.model import (
+    BlockInput,
+    CredentialsMetaInput,
+    is_credentials_field_name,
+)
 from backend.util.json import loads as json_loads
 from backend.util.models import Pagination
 

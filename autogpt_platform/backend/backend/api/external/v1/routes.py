@@ -12,11 +12,11 @@ import backend.api.features.store.cache as store_cache
 import backend.api.features.store.model as store_model
 import backend.blocks
 from backend.api.external.middleware import require_permission
-from backend.blocks._base import BlockInput, CompletedBlockOutput
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
 from backend.data import user as user_db
 from backend.data.auth.base import APIAuthorizationInfo
+from backend.data.model import BlockInput, CompletedBlockOutput
 from backend.executor.utils import add_graph_execution
 from backend.util.settings import Settings
 

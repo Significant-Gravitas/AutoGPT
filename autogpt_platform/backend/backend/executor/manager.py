@@ -17,7 +17,7 @@ from prometheus_client import Gauge, start_http_server
 from redis.asyncio.lock import Lock as AsyncRedisLock
 
 from backend.blocks import get_block
-from backend.blocks._base import BlockInput, BlockOutput, BlockOutputEntry, BlockSchema
+from backend.blocks._base import BlockSchema
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.io import AgentOutputBlock
 from backend.data import redis_client as redis
@@ -34,7 +34,13 @@ from backend.data.execution import (
     NodesInputMasks,
 )
 from backend.data.graph import Link, Node
-from backend.data.model import GraphExecutionStats, NodeExecutionStats
+from backend.data.model import (
+    BlockInput,
+    BlockOutput,
+    BlockOutputEntry,
+    GraphExecutionStats,
+    NodeExecutionStats,
+)
 from backend.data.notifications import (
     AgentRunData,
     LowBalanceData,

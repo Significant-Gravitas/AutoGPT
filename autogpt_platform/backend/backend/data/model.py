@@ -10,6 +10,7 @@ from typing import (
     TYPE_CHECKING,
     Annotated,
     Any,
+    AsyncGenerator,
     Callable,
     ClassVar,
     Generic,
@@ -166,6 +167,12 @@ if TYPE_CHECKING:
 
 T = TypeVar("T")
 logger = logging.getLogger(__name__)
+
+
+BlockInput = dict[str, Any]  # Input: 1 input pin <- 1 data.
+BlockOutputEntry = tuple[str, Any]  # Output data should be a tuple of (name, value).
+BlockOutput = AsyncGenerator[BlockOutputEntry, None]  # Output: 1 output pin -> N data.
+CompletedBlockOutput = dict[str, list[Any]]  # Completed stream, collected as a dict.
 
 
 class BlockSecret:
