@@ -37,7 +37,6 @@ from .tool_adapter import (
     create_copilot_mcp_server,
     set_execution_context,
 )
-from .tracing import TracedSession, create_tracing_hooks, merge_hooks
 
 logger = logging.getLogger(__name__)
 config = ChatConfig()
@@ -356,23 +355,17 @@ async def stream_chat_completion_sdk(
 
             sdk_model = _resolve_sdk_model()
 
-            # Initialize Langfuse tracing (no-op if not configured)
-            tracer = TracedSession(session_id, user_id, system_prompt, model=sdk_model)
-
-            # Merge security hooks with optional tracing hooks
             security_hooks = create_security_hooks(
                 user_id,
                 sdk_cwd=sdk_cwd,
                 max_subtasks=config.claude_agent_max_subtasks,
             )
-            tracing_hooks = create_tracing_hooks(tracer)
-            combined_hooks = merge_hooks(security_hooks, tracing_hooks)
 
             options = ClaudeAgentOptions(
                 system_prompt=system_prompt,
                 mcp_servers={"copilot": mcp_server},  # type: ignore[arg-type]
                 allowed_tools=COPILOT_TOOL_NAMES,
-                hooks=combined_hooks,  # type: ignore[arg-type]
+                hooks=security_hooks,  # type: ignore[arg-type]
                 cwd=sdk_cwd,
                 max_buffer_size=config.claude_agent_max_buffer_size,
                 # Only pass model/env when OpenRouter is configured
@@ -382,7 +375,7 @@ async def stream_chat_completion_sdk(
             adapter = SDKResponseAdapter(message_id=message_id)
             adapter.set_task_id(task_id)
 
-            async with tracer, ClaudeSDKClient(options=options) as client:
+            async with ClaudeSDKClient(options=options) as client:
                 current_message = message or ""
                 if not current_message and session.messages:
                     last_user = [m for m in session.messages if m.role == "user"]
@@ -413,7 +406,6 @@ async def stream_chat_completion_sdk(
                     f"[SDK] Sending query: {current_message[:80]!r}"
                     f" ({len(session.messages)} msgs in session)"
                 )
-                tracer.log_user_message(current_message)
                 await client.query(query_message, session_id=session_id)
 
                 assistant_response = ChatMessage(role="assistant", content="")
@@ -426,7 +418,6 @@ async def stream_chat_completion_sdk(
                         f"[SDK] Received: {type(sdk_msg).__name__} "
                         f"{getattr(sdk_msg, 'subtype', '')}"
                     )
-                    tracer.log_sdk_message(sdk_msg)
                     for response in adapter.convert_message(sdk_msg):
                         if isinstance(response, StreamStart):
                             continue
