@@ -44,6 +44,8 @@ class ResponseType(str, Enum):
     WEB_FETCH = "web_fetch"
     # Code execution
     BASH_EXEC = "bash_exec"
+    # Operation status check
+    OPERATION_STATUS = "operation_status"
 
 
 # Base response model
