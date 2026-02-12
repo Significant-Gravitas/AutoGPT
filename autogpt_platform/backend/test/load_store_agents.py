@@ -49,7 +49,7 @@ async def initialize_blocks(db: Prisma) -> set[str]:
 
     Returns a set of block IDs that exist in the database.
     """
-    from backend.data.block import get_blocks
+    from backend.blocks import get_blocks
 
     print("  Initializing agent blocks...")
     blocks = get_blocks()

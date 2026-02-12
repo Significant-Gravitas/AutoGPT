@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 
 from pydantic import BaseModel
 
-from backend.data.block import get_block
+from backend.blocks import get_block
 from backend.data.execution import ExecutionStatus, NodeExecutionResult
 from backend.util.clients import (
     get_database_manager_client,

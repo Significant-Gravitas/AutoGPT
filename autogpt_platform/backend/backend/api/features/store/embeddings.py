@@ -662,7 +662,7 @@ async def cleanup_orphaned_embeddings() -> dict[str, Any]:
                 )
                 current_ids = {row["id"] for row in valid_agents}
             elif content_type == ContentType.BLOCK:
-                from backend.data.block import get_blocks
+                from backend.blocks import get_blocks
 
                 current_ids = set(get_blocks().keys())
             elif content_type == ContentType.DOCUMENTATION:

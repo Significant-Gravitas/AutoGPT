@@ -16,16 +16,12 @@ from pika.spec import Basic, BasicProperties
 from prometheus_client import Gauge, start_http_server
 from redis.asyncio.lock import Lock as AsyncRedisLock
 
+from backend.blocks import get_block
+from backend.blocks._base import BlockSchema
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.io import AgentOutputBlock
 from backend.data import redis_client as redis
-from backend.data.block import (
-    BlockInput,
-    BlockOutput,
-    BlockOutputEntry,
-    BlockSchema,
-    get_block,
-)
+from backend.data.block import BlockInput, BlockOutput, BlockOutputEntry
 from backend.data.credit import UsageTransactionMetadata
 from backend.data.dynamic_fields import parse_execution_output
 from backend.data.execution import (
@@ -212,6 +208,9 @@ async def execute_node(
         node_id=node_id,
         block_name=node_block.name,
     )
+
+    if node_block.disabled:
+        raise ValueError(f"Block {node_block.id} is disabled and cannot be executed")
 
     # Sanity check: validate the execution input.
     input_data, error = validate_exec(node, data.inputs, resolve_input=False)

@@ -800,9 +800,13 @@ async def stream_chat_completion(
         # Build the messages list in the correct order
         messages_to_save: list[ChatMessage] = []
 
-        # Add assistant message with tool_calls if any
+        # Add assistant message with tool_calls if any.
+        # Use extend (not assign) to preserve tool_calls already added by
+        # _yield_tool_call for long-running tools.
         if accumulated_tool_calls:
-            assistant_response.tool_calls = accumulated_tool_calls
+            if not assistant_response.tool_calls:
+                assistant_response.tool_calls = []
+            assistant_response.tool_calls.extend(accumulated_tool_calls)
             logger.info(
                 f"Added {len(accumulated_tool_calls)} tool calls to assistant message"
             )
@@ -1065,6 +1069,10 @@ async def _stream_chat_chunks(
                     extra_body["session_id"] = session.session_id[
                         :128
                     ]  # OpenRouter limit
+
+                # Enable adaptive thinking for Anthropic models via OpenRouter
+                if config.thinking_enabled and "anthropic" in model.lower():
+                    extra_body["reasoning"] = {"enabled": True}
 
                 api_call_start = time_module.perf_counter()
                 stream = await client.chat.completions.create(
@@ -1400,13 +1408,9 @@ async def _yield_tool_call(
                 operation_id=operation_id,
             )
 
-            # Save assistant message with tool_call FIRST (required by LLM)
-            assistant_message = ChatMessage(
-                role="assistant",
-                content="",
-                tool_calls=[tool_calls[yield_idx]],
-            )
-            session.messages.append(assistant_message)
+            # Attach the tool_call to the current turn's assistant message
+            # (or create one if this is a tool-only response with no text).
+            session.add_tool_call_to_current_turn(tool_calls[yield_idx])
 
             # Then save pending tool result
             pending_message = ChatMessage(
@@ -1829,6 +1833,10 @@ async def _generate_llm_continuation(
         if session_id:
             extra_body["session_id"] = session_id[:128]
 
+        # Enable adaptive thinking for Anthropic models via OpenRouter
+        if config.thinking_enabled and "anthropic" in config.model.lower():
+            extra_body["reasoning"] = {"enabled": True}
+
         retry_count = 0
         last_error: Exception | None = None
         response = None
@@ -1958,6 +1966,10 @@ async def _generate_llm_continuation_with_streaming(
             extra_body["posthogDistinctId"] = user_id
         if session_id:
             extra_body["session_id"] = session_id[:128]
+
+        # Enable adaptive thinking for Anthropic models via OpenRouter
+        if config.thinking_enabled and "anthropic" in config.model.lower():
+            extra_body["reasoning"] = {"enabled": True}
 
         # Make streaming LLM call (no tools - just text response)
         from typing import cast
