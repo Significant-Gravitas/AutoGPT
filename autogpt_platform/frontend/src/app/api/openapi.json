@@ -7022,29 +7022,24 @@
           "input_schema": {
             "additionalProperties": true,
             "type": "object",
-            "title": "Input Schema"
+            "title": "Input Schema",
+            "description": "Full JSON schema for block inputs"
           },
           "output_schema": {
             "additionalProperties": true,
             "type": "object",
-            "title": "Output Schema"
+            "title": "Output Schema",
+            "description": "Full JSON schema for block outputs"
           },
           "required_inputs": {
             "items": { "$ref": "#/components/schemas/BlockInputFieldInfo" },
             "type": "array",
             "title": "Required Inputs",
-            "description": "List of required input fields for this block"
+            "description": "List of input fields for this block"
           }
         },
         "type": "object",
-        "required": [
-          "id",
-          "name",
-          "description",
-          "categories",
-          "input_schema",
-          "output_schema"
-        ],
+        "required": ["id", "name", "description", "categories"],
         "title": "BlockInfoSummary",
         "description": "Summary of a block for search results."
       },
@@ -7090,7 +7085,7 @@
           "usage_hint": {
             "type": "string",
             "title": "Usage Hint",
-            "default": "To execute a block, call run_block with block_id set to the block's 'id' field and input_data containing the required fields from input_schema."
+            "default": "To execute a block, call run_block with block_id set to the block's 'id' field and input_data containing the fields listed in required_inputs."
           }
         },
         "type": "object",
