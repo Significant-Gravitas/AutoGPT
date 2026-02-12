@@ -93,12 +93,15 @@ _SYSTEM_RO_BINDS = [
     "/etc",  # system config: ld.so, locale, passwd, alternatives
 ]
 
-# Symlinks to /usr/* on modern Debian, may be real dirs on older systems.
-_COMPAT_RO_BINDS = [
-    "/bin",  # -> /usr/bin on Debian 13
-    "/sbin",  # -> /usr/sbin on Debian 13
-    "/lib",  # -> /usr/lib on Debian 13
-    "/lib64",  # 64-bit libraries (may not exist)
+# Compat paths: symlinks to /usr/* on modern Debian, real dirs on older systems.
+# On Debian 13 these are symlinks (e.g. /bin -> usr/bin).  bwrap --ro-bind
+# can't create a symlink target, so we detect and use --symlink instead.
+# /lib64 is critical: the ELF dynamic linker lives at /lib64/ld-linux-x86-64.so.2.
+_COMPAT_PATHS = [
+    ("/bin", "usr/bin"),  # -> /usr/bin on Debian 13
+    ("/sbin", "usr/sbin"),  # -> /usr/sbin on Debian 13
+    ("/lib", "usr/lib"),  # -> /usr/lib on Debian 13
+    ("/lib64", "usr/lib64"),  # 64-bit libraries / ELF interpreter
 ]
 
 # Resource limits to prevent fork bombs, memory exhaustion, and disk abuse.
@@ -148,9 +151,12 @@ def _build_bwrap_command(
     for path in _SYSTEM_RO_BINDS:
         cmd.extend(["--ro-bind", path, path])
 
-    # Compat paths: bind only if they exist on the host
-    for path in _COMPAT_RO_BINDS:
-        if os.path.exists(path):
+    # Compat paths: use --symlink when host path is a symlink (Debian 13),
+    # --ro-bind when it's a real directory (older distros).
+    for path, symlink_target in _COMPAT_PATHS:
+        if os.path.islink(path):
+            cmd.extend(["--symlink", symlink_target, path])
+        elif os.path.exists(path):
             cmd.extend(["--ro-bind", path, path])
 
     # Wrap the user command with resource limits:
