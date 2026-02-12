@@ -1,3 +1,10 @@
+from backend.blocks._base import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.blocks.smartlead._api import SmartLeadClient
 from backend.blocks.smartlead._auth import (
     TEST_CREDENTIALS,
@@ -15,13 +22,6 @@ from backend.blocks.smartlead.models import (
     SaveSequencesRequest,
     SaveSequencesResponse,
     Sequence,
-)
-from backend.data.block import (
-    Block,
-    BlockCategory,
-    BlockOutput,
-    BlockSchemaInput,
-    BlockSchemaOutput,
 )
 from backend.data.model import CredentialsField, SchemaField
 

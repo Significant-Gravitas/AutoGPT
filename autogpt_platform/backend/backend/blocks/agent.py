@@ -1,7 +1,7 @@
 import logging
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
-from backend.data.block import (
+from backend.blocks._base import (
     Block,
     BlockCategory,
     BlockInput,
@@ -9,12 +9,14 @@ from backend.data.block import (
     BlockSchema,
     BlockSchemaInput,
     BlockType,
-    get_block,
 )
 from backend.data.execution import ExecutionContext, ExecutionStatus, NodesInputMasks
 from backend.data.model import NodeExecutionStats, SchemaField
 from backend.util.json import validate_with_jsonschema
 from backend.util.retry import func_retry
+
+if TYPE_CHECKING:
+    from backend.executor.utils import LogMetadata
 
 _logger = logging.getLogger(__name__)
 
@@ -124,9 +126,10 @@ class AgentExecutorBlock(Block):
         graph_version: int,
         graph_exec_id: str,
         user_id: str,
-        logger,
+        logger: "LogMetadata",
     ) -> BlockOutput:
 
+        from backend.blocks import get_block
         from backend.data.execution import ExecutionEventType
         from backend.executor import utils as execution_utils
 
@@ -198,7 +201,7 @@ class AgentExecutorBlock(Block):
         self,
         graph_exec_id: str,
         user_id: str,
-        logger,
+        logger: "LogMetadata",
     ) -> None:
         from backend.executor import utils as execution_utils
 

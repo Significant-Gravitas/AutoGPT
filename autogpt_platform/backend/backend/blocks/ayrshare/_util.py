@@ -3,7 +3,7 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
-from backend.data.block import BlockSchemaInput
+from backend.blocks._base import BlockSchemaInput
 from backend.data.model import SchemaField, UserIntegrations
 from backend.integrations.ayrshare import AyrshareClient
 from backend.util.clients import get_database_manager_async_client

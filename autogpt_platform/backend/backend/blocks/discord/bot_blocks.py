@@ -8,7 +8,7 @@ from typing import Any, Literal, cast
 import discord
 from pydantic import SecretStr
 
-from backend.data.block import (
+from backend.blocks._base import (
     Block,
     BlockCategory,
     BlockOutput,

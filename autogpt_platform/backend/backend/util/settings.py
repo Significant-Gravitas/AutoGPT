@@ -368,6 +368,10 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=600,
         description="The timeout in seconds for Agent Generator service requests (includes retries for rate limits)",
     )
+    agentgenerator_use_dummy: bool = Field(
+        default=False,
+        description="Use dummy agent generator responses for testing (bypasses external service)",
+    )
 
     enable_example_blocks: bool = Field(
         default=False,
