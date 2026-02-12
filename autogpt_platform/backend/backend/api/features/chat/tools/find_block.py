@@ -54,7 +54,7 @@ class FindBlockTool(BaseTool):
             "sending emails, making API calls, processing text, etc. "
             "IMPORTANT: Use this tool FIRST to get the block's 'id' before calling run_block. "
             "The response includes each block's id, name, and description. "
-            "Call run_block with the block's id to see detailed inputs/outputs and execute it."
+            "Call run_block with the block's id **with no inputs** to see detailed inputs/outputs and execute it."
         )
 
     @property
