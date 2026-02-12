@@ -1,5 +1,6 @@
 import base64
 import json
+import logging
 import shlex
 import uuid
 from typing import Literal, Optional
@@ -21,6 +22,11 @@ from backend.data.model import (
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
+
+logger = logging.getLogger(__name__)
+
+# Maximum size for binary files to extract (50MB)
+MAX_BINARY_FILE_SIZE = 50 * 1024 * 1024
 
 
 class ClaudeCodeExecutionError(Exception):
@@ -541,7 +547,6 @@ class ClaudeCodeBlock(Block):
             ".env",
             ".gitignore",
             ".dockerfile",
-            "Dockerfile",
             ".vue",
             ".svelte",
             ".astro",
@@ -623,6 +628,16 @@ class ClaudeCodeBlock(Block):
                         file_path_lower.endswith(ext) for ext in binary_extensions
                     )
 
+                    # Helper to extract filename and relative path
+                    def get_file_info(path: str, work_dir: str) -> tuple[str, str]:
+                        name = path.split("/")[-1]
+                        rel_path = path
+                        if path.startswith(work_dir):
+                            rel_path = path[len(work_dir) :]
+                            if rel_path.startswith("/"):
+                                rel_path = rel_path[1:]
+                        return name, rel_path
+
                     if is_text:
                         try:
                             content = await sandbox.files.read(file_path)
@@ -630,17 +645,9 @@ class ClaudeCodeBlock(Block):
                             if isinstance(content, bytes):
                                 content = content.decode("utf-8", errors="replace")
 
-                            # Extract filename from path
-                            file_name = file_path.split("/")[-1]
-
-                            # Calculate relative path by stripping working directory
-                            relative_path = file_path
-                            if file_path.startswith(working_directory):
-                                relative_path = file_path[len(working_directory) :]
-                                # Remove leading slash if present
-                                if relative_path.startswith("/"):
-                                    relative_path = relative_path[1:]
-
+                            file_name, relative_path = get_file_info(
+                                file_path, working_directory
+                            )
                             files.append(
                                 ClaudeCodeBlock.FileOutput(
                                     path=file_path,
@@ -651,13 +658,25 @@ class ClaudeCodeBlock(Block):
                                     content_base64=None,
                                 )
                             )
-                        except Exception:
-                            # Skip files that can't be read
-                            pass
+                        except Exception as e:
+                            logger.warning(f"Failed to read text file {file_path}: {e}")
                     elif is_binary:
                         try:
+                            # Check file size before reading to avoid OOM
+                            stat_result = await sandbox.commands.run(
+                                f"stat -c %s {shlex.quote(file_path)} 2>/dev/null"
+                            )
+                            if stat_result.stdout:
+                                file_size = int(stat_result.stdout.strip())
+                                if file_size > MAX_BINARY_FILE_SIZE:
+                                    logger.warning(
+                                        f"Skipping binary file {file_path}: "
+                                        f"size {file_size} exceeds limit "
+                                        f"{MAX_BINARY_FILE_SIZE}"
+                                    )
+                                    continue
+
                             # Read binary file as bytes using format="bytes"
-                            # This returns bytearray, avoiding UTF-8 decoding issues
                             content_bytes = await sandbox.files.read(
                                 file_path, format="bytes"
                             )
@@ -667,17 +686,9 @@ class ClaudeCodeBlock(Block):
                                 "ascii"
                             )
 
-                            # Extract filename from path
-                            file_name = file_path.split("/")[-1]
-
-                            # Calculate relative path by stripping working directory
-                            relative_path = file_path
-                            if file_path.startswith(working_directory):
-                                relative_path = file_path[len(working_directory) :]
-                                # Remove leading slash if present
-                                if relative_path.startswith("/"):
-                                    relative_path = relative_path[1:]
-
+                            file_name, relative_path = get_file_info(
+                                file_path, working_directory
+                            )
                             files.append(
                                 ClaudeCodeBlock.FileOutput(
                                     path=file_path,
@@ -688,13 +699,13 @@ class ClaudeCodeBlock(Block):
                                     content_base64=content_b64,
                                 )
                             )
-                        except Exception:
-                            # Skip files that can't be read
-                            pass
+                        except Exception as e:
+                            logger.warning(
+                                f"Failed to read binary file {file_path}: {e}"
+                            )
 
-        except Exception:
-            # If file extraction fails, return empty results
-            pass
+        except Exception as e:
+            logger.warning(f"File extraction failed: {e}")
 
         return files
 
