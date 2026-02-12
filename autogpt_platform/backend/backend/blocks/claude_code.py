@@ -616,7 +616,7 @@ class ClaudeCodeBlock(Block):
                     file_path_lower = file_path.lower()
                     is_text = any(
                         file_path_lower.endswith(ext) for ext in text_extensions
-                    ) or file_path.endswith("Dockerfile")
+                    ) or file_path_lower.endswith("dockerfile")
 
                     # Check if it's a binary file we should extract
                     is_binary = any(
