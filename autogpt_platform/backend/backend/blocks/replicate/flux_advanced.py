@@ -4,19 +4,19 @@ from enum import Enum
 from pydantic import SecretStr
 from replicate.client import Client as ReplicateClient
 
-from backend.blocks.replicate._auth import (
-    TEST_CREDENTIALS,
-    TEST_CREDENTIALS_INPUT,
-    ReplicateCredentialsInput,
-)
-from backend.blocks.replicate._helper import ReplicateOutputs, extract_result
-from backend.data.block import (
+from backend.blocks._base import (
     Block,
     BlockCategory,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
 )
+from backend.blocks.replicate._auth import (
+    TEST_CREDENTIALS,
+    TEST_CREDENTIALS_INPUT,
+    ReplicateCredentialsInput,
+)
+from backend.blocks.replicate._helper import ReplicateOutputs, extract_result
 from backend.data.model import APIKeyCredentials, CredentialsField, SchemaField
 
 
