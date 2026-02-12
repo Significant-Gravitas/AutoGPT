@@ -651,10 +651,11 @@ class ClaudeCodeBlock(Block):
                             pass
                     elif is_binary:
                         try:
-                            # Read binary file as bytes
-                            content_bytes = await sandbox.files.read(file_path)
-                            if isinstance(content_bytes, str):
-                                content_bytes = content_bytes.encode("utf-8")
+                            # Read binary file as bytes using format="bytes"
+                            # This returns bytearray, avoiding UTF-8 decoding issues
+                            content_bytes = await sandbox.files.read(
+                                file_path, format="bytes"
+                            )
 
                             # Base64 encode the binary content
                             content_b64 = base64.b64encode(content_bytes).decode(
