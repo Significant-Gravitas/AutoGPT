@@ -903,6 +903,28 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/chat/config/ttl": {
+      "get": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Get Ttl Config",
+        "description": "Get the stream TTL configuration.\n\nReturns the Time-To-Live settings for chat streams, which determines\nhow long clients can reconnect to an active stream.\n\nReturns:\n    dict: TTL configuration with seconds and milliseconds values.",
+        "operationId": "getV2GetTtlConfig",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Getv2Getttlconfig"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/chat/health": {
       "get": {
         "tags": ["v2", "chat", "chat"],
@@ -918,6 +940,115 @@
                   "additionalProperties": true,
                   "type": "object",
                   "title": "Response Getv2Healthcheck"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/chat/operations/{operation_id}/complete": {
+      "post": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Complete Operation",
+        "description": "External completion webhook for long-running operations.\n\nCalled by Agent Generator (or other services) when an operation completes.\nThis triggers the stream registry to publish completion and continue LLM generation.\n\nArgs:\n    operation_id: The operation ID to complete.\n    request: Completion payload with success status and result/error.\n    x_api_key: Internal API key for authentication.\n\nReturns:\n    dict: Status of the completion.\n\nRaises:\n    HTTPException: If API key is invalid or operation not found.",
+        "operationId": "postV2CompleteOperation",
+        "parameters": [
+          {
+            "name": "operation_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Operation Id" }
+          },
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OperationCompleteRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Postv2Completeoperation"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/chat/schema/tool-responses": {
+      "get": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "[Dummy] Tool response type export for codegen",
+        "description": "This endpoint is not meant to be called. It exists solely to expose tool response models in the OpenAPI schema for frontend codegen.",
+        "operationId": "getV2[dummy] tool response type export for codegen",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    { "$ref": "#/components/schemas/AgentsFoundResponse" },
+                    { "$ref": "#/components/schemas/NoResultsResponse" },
+                    { "$ref": "#/components/schemas/AgentDetailsResponse" },
+                    {
+                      "$ref": "#/components/schemas/SetupRequirementsResponse"
+                    },
+                    { "$ref": "#/components/schemas/ExecutionStartedResponse" },
+                    { "$ref": "#/components/schemas/NeedLoginResponse" },
+                    { "$ref": "#/components/schemas/ErrorResponse" },
+                    {
+                      "$ref": "#/components/schemas/InputValidationErrorResponse"
+                    },
+                    { "$ref": "#/components/schemas/AgentOutputResponse" },
+                    {
+                      "$ref": "#/components/schemas/UnderstandingUpdatedResponse"
+                    },
+                    { "$ref": "#/components/schemas/AgentPreviewResponse" },
+                    { "$ref": "#/components/schemas/AgentSavedResponse" },
+                    {
+                      "$ref": "#/components/schemas/ClarificationNeededResponse"
+                    },
+                    { "$ref": "#/components/schemas/BlockListResponse" },
+                    { "$ref": "#/components/schemas/BlockOutputResponse" },
+                    { "$ref": "#/components/schemas/DocSearchResultsResponse" },
+                    { "$ref": "#/components/schemas/DocPageResponse" },
+                    { "$ref": "#/components/schemas/OperationStartedResponse" },
+                    { "$ref": "#/components/schemas/OperationPendingResponse" },
+                    {
+                      "$ref": "#/components/schemas/OperationInProgressResponse"
+                    }
+                  ],
+                  "title": "Response Getv2[Dummy] Tool Response Type Export For Codegen"
                 }
               }
             }
@@ -1008,7 +1139,7 @@
       "get": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Get Session",
-        "description": "Retrieve the details of a specific chat session.\n\nLooks up a chat session by ID for the given user (if authenticated) and returns all session data including messages.\n\nArgs:\n    session_id: The unique identifier for the desired chat session.\n    user_id: The optional authenticated user ID, or None for anonymous access.\n\nReturns:\n    SessionDetailResponse: Details for the requested session, or None if not found.",
+        "description": "Retrieve the details of a specific chat session.\n\nLooks up a chat session by ID for the given user (if authenticated) and returns all session data including messages.\nIf there's an active stream for this session, returns the task_id for reconnection.\n\nArgs:\n    session_id: The unique identifier for the desired chat session.\n    user_id: The optional authenticated user ID, or None for anonymous access.\n\nReturns:\n    SessionDetailResponse: Details for the requested session, including active_stream info if applicable.",
         "operationId": "getV2GetSession",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -1089,9 +1220,9 @@
     "/api/chat/sessions/{session_id}/stream": {
       "get": {
         "tags": ["v2", "chat", "chat"],
-        "summary": "Stream Chat Get",
-        "description": "Stream chat responses for a session (GET - legacy endpoint).\n\nStreams the AI/completion responses in real time over Server-Sent Events (SSE), including:\n  - Text fragments as they are generated\n  - Tool call UI elements (if invoked)\n  - Tool execution results\n\nArgs:\n    session_id: The chat session identifier to associate with the streamed messages.\n    message: The user's new message to process.\n    user_id: Optional authenticated user ID.\n    is_user_message: Whether the message is a user message.\nReturns:\n    StreamingResponse: SSE-formatted response chunks.",
-        "operationId": "getV2StreamChatGet",
+        "summary": "Resume Session Stream",
+        "description": "Resume an active stream for a session.\n\nCalled by the AI SDK's ``useChat(resume: true)`` on page load.\nChecks for an active (in-progress) task on the session and either replays\nthe full SSE stream or returns 204 No Content if nothing is running.\n\nArgs:\n    session_id: The chat session identifier.\n    user_id: Optional authenticated user ID.\n\nReturns:\n    StreamingResponse (SSE) when an active stream exists,\n    or 204 No Content when there is nothing to resume.",
+        "operationId": "getV2ResumeSessionStream",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
@@ -1099,27 +1230,6 @@
             "in": "path",
             "required": true,
             "schema": { "type": "string", "title": "Session Id" }
-          },
-          {
-            "name": "message",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 10000,
-              "title": "Message"
-            }
-          },
-          {
-            "name": "is_user_message",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "boolean",
-              "default": true,
-              "title": "Is User Message"
-            }
           }
         ],
         "responses": {
@@ -1143,7 +1253,7 @@
       "post": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Stream Chat Post",
-        "description": "Stream chat responses for a session (POST with context support).\n\nStreams the AI/completion responses in real time over Server-Sent Events (SSE), including:\n  - Text fragments as they are generated\n  - Tool call UI elements (if invoked)\n  - Tool execution results\n\nArgs:\n    session_id: The chat session identifier to associate with the streamed messages.\n    request: Request body containing message, is_user_message, and optional context.\n    user_id: Optional authenticated user ID.\nReturns:\n    StreamingResponse: SSE-formatted response chunks.",
+        "description": "Stream chat responses for a session (POST with context support).\n\nStreams the AI/completion responses in real time over Server-Sent Events (SSE), including:\n  - Text fragments as they are generated\n  - Tool call UI elements (if invoked)\n  - Tool execution results\n\nThe AI generation runs in a background task that continues even if the client disconnects.\nAll chunks are written to Redis for reconnection support. If the client disconnects,\nthey can reconnect using GET /tasks/{task_id}/stream to resume from where they left off.\n\nArgs:\n    session_id: The chat session identifier to associate with the streamed messages.\n    request: Request body containing message, is_user_message, and optional context.\n    user_id: Optional authenticated user ID.\nReturns:\n    StreamingResponse: SSE-formatted response chunks. First chunk is a \"start\" event\n    containing the task_id for reconnection.",
         "operationId": "postV2StreamChatPost",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -1162,6 +1272,94 @@
             }
           }
         },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/chat/tasks/{task_id}": {
+      "get": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Get Task Status",
+        "description": "Get the status of a long-running task.\n\nArgs:\n    task_id: The task ID to check.\n    user_id: Authenticated user ID for ownership validation.\n\nReturns:\n    dict: Task status including task_id, status, tool_name, and operation_id.\n\nRaises:\n    NotFoundError: If task_id is not found or user doesn't have access.",
+        "operationId": "getV2GetTaskStatus",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Task Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Getv2Gettaskstatus"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/chat/tasks/{task_id}/stream": {
+      "get": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Stream Task",
+        "description": "Reconnect to a long-running task's SSE stream.\n\nWhen a long-running operation (like agent generation) starts, the client\nreceives a task_id. If the connection drops, the client can reconnect\nusing this endpoint to resume receiving updates.\n\nArgs:\n    task_id: The task ID from the operation_started response.\n    user_id: Authenticated user ID for ownership validation.\n    last_message_id: Last Redis Stream message ID received (\"0-0\" for full replay).\n\nReturns:\n    StreamingResponse: SSE-formatted response chunks starting after last_message_id.\n\nRaises:\n    HTTPException: 404 if task not found, 410 if task expired, 403 if access denied.",
+        "operationId": "getV2StreamTask",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Task Id" }
+          },
+          {
+            "name": "last_message_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Last Redis Stream message ID received (e.g., '1706540123456-0'). Use '0-0' for full replay.",
+              "default": "0-0",
+              "title": "Last Message Id"
+            },
+            "description": "Last Redis Stream message ID received (e.g., '1706540123456-0'). Use '0-0' for full replay."
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -5448,7 +5646,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/GraphMeta" }
+                "schema": {
+                  "$ref": "#/components/schemas/GraphModelWithoutNodes"
+                }
               }
             }
           },
@@ -6154,6 +6354,18 @@
         "title": "AccuracyTrendsResponse",
         "description": "Response model for accuracy trends and alerts."
       },
+      "ActiveStreamInfo": {
+        "properties": {
+          "task_id": { "type": "string", "title": "Task Id" },
+          "last_message_id": { "type": "string", "title": "Last Message Id" },
+          "operation_id": { "type": "string", "title": "Operation Id" },
+          "tool_name": { "type": "string", "title": "Tool Name" }
+        },
+        "type": "object",
+        "required": ["task_id", "last_message_id", "operation_id", "tool_name"],
+        "title": "ActiveStreamInfo",
+        "description": "Information about an active stream for reconnection."
+      },
       "AddUserCreditsResponse": {
         "properties": {
           "new_balance": { "type": "integer", "title": "New Balance" },
@@ -6162,6 +6374,75 @@
         "type": "object",
         "required": ["new_balance", "transaction_key"],
         "title": "AddUserCreditsResponse"
+      },
+      "AgentDetails": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "name": { "type": "string", "title": "Name" },
+          "description": { "type": "string", "title": "Description" },
+          "in_library": {
+            "type": "boolean",
+            "title": "In Library",
+            "default": false
+          },
+          "inputs": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Inputs",
+            "default": {}
+          },
+          "credentials": {
+            "items": { "$ref": "#/components/schemas/CredentialsMetaInput" },
+            "type": "array",
+            "title": "Credentials",
+            "default": []
+          },
+          "execution_options": {
+            "$ref": "#/components/schemas/ExecutionOptions"
+          },
+          "trigger_info": {
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "null" }
+            ],
+            "title": "Trigger Info"
+          }
+        },
+        "type": "object",
+        "required": ["id", "name", "description"],
+        "title": "AgentDetails",
+        "description": "Detailed agent information."
+      },
+      "AgentDetailsResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "agent_details"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "agent": { "$ref": "#/components/schemas/AgentDetails" },
+          "user_authenticated": {
+            "type": "boolean",
+            "title": "User Authenticated",
+            "default": false
+          },
+          "graph_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Graph Id"
+          },
+          "graph_version": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Graph Version"
+          }
+        },
+        "type": "object",
+        "required": ["message", "agent"],
+        "title": "AgentDetailsResponse",
+        "description": "Response for get_details action."
       },
       "AgentExecutionStatus": {
         "type": "string",
@@ -6175,6 +6456,224 @@
           "REVIEW"
         ],
         "title": "AgentExecutionStatus"
+      },
+      "AgentInfo": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "name": { "type": "string", "title": "Name" },
+          "description": { "type": "string", "title": "Description" },
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "description": "marketplace or library"
+          },
+          "in_library": {
+            "type": "boolean",
+            "title": "In Library",
+            "default": false
+          },
+          "creator": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Creator"
+          },
+          "category": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Category"
+          },
+          "rating": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Rating"
+          },
+          "runs": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Runs"
+          },
+          "is_featured": {
+            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+            "title": "Is Featured"
+          },
+          "status": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Status"
+          },
+          "can_access_graph": {
+            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+            "title": "Can Access Graph"
+          },
+          "has_external_trigger": {
+            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+            "title": "Has External Trigger"
+          },
+          "new_output": {
+            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+            "title": "New Output"
+          },
+          "graph_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Graph Id"
+          },
+          "inputs": {
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "null" }
+            ],
+            "title": "Inputs",
+            "description": "Input schema for the agent, including field names, types, and defaults"
+          }
+        },
+        "type": "object",
+        "required": ["id", "name", "description", "source"],
+        "title": "AgentInfo",
+        "description": "Information about an agent."
+      },
+      "AgentOutputResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "agent_output"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "agent_name": { "type": "string", "title": "Agent Name" },
+          "agent_id": { "type": "string", "title": "Agent Id" },
+          "library_agent_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Library Agent Id"
+          },
+          "library_agent_link": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Library Agent Link"
+          },
+          "execution": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/ExecutionOutputInfo" },
+              { "type": "null" }
+            ]
+          },
+          "available_executions": {
+            "anyOf": [
+              {
+                "items": { "additionalProperties": true, "type": "object" },
+                "type": "array"
+              },
+              { "type": "null" }
+            ],
+            "title": "Available Executions"
+          },
+          "total_executions": {
+            "type": "integer",
+            "title": "Total Executions",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": ["message", "agent_name", "agent_id"],
+        "title": "AgentOutputResponse",
+        "description": "Response for agent_output tool."
+      },
+      "AgentPreviewResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "agent_preview"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "agent_json": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Agent Json"
+          },
+          "agent_name": { "type": "string", "title": "Agent Name" },
+          "description": { "type": "string", "title": "Description" },
+          "node_count": { "type": "integer", "title": "Node Count" },
+          "link_count": {
+            "type": "integer",
+            "title": "Link Count",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "message",
+          "agent_json",
+          "agent_name",
+          "description",
+          "node_count"
+        ],
+        "title": "AgentPreviewResponse",
+        "description": "Response for previewing a generated agent before saving."
+      },
+      "AgentSavedResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "agent_saved"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "agent_id": { "type": "string", "title": "Agent Id" },
+          "agent_name": { "type": "string", "title": "Agent Name" },
+          "library_agent_id": { "type": "string", "title": "Library Agent Id" },
+          "library_agent_link": {
+            "type": "string",
+            "title": "Library Agent Link"
+          },
+          "agent_page_link": { "type": "string", "title": "Agent Page Link" }
+        },
+        "type": "object",
+        "required": [
+          "message",
+          "agent_id",
+          "agent_name",
+          "library_agent_id",
+          "library_agent_link",
+          "agent_page_link"
+        ],
+        "title": "AgentSavedResponse",
+        "description": "Response when an agent is saved to the library."
+      },
+      "AgentsFoundResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "agents_found"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "default": "Available Agents"
+          },
+          "agents": {
+            "items": { "$ref": "#/components/schemas/AgentInfo" },
+            "type": "array",
+            "title": "Agents"
+          },
+          "count": { "type": "integer", "title": "Count" },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "default": "agents_found"
+          }
+        },
+        "type": "object",
+        "required": ["message", "agents", "count"],
+        "title": "AgentsFoundResponse",
+        "description": "Response for find_agent tool."
       },
       "ApiResponse": {
         "properties": {
@@ -6302,18 +6801,6 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Recommended Schedule Cron"
           },
-          "nodes": {
-            "items": { "$ref": "#/components/schemas/Node" },
-            "type": "array",
-            "title": "Nodes",
-            "default": []
-          },
-          "links": {
-            "items": { "$ref": "#/components/schemas/Link" },
-            "type": "array",
-            "title": "Links",
-            "default": []
-          },
           "forked_from_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Forked From Id"
@@ -6321,11 +6808,22 @@
           "forked_from_version": {
             "anyOf": [{ "type": "integer" }, { "type": "null" }],
             "title": "Forked From Version"
+          },
+          "nodes": {
+            "items": { "$ref": "#/components/schemas/Node" },
+            "type": "array",
+            "title": "Nodes"
+          },
+          "links": {
+            "items": { "$ref": "#/components/schemas/Link" },
+            "type": "array",
+            "title": "Links"
           }
         },
         "type": "object",
         "required": ["name", "description"],
-        "title": "BaseGraph"
+        "title": "BaseGraph",
+        "description": "Graph with nodes, links, and computed I/O schema fields.\n\nUsed to represent sub-graphs within a `Graph`. Contains the full graph\nstructure including nodes and links, plus computed fields for schemas\nand trigger info. Does NOT include user_id or created_at (see GraphModel)."
       },
       "BaseGraph-Output": {
         "properties": {
@@ -6346,18 +6844,6 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Recommended Schedule Cron"
           },
-          "nodes": {
-            "items": { "$ref": "#/components/schemas/Node" },
-            "type": "array",
-            "title": "Nodes",
-            "default": []
-          },
-          "links": {
-            "items": { "$ref": "#/components/schemas/Link" },
-            "type": "array",
-            "title": "Links",
-            "default": []
-          },
           "forked_from_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Forked From Id"
@@ -6365,6 +6851,16 @@
           "forked_from_version": {
             "anyOf": [{ "type": "integer" }, { "type": "null" }],
             "title": "Forked From Version"
+          },
+          "nodes": {
+            "items": { "$ref": "#/components/schemas/Node" },
+            "type": "array",
+            "title": "Nodes"
+          },
+          "links": {
+            "items": { "$ref": "#/components/schemas/Link" },
+            "type": "array",
+            "title": "Links"
           },
           "input_schema": {
             "additionalProperties": true,
@@ -6412,7 +6908,8 @@
           "has_sensitive_action",
           "trigger_setup_info"
         ],
-        "title": "BaseGraph"
+        "title": "BaseGraph",
+        "description": "Graph with nodes, links, and computed I/O schema fields.\n\nUsed to represent sub-graphs within a `Graph`. Contains the full graph\nstructure including nodes and links, plus computed fields for schemas\nand trigger info. Does NOT include user_id or created_at (see GraphModel)."
       },
       "BlockCategoryResponse": {
         "properties": {
@@ -6497,6 +6994,120 @@
           "uiType"
         ],
         "title": "BlockInfo"
+      },
+      "BlockInfoSummary": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "name": { "type": "string", "title": "Name" },
+          "description": { "type": "string", "title": "Description" },
+          "categories": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Categories"
+          },
+          "input_schema": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Input Schema"
+          },
+          "output_schema": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Output Schema"
+          },
+          "required_inputs": {
+            "items": { "$ref": "#/components/schemas/BlockInputFieldInfo" },
+            "type": "array",
+            "title": "Required Inputs",
+            "description": "List of required input fields for this block"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "description",
+          "categories",
+          "input_schema",
+          "output_schema"
+        ],
+        "title": "BlockInfoSummary",
+        "description": "Summary of a block for search results."
+      },
+      "BlockInputFieldInfo": {
+        "properties": {
+          "name": { "type": "string", "title": "Name" },
+          "type": { "type": "string", "title": "Type" },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "default": ""
+          },
+          "required": {
+            "type": "boolean",
+            "title": "Required",
+            "default": false
+          },
+          "default": { "anyOf": [{}, { "type": "null" }], "title": "Default" }
+        },
+        "type": "object",
+        "required": ["name", "type"],
+        "title": "BlockInputFieldInfo",
+        "description": "Information about a block input field."
+      },
+      "BlockListResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "block_list"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "blocks": {
+            "items": { "$ref": "#/components/schemas/BlockInfoSummary" },
+            "type": "array",
+            "title": "Blocks"
+          },
+          "count": { "type": "integer", "title": "Count" },
+          "query": { "type": "string", "title": "Query" },
+          "usage_hint": {
+            "type": "string",
+            "title": "Usage Hint",
+            "default": "To execute a block, call run_block with block_id set to the block's 'id' field and input_data containing the required fields from input_schema."
+          }
+        },
+        "type": "object",
+        "required": ["message", "blocks", "count", "query"],
+        "title": "BlockListResponse",
+        "description": "Response for find_block tool."
+      },
+      "BlockOutputResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "block_output"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "block_id": { "type": "string", "title": "Block Id" },
+          "block_name": { "type": "string", "title": "Block Name" },
+          "outputs": {
+            "additionalProperties": { "items": {}, "type": "array" },
+            "type": "object",
+            "title": "Outputs"
+          },
+          "success": { "type": "boolean", "title": "Success", "default": true }
+        },
+        "type": "object",
+        "required": ["message", "block_id", "block_name", "outputs"],
+        "title": "BlockOutputResponse",
+        "description": "Response for run_block tool."
       },
       "BlockResponse": {
         "properties": {
@@ -6743,6 +7354,42 @@
         "type": "object",
         "required": ["query", "conversation_history", "message_id"],
         "title": "ChatRequest"
+      },
+      "ClarificationNeededResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "clarification_needed"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "questions": {
+            "items": { "$ref": "#/components/schemas/ClarifyingQuestion" },
+            "type": "array",
+            "title": "Questions"
+          }
+        },
+        "type": "object",
+        "required": ["message"],
+        "title": "ClarificationNeededResponse",
+        "description": "Response when the LLM needs more information from the user."
+      },
+      "ClarifyingQuestion": {
+        "properties": {
+          "question": { "type": "string", "title": "Question" },
+          "keyword": { "type": "string", "title": "Keyword" },
+          "example": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Example"
+          }
+        },
+        "type": "object",
+        "required": ["question", "keyword"],
+        "title": "ClarifyingQuestion",
+        "description": "A question that needs user clarification."
       },
       "CountResponse": {
         "properties": {
@@ -7002,6 +7649,71 @@
         "required": ["version_counts"],
         "title": "DeleteGraphResponse"
       },
+      "DocPageResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "doc_page"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "title": { "type": "string", "title": "Title" },
+          "path": { "type": "string", "title": "Path" },
+          "content": { "type": "string", "title": "Content" },
+          "doc_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Doc Url"
+          }
+        },
+        "type": "object",
+        "required": ["message", "title", "path", "content"],
+        "title": "DocPageResponse",
+        "description": "Response for get_doc_page tool."
+      },
+      "DocSearchResult": {
+        "properties": {
+          "title": { "type": "string", "title": "Title" },
+          "path": { "type": "string", "title": "Path" },
+          "section": { "type": "string", "title": "Section" },
+          "snippet": { "type": "string", "title": "Snippet" },
+          "score": { "type": "number", "title": "Score" },
+          "doc_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Doc Url"
+          }
+        },
+        "type": "object",
+        "required": ["title", "path", "section", "snippet", "score"],
+        "title": "DocSearchResult",
+        "description": "A single documentation search result."
+      },
+      "DocSearchResultsResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "doc_search_results"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "results": {
+            "items": { "$ref": "#/components/schemas/DocSearchResult" },
+            "type": "array",
+            "title": "Results"
+          },
+          "count": { "type": "integer", "title": "Count" },
+          "query": { "type": "string", "title": "Query" }
+        },
+        "type": "object",
+        "required": ["message", "results", "count", "query"],
+        "title": "DocSearchResultsResponse",
+        "description": "Response for search_docs tool."
+      },
       "Document": {
         "properties": {
           "url": { "type": "string", "title": "Url" },
@@ -7010,6 +7722,34 @@
         "type": "object",
         "required": ["url", "relevance_score"],
         "title": "Document"
+      },
+      "ErrorResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "error"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "error": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Error"
+          },
+          "details": {
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "null" }
+            ],
+            "title": "Details"
+          }
+        },
+        "type": "object",
+        "required": ["message"],
+        "title": "ErrorResponse",
+        "description": "Response for errors."
       },
       "ExecutionAnalyticsConfig": {
         "properties": {
@@ -7187,6 +7927,85 @@
         ],
         "title": "ExecutionAnalyticsResult"
       },
+      "ExecutionOptions": {
+        "properties": {
+          "manual": { "type": "boolean", "title": "Manual", "default": true },
+          "scheduled": {
+            "type": "boolean",
+            "title": "Scheduled",
+            "default": true
+          },
+          "webhook": { "type": "boolean", "title": "Webhook", "default": false }
+        },
+        "type": "object",
+        "title": "ExecutionOptions",
+        "description": "Available execution options for an agent."
+      },
+      "ExecutionOutputInfo": {
+        "properties": {
+          "execution_id": { "type": "string", "title": "Execution Id" },
+          "status": { "type": "string", "title": "Status" },
+          "started_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Started At"
+          },
+          "ended_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Ended At"
+          },
+          "outputs": {
+            "additionalProperties": { "items": {}, "type": "array" },
+            "type": "object",
+            "title": "Outputs"
+          },
+          "inputs_summary": {
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "null" }
+            ],
+            "title": "Inputs Summary"
+          }
+        },
+        "type": "object",
+        "required": ["execution_id", "status", "outputs"],
+        "title": "ExecutionOutputInfo",
+        "description": "Summary of a single execution's outputs."
+      },
+      "ExecutionStartedResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "execution_started"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "execution_id": { "type": "string", "title": "Execution Id" },
+          "graph_id": { "type": "string", "title": "Graph Id" },
+          "graph_name": { "type": "string", "title": "Graph Name" },
+          "library_agent_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Library Agent Id"
+          },
+          "library_agent_link": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Library Agent Link"
+          },
+          "status": { "type": "string", "title": "Status", "default": "QUEUED" }
+        },
+        "type": "object",
+        "required": ["message", "execution_id", "graph_id", "graph_name"],
+        "title": "ExecutionStartedResponse",
+        "description": "Response for run/schedule actions."
+      },
       "Graph": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -7206,18 +8025,6 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Recommended Schedule Cron"
           },
-          "nodes": {
-            "items": { "$ref": "#/components/schemas/Node" },
-            "type": "array",
-            "title": "Nodes",
-            "default": []
-          },
-          "links": {
-            "items": { "$ref": "#/components/schemas/Link" },
-            "type": "array",
-            "title": "Links",
-            "default": []
-          },
           "forked_from_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Forked From Id"
@@ -7226,16 +8033,26 @@
             "anyOf": [{ "type": "integer" }, { "type": "null" }],
             "title": "Forked From Version"
           },
+          "nodes": {
+            "items": { "$ref": "#/components/schemas/Node" },
+            "type": "array",
+            "title": "Nodes"
+          },
+          "links": {
+            "items": { "$ref": "#/components/schemas/Link" },
+            "type": "array",
+            "title": "Links"
+          },
           "sub_graphs": {
             "items": { "$ref": "#/components/schemas/BaseGraph-Input" },
             "type": "array",
-            "title": "Sub Graphs",
-            "default": []
+            "title": "Sub Graphs"
           }
         },
         "type": "object",
         "required": ["name", "description"],
-        "title": "Graph"
+        "title": "Graph",
+        "description": "Creatable graph model used in API create/update endpoints."
       },
       "GraphExecution": {
         "properties": {
@@ -7587,6 +8404,52 @@
       "GraphMeta": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
+          "version": { "type": "integer", "title": "Version" },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active",
+            "default": true
+          },
+          "name": { "type": "string", "title": "Name" },
+          "description": { "type": "string", "title": "Description" },
+          "instructions": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Instructions"
+          },
+          "recommended_schedule_cron": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Recommended Schedule Cron"
+          },
+          "forked_from_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Forked From Id"
+          },
+          "forked_from_version": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Forked From Version"
+          },
+          "user_id": { "type": "string", "title": "User Id" },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "version",
+          "name",
+          "description",
+          "user_id",
+          "created_at"
+        ],
+        "title": "GraphMeta",
+        "description": "Lightweight graph metadata model representing an existing graph from the database,\nfor use in listings and summaries.\n\nLacks `GraphModel`'s nodes, links, and expensive computed fields.\nUse for list endpoints where full graph data is not needed and performance matters."
+      },
+      "GraphModel": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
           "version": { "type": "integer", "title": "Version", "default": 1 },
           "is_active": {
             "type": "boolean",
@@ -7611,13 +8474,27 @@
             "anyOf": [{ "type": "integer" }, { "type": "null" }],
             "title": "Forked From Version"
           },
+          "user_id": { "type": "string", "title": "User Id" },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "nodes": {
+            "items": { "$ref": "#/components/schemas/NodeModel" },
+            "type": "array",
+            "title": "Nodes"
+          },
+          "links": {
+            "items": { "$ref": "#/components/schemas/Link" },
+            "type": "array",
+            "title": "Links"
+          },
           "sub_graphs": {
             "items": { "$ref": "#/components/schemas/BaseGraph-Output" },
             "type": "array",
-            "title": "Sub Graphs",
-            "default": []
+            "title": "Sub Graphs"
           },
-          "user_id": { "type": "string", "title": "User Id" },
           "input_schema": {
             "additionalProperties": true,
             "type": "object",
@@ -7664,6 +8541,7 @@
           "name",
           "description",
           "user_id",
+          "created_at",
           "input_schema",
           "output_schema",
           "has_external_trigger",
@@ -7672,9 +8550,10 @@
           "trigger_setup_info",
           "credentials_input_schema"
         ],
-        "title": "GraphMeta"
+        "title": "GraphModel",
+        "description": "Full graph model representing an existing graph from the database.\n\nThis is the primary model for working with persisted graphs. Includes all\ngraph data (nodes, links, sub_graphs) plus user ownership and timestamps.\nProvides computed fields (input_schema, output_schema, etc.) used during\nset-up (frontend) and execution (backend).\n\nInherits from:\n- `Graph`: provides structure (nodes, links, sub_graphs) and computed schemas\n- `GraphMeta`: provides user_id, created_at for database records"
       },
-      "GraphModel": {
+      "GraphModelWithoutNodes": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
           "version": { "type": "integer", "title": "Version", "default": 1 },
@@ -7693,18 +8572,6 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Recommended Schedule Cron"
           },
-          "nodes": {
-            "items": { "$ref": "#/components/schemas/NodeModel" },
-            "type": "array",
-            "title": "Nodes",
-            "default": []
-          },
-          "links": {
-            "items": { "$ref": "#/components/schemas/Link" },
-            "type": "array",
-            "title": "Links",
-            "default": []
-          },
           "forked_from_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Forked From Id"
@@ -7712,12 +8579,6 @@
           "forked_from_version": {
             "anyOf": [{ "type": "integer" }, { "type": "null" }],
             "title": "Forked From Version"
-          },
-          "sub_graphs": {
-            "items": { "$ref": "#/components/schemas/BaseGraph-Output" },
-            "type": "array",
-            "title": "Sub Graphs",
-            "default": []
           },
           "user_id": { "type": "string", "title": "User Id" },
           "created_at": {
@@ -7780,7 +8641,8 @@
           "trigger_setup_info",
           "credentials_input_schema"
         ],
-        "title": "GraphModel"
+        "title": "GraphModelWithoutNodes",
+        "description": "GraphModel variant that excludes nodes, links, and sub-graphs from serialization.\n\nUsed in contexts like the store where exposing internal graph structure\nis not desired. Inherits all computed fields from GraphModel but marks\nnodes and links as excluded from JSON output."
       },
       "GraphSettings": {
         "properties": {
@@ -7894,6 +8756,43 @@
         "type": "object",
         "required": ["provider", "host"],
         "title": "HostScopedCredentials"
+      },
+      "InputValidationErrorResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "input_validation_error"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "unrecognized_fields": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Unrecognized Fields",
+            "description": "List of input field names that were not recognized"
+          },
+          "inputs": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Inputs",
+            "description": "The agent's valid input schema for reference"
+          },
+          "graph_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Graph Id"
+          },
+          "graph_version": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Graph Version"
+          }
+        },
+        "type": "object",
+        "required": ["message", "unrecognized_fields", "inputs"],
+        "title": "InputValidationErrorResponse",
+        "description": "Response when run_agent receives unknown input fields."
       },
       "LibraryAgent": {
         "properties": {
@@ -8413,6 +9312,54 @@
         "required": ["agents", "pagination"],
         "title": "MyAgentsResponse"
       },
+      "NeedLoginResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "need_login"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "agent_info": {
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "null" }
+            ],
+            "title": "Agent Info"
+          }
+        },
+        "type": "object",
+        "required": ["message"],
+        "title": "NeedLoginResponse",
+        "description": "Response when login is needed."
+      },
+      "NoResultsResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "no_results"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "suggestions": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Suggestions",
+            "default": []
+          },
+          "name": { "type": "string", "title": "Name", "default": "no_results" }
+        },
+        "type": "object",
+        "required": ["message"],
+        "title": "NoResultsResponse",
+        "description": "Response when no agents found."
+      },
       "Node": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -8420,26 +9367,22 @@
           "input_default": {
             "additionalProperties": true,
             "type": "object",
-            "title": "Input Default",
-            "default": {}
+            "title": "Input Default"
           },
           "metadata": {
             "additionalProperties": true,
             "type": "object",
-            "title": "Metadata",
-            "default": {}
+            "title": "Metadata"
           },
           "input_links": {
             "items": { "$ref": "#/components/schemas/Link" },
             "type": "array",
-            "title": "Input Links",
-            "default": []
+            "title": "Input Links"
           },
           "output_links": {
             "items": { "$ref": "#/components/schemas/Link" },
             "type": "array",
-            "title": "Output Links",
-            "default": []
+            "title": "Output Links"
           }
         },
         "type": "object",
@@ -8519,26 +9462,22 @@
           "input_default": {
             "additionalProperties": true,
             "type": "object",
-            "title": "Input Default",
-            "default": {}
+            "title": "Input Default"
           },
           "metadata": {
             "additionalProperties": true,
             "type": "object",
-            "title": "Metadata",
-            "default": {}
+            "title": "Metadata"
           },
           "input_links": {
             "items": { "$ref": "#/components/schemas/Link" },
             "type": "array",
-            "title": "Input Links",
-            "default": []
+            "title": "Input Links"
           },
           "output_links": {
             "items": { "$ref": "#/components/schemas/Link" },
             "type": "array",
-            "title": "Output Links",
-            "default": []
+            "title": "Output Links"
           },
           "graph_id": { "type": "string", "title": "Graph Id" },
           "graph_version": { "type": "integer", "title": "Graph Version" },
@@ -8808,6 +9747,87 @@
           "BUILDER_RUN_AGENT"
         ],
         "title": "OnboardingStep"
+      },
+      "OperationCompleteRequest": {
+        "properties": {
+          "success": { "type": "boolean", "title": "Success" },
+          "result": {
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "string" },
+              { "type": "null" }
+            ],
+            "title": "Result"
+          },
+          "error": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": ["success"],
+        "title": "OperationCompleteRequest",
+        "description": "Request model for external completion webhook."
+      },
+      "OperationInProgressResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "operation_in_progress"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "tool_call_id": { "type": "string", "title": "Tool Call Id" }
+        },
+        "type": "object",
+        "required": ["message", "tool_call_id"],
+        "title": "OperationInProgressResponse",
+        "description": "Response when an operation is already in progress.\n\nReturned for idempotency when the same tool_call_id is requested again\nwhile the background task is still running."
+      },
+      "OperationPendingResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "operation_pending"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "operation_id": { "type": "string", "title": "Operation Id" },
+          "tool_name": { "type": "string", "title": "Tool Name" }
+        },
+        "type": "object",
+        "required": ["message", "operation_id", "tool_name"],
+        "title": "OperationPendingResponse",
+        "description": "Response stored in chat history while a long-running operation is executing.\n\nThis is persisted to the database so users see a pending state when they\nrefresh before the operation completes."
+      },
+      "OperationStartedResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "operation_started"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "operation_id": { "type": "string", "title": "Operation Id" },
+          "tool_name": { "type": "string", "title": "Tool Name" },
+          "task_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Task Id"
+          }
+        },
+        "type": "object",
+        "required": ["message", "operation_id", "tool_name"],
+        "title": "OperationStartedResponse",
+        "description": "Response when a long-running operation has been started in the background.\n\nThis is returned immediately to the client while the operation continues\nto execute. The user can close the tab and check back later.\n\nThe task_id can be used to reconnect to the SSE stream via\nGET /chat/tasks/{task_id}/stream?last_idx=0"
       },
       "Pagination": {
         "properties": {
@@ -9440,6 +10460,38 @@
         "required": ["credit_amount"],
         "title": "RequestTopUp"
       },
+      "ResponseType": {
+        "type": "string",
+        "enum": [
+          "agents_found",
+          "agent_details",
+          "setup_requirements",
+          "execution_started",
+          "need_login",
+          "error",
+          "no_results",
+          "agent_output",
+          "understanding_updated",
+          "agent_preview",
+          "agent_saved",
+          "clarification_needed",
+          "block_list",
+          "block_output",
+          "doc_search_results",
+          "doc_page",
+          "workspace_file_list",
+          "workspace_file_content",
+          "workspace_file_metadata",
+          "workspace_file_written",
+          "workspace_file_deleted",
+          "operation_started",
+          "operation_pending",
+          "operation_in_progress",
+          "input_validation_error"
+        ],
+        "title": "ResponseType",
+        "description": "Types of tool responses."
+      },
       "ReviewItem": {
         "properties": {
           "node_exec_id": {
@@ -9664,6 +10716,12 @@
             "items": { "additionalProperties": true, "type": "object" },
             "type": "array",
             "title": "Messages"
+          },
+          "active_stream": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/ActiveStreamInfo" },
+              { "type": "null" }
+            ]
           }
         },
         "type": "object",
@@ -9696,6 +10754,48 @@
         "type": "object",
         "required": ["active_graph_version"],
         "title": "SetGraphActiveVersion"
+      },
+      "SetupInfo": {
+        "properties": {
+          "agent_id": { "type": "string", "title": "Agent Id" },
+          "agent_name": { "type": "string", "title": "Agent Name" },
+          "requirements": {
+            "additionalProperties": { "items": {}, "type": "array" },
+            "type": "object",
+            "title": "Requirements"
+          },
+          "user_readiness": { "$ref": "#/components/schemas/UserReadiness" }
+        },
+        "type": "object",
+        "required": ["agent_id", "agent_name"],
+        "title": "SetupInfo",
+        "description": "Complete setup information."
+      },
+      "SetupRequirementsResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "setup_requirements"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "setup_info": { "$ref": "#/components/schemas/SetupInfo" },
+          "graph_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Graph Id"
+          },
+          "graph_version": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Graph Version"
+          }
+        },
+        "type": "object",
+        "required": ["message", "setup_info"],
+        "title": "SetupRequirementsResponse",
+        "description": "Response for validate action."
       },
       "ShareRequest": {
         "properties": {},
@@ -11083,6 +12183,33 @@
         "required": ["name", "graph_id", "graph_version", "trigger_config"],
         "title": "TriggeredPresetSetupRequest"
       },
+      "UnderstandingUpdatedResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "understanding_updated"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "updated_fields": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Updated Fields"
+          },
+          "current_understanding": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Current Understanding"
+          }
+        },
+        "type": "object",
+        "required": ["message"],
+        "title": "UnderstandingUpdatedResponse",
+        "description": "Response for add_understanding tool."
+      },
       "UnifiedSearchResponse": {
         "properties": {
           "results": {
@@ -11961,6 +13088,29 @@
         "required": ["provider", "username", "password"],
         "title": "UserPasswordCredentials"
       },
+      "UserReadiness": {
+        "properties": {
+          "has_all_credentials": {
+            "type": "boolean",
+            "title": "Has All Credentials",
+            "default": false
+          },
+          "missing_credentials": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Missing Credentials",
+            "default": {}
+          },
+          "ready_to_run": {
+            "type": "boolean",
+            "title": "Ready To Run",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "UserReadiness",
+        "description": "User readiness status."
+      },
       "UserTransaction": {
         "properties": {
           "transaction_key": {
@@ -12042,7 +13192,9 @@
             "title": "Location"
           },
           "msg": { "type": "string", "title": "Message" },
-          "type": { "type": "string", "title": "Error Type" }
+          "type": { "type": "string", "title": "Error Type" },
+          "input": { "title": "Input" },
+          "ctx": { "type": "object", "title": "Context" }
         },
         "type": "object",
         "required": ["loc", "msg", "type"],

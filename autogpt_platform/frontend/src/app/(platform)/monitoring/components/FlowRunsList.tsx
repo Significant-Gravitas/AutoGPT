@@ -14,7 +14,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/__legacy__/ui/table";
-import moment from "moment/moment";
+import { format } from "date-fns";
 import { FlowRunStatusBadge } from "@/app/(platform)/monitoring/components/FlowRunStatusBadge";
 import { TextRenderer } from "../../../../components/__legacy__/ui/render";
 
@@ -59,7 +59,9 @@ export const FlowRunsList: React.FC<{
                 />
               </TableCell>
               <TableCell>
-                {moment(execution.started_at).format("HH:mm")}
+                {execution.started_at
+                  ? format(execution.started_at, "HH:mm")
+                  : "—"}
               </TableCell>
               <TableCell>
                 <FlowRunStatusBadge

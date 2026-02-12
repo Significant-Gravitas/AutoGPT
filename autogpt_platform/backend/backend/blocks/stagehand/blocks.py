@@ -182,10 +182,7 @@ class StagehandObserveBlock(Block):
         **kwargs,
     ) -> BlockOutput:
 
-        logger.info(f"OBSERVE: Stagehand credentials: {stagehand_credentials}")
-        logger.info(
-            f"OBSERVE: Model credentials: {model_credentials} for provider {model_credentials.provider} secret: {model_credentials.api_key.get_secret_value()}"
-        )
+        logger.debug(f"OBSERVE: Using model provider {model_credentials.provider}")
 
         with disable_signal_handling():
             stagehand = Stagehand(
@@ -282,10 +279,7 @@ class StagehandActBlock(Block):
         **kwargs,
     ) -> BlockOutput:
 
-        logger.info(f"ACT: Stagehand credentials: {stagehand_credentials}")
-        logger.info(
-            f"ACT: Model credentials: {model_credentials} for provider {model_credentials.provider} secret: {model_credentials.api_key.get_secret_value()}"
-        )
+        logger.debug(f"ACT: Using model provider {model_credentials.provider}")
 
         with disable_signal_handling():
             stagehand = Stagehand(
@@ -370,10 +364,7 @@ class StagehandExtractBlock(Block):
         **kwargs,
     ) -> BlockOutput:
 
-        logger.info(f"EXTRACT: Stagehand credentials: {stagehand_credentials}")
-        logger.info(
-            f"EXTRACT: Model credentials: {model_credentials} for provider {model_credentials.provider} secret: {model_credentials.api_key.get_secret_value()}"
-        )
+        logger.debug(f"EXTRACT: Using model provider {model_credentials.provider}")
 
         with disable_signal_handling():
             stagehand = Stagehand(

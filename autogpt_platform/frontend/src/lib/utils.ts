@@ -1,5 +1,5 @@
 import { type ClassValue, clsx } from "clsx";
-import { isEmpty as _isEmpty } from "lodash";
+import _isEmpty from "lodash/isEmpty";
 import { twMerge } from "tailwind-merge";
 
 import { NodeDimension } from "@/app/(platform)/build/components/legacy-builder/Flow/Flow";
