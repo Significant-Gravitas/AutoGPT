@@ -11,6 +11,7 @@ settings = Settings()
 
 if TYPE_CHECKING:
     from openai import AsyncOpenAI
+    from supabase import AClient, Client
 
     from backend.data.db_manager import (
         DatabaseManagerAsyncClient,
@@ -24,7 +25,6 @@ if TYPE_CHECKING:
     from backend.executor.scheduler import SchedulerClient
     from backend.integrations.credentials_store import IntegrationCredentialsStore
     from backend.notifications.notifications import NotificationManagerClient
-    from supabase import AClient, Client
 
 
 @thread_cached
