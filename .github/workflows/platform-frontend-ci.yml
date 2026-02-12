@@ -166,42 +166,82 @@ jobs:
         env:
           NEXT_PUBLIC_PW_TEST: true
 
-      - name: Set up Platform - Start (docker compose up)
-        run: docker compose -f ../docker-compose.resolved.yml up -d --no-build
+      - name: Set up tests - Cache E2E test data
+        id: e2e-data-cache
+        uses: actions/cache@v5
+        with:
+          path: /tmp/e2e_test_data.sql
+          key: e2e-test-data-${{ hashFiles('autogpt_platform/backend/test/e2e_test_data.py', 'autogpt_platform/backend/migrations/**', '.github/workflows/platform-frontend-ci.yml') }}
+
+      - name: Set up Platform - Start Supabase DB + Auth
+        run: |
+          # Start db and auth services
+          docker compose -f ../docker-compose.resolved.yml up -d db auth --no-build
+          echo "Waiting for database to be ready..."
+          timeout 60 sh -c 'until docker compose -f ../docker-compose.resolved.yml exec -T db pg_isready -U postgres 2>/dev/null; do sleep 2; done'
+          echo "Waiting for auth service to be ready..."
+          timeout 60 sh -c 'until docker compose -f ../docker-compose.resolved.yml exec -T db psql -U postgres -d postgres -c "SELECT 1 FROM auth.users LIMIT 1" 2>/dev/null; do sleep 2; done' || echo "Auth schema check timeout, continuing..."
+
+      - name: Set up Platform - Run migrations
+        run: |
+          # Run migrate service and wait for it to complete (not just start)
+          echo "Running migrations..."
+          docker compose -f ../docker-compose.resolved.yml run --rm migrate
+          echo "✅ Migrations completed"
         env:
           NEXT_PUBLIC_PW_TEST: true
 
-      - name: Set up Platform - Wait for services to be ready
+      - name: Set up tests - Load cached E2E test data
+        if: steps.e2e-data-cache.outputs.cache-hit == 'true'
         run: |
+          echo "✅ Found cached E2E test data, restoring..."
+          {
+            echo "SET session_replication_role = 'replica';"
+            cat /tmp/e2e_test_data.sql
+            echo "SET session_replication_role = 'origin';"
+          } | docker compose -f ../docker-compose.resolved.yml exec -T db psql -U postgres -d postgres
+          # Refresh materialized views after restore
+          docker compose -f ../docker-compose.resolved.yml exec -T db \
+            psql -U postgres -d postgres -c "SET search_path TO platform; SELECT refresh_store_materialized_views();" || true
+
+          echo "✅ E2E test data restored from cache"
+
+      - name: Set up Platform - Start remaining services
+        run: |
+          # Now start all remaining services (rest_server will populate AgentBlock, etc.)
+          docker compose -f ../docker-compose.resolved.yml up -d --no-build
           echo "Waiting for rest_server to be ready..."
           timeout 60 sh -c 'until curl -f http://localhost:8006/health 2>/dev/null; do sleep 2; done' || echo "Rest server health check timeout, continuing..."
-          echo "Waiting for database to be ready..."
-          timeout 60 sh -c 'until docker compose -f ../docker-compose.resolved.yml exec -T db pg_isready -U postgres 2>/dev/null; do sleep 2; done' || echo "Database ready check timeout, continuing..."
+        env:
+          NEXT_PUBLIC_PW_TEST: true
 
       - name: Set up tests - Create E2E test data
+        if: steps.e2e-data-cache.outputs.cache-hit != 'true'
         run: |
-          echo "Creating E2E test data..."
-          # First try to run the script from inside the container
-          if docker compose -f ../docker-compose.resolved.yml exec -T rest_server test -f /app/autogpt_platform/backend/test/e2e_test_data.py; then
-            echo "✅ Found e2e_test_data.py in container, running it..."
-            docker compose -f ../docker-compose.resolved.yml exec -T rest_server sh -c "cd /app/autogpt_platform && python backend/test/e2e_test_data.py" || {
-              echo "❌ E2E test data creation failed!"
-              docker compose -f ../docker-compose.resolved.yml logs --tail=50 rest_server
-              exit 1
-            }
-          else
-            echo "⚠️ e2e_test_data.py not found in container, copying and running..."
-            # Copy the script into the container and run it
-            docker cp ../backend/test/e2e_test_data.py $(docker compose -f ../docker-compose.resolved.yml ps -q rest_server):/tmp/e2e_test_data.py || {
-              echo "❌ Failed to copy script to container"
-              exit 1
-            }
-            docker compose -f ../docker-compose.resolved.yml exec -T rest_server sh -c "cd /app/autogpt_platform && python /tmp/e2e_test_data.py" || {
-              echo "❌ E2E test data creation failed!"
-              docker compose -f ../docker-compose.resolved.yml logs --tail=50 rest_server
-              exit 1
-            }
-          fi
+          echo "Creating E2E test data (cache miss)..."
+          docker cp ../backend/test/e2e_test_data.py $(docker compose -f ../docker-compose.resolved.yml ps -q rest_server):/tmp/e2e_test_data.py
+          docker compose -f ../docker-compose.resolved.yml exec -T rest_server sh -c "cd /app/autogpt_platform && python /tmp/e2e_test_data.py" || {
+            echo "❌ E2E test data creation failed!"
+            docker compose -f ../docker-compose.resolved.yml logs --tail=50 rest_server
+            exit 1
+          }
+
+          # Dump auth.users + platform schema for cache (two separate dumps)
+          echo "Dumping database for cache..."
+          {
+            docker compose -f ../docker-compose.resolved.yml exec -T db \
+              pg_dump -U postgres --data-only --column-inserts \
+              --table='auth.users' postgres
+            docker compose -f ../docker-compose.resolved.yml exec -T db \
+              pg_dump -U postgres --data-only --column-inserts \
+              --schema=platform \
+              --exclude-table='platform._prisma_migrations' \
+              --exclude-table='platform.apscheduler_jobs' \
+              --exclude-table='platform.apscheduler_jobs_batched_notifications' \
+              postgres
+          } > /tmp/e2e_test_data.sql
+
+          echo "✅ Database dump created for caching ($(wc -l < /tmp/e2e_test_data.sql) lines)"
 
       - name: Set up tests - Enable corepack
         run: corepack enable
