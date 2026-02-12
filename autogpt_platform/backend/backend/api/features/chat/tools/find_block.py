@@ -173,7 +173,7 @@ class FindBlockTool(BaseTool):
             return BlockListResponse(
                 message=(
                     f"Found {len(blocks)} block(s) matching '{query}'. "
-                    "To see a block's inputs/outputs and execute it, use run_block with the block's 'id'."
+                    "To see a block's inputs/outputs and execute it, use run_block with the block's 'id' - providing no inputs."
                 ),
                 blocks=blocks,
                 count=len(blocks),
