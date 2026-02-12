@@ -1,23 +1,32 @@
 import logging
+from typing import TYPE_CHECKING, Any, AsyncGenerator
 
 from prisma.models import AgentBlock
 from prisma.types import AgentBlockCreateInput
 
-from backend.blocks import get_blocks
-from backend.blocks._base import Block
 from backend.util import json
+
+if TYPE_CHECKING:
+    from backend.blocks._base import AnyBlockSchema
 
 logger = logging.getLogger(__name__)
 
 
+BlockInput = dict[str, Any]  # Input: 1 input pin <- 1 data.
+BlockOutputEntry = tuple[str, Any]  # Output data should be a tuple of (name, value).
+BlockOutput = AsyncGenerator[BlockOutputEntry, None]  # Output: 1 output pin -> N data.
+CompletedBlockOutput = dict[str, list[Any]]  # Completed stream, collected as a dict.
+
+
 async def initialize_blocks() -> None:
+    from backend.blocks import get_blocks
     from backend.sdk.cost_integration import sync_all_provider_costs
     from backend.util.retry import func_retry
 
     sync_all_provider_costs()
 
     @func_retry
-    async def sync_block_to_db(block: Block) -> None:
+    async def sync_block_to_db(block: "AnyBlockSchema") -> None:
         existing_block = await AgentBlock.prisma().find_first(
             where={"OR": [{"id": block.id}, {"name": block.name}]}
         )

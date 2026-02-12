@@ -1137,7 +1137,7 @@ const FlowEditor: React.FC<{
               <AlertTitle>You are building a Trigger Agent</AlertTitle>
               <AlertDescription>
                 Your agent{" "}
-                {savedAgent?.nodes.some((node) => node.webhook)
+                {savedAgent?.nodes.some((node) => node.webhook_id)
                   ? "is listening"
                   : "will listen"}{" "}
                 for its trigger and will run when the time is right.

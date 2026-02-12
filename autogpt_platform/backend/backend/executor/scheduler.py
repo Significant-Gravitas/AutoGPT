@@ -25,7 +25,7 @@ from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import MetaData, create_engine
 
 from backend.data.execution import GraphExecutionWithNodes
-from backend.data.model import BlockInput, CredentialsMetaInput
+from backend.data.model import CredentialsMetaInput, GraphInput
 from backend.executor import utils as execution_utils
 from backend.monitoring import (
     NotificationJobArgs,
@@ -386,7 +386,7 @@ class GraphExecutionJobArgs(BaseModel):
     graph_version: int
     agent_name: str | None = None
     cron: str
-    input_data: BlockInput
+    input_data: GraphInput
     input_credentials: dict[str, CredentialsMetaInput] = Field(default_factory=dict)
 
 
@@ -648,7 +648,7 @@ class Scheduler(AppService):
         graph_id: str,
         graph_version: int,
         cron: str,
-        input_data: BlockInput,
+        input_data: GraphInput,
         input_credentials: dict[str, CredentialsMetaInput],
         name: Optional[str] = None,
         user_timezone: str | None = None,

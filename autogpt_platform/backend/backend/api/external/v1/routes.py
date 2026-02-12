@@ -16,7 +16,7 @@ from backend.data import execution as execution_db
 from backend.data import graph as graph_db
 from backend.data import user as user_db
 from backend.data.auth.base import APIAuthorizationInfo
-from backend.data.model import BlockInput, CompletedBlockOutput
+from backend.data.block import BlockInput, CompletedBlockOutput
 from backend.executor.utils import add_graph_execution
 from backend.util.settings import Settings
 

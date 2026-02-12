@@ -28,23 +28,19 @@ from backend.blocks._base import Block, BlockType, EmptySchema
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.blocks.llm import LlmModel
-from backend.data.db import prisma as db
-from backend.data.dynamic_fields import is_tool_pin, sanitize_pin_name
-from backend.data.includes import MAX_GRAPH_VERSIONS_FETCH
-from backend.data.model import (
-    BlockInput,
-    CredentialsFieldInfo,
-    CredentialsMetaInput,
-    is_credentials_field_name,
-)
 from backend.integrations.providers import ProviderName
 from backend.util import type as type_utils
 from backend.util.exceptions import GraphNotAccessibleError, GraphNotInLibraryError
 from backend.util.json import SafeJson
 from backend.util.models import Pagination
 
-from .db import BaseDbModel, query_raw_with_schema, transaction
-from .includes import AGENT_GRAPH_INCLUDE, AGENT_NODE_INCLUDE
+from .block import BlockInput
+from .db import BaseDbModel
+from .db import prisma as db
+from .db import query_raw_with_schema, transaction
+from .dynamic_fields import is_tool_pin, sanitize_pin_name
+from .includes import AGENT_GRAPH_INCLUDE, AGENT_NODE_INCLUDE, MAX_GRAPH_VERSIONS_FETCH
+from .model import CredentialsFieldInfo, CredentialsMetaInput, is_credentials_field_name
 
 if TYPE_CHECKING:
     from backend.blocks._base import AnyBlockSchema
@@ -147,7 +143,7 @@ class NodeModel(Node):
         obj = NodeModel(
             id=node.id,
             block_id=node.agentBlockId,
-            input_default=type_utils.convert(node.constantInput, dict[str, Any]),
+            input_default=type_utils.convert(node.constantInput, BlockInput),
             metadata=type_utils.convert(node.metadata, dict[str, Any]),
             graph_id=node.agentGraphId,
             graph_version=node.agentGraphVersion,
@@ -189,8 +185,8 @@ class NodeModel(Node):
 
     @staticmethod
     def _filter_secrets_from_node_input(
-        input_data: dict[str, Any], schema: dict[str, Any] | None
-    ) -> dict[str, Any]:
+        input_data: BlockInput, schema: dict[str, Any] | None
+    ) -> BlockInput:
         sensitive_keys = ["credentials", "api_key", "password", "token", "secret"]
         field_schemas = schema.get("properties", {}) if schema else {}
         result = {}
