@@ -97,6 +97,11 @@ class ChatConfig(BaseSettings):
         default=True,
         description="Use Claude Agent SDK for chat completions",
     )
+    sdk_max_buffer_size: int = Field(
+        default=10 * 1024 * 1024,  # 10MB (default SDK is 1MB)
+        description="Max buffer size in bytes for SDK JSON message parsing. "
+        "Increase if tool outputs exceed the limit.",
+    )
 
     # Extended thinking configuration for Claude models
     thinking_enabled: bool = Field(

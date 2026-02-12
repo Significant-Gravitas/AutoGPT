@@ -290,6 +290,7 @@ async def stream_chat_completion_sdk(
                 allowed_tools=COPILOT_TOOL_NAMES,
                 hooks=create_security_hooks(user_id, sdk_cwd=sdk_cwd),  # type: ignore[arg-type]
                 cwd=sdk_cwd,
+                max_buffer_size=config.sdk_max_buffer_size,
             )
 
             adapter = SDKResponseAdapter(message_id=message_id)
