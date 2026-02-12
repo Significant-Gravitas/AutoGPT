@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Add cache configuration to a resolved docker-compose file for all services
-that have a build key.
+that have a build key, and ensure image names match what docker compose expects.
 """
 
 import argparse
@@ -43,17 +43,21 @@ def main():
     with open(args.source, "r") as f:
         compose = yaml.safe_load(f)
 
+    # Get project name from compose file or default
+    project_name = compose.get("name", "autogpt_platform")
+
     modified_services = []
     for service_name, service_config in compose.get("services", {}).items():
         if "build" not in service_config:
             continue
 
+        build_config = service_config["build"]
         cache_from = args.cache_from
         cache_to = args.cache_to
 
         # Determine scope based on Dockerfile path
+        dockerfile = build_config.get("dockerfile", "Dockerfile")
         if "type=gha" in args.cache_from or "type=gha" in args.cache_to:
-            dockerfile = service_config["build"].get("dockerfile", "Dockerfile")
             if "frontend" in dockerfile:
                 scope = args.frontend_scope
             elif "backend" in dockerfile:
@@ -68,8 +72,22 @@ def main():
                 if "type=gha" in args.cache_to:
                     cache_to = f"{args.cache_to},scope={scope}"
 
-        service_config["build"]["cache_from"] = [cache_from]
-        service_config["build"]["cache_to"] = [cache_to]
+        build_config["cache_from"] = [cache_from]
+        build_config["cache_to"] = [cache_to]
+
+        # Set image name based on Dockerfile folder and build target
+        # This ensures services with the same Dockerfile+target share an image
+        if "image" not in service_config:
+            # Extract folder name from dockerfile path (e.g., "backend" from "autogpt_platform/backend/Dockerfile")
+            dockerfile_parts = dockerfile.replace("\\", "/").split("/")
+            if len(dockerfile_parts) >= 2:
+                folder_name = dockerfile_parts[-2]  # e.g., "backend" or "frontend"
+            else:
+                folder_name = "app"
+
+            target = build_config.get("target", "default")
+            service_config["image"] = f"{project_name}-{folder_name}:{target}"
+
         modified_services.append(service_name)
 
     # Write back to the same file
