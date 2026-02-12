@@ -4,7 +4,6 @@ import asyncio
 import json
 import logging
 import os
-import re
 import uuid
 from collections.abc import AsyncGenerator
 from typing import Any
@@ -29,8 +28,8 @@ from ..response_model import (
     StreamToolOutputAvailable,
 )
 from ..service import _build_system_prompt, _generate_session_title
+from ..tools.sandbox import WORKSPACE_PREFIX, make_session_path
 from ..tracking import track_user_message
-from .anthropic_fallback import stream_with_anthropic
 from .response_adapter import SDKResponseAdapter
 from .security_hooks import create_security_hooks
 from .tool_adapter import (
@@ -47,7 +46,7 @@ config = ChatConfig()
 _background_tasks: set[asyncio.Task[Any]] = set()
 
 
-_SDK_CWD_PREFIX = "/tmp/copilot-"
+_SDK_CWD_PREFIX = WORKSPACE_PREFIX
 
 # Appended to the system prompt to inform the agent about Bash restrictions.
 # The SDK already describes each tool (Read, Write, Edit, Glob, Grep, Bash),
@@ -109,24 +108,12 @@ def _build_sdk_env() -> dict[str, str]:
 def _make_sdk_cwd(session_id: str) -> str:
     """Create a safe, session-specific working directory path.
 
-    Sanitizes session_id, then validates the resulting path stays under /tmp/
-    using normpath + startswith (the pattern CodeQL recognises as a sanitizer).
+    Delegates to :func:`~backend.api.features.chat.tools.sandbox.make_session_path`
+    (single source of truth for path sanitization) and adds a defence-in-depth
+    assertion.
     """
-    # Step 1: Sanitize - only allow alphanumeric and hyphens
-    safe_id = re.sub(r"[^A-Za-z0-9-]", "", session_id)
-    if not safe_id:
-        raise ValueError("Session ID is empty after sanitization")
-
-    # Step 2: Construct path with known-safe prefix
-    cwd = os.path.normpath(f"{_SDK_CWD_PREFIX}{safe_id}")
-
-    # Step 3: Validate the path is still under our prefix (prevent traversal)
-    if not cwd.startswith(_SDK_CWD_PREFIX):
-        raise ValueError(f"Session path escaped prefix: {cwd}")
-
-    # Step 4: Additional assertion for defense-in-depth
+    cwd = make_session_path(session_id)
     assert cwd.startswith("/tmp/copilot-"), f"Path validation failed: {cwd}"
-
     return cwd
 
 
@@ -340,7 +327,6 @@ async def stream_chat_completion_sdk(
     )
     system_prompt += _SDK_TOOL_SUPPLEMENT
     message_id = str(uuid.uuid4())
-    text_block_id = str(uuid.uuid4())
     task_id = str(uuid.uuid4())
 
     yield StreamStart(messageId=message_id, taskId=task_id)
@@ -351,7 +337,7 @@ async def stream_chat_completion_sdk(
     sdk_cwd = _make_sdk_cwd(session_id)
     os.makedirs(sdk_cwd, exist_ok=True)
 
-    set_execution_context(user_id, session, None)
+    set_execution_context(user_id, session)
 
     try:
         try:
@@ -371,7 +357,7 @@ async def stream_chat_completion_sdk(
             sdk_model = _resolve_sdk_model()
 
             # Initialize Langfuse tracing (no-op if not configured)
-            tracer = TracedSession(session_id, user_id, system_prompt)
+            tracer = TracedSession(session_id, user_id, system_prompt, model=sdk_model)
 
             # Merge security hooks with optional tracing hooks
             security_hooks = create_security_hooks(
@@ -510,15 +496,11 @@ async def stream_chat_completion_sdk(
                     session.messages.append(assistant_response)
 
         except ImportError:
-            logger.warning(
-                "[SDK] claude-agent-sdk not available, using Anthropic fallback"
+            raise RuntimeError(
+                "claude-agent-sdk is not installed. "
+                "Disable SDK mode (CHAT_USE_CLAUDE_AGENT_SDK=false) "
+                "to use the OpenAI-compatible fallback."
             )
-            async for response in stream_with_anthropic(
-                session, system_prompt, text_block_id
-            ):
-                if isinstance(response, StreamFinish):
-                    stream_completed = True
-                yield response
 
         await upsert_chat_session(session)
         logger.debug(

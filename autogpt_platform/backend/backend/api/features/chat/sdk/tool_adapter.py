@@ -29,10 +29,6 @@ _current_user_id: ContextVar[str | None] = ContextVar("current_user_id", default
 _current_session: ContextVar[ChatSession | None] = ContextVar(
     "current_session", default=None
 )
-_current_tool_call_id: ContextVar[str | None] = ContextVar(
-    "current_tool_call_id", default=None
-)
-
 # Stash for MCP tool outputs before the SDK potentially truncates them.
 # Keyed by tool_name → full output string. Consumed (popped) by the
 # response adapter when it builds StreamToolOutputAvailable.
@@ -44,7 +40,6 @@ _pending_tool_outputs: ContextVar[dict[str, str]] = ContextVar(
 def set_execution_context(
     user_id: str | None,
     session: ChatSession,
-    tool_call_id: str | None = None,
 ) -> None:
     """Set the execution context for tool calls.
 
@@ -53,16 +48,14 @@ def set_execution_context(
     """
     _current_user_id.set(user_id)
     _current_session.set(session)
-    _current_tool_call_id.set(tool_call_id)
     _pending_tool_outputs.set({})
 
 
-def get_execution_context() -> tuple[str | None, ChatSession | None, str | None]:
+def get_execution_context() -> tuple[str | None, ChatSession | None]:
     """Get the current execution context."""
     return (
         _current_user_id.get(),
         _current_session.get(),
-        _current_tool_call_id.get(),
     )
 
 
@@ -91,7 +84,7 @@ def create_tool_handler(base_tool: BaseTool):
 
     async def tool_handler(args: dict[str, Any]) -> dict[str, Any]:
         """Execute the wrapped tool and return MCP-formatted response."""
-        user_id, session, tool_call_id = get_execution_context()
+        user_id, session = get_execution_context()
 
         if session is None:
             return {
@@ -112,7 +105,7 @@ def create_tool_handler(base_tool: BaseTool):
         try:
             # Call the existing tool's execute method
             # Generate unique tool_call_id per invocation for proper correlation
-            effective_id = tool_call_id or f"sdk-{uuid.uuid4().hex[:12]}"
+            effective_id = f"sdk-{uuid.uuid4().hex[:12]}"
             result = await base_tool.execute(
                 user_id=user_id,
                 session=session,
@@ -166,38 +159,6 @@ def _build_input_schema(base_tool: BaseTool) -> dict[str, Any]:
         "properties": base_tool.parameters.get("properties", {}),
         "required": base_tool.parameters.get("required", []),
     }
-
-
-def get_tool_definitions() -> list[dict[str, Any]]:
-    """Get all tool definitions in MCP format.
-
-    Returns a list of tool definitions that can be used with
-    create_sdk_mcp_server or as raw tool definitions.
-    """
-    tool_definitions = []
-
-    for tool_name, base_tool in TOOL_REGISTRY.items():
-        tool_def = {
-            "name": tool_name,
-            "description": base_tool.description,
-            "inputSchema": _build_input_schema(base_tool),
-        }
-        tool_definitions.append(tool_def)
-
-    return tool_definitions
-
-
-def get_tool_handlers() -> dict[str, Any]:
-    """Get all tool handlers mapped by name.
-
-    Returns a dictionary mapping tool names to their handler functions.
-    """
-    handlers = {}
-
-    for tool_name, base_tool in TOOL_REGISTRY.items():
-        handlers[tool_name] = create_tool_handler(base_tool)
-
-    return handlers
 
 
 async def _read_file_handler(args: dict[str, Any]) -> dict[str, Any]:

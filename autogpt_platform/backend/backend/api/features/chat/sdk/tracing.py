@@ -4,20 +4,18 @@ This module provides modular, non-invasive observability for SDK sessions.
 All tracing is opt-in (only active when Langfuse credentials are configured)
 and designed to not affect the core execution flow.
 
-Usage:
+Usage::
+
     async with TracedSession(session_id, user_id) as tracer:
-        # Your SDK code here
         tracer.log_user_message(message)
         async for sdk_msg in client.receive_messages():
             tracer.log_sdk_message(sdk_msg)
-        tracer.log_result(result_message)
 """
 
 from __future__ import annotations
 
 import logging
 import time
-from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -77,10 +75,12 @@ class TracedSession:
         session_id: str,
         user_id: str | None = None,
         system_prompt: str | None = None,
+        model: str | None = None,
     ):
         self.session_id = session_id
         self.user_id = user_id
         self.system_prompt = system_prompt
+        self.model = model
         self.enabled = _is_langfuse_configured()
 
         # Internal state
@@ -265,7 +265,7 @@ class TracedSession:
             if usage or result.total_cost_usd:
                 self._trace.generation(
                     name="claude-sdk-completion",
-                    model="claude-sonnet-4-20250514",  # SDK default model
+                    model=self.model or "claude-sonnet-4-20250514",
                     usage=(
                         {
                             "input": usage.get("input_tokens", 0),
@@ -306,25 +306,6 @@ class TracedSession:
             ]
             return "".join(parts) if parts else str(content)
         return str(content) if content else ""
-
-
-@asynccontextmanager
-async def traced_session(
-    session_id: str,
-    user_id: str | None = None,
-    system_prompt: str | None = None,
-):
-    """Convenience async context manager for tracing SDK sessions.
-
-    Usage:
-        async with traced_session(session_id, user_id) as tracer:
-            tracer.log_user_message(message)
-            async for msg in client.receive_messages():
-                tracer.log_sdk_message(msg)
-    """
-    tracer = TracedSession(session_id, user_id, system_prompt)
-    async with tracer:
-        yield tracer
 
 
 def create_tracing_hooks(tracer: TracedSession) -> dict[str, Any]:

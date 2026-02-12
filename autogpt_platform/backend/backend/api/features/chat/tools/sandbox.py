@@ -37,23 +37,42 @@ def has_network_sandbox() -> bool:
     return _UNSHARE_AVAILABLE
 
 
-_WORKSPACE_PREFIX = "/tmp/copilot-"
+WORKSPACE_PREFIX = "/tmp/copilot-"
 
 
-def get_workspace_dir(session_id: str) -> str:
-    """Get or create the workspace directory for a session.
+def make_session_path(session_id: str) -> str:
+    """Build a sanitized, session-specific path under :data:`WORKSPACE_PREFIX`.
 
-    Uses the same path as the SDK's ``_make_sdk_cwd()`` so that
-    python_exec/bash_exec share the workspace with the SDK file tools.
+    Shared by both the SDK working-directory setup and the sandbox tools so
+    they always resolve to the same directory for a given session.
+
+    Steps:
+        1. Strip all characters except ``[A-Za-z0-9-]``.
+        2. Construct ``/tmp/copilot-<safe_id>``.
+        3. Validate via ``os.path.normpath`` + ``startswith`` (CodeQL-recognised
+           sanitizer) to prevent path traversal.
+
+    Raises:
+        ValueError: If the resulting path escapes the prefix.
     """
     import re
 
     safe_id = re.sub(r"[^A-Za-z0-9-]", "", session_id)
     if not safe_id:
         safe_id = "default"
-    workspace = os.path.normpath(f"{_WORKSPACE_PREFIX}{safe_id}")
-    if not workspace.startswith(_WORKSPACE_PREFIX):
-        raise ValueError(f"Session path escaped prefix: {workspace}")
+    path = os.path.normpath(f"{WORKSPACE_PREFIX}{safe_id}")
+    if not path.startswith(WORKSPACE_PREFIX):
+        raise ValueError(f"Session path escaped prefix: {path}")
+    return path
+
+
+def get_workspace_dir(session_id: str) -> str:
+    """Get or create the workspace directory for a session.
+
+    Uses :func:`make_session_path` — the same path the SDK uses — so that
+    python_exec / bash_exec share the workspace with the SDK file tools.
+    """
+    workspace = make_session_path(session_id)
     os.makedirs(workspace, exist_ok=True)
     return workspace
 
