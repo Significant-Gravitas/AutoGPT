@@ -1,5 +1,11 @@
 from typing import Any
 
+from backend.blocks._base import (
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.blocks.llm import (
     DEFAULT_LLM_MODEL,
     TEST_CREDENTIALS,
@@ -10,12 +16,6 @@ from backend.blocks.llm import (
     LlmModel,
     LLMResponse,
     llm_call,
-)
-from backend.data.block import (
-    BlockCategory,
-    BlockOutput,
-    BlockSchemaInput,
-    BlockSchemaOutput,
 )
 from backend.data.model import APIKeyCredentials, NodeExecutionStats, SchemaField
 
