@@ -6,6 +6,7 @@ Enable via AGENTGENERATOR_USE_DUMMY=true in settings.
 WARNING: This is for testing only. Do not use in production.
 """
 
+import asyncio
 import logging
 import uuid
 from typing import Any
@@ -103,8 +104,9 @@ async def generate_agent_dummy(
     operation_id: str | None = None,
     task_id: str | None = None,
 ) -> dict[str, Any]:
-    """Return dummy agent JSON."""
-    logger.info("Using dummy agent generator for generate_agent")
+    """Return dummy agent JSON after a simulated delay."""
+    logger.info("Using dummy agent generator for generate_agent (30s delay)")
+    await asyncio.sleep(30)
     return _generate_dummy_agent_json()
 
 

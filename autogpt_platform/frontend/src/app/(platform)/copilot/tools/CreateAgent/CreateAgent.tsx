@@ -52,7 +52,7 @@ function getAccordionMeta(output: CreateAgentToolOutput) {
   const icon = <AccordionIcon />;
 
   if (isAgentSavedOutput(output)) {
-    return { icon, title: output.agent_name };
+    return { icon, title: output.agent_name, expanded: true };
   }
   if (isAgentPreviewOutput(output)) {
     return {
