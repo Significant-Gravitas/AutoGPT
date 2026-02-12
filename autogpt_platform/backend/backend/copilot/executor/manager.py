@@ -221,7 +221,7 @@ class CoPilotExecutor(AppProcess):
         self.run_client.connect()
 
         # Check again after connect - shutdown may have been requested
-        if self.stop_consuming.is_set() and not self.active_tasks:
+        if self.stop_consuming.is_set():
             logger.info("Stop consuming requested during reconnect - disconnecting")
             self.run_client.disconnect()
             return
