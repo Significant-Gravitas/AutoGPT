@@ -64,6 +64,48 @@ interpreters (python, node) are NOT available.
 """
 
 
+def _resolve_sdk_model() -> str | None:
+    """Resolve the model name for the Claude Agent SDK CLI.
+
+    Uses ``config.claude_agent_model`` if set, otherwise derives from
+    ``config.model`` by stripping the OpenRouter provider prefix (e.g.,
+    ``"anthropic/claude-opus-4.6"`` → ``"claude-opus-4.6"``).
+    """
+    if config.claude_agent_model:
+        return config.claude_agent_model
+    model = config.model
+    if "/" in model:
+        return model.split("/", 1)[1]
+    return model
+
+
+def _build_sdk_env() -> dict[str, str]:
+    """Build env vars for the SDK CLI process.
+
+    Routes API calls through OpenRouter (or a custom base_url) using
+    the same ``config.api_key`` / ``config.base_url`` as the non-SDK path.
+    This gives per-call token and cost tracking on the OpenRouter dashboard.
+
+    Only overrides ``ANTHROPIC_API_KEY`` when a valid proxy URL and auth
+    token are both present — otherwise returns an empty dict so the SDK
+    falls back to its default credentials.
+    """
+    env: dict[str, str] = {}
+    if config.api_key and config.base_url:
+        # Strip /v1 suffix — SDK expects the base URL without a version path
+        base = config.base_url.rstrip("/")
+        if base.endswith("/v1"):
+            base = base[:-3]
+        if not base or not base.startswith("http"):
+            # Invalid base_url — don't override SDK defaults
+            return env
+        env["ANTHROPIC_BASE_URL"] = base
+        env["ANTHROPIC_AUTH_TOKEN"] = config.api_key
+        # Must be explicitly empty so the CLI uses AUTH_TOKEN instead
+        env["ANTHROPIC_API_KEY"] = ""
+    return env
+
+
 def _make_sdk_cwd(session_id: str) -> str:
     """Create a safe, session-specific working directory path.
 
@@ -315,7 +357,18 @@ async def stream_chat_completion_sdk(
         try:
             from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 
+            # Fail fast when no API credentials are available at all
+            sdk_env = _build_sdk_env()
+            if not sdk_env and not os.environ.get("ANTHROPIC_API_KEY"):
+                raise RuntimeError(
+                    "No API key configured. Set OPEN_ROUTER_API_KEY "
+                    "(or CHAT_API_KEY) for OpenRouter routing, "
+                    "or ANTHROPIC_API_KEY for direct Anthropic access."
+                )
+
             mcp_server = create_copilot_mcp_server()
+
+            sdk_model = _resolve_sdk_model()
 
             # Initialize Langfuse tracing (no-op if not configured)
             tracer = TracedSession(session_id, user_id, system_prompt)
@@ -331,7 +384,9 @@ async def stream_chat_completion_sdk(
                 allowed_tools=COPILOT_TOOL_NAMES,
                 hooks=combined_hooks,  # type: ignore[arg-type]
                 cwd=sdk_cwd,
-                max_buffer_size=config.sdk_max_buffer_size,
+                max_buffer_size=config.claude_agent_max_buffer_size,
+                # Only pass model/env when OpenRouter is configured
+                **({"model": sdk_model, "env": sdk_env} if sdk_env else {}),
             )
 
             adapter = SDKResponseAdapter(message_id=message_id)
@@ -385,6 +440,7 @@ async def stream_chat_completion_sdk(
                     for response in adapter.convert_message(sdk_msg):
                         if isinstance(response, StreamStart):
                             continue
+
                         yield response
 
                         if isinstance(response, StreamTextDelta):

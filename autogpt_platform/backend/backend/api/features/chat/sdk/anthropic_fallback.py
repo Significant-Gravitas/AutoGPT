@@ -6,10 +6,11 @@ directly when the Claude Agent SDK is not available.
 
 import json
 import logging
-import os
 import uuid
 from collections.abc import AsyncGenerator
 from typing import Any, cast
+
+import anthropic
 
 from ..config import ChatConfig
 from ..model import ChatMessage, ChatSession
@@ -23,7 +24,6 @@ from ..response_model import (
     StreamToolInputAvailable,
     StreamToolInputStart,
     StreamToolOutputAvailable,
-    StreamUsage,
 )
 from .tool_adapter import get_tool_definitions, get_tool_handlers
 
@@ -44,19 +44,27 @@ async def stream_with_anthropic(
     This function accumulates messages into the session for persistence.
     The caller should NOT yield an additional StreamFinish - this function handles it.
     """
-    import anthropic
-
-    # Only use ANTHROPIC_API_KEY - don't fall back to OpenRouter keys
-    api_key = os.getenv("ANTHROPIC_API_KEY")
+    # Use config.api_key (CHAT_API_KEY > OPEN_ROUTER_API_KEY > OPENAI_API_KEY)
+    # with config.base_url for OpenRouter routing — matching the non-SDK path.
+    api_key = config.api_key
     if not api_key:
         yield StreamError(
-            errorText="ANTHROPIC_API_KEY not configured for fallback",
+            errorText="No API key configured (set CHAT_API_KEY or OPENAI_API_KEY)",
             code="config_error",
         )
         yield StreamFinish()
         return
 
-    client = anthropic.AsyncAnthropic(api_key=api_key)
+    # Build kwargs for the Anthropic client — use base_url if configured
+    client_kwargs: dict[str, Any] = {"api_key": api_key}
+    if config.base_url:
+        # Strip /v1 suffix — Anthropic SDK adds its own version path
+        base = config.base_url.rstrip("/")
+        if base.endswith("/v1"):
+            base = base[:-3]
+        client_kwargs["base_url"] = base
+
+    client = anthropic.AsyncAnthropic(**client_kwargs)
     tool_definitions = get_tool_definitions()
     tool_handlers = get_tool_handlers()
 
@@ -220,12 +228,6 @@ async def stream_with_anthropic(
                             ChatMessage(role="assistant", content=accumulated_text)
                         )
 
-                    yield StreamUsage(
-                        promptTokens=final_message.usage.input_tokens,
-                        completionTokens=final_message.usage.output_tokens,
-                        totalTokens=final_message.usage.input_tokens
-                        + final_message.usage.output_tokens,
-                    )
                     yield StreamFinish()
                     return
 

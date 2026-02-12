@@ -97,9 +97,14 @@ class ChatConfig(BaseSettings):
         default=True,
         description="Use Claude Agent SDK for chat completions",
     )
-    sdk_max_buffer_size: int = Field(
+    claude_agent_model: str | None = Field(
+        default=None,
+        description="Model for the Claude Agent SDK path. If None, derives from "
+        "the `model` field by stripping the OpenRouter provider prefix.",
+    )
+    claude_agent_max_buffer_size: int = Field(
         default=10 * 1024 * 1024,  # 10MB (default SDK is 1MB)
-        description="Max buffer size in bytes for SDK JSON message parsing. "
+        description="Max buffer size in bytes for Claude Agent SDK JSON message parsing. "
         "Increase if tool outputs exceed the limit.",
     )
 
