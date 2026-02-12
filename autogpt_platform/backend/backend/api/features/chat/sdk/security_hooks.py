@@ -4,6 +4,7 @@ This module provides security hooks that validate tool calls before execution,
 ensuring multi-user isolation and preventing unauthorized operations.
 """
 
+import json
 import logging
 import os
 import re
@@ -247,7 +248,8 @@ def _validate_tool_access(
         return _validate_workspace_path(tool_name, tool_input, sdk_cwd)
 
     # Check for dangerous patterns in tool input
-    input_str = str(tool_input)
+    # Use json.dumps for predictable format (str() produces Python repr)
+    input_str = json.dumps(tool_input) if tool_input else ""
 
     for pattern in DANGEROUS_PATTERNS:
         if re.search(pattern, input_str, re.IGNORECASE):
@@ -387,4 +389,5 @@ def create_security_hooks(
         }
     except ImportError:
         # Fallback for when SDK isn't available - return empty hooks
+        logger.warning("claude-agent-sdk not available, security hooks disabled")
         return {}
