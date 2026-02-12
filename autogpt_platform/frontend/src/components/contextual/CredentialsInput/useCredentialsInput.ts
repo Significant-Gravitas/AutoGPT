@@ -184,10 +184,9 @@ export function useCredentialsInput({
       let state_token: string;
 
       if (isMCP) {
-        const mcpLoginResponse =
-          await postV2InitiateOauthLoginForAnMcpServer({
-            server_url: discriminatorValue!,
-          });
+        const mcpLoginResponse = await postV2InitiateOauthLoginForAnMcpServer({
+          server_url: discriminatorValue!,
+        });
         ({ login_url, state_token } = mcpLoginResponse.data);
       } else {
         ({ login_url, state_token } = await api.oAuthLogin(

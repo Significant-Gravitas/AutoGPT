@@ -67,7 +67,9 @@ export function MCPToolDialog({
   const [oauthLoading, setOauthLoading] = useState(false);
   const [showManualToken, setShowManualToken] = useState(false);
   const [manualToken, setManualToken] = useState("");
-  const [selectedTool, setSelectedTool] = useState<MCPToolResponse | null>(null);
+  const [selectedTool, setSelectedTool] = useState<MCPToolResponse | null>(
+    null,
+  );
   const [credentials, setCredentials] = useState<CredentialsMetaInput | null>(
     null,
   );
@@ -104,42 +106,38 @@ export function MCPToolDialog({
     onClose();
   }, [reset, onClose]);
 
-  const discoverTools = useCallback(
-    async (url: string, authToken?: string) => {
-      setLoading(true);
-      setError(null);
-      try {
-        const response =
-          await postV2DiscoverAvailableToolsOnAnMcpServer({
-            server_url: url,
-            auth_token: authToken || null,
-          });
-        setTools(response.data.tools);
-        setServerName(response.data.server_name ?? null);
-        setAuthRequired(false);
-        setShowManualToken(false);
-        setStep("tool");
-      } catch (e: any) {
-        if (e?.status === 401 || e?.status === 403) {
-          setAuthRequired(true);
-          setError(null);
-          // Automatically start OAuth sign-in instead of requiring a second click
-          setLoading(false);
-          startOAuthRef.current = true;
-          return;
-        } else {
-          const message =
-            e?.message || e?.detail || "Failed to connect to MCP server";
-          setError(
-            typeof message === "string" ? message : JSON.stringify(message),
-          );
-        }
-      } finally {
+  const discoverTools = useCallback(async (url: string, authToken?: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await postV2DiscoverAvailableToolsOnAnMcpServer({
+        server_url: url,
+        auth_token: authToken || null,
+      });
+      setTools(response.data.tools);
+      setServerName(response.data.server_name ?? null);
+      setAuthRequired(false);
+      setShowManualToken(false);
+      setStep("tool");
+    } catch (e: any) {
+      if (e?.status === 401 || e?.status === 403) {
+        setAuthRequired(true);
+        setError(null);
+        // Automatically start OAuth sign-in instead of requiring a second click
         setLoading(false);
+        startOAuthRef.current = true;
+        return;
+      } else {
+        const message =
+          e?.message || e?.detail || "Failed to connect to MCP server";
+        setError(
+          typeof message === "string" ? message : JSON.stringify(message),
+        );
       }
-    },
-    [],
-  );
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   const handleDiscoverTools = useCallback(() => {
     if (!serverUrl.trim()) return;
@@ -197,10 +195,9 @@ export function MCPToolDialog({
       setAuthRequired(false);
 
       // Discover tools now that we're authenticated
-      const toolsResponse =
-        await postV2DiscoverAvailableToolsOnAnMcpServer({
-          server_url: serverUrl.trim(),
-        });
+      const toolsResponse = await postV2DiscoverAvailableToolsOnAnMcpServer({
+        server_url: serverUrl.trim(),
+      });
       setTools(toolsResponse.data.tools);
       setServerName(toolsResponse.data.server_name ?? null);
       setStep("tool");

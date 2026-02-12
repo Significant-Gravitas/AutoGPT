@@ -12,7 +12,6 @@ from typing import Any, Literal
 
 from pydantic import SecretStr
 
-from backend.blocks.mcp.client import MCPClient, MCPClientError
 from backend.blocks._base import (
     Block,
     BlockCategory,
@@ -20,6 +19,7 @@ from backend.blocks._base import (
     BlockSchemaOutput,
     BlockType,
 )
+from backend.blocks.mcp.client import MCPClient, MCPClientError
 from backend.data.block import BlockInput, BlockOutput
 from backend.data.model import (
     CredentialsField,
