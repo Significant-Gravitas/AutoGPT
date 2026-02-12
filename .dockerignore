@@ -64,6 +64,7 @@
 # Build artifacts
 **/dist/
 **/build/
+!autogpt_platform/frontend/src/**/build/
 **/target/
 
 # Logs and temp files
