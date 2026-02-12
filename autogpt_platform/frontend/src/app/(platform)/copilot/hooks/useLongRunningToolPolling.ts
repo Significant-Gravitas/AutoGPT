@@ -1,5 +1,4 @@
-import { getGetV2GetSessionQueryKey } from "@/app/api/__generated__/endpoints/chat/chat";
-import { useQueryClient } from "@tanstack/react-query";
+import { getV2GetSession } from "@/app/api/__generated__/endpoints/chat/chat";
 import type { UIDataTypes, UIMessage, UITools } from "ai";
 import { useCallback, useEffect, useRef } from "react";
 import { convertChatSessionMessagesToUiMessages } from "../helpers/convertChatSessionToUiMessages";
@@ -18,7 +17,7 @@ const POLL_INTERVAL_MS = 1_500;
  */
 function hasOperatingTool(
   messages: UIMessage<unknown, UIDataTypes, UITools>[],
-): boolean {
+) {
   for (const msg of messages) {
     for (const part of msg.parts) {
       if (!part.type.startsWith("tool-")) continue;
@@ -55,6 +54,9 @@ function safeParse(value: string): unknown {
  *
  * When the session data shows the tool output has changed (e.g. to
  * agent_saved), it calls `setMessages` with the updated messages.
+ *
+ * Fetches session data directly (bypassing the shared React Query cache)
+ * so that polling never triggers the hydration effect in useCopilotPage.
  */
 export function useLongRunningToolPolling(
   sessionId: string | null,
@@ -65,8 +67,6 @@ export function useLongRunningToolPolling(
     ) => UIMessage<unknown, UIDataTypes, UITools>[],
   ) => void,
 ) {
-  const queryClient = useQueryClient();
-  const isPollingRef = useRef(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const stopPolling = useCallback(() => {
@@ -74,58 +74,56 @@ export function useLongRunningToolPolling(
       clearInterval(intervalRef.current);
       intervalRef.current = null;
     }
-    isPollingRef.current = false;
   }, []);
 
   const poll = useCallback(async () => {
     if (!sessionId) return;
 
-    // Invalidate the query cache so the next fetch gets fresh data
-    await queryClient.invalidateQueries({
-      queryKey: getGetV2GetSessionQueryKey(sessionId),
-    });
+    try {
+      // Fetch directly instead of refetching the shared session query.
+      // Using refetchQueries updated the React Query cache which triggered
+      // the hydration effect in useCopilotPage, potentially overwriting
+      // useChat's internal message state and breaking subsequent sends.
+      const response = await getV2GetSession(sessionId);
 
-    // Fetch fresh session data
-    const data = queryClient.getQueryData<{
-      status: number;
-      data: { messages?: unknown[] };
-    }>(getGetV2GetSessionQueryKey(sessionId));
+      if (response.status !== 200) return;
 
-    if (data?.status !== 200 || !data.data.messages) return;
+      const data = response.data as { messages?: unknown[] };
+      if (!data.messages) return;
 
-    const freshMessages = convertChatSessionMessagesToUiMessages(
-      sessionId,
-      data.data.messages,
-    );
+      const freshMessages = convertChatSessionMessagesToUiMessages(
+        sessionId,
+        data.messages,
+      );
 
-    if (!freshMessages || freshMessages.length === 0) return;
+      if (!freshMessages || freshMessages.length === 0) return;
 
-    // Only update if the fresh data no longer has operating tools
-    // (meaning the long-running tool completed)
-    if (!hasOperatingTool(freshMessages)) {
-      setMessages(() => freshMessages);
-      stopPolling();
+      // Update when the long-running tool completed
+      if (!hasOperatingTool(freshMessages)) {
+        setMessages(() => freshMessages);
+        stopPolling();
+      }
+    } catch {
+      // Network error — ignore and retry on next interval
     }
-  }, [sessionId, queryClient, setMessages, stopPolling]);
+  }, [sessionId, setMessages, stopPolling]);
 
   useEffect(() => {
     const shouldPoll = hasOperatingTool(messages);
 
-    if (shouldPoll && !isPollingRef.current && sessionId) {
-      isPollingRef.current = true;
+    // Always clear any previous interval first so we never leak timers
+    // when the effect re-runs due to dependency changes (e.g. messages
+    // updating as the LLM streams text after the tool call).
+    stopPolling();
+
+    if (shouldPoll && sessionId) {
       intervalRef.current = setInterval(() => {
         poll();
       }, POLL_INTERVAL_MS);
-    } else if (!shouldPoll && isPollingRef.current) {
-      stopPolling();
     }
 
     return () => {
-      // Cleanup on unmount or dependency change
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
+      stopPolling();
     };
   }, [messages, sessionId, poll, stopPolling]);
 }

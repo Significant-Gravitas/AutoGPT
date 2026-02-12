@@ -6642,7 +6642,11 @@
             "type": "string",
             "title": "Library Agent Link"
           },
-          "agent_page_link": { "type": "string", "title": "Agent Page Link" }
+          "agent_page_link": { "type": "string", "title": "Agent Page Link" },
+          "image_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Image Url"
+          }
         },
         "type": "object",
         "required": [

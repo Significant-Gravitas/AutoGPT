@@ -1,11 +1,14 @@
 import { useGetV2ListSessions } from "@/app/api/__generated__/endpoints/chat/chat";
+import { toast } from "@/components/molecules/Toast/use-toast";
 import { useBreakpoint } from "@/lib/hooks/useBreakpoint";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useChatSession } from "./useChatSession";
 import { useLongRunningToolPolling } from "./hooks/useLongRunningToolPolling";
+
+const STREAM_START_TIMEOUT_MS = 12_000;
 
 export function useCopilotPage() {
   const { isUserLoading, isLoggedIn } = useSupabase();
@@ -52,6 +55,25 @@ export function useCopilotPage() {
     id: sessionId ?? undefined,
     transport: transport ?? undefined,
   });
+
+  // Abort the stream if the backend doesn't start sending data within 12s.
+  const stopRef = useRef(stop);
+  stopRef.current = stop;
+  useEffect(() => {
+    if (status !== "submitted") return;
+
+    const timer = setTimeout(() => {
+      stopRef.current();
+      toast({
+        title: "Stream timed out",
+        description:
+          "The server took too long to respond. Please try again.",
+        variant: "destructive",
+      });
+    }, STREAM_START_TIMEOUT_MS);
+
+    return () => clearTimeout(timer);
+  }, [status]);
 
   useEffect(() => {
     if (!hydratedMessages || hydratedMessages.length === 0) return;
