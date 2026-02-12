@@ -75,10 +75,14 @@ class TestFindBlockFiltering:
                 "standard-block-id": standard_block,
             }.get(block_id)
 
+        mock_search_db = MagicMock()
+        mock_search_db.unified_hybrid_search = AsyncMock(
+            return_value=(search_results, 2)
+        )
+
         with patch(
-            "backend.copilot.tools.find_block.unified_hybrid_search",
-            new_callable=AsyncMock,
-            return_value=(search_results, 2),
+            "backend.copilot.tools.find_block.search",
+            return_value=mock_search_db,
         ):
             with patch(
                 "backend.copilot.tools.find_block.get_block",
@@ -119,10 +123,14 @@ class TestFindBlockFiltering:
                 "normal-block-id": normal_block,
             }.get(block_id)
 
+        mock_search_db = MagicMock()
+        mock_search_db.unified_hybrid_search = AsyncMock(
+            return_value=(search_results, 2)
+        )
+
         with patch(
-            "backend.copilot.tools.find_block.unified_hybrid_search",
-            new_callable=AsyncMock,
-            return_value=(search_results, 2),
+            "backend.copilot.tools.find_block.search",
+            return_value=mock_search_db,
         ):
             with patch(
                 "backend.copilot.tools.find_block.get_block",
