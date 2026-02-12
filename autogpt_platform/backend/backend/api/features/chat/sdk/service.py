@@ -38,6 +38,7 @@ from .tool_adapter import (
     create_copilot_mcp_server,
     set_execution_context,
 )
+from .tracing import TracedSession
 
 logger = logging.getLogger(__name__)
 config = ChatConfig()
@@ -328,7 +329,9 @@ async def stream_chat_completion_sdk(
             adapter = SDKResponseAdapter(message_id=message_id)
             adapter.set_task_id(task_id)
 
-            async with ClaudeSDKClient(options=options) as client:
+            # Initialize Langfuse tracing (no-op if not configured)
+            tracer = TracedSession(session_id, user_id, system_prompt)
+            async with tracer, ClaudeSDKClient(options=options) as client:
                 current_message = message or ""
                 if not current_message and session.messages:
                     last_user = [m for m in session.messages if m.role == "user"]
@@ -359,6 +362,7 @@ async def stream_chat_completion_sdk(
                     f"[SDK] Sending query: {current_message[:80]!r}"
                     f" ({len(session.messages)} msgs in session)"
                 )
+                tracer.log_user_message(current_message)
                 await client.query(query_message, session_id=session_id)
 
                 assistant_response = ChatMessage(role="assistant", content="")
@@ -371,6 +375,7 @@ async def stream_chat_completion_sdk(
                         f"[SDK] Received: {type(sdk_msg).__name__} "
                         f"{getattr(sdk_msg, 'subtype', '')}"
                     )
+                    tracer.log_sdk_message(sdk_msg)
                     for response in adapter.convert_message(sdk_msg):
                         if isinstance(response, StreamStart):
                             continue
