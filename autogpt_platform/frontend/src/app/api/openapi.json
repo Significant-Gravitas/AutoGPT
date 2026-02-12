@@ -10492,7 +10492,8 @@
           "operation_in_progress",
           "input_validation_error",
           "web_fetch",
-          "bash_exec"
+          "bash_exec",
+          "operation_status"
         ],
         "title": "ResponseType",
         "description": "Types of tool responses."
