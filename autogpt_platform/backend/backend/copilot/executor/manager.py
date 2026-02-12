@@ -12,6 +12,7 @@ import uuid
 from concurrent.futures import Future, ThreadPoolExecutor
 
 from pika.adapters.blocking_connection import BlockingChannel
+from pika.exceptions import AMQPChannelError, AMQPConnectionError
 from pika.spec import Basic, BasicProperties
 from prometheus_client import Gauge, start_http_server
 
@@ -21,7 +22,7 @@ from backend.executor.cluster_lock import ClusterLock
 from backend.util.decorator import error_logged
 from backend.util.logging import TruncatedLogger
 from backend.util.process import AppProcess
-from backend.util.retry import continuous_retry, func_retry
+from backend.util.retry import continuous_retry
 from backend.util.settings import Settings
 
 from .processor import execute_copilot_task, init_worker
@@ -235,7 +236,6 @@ class CoPilotExecutor(AppProcess):
             auto_ack=False,
             consumer_tag="copilot_execution_consumer",
         )
-        run_channel.confirm_delivery()
         logger.info("Starting to consume run messages...")
         run_channel.start_consuming()
         if not self.stop_consuming.is_set():
@@ -278,18 +278,46 @@ class CoPilotExecutor(AppProcess):
     ):
         """Handle run message from DIRECT exchange."""
         delivery_tag = method.delivery_tag
+        # Capture the channel used at message delivery time to ensure we ack
+        # on the correct channel. Delivery tags are channel-scoped and become
+        # invalid if the channel is recreated after reconnection.
+        delivery_channel = _channel
 
-        @func_retry
         def ack_message(reject: bool, requeue: bool):
-            """Acknowledge or reject the message."""
-            channel = self.run_client.get_channel()
-            if reject:
-                channel.connection.add_callback_threadsafe(
-                    lambda: channel.basic_nack(delivery_tag, requeue=requeue)
+            """Acknowledge or reject the message.
+
+            Uses the channel from the original message delivery. If the channel
+            is no longer open (e.g., after reconnection), logs a warning and
+            skips the ack - RabbitMQ will redeliver the message automatically.
+            """
+            try:
+                if not delivery_channel.is_open:
+                    logger.warning(
+                        f"Channel closed, cannot ack delivery_tag={delivery_tag}. "
+                        "Message will be redelivered by RabbitMQ."
+                    )
+                    return
+
+                if reject:
+                    delivery_channel.connection.add_callback_threadsafe(
+                        lambda: delivery_channel.basic_nack(
+                            delivery_tag, requeue=requeue
+                        )
+                    )
+                else:
+                    delivery_channel.connection.add_callback_threadsafe(
+                        lambda: delivery_channel.basic_ack(delivery_tag)
+                    )
+            except (AMQPChannelError, AMQPConnectionError) as e:
+                # Channel/connection errors indicate stale delivery tag - don't retry
+                logger.warning(
+                    f"Cannot ack delivery_tag={delivery_tag} due to channel/connection "
+                    f"error: {e}. Message will be redelivered by RabbitMQ."
                 )
-            else:
-                channel.connection.add_callback_threadsafe(
-                    lambda: channel.basic_ack(delivery_tag)
+            except Exception as e:
+                # Other errors might be transient, but log and skip to avoid blocking
+                logger.error(
+                    f"Unexpected error acking delivery_tag={delivery_tag}: {e}"
                 )
 
         # Check if we're shutting down
