@@ -67,14 +67,14 @@ interpreters (python, node) are NOT available.
 
 
 def _resolve_sdk_model() -> str | None:
-    """Resolve the model name for the SDK CLI.
+    """Resolve the model name for the Claude Agent SDK CLI.
 
-    Uses ``config.sdk_model`` if set, otherwise derives from ``config.model``
-    by stripping the OpenRouter provider prefix (e.g.,
+    Uses ``config.claude_agent_model`` if set, otherwise derives from
+    ``config.model`` by stripping the OpenRouter provider prefix (e.g.,
     ``"anthropic/claude-opus-4.6"`` → ``"claude-opus-4.6"``).
     """
-    if config.sdk_model:
-        return config.sdk_model
+    if config.claude_agent_model:
+        return config.claude_agent_model
     model = config.model
     if "/" in model:
         return model.split("/", 1)[1]
@@ -370,11 +370,11 @@ async def stream_chat_completion_sdk(
                 allowed_tools=COPILOT_TOOL_NAMES,
                 hooks=combined_hooks,  # type: ignore[arg-type]
                 cwd=sdk_cwd,
-                max_buffer_size=config.sdk_max_buffer_size,
+                max_buffer_size=config.claude_agent_max_buffer_size,
                 model=sdk_model,
                 env=_build_sdk_env(),
                 user=user_id or None,
-                max_budget_usd=config.sdk_max_budget_usd,
+                max_budget_usd=config.claude_agent_max_budget_usd,
             )
 
             adapter = SDKResponseAdapter(message_id=message_id)
