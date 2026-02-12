@@ -86,7 +86,7 @@ async def discover_tools(
         for cred in mcp_creds:
             if (
                 isinstance(cred, OAuth2Credentials)
-                and cred.metadata.get("mcp_server_url") == request.server_url
+                and (cred.metadata or {}).get("mcp_server_url") == request.server_url
             ):
                 if best_cred is None or (
                     (cred.access_token_expires_at or 0)
@@ -353,7 +353,7 @@ async def mcp_oauth_callback(
         for old in old_creds:
             if (
                 isinstance(old, OAuth2Credentials)
-                and old.metadata.get("mcp_server_url") == meta["server_url"]
+                and (old.metadata or {}).get("mcp_server_url") == meta["server_url"]
             ):
                 await creds_manager.store.delete_creds_by_id(user_id, old.id)
                 logger.info(
