@@ -18,31 +18,8 @@ function formatToolName(name: string): string {
   return name.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase());
 }
 
-/**
- * For Bash tool, extract the command name from the input.
- * e.g., "jq '.blocks' file.json" → "jq"
- */
-function extractBashCommand(part: ToolUIPart): string | null {
-  const toolName = extractToolName(part);
-  if (toolName !== "Bash") return null;
-
-  try {
-    const input = part.input as { command?: string } | undefined;
-    if (input?.command) {
-      // Extract first word (the command name)
-      const match = input.command.trim().match(/^(\S+)/);
-      return match ? match[1] : null;
-    }
-  } catch {
-    // Ignore parsing errors
-  }
-  return null;
-}
-
 function getAnimationText(part: ToolUIPart): string {
-  const toolName = extractToolName(part);
-  const bashCmd = extractBashCommand(part);
-  const label = bashCmd || formatToolName(toolName);
+  const label = formatToolName(extractToolName(part));
 
   switch (part.state) {
     case "input-streaming":
