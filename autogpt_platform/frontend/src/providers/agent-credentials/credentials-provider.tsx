@@ -137,7 +137,14 @@ export default function CredentialsProvider({
           code,
           state_token,
         });
-        const credsMeta = response.data;
+        if (response.status !== 200) throw response.data;
+        const credsMeta: CredentialsMetaResponse = {
+          ...response.data,
+          title: response.data.title ?? undefined,
+          scopes: response.data.scopes ?? undefined,
+          username: response.data.username ?? undefined,
+          host: response.data.host ?? undefined,
+        };
         addCredentials("mcp", credsMeta);
         return credsMeta;
       } catch (error) {

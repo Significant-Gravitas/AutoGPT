@@ -114,6 +114,7 @@ export function MCPToolDialog({
         server_url: url,
         auth_token: authToken || null,
       });
+      if (response.status !== 200) throw response.data;
       setTools(response.data.tools);
       setServerName(response.data.server_name ?? null);
       setAuthRequired(false);
@@ -157,6 +158,7 @@ export function MCPToolDialog({
       const loginResponse = await postV2InitiateOauthLoginForAnMcpServer({
         server_url: serverUrl.trim(),
       });
+      if (loginResponse.status !== 200) throw loginResponse.data;
       const { login_url, state_token } = loginResponse.data;
 
       const { promise, cleanup } = openOAuthPopup(login_url, {
@@ -183,6 +185,7 @@ export function MCPToolDialog({
           code: result.code,
           state_token,
         });
+        if (cbResponse.status !== 200) throw cbResponse.data;
         callbackResult = cbResponse.data;
       }
 
@@ -198,6 +201,7 @@ export function MCPToolDialog({
       const toolsResponse = await postV2DiscoverAvailableToolsOnAnMcpServer({
         server_url: serverUrl.trim(),
       });
+      if (toolsResponse.status !== 200) throw toolsResponse.data;
       setTools(toolsResponse.data.tools);
       setServerName(toolsResponse.data.server_name ?? null);
       setStep("tool");
@@ -422,8 +426,9 @@ function MCPToolCard({
   onSelect: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const properties = tool.input_schema?.properties ?? {};
-  const required = new Set<string>(tool.input_schema?.required ?? []);
+  const schema = tool.input_schema as Record<string, any>;
+  const properties = schema?.properties ?? {};
+  const required = new Set<string>(schema?.required ?? []);
   const paramNames = Object.keys(properties);
 
   // Strip XML-like tags from description for cleaner display.
