@@ -37,9 +37,23 @@ def has_network_sandbox() -> bool:
     return _UNSHARE_AVAILABLE
 
 
+_WORKSPACE_PREFIX = "/tmp/copilot-"
+
+
 def get_workspace_dir(session_id: str) -> str:
-    """Get or create the workspace directory for a session."""
-    workspace = f"/tmp/copilot-{session_id}"
+    """Get or create the workspace directory for a session.
+
+    Uses the same path as the SDK's ``_make_sdk_cwd()`` so that
+    python_exec/bash_exec share the workspace with the SDK file tools.
+    """
+    import re
+
+    safe_id = re.sub(r"[^A-Za-z0-9-]", "", session_id)
+    if not safe_id:
+        safe_id = "default"
+    workspace = os.path.normpath(f"{_WORKSPACE_PREFIX}{safe_id}")
+    if not workspace.startswith(_WORKSPACE_PREFIX):
+        raise ValueError(f"Session path escaped prefix: {workspace}")
     os.makedirs(workspace, exist_ok=True)
     return workspace
 
