@@ -92,12 +92,12 @@ async def assert_sample_graph_executions(
     logger.info(f"Checking first StoreValueBlock execution: {exec}")
     assert exec.status == execution.ExecutionStatus.COMPLETED
     assert exec.graph_exec_id == graph_exec_id
-    assert exec.output_data in output_list, (
-        f"Output data: {exec.output_data} and {output_list}"
-    )
-    assert exec.input_data in input_list, (
-        f"Input data: {exec.input_data} and {input_list}"
-    )
+    assert (
+        exec.output_data in output_list
+    ), f"Output data: {exec.output_data} and {output_list}"
+    assert (
+        exec.input_data in input_list
+    ), f"Input data: {exec.input_data} and {input_list}"
     assert exec.node_id in [test_graph.nodes[0].id, test_graph.nodes[1].id]
 
     # Executing StoreValueBlock
@@ -105,12 +105,12 @@ async def assert_sample_graph_executions(
     logger.info(f"Checking second StoreValueBlock execution: {exec}")
     assert exec.status == execution.ExecutionStatus.COMPLETED
     assert exec.graph_exec_id == graph_exec_id
-    assert exec.output_data in output_list, (
-        f"Output data: {exec.output_data} and {output_list}"
-    )
-    assert exec.input_data in input_list, (
-        f"Input data: {exec.input_data} and {input_list}"
-    )
+    assert (
+        exec.output_data in output_list
+    ), f"Output data: {exec.output_data} and {output_list}"
+    assert (
+        exec.input_data in input_list
+    ), f"Input data: {exec.input_data} and {input_list}"
     assert exec.node_id in [test_graph.nodes[0].id, test_graph.nodes[1].id]
 
     # Executing FillTextTemplateBlock

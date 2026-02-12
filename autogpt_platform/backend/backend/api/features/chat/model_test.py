@@ -96,9 +96,9 @@ async def test_chatsession_db_storage(setup_test_user, test_user_id):
     )
 
     assert s2 is not None, "Session not found after loading from DB"
-    assert len(s2.messages) == len(s.messages), (
-        f"Message count mismatch: expected {len(s.messages)}, got {len(s2.messages)}"
-    )
+    assert len(s2.messages) == len(
+        s.messages
+    ), f"Message count mismatch: expected {len(s.messages)}, got {len(s2.messages)}"
 
     # Verify all roles are present
     roles = [m.role for m in s2.messages]
@@ -109,11 +109,11 @@ async def test_chatsession_db_storage(setup_test_user, test_user_id):
     # Verify message content
     for orig, loaded in zip(s.messages, s2.messages):
         assert orig.role == loaded.role, f"Role mismatch: {orig.role} != {loaded.role}"
-        assert orig.content == loaded.content, (
-            f"Content mismatch for {orig.role}: {orig.content} != {loaded.content}"
-        )
+        assert (
+            orig.content == loaded.content
+        ), f"Content mismatch for {orig.role}: {orig.content} != {loaded.content}"
         if orig.tool_calls:
-            assert loaded.tool_calls is not None, (
-                f"Tool calls missing for {orig.role} message"
-            )
+            assert (
+                loaded.tool_calls is not None
+            ), f"Tool calls missing for {orig.role} message"
             assert len(orig.tool_calls) == len(loaded.tool_calls)

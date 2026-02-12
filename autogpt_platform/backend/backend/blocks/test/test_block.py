@@ -128,9 +128,9 @@ async def test_block_ids_valid(block: Type[Block]):
     try:
         parsed_uuid = uuid.UUID(block_instance.id)
         # Verify it's specifically UUID version 4
-        assert parsed_uuid.version == 4, (
-            f"Block {block.name} ID is UUID version {parsed_uuid.version}, expected version 4"
-        )
+        assert (
+            parsed_uuid.version == 4
+        ), f"Block {block.name} ID is UUID version {parsed_uuid.version}, expected version 4"
     except ValueError:
         pytest.fail(f"Block {block.name} has invalid UUID format: {block_instance.id}")
 

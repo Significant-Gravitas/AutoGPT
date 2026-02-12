@@ -173,15 +173,15 @@ def test_queue_ordering_behavior():
         messages = tester.consume_messages(max_messages=3)
 
         assert len(messages) == 3, f"Expected 3 messages, got {len(messages)}"
-        assert messages[0]["graph_exec_id"] == "exec-A", (
-            f"First message should be A, got {messages[0]['graph_exec_id']}"
-        )
-        assert messages[1]["graph_exec_id"] == "exec-B", (
-            f"Second message should be B, got {messages[1]['graph_exec_id']}"
-        )
-        assert messages[2]["graph_exec_id"] == "exec-C", (
-            f"Third message should be C, got {messages[2]['graph_exec_id']}"
-        )
+        assert (
+            messages[0]["graph_exec_id"] == "exec-A"
+        ), f"First message should be A, got {messages[0]['graph_exec_id']}"
+        assert (
+            messages[1]["graph_exec_id"] == "exec-B"
+        ), f"Second message should be B, got {messages[1]['graph_exec_id']}"
+        assert (
+            messages[2]["graph_exec_id"] == "exec-C"
+        ), f"Third message should be C, got {messages[2]['graph_exec_id']}"
 
         print("✅ FIFO order confirmed: A -> B -> C")
 
@@ -250,9 +250,9 @@ def test_queue_ordering_behavior():
             if msg["graph_exec_id"] == "exec-X"
         )
 
-        assert y_index < republished_x_index, (
-            f"Y should come before republished X, but got order: {[m['graph_exec_id'] for m in messages]}"
-        )
+        assert (
+            y_index < republished_x_index
+        ), f"Y should come before republished X, but got order: {[m['graph_exec_id'] for m in messages]}"
 
         print("✅ Republishing confirmed: messages go to back of queue")
 
@@ -291,9 +291,9 @@ def test_traditional_requeue_behavior():
 
         assert method_frame is not None, "Should have received message A"
         consumed_msg = json.loads(body.decode())
-        assert consumed_msg["graph_exec_id"] == "exec-A", (
-            f"Should have consumed message A, got {consumed_msg['graph_exec_id']}"
-        )
+        assert (
+            consumed_msg["graph_exec_id"] == "exec-A"
+        ), f"Should have consumed message A, got {consumed_msg['graph_exec_id']}"
 
         # Traditional requeue: basic_nack with requeue=True (sends to FRONT)
         channel.basic_nack(delivery_tag=method_frame.delivery_tag, requeue=True)
@@ -320,20 +320,20 @@ def test_traditional_requeue_behavior():
 
         # CRITICAL ASSERTION: Traditional requeue should put A at FRONT
         # Expected order: A (requeued to front), B
-        assert len(received_messages) == 2, (
-            f"Expected 2 messages, got {len(received_messages)}"
-        )
+        assert (
+            len(received_messages) == 2
+        ), f"Expected 2 messages, got {len(received_messages)}"
 
         first_msg = received_messages[0]["graph_exec_id"]
         second_msg = received_messages[1]["graph_exec_id"]
 
         # This is the critical test: requeued message A should come BEFORE B
-        assert first_msg == "exec-A", (
-            f"Traditional requeue should put A at FRONT, but first message was: {first_msg}"
-        )
-        assert second_msg == "exec-B", (
-            f"B should come after requeued A, but second message was: {second_msg}"
-        )
+        assert (
+            first_msg == "exec-A"
+        ), f"Traditional requeue should put A at FRONT, but first message was: {first_msg}"
+        assert (
+            second_msg == "exec-B"
+        ), f"B should come after requeued A, but second message was: {second_msg}"
 
         print(
             "✅ HYPOTHESIS CONFIRMED: Traditional requeue sends messages to FRONT of queue"

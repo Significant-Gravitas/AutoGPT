@@ -102,12 +102,12 @@ def assert_mock_called_with_partial(mock_obj: Any, **expected_kwargs: Any) -> No
     actual_kwargs = mock_obj.call_args.kwargs if mock_obj.call_args else {}
 
     for key, expected_value in expected_kwargs.items():
-        assert key in actual_kwargs, (
-            f"Missing key '{key}' in mock call. Actual keys: {list(actual_kwargs.keys())}"
-        )
-        assert actual_kwargs[key] == expected_value, (
-            f"Mock called with {key}={actual_kwargs[key]}, expected {expected_value}"
-        )
+        assert (
+            key in actual_kwargs
+        ), f"Missing key '{key}' in mock call. Actual keys: {list(actual_kwargs.keys())}"
+        assert (
+            actual_kwargs[key] == expected_value
+        ), f"Mock called with {key}={actual_kwargs[key]}, expected {expected_value}"
 
 
 @contextmanager

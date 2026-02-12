@@ -708,9 +708,9 @@ class TestSafeJson:
         ]
 
         for char in control_chars:
-            assert char not in json_string, (
-                f"Control character {repr(char)} found in result"
-            )
+            assert (
+                char not in json_string
+            ), f"Control character {repr(char)} found in result"
 
         # Verify specific sanitized content is present (control chars removed but text preserved)
         result_data = cast(dict[str, Any], result.data)

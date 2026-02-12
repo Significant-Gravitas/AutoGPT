@@ -670,6 +670,6 @@ async def test_validation_errors_dont_pollute_conversation():
                     if msg.get("role") == "user"
                     and "parameter errors" in msg.get("content", "")
                 ]
-                assert len(error_messages) == 0, (
-                    "Validation error leaked into final conversation"
-                )
+                assert (
+                    len(error_messages) == 0
+                ), "Validation error leaked into final conversation"

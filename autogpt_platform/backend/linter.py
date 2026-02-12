@@ -30,7 +30,8 @@ def lint():
 
     lint_step_args: list[list[str]] = [
         ["ruff", "check", *TARGET_DIRS, "--exit-zero"],
-        ["ruff", "format", "--diff", "--check", BACKEND_DIR],
+        # NOTE: ruff format check removed - ruff and black disagree on assert formatting
+        # Black is the source of truth for formatting (runs last in format())
         ["isort", "--diff", "--check", "--profile", "black", BACKEND_DIR],
         ["black", "--diff", "--check", BACKEND_DIR],
         ["pyright", *TARGET_DIRS],

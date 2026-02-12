@@ -109,9 +109,9 @@ async def test_deduct_credits_atomic(server: SpinTestServer):
             where={"userId": REFUND_TEST_USER_ID}
         )
         assert user_balance is not None
-        assert user_balance.balance == 500, (
-            f"Expected balance 500, got {user_balance.balance}"
-        )
+        assert (
+            user_balance.balance == 500
+        ), f"Expected balance 500, got {user_balance.balance}"
 
         # Verify refund transaction was created
         refund_tx = await CreditTransaction.prisma().find_first(
@@ -205,9 +205,9 @@ async def test_handle_dispute_with_sufficient_balance(
             where={"userId": REFUND_TEST_USER_ID}
         )
         assert user_balance is not None
-        assert user_balance.balance == 1000, (
-            f"Balance should remain 1000, got {user_balance.balance}"
-        )
+        assert (
+            user_balance.balance == 1000
+        ), f"Balance should remain 1000, got {user_balance.balance}"
 
     finally:
         await cleanup_test_user()
@@ -332,9 +332,9 @@ async def test_concurrent_refunds(server: SpinTestServer):
         print(f"DEBUG: Final balance = {user_balance.balance}, expected = 500")
 
         # With atomic implementation, all 5 refunds should process correctly
-        assert user_balance.balance == 500, (
-            f"Expected balance 500 after 5 refunds of 100 each, got {user_balance.balance}"
-        )
+        assert (
+            user_balance.balance == 500
+        ), f"Expected balance 500 after 5 refunds of 100 each, got {user_balance.balance}"
 
         # Verify all refund transactions exist
         refund_txs = await CreditTransaction.prisma().find_many(
@@ -343,9 +343,9 @@ async def test_concurrent_refunds(server: SpinTestServer):
                 "type": CreditTransactionType.REFUND,
             }
         )
-        assert len(refund_txs) == 5, (
-            f"Expected 5 refund transactions, got {len(refund_txs)}"
-        )
+        assert (
+            len(refund_txs) == 5
+        ), f"Expected 5 refund transactions, got {len(refund_txs)}"
 
         running_balances: set[int] = {
             tx.runningBalance for tx in refund_txs if tx.runningBalance is not None
@@ -353,20 +353,20 @@ async def test_concurrent_refunds(server: SpinTestServer):
 
         # Verify all balances are valid intermediate states
         for balance in running_balances:
-            assert 500 <= balance <= 1000, (
-                f"Invalid balance {balance}, should be between 500 and 1000"
-            )
+            assert (
+                500 <= balance <= 1000
+            ), f"Invalid balance {balance}, should be between 500 and 1000"
 
         # Final balance should be present
-        assert 500 in running_balances, (
-            f"Final balance 500 should be in {running_balances}"
-        )
+        assert (
+            500 in running_balances
+        ), f"Final balance 500 should be in {running_balances}"
 
         # All balances should be unique and form a valid sequence
         sorted_balances = sorted(running_balances, reverse=True)
-        assert len(sorted_balances) == 5, (
-            f"Expected 5 unique balances, got {len(sorted_balances)}"
-        )
+        assert (
+            len(sorted_balances) == 5
+        ), f"Expected 5 unique balances, got {len(sorted_balances)}"
 
     finally:
         await cleanup_test_user()

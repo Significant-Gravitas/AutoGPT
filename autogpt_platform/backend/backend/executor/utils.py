@@ -292,9 +292,9 @@ async def _validate_node_input_credentials(
                     if node.credentials_optional:
                         continue  # Don't add error, will be marked for skip after loop
                     else:
-                        credential_errors[node.id][field_name] = (
-                            "These credentials are required"
-                        )
+                        credential_errors[node.id][
+                            field_name
+                        ] = "These credentials are required"
                         continue
 
                 credentials_meta = credentials_meta_type.model_validate(field_value)
@@ -313,15 +313,15 @@ async def _validate_node_input_credentials(
             except Exception as e:
                 # Handle any errors fetching credentials
                 # If credentials were explicitly configured but unavailable, it's an error
-                credential_errors[node.id][field_name] = (
-                    f"Credentials not available: {e}"
-                )
+                credential_errors[node.id][
+                    field_name
+                ] = f"Credentials not available: {e}"
                 continue
 
             if not credentials:
-                credential_errors[node.id][field_name] = (
-                    f"Unknown credentials #{credentials_meta.id}"
-                )
+                credential_errors[node.id][
+                    field_name
+                ] = f"Unknown credentials #{credentials_meta.id}"
                 continue
 
             if (
@@ -334,9 +334,9 @@ async def _validate_node_input_credentials(
                     f"{credentials_meta.type}<>{credentials.type};"
                     f"{credentials_meta.provider}<>{credentials.provider}"
                 )
-                credential_errors[node.id][field_name] = (
-                    "Invalid credentials: type/provider mismatch"
-                )
+                credential_errors[node.id][
+                    field_name
+                ] = "Invalid credentials: type/provider mismatch"
                 continue
 
         # If node has optional credentials and any are missing, mark for skipping
@@ -632,7 +632,8 @@ def create_execution_queue_config() -> RabbitMQConfig:
             # Solution: Disable consumer timeout entirely - let graphs run indefinitely
             # Safety: Heartbeat mechanism now handles dead consumer detection instead
             # Use case: Graph executions that take hours to complete (AI model training, etc.)
-            "x-consumer-timeout": GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS * 1000,
+            "x-consumer-timeout": GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS
+            * 1000,
         },
     )
     cancel_queue = Queue(

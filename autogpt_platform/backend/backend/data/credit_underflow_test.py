@@ -82,7 +82,9 @@ async def test_debug_underflow_step_by_step(server: SpinTestServer):
 
         # Test 2: Apply amount that should cause underflow
         print("\n=== Test 2: Testing underflow protection ===")
-        test_amount = -200  # This should cause underflow: (POSTGRES_INT_MIN + 100) + (-200) = POSTGRES_INT_MIN - 100
+        test_amount = (
+            -200
+        )  # This should cause underflow: (POSTGRES_INT_MIN + 100) + (-200) = POSTGRES_INT_MIN - 100
         expected_without_protection = current_balance + test_amount
         print(f"Current balance: {current_balance}")
         print(f"Test amount: {test_amount}")
@@ -99,9 +101,9 @@ async def test_debug_underflow_step_by_step(server: SpinTestServer):
         print(f"Actual result: {balance_result}")
 
         # Check if underflow protection worked
-        assert balance_result == POSTGRES_INT_MIN, (
-            f"Expected underflow protection to clamp balance to {POSTGRES_INT_MIN}, got {balance_result}"
-        )
+        assert (
+            balance_result == POSTGRES_INT_MIN
+        ), f"Expected underflow protection to clamp balance to {POSTGRES_INT_MIN}, got {balance_result}"
 
         # Test 3: Edge case - exactly at POSTGRES_INT_MIN
         print("\n=== Test 3: Testing exact POSTGRES_INT_MIN boundary ===")
@@ -126,9 +128,9 @@ async def test_debug_underflow_step_by_step(server: SpinTestServer):
         )
         print(f"After subtracting 1: {edge_result}")
 
-        assert edge_result == POSTGRES_INT_MIN, (
-            f"Expected balance to remain clamped at {POSTGRES_INT_MIN}, got {edge_result}"
-        )
+        assert (
+            edge_result == POSTGRES_INT_MIN
+        ), f"Expected balance to remain clamped at {POSTGRES_INT_MIN}, got {edge_result}"
 
     finally:
         await cleanup_test_user(user_id)
@@ -174,18 +176,18 @@ async def test_underflow_protection_large_refunds(server: SpinTestServer):
         )
 
         # Balance should be clamped to POSTGRES_INT_MIN, not the calculated underflow value
-        assert final_balance == POSTGRES_INT_MIN, (
-            f"Balance should be clamped to {POSTGRES_INT_MIN}, got {final_balance}"
-        )
-        assert final_balance > expected_without_protection, (
-            f"Balance should be greater than underflow result {expected_without_protection}, got {final_balance}"
-        )
+        assert (
+            final_balance == POSTGRES_INT_MIN
+        ), f"Balance should be clamped to {POSTGRES_INT_MIN}, got {final_balance}"
+        assert (
+            final_balance > expected_without_protection
+        ), f"Balance should be greater than underflow result {expected_without_protection}, got {final_balance}"
 
         # Verify with get_credits too
         stored_balance = await credit_system.get_credits(user_id)
-        assert stored_balance == POSTGRES_INT_MIN, (
-            f"Stored balance should be {POSTGRES_INT_MIN}, got {stored_balance}"
-        )
+        assert (
+            stored_balance == POSTGRES_INT_MIN
+        ), f"Stored balance should be {POSTGRES_INT_MIN}, got {stored_balance}"
 
         # Verify transaction was created with the underflow-protected balance
         transactions = await CreditTransaction.prisma().find_many(
@@ -193,9 +195,9 @@ async def test_underflow_protection_large_refunds(server: SpinTestServer):
             order={"createdAt": "desc"},
         )
         assert len(transactions) > 0, "Refund transaction should be created"
-        assert transactions[0].runningBalance == POSTGRES_INT_MIN, (
-            f"Transaction should show clamped balance {POSTGRES_INT_MIN}, got {transactions[0].runningBalance}"
-        )
+        assert (
+            transactions[0].runningBalance == POSTGRES_INT_MIN
+        ), f"Transaction should show clamped balance {POSTGRES_INT_MIN}, got {transactions[0].runningBalance}"
 
     finally:
         await cleanup_test_user(user_id)
@@ -236,12 +238,12 @@ async def test_multiple_large_refunds_cumulative_underflow(server: SpinTestServe
         expected_balance_1 = (
             initial_balance + refund_amount
         )  # Should be POSTGRES_INT_MIN + 200
-        assert balance_1 == expected_balance_1, (
-            f"First refund should result in {expected_balance_1}, got {balance_1}"
-        )
-        assert balance_1 >= POSTGRES_INT_MIN, (
-            f"First refund should not go below {POSTGRES_INT_MIN}, got {balance_1}"
-        )
+        assert (
+            balance_1 == expected_balance_1
+        ), f"First refund should result in {expected_balance_1}, got {balance_1}"
+        assert (
+            balance_1 >= POSTGRES_INT_MIN
+        ), f"First refund should not go below {POSTGRES_INT_MIN}, got {balance_1}"
 
         # Second refund: (POSTGRES_INT_MIN + 200) + (-300) = POSTGRES_INT_MIN - 100 (would underflow)
         balance_2, _ = await credit_system._add_transaction(
@@ -252,9 +254,9 @@ async def test_multiple_large_refunds_cumulative_underflow(server: SpinTestServe
         )
 
         # Should be clamped to minimum due to underflow protection
-        assert balance_2 == POSTGRES_INT_MIN, (
-            f"Second refund should be clamped to {POSTGRES_INT_MIN}, got {balance_2}"
-        )
+        assert (
+            balance_2 == POSTGRES_INT_MIN
+        ), f"Second refund should be clamped to {POSTGRES_INT_MIN}, got {balance_2}"
 
         # Third refund: Should stay at minimum
         balance_3, _ = await credit_system._add_transaction(
@@ -265,15 +267,15 @@ async def test_multiple_large_refunds_cumulative_underflow(server: SpinTestServe
         )
 
         # Should still be at minimum
-        assert balance_3 == POSTGRES_INT_MIN, (
-            f"Third refund should stay at {POSTGRES_INT_MIN}, got {balance_3}"
-        )
+        assert (
+            balance_3 == POSTGRES_INT_MIN
+        ), f"Third refund should stay at {POSTGRES_INT_MIN}, got {balance_3}"
 
         # Final balance check
         final_balance = await credit_system.get_credits(user_id)
-        assert final_balance == POSTGRES_INT_MIN, (
-            f"Final balance should be {POSTGRES_INT_MIN}, got {final_balance}"
-        )
+        assert (
+            final_balance == POSTGRES_INT_MIN
+        ), f"Final balance should be {POSTGRES_INT_MIN}, got {final_balance}"
 
     finally:
         await cleanup_test_user(user_id)
@@ -325,35 +327,35 @@ async def test_concurrent_large_refunds_no_underflow(server: SpinTestServer):
         for i, result in enumerate(results):
             if isinstance(result, tuple):
                 balance, _ = result
-                assert balance >= POSTGRES_INT_MIN, (
-                    f"Result {i} balance {balance} underflowed below {POSTGRES_INT_MIN}"
-                )
+                assert (
+                    balance >= POSTGRES_INT_MIN
+                ), f"Result {i} balance {balance} underflowed below {POSTGRES_INT_MIN}"
                 valid_results.append(balance)
             elif isinstance(result, str) and "FAILED" in result:
                 # Some operations might fail due to validation, that's okay
                 pass
             else:
                 # Unexpected exception
-                assert not isinstance(result, Exception), (
-                    f"Unexpected exception in result {i}: {result}"
-                )
+                assert not isinstance(
+                    result, Exception
+                ), f"Unexpected exception in result {i}: {result}"
 
         # At least one operation should succeed
-        assert len(valid_results) > 0, (
-            f"At least one refund should succeed, got results: {results}"
-        )
+        assert (
+            len(valid_results) > 0
+        ), f"At least one refund should succeed, got results: {results}"
 
         # All successful results should be >= POSTGRES_INT_MIN
         for balance in valid_results:
-            assert balance >= POSTGRES_INT_MIN, (
-                f"Balance {balance} should not be below {POSTGRES_INT_MIN}"
-            )
+            assert (
+                balance >= POSTGRES_INT_MIN
+            ), f"Balance {balance} should not be below {POSTGRES_INT_MIN}"
 
         # Final balance should be valid and at or above POSTGRES_INT_MIN
         final_balance = await credit_system.get_credits(user_id)
-        assert final_balance >= POSTGRES_INT_MIN, (
-            f"Final balance {final_balance} should not underflow below {POSTGRES_INT_MIN}"
-        )
+        assert (
+            final_balance >= POSTGRES_INT_MIN
+        ), f"Final balance {final_balance} should not underflow below {POSTGRES_INT_MIN}"
 
     finally:
         await cleanup_test_user(user_id)

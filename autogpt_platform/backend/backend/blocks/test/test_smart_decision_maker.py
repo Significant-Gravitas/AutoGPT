@@ -174,9 +174,9 @@ async def test_smart_decision_maker_function_signature(server: SpinTestServer):
     )
     assert tool_functions is not None, "Tool functions should not be None"
 
-    assert len(tool_functions) == 2, (
-        f"Expected 2 tool functions, got {len(tool_functions)}"
-    )
+    assert (
+        len(tool_functions) == 2
+    ), f"Expected 2 tool functions, got {len(tool_functions)}"
 
     # Check the first tool function (testgraph)
     assert tool_functions[0]["type"] == "function"

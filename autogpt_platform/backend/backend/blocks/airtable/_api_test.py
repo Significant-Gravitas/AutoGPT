@@ -43,9 +43,9 @@ async def test_create_update_table():
     workspace_id = "wsphuHmfllg7V3Brd"
     response = await create_base(credentials, workspace_id, "API Testing Base")
     assert response is not None, f"Checking create base response: {response}"
-    assert response.get("id") is not None, (
-        f"Checking create base response id: {response}"
-    )
+    assert (
+        response.get("id") is not None
+    ), f"Checking create base response id: {response}"
     base_id = response.get("id")
     assert base_id is not None, f"Checking create base response id: {base_id}"
 
@@ -236,9 +236,9 @@ async def test_record_management():
     updated_records = response.get("records")
     assert updated_records is not None
     assert len(updated_records) == 2, f"Updated records: {updated_records}"
-    assert isinstance(updated_records, list), (
-        f"Type of updated records: {type(updated_records)}"
-    )
+    assert isinstance(
+        updated_records, list
+    ), f"Type of updated records: {type(updated_records)}"
     first_updated = updated_records[0]  # type: ignore
     second_updated = updated_records[1]  # type: ignore
     first_updated_fields = first_updated.get("fields")
@@ -257,9 +257,9 @@ async def test_record_management():
     deleted_records = response.get("records")
     assert deleted_records is not None
     assert len(deleted_records) == 2, f"Deleted records: {deleted_records}"
-    assert isinstance(deleted_records, list), (
-        f"Type of deleted records: {type(deleted_records)}"
-    )
+    assert isinstance(
+        deleted_records, list
+    ), f"Type of deleted records: {type(deleted_records)}"
     first_deleted = deleted_records[0]  # type: ignore
     second_deleted = deleted_records[1]  # type: ignore
     assert first_deleted.get("deleted")
@@ -293,12 +293,12 @@ async def test_webhook_management():
     )
     response = await create_webhook(credentials, base_id, webhook_specification)
     assert response is not None, f"Checking create webhook response: {response}"
-    assert response.get("id") is not None, (
-        f"Checking create webhook response id: {response}"
-    )
-    assert response.get("macSecretBase64") is not None, (
-        f"Checking create webhook response macSecretBase64: {response}"
-    )
+    assert (
+        response.get("id") is not None
+    ), f"Checking create webhook response id: {response}"
+    assert (
+        response.get("macSecretBase64") is not None
+    ), f"Checking create webhook response macSecretBase64: {response}"
 
     webhook_id = response.get("id")
     assert webhook_id is not None, f"Webhook ID: {webhook_id}"
@@ -308,14 +308,14 @@ async def test_webhook_management():
         credentials, base_id, table_id, fields={"test_field": "test_value"}
     )
     assert response is not None, f"Checking create record response: {response}"
-    assert response.get("id") is not None, (
-        f"Checking create record response id: {response}"
-    )
+    assert (
+        response.get("id") is not None
+    ), f"Checking create record response id: {response}"
     fields = response.get("fields")
     assert fields is not None, f"Checking create record response fields: {response}"
-    assert fields.get("test_field") == "test_value", (
-        f"Checking create record response fields test_field: {response}"
-    )
+    assert (
+        fields.get("test_field") == "test_value"
+    ), f"Checking create record response fields test_field: {response}"
 
     response = await list_webhook_payloads(credentials, base_id, webhook_id)
     assert response is not None, f"Checking list webhook payloads response: {response}"
