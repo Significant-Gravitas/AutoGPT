@@ -277,7 +277,6 @@ class AgentSavedResponse(ToolResponseBase):
     library_agent_id: str
     library_agent_link: str
     agent_page_link: str  # Link to the agent builder/editor page
-    image_url: str | None = None
 
 
 class ClarificationNeededResponse(ToolResponseBase):

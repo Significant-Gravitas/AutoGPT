@@ -17,7 +17,7 @@ const GROUND_PAD = 20;
 const STORAGE_KEY = "copilot-minigame-highscore";
 
 // Colors
-const COLOR_BG = "#E0F2F19C";
+const COLOR_BG = "#E8EAF6";
 const COLOR_CHAR = "#263238";
 const COLOR_BOSS = "#F50057";
 
@@ -531,6 +531,7 @@ export function useMiniGame() {
     }
 
     function onClick() {
+      canvas?.focus();
       jump();
     }
 
@@ -551,7 +552,7 @@ export function useMiniGame() {
     rafRef.current = requestAnimationFrame(loop);
 
     canvas.addEventListener("click", onClick);
-    window.addEventListener("keydown", onKey);
+    canvas.addEventListener("keydown", onKey);
 
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
@@ -569,7 +570,7 @@ export function useMiniGame() {
     return () => {
       cancelAnimationFrame(rafRef.current);
       canvas.removeEventListener("click", onClick);
-      window.removeEventListener("keydown", onKey);
+      canvas.removeEventListener("keydown", onKey);
       observer.disconnect();
     };
   }, []);

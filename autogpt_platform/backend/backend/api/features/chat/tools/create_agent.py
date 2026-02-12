@@ -4,7 +4,6 @@ import logging
 from typing import Any
 
 from backend.api.features.chat.model import ChatSession
-from backend.api.features.library.db import add_generated_agent_image
 
 from .agent_generator import (
     AgentGeneratorNotConfiguredError,
@@ -318,19 +317,6 @@ class CreateAgentTool(BaseTool):
                 agent_json, user_id
             )
 
-            # Generate image before returning so the URL is available in the response
-            image_url: str | None = None
-            try:
-                updated_agent = await add_generated_agent_image(
-                    graph=created_graph,
-                    user_id=user_id,
-                    library_agent_id=library_agent.id,
-                )
-                if updated_agent and updated_agent.imageUrl:
-                    image_url = updated_agent.imageUrl
-            except Exception as e:
-                logger.warning(f"Image generation failed, continuing without: {e}")
-
             return AgentSavedResponse(
                 message=f"Agent '{created_graph.name}' has been saved to your library!",
                 agent_id=created_graph.id,
@@ -338,7 +324,6 @@ class CreateAgentTool(BaseTool):
                 library_agent_id=library_agent.id,
                 library_agent_link=f"/library/agents/{library_agent.id}",
                 agent_page_link=f"/build?flowID={created_graph.id}",
-                image_url=image_url,
                 session_id=session_id,
             )
         except Exception as e:

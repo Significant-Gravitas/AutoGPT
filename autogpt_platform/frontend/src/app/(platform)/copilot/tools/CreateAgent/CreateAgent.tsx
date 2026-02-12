@@ -166,14 +166,6 @@ export function CreateAgentTool({ part }: Props) {
 
           {isAgentSavedOutput(output) && (
             <div className="rounded-xl border border-border/60 bg-card p-4 shadow-sm">
-              {output.image_url && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={output.image_url}
-                  alt={output.agent_name}
-                  className="mb-3 h-40 w-full rounded-lg object-cover"
-                />
-              )}
               <div className="flex items-baseline gap-2">
                 <CheckFatIcon
                   size={18}
