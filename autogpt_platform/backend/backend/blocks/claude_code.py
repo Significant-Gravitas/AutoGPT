@@ -666,10 +666,7 @@ class ClaudeCodeBlock(Block):
                             stat_result = await sandbox.commands.run(
                                 f"stat -c %s {shlex.quote(file_path)} 2>/dev/null"
                             )
-                            if (
-                                stat_result.exit_code != 0
-                                or not stat_result.stdout
-                            ):
+                            if stat_result.exit_code != 0 or not stat_result.stdout:
                                 logger.warning(
                                     f"Skipping binary file {file_path}: "
                                     f"could not determine file size"
