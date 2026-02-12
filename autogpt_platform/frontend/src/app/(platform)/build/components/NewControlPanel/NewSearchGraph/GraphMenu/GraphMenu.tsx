@@ -1,4 +1,4 @@
-import { CustomNode } from "@/app/(platform)/build/components/legacy-builder/CustomNode/CustomNode";
+import { CustomNode } from "../../../FlowEditor/nodes/CustomNode/CustomNode";
 import {
   Popover,
   PopoverContent,

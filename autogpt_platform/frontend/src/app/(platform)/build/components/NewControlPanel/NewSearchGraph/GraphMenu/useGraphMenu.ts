@@ -1,5 +1,5 @@
 import { useGraphSearch } from "../GraphMenuSearchBar/useGraphMenuSearchBar";
-import { CustomNode } from "@/app/(platform)/build/components/legacy-builder/CustomNode/CustomNode";
+import { CustomNode } from "../../../FlowEditor/nodes/CustomNode/CustomNode";
 
 interface UseGraphMenuProps {
   nodes: CustomNode[];
