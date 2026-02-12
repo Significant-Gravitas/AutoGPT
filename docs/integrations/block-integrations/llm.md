@@ -563,7 +563,7 @@ The block supports conversation continuation through three mechanisms:
 |--------|-------------|------|
 | error | Error message if execution failed | str |
 | response | The output/response from Claude Code execution | str |
-| files | List of text files created/modified by Claude Code during this execution. Each file has 'path', 'relative_path', 'name', and 'content' fields. | List[FileOutput] |
+| files | List of text files created/modified by Claude Code during this execution. Each file has 'path', 'relative_path', 'name', 'content', and 'workspace_ref' fields. workspace_ref contains a workspace:// URI if the file was stored to workspace. | List[SandboxFileOutput] |
 | conversation_history | Full conversation history including this turn. Pass this to conversation_history input to continue on a fresh sandbox if the previous sandbox timed out. | str |
 | session_id | Session ID for this conversation. Pass this back along with sandbox_id to continue the conversation. | str |
 | sandbox_id | ID of the sandbox instance. Pass this back along with session_id to continue the conversation. This is None if dispose_sandbox was True (sandbox was disposed). | str |
