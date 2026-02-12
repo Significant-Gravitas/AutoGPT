@@ -492,6 +492,40 @@ async def upsert_chat_session(
         return session
 
 
+async def append_and_save_message(session_id: str, message: ChatMessage) -> ChatSession:
+    """Atomically append a message to a session and persist it.
+
+    Acquires the session lock, re-fetches the latest session state,
+    appends the message, and saves — preventing message loss when
+    concurrent requests modify the same session.
+    """
+    lock = await _get_session_lock(session_id)
+
+    async with lock:
+        session = await get_chat_session(session_id)
+        if session is None:
+            raise ValueError(f"Session {session_id} not found")
+
+        session.messages.append(message)
+        existing_message_count = await chat_db.get_chat_session_message_count(
+            session_id
+        )
+
+        try:
+            await _save_session_to_db(session, existing_message_count)
+        except Exception as e:
+            raise DatabaseError(
+                f"Failed to persist message to session {session_id}"
+            ) from e
+
+        try:
+            await _cache_session(session)
+        except Exception as e:
+            logger.warning(f"Cache write failed for session {session_id}: {e}")
+
+        return session
+
+
 async def create_chat_session(user_id: str) -> ChatSession:
     """Create a new chat session and persist it.
 

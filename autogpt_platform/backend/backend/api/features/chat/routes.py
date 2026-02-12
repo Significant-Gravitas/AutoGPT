@@ -20,10 +20,10 @@ from .config import ChatConfig
 from .model import (
     ChatMessage,
     ChatSession,
+    append_and_save_message,
     create_chat_session,
     get_chat_session,
     get_user_sessions,
-    upsert_chat_session,
 )
 from .response_model import StreamError, StreamFinish, StreamHeartbeat, StreamStart
 from .sdk import service as sdk_service
@@ -325,14 +325,14 @@ async def stream_chat_post(
         },
     )
 
-    # Add user message to session BEFORE creating task to avoid race condition
-    # where GET_SESSION sees the task as "running" but the message isn't saved yet
+    # Atomically append user message to session BEFORE creating task to avoid
+    # race condition where GET_SESSION sees task as "running" but message isn't
+    # saved yet.  append_and_save_message re-fetches inside a lock to prevent
+    # message loss from concurrent requests.
     if request.message:
-        session.messages.append(
-            ChatMessage(
-                role="user" if request.is_user_message else "assistant",
-                content=request.message,
-            )
+        message = ChatMessage(
+            role="user" if request.is_user_message else "assistant",
+            content=request.message,
         )
         if request.is_user_message:
             track_user_message(
@@ -340,11 +340,8 @@ async def stream_chat_post(
                 session_id=session_id,
                 message_length=len(request.message),
             )
-        logger.info(
-            f"[STREAM] Saving user message to session {session_id}, "
-            f"msg_count={len(session.messages)}"
-        )
-        session = await upsert_chat_session(session)
+        logger.info(f"[STREAM] Saving user message to session {session_id}")
+        session = await append_and_save_message(session_id, message)
         logger.info(f"[STREAM] User message saved for session {session_id}")
 
     # Create a task in the stream registry for reconnection support
