@@ -1,0 +1,369 @@
+"""Feature request tools - search and create feature requests via Linear."""
+
+import logging
+from typing import Any
+
+from pydantic import SecretStr
+
+from backend.api.features.chat.model import ChatSession
+from backend.api.features.chat.tools.base import BaseTool
+from backend.api.features.chat.tools.models import (
+    ErrorResponse,
+    FeatureRequestCreatedResponse,
+    FeatureRequestInfo,
+    FeatureRequestSearchResponse,
+    NoResultsResponse,
+    ToolResponseBase,
+)
+from backend.blocks.linear._api import LinearClient
+from backend.data.model import APIKeyCredentials
+from backend.util.settings import Settings
+
+logger = logging.getLogger(__name__)
+
+# Target project and team IDs in our Linear workspace
+FEATURE_REQUEST_PROJECT_ID = "13f066f3-f639-4a67-aaa3-31483ebdf8cd"
+TEAM_ID = "557fd3d5-087e-43a9-83e3-476c8313ce49"
+
+MAX_SEARCH_RESULTS = 10
+
+# GraphQL queries/mutations
+SEARCH_ISSUES_QUERY = """
+query SearchFeatureRequests($term: String!, $filter: IssueFilter, $first: Int) {
+  searchIssues(term: $term, filter: $filter, first: $first) {
+    nodes {
+      id
+      identifier
+      title
+      description
+    }
+  }
+}
+"""
+
+CUSTOMER_UPSERT_MUTATION = """
+mutation CustomerUpsert($input: CustomerUpsertInput!) {
+  customerUpsert(input: $input) {
+    success
+    customer {
+      id
+      name
+      externalIds
+    }
+  }
+}
+"""
+
+ISSUE_CREATE_MUTATION = """
+mutation IssueCreate($input: IssueCreateInput!) {
+  issueCreate(input: $input) {
+    success
+    issue {
+      id
+      identifier
+      title
+      url
+    }
+  }
+}
+"""
+
+CUSTOMER_NEED_CREATE_MUTATION = """
+mutation CustomerNeedCreate($input: CustomerNeedCreateInput!) {
+  customerNeedCreate(input: $input) {
+    success
+    need {
+      id
+      body
+      customer {
+        id
+        name
+      }
+      issue {
+        id
+        identifier
+        title
+        url
+      }
+    }
+  }
+}
+"""
+
+
+_settings: Settings | None = None
+
+
+def _get_settings() -> Settings:
+    global _settings
+    if _settings is None:
+        _settings = Settings()
+    return _settings
+
+
+def _get_linear_client() -> LinearClient:
+    """Create a Linear client using the system API key from settings."""
+    api_key = _get_settings().secrets.linear_api_key
+    if not api_key:
+        raise RuntimeError("LINEAR_API_KEY secret is not configured")
+    credentials = APIKeyCredentials(
+        id="system-linear",
+        provider="linear",
+        api_key=SecretStr(api_key),
+        title="System Linear API Key",
+    )
+    return LinearClient(credentials=credentials)
+
+
+class SearchFeatureRequestsTool(BaseTool):
+    """Tool for searching existing feature requests in Linear."""
+
+    @property
+    def name(self) -> str:
+        return "search_feature_requests"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Search existing feature requests to check if a similar request "
+            "already exists before creating a new one. Returns matching feature "
+            "requests with their ID, title, and description."
+        )
+
+    @property
+    def parameters(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Search term to find matching feature requests.",
+                },
+            },
+            "required": ["query"],
+        }
+
+    @property
+    def requires_auth(self) -> bool:
+        return True
+
+    async def _execute(
+        self,
+        user_id: str | None,
+        session: ChatSession,
+        **kwargs,
+    ) -> ToolResponseBase:
+        query = kwargs.get("query", "").strip()
+        session_id = session.session_id if session else None
+
+        if not query:
+            return ErrorResponse(
+                message="Please provide a search query.",
+                error="Missing query parameter",
+                session_id=session_id,
+            )
+
+        client = _get_linear_client()
+        data = await client.query(
+            SEARCH_ISSUES_QUERY,
+            {
+                "term": query,
+                "filter": {
+                    "project": {"id": {"eq": FEATURE_REQUEST_PROJECT_ID}},
+                },
+                "first": MAX_SEARCH_RESULTS,
+            },
+        )
+
+        nodes = data.get("searchIssues", {}).get("nodes", [])
+
+        if not nodes:
+            return NoResultsResponse(
+                message=f"No feature requests found matching '{query}'.",
+                suggestions=[
+                    "Try different keywords",
+                    "Use broader search terms",
+                    "You can create a new feature request if none exists",
+                ],
+                session_id=session_id,
+            )
+
+        results = [
+            FeatureRequestInfo(
+                id=node["id"],
+                identifier=node["identifier"],
+                title=node["title"],
+                description=node.get("description"),
+            )
+            for node in nodes
+        ]
+
+        return FeatureRequestSearchResponse(
+            message=f"Found {len(results)} feature request(s) matching '{query}'.",
+            results=results,
+            count=len(results),
+            query=query,
+            session_id=session_id,
+        )
+
+
+class CreateFeatureRequestTool(BaseTool):
+    """Tool for creating feature requests (or adding needs to existing ones)."""
+
+    @property
+    def name(self) -> str:
+        return "create_feature_request"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Create a new feature request or add a customer need to an existing one. "
+            "Always search first with search_feature_requests to avoid duplicates. "
+            "If a matching request exists, pass its ID as existing_issue_id to add "
+            "the user's need to it instead of creating a duplicate."
+        )
+
+    @property
+    def parameters(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "title": {
+                    "type": "string",
+                    "description": "Title for the feature request.",
+                },
+                "description": {
+                    "type": "string",
+                    "description": "Detailed description of what the user wants and why.",
+                },
+                "existing_issue_id": {
+                    "type": "string",
+                    "description": (
+                        "If adding a need to an existing feature request, "
+                        "provide its Linear issue ID (from search results). "
+                        "Omit to create a new feature request."
+                    ),
+                },
+            },
+            "required": ["title", "description"],
+        }
+
+    @property
+    def requires_auth(self) -> bool:
+        return True
+
+    async def _find_or_create_customer(
+        self, client: LinearClient, user_id: str
+    ) -> dict:
+        """Find existing customer by user_id or create a new one via upsert."""
+        data = await client.mutate(
+            CUSTOMER_UPSERT_MUTATION,
+            {
+                "input": {
+                    "name": user_id,
+                    "externalId": user_id,
+                },
+            },
+        )
+        result = data.get("customerUpsert", {})
+        if not result.get("success"):
+            raise RuntimeError(f"Failed to upsert customer: {data}")
+        return result["customer"]
+
+    async def _execute(
+        self,
+        user_id: str | None,
+        session: ChatSession,
+        **kwargs,
+    ) -> ToolResponseBase:
+        title = kwargs.get("title", "").strip()
+        description = kwargs.get("description", "").strip()
+        existing_issue_id = kwargs.get("existing_issue_id")
+        session_id = session.session_id if session else None
+
+        if not title or not description:
+            return ErrorResponse(
+                message="Both title and description are required.",
+                error="Missing required parameters",
+                session_id=session_id,
+            )
+
+        if not user_id:
+            return ErrorResponse(
+                message="Authentication required to create feature requests.",
+                error="Missing user_id",
+                session_id=session_id,
+            )
+
+        client = _get_linear_client()
+
+        # Step 1: Find or create customer for this user
+        customer = await self._find_or_create_customer(client, user_id)
+        customer_id = customer["id"]
+        customer_name = customer["name"]
+
+        # Step 2: Create or reuse issue
+        if existing_issue_id:
+            # Add need to existing issue - we still need the issue details for response
+            is_new_issue = False
+            issue_id = existing_issue_id
+        else:
+            # Create new issue in the feature requests project
+            data = await client.mutate(
+                ISSUE_CREATE_MUTATION,
+                {
+                    "input": {
+                        "title": title,
+                        "description": description,
+                        "teamId": TEAM_ID,
+                        "projectId": FEATURE_REQUEST_PROJECT_ID,
+                    },
+                },
+            )
+            result = data.get("issueCreate", {})
+            if not result.get("success"):
+                return ErrorResponse(
+                    message="Failed to create feature request issue.",
+                    error=str(data),
+                    session_id=session_id,
+                )
+            issue = result["issue"]
+            issue_id = issue["id"]
+            is_new_issue = True
+
+        # Step 3: Create customer need on the issue
+        data = await client.mutate(
+            CUSTOMER_NEED_CREATE_MUTATION,
+            {
+                "input": {
+                    "customerId": customer_id,
+                    "issueId": issue_id,
+                    "body": description,
+                    "priority": 0,
+                },
+            },
+        )
+        need_result = data.get("customerNeedCreate", {})
+        if not need_result.get("success"):
+            return ErrorResponse(
+                message="Failed to attach customer need to the feature request.",
+                error=str(data),
+                session_id=session_id,
+            )
+
+        need = need_result["need"]
+        issue_info = need["issue"]
+
+        return FeatureRequestCreatedResponse(
+            message=(
+                f"{'Created new feature request' if is_new_issue else 'Added your request to existing feature request'} "
+                f"[{issue_info['identifier']}] {issue_info['title']}."
+            ),
+            issue_id=issue_info["id"],
+            issue_identifier=issue_info["identifier"],
+            issue_title=issue_info["title"],
+            issue_url=issue_info.get("url", ""),
+            is_new_issue=is_new_issue,
+            customer_name=customer_name,
+            session_id=session_id,
+        )
