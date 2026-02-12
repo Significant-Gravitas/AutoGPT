@@ -1,7 +1,11 @@
 """Sandbox execution utilities for code execution tools.
 
-Provides network-isolated command execution using Linux ``unshare --net``
-(kernel-level, no bypass possible) with a fallback for development on macOS.
+Provides filesystem + network isolated command execution using **bubblewrap**
+(``bwrap``): whitelist-only filesystem (only system dirs visible read-only),
+writable workspace only, clean environment, network blocked.
+
+Tools that call :func:`run_sandboxed` must first check :func:`has_full_sandbox`
+and refuse to run if bubblewrap is not available.
 """
 
 import asyncio
@@ -18,23 +22,24 @@ _DEFAULT_TIMEOUT = 30
 _MAX_TIMEOUT = 120
 
 
-def _check_unshare() -> bool:
-    """Check if ``unshare --net`` is available for kernel-level network isolation."""
-    if platform.system() != "Linux":
-        return False
-    return shutil.which("unshare") is not None
+# ---------------------------------------------------------------------------
+# Sandbox capability detection (cached at first call)
+# ---------------------------------------------------------------------------
+
+_BWRAP_AVAILABLE: bool | None = None
 
 
-# Cached at import time so we don't shell out on every call
-_UNSHARE_AVAILABLE: bool | None = None
+def has_full_sandbox() -> bool:
+    """Return True if bubblewrap is available (filesystem + network isolation).
 
-
-def has_network_sandbox() -> bool:
-    """Return True if kernel-level network isolation is available."""
-    global _UNSHARE_AVAILABLE
-    if _UNSHARE_AVAILABLE is None:
-        _UNSHARE_AVAILABLE = _check_unshare()
-    return _UNSHARE_AVAILABLE
+    On non-Linux platforms (macOS), always returns False.
+    """
+    global _BWRAP_AVAILABLE
+    if _BWRAP_AVAILABLE is None:
+        _BWRAP_AVAILABLE = (
+            platform.system() == "Linux" and shutil.which("bwrap") is not None
+        )
+    return _BWRAP_AVAILABLE
 
 
 WORKSPACE_PREFIX = "/tmp/copilot-"
@@ -70,11 +75,99 @@ def get_workspace_dir(session_id: str) -> str:
     """Get or create the workspace directory for a session.
 
     Uses :func:`make_session_path` — the same path the SDK uses — so that
-    python_exec / bash_exec share the workspace with the SDK file tools.
+    bash_exec shares the workspace with the SDK file tools.
     """
     workspace = make_session_path(session_id)
     os.makedirs(workspace, exist_ok=True)
     return workspace
+
+
+# ---------------------------------------------------------------------------
+# Bubblewrap command builder
+# ---------------------------------------------------------------------------
+
+# System directories mounted read-only inside the sandbox.
+# ONLY these are visible — /app, /root, /home, /opt, /var etc. are NOT accessible.
+_SYSTEM_RO_BINDS = [
+    "/usr",  # binaries, libraries, Python interpreter
+    "/etc",  # system config: ld.so, locale, passwd, alternatives
+]
+
+# Symlinks to /usr/* on modern Debian, may be real dirs on older systems.
+_COMPAT_RO_BINDS = [
+    "/bin",  # -> /usr/bin on Debian 13
+    "/sbin",  # -> /usr/sbin on Debian 13
+    "/lib",  # -> /usr/lib on Debian 13
+    "/lib64",  # 64-bit libraries (may not exist)
+]
+
+
+def _build_bwrap_command(
+    command: list[str], cwd: str, env: dict[str, str]
+) -> list[str]:
+    """Build a bubblewrap command with strict filesystem + network isolation.
+
+    Security model:
+    - **Whitelist-only filesystem**: only system directories (``/usr``, ``/etc``,
+      ``/bin``, ``/lib``) are mounted read-only.  Application code (``/app``),
+      home directories, ``/var``, ``/opt``, etc. are NOT accessible at all.
+    - **Writable workspace only**: the per-session workspace is the sole
+      writable path.
+    - **Clean environment**: ``--clearenv`` wipes all inherited env vars.
+      Only the explicitly-passed safe env vars are set inside the sandbox.
+    - **Network isolation**: ``--unshare-net`` blocks all network access.
+    - **New session**: prevents terminal control escape.
+    - **Die with parent**: prevents orphaned sandbox processes.
+    """
+    cmd = [
+        "bwrap",
+        # Wipe all inherited environment variables (API keys, secrets, etc.)
+        "--clearenv",
+    ]
+
+    # Set only the safe env vars inside the sandbox
+    for key, value in env.items():
+        cmd.extend(["--setenv", key, value])
+
+    # System directories: read-only
+    for path in _SYSTEM_RO_BINDS:
+        cmd.extend(["--ro-bind", path, path])
+
+    # Compat paths: bind only if they exist on the host
+    for path in _COMPAT_RO_BINDS:
+        if os.path.exists(path):
+            cmd.extend(["--ro-bind", path, path])
+
+    cmd.extend(
+        [
+            # Writable workspace only
+            "--bind",
+            cwd,
+            cwd,
+            # Fresh virtual filesystems
+            "--dev",
+            "/dev",
+            "--proc",
+            "/proc",
+            "--tmpdir",
+            "/tmp",
+            # Isolation
+            "--unshare-net",
+            "--die-with-parent",
+            "--new-session",
+            "--chdir",
+            cwd,
+            "--",
+            *command,
+        ]
+    )
+
+    return cmd
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
 
 
 async def run_sandboxed(
@@ -83,17 +176,21 @@ async def run_sandboxed(
     timeout: int = _DEFAULT_TIMEOUT,
     env: dict[str, str] | None = None,
 ) -> tuple[str, str, int, bool]:
-    """Run a command in a sandboxed environment.
+    """Run a command inside a bubblewrap sandbox.
+
+    Callers **must** check :func:`has_full_sandbox` before calling this
+    function.  If bubblewrap is not available, this function raises
+    :class:`RuntimeError` rather than running unsandboxed.
 
     Returns:
         (stdout, stderr, exit_code, timed_out)
-
-    Security layers:
-    - Network isolation via ``unshare --net`` (Linux)
-    - Restricted working directory
-    - Minimal environment variables
-    - Hard timeout
     """
+    if not has_full_sandbox():
+        raise RuntimeError(
+            "run_sandboxed() requires bubblewrap but bwrap is not available. "
+            "Callers must check has_full_sandbox() before calling this function."
+        )
+
     timeout = min(max(timeout, 1), _MAX_TIMEOUT)
 
     safe_env = {
@@ -107,11 +204,7 @@ async def run_sandboxed(
     if env:
         safe_env.update(env)
 
-    # Wrap with unshare --net on Linux for kernel-level network isolation
-    if has_network_sandbox():
-        full_command = ["unshare", "--net", *command]
-    else:
-        full_command = command
+    full_command = _build_bwrap_command(command, cwd, safe_env)
 
     try:
         proc = await asyncio.create_subprocess_exec(
@@ -134,5 +227,7 @@ async def run_sandboxed(
             await proc.communicate()
             return "", f"Execution timed out after {timeout}s", -1, True
 
+    except RuntimeError:
+        raise
     except Exception as e:
         return "", f"Sandbox error: {e}", -1, False

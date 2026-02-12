@@ -62,8 +62,9 @@ ENV POETRY_HOME=/opt/poetry \
     DEBIAN_FRONTEND=noninteractive
 ENV PATH=/opt/poetry/bin:$PATH
 
-# Install Python, FFmpeg, ImageMagick, and CLI tools for agent use
-# CLI tools match ALLOWED_BASH_COMMANDS in security_hooks.py
+# Install Python, FFmpeg, ImageMagick, and CLI tools for agent use.
+# bubblewrap provides OS-level sandbox (whitelist-only FS + no network)
+# for the bash_exec MCP tool.
 RUN apt-get update && apt-get install -y \
     python3.13 \
     python3-pip \
@@ -72,6 +73,7 @@ RUN apt-get update && apt-get install -y \
     jq \
     ripgrep \
     tree \
+    bubblewrap \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy only necessary files from builder

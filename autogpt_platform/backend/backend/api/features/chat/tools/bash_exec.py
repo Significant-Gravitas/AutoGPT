@@ -1,12 +1,14 @@
-"""Bash execution tool — run shell commands in a network-isolated sandbox.
+"""Bash execution tool — run shell commands in a bubblewrap sandbox.
 
 Full Bash scripting is allowed (loops, conditionals, pipes, functions, etc.).
-Safety comes from kernel-level network isolation and workspace confinement,
-not from restricting language features.
+Safety comes from OS-level isolation (bubblewrap): only system dirs visible
+read-only, writable workspace only, clean env, no network.
+
+Requires bubblewrap (``bwrap``) — the tool is disabled when bwrap is not
+available (e.g. macOS development).
 """
 
 import logging
-import re
 from typing import Any
 
 from backend.api.features.chat.model import ChatSession
@@ -18,46 +20,15 @@ from backend.api.features.chat.tools.models import (
 )
 from backend.api.features.chat.tools.sandbox import (
     get_workspace_dir,
-    has_network_sandbox,
+    has_full_sandbox,
     run_sandboxed,
 )
 
 logger = logging.getLogger(__name__)
 
-# Destructive patterns blocked regardless of network sandbox
-_BLOCKED_PATTERNS: list[tuple[str, str]] = [
-    (r"rm\s+-[a-zA-Z]*r[a-zA-Z]*\s+/(?!\w)", "Recursive removal of root paths"),
-    (r"dd\s+.*of=/dev/", "Direct disk writes"),
-    (r"mkfs\b", "Filesystem formatting"),
-    (r":\(\)\s*\{", "Fork bomb"),
-    (r"\bshutdown\b|\breboot\b|\bhalt\b|\bpoweroff\b", "System power commands"),
-    (r"/dev/sd[a-z]|/dev/nvme|/dev/hd[a-z]", "Raw disk device access"),
-]
-
-# Commands blocked when kernel network sandbox is NOT available (fallback)
-_NETWORK_COMMANDS = {
-    "curl",
-    "wget",
-    "ssh",
-    "scp",
-    "sftp",
-    "rsync",
-    "nc",
-    "ncat",
-    "netcat",
-    "telnet",
-    "ftp",
-    "ping",
-    "traceroute",
-    "nslookup",
-    "dig",
-    "host",
-    "nmap",
-}
-
 
 class BashExecTool(BaseTool):
-    """Execute Bash commands in a sandboxed environment."""
+    """Execute Bash commands in a bubblewrap sandbox."""
 
     @property
     def name(self) -> str:
@@ -65,14 +36,21 @@ class BashExecTool(BaseTool):
 
     @property
     def description(self) -> str:
+        if not has_full_sandbox():
+            return (
+                "Bash execution is DISABLED — bubblewrap sandbox is not "
+                "available on this platform. Do not call this tool."
+            )
         return (
-            "Execute a Bash command or script in a sandboxed environment. "
-            "Full Bash scripting is supported (loops, conditionals, pipes, functions, etc.). "
-            "SECURITY: All internet/network access is blocked at the kernel level "
-            "(no curl, wget, nc, or any outbound connections). "
+            "Execute a Bash command or script in a bubblewrap sandbox. "
+            "Full Bash scripting is supported (loops, conditionals, pipes, "
+            "functions, etc.). "
+            "SECURITY: Only system directories (/usr, /bin, /lib, /etc) are "
+            "visible read-only, the per-session workspace is the only writable "
+            "path, environment variables are wiped (no secrets), and all "
+            "network access is blocked at the kernel level. Application code, "
+            "configs, and other directories are NOT accessible. "
             "To fetch web content, use the web_fetch tool instead. "
-            "Commands run in an isolated per-session workspace directory — "
-            "they cannot access files outside that directory. "
             "Execution is killed after the timeout (default 30s, max 120s). "
             "Returns stdout and stderr. "
             "Useful for file manipulation, data processing with Unix tools "
@@ -109,9 +87,17 @@ class BashExecTool(BaseTool):
         session: ChatSession,
         **kwargs: Any,
     ) -> ToolResponseBase:
+        session_id = session.session_id if session else None
+
+        if not has_full_sandbox():
+            return ErrorResponse(
+                message="bash_exec requires bubblewrap sandbox (Linux only).",
+                error="sandbox_unavailable",
+                session_id=session_id,
+            )
+
         command: str = (kwargs.get("command") or "").strip()
         timeout: int = kwargs.get("timeout", 30)
-        session_id = session.session_id if session else None
 
         if not command:
             return ErrorResponse(
@@ -119,29 +105,6 @@ class BashExecTool(BaseTool):
                 error="empty_command",
                 session_id=session_id,
             )
-
-        # Block destructive patterns
-        for pattern, reason in _BLOCKED_PATTERNS:
-            if re.search(pattern, command, re.IGNORECASE):
-                return ErrorResponse(
-                    message=f"Command blocked: {reason}",
-                    error="blocked_command",
-                    session_id=session_id,
-                )
-
-        # When kernel network sandbox unavailable, block network commands
-        if not has_network_sandbox():
-            words = set(re.findall(r"\b\w+\b", command))
-            blocked = words & _NETWORK_COMMANDS
-            if blocked:
-                return ErrorResponse(
-                    message=(
-                        f"Network commands not available: {', '.join(sorted(blocked))}. "
-                        "Use web_fetch instead."
-                    ),
-                    error="network_blocked",
-                    session_id=session_id,
-                )
 
         workspace = get_workspace_dir(session_id or "default")
 

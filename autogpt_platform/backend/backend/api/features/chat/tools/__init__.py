@@ -17,7 +17,6 @@ from .find_agent import FindAgentTool
 from .find_block import FindBlockTool
 from .find_library_agent import FindLibraryAgentTool
 from .get_doc_page import GetDocPageTool
-from .python_exec import PythonExecTool
 from .run_agent import RunAgentTool
 from .run_block import RunBlockTool
 from .search_docs import SearchDocsTool
@@ -50,8 +49,7 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "get_doc_page": GetDocPageTool(),
     # Web fetch for safe URL retrieval
     "web_fetch": WebFetchTool(),
-    # Sandboxed code execution (network-isolated)
-    "python_exec": PythonExecTool(),
+    # Sandboxed code execution (bubblewrap)
     "bash_exec": BashExecTool(),
     # Workspace tools for CoPilot file operations
     "list_workspace_files": ListWorkspaceFilesTool(),

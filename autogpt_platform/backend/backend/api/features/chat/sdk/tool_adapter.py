@@ -2,15 +2,19 @@
 
 This module provides the adapter layer that converts existing BaseTool implementations
 into in-process MCP tools that can be used with the Claude Agent SDK.
+
+Long-running tools (``is_long_running=True``) are delegated to the non-SDK
+background infrastructure (stream_registry, Redis persistence, SSE reconnection)
+via a callback provided by the service layer.  This avoids wasteful SDK polling
+and makes results survive page refreshes.
 """
 
-import asyncio
 import json
 import logging
 import os
 import uuid
+from collections.abc import Awaitable, Callable
 from contextvars import ContextVar
-from dataclasses import dataclass
 from typing import Any
 
 from backend.api.features.chat.model import ChatSession
@@ -40,37 +44,38 @@ _pending_tool_outputs: ContextVar[dict[str, str]] = ContextVar(
     "pending_tool_outputs", default=None  # type: ignore[arg-type]
 )
 
+# Callback type for delegating long-running tools to the non-SDK infrastructure.
+# Args: (tool_name, arguments, session) → MCP-formatted response dict.
+LongRunningCallback = Callable[
+    [str, dict[str, Any], ChatSession], Awaitable[dict[str, Any]]
+]
 
-@dataclass
-class _BackgroundOp:
-    """Tracks a background tool operation."""
-
-    tool_name: str
-    task: asyncio.Task[Any]
-    result: dict[str, Any] | None = None
-    done: bool = False
-
-
-# Module-level registry for background long-running operations.
-# Keyed by operation_id.  Cleaned up after result is consumed.
-_background_ops: dict[str, _BackgroundOp] = {}
-_background_ops_lock = asyncio.Lock()
-
-_CHECK_OP_TOOL_NAME = "check_operation"
+# ContextVar so the service layer can inject the callback per-request.
+_long_running_callback: ContextVar[LongRunningCallback | None] = ContextVar(
+    "long_running_callback", default=None
+)
 
 
 def set_execution_context(
     user_id: str | None,
     session: ChatSession,
+    long_running_callback: LongRunningCallback | None = None,
 ) -> None:
     """Set the execution context for tool calls.
 
     This must be called before streaming begins to ensure tools have access
     to user_id and session information.
+
+    Args:
+        user_id: Current user's ID.
+        session: Current chat session.
+        long_running_callback: Optional callback to delegate long-running tools
+            to the non-SDK background infrastructure (stream_registry + Redis).
     """
     _current_user_id.set(user_id)
     _current_session.set(session)
     _pending_tool_outputs.set({})
+    _long_running_callback.set(long_running_callback)
 
 
 def get_execution_context() -> tuple[str | None, ChatSession | None]:
@@ -142,9 +147,10 @@ def create_tool_handler(base_tool: BaseTool):
     This wraps the existing BaseTool._execute method to be compatible
     with the Claude Agent SDK MCP tool format.
 
-    Long-running tools (``is_long_running=True``) are spawned as background
-    tasks and return immediately with an ``operation_id``.  The SDK should
-    then poll ``check_operation`` to retrieve the result.
+    Long-running tools (``is_long_running=True``) are delegated to the
+    non-SDK background infrastructure via a callback set in the execution
+    context.  The callback persists the operation in Redis (stream_registry)
+    so results survive page refreshes and pod restarts.
     """
 
     async def tool_handler(args: dict[str, Any]) -> dict[str, Any]:
@@ -154,52 +160,23 @@ def create_tool_handler(base_tool: BaseTool):
         if session is None:
             return _mcp_error("No session context available")
 
-        # --- Long-running: fire-and-forget, return operation_id ---
+        # --- Long-running: delegate to non-SDK background infrastructure ---
         if base_tool.is_long_running:
-            op_id = f"op-{uuid.uuid4().hex[:12]}"
-
-            async def _bg_run() -> None:
+            callback = _long_running_callback.get(None)
+            if callback:
                 try:
-                    result = await _execute_tool_sync(base_tool, user_id, session, args)
-                    op = _background_ops.get(op_id)
-                    if op:
-                        op.result = result
-                        op.done = True
-                except Exception as exc:
-                    op = _background_ops.get(op_id)
-                    if op:
-                        op.result = _mcp_error(str(exc))
-                        op.done = True
+                    return await callback(base_tool.name, args, session)
+                except Exception as e:
                     logger.error(
-                        f"Background tool {base_tool.name} failed: {exc}",
+                        f"Long-running callback failed for {base_tool.name}: {e}",
                         exc_info=True,
                     )
-
-            task = asyncio.create_task(_bg_run())
-            _background_ops[op_id] = _BackgroundOp(tool_name=base_tool.name, task=task)
-            logger.info(
-                f"[SDK] Long-running tool {base_tool.name} started "
-                f"(operation_id={op_id})"
+                    return _mcp_error(f"Failed to start {base_tool.name}: {e}")
+            # No callback — fall through to synchronous execution
+            logger.warning(
+                f"[SDK] No long-running callback for {base_tool.name}, "
+                f"executing synchronously (may block)"
             )
-            return {
-                "content": [
-                    {
-                        "type": "text",
-                        "text": json.dumps(
-                            {
-                                "status": "started",
-                                "operation_id": op_id,
-                                "message": (
-                                    f"{base_tool.name} is running in the background. "
-                                    f"Call check_operation with "
-                                    f"operation_id='{op_id}' to get the result."
-                                ),
-                            }
-                        ),
-                    }
-                ],
-                "isError": False,
-            }
 
         # --- Normal (fast) tool: execute synchronously ---
         try:
@@ -253,58 +230,6 @@ async def _read_file_handler(args: dict[str, Any]) -> dict[str, Any]:
             "content": [{"type": "text", "text": f"Error reading file: {e}"}],
             "isError": True,
         }
-
-
-async def _check_operation_handler(args: dict[str, Any]) -> dict[str, Any]:
-    """Check the status of a background long-running operation."""
-    op_id = args.get("operation_id", "")
-    if not op_id or op_id not in _background_ops:
-        return _mcp_error(f"Operation '{op_id}' not found.")
-
-    op = _background_ops[op_id]
-    if not op.done:
-        return {
-            "content": [
-                {
-                    "type": "text",
-                    "text": json.dumps(
-                        {
-                            "status": "in_progress",
-                            "operation_id": op_id,
-                            "tool_name": op.tool_name,
-                            "message": (
-                                f"{op.tool_name} is still running. "
-                                "Check again in a few seconds."
-                            ),
-                        }
-                    ),
-                }
-            ],
-            "isError": False,
-        }
-
-    # Done — return result and clean up
-    result = op.result or _mcp_error("Operation completed but no result available.")
-    del _background_ops[op_id]
-    logger.info(f"[SDK] Background operation {op_id} ({op.tool_name}) collected")
-    return result
-
-
-_CHECK_OP_DESCRIPTION = (
-    "Check the status of a background operation started by a long-running tool "
-    "(like create_agent). Returns the result when done, or 'in_progress' if still "
-    "running. Call this periodically (every few seconds) after starting an operation."
-)
-_CHECK_OP_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "operation_id": {
-            "type": "string",
-            "description": "The operation_id returned by the long-running tool.",
-        },
-    },
-    "required": ["operation_id"],
-}
 
 
 _READ_TOOL_NAME = "Read"
@@ -365,14 +290,6 @@ def create_copilot_mcp_server():
         )(_read_file_handler)
         sdk_tools.append(read_tool)
 
-        # Add the check_operation tool for polling background operations
-        check_op_tool = tool(
-            _CHECK_OP_TOOL_NAME,
-            _CHECK_OP_DESCRIPTION,
-            _CHECK_OP_SCHEMA,
-        )(_check_operation_handler)
-        sdk_tools.append(check_op_tool)
-
         server = create_sdk_mcp_server(
             name=MCP_SERVER_NAME,
             version="1.0.0",
@@ -399,6 +316,5 @@ _SDK_BUILTIN_TOOLS = ["Read", "Write", "Edit", "Glob", "Grep", "Task"]
 COPILOT_TOOL_NAMES = [
     *[f"{MCP_TOOL_PREFIX}{name}" for name in TOOL_REGISTRY.keys()],
     f"{MCP_TOOL_PREFIX}{_READ_TOOL_NAME}",
-    f"{MCP_TOOL_PREFIX}{_CHECK_OP_TOOL_NAME}",
     *_SDK_BUILTIN_TOOLS,
 ]

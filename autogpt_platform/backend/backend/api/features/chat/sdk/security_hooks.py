@@ -8,15 +8,18 @@ import json
 import logging
 import os
 import re
-import shlex
 from typing import Any, cast
 
 from backend.api.features.chat.sdk.tool_adapter import MCP_TOOL_PREFIX
 
 logger = logging.getLogger(__name__)
 
-# Tools that are blocked entirely (CLI/system access)
+# Tools that are blocked entirely (CLI/system access).
+# "Bash" (capital) is the SDK built-in — it's NOT in allowed_tools but blocked
+# here as defence-in-depth.  The agent uses mcp__copilot__bash_exec instead,
+# which has kernel-level network isolation (unshare --net).
 BLOCKED_TOOLS = {
+    "Bash",
     "bash",
     "shell",
     "exec",
@@ -24,65 +27,10 @@ BLOCKED_TOOLS = {
     "command",
 }
 
-# Safe read-only commands allowed in the sandboxed Bash tool.
-# These are data-processing / inspection utilities — no writes, no network.
-ALLOWED_BASH_COMMANDS = {
-    # JSON / structured data
-    "jq",
-    # Text processing
-    "grep",
-    "egrep",
-    "fgrep",
-    "rg",
-    "head",
-    "tail",
-    "cat",
-    "wc",
-    "sort",
-    "uniq",
-    "cut",
-    "tr",
-    "sed",
-    "awk",
-    "column",
-    "fold",
-    "fmt",
-    "nl",
-    "paste",
-    "rev",
-    # File inspection (read-only)
-    "find",
-    "ls",
-    "file",
-    "stat",
-    "du",
-    "tree",
-    "basename",
-    "dirname",
-    "realpath",
-    # Utilities
-    "echo",
-    "printf",
-    "date",
-    "true",
-    "false",
-    "xargs",
-    "tee",
-    # Comparison / encoding
-    "diff",
-    "comm",
-    "base64",
-    "md5sum",
-    "sha256sum",
-}
-
 # Tools allowed only when their path argument stays within the SDK workspace.
 # The SDK uses these to handle oversized tool results (writes to tool-results/
 # files, then reads them back) and for workspace file operations.
 WORKSPACE_SCOPED_TOOLS = {"Read", "Write", "Edit", "Glob", "Grep"}
-
-# Tools that get sandboxed Bash validation (command allowlist + workspace paths).
-SANDBOXED_BASH_TOOLS = {"Bash"}
 
 # Dangerous patterns in tool inputs
 DANGEROUS_PATTERNS = [
@@ -144,86 +92,9 @@ def _validate_workspace_path(
         f"Blocked {tool_name} outside workspace: {path} (resolved={resolved})"
     )
     return _deny(
-        f"Tool '{tool_name}' can only access files within the workspace directory."
+        f"[SECURITY] Tool '{tool_name}' can only access files within the workspace "
+        "directory. This is enforced by the platform and cannot be bypassed."
     )
-
-
-def _validate_bash_command(
-    tool_input: dict[str, Any], sdk_cwd: str | None
-) -> dict[str, Any]:
-    """Validate a Bash command against the allowlist of safe commands.
-
-    Only read-only data-processing commands are allowed (jq, grep, head, etc.).
-    Blocks command substitution, output redirection, and disallowed executables.
-
-    Uses ``shlex.split`` to properly handle quoted strings (e.g. jq filters
-    containing ``|`` won't be mistaken for shell pipes).
-    """
-    command = tool_input.get("command", "")
-    if not command or not isinstance(command, str):
-        return _deny("Bash command is empty.")
-
-    # Block command substitution — can smuggle arbitrary commands
-    if "$(" in command or "`" in command:
-        return _deny("Command substitution ($() or ``) is not allowed in Bash.")
-
-    # Block output redirection — Bash should be read-only.
-    # Strip quoted strings first so `jq '.x > 5'` isn't a false positive,
-    # then check for unquoted > or >> (with or without surrounding spaces).
-    unquoted = re.sub(r"'[^']*'|\"[^\"]*\"", "", command)
-    if re.search(r"(?<![0-9&])>{1,2}", unquoted):
-        return _deny("Output redirection (> or >>) is not allowed in Bash.")
-
-    # Block /dev/ access (e.g., /dev/tcp for network)
-    if "/dev/" in command:
-        return _deny("Access to /dev/ is not allowed in Bash.")
-
-    # Tokenize with shlex (respects quotes), then extract command names.
-    # shlex preserves shell operators like | ; && || as separate tokens.
-    try:
-        tokens = shlex.split(command)
-    except ValueError:
-        return _deny("Malformed command (unmatched quotes).")
-
-    # Walk tokens: the first non-assignment token after a pipe/separator is a command.
-    expect_command = True
-    for token in tokens:
-        if token in ("|", "||", "&&", ";"):
-            expect_command = True
-            continue
-        if expect_command:
-            # Skip env var assignments (VAR=value)
-            if "=" in token and not token.startswith("-"):
-                continue
-            cmd_name = os.path.basename(token)
-            if cmd_name not in ALLOWED_BASH_COMMANDS:
-                allowed = ", ".join(sorted(ALLOWED_BASH_COMMANDS))
-                logger.warning(f"Blocked Bash command: {cmd_name}")
-                return _deny(
-                    f"Command '{cmd_name}' is not allowed. "
-                    f"Allowed commands: {allowed}"
-                )
-            expect_command = False
-
-    # Validate absolute file paths stay within workspace
-    if sdk_cwd:
-        norm_cwd = os.path.normpath(sdk_cwd)
-        claude_dir = os.path.normpath(os.path.expanduser("~/.claude/projects"))
-        for token in tokens:
-            if not token.startswith("/"):
-                continue
-            resolved = os.path.normpath(token)
-            if resolved.startswith(norm_cwd + os.sep) or resolved == norm_cwd:
-                continue
-            if resolved.startswith(claude_dir + os.sep) and "tool-results" in resolved:
-                continue
-            logger.warning(f"Blocked Bash path outside workspace: {token}")
-            return _deny(
-                f"Bash can only access files within the workspace directory. "
-                f"Path '{token}' is outside the workspace."
-            )
-
-    return {}
 
 
 def _validate_tool_access(
@@ -238,13 +109,10 @@ def _validate_tool_access(
     if tool_name in BLOCKED_TOOLS:
         logger.warning(f"Blocked tool access attempt: {tool_name}")
         return _deny(
-            f"Tool '{tool_name}' is not available. "
-            "Use the CoPilot-specific tools instead."
+            f"[SECURITY] Tool '{tool_name}' is blocked for security. "
+            "This is enforced by the platform and cannot be bypassed. "
+            "Use the CoPilot-specific MCP tools instead."
         )
-
-    # Sandboxed Bash: only allowlisted commands, workspace-scoped paths
-    if tool_name in SANDBOXED_BASH_TOOLS:
-        return _validate_bash_command(tool_input, sdk_cwd)
 
     # Workspace-scoped tools: allowed only within the SDK workspace directory
     if tool_name in WORKSPACE_SCOPED_TOOLS:
@@ -259,7 +127,10 @@ def _validate_tool_access(
             logger.warning(
                 f"Blocked dangerous pattern in tool input: {pattern} in {tool_name}"
             )
-            return _deny("Input contains blocked pattern")
+            return _deny(
+                "[SECURITY] Input contains a blocked pattern. "
+                "This is enforced by the platform and cannot be bypassed."
+            )
 
     return {}
 

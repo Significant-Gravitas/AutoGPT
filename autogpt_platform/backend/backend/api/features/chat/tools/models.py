@@ -43,7 +43,6 @@ class ResponseType(str, Enum):
     # Web fetch
     WEB_FETCH = "web_fetch"
     # Code execution
-    PYTHON_EXEC = "python_exec"
     BASH_EXEC = "bash_exec"
 
 
@@ -443,16 +442,6 @@ class WebFetchResponse(ToolResponseBase):
     content_type: str
     content: str
     truncated: bool = False
-
-
-class PythonExecResponse(ToolResponseBase):
-    """Response for python_exec tool."""
-
-    type: ResponseType = ResponseType.PYTHON_EXEC
-    stdout: str
-    stderr: str
-    exit_code: int
-    timed_out: bool = False
 
 
 class BashExecResponse(ToolResponseBase):
