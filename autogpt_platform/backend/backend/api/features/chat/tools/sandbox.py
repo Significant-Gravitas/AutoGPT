@@ -101,6 +101,16 @@ _COMPAT_RO_BINDS = [
     "/lib64",  # 64-bit libraries (may not exist)
 ]
 
+# Resource limits to prevent fork bombs, memory exhaustion, and disk abuse.
+# Applied via ulimit inside the sandbox before exec'ing the user command.
+_RESOURCE_LIMITS = (
+    "ulimit -u 64"  # max 64 processes  (prevents fork bombs)
+    " -v 524288"  # 512 MB virtual memory
+    " -f 51200"  # 50 MB max file size  (1024-byte blocks)
+    " -n 256"  # 256 open file descriptors
+    " 2>/dev/null"
+)
+
 
 def _build_bwrap_command(
     command: list[str], cwd: str, env: dict[str, str]
@@ -116,6 +126,8 @@ def _build_bwrap_command(
     - **Clean environment**: ``--clearenv`` wipes all inherited env vars.
       Only the explicitly-passed safe env vars are set inside the sandbox.
     - **Network isolation**: ``--unshare-net`` blocks all network access.
+    - **Resource limits**: ulimit caps on processes (64), memory (512MB),
+      file size (50MB), and open FDs (256) to prevent fork bombs and abuse.
     - **New session**: prevents terminal control escape.
     - **Die with parent**: prevents orphaned sandbox processes.
     """
@@ -138,6 +150,18 @@ def _build_bwrap_command(
         if os.path.exists(path):
             cmd.extend(["--ro-bind", path, path])
 
+    # Wrap the user command with resource limits:
+    #   sh -c 'ulimit ...; exec "$@"' -- <original command>
+    # `exec "$@"` replaces the shell so there's no extra process overhead,
+    # and properly handles arguments with spaces.
+    limited_command = [
+        "sh",
+        "-c",
+        f'{_RESOURCE_LIMITS}; exec "$@"',
+        "--",
+        *command,
+    ]
+
     cmd.extend(
         [
             # Writable workspace only
@@ -158,7 +182,7 @@ def _build_bwrap_command(
             "--chdir",
             cwd,
             "--",
-            *command,
+            *limited_command,
         ]
     )
 
