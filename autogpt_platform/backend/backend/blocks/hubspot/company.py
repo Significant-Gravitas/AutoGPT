@@ -1,14 +1,14 @@
-from backend.blocks.hubspot._auth import (
-    HubSpotCredentials,
-    HubSpotCredentialsField,
-    HubSpotCredentialsInput,
-)
-from backend.data.block import (
+from backend.blocks._base import (
     Block,
     BlockCategory,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
+)
+from backend.blocks.hubspot._auth import (
+    HubSpotCredentials,
+    HubSpotCredentialsField,
+    HubSpotCredentialsInput,
 )
 from backend.data.model import SchemaField
 from backend.util.request import Requests

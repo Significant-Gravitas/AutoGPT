@@ -1,5 +1,12 @@
 import asyncio
 
+from backend.blocks._base import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.blocks.apollo._api import ApolloClient
 from backend.blocks.apollo._auth import (
     TEST_CREDENTIALS,
@@ -13,13 +20,6 @@ from backend.blocks.apollo.models import (
     EnrichPersonRequest,
     SearchPeopleRequest,
     SenorityLevels,
-)
-from backend.data.block import (
-    Block,
-    BlockCategory,
-    BlockOutput,
-    BlockSchemaInput,
-    BlockSchemaOutput,
 )
 from backend.data.model import CredentialsField, SchemaField
 

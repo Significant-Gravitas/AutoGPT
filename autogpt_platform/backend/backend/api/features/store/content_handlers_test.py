@@ -93,7 +93,7 @@ async def test_block_handler_get_missing_items(mocker):
     mock_existing = []
 
     with patch(
-        "backend.data.block.get_blocks",
+        "backend.blocks.get_blocks",
         return_value=mock_blocks,
     ):
         with patch(
@@ -135,7 +135,7 @@ async def test_block_handler_get_stats(mocker):
     mock_embedded = [{"count": 2}]
 
     with patch(
-        "backend.data.block.get_blocks",
+        "backend.blocks.get_blocks",
         return_value=mock_blocks,
     ):
         with patch(
@@ -327,7 +327,7 @@ async def test_block_handler_handles_missing_attributes():
     mock_blocks = {"block-minimal": mock_block_class}
 
     with patch(
-        "backend.data.block.get_blocks",
+        "backend.blocks.get_blocks",
         return_value=mock_blocks,
     ):
         with patch(
@@ -360,7 +360,7 @@ async def test_block_handler_skips_failed_blocks():
     mock_blocks = {"good-block": good_block, "bad-block": bad_block}
 
     with patch(
-        "backend.data.block.get_blocks",
+        "backend.blocks.get_blocks",
         return_value=mock_blocks,
     ):
         with patch(

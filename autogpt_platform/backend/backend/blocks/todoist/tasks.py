@@ -4,6 +4,13 @@ from todoist_api_python.api import TodoistAPI
 from todoist_api_python.models import Task
 from typing_extensions import Optional
 
+from backend.blocks._base import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.blocks.todoist._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
@@ -11,13 +18,6 @@ from backend.blocks.todoist._auth import (
     TodoistCredentials,
     TodoistCredentialsField,
     TodoistCredentialsInput,
-)
-from backend.data.block import (
-    Block,
-    BlockCategory,
-    BlockOutput,
-    BlockSchemaInput,
-    BlockSchemaOutput,
 )
 from backend.data.model import SchemaField
 

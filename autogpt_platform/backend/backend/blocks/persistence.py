@@ -1,7 +1,7 @@
 import logging
 from typing import Any, Literal
 
-from backend.data.block import (
+from backend.blocks._base import (
     Block,
     BlockCategory,
     BlockOutput,

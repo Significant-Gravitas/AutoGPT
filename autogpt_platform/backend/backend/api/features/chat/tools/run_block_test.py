@@ -6,7 +6,7 @@ import pytest
 
 from backend.api.features.chat.tools.models import ErrorResponse
 from backend.api.features.chat.tools.run_block import RunBlockTool
-from backend.data.block import BlockType
+from backend.blocks._base import BlockType
 
 from ._test_data import make_session
 

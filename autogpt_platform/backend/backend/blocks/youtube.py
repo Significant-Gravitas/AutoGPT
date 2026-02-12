@@ -9,7 +9,7 @@ from youtube_transcript_api._transcripts import FetchedTranscript
 from youtube_transcript_api.formatters import TextFormatter
 from youtube_transcript_api.proxies import WebshareProxyConfig
 
-from backend.data.block import (
+from backend.blocks._base import (
     Block,
     BlockCategory,
     BlockOutput,

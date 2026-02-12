@@ -12,7 +12,8 @@ from backend.api.features.chat.tools.find_block import (
     COPILOT_EXCLUDED_BLOCK_IDS,
     COPILOT_EXCLUDED_BLOCK_TYPES,
 )
-from backend.data.block import AnyBlockSchema, get_block
+from backend.blocks import get_block
+from backend.blocks._base import AnyBlockSchema
 from backend.data.execution import ExecutionContext
 from backend.data.model import CredentialsFieldInfo, CredentialsMetaInput
 from backend.data.workspace import get_or_create_workspace

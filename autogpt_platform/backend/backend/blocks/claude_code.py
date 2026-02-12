@@ -6,7 +6,7 @@ from typing import Literal, Optional
 from e2b import AsyncSandbox as BaseAsyncSandbox
 from pydantic import BaseModel, SecretStr
 
-from backend.data.block import (
+from backend.blocks._base import (
     Block,
     BlockCategory,
     BlockOutput,

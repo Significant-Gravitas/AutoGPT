@@ -27,7 +27,7 @@ export type BlockCost = {
   cost_filter: Record<string, any>;
 };
 
-/* Mirror of backend/data/block.py:Block */
+/* Mirror of backend/blocks/_base.py:Block */
 export type Block = {
   id: string;
   name: string;
@@ -292,7 +292,7 @@ export type NodeCreatable = {
 export type Node = NodeCreatable & {
   input_links: Link[];
   output_links: Link[];
-  webhook?: Webhook;
+  webhook_id?: string | null;
 };
 
 /* Mirror of backend/data/graph.py:Link */

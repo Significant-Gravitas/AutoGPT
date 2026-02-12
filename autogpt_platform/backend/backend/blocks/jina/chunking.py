@@ -1,14 +1,14 @@
-from backend.blocks.jina._auth import (
-    JinaCredentials,
-    JinaCredentialsField,
-    JinaCredentialsInput,
-)
-from backend.data.block import (
+from backend.blocks._base import (
     Block,
     BlockCategory,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
+)
+from backend.blocks.jina._auth import (
+    JinaCredentials,
+    JinaCredentialsField,
+    JinaCredentialsInput,
 )
 from backend.data.model import SchemaField
 from backend.util.request import Requests

@@ -3,7 +3,7 @@ from typing import Any, Literal
 
 from pinecone import Pinecone, ServerlessSpec
 
-from backend.data.block import (
+from backend.blocks._base import (
     Block,
     BlockCategory,
     BlockOutput,

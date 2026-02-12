@@ -6,7 +6,7 @@ from e2b_code_interpreter import Result as E2BExecutionResult
 from e2b_code_interpreter.charts import Chart as E2BExecutionResultChart
 from pydantic import BaseModel, Field, JsonValue, SecretStr
 
-from backend.data.block import (
+from backend.blocks._base import (
     Block,
     BlockCategory,
     BlockOutput,
