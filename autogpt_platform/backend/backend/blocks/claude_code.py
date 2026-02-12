@@ -1,3 +1,4 @@
+import base64
 import json
 import shlex
 import uuid
@@ -180,7 +181,9 @@ class ClaudeCodeBlock(Block):
         path: str
         relative_path: str  # Path relative to working directory (for GitHub, etc.)
         name: str
-        content: str
+        content: str  # Text content for text files, empty string for binary files
+        is_binary: bool = False  # True if this is a binary file
+        content_base64: Optional[str] = None  # Base64-encoded content for binary files
 
     class Output(BlockSchemaOutput):
         response: str = SchemaField(
@@ -188,8 +191,11 @@ class ClaudeCodeBlock(Block):
         )
         files: list["ClaudeCodeBlock.FileOutput"] = SchemaField(
             description=(
-                "List of text files created/modified by Claude Code during this execution. "
-                "Each file has 'path', 'relative_path', 'name', and 'content' fields."
+                "List of files created/modified by Claude Code during this execution. "
+                "Each file has 'path', 'relative_path', 'name', 'content', 'is_binary', "
+                "and 'content_base64' fields. For text files, 'content' contains the text "
+                "and 'is_binary' is False. For binary files (PDFs, images, etc.), "
+                "'is_binary' is True and 'content_base64' contains the base64-encoded data."
             )
         )
         conversation_history: str = SchemaField(
@@ -542,6 +548,44 @@ class ClaudeCodeBlock(Block):
             ".log",
         }
 
+        # Binary file extensions we can read and base64-encode
+        binary_extensions = {
+            # Images
+            ".png",
+            ".jpg",
+            ".jpeg",
+            ".gif",
+            ".webp",
+            ".svg",
+            ".ico",
+            ".bmp",
+            ".tiff",
+            ".tif",
+            # Documents
+            ".pdf",
+            # Archives (useful for downloads)
+            ".zip",
+            ".tar",
+            ".gz",
+            ".7z",
+            # Audio/Video (if small enough)
+            ".mp3",
+            ".wav",
+            ".mp4",
+            ".webm",
+            # Other binary formats
+            ".woff",
+            ".woff2",
+            ".ttf",
+            ".otf",
+            ".eot",
+            ".bin",
+            ".exe",
+            ".dll",
+            ".so",
+            ".dylib",
+        }
+
         try:
             # List files recursively using find command
             # Exclude node_modules and .git directories, but allow hidden files
@@ -569,6 +613,11 @@ class ClaudeCodeBlock(Block):
                         file_path.endswith(ext) for ext in text_extensions
                     ) or file_path.endswith("Dockerfile")
 
+                    # Check if it's a binary file we should extract
+                    is_binary = any(
+                        file_path.lower().endswith(ext) for ext in binary_extensions
+                    )
+
                     if is_text:
                         try:
                             content = await sandbox.files.read(file_path)
@@ -593,6 +642,44 @@ class ClaudeCodeBlock(Block):
                                     relative_path=relative_path,
                                     name=file_name,
                                     content=content,
+                                    is_binary=False,
+                                    content_base64=None,
+                                )
+                            )
+                        except Exception:
+                            # Skip files that can't be read
+                            pass
+                    elif is_binary:
+                        try:
+                            # Read binary file as bytes
+                            content_bytes = await sandbox.files.read(file_path)
+                            if isinstance(content_bytes, str):
+                                content_bytes = content_bytes.encode("utf-8")
+
+                            # Base64 encode the binary content
+                            content_b64 = base64.b64encode(content_bytes).decode(
+                                "ascii"
+                            )
+
+                            # Extract filename from path
+                            file_name = file_path.split("/")[-1]
+
+                            # Calculate relative path by stripping working directory
+                            relative_path = file_path
+                            if file_path.startswith(working_directory):
+                                relative_path = file_path[len(working_directory) :]
+                                # Remove leading slash if present
+                                if relative_path.startswith("/"):
+                                    relative_path = relative_path[1:]
+
+                            files.append(
+                                ClaudeCodeBlock.FileOutput(
+                                    path=file_path,
+                                    relative_path=relative_path,
+                                    name=file_name,
+                                    content="",  # Empty for binary files
+                                    is_binary=True,
+                                    content_base64=content_b64,
                                 )
                             )
                         except Exception:
