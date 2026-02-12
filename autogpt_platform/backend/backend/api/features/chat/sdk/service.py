@@ -359,6 +359,15 @@ async def stream_chat_completion_sdk(
         try:
             from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 
+            # Fail fast when no API credentials are available at all
+            sdk_env = _build_sdk_env()
+            if not sdk_env and not os.environ.get("ANTHROPIC_API_KEY"):
+                raise RuntimeError(
+                    "No API key configured. Set OPEN_ROUTER_API_KEY "
+                    "(or CHAT_API_KEY) for OpenRouter routing, "
+                    "or ANTHROPIC_API_KEY for direct Anthropic access."
+                )
+
             mcp_server = create_copilot_mcp_server()
 
             sdk_model = _resolve_sdk_model()
@@ -378,9 +387,8 @@ async def stream_chat_completion_sdk(
                 hooks=combined_hooks,  # type: ignore[arg-type]
                 cwd=sdk_cwd,
                 max_buffer_size=config.claude_agent_max_buffer_size,
-                model=sdk_model,
-                env=_build_sdk_env(),
-                user=user_id or None,
+                # Only pass model/env/budget when OpenRouter is configured
+                **({"model": sdk_model, "env": sdk_env} if sdk_env else {}),
                 max_budget_usd=config.claude_agent_max_budget_usd,
             )
 
