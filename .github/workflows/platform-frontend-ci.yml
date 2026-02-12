@@ -142,9 +142,6 @@ jobs:
 
   e2e_test:
     runs-on: big-boi
-    needs: setup
-    strategy:
-      fail-fast: false
 
     steps:
       - name: Checkout repository
@@ -231,14 +228,14 @@ jobs:
             }
           fi
 
-      - name: Restore dependencies cache
+      - name: Cache pnpm store
         uses: actions/cache@v5
         with:
           path: ~/.pnpm-store
-          key: ${{ needs.setup.outputs.cache-key }}
+          # Use separate cache key for big-boi runner since it doesn't share cache with ubuntu-latest
+          key: big-boi-pnpm-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml') }}
           restore-keys: |
-            ${{ runner.os }}-pnpm-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml') }}
-            ${{ runner.os }}-pnpm-
+            big-boi-pnpm-
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
