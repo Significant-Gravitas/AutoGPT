@@ -63,6 +63,11 @@ _SDK_TOOL_SUPPLEMENT = """
 
 - The SDK built-in Bash tool is NOT available.  Use the `bash_exec` MCP tool
   for shell commands — it runs in a network-isolated sandbox.
+- **Shared workspace**: The SDK Read/Write tools and `bash_exec` share the
+  same working directory. Files created by one are readable by the other.
+  These files are **ephemeral** — they exist only for the current session.
+- **Persistent storage**: Use `write_workspace_file` / `read_workspace_file`
+  for files that should persist across sessions (stored in cloud storage).
 - Long-running tools (create_agent, edit_agent, etc.) are handled
   asynchronously.  You will receive an immediate response; the actual result
   is delivered to the user via a background stream.

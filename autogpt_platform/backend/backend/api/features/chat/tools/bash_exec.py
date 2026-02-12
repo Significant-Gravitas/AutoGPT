@@ -45,6 +45,8 @@ class BashExecTool(BaseTool):
             "Execute a Bash command or script in a bubblewrap sandbox. "
             "Full Bash scripting is supported (loops, conditionals, pipes, "
             "functions, etc.). "
+            "The sandbox shares the same working directory as the SDK Read/Write "
+            "tools — files created by either are accessible to both. "
             "SECURITY: Only system directories (/usr, /bin, /lib, /etc) are "
             "visible read-only, the per-session workspace is the only writable "
             "path, environment variables are wiped (no secrets), all network "

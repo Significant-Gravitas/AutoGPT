@@ -75,7 +75,15 @@ def _validate_workspace_path(
         # Glob/Grep without a path default to cwd which is already sandboxed
         return {}
 
-    resolved = os.path.normpath(os.path.expanduser(path))
+    # Resolve relative paths against sdk_cwd (the SDK sets cwd so the LLM
+    # naturally uses relative paths like "test.txt" instead of absolute ones).
+    # Tilde paths (~/) are home-dir references, not relative — expand first.
+    if path.startswith("~"):
+        resolved = os.path.normpath(os.path.expanduser(path))
+    elif not os.path.isabs(path) and sdk_cwd:
+        resolved = os.path.normpath(os.path.join(sdk_cwd, path))
+    else:
+        resolved = os.path.normpath(path)
 
     # Allow access within the SDK working directory
     if sdk_cwd:
@@ -91,9 +99,11 @@ def _validate_workspace_path(
     logger.warning(
         f"Blocked {tool_name} outside workspace: {path} (resolved={resolved})"
     )
+    workspace_hint = f" Allowed workspace: {sdk_cwd}" if sdk_cwd else ""
     return _deny(
         f"[SECURITY] Tool '{tool_name}' can only access files within the workspace "
-        "directory. This is enforced by the platform and cannot be bypassed."
+        f"directory.{workspace_hint} "
+        "This is enforced by the platform and cannot be bypassed."
     )
 
 

@@ -53,7 +53,7 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "web_fetch": WebFetchTool(),
     # Sandboxed code execution (bubblewrap)
     "bash_exec": BashExecTool(),
-    # Workspace tools for CoPilot file operations
+    # Persistent workspace tools (cloud storage, survives across sessions)
     "list_workspace_files": ListWorkspaceFilesTool(),
     "read_workspace_file": ReadWorkspaceFileTool(),
     "write_workspace_file": WriteWorkspaceFileTool(),
