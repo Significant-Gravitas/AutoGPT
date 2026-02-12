@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { render, screen, waitFor } from "@/tests/integrations/test-utils";
+import { render, screen } from "@/tests/integrations/test-utils";
 import { MainCreatorPage } from "../MainCreatorPage";
 import { server } from "@/mocks/mock-server";
 import {
@@ -18,11 +18,9 @@ describe("MainCreatorPage - Error Handling", () => {
 
     render(<MainCreatorPage params={defaultParams} />);
 
-    await waitFor(() => {
-      expect(
-        screen.getByText("Failed to load creator data", { exact: false }),
-      ).toBeInTheDocument();
-    });
+    expect(
+      await screen.findByText("Failed to load creator data", { exact: false }),
+    ).toBeInTheDocument();
   });
 
   test("displays error when creator agents API returns 422", async () => {
@@ -30,11 +28,9 @@ describe("MainCreatorPage - Error Handling", () => {
 
     render(<MainCreatorPage params={defaultParams} />);
 
-    await waitFor(() => {
-      expect(
-        screen.getByText("Failed to load creator data", { exact: false }),
-      ).toBeInTheDocument();
-    });
+    expect(
+      await screen.findByText("Failed to load creator data", { exact: false }),
+    ).toBeInTheDocument();
   });
 
   test("displays error when API returns 500", async () => {
@@ -42,11 +38,9 @@ describe("MainCreatorPage - Error Handling", () => {
 
     render(<MainCreatorPage params={defaultParams} />);
 
-    await waitFor(() => {
-      expect(
-        screen.getByText("Failed to load creator data", { exact: false }),
-      ).toBeInTheDocument();
-    });
+    expect(
+      await screen.findByText("Failed to load creator data", { exact: false }),
+    ).toBeInTheDocument();
   });
 
   test("retry button is visible on error", async () => {
@@ -54,10 +48,8 @@ describe("MainCreatorPage - Error Handling", () => {
 
     render(<MainCreatorPage params={defaultParams} />);
 
-    await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: /try again/i }),
-      ).toBeInTheDocument();
-    });
+    expect(
+      await screen.findByRole("button", { name: /try again/i }),
+    ).toBeInTheDocument();
   });
 });

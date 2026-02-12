@@ -4,7 +4,7 @@ type HttpMethod = "get" | "post" | "put" | "patch" | "delete";
 
 interface Create500HandlerOptions {
   delayMs?: number;
-  body?: Record<string, unknown>;
+  body?: unknown;
 }
 
 export function create500Handler(

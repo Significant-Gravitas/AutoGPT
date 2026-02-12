@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { getTestUserWithLibraryAgents } from "./credentials";
 import { LoginPage } from "./pages/login.page";
 import { MarketplacePage } from "./pages/marketplace.page";
-import { hasUrl, isVisible, matchesUrl } from "./utils/assertion";
+import { hasUrl, isVisible } from "./utils/assertion";
 import { getSelectors } from "./utils/selectors";
 
 function escapeRegExp(value: string) {

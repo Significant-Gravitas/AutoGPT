@@ -18,6 +18,7 @@ export function mockAuthenticatedUser(user: Partial<User> = {}): User {
     user: mergedUser,
     isUserLoading: false,
     hasLoadedUser: true,
+    isValidating: false,
   });
 
   return mergedUser;
@@ -28,6 +29,7 @@ export function mockUnauthenticatedUser(): void {
     user: null,
     isUserLoading: false,
     hasLoadedUser: true,
+    isValidating: false,
   });
 }
 
@@ -36,5 +38,6 @@ export function resetAuthState(): void {
     user: null,
     isUserLoading: true,
     hasLoadedUser: false,
+    isValidating: false,
   });
 }

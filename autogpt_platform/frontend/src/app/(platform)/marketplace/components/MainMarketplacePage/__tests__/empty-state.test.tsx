@@ -22,7 +22,6 @@ describe("MainMarketplacePage - Empty State", () => {
 
     render(<MainMarkeplacePage />);
 
-    // Page should still render without crashing
     expect(
       await screen.findByText("Featured creators", { exact: false }),
     ).toBeInTheDocument();
@@ -45,7 +44,6 @@ describe("MainMarketplacePage - Empty State", () => {
 
     render(<MainMarkeplacePage />);
 
-    // Page should still render without crashing
     expect(
       await screen.findByText("Featured agents", { exact: false }),
     ).toBeInTheDocument();
@@ -79,7 +77,6 @@ describe("MainMarketplacePage - Empty State", () => {
 
     render(<MainMarkeplacePage />);
 
-    // Page should still render the search bar
     expect(await screen.findByPlaceholderText(/search/i)).toBeInTheDocument();
   });
 });

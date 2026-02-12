@@ -1,12 +1,11 @@
 import { describe, expect, test } from "vitest";
-import { render } from "@/tests/integrations/test-utils";
+import { render, waitFor } from "@/tests/integrations/test-utils";
 import { MainMarkeplacePage } from "../MainMarketplacePage";
 import { server } from "@/mocks/mock-server";
 import { http, HttpResponse, delay } from "msw";
 
 describe("MainMarketplacePage - Loading State", () => {
   test("shows loading skeleton while data is being fetched", async () => {
-    // Override handlers to add delay to simulate loading
     server.use(
       http.get("*/api/store/agents*", async () => {
         await delay(500);
@@ -36,10 +35,11 @@ describe("MainMarketplacePage - Loading State", () => {
 
     const { container } = render(<MainMarkeplacePage />);
 
-    // Check for loading skeleton elements (animated pulse elements)
-    const loadingElements = container.querySelectorAll(
-      '[class*="animate-pulse"]',
-    );
-    expect(loadingElements.length).toBeGreaterThan(0);
+    await waitFor(() => {
+      const loadingElements = container.querySelectorAll(
+        '[class*="animate-pulse"]',
+      );
+      expect(loadingElements.length).toBeGreaterThan(0);
+    });
   });
 });

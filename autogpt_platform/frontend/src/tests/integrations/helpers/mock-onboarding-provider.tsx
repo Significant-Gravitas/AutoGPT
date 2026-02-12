@@ -18,14 +18,18 @@ const MockOnboardingContext = createContext<{
 });
 
 export function useOnboarding(
-  step?: number,
-  completeStep?: PostV1CompleteOnboardingStepStep,
+  _step?: number,
+  _completeStep?: PostV1CompleteOnboardingStepStep,
 ) {
   const context = useContext(MockOnboardingContext);
   return context;
 }
 
-export function MockOnboardingProvider({ children }: { children: ReactNode }) {
+interface Props {
+  children: ReactNode;
+}
+
+export function MockOnboardingProvider({ children }: Props) {
   return (
     <MockOnboardingContext.Provider
       value={{

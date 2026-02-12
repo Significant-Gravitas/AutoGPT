@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { render, screen, waitFor } from "@/tests/integrations/test-utils";
+import { render, screen } from "@/tests/integrations/test-utils";
 import { MainSearchResultPage } from "../MainSearchResultPage";
 import { server } from "@/mocks/mock-server";
 import {
@@ -10,7 +10,7 @@ import { create500Handler } from "@/tests/integrations/helpers/create-500-handle
 
 const defaultProps = {
   searchTerm: "test-search",
-  sort: undefined as undefined,
+  sort: undefined,
 };
 
 describe("MainSearchResultPage - Error Handling", () => {
@@ -19,11 +19,11 @@ describe("MainSearchResultPage - Error Handling", () => {
 
     render(<MainSearchResultPage {...defaultProps} />);
 
-    await waitFor(() => {
-      expect(
-        screen.getByText("Failed to load marketplace data", { exact: false }),
-      ).toBeInTheDocument();
-    });
+    expect(
+      await screen.findByText("Failed to load marketplace data", {
+        exact: false,
+      }),
+    ).toBeInTheDocument();
   });
 
   test("displays error when creators API returns 422", async () => {
@@ -31,11 +31,11 @@ describe("MainSearchResultPage - Error Handling", () => {
 
     render(<MainSearchResultPage {...defaultProps} />);
 
-    await waitFor(() => {
-      expect(
-        screen.getByText("Failed to load marketplace data", { exact: false }),
-      ).toBeInTheDocument();
-    });
+    expect(
+      await screen.findByText("Failed to load marketplace data", {
+        exact: false,
+      }),
+    ).toBeInTheDocument();
   });
 
   test("displays error when API returns 500", async () => {
@@ -43,11 +43,11 @@ describe("MainSearchResultPage - Error Handling", () => {
 
     render(<MainSearchResultPage {...defaultProps} />);
 
-    await waitFor(() => {
-      expect(
-        screen.getByText("Failed to load marketplace data", { exact: false }),
-      ).toBeInTheDocument();
-    });
+    expect(
+      await screen.findByText("Failed to load marketplace data", {
+        exact: false,
+      }),
+    ).toBeInTheDocument();
   });
 
   test("retry button is visible on error", async () => {
@@ -55,10 +55,8 @@ describe("MainSearchResultPage - Error Handling", () => {
 
     render(<MainSearchResultPage {...defaultProps} />);
 
-    await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: /try again/i }),
-      ).toBeInTheDocument();
-    });
+    expect(
+      await screen.findByRole("button", { name: /try again/i }),
+    ).toBeInTheDocument();
   });
 });

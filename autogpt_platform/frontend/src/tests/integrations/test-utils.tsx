@@ -1,8 +1,11 @@
 import { BackendAPIProvider } from "@/lib/autogpt-server-api/context";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, RenderOptions, act } from "@testing-library/react";
+import { render, RenderOptions } from "@testing-library/react";
 import { ReactElement, ReactNode } from "react";
-import { MockOnboardingProvider, useOnboarding as mockUseOnboarding } from "./helpers/mock-onboarding-provider";
+import {
+  MockOnboardingProvider,
+  useOnboarding as mockUseOnboarding,
+} from "./helpers/mock-onboarding-provider";
 
 vi.mock("@/providers/onboarding/onboarding-provider", () => ({
   useOnboarding: mockUseOnboarding,

@@ -3,16 +3,22 @@ import { server } from "@/mocks/mock-server";
 import { mockNextjsModules } from "./setup-nextjs-mocks";
 import { mockSupabaseRequest } from "./mock-supabase-request";
 import "@testing-library/jest-dom";
-import { suppressReactQueryUpdateWarning } from "./helpers/supress-react-query-update-warning";
+import { suppressReactQueryUpdateWarning } from "./helpers/suppress-react-query-update-warning";
+
+let restoreConsoleError: (() => void) | null = null;
 
 beforeAll(() => {
   mockNextjsModules();
   mockSupabaseRequest();
-  const restoreConsoleError = suppressReactQueryUpdateWarning();
-  afterAll(() => {
-    restoreConsoleError();
-  });
-  return server.listen({ onUnhandledRequest: "error" });
+  restoreConsoleError = suppressReactQueryUpdateWarning();
+  server.listen({ onUnhandledRequest: "error" });
 });
-afterEach(() => {server.resetHandlers()});
-afterAll(() => server.close());
+
+afterEach(() => {
+  server.resetHandlers();
+});
+
+afterAll(() => {
+  restoreConsoleError?.();
+  server.close();
+});

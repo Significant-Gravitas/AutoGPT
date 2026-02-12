@@ -136,19 +136,19 @@ export const customMutator = async <
       response.statusText ||
       `HTTP ${response.status}`;
 
-      const isTestEnv = process.env.NODE_ENV === 'test';
-      if (!isTestEnv) {
-        console.error(
-          `Request failed ${environment.isServerSide() ? "on server" : "on client"}`,
-          {
-            status: response.status,
-            method,
-            url: fullUrl.replace(baseUrl, ""), // Show relative URL for cleaner logs
-            errorMessage,
-            responseData: responseData || "No response data",
-          },
-        );
-      }
+    const isTestEnv = process.env.NODE_ENV === "test";
+    if (!isTestEnv) {
+      console.error(
+        `Request failed ${environment.isServerSide() ? "on server" : "on client"}`,
+        {
+          status: response.status,
+          method,
+          url: fullUrl.replace(baseUrl, ""), // Show relative URL for cleaner logs
+          errorMessage,
+          responseData: responseData || "No response data",
+        },
+      );
+    }
 
     throw new ApiError(errorMessage, response.status, responseData);
   }

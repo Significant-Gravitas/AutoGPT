@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { render, screen, waitFor } from "@/tests/integrations/test-utils";
+import { render, screen } from "@/tests/integrations/test-utils";
 import { MainCreatorPage } from "../MainCreatorPage";
 
 const defaultParams = {
@@ -7,38 +7,32 @@ const defaultParams = {
 };
 
 describe("MainCreatorPage - Rendering", () => {
-  test("renders creator info card", async () => {
+  test("renders creator description", async () => {
     render(<MainCreatorPage params={defaultParams} />);
-    await waitFor(() => {
-      expect(screen.getByTestId("creator-description")).toBeInTheDocument();
-    });
+    expect(
+      await screen.findByTestId("creator-description"),
+    ).toBeInTheDocument();
   });
 
   test("renders breadcrumbs with marketplace link", async () => {
     render(<MainCreatorPage params={defaultParams} />);
 
-    await waitFor(() => {
-      expect(
-        screen.getByRole("link", { name: /marketplace/i }),
-      ).toBeInTheDocument();
-    });
+    expect(
+      await screen.findByRole("link", { name: /marketplace/i }),
+    ).toBeInTheDocument();
   });
 
   test("renders about section", async () => {
     render(<MainCreatorPage params={defaultParams} />);
 
-    await waitFor(() => {
-      expect(screen.getByText("About")).toBeInTheDocument();
-    });
+    expect(await screen.findByText("About")).toBeInTheDocument();
   });
 
   test("renders agents by creator section", async () => {
     render(<MainCreatorPage params={defaultParams} />);
 
-    await waitFor(() => {
-      expect(
-        screen.getByText(/Agents by/i, { exact: false }),
-      ).toBeInTheDocument();
-    });
+    expect(
+      await screen.findByText(/Agents by/i, { exact: false }),
+    ).toBeInTheDocument();
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, test, afterEach } from "vitest";
-import { render, screen, waitFor } from "@/tests/integrations/test-utils";
+import { render, screen } from "@/tests/integrations/test-utils";
 import { MainSearchResultPage } from "../MainSearchResultPage";
 import {
   mockAuthenticatedUser,
@@ -9,7 +9,7 @@ import {
 
 const defaultProps = {
   searchTerm: "test-search",
-  sort: undefined as undefined,
+  sort: undefined,
 };
 
 describe("MainSearchResultPage - Auth State", () => {
@@ -21,17 +21,13 @@ describe("MainSearchResultPage - Auth State", () => {
     mockUnauthenticatedUser();
     render(<MainSearchResultPage {...defaultProps} />);
 
-    await waitFor(() => {
-      expect(screen.getByText("Results for:")).toBeInTheDocument();
-    });
+    expect(await screen.findByText("Results for:")).toBeInTheDocument();
   });
 
   test("renders page correctly when logged in", async () => {
     mockAuthenticatedUser();
     render(<MainSearchResultPage {...defaultProps} />);
 
-    await waitFor(() => {
-      expect(screen.getByText("Results for:")).toBeInTheDocument();
-    });
+    expect(await screen.findByText("Results for:")).toBeInTheDocument();
   });
 });
