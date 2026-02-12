@@ -13,7 +13,7 @@
 --   SET search_path TO platform;
 --   SELECT refresh_suggested_blocks_view();
 
--- Check if pg_cron extension is installed and set a flag
+-- Check if pg_cron extension is installed
 DO $$
 DECLARE
     has_pg_cron BOOLEAN;
@@ -21,14 +21,8 @@ BEGIN
     SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron') INTO has_pg_cron;
 
     IF NOT has_pg_cron THEN
-        RAISE WARNING 'pg_cron extension is not installed!';
-        RAISE WARNING 'Materialized view will be created but WILL NOT refresh automatically.';
-        RAISE WARNING 'For production use, install pg_cron with: CREATE EXTENSION pg_cron;';
-        RAISE WARNING 'For development, manually refresh with: SELECT refresh_suggested_blocks_view();';
+        RAISE WARNING 'pg_cron is not installed. Materialized view will be created but will NOT refresh automatically. For production, install pg_cron. For development, manually refresh with: SELECT refresh_suggested_blocks_view();';
     END IF;
-
-    -- Store the flag for later use in the migration
-    PERFORM set_config('migration.has_pg_cron', has_pg_cron::text, false);
 END
 $$;
 
@@ -53,19 +47,16 @@ RETURNS void
 LANGUAGE plpgsql
 AS $$
 DECLARE
-    current_schema_name text;
+    target_schema text := current_schema();
 BEGIN
-    -- Get the current schema
-    current_schema_name := current_schema();
-
-    -- Use CONCURRENTLY for better performance during refresh (schema-qualified)
-    EXECUTE format('REFRESH MATERIALIZED VIEW CONCURRENTLY %I."mv_suggested_blocks"', current_schema_name);
-    RAISE NOTICE 'Suggested blocks materialized view refreshed in schema % at %', current_schema_name, NOW();
+    -- Use CONCURRENTLY for better performance during refresh
+    REFRESH MATERIALIZED VIEW CONCURRENTLY "mv_suggested_blocks";
+    RAISE NOTICE 'Suggested blocks materialized view refreshed in schema % at %', target_schema, NOW();
 EXCEPTION
     WHEN OTHERS THEN
         -- Fallback to non-concurrent refresh if concurrent fails
-        EXECUTE format('REFRESH MATERIALIZED VIEW %I."mv_suggested_blocks"', current_schema_name);
-        RAISE NOTICE 'Suggested blocks materialized view refreshed (non-concurrent) in schema % at %. Concurrent refresh failed due to: %', current_schema_name, NOW(), SQLERRM;
+        REFRESH MATERIALIZED VIEW "mv_suggested_blocks";
+        RAISE NOTICE 'Suggested blocks materialized view refreshed (non-concurrent) in schema % at %. Concurrent refresh failed due to: %', target_schema, NOW(), SQLERRM;
 END;
 $$;
 
@@ -77,7 +68,6 @@ DO $$
 DECLARE
     has_pg_cron BOOLEAN;
     current_schema_name text := current_schema();
-    old_job_name text;
     job_name text;
 BEGIN
     -- Check if pg_cron extension exists
@@ -101,9 +91,7 @@ BEGIN
         );
         RAISE NOTICE 'Scheduled job %; runs every hour for schema %', job_name, current_schema_name;
     ELSE
-        RAISE WARNING 'Automatic refresh NOT configured - pg_cron is not available';
-        RAISE WARNING 'You must manually refresh the view with: SELECT refresh_suggested_blocks_view();';
-        RAISE WARNING 'Or install pg_cron for automatic refresh in production';
+        RAISE WARNING 'Automatic refresh NOT configured - pg_cron is not available. Manually refresh with: SELECT refresh_suggested_blocks_view();';
     END IF;
 END;
 $$;
