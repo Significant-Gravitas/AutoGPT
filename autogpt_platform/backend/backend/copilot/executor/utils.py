@@ -76,7 +76,7 @@ COPILOT_CANCEL_EXCHANGE = Exchange(
     name="copilot_cancel",
     type=ExchangeType.FANOUT,
     durable=True,
-    auto_delete=True,
+    auto_delete=False,
 )
 COPILOT_CANCEL_QUEUE_NAME = "copilot_cancel_queue"
 

@@ -151,11 +151,8 @@ class CoPilotProcessor:
         except Exception as e:
             elapsed = time.monotonic() - start_time
             log.error(f"Execution failed after {elapsed:.2f}s: {e}")
-            # Ensure task is marked as failed in stream registry
-            asyncio.run_coroutine_threadsafe(
-                self._mark_task_failed(entry.task_id, str(e)),
-                self.execution_loop,
-            ).result(timeout=10.0)
+            # Note: _execute_async already marks the task as failed before re-raising,
+            # so we don't call _mark_task_failed here to avoid duplicate error events.
             raise
 
     async def _execute_async(
