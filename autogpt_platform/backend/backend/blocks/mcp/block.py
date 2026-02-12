@@ -13,15 +13,14 @@ from typing import Any, Literal
 from pydantic import SecretStr
 
 from backend.blocks.mcp.client import MCPClient, MCPClientError
-from backend.data.block import (
+from backend.blocks._base import (
     Block,
     BlockCategory,
-    BlockInput,
-    BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
     BlockType,
 )
+from backend.data.block import BlockInput, BlockOutput
 from backend.data.model import (
     CredentialsField,
     CredentialsMetaInput,

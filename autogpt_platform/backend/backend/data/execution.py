@@ -4,7 +4,6 @@ from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import (
-    TYPE_CHECKING,
     Annotated,
     Any,
     AsyncGenerator,
@@ -39,6 +38,8 @@ from prisma.types import (
 from pydantic import BaseModel, ConfigDict, JsonValue, ValidationError
 from pydantic.fields import Field
 
+from backend.blocks import get_block, get_io_block_ids, get_webhook_block_ids
+from backend.blocks._base import BlockType
 from backend.util import type as type_utils
 from backend.util.exceptions import DatabaseError
 from backend.util.json import SafeJson
@@ -47,14 +48,7 @@ from backend.util.retry import func_retry
 from backend.util.settings import Config
 from backend.util.truncate import truncate
 
-from .block import (
-    BlockInput,
-    BlockType,
-    CompletedBlockOutput,
-    get_block,
-    get_io_block_ids,
-    get_webhook_block_ids,
-)
+from .block import BlockInput, CompletedBlockOutput
 from .db import BaseDbModel, query_raw_with_schema
 from .event_bus import AsyncRedisEventBus, RedisEventBus
 from .includes import (
@@ -63,10 +57,12 @@ from .includes import (
     GRAPH_EXECUTION_INCLUDE_WITH_NODES,
     graph_execution_include,
 )
-from .model import CredentialsMetaInput, GraphExecutionStats, NodeExecutionStats
-
-if TYPE_CHECKING:
-    pass
+from .model import (
+    CredentialsMetaInput,
+    GraphExecutionStats,
+    GraphInput,
+    NodeExecutionStats,
+)
 
 T = TypeVar("T")
 
@@ -167,7 +163,7 @@ class GraphExecutionMeta(BaseDbModel):
     user_id: str
     graph_id: str
     graph_version: int
-    inputs: Optional[BlockInput]  # no default -> required in the OpenAPI spec
+    inputs: Optional[GraphInput]  # no default -> required in the OpenAPI spec
     credential_inputs: Optional[dict[str, CredentialsMetaInput]]
     nodes_input_masks: Optional[dict[str, BlockInput]]
     preset_id: Optional[str]
@@ -272,7 +268,7 @@ class GraphExecutionMeta(BaseDbModel):
             user_id=_graph_exec.userId,
             graph_id=_graph_exec.agentGraphId,
             graph_version=_graph_exec.agentGraphVersion,
-            inputs=cast(BlockInput | None, _graph_exec.inputs),
+            inputs=cast(GraphInput | None, _graph_exec.inputs),
             credential_inputs=(
                 {
                     name: CredentialsMetaInput.model_validate(cmi)
@@ -314,7 +310,7 @@ class GraphExecutionMeta(BaseDbModel):
 
 
 class GraphExecution(GraphExecutionMeta):
-    inputs: BlockInput  # type: ignore - incompatible override is intentional
+    inputs: GraphInput  # type: ignore - incompatible override is intentional
     outputs: CompletedBlockOutput
 
     @staticmethod
@@ -447,7 +443,7 @@ class NodeExecutionResult(BaseModel):
             for name, messages in stats.cleared_inputs.items():
                 input_data[name] = messages[-1] if messages else ""
         elif _node_exec.executionData:
-            input_data = type_utils.convert(_node_exec.executionData, dict[str, Any])
+            input_data = type_utils.convert(_node_exec.executionData, BlockInput)
         else:
             input_data: BlockInput = defaultdict()
             for data in _node_exec.Input or []:
@@ -867,7 +863,7 @@ async def upsert_execution_output(
 
 async def get_execution_outputs_by_node_exec_id(
     node_exec_id: str,
-) -> dict[str, Any]:
+) -> CompletedBlockOutput:
     """
     Get all execution outputs for a specific node execution ID.
 
@@ -1498,7 +1494,7 @@ async def get_graph_execution_by_share_token(
                     # The executionData contains the structured input with 'name' and 'value' fields
                     if hasattr(node_exec, "executionData") and node_exec.executionData:
                         exec_data = type_utils.convert(
-                            node_exec.executionData, dict[str, Any]
+                            node_exec.executionData, BlockInput
                         )
                         if "name" in exec_data:
                             name = exec_data["name"]
