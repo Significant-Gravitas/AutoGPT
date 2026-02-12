@@ -189,5 +189,5 @@ body[data-google-picker-open="true"] [data-dialog-content] {
 
 [data-streamdown="table-wrapper"] th,
 [data-streamdown="table-wrapper"] td {
-  padding: 0.625rem 1rem; /* py-2.5 px-4 */
+  padding: 0.875rem 1rem; /* py-3.5 px-4 */
 }
