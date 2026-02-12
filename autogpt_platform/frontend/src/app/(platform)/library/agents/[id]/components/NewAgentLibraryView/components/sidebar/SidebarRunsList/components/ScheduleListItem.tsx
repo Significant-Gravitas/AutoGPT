@@ -29,6 +29,7 @@ export function ScheduleListItem({
       description={formatDistanceToNow(schedule.next_run_time, {
         addSuffix: true,
       })}
+      descriptionTitle={new Date(schedule.next_run_time).toString()}
       onClick={onClick}
       selected={selected}
       icon={

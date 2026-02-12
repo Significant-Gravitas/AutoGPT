@@ -81,6 +81,9 @@ export function TaskListItem({
           ? formatDistanceToNow(run.started_at, { addSuffix: true })
           : "—"
       }
+      descriptionTitle={
+        run.started_at ? new Date(run.started_at).toString() : undefined
+      }
       onClick={onClick}
       selected={selected}
       actions={
