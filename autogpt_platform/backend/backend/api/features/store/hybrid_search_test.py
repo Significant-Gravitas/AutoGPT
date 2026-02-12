@@ -408,6 +408,44 @@ async def test_hybrid_search_error_handling():
 
 @pytest.mark.asyncio(loop_scope="session")
 @pytest.mark.integration
+async def test_unified_hybrid_search_falls_back_when_vector_type_missing():
+    """Should degrade to lexical-only query when pgvector type is unavailable."""
+    vector_error = Exception('type "vector" does not exist')
+    fallback_results = [
+        {
+            "content_type": "BLOCK",
+            "content_id": "block-1",
+            "searchable_text": "http request block",
+            "metadata": {"name": "HTTP Request"},
+            "updated_at": "2025-01-01T00:00:00Z",
+            "semantic_score": 0.0,
+            "lexical_score": 1.0,
+            "category_score": 0.0,
+            "recency_score": 0.1,
+            "combined_score": 0.95,
+            "total_count": 1,
+        }
+    ]
+
+    with patch(
+        "backend.api.features.store.hybrid_search.query_raw_with_schema"
+    ) as mock_query:
+        with patch(
+            "backend.api.features.store.hybrid_search.embed_query"
+        ) as mock_embed:
+            mock_query.side_effect = [vector_error, fallback_results]
+            mock_embed.return_value = [0.1] * embeddings.EMBEDDING_DIM
+
+            results, total = await unified_hybrid_search(query="http")
+
+            assert total == 1
+            assert len(results) == 1
+            assert results[0]["content_id"] == "block-1"
+            assert mock_query.call_count == 2
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.integration
 async def test_unified_hybrid_search_basic():
     """Test basic unified hybrid search across all content types."""
     mock_results = [

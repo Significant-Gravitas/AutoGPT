@@ -133,6 +133,147 @@ DEFAULT_MIN_SCORE = 0.15  # For unified search (more permissive)
 DEFAULT_STORE_AGENT_MIN_SCORE = 0.20  # For store agent search (original threshold)
 
 
+def _is_missing_vector_type_error(error: Exception) -> bool:
+    """Return True if error indicates pgvector type is unavailable in current DB context."""
+    error_text = str(error).lower()
+    return (
+        "type" in error_text
+        and "vector" in error_text
+        and "does not exist" in error_text
+    )
+
+
+async def _unified_lexical_fallback_search(
+    *,
+    query: str,
+    content_types: list[ContentType],
+    user_id: str | None,
+    weights: UnifiedSearchWeights,
+    min_score: float,
+    page_size: int,
+    offset: int,
+) -> tuple[list[dict[str, Any]], int]:
+    """Fallback unified search that avoids vector operators when pgvector isn't available."""
+    params: list[Any] = []
+    param_idx = 1
+
+    params.append(query)
+    query_param = f"${param_idx}"
+    param_idx += 1
+
+    params.append(query.lower())
+    query_lower_param = f"${param_idx}"
+    param_idx += 1
+
+    content_type_values = [ct.value for ct in content_types]
+    params.append(content_type_values)
+    content_types_param = f"${param_idx}"
+    param_idx += 1
+
+    user_filter = ""
+    if user_id is not None:
+        params.append(user_id)
+        user_filter = f'AND (uce."userId" = ${param_idx} OR uce."userId" IS NULL)'
+        param_idx += 1
+    else:
+        user_filter = 'AND uce."userId" IS NULL'
+
+    total_non_semantic = weights.lexical + weights.category + weights.recency
+    if total_non_semantic > 0:
+        normalized_lexical = weights.lexical / total_non_semantic
+        normalized_category = weights.category / total_non_semantic
+        normalized_recency = weights.recency / total_non_semantic
+    else:
+        normalized_lexical = 1.0
+        normalized_category = 0.0
+        normalized_recency = 0.0
+
+    params.extend([normalized_lexical, normalized_category, normalized_recency])
+    w_lexical = f"${param_idx}"
+    param_idx += 1
+    w_category = f"${param_idx}"
+    param_idx += 1
+    w_recency = f"${param_idx}"
+    param_idx += 1
+
+    params.append(min_score)
+    min_score_param = f"${param_idx}"
+    param_idx += 1
+
+    params.append(page_size)
+    limit_param = f"${param_idx}"
+    param_idx += 1
+
+    params.append(offset)
+    offset_param = f"${param_idx}"
+
+    fallback_sql = f"""
+        WITH search_scores AS (
+            SELECT
+                uce."contentType" as content_type,
+                uce."contentId" as content_id,
+                uce."searchableText" as searchable_text,
+                uce.metadata,
+                uce."updatedAt" as updated_at,
+                0.0 as semantic_score,
+                COALESCE(ts_rank_cd(uce.search, plainto_tsquery('english', {query_param})), 0) as lexical_raw,
+                CASE
+                    WHEN uce.metadata ? 'categories' AND EXISTS (
+                        SELECT 1 FROM jsonb_array_elements_text(uce.metadata->'categories') cat
+                        WHERE LOWER(cat) LIKE '%' || {query_lower_param} || '%'
+                    )
+                    THEN 1.0
+                    ELSE 0.0
+                END as category_score,
+                GREATEST(0, 1 - EXTRACT(EPOCH FROM (NOW() - uce."updatedAt")) / (90 * 24 * 3600)) as recency_score
+            FROM {{schema_prefix}}"UnifiedContentEmbedding" uce
+            WHERE uce."contentType" = ANY({content_types_param}::{{schema_prefix}}"ContentType"[])
+            {user_filter}
+            AND uce.search @@ plainto_tsquery('english', {query_param})
+        ),
+        max_lexical AS (
+            SELECT GREATEST(MAX(lexical_raw), 0.001) as max_val FROM search_scores
+        ),
+        normalized AS (
+            SELECT
+                ss.*,
+                ss.lexical_raw / ml.max_val as lexical_score
+            FROM search_scores ss
+            CROSS JOIN max_lexical ml
+        ),
+        scored AS (
+            SELECT
+                content_type,
+                content_id,
+                searchable_text,
+                metadata,
+                updated_at,
+                semantic_score,
+                lexical_score,
+                category_score,
+                recency_score,
+                (
+                    {w_lexical} * lexical_score +
+                    {w_category} * category_score +
+                    {w_recency} * recency_score
+                ) as combined_score
+            FROM normalized
+        ),
+        filtered AS (
+            SELECT *, COUNT(*) OVER () as total_count
+            FROM scored
+            WHERE combined_score >= {min_score_param}
+        )
+        SELECT * FROM filtered
+        ORDER BY combined_score DESC
+        LIMIT {limit_param} OFFSET {offset_param}
+    """
+
+    results = await query_raw_with_schema(fallback_sql, *params)
+    total = results[0]["total_count"] if results else 0
+    return results, total
+
+
 async def unified_hybrid_search(
     query: str,
     content_types: list[ContentType] | None = None,
@@ -365,11 +506,24 @@ async def unified_hybrid_search(
 
     try:
         results = await query_raw_with_schema(sql_query, *params)
+        total = results[0]["total_count"] if results else 0
     except Exception as e:
         await _log_vector_error_diagnostics(e)
-        raise
+        if not _is_missing_vector_type_error(e):
+            raise
 
-    total = results[0]["total_count"] if results else 0
+        logger.warning(
+            "Unified hybrid search falling back to lexical-only mode because pgvector is unavailable"
+        )
+        results, total = await _unified_lexical_fallback_search(
+            query=query,
+            content_types=content_types,
+            user_id=user_id,
+            weights=weights,
+            min_score=min_score,
+            page_size=page_size,
+            offset=offset,
+        )
     # Apply BM25 reranking
     if results:
         results = bm25_rerank(
