@@ -3,15 +3,12 @@ import logging
 import os
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING, Sequence, Type, TypeVar
+from typing import Sequence, Type, TypeVar
 
+from backend.blocks._base import AnyBlockSchema, BlockType
 from backend.util.cache import cached
 
 logger = logging.getLogger(__name__)
-
-
-if TYPE_CHECKING:
-    from backend.blocks._base import AnyBlockSchema, BlockType
 
 T = TypeVar("T")
 
