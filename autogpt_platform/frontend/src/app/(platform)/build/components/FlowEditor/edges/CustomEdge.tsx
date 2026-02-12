@@ -67,9 +67,10 @@ const CustomEdge = ({
       <path
         d={edgePath}
         fill="none"
-        stroke="transparent"
+        stroke="black"
+        strokeOpacity={0}
         strokeWidth={20}
-        className="cursor-pointer"
+        className="react-flow__edge-interaction cursor-pointer"
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
       />
