@@ -666,15 +666,23 @@ class ClaudeCodeBlock(Block):
                             stat_result = await sandbox.commands.run(
                                 f"stat -c %s {shlex.quote(file_path)} 2>/dev/null"
                             )
-                            if stat_result.stdout:
-                                file_size = int(stat_result.stdout.strip())
-                                if file_size > MAX_BINARY_FILE_SIZE:
-                                    logger.warning(
-                                        f"Skipping binary file {file_path}: "
-                                        f"size {file_size} exceeds limit "
-                                        f"{MAX_BINARY_FILE_SIZE}"
-                                    )
-                                    continue
+                            if (
+                                stat_result.exit_code != 0
+                                or not stat_result.stdout
+                            ):
+                                logger.warning(
+                                    f"Skipping binary file {file_path}: "
+                                    f"could not determine file size"
+                                )
+                                continue
+                            file_size = int(stat_result.stdout.strip())
+                            if file_size > MAX_BINARY_FILE_SIZE:
+                                logger.warning(
+                                    f"Skipping binary file {file_path}: "
+                                    f"size {file_size} exceeds limit "
+                                    f"{MAX_BINARY_FILE_SIZE}"
+                                )
+                                continue
 
                             # Read binary file as bytes using format="bytes"
                             content_bytes = await sandbox.files.read(
