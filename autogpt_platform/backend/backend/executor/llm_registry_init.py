@@ -47,7 +47,7 @@ async def refresh_registry_on_notification() -> None:
 
         # Refresh registry and costs
         await llm_registry.refresh_llm_registry()
-        refresh_llm_costs()
+        await refresh_llm_costs()
 
         # Clear block schema caches so they regenerate with new model options
         BlockSchema.clear_all_schema_caches()

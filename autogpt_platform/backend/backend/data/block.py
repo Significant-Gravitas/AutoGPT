@@ -911,7 +911,7 @@ async def initialize_blocks() -> None:
 
         if is_connected():
             await llm_registry.refresh_llm_registry()
-            refresh_llm_costs()
+            await refresh_llm_costs()
             logger.info("LLM registry refreshed during block initialization")
         else:
             logger.warning(

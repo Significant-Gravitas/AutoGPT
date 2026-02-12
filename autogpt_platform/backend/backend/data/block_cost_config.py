@@ -1,6 +1,8 @@
 import logging
 from typing import Type
 
+import prisma.models
+
 from backend.blocks.ai_image_customizer import AIImageCustomizerBlock, GeminiImageModel
 from backend.blocks.ai_image_generator_block import AIImageGeneratorBlock, ImageGenModel
 from backend.blocks.ai_music_generator import AIMusicGeneratorBlock
@@ -75,8 +77,40 @@ PROVIDER_CREDENTIALS = {
 LLM_COST: list[BlockCost] = []
 
 
-def _build_llm_costs_from_registry() -> list[BlockCost]:
-    """Build BlockCost list from all models in the LLM registry."""
+async def _build_llm_costs_from_registry() -> list[BlockCost]:
+    """
+    Build BlockCost list from all models in the LLM registry.
+
+    This function checks for active model migrations with customCreditCost overrides.
+    When a model has been migrated with a custom price, that price is used instead
+    of the target model's default cost.
+    """
+    # Query active migrations with custom pricing overrides
+    migration_overrides: dict[str, int] = {}
+    try:
+        active_migrations = await prisma.models.LlmModelMigration.prisma().find_many(
+            where={
+                "isReverted": False,
+                "customCreditCost": {"not": None},
+            }
+        )
+        migration_overrides = {
+            migration.sourceModelSlug: migration.customCreditCost
+            for migration in active_migrations
+            if migration.customCreditCost is not None
+        }
+        if migration_overrides:
+            logger.info(
+                "Found %d active model migrations with custom pricing overrides",
+                len(migration_overrides),
+            )
+    except Exception as exc:
+        logger.warning(
+            "Failed to query model migration overrides: %s. Proceeding with default costs.",
+            exc,
+            exc_info=True,
+        )
+
     costs: list[BlockCost] = []
     for model in llm_registry.iter_dynamic_models():
         for cost in model.costs:
@@ -88,6 +122,18 @@ def _build_llm_costs_from_registry() -> list[BlockCost]:
                     cost.credential_provider,
                 )
                 continue
+
+            # Check if this model has a custom cost override from migration
+            cost_amount = migration_overrides.get(model.slug, cost.credit_cost)
+
+            if model.slug in migration_overrides:
+                logger.debug(
+                    "Applying custom cost override for model %s: %d credits (default: %d)",
+                    model.slug,
+                    cost_amount,
+                    cost.credit_cost,
+                )
+
             cost_filter = {
                 "model": model.slug,
                 "credentials": {
@@ -100,16 +146,21 @@ def _build_llm_costs_from_registry() -> list[BlockCost]:
                 BlockCost(
                     cost_type=BlockCostType.RUN,
                     cost_filter=cost_filter,
-                    cost_amount=cost.credit_cost,
+                    cost_amount=cost_amount,
                 )
             )
     return costs
 
 
-def refresh_llm_costs() -> None:
-    """Refresh LLM costs from the registry. All costs now come from the database."""
+async def refresh_llm_costs() -> None:
+    """
+    Refresh LLM costs from the registry. All costs now come from the database.
+
+    This function also checks for active model migrations with custom pricing overrides
+    and applies them to ensure accurate billing.
+    """
     LLM_COST.clear()
-    LLM_COST.extend(_build_llm_costs_from_registry())
+    LLM_COST.extend(await _build_llm_costs_from_registry())
 
 
 # Initial load will happen after registry is refreshed at startup

@@ -22,7 +22,7 @@ async def _refresh_runtime_state() -> None:
     try:
         # Refresh registry from database
         await llm_registry.refresh_llm_registry()
-        refresh_llm_costs()
+        await refresh_llm_costs()
 
         # Clear block schema caches so they're regenerated with updated model options
         from backend.data.block import BlockSchema
