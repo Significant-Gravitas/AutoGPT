@@ -443,6 +443,20 @@ async def stream_chat_completion_sdk(
                     for response in adapter.convert_message(sdk_msg):
                         if isinstance(response, StreamStart):
                             continue
+
+                        # Persist usage but don't yield to the client —
+                        # the AI SDK schema has no "usage" event type and
+                        # z.strictObject validation would reject it.
+                        if isinstance(response, StreamUsage):
+                            session.usage.append(
+                                Usage(
+                                    prompt_tokens=response.promptTokens,
+                                    completion_tokens=response.completionTokens,
+                                    total_tokens=response.totalTokens,
+                                )
+                            )
+                            continue
+
                         yield response
 
                         if isinstance(response, StreamTextDelta):
@@ -495,15 +509,6 @@ async def stream_chat_completion_sdk(
                                 )
                             )
                             has_tool_results = True
-
-                        elif isinstance(response, StreamUsage):
-                            session.usage.append(
-                                Usage(
-                                    prompt_tokens=response.promptTokens,
-                                    completion_tokens=response.completionTokens,
-                                    total_tokens=response.totalTokens,
-                                )
-                            )
 
                         elif isinstance(response, StreamFinish):
                             stream_completed = True
