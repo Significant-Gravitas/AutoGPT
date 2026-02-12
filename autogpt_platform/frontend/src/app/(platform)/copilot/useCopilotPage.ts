@@ -66,8 +66,7 @@ export function useCopilotPage() {
       stopRef.current();
       toast({
         title: "Stream timed out",
-        description:
-          "The server took too long to respond. Please try again.",
+        description: "The server took too long to respond. Please try again.",
         variant: "destructive",
       });
     }, STREAM_START_TIMEOUT_MS);
