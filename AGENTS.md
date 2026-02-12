@@ -16,7 +16,6 @@ See `docs/content/platform/getting-started.md` for setup instructions.
 - Format Python code with `poetry run format`.
 - Format frontend code using `pnpm format`.
 
-
 ## Frontend guidelines:
 
 See `/frontend/CONTRIBUTING.md` for complete patterns. Quick reference:
@@ -33,14 +32,17 @@ See `/frontend/CONTRIBUTING.md` for complete patterns. Quick reference:
 4. **Styling**: Tailwind CSS only, use design tokens, Phosphor Icons only
 5. **Testing**: Add Storybook stories for new components, Playwright for E2E
 6. **Code conventions**: Function declarations (not arrow functions) for components/handlers
+
 - Component props should be `interface Props { ... }` (not exported) unless the interface needs to be used outside the component
 - Separate render logic from business logic (component.tsx + useComponent.ts + helpers.ts)
 - Colocate state when possible and avoid creating large components, use sub-components ( local `/components` folder next to the parent component ) when sensible
 - Avoid large hooks, abstract logic into `helpers.ts` files when sensible
 - Use function declarations for components, arrow functions only for callbacks
 - No barrel files or `index.ts` re-exports
-- Do not use `useCallback` or `useMemo` unless strictly needed
 - Avoid comments at all times unless the code is very complex
+- Do not use `useCallback` or `useMemo` unless asked to optimise a given function
+- Do not type hook returns, let Typescript infer as much as possible
+- Never type with `any`, if not types available use `unknown`
 
 ## Testing
 
@@ -49,22 +51,8 @@ See `/frontend/CONTRIBUTING.md` for complete patterns. Quick reference:
 
 Always run the relevant linters and tests before committing.
 Use conventional commit messages for all commits (e.g. `feat(backend): add API`).
-  Types:
-    - feat
-    - fix
-    - refactor
-    - ci
-    - dx (developer experience)
-  Scopes:
-    - platform
-      - platform/library
-      - platform/marketplace
-      - backend
-        - backend/executor
-      - frontend
-        - frontend/library
-        - frontend/marketplace
-      - blocks
+Types: - feat - fix - refactor - ci - dx (developer experience)
+Scopes: - platform - platform/library - platform/marketplace - backend - backend/executor - frontend - frontend/library - frontend/marketplace - blocks
 
 ## Pull requests
 

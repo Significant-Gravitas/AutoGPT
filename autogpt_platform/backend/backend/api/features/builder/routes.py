@@ -17,7 +17,7 @@ router = fastapi.APIRouter(
 )
 
 
-# Taken from backend/server/v2/store/db.py
+# Taken from backend/api/features/store/db.py
 def sanitize_query(query: str | None) -> str | None:
     if query is None:
         return query

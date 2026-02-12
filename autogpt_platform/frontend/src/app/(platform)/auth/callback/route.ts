@@ -1,9 +1,8 @@
-import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
-import { getHomepageRoute } from "@/lib/constants";
-import BackendAPI from "@/lib/autogpt-server-api";
-import { NextResponse } from "next/server";
-import { revalidatePath } from "next/cache";
 import { getOnboardingStatus } from "@/app/api/helpers";
+import BackendAPI from "@/lib/autogpt-server-api";
+import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
+import { revalidatePath } from "next/cache";
+import { NextResponse } from "next/server";
 
 // Handle the callback to complete the user session login
 export async function GET(request: Request) {
@@ -27,13 +26,12 @@ export async function GET(request: Request) {
         await api.createUser();
 
         // Get onboarding status from backend (includes chat flag evaluated for this user)
-        const { shouldShowOnboarding, isChatEnabled } =
-          await getOnboardingStatus();
+        const { shouldShowOnboarding } = await getOnboardingStatus();
         if (shouldShowOnboarding) {
           next = "/onboarding";
           revalidatePath("/onboarding", "layout");
         } else {
-          next = getHomepageRoute(isChatEnabled);
+          next = "/";
           revalidatePath(next, "layout");
         }
       } catch (createUserError) {

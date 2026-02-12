@@ -1,6 +1,6 @@
 import { FieldProps, getUiOptions, getWidget } from "@rjsf/utils";
 import { AnyOfFieldTitle } from "./components/AnyOfFieldTitle";
-import { isEmpty } from "lodash";
+import isEmpty from "lodash/isEmpty";
 import { useAnyOfField } from "./useAnyOfField";
 import { cleanUpHandleId, getHandleId, updateUiOption } from "../../helpers";
 import { useEdgeStore } from "@/app/(platform)/build/stores/edgeStore";
