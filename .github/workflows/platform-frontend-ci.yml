@@ -41,26 +41,19 @@ jobs:
             components:
               - 'autogpt_platform/frontend/src/components/**'
 
+      - name: Enable corepack
+        run: corepack enable
+
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
           node-version: "22.18.0"
-
-      - name: Enable corepack
-        run: corepack enable
+          cache: "pnpm"
+          cache-dependency-path: autogpt_platform/frontend/pnpm-lock.yaml
 
       - name: Generate cache key
         id: cache-key
         run: echo "key=${{ runner.os }}-pnpm-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml', 'autogpt_platform/frontend/package.json') }}" >> $GITHUB_OUTPUT
-
-      - name: Cache dependencies
-        uses: actions/cache@v5
-        with:
-          path: ~/.pnpm-store
-          key: ${{ steps.cache-key.outputs.key }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml') }}
-            ${{ runner.os }}-pnpm-
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -73,22 +66,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
+      - name: Enable corepack
+        run: corepack enable
+
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
           node-version: "22.18.0"
-
-      - name: Enable corepack
-        run: corepack enable
-
-      - name: Restore dependencies cache
-        uses: actions/cache@v5
-        with:
-          path: ~/.pnpm-store
-          key: ${{ needs.setup.outputs.cache-key }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml') }}
-            ${{ runner.os }}-pnpm-
+          cache: "pnpm"
+          cache-dependency-path: autogpt_platform/frontend/pnpm-lock.yaml
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -111,22 +97,15 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Enable corepack
+        run: corepack enable
+
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
           node-version: "22.18.0"
-
-      - name: Enable corepack
-        run: corepack enable
-
-      - name: Restore dependencies cache
-        uses: actions/cache@v5
-        with:
-          path: ~/.pnpm-store
-          key: ${{ needs.setup.outputs.cache-key }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml') }}
-            ${{ runner.os }}-pnpm-
+          cache: "pnpm"
+          cache-dependency-path: autogpt_platform/frontend/pnpm-lock.yaml
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -149,13 +128,15 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Enable corepack
+        run: corepack enable
+
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
           node-version: "22.18.0"
-
-      - name: Enable corepack
-        run: corepack enable
+          cache: "pnpm"
+          cache-dependency-path: autogpt_platform/frontend/pnpm-lock.yaml
 
       - name: Copy default supabase .env
         run: |
@@ -236,15 +217,6 @@ jobs:
             }
           fi
 
-      - name: Cache pnpm store
-        uses: actions/cache@v5
-        with:
-          path: ~/.pnpm-store
-          # Use separate cache key for big-boi runner since it doesn't share cache with ubuntu-latest
-          key: big-boi-pnpm-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml') }}
-          restore-keys: |
-            big-boi-pnpm-
-
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
@@ -287,22 +259,15 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Enable corepack
+        run: corepack enable
+
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
           node-version: "22.18.0"
-
-      - name: Enable corepack
-        run: corepack enable
-
-      - name: Restore dependencies cache
-        uses: actions/cache@v5
-        with:
-          path: ~/.pnpm-store
-          key: ${{ needs.setup.outputs.cache-key }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml') }}
-            ${{ runner.os }}-pnpm-
+          cache: "pnpm"
+          cache-dependency-path: autogpt_platform/frontend/pnpm-lock.yaml
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
