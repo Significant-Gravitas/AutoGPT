@@ -4,7 +4,6 @@ import { WarningDiamondIcon } from "@phosphor-icons/react";
 import type { ToolUIPart } from "ai";
 import { useCopilotChatActions } from "../../components/CopilotChatActionsProvider/useCopilotChatActions";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
-import { OrbitLoader } from "../../components/OrbitLoader/OrbitLoader";
 import { ProgressBar } from "../../components/ProgressBar/ProgressBar";
 import {
   ContentCardDescription,
@@ -77,7 +76,7 @@ function getAccordionMeta(output: CreateAgentToolOutput) {
     isOperationInProgressOutput(output)
   ) {
     return {
-      icon: <OrbitLoader size={32} />,
+      icon,
       title: "Creating agent, this may take a few minutes. Sit back and relax.",
     };
   }
