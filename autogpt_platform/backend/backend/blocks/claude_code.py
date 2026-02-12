@@ -1,4 +1,6 @@
+import base64
 import json
+import logging
 import shlex
 import uuid
 from typing import Literal, Optional
@@ -20,6 +22,11 @@ from backend.data.model import (
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
+
+logger = logging.getLogger(__name__)
+
+# Maximum size for binary files to extract (50MB)
+MAX_BINARY_FILE_SIZE = 50 * 1024 * 1024
 
 
 class ClaudeCodeExecutionError(Exception):
@@ -180,7 +187,9 @@ class ClaudeCodeBlock(Block):
         path: str
         relative_path: str  # Path relative to working directory (for GitHub, etc.)
         name: str
-        content: str
+        content: str  # Text content for text files, empty string for binary files
+        is_binary: bool = False  # True if this is a binary file
+        content_base64: Optional[str] = None  # Base64-encoded content for binary files
 
     class Output(BlockSchemaOutput):
         response: str = SchemaField(
@@ -188,8 +197,11 @@ class ClaudeCodeBlock(Block):
         )
         files: list["ClaudeCodeBlock.FileOutput"] = SchemaField(
             description=(
-                "List of text files created/modified by Claude Code during this execution. "
-                "Each file has 'path', 'relative_path', 'name', and 'content' fields."
+                "List of files created/modified by Claude Code during this execution. "
+                "Each file has 'path', 'relative_path', 'name', 'content', 'is_binary', "
+                "and 'content_base64' fields. For text files, 'content' contains the text "
+                "and 'is_binary' is False. For binary files (PDFs, images, etc.), "
+                "'is_binary' is True and 'content_base64' contains the base64-encoded data."
             )
         )
         conversation_history: str = SchemaField(
@@ -252,6 +264,8 @@ class ClaudeCodeBlock(Block):
                             "relative_path": "index.html",
                             "name": "index.html",
                             "content": "<html>Hello World</html>",
+                            "is_binary": False,
+                            "content_base64": None,
                         }
                     ],
                 ),
@@ -272,6 +286,8 @@ class ClaudeCodeBlock(Block):
                             relative_path="index.html",
                             name="index.html",
                             content="<html>Hello World</html>",
+                            is_binary=False,
+                            content_base64=None,
                         )
                     ],  # files
                     "User: Create a hello world HTML file\n"
@@ -531,7 +547,6 @@ class ClaudeCodeBlock(Block):
             ".env",
             ".gitignore",
             ".dockerfile",
-            "Dockerfile",
             ".vue",
             ".svelte",
             ".astro",
@@ -540,6 +555,44 @@ class ClaudeCodeBlock(Block):
             ".tex",
             ".csv",
             ".log",
+            ".svg",  # SVG is XML-based text
+        }
+
+        # Binary file extensions we can read and base64-encode
+        binary_extensions = {
+            # Images
+            ".png",
+            ".jpg",
+            ".jpeg",
+            ".gif",
+            ".webp",
+            ".ico",
+            ".bmp",
+            ".tiff",
+            ".tif",
+            # Documents
+            ".pdf",
+            # Archives (useful for downloads)
+            ".zip",
+            ".tar",
+            ".gz",
+            ".7z",
+            # Audio/Video (if small enough)
+            ".mp3",
+            ".wav",
+            ".mp4",
+            ".webm",
+            # Other binary formats
+            ".woff",
+            ".woff2",
+            ".ttf",
+            ".otf",
+            ".eot",
+            ".bin",
+            ".exe",
+            ".dll",
+            ".so",
+            ".dylib",
         }
 
         try:
@@ -564,10 +617,26 @@ class ClaudeCodeBlock(Block):
                     if not file_path:
                         continue
 
-                    # Check if it's a text file we can read
+                    # Check if it's a text file we can read (case-insensitive)
+                    file_path_lower = file_path.lower()
                     is_text = any(
-                        file_path.endswith(ext) for ext in text_extensions
-                    ) or file_path.endswith("Dockerfile")
+                        file_path_lower.endswith(ext) for ext in text_extensions
+                    ) or file_path_lower.endswith("dockerfile")
+
+                    # Check if it's a binary file we should extract
+                    is_binary = any(
+                        file_path_lower.endswith(ext) for ext in binary_extensions
+                    )
+
+                    # Helper to extract filename and relative path
+                    def get_file_info(path: str, work_dir: str) -> tuple[str, str]:
+                        name = path.split("/")[-1]
+                        rel_path = path
+                        if path.startswith(work_dir):
+                            rel_path = path[len(work_dir) :]
+                            if rel_path.startswith("/"):
+                                rel_path = rel_path[1:]
+                        return name, rel_path
 
                     if is_text:
                         try:
@@ -576,32 +645,72 @@ class ClaudeCodeBlock(Block):
                             if isinstance(content, bytes):
                                 content = content.decode("utf-8", errors="replace")
 
-                            # Extract filename from path
-                            file_name = file_path.split("/")[-1]
-
-                            # Calculate relative path by stripping working directory
-                            relative_path = file_path
-                            if file_path.startswith(working_directory):
-                                relative_path = file_path[len(working_directory) :]
-                                # Remove leading slash if present
-                                if relative_path.startswith("/"):
-                                    relative_path = relative_path[1:]
-
+                            file_name, relative_path = get_file_info(
+                                file_path, working_directory
+                            )
                             files.append(
                                 ClaudeCodeBlock.FileOutput(
                                     path=file_path,
                                     relative_path=relative_path,
                                     name=file_name,
                                     content=content,
+                                    is_binary=False,
+                                    content_base64=None,
                                 )
                             )
-                        except Exception:
-                            # Skip files that can't be read
-                            pass
+                        except Exception as e:
+                            logger.warning(f"Failed to read text file {file_path}: {e}")
+                    elif is_binary:
+                        try:
+                            # Check file size before reading to avoid OOM
+                            stat_result = await sandbox.commands.run(
+                                f"stat -c %s {shlex.quote(file_path)} 2>/dev/null"
+                            )
+                            if stat_result.exit_code != 0 or not stat_result.stdout:
+                                logger.warning(
+                                    f"Skipping binary file {file_path}: "
+                                    f"could not determine file size"
+                                )
+                                continue
+                            file_size = int(stat_result.stdout.strip())
+                            if file_size > MAX_BINARY_FILE_SIZE:
+                                logger.warning(
+                                    f"Skipping binary file {file_path}: "
+                                    f"size {file_size} exceeds limit "
+                                    f"{MAX_BINARY_FILE_SIZE}"
+                                )
+                                continue
 
-        except Exception:
-            # If file extraction fails, return empty results
-            pass
+                            # Read binary file as bytes using format="bytes"
+                            content_bytes = await sandbox.files.read(
+                                file_path, format="bytes"
+                            )
+
+                            # Base64 encode the binary content
+                            content_b64 = base64.b64encode(content_bytes).decode(
+                                "ascii"
+                            )
+
+                            file_name, relative_path = get_file_info(
+                                file_path, working_directory
+                            )
+                            files.append(
+                                ClaudeCodeBlock.FileOutput(
+                                    path=file_path,
+                                    relative_path=relative_path,
+                                    name=file_name,
+                                    content="",  # Empty for binary files
+                                    is_binary=True,
+                                    content_base64=content_b64,
+                                )
+                            )
+                        except Exception as e:
+                            logger.warning(
+                                f"Failed to read binary file {file_path}: {e}"
+                            )
+
+        except Exception as e:
+            logger.warning(f"File extraction failed: {e}")
 
         return files
 
