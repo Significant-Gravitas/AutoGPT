@@ -2,8 +2,9 @@ import asyncio
 import logging
 from typing import TYPE_CHECKING, Optional, cast, overload
 
-from backend.data.block import BlockSchema
+from backend.blocks._base import BlockSchema
 from backend.data.graph import set_node_webhook
+from backend.data.integrations import get_webhook
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 
 from . import get_webhook_manager, supports_webhooks
@@ -113,31 +114,32 @@ async def on_node_deactivate(
 
     webhooks_manager = get_webhook_manager(provider)
 
-    if node.webhook_id:
-        logger.debug(f"Node #{node.id} has webhook_id {node.webhook_id}")
-        if not node.webhook:
-            logger.error(f"Node #{node.id} has webhook_id but no webhook object")
-            raise ValueError("node.webhook not included")
+    if webhook_id := node.webhook_id:
+        logger.warning(
+            f"Node #{node.id} still attached to webhook #{webhook_id} - "
+            "did migration by `migrate_legacy_triggered_graphs` fail? "
+            "Triggered nodes are deprecated since Significant-Gravitas/AutoGPT#10418."
+        )
+        webhook = await get_webhook(webhook_id)
 
         # Detach webhook from node
         logger.debug(f"Detaching webhook from node #{node.id}")
         updated_node = await set_node_webhook(node.id, None)
 
         # Prune and deregister the webhook if it is no longer used anywhere
-        webhook = node.webhook
         logger.debug(
             f"Pruning{' and deregistering' if credentials else ''} "
-            f"webhook #{webhook.id}"
+            f"webhook #{webhook_id}"
         )
         await webhooks_manager.prune_webhook_if_dangling(
-            user_id, webhook.id, credentials
+            user_id, webhook_id, credentials
         )
         if (
             cast(BlockSchema, block.input_schema).get_credentials_fields()
             and not credentials
         ):
             logger.warning(
-                f"Cannot deregister webhook #{webhook.id}: credentials "
+                f"Cannot deregister webhook #{webhook_id}: credentials "
                 f"#{webhook.credentials_id} not available "
                 f"({webhook.provider.value} webhook ID: {webhook.provider_webhook_id})"
             )
