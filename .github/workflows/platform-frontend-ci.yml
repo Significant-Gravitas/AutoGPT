@@ -199,10 +199,10 @@ jobs:
             echo "SET session_replication_role = 'replica';"
             cat /tmp/e2e_test_data.sql
             echo "SET session_replication_role = 'origin';"
-          } | docker compose -f ../docker-compose.resolved.yml exec -T db psql -U postgres -d postgres
+          } | docker compose -f ../docker-compose.resolved.yml exec -T db psql -U postgres -d postgres -b
           # Refresh materialized views after restore
           docker compose -f ../docker-compose.resolved.yml exec -T db \
-            psql -U postgres -d postgres -c "SET search_path TO platform; SELECT refresh_store_materialized_views();" || true
+            psql -U postgres -d postgres -b -c "SET search_path TO platform; SELECT refresh_store_materialized_views();" || true
 
           echo "✅ E2E test data restored from cache"
 
