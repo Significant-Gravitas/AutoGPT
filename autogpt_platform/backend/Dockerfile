@@ -63,12 +63,15 @@ ENV POETRY_HOME=/opt/poetry \
 ENV PATH=/opt/poetry/bin:$PATH
 
 # Install Python, FFmpeg, ImageMagick, and CLI tools for agent use
+# CLI tools match ALLOWED_BASH_COMMANDS in security_hooks.py
 RUN apt-get update && apt-get install -y \
     python3.13 \
     python3-pip \
     ffmpeg \
     imagemagick \
     jq \
+    ripgrep \
+    tree \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy only necessary files from builder
