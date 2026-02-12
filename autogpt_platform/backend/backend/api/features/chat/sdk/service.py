@@ -69,10 +69,21 @@ def _make_sdk_cwd(session_id: str) -> str:
     Sanitizes session_id, then validates the resulting path stays under /tmp/
     using normpath + startswith (the pattern CodeQL recognises as a sanitizer).
     """
+    # Step 1: Sanitize - only allow alphanumeric and hyphens
     safe_id = re.sub(r"[^A-Za-z0-9-]", "", session_id)
+    if not safe_id:
+        raise ValueError("Session ID is empty after sanitization")
+
+    # Step 2: Construct path with known-safe prefix
     cwd = os.path.normpath(f"{_SDK_CWD_PREFIX}{safe_id}")
+
+    # Step 3: Validate the path is still under our prefix (prevent traversal)
     if not cwd.startswith(_SDK_CWD_PREFIX):
         raise ValueError(f"Session path escaped prefix: {cwd}")
+
+    # Step 4: Additional assertion for defense-in-depth
+    assert cwd.startswith("/tmp/copilot-"), f"Path validation failed: {cwd}"
+
     return cwd
 
 
@@ -82,25 +93,44 @@ def _cleanup_sdk_tool_results(cwd: str) -> None:
     The SDK creates tool-result files under ~/.claude/projects/<encoded-cwd>/tool-results/.
     We clean only the specific cwd's results to avoid race conditions between
     concurrent sessions.
+
+    Security: cwd MUST be created by _make_sdk_cwd() which sanitizes session_id.
     """
-    import glob as _glob
     import shutil
 
-    # Validate cwd is under the expected prefix (CodeQL sanitizer pattern)
+    # Security check 1: Validate cwd is under the expected prefix
     normalized = os.path.normpath(cwd)
     if not normalized.startswith(_SDK_CWD_PREFIX):
+        logger.warning(f"[SDK] Rejecting cleanup for invalid path: {cwd}")
+        return
+
+    # Security check 2: Ensure no path traversal in the normalized path
+    if ".." in normalized:
+        logger.warning(f"[SDK] Rejecting cleanup for traversal attempt: {cwd}")
         return
 
     # SDK encodes the cwd path by replacing '/' with '-'
     encoded_cwd = normalized.replace("/", "-")
-    project_dir = os.path.expanduser(f"~/.claude/projects/{encoded_cwd}")
-    results_glob = os.path.join(project_dir, "tool-results", "*")
 
-    for path in _glob.glob(results_glob):
-        try:
-            os.remove(path)
-        except OSError:
-            pass
+    # Construct the project directory path (known-safe home expansion)
+    claude_projects = os.path.expanduser("~/.claude/projects")
+    project_dir = os.path.join(claude_projects, encoded_cwd)
+
+    # Security check 3: Validate project_dir is under ~/.claude/projects
+    project_dir = os.path.normpath(project_dir)
+    if not project_dir.startswith(claude_projects):
+        logger.warning(f"[SDK] Rejecting cleanup for escaped project path: {project_dir}")
+        return
+
+    results_dir = os.path.join(project_dir, "tool-results")
+    if os.path.isdir(results_dir):
+        for filename in os.listdir(results_dir):
+            file_path = os.path.join(results_dir, filename)
+            try:
+                if os.path.isfile(file_path):
+                    os.remove(file_path)
+            except OSError:
+                pass
 
     # Also clean up the temp cwd directory itself
     try:
