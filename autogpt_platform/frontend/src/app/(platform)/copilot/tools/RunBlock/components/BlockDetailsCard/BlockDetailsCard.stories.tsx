@@ -24,7 +24,8 @@ type Story = StoryObj<typeof meta>;
 
 const baseBlock: BlockDetailsResponse = {
   type: ResponseType.block_details,
-  message: "Here are the details for the GetWeather block. Provide the required inputs to run it.",
+  message:
+    "Here are the details for the GetWeather block. Provide the required inputs to run it.",
   session_id: "session-123",
   user_authenticated: true,
   block: {
@@ -37,7 +38,8 @@ const baseBlock: BlockDetailsResponse = {
         location: {
           title: "Location",
           type: "string",
-          description: "City name or coordinates (e.g. 'London' or '51.5,-0.1')",
+          description:
+            "City name or coordinates (e.g. 'London' or '51.5,-0.1')",
         },
         units: {
           title: "Units",
@@ -110,19 +112,47 @@ export const ManyFields: Story = {
         inputs: {
           type: "object",
           properties: {
-            to: { title: "To", type: "string", description: "Recipient email address" },
-            subject: { title: "Subject", type: "string", description: "Email subject line" },
-            body: { title: "Body", type: "string", description: "Email body content" },
-            cc: { title: "CC", type: "string", description: "CC recipients (comma-separated)" },
-            bcc: { title: "BCC", type: "string", description: "BCC recipients (comma-separated)" },
+            to: {
+              title: "To",
+              type: "string",
+              description: "Recipient email address",
+            },
+            subject: {
+              title: "Subject",
+              type: "string",
+              description: "Email subject line",
+            },
+            body: {
+              title: "Body",
+              type: "string",
+              description: "Email body content",
+            },
+            cc: {
+              title: "CC",
+              type: "string",
+              description: "CC recipients (comma-separated)",
+            },
+            bcc: {
+              title: "BCC",
+              type: "string",
+              description: "BCC recipients (comma-separated)",
+            },
           },
           required: ["to", "subject", "body"],
         },
         outputs: {
           type: "object",
           properties: {
-            message_id: { title: "Message ID", type: "string", description: "Unique ID of the sent email" },
-            status: { title: "Status", type: "string", description: "Delivery status" },
+            message_id: {
+              title: "Message ID",
+              type: "string",
+              description: "Unique ID of the sent email",
+            },
+            status: {
+              title: "Status",
+              type: "string",
+              description: "Delivery status",
+            },
           },
         },
       },
