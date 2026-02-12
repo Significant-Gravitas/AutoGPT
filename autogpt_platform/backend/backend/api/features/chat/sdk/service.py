@@ -15,6 +15,7 @@ from ..config import ChatConfig
 from ..model import (
     ChatMessage,
     ChatSession,
+    Usage,
     get_chat_session,
     update_session_title,
     upsert_chat_session,
@@ -27,6 +28,7 @@ from ..response_model import (
     StreamTextDelta,
     StreamToolInputAvailable,
     StreamToolOutputAvailable,
+    StreamUsage,
 )
 from ..service import _build_system_prompt, _generate_session_title
 from ..tracking import track_user_message
@@ -62,6 +64,41 @@ echo, diff, base64, and similar utilities.
 Network commands (curl, wget), destructive commands (rm, chmod), and
 interpreters (python, node) are NOT available.
 """
+
+
+def _resolve_sdk_model() -> str | None:
+    """Resolve the model name for the SDK CLI.
+
+    Uses ``config.sdk_model`` if set, otherwise derives from ``config.model``
+    by stripping the OpenRouter provider prefix (e.g.,
+    ``"anthropic/claude-opus-4.6"`` → ``"claude-opus-4.6"``).
+    """
+    if config.sdk_model:
+        return config.sdk_model
+    model = config.model
+    if "/" in model:
+        return model.split("/", 1)[1]
+    return model
+
+
+def _build_sdk_env() -> dict[str, str]:
+    """Build env vars for the SDK CLI process.
+
+    Routes API calls through OpenRouter (or a custom base_url) using
+    the same ``config.api_key`` / ``config.base_url`` as the non-SDK path.
+    This gives per-call token and cost tracking on the OpenRouter dashboard.
+    """
+    env: dict[str, str] = {}
+    if config.api_key and config.base_url:
+        # Strip /v1 suffix — SDK expects the base URL without a version path
+        base = config.base_url.rstrip("/")
+        if base.endswith("/v1"):
+            base = base[:-3]
+        env["ANTHROPIC_BASE_URL"] = base
+        env["ANTHROPIC_AUTH_TOKEN"] = config.api_key
+        # Must be explicitly empty to prevent the CLI from using a local key
+        env["ANTHROPIC_API_KEY"] = ""
+    return env
 
 
 def _make_sdk_cwd(session_id: str) -> str:
@@ -317,8 +354,10 @@ async def stream_chat_completion_sdk(
 
             mcp_server = create_copilot_mcp_server()
 
+            sdk_model = _resolve_sdk_model()
+
             # Initialize Langfuse tracing (no-op if not configured)
-            tracer = TracedSession(session_id, user_id, system_prompt)
+            tracer = TracedSession(session_id, user_id, system_prompt, model=sdk_model)
 
             # Merge security hooks with optional tracing hooks
             security_hooks = create_security_hooks(user_id, sdk_cwd=sdk_cwd)
@@ -332,6 +371,10 @@ async def stream_chat_completion_sdk(
                 hooks=combined_hooks,  # type: ignore[arg-type]
                 cwd=sdk_cwd,
                 max_buffer_size=config.sdk_max_buffer_size,
+                model=sdk_model,
+                env=_build_sdk_env(),
+                user=user_id or None,
+                max_budget_usd=config.sdk_max_budget_usd,
             )
 
             adapter = SDKResponseAdapter(message_id=message_id)
@@ -437,6 +480,15 @@ async def stream_chat_completion_sdk(
                                 )
                             )
                             has_tool_results = True
+
+                        elif isinstance(response, StreamUsage):
+                            session.usage.append(
+                                Usage(
+                                    prompt_tokens=response.promptTokens,
+                                    completion_tokens=response.completionTokens,
+                                    total_tokens=response.totalTokens,
+                                )
+                            )
 
                         elif isinstance(response, StreamFinish):
                             stream_completed = True

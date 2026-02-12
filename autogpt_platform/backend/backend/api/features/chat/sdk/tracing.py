@@ -77,10 +77,12 @@ class TracedSession:
         session_id: str,
         user_id: str | None = None,
         system_prompt: str | None = None,
+        model: str | None = None,
     ):
         self.session_id = session_id
         self.user_id = user_id
         self.system_prompt = system_prompt
+        self.model = model
         self.enabled = _is_langfuse_configured()
 
         # Internal state
@@ -265,7 +267,7 @@ class TracedSession:
             if usage or result.total_cost_usd:
                 self._trace.generation(
                     name="claude-sdk-completion",
-                    model="claude-sonnet-4-20250514",  # SDK default model
+                    model=self.model or "claude-sonnet-4-20250514",
                     usage=(
                         {
                             "input": usage.get("input_tokens", 0),
@@ -313,6 +315,7 @@ async def traced_session(
     session_id: str,
     user_id: str | None = None,
     system_prompt: str | None = None,
+    model: str | None = None,
 ):
     """Convenience async context manager for tracing SDK sessions.
 
@@ -322,7 +325,7 @@ async def traced_session(
             async for msg in client.receive_messages():
                 tracer.log_sdk_message(msg)
     """
-    tracer = TracedSession(session_id, user_id, system_prompt)
+    tracer = TracedSession(session_id, user_id, system_prompt, model=model)
     async with tracer:
         yield tracer
 

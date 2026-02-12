@@ -33,6 +33,7 @@ from backend.api.features.chat.response_model import (
     StreamToolInputAvailable,
     StreamToolInputStart,
     StreamToolOutputAvailable,
+    StreamUsage,
 )
 from backend.api.features.chat.sdk.tool_adapter import (
     MCP_TOOL_PREFIX,
@@ -147,6 +148,19 @@ class SDKResponseAdapter:
             if self.step_open:
                 responses.append(StreamFinishStep())
                 self.step_open = False
+
+            # Emit token usage if the SDK reported it
+            usage = getattr(sdk_message, "usage", None) or {}
+            if usage:
+                input_tokens = usage.get("input_tokens", 0)
+                output_tokens = usage.get("output_tokens", 0)
+                responses.append(
+                    StreamUsage(
+                        promptTokens=input_tokens,
+                        completionTokens=output_tokens,
+                        totalTokens=input_tokens + output_tokens,
+                    )
+                )
 
             if sdk_message.subtype == "success":
                 responses.append(StreamFinish())
