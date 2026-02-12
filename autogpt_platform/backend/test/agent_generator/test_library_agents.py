@@ -150,24 +150,24 @@ class TestSearchMarketplaceAgentsForGeneration:
         mock_graph.input_schema = {"type": "object"}
         mock_graph.output_schema = {"type": "object"}
 
+        mock_store_db = MagicMock()
+        mock_store_db.get_store_agents = AsyncMock(return_value=mock_response)
+
+        mock_graph_db = MagicMock()
+        mock_graph_db.get_store_listed_graphs = AsyncMock(
+            return_value={"graph-123": mock_graph}
+        )
+
         with (
-            patch(
-                "backend.api.features.store.db.get_store_agents",
-                new_callable=AsyncMock,
-                return_value=mock_response,
-            ) as mock_search,
-            patch(
-                "backend.copilot.tools.agent_generator.core.get_store_listed_graphs",
-                new_callable=AsyncMock,
-                return_value={"graph-123": mock_graph},
-            ),
+            patch.object(core, "store_db", return_value=mock_store_db),
+            patch.object(core, "graph_db", return_value=mock_graph_db),
         ):
             result = await core.search_marketplace_agents_for_generation(
                 search_query="automation",
                 max_results=10,
             )
 
-            mock_search.assert_called_once_with(
+            mock_store_db.get_store_agents.assert_called_once_with(
                 search_query="automation",
                 page=1,
                 page_size=10,
