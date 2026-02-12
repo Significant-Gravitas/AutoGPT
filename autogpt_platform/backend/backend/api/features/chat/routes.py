@@ -12,6 +12,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from backend.util.exceptions import NotFoundError
+from backend.util.feature_flag import Flag, is_feature_enabled
 
 from . import service as chat_service
 from . import stream_registry
@@ -394,8 +395,12 @@ async def stream_chat_post(
                 },
             )
 
-            # Choose service based on configuration
-            use_sdk = config.use_claude_agent_sdk
+            # Choose service based on LaunchDarkly flag (falls back to config default)
+            use_sdk = await is_feature_enabled(
+                Flag.COPILOT_SDK,
+                user_id or "anonymous",
+                default=config.use_claude_agent_sdk,
+            )
             stream_fn = (
                 sdk_service.stream_chat_completion_sdk
                 if use_sdk
