@@ -374,7 +374,11 @@ async def stream_chat_completion_sdk(
             tracer = TracedSession(session_id, user_id, system_prompt)
 
             # Merge security hooks with optional tracing hooks
-            security_hooks = create_security_hooks(user_id, sdk_cwd=sdk_cwd)
+            security_hooks = create_security_hooks(
+                user_id,
+                sdk_cwd=sdk_cwd,
+                max_subtasks=config.claude_agent_max_subtasks,
+            )
             tracing_hooks = create_tracing_hooks(tracer)
             combined_hooks = merge_hooks(security_hooks, tracing_hooks)
 

@@ -107,6 +107,10 @@ class ChatConfig(BaseSettings):
         description="Max buffer size in bytes for Claude Agent SDK JSON message parsing. "
         "Increase if tool outputs exceed the limit.",
     )
+    claude_agent_max_subtasks: int = Field(
+        default=3,
+        description="Max number of sub-agent Tasks the SDK can spawn per session.",
+    )
 
     # Extended thinking configuration for Claude models
     thinking_enabled: bool = Field(

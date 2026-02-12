@@ -42,6 +42,9 @@ class ResponseType(str, Enum):
     INPUT_VALIDATION_ERROR = "input_validation_error"
     # Web fetch
     WEB_FETCH = "web_fetch"
+    # Code execution
+    PYTHON_EXEC = "python_exec"
+    BASH_EXEC = "bash_exec"
 
 
 # Base response model
@@ -440,3 +443,23 @@ class WebFetchResponse(ToolResponseBase):
     content_type: str
     content: str
     truncated: bool = False
+
+
+class PythonExecResponse(ToolResponseBase):
+    """Response for python_exec tool."""
+
+    type: ResponseType = ResponseType.PYTHON_EXEC
+    stdout: str
+    stderr: str
+    exit_code: int
+    timed_out: bool = False
+
+
+class BashExecResponse(ToolResponseBase):
+    """Response for bash_exec tool."""
+
+    type: ResponseType = ResponseType.BASH_EXEC
+    stdout: str
+    stderr: str
+    exit_code: int
+    timed_out: bool = False

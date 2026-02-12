@@ -10490,7 +10490,10 @@
           "operation_started",
           "operation_pending",
           "operation_in_progress",
-          "input_validation_error"
+          "input_validation_error",
+          "web_fetch",
+          "python_exec",
+          "bash_exec"
         ],
         "title": "ResponseType",
         "description": "Types of tool responses."

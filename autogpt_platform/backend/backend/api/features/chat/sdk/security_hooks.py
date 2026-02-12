@@ -286,7 +286,9 @@ def _validate_user_isolation(
 
 
 def create_security_hooks(
-    user_id: str | None, sdk_cwd: str | None = None
+    user_id: str | None,
+    sdk_cwd: str | None = None,
+    max_subtasks: int = 3,
 ) -> dict[str, Any]:
     """Create the security hooks configuration for Claude Agent SDK.
 
@@ -299,6 +301,7 @@ def create_security_hooks(
     Args:
         user_id: Current user ID for isolation validation
         sdk_cwd: SDK working directory for workspace-scoped tool validation
+        max_subtasks: Maximum Task (sub-agent) spawns allowed per session
 
     Returns:
         Hooks configuration dict for ClaudeAgentOptions
@@ -307,15 +310,34 @@ def create_security_hooks(
         from claude_agent_sdk import HookMatcher
         from claude_agent_sdk.types import HookContext, HookInput, SyncHookJSONOutput
 
+        # Per-session counter for Task sub-agent spawns
+        task_spawn_count = 0
+
         async def pre_tool_use_hook(
             input_data: HookInput,
             tool_use_id: str | None,
             context: HookContext,
         ) -> SyncHookJSONOutput:
             """Combined pre-tool-use validation hook."""
+            nonlocal task_spawn_count
             _ = context  # unused but required by signature
             tool_name = cast(str, input_data.get("tool_name", ""))
             tool_input = cast(dict[str, Any], input_data.get("tool_input", {}))
+
+            # Rate-limit Task (sub-agent) spawns per session
+            if tool_name == "Task":
+                task_spawn_count += 1
+                if task_spawn_count > max_subtasks:
+                    logger.warning(
+                        f"[SDK] Task limit reached ({max_subtasks}), user={user_id}"
+                    )
+                    return cast(
+                        SyncHookJSONOutput,
+                        _deny(
+                            f"Maximum {max_subtasks} sub-tasks per session. "
+                            "Please continue in the main conversation."
+                        ),
+                    )
 
             # Strip MCP prefix for consistent validation
             is_copilot_tool = tool_name.startswith(MCP_TOOL_PREFIX)
