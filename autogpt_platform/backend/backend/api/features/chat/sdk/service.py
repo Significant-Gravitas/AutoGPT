@@ -38,7 +38,7 @@ from .tool_adapter import (
     create_copilot_mcp_server,
     set_execution_context,
 )
-from .tracing import TracedSession
+from .tracing import TracedSession, create_tracing_hooks, merge_hooks
 
 logger = logging.getLogger(__name__)
 config = ChatConfig()
@@ -317,11 +317,19 @@ async def stream_chat_completion_sdk(
 
             mcp_server = create_copilot_mcp_server()
 
+            # Initialize Langfuse tracing (no-op if not configured)
+            tracer = TracedSession(session_id, user_id, system_prompt)
+
+            # Merge security hooks with optional tracing hooks
+            security_hooks = create_security_hooks(user_id, sdk_cwd=sdk_cwd)
+            tracing_hooks = create_tracing_hooks(tracer)
+            combined_hooks = merge_hooks(security_hooks, tracing_hooks)
+
             options = ClaudeAgentOptions(
                 system_prompt=system_prompt,
                 mcp_servers={"copilot": mcp_server},  # type: ignore[arg-type]
                 allowed_tools=COPILOT_TOOL_NAMES,
-                hooks=create_security_hooks(user_id, sdk_cwd=sdk_cwd),  # type: ignore[arg-type]
+                hooks=combined_hooks,  # type: ignore[arg-type]
                 cwd=sdk_cwd,
                 max_buffer_size=config.sdk_max_buffer_size,
             )
@@ -329,8 +337,6 @@ async def stream_chat_completion_sdk(
             adapter = SDKResponseAdapter(message_id=message_id)
             adapter.set_task_id(task_id)
 
-            # Initialize Langfuse tracing (no-op if not configured)
-            tracer = TracedSession(session_id, user_id, system_prompt)
             async with tracer, ClaudeSDKClient(options=options) as client:
                 current_message = message or ""
                 if not current_message and session.messages:

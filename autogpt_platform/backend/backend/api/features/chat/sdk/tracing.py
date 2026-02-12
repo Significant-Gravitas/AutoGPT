@@ -325,3 +325,102 @@ async def traced_session(
     tracer = TracedSession(session_id, user_id, system_prompt)
     async with tracer:
         yield tracer
+
+
+def create_tracing_hooks(tracer: TracedSession) -> dict[str, Any]:
+    """Create SDK hooks for fine-grained Langfuse tracing.
+
+    These hooks capture precise timing for tool executions and failures
+    that may not be visible in the message stream.
+
+    Designed to be merged with security hooks:
+        hooks = {**security_hooks, **create_tracing_hooks(tracer)}
+
+    Args:
+        tracer: The active TracedSession instance
+
+    Returns:
+        Hooks configuration dict for ClaudeAgentOptions
+    """
+    if not tracer.enabled:
+        return {}
+
+    try:
+        from claude_agent_sdk import HookMatcher
+        from claude_agent_sdk.types import HookContext, HookInput, SyncHookJSONOutput
+
+        async def trace_pre_tool_use(
+            input_data: HookInput,
+            tool_use_id: str | None,
+            context: HookContext,
+        ) -> SyncHookJSONOutput:
+            """Record tool start time for accurate duration tracking."""
+            _ = context
+            if not tool_use_id:
+                return {}
+            tool_name = str(input_data.get("tool_name", "unknown"))
+            tool_input = input_data.get("tool_input", {})
+
+            # Record start time in pending tools
+            tracer._pending_tools[tool_use_id] = ToolSpan(
+                tool_call_id=tool_use_id,
+                tool_name=tool_name,
+                input=tool_input if isinstance(tool_input, dict) else {},
+            )
+            return {}
+
+        async def trace_post_tool_use(
+            input_data: HookInput,
+            tool_use_id: str | None,
+            context: HookContext,
+        ) -> SyncHookJSONOutput:
+            """Record tool completion for duration calculation."""
+            _ = context
+            if tool_use_id and tool_use_id in tracer._pending_tools:
+                tracer._pending_tools[tool_use_id].end_time = time.perf_counter()
+                tracer._pending_tools[tool_use_id].success = True
+            return {}
+
+        async def trace_post_tool_failure(
+            input_data: HookInput,
+            tool_use_id: str | None,
+            context: HookContext,
+        ) -> SyncHookJSONOutput:
+            """Record tool failures for error tracking."""
+            _ = context
+            if tool_use_id and tool_use_id in tracer._pending_tools:
+                tracer._pending_tools[tool_use_id].end_time = time.perf_counter()
+                tracer._pending_tools[tool_use_id].success = False
+                error = input_data.get("error", "Unknown error")
+                tracer._pending_tools[tool_use_id].output = f"ERROR: {error}"
+            return {}
+
+        return {
+            "PreToolUse": [HookMatcher(matcher="*", hooks=[trace_pre_tool_use])],
+            "PostToolUse": [HookMatcher(matcher="*", hooks=[trace_post_tool_use])],
+            "PostToolUseFailure": [
+                HookMatcher(matcher="*", hooks=[trace_post_tool_failure])
+            ],
+        }
+
+    except ImportError:
+        logger.debug("[Tracing] SDK not available for hook-based tracing")
+        return {}
+
+
+def merge_hooks(*hook_dicts: dict[str, Any]) -> dict[str, Any]:
+    """Merge multiple hook configurations into one.
+
+    Combines hook matchers for the same event type, allowing both
+    security and tracing hooks to coexist.
+
+    Usage:
+        combined = merge_hooks(security_hooks, tracing_hooks)
+    """
+    result: dict[str, list[Any]] = {}
+    for hook_dict in hook_dicts:
+        for event_name, matchers in hook_dict.items():
+            if event_name not in result:
+                result[event_name] = []
+            result[event_name].extend(matchers)
+    return result
