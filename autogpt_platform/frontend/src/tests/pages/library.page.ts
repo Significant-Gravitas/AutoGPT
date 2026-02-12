@@ -252,21 +252,6 @@ export class LibraryPage extends BasePage {
     ]);
   }
 
-  async clickMonitoringLink(): Promise<void> {
-    console.log(`clicking monitoring link in alert`);
-    await this.page.getByRole("link", { name: "here" }).click();
-  }
-
-  async isMonitoringAlertVisible(): Promise<boolean> {
-    console.log(`checking if monitoring alert is visible`);
-    try {
-      const alertText = this.page.locator("text=/Prefer the old experience/");
-      return await alertText.isVisible();
-    } catch {
-      return false;
-    }
-  }
-
   async getSearchValue(): Promise<string> {
     console.log(`getting search input value`);
     try {
