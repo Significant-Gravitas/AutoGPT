@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 
-import { AgentRunDraftView } from "@/app/(platform)/library/agents/[id]/components/OldAgentLibraryView/components/agent-run-draft-view";
+import { AgentRunDraftView } from "@/app/(platform)/build/components/legacy-builder/agent-run-draft-view";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import type {
   CredentialsMetaInput,
