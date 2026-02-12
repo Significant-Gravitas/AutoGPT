@@ -81,30 +81,40 @@ def test_get_bulletin_from_web_exception(mock_get):
     assert bulletin == ""
 
 
-def test_get_latest_bulletin_no_file():
-    if os.path.exists("data/CURRENT_BULLETIN.md"):
-        os.remove("data/CURRENT_BULLETIN.md")
+def test_get_latest_bulletin_no_file(tmp_path, monkeypatch):
+    bulletin_path = tmp_path / "data" / "CURRENT_BULLETIN.md"
+    monkeypatch.chdir(tmp_path)
+    # Ensure file doesn't exist
+    if bulletin_path.exists():
+        bulletin_path.unlink()
 
-    bulletin, is_new = get_latest_bulletin()
-    assert is_new
+    with patch("autogpt.app.utils.get_bulletin_from_web", return_value=""):
+        bulletin, is_new = get_latest_bulletin()
+        assert is_new
 
 
-def test_get_latest_bulletin_with_file():
+def test_get_latest_bulletin_with_file(tmp_path, monkeypatch):
+    data_dir = tmp_path / "data"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    bulletin_path = data_dir / "CURRENT_BULLETIN.md"
+    monkeypatch.chdir(tmp_path)
+
     expected_content = "Test bulletin"
-    with open("data/CURRENT_BULLETIN.md", "w", encoding="utf-8") as f:
-        f.write(expected_content)
+    bulletin_path.write_text(expected_content, encoding="utf-8")
 
     with patch("autogpt.app.utils.get_bulletin_from_web", return_value=""):
         bulletin, is_new = get_latest_bulletin()
         assert expected_content in bulletin
         assert is_new is False
 
-    os.remove("data/CURRENT_BULLETIN.md")
 
+def test_get_latest_bulletin_with_new_bulletin(tmp_path, monkeypatch):
+    data_dir = tmp_path / "data"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    bulletin_path = data_dir / "CURRENT_BULLETIN.md"
+    monkeypatch.chdir(tmp_path)
 
-def test_get_latest_bulletin_with_new_bulletin():
-    with open("data/CURRENT_BULLETIN.md", "w", encoding="utf-8") as f:
-        f.write("Old bulletin")
+    bulletin_path.write_text("Old bulletin", encoding="utf-8")
 
     expected_content = "New bulletin from web"
     with patch(
@@ -115,13 +125,15 @@ def test_get_latest_bulletin_with_new_bulletin():
         assert expected_content in bulletin
         assert is_new
 
-    os.remove("data/CURRENT_BULLETIN.md")
 
+def test_get_latest_bulletin_new_bulletin_same_as_old_bulletin(tmp_path, monkeypatch):
+    data_dir = tmp_path / "data"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    bulletin_path = data_dir / "CURRENT_BULLETIN.md"
+    monkeypatch.chdir(tmp_path)
 
-def test_get_latest_bulletin_new_bulletin_same_as_old_bulletin():
     expected_content = "Current bulletin"
-    with open("data/CURRENT_BULLETIN.md", "w", encoding="utf-8") as f:
-        f.write(expected_content)
+    bulletin_path.write_text(expected_content, encoding="utf-8")
 
     with patch(
         "autogpt.app.utils.get_bulletin_from_web", return_value=expected_content
@@ -129,8 +141,6 @@ def test_get_latest_bulletin_new_bulletin_same_as_old_bulletin():
         bulletin, is_new = get_latest_bulletin()
         assert expected_content in bulletin
         assert is_new is False
-
-    os.remove("data/CURRENT_BULLETIN.md")
 
 
 @skip_in_ci
