@@ -87,6 +87,10 @@ def _build_sdk_env() -> dict[str, str]:
     Routes API calls through OpenRouter (or a custom base_url) using
     the same ``config.api_key`` / ``config.base_url`` as the non-SDK path.
     This gives per-call token and cost tracking on the OpenRouter dashboard.
+
+    Only overrides ``ANTHROPIC_API_KEY`` when a valid proxy URL and auth
+    token are both present — otherwise returns an empty dict so the SDK
+    falls back to its default credentials.
     """
     env: dict[str, str] = {}
     if config.api_key and config.base_url:
@@ -94,9 +98,12 @@ def _build_sdk_env() -> dict[str, str]:
         base = config.base_url.rstrip("/")
         if base.endswith("/v1"):
             base = base[:-3]
+        if not base or not base.startswith("http"):
+            # Invalid base_url — don't override SDK defaults
+            return env
         env["ANTHROPIC_BASE_URL"] = base
         env["ANTHROPIC_AUTH_TOKEN"] = config.api_key
-        # Must be explicitly empty to prevent the CLI from using a local key
+        # Must be explicitly empty so the CLI uses AUTH_TOKEN instead
         env["ANTHROPIC_API_KEY"] = ""
     return env
 
