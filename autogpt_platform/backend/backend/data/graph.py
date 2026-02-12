@@ -569,6 +569,7 @@ class GraphModel(Graph, GraphMeta):
                     field_name,
                     field_info,
                 ) in node.block.input_schema.get_credentials_fields_info().items():
+
                     discriminator = field_info.discriminator
                     if not discriminator:
                         node_credential_data.append((field_info, (node.id, field_name)))
@@ -835,9 +836,9 @@ class GraphModel(Graph, GraphMeta):
                 # Check for missing dependencies when dependent field is present
                 missing_deps = [dep for dep in dependencies if not has_value(node, dep)]
                 if missing_deps and (field_has_value or field_is_required):
-                    node_errors[node.id][field_name] = (
-                        f"Requires {', '.join(missing_deps)} to be set"
-                    )
+                    node_errors[node.id][
+                        field_name
+                    ] = f"Requires {', '.join(missing_deps)} to be set"
 
         return node_errors
 

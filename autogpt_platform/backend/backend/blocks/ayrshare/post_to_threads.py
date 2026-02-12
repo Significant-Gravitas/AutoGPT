@@ -61,34 +61,22 @@ class PostToThreadsBlock(Block):
 
         client = create_ayrshare_client()
         if not client:
-            yield (
-                "error",
-                "Ayrshare integration is not configured. Please set up the AYRSHARE_API_KEY.",
-            )
+            yield "error", "Ayrshare integration is not configured. Please set up the AYRSHARE_API_KEY."
             return
 
         # Validate Threads constraints
         if len(input_data.post) > 500:
-            yield (
-                "error",
-                f"Threads post text exceeds 500 character limit ({len(input_data.post)} characters)",
-            )
+            yield "error", f"Threads post text exceeds 500 character limit ({len(input_data.post)} characters)"
             return
 
         if len(input_data.media_urls) > 20:
-            yield (
-                "error",
-                "Threads supports a maximum of 20 images/videos in a carousel",
-            )
+            yield "error", "Threads supports a maximum of 20 images/videos in a carousel"
             return
 
         # Count hashtags (only 1 allowed)
         hashtag_count = input_data.post.count("#")
         if hashtag_count > 1:
-            yield (
-                "error",
-                f"Threads allows only 1 hashtag per post ({hashtag_count} found)",
-            )
+            yield "error", f"Threads allows only 1 hashtag per post ({hashtag_count} found)"
             return
 
         # Convert datetime to ISO format if provided

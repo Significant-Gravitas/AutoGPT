@@ -566,9 +566,8 @@ class ExaUpdateWebsetBlock(Block):
         yield "status", status_str
         yield "external_id", sdk_webset.external_id
         yield "metadata", sdk_webset.metadata or {}
-        yield (
-            "updated_at",
-            (sdk_webset.updated_at.isoformat() if sdk_webset.updated_at else ""),
+        yield "updated_at", (
+            sdk_webset.updated_at.isoformat() if sdk_webset.updated_at else ""
         )
 
 
@@ -707,13 +706,11 @@ class ExaGetWebsetBlock(Block):
         yield "enrichments", enrichments_data
         yield "monitors", monitors_data
         yield "metadata", sdk_webset.metadata or {}
-        yield (
-            "created_at",
-            (sdk_webset.created_at.isoformat() if sdk_webset.created_at else ""),
+        yield "created_at", (
+            sdk_webset.created_at.isoformat() if sdk_webset.created_at else ""
         )
-        yield (
-            "updated_at",
-            (sdk_webset.updated_at.isoformat() if sdk_webset.updated_at else ""),
+        yield "updated_at", (
+            sdk_webset.updated_at.isoformat() if sdk_webset.updated_at else ""
         )
 
 
@@ -1267,9 +1264,7 @@ class ExaWebsetSummaryBlock(Block):
                         (
                             e.format.value
                             if e.format and hasattr(e.format, "value")
-                            else str(e.format)
-                            if e.format
-                            else "text"
+                            else str(e.format) if e.format else "text"
                         )
                         for e in enrichments
                     )

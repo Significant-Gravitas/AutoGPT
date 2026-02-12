@@ -319,7 +319,7 @@ class CostDollars(BaseModel):
 
 # Helper functions for payload processing
 def process_text_field(
-    text: Union[bool, TextEnabled, TextDisabled, TextAdvanced, None],
+    text: Union[bool, TextEnabled, TextDisabled, TextAdvanced, None]
 ) -> Optional[Union[bool, Dict[str, Any]]]:
     """Process text field for API payload."""
     if text is None:
@@ -400,7 +400,7 @@ def process_contents_settings(contents: Optional[ContentSettings]) -> Dict[str, 
 
 
 def process_context_field(
-    context: Union[bool, dict, ContextEnabled, ContextDisabled, ContextAdvanced, None],
+    context: Union[bool, dict, ContextEnabled, ContextDisabled, ContextAdvanced, None]
 ) -> Optional[Union[bool, Dict[str, int]]]:
     """Process context field for API payload."""
     if context is None:

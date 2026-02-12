@@ -140,22 +140,20 @@ class ValidateEmailsBlock(Block):
                 )
             ],
             test_mock={
-                "validate_email": lambda email, ip_address, credentials: (
-                    ZBValidateResponse(
-                        data={
-                            "address": email,
-                            "status": ZBValidateStatus.valid,
-                            "sub_status": ZBValidateSubStatus.allowed,
-                            "account": "test",
-                            "domain": "test.com",
-                            "did_you_mean": None,
-                            "domain_age_days": None,
-                            "free_email": False,
-                            "mx_found": False,
-                            "mx_record": None,
-                            "smtp_provider": None,
-                        }
-                    )
+                "validate_email": lambda email, ip_address, credentials: ZBValidateResponse(
+                    data={
+                        "address": email,
+                        "status": ZBValidateStatus.valid,
+                        "sub_status": ZBValidateSubStatus.allowed,
+                        "account": "test",
+                        "domain": "test.com",
+                        "did_you_mean": None,
+                        "domain_age_days": None,
+                        "free_email": False,
+                        "mx_found": False,
+                        "mx_record": None,
+                        "smtp_provider": None,
+                    }
                 )
             },
         )

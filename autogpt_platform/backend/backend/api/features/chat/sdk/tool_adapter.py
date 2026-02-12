@@ -37,8 +37,7 @@ _current_tool_call_id: ContextVar[str | None] = ContextVar(
 # Keyed by tool_name → full output string. Consumed (popped) by the
 # response adapter when it builds StreamToolOutputAvailable.
 _pending_tool_outputs: ContextVar[dict[str, str]] = ContextVar(
-    "pending_tool_outputs",
-    default=None,  # type: ignore[arg-type]
+    "pending_tool_outputs", default=None  # type: ignore[arg-type]
 )
 
 

@@ -33,11 +33,14 @@ class TestFileCloudIntegration:
         cloud_path = "gcs://test-bucket/uploads/456/source.txt"
         cloud_content = b"cloud file content"
 
-        with (
-            patch("backend.util.file.get_cloud_storage_handler") as mock_handler_getter,
-            patch("backend.util.file.scan_content_safe") as mock_scan,
-            patch("backend.util.file.Path") as mock_path_class,
-        ):
+        with patch(
+            "backend.util.file.get_cloud_storage_handler"
+        ) as mock_handler_getter, patch(
+            "backend.util.file.scan_content_safe"
+        ) as mock_scan, patch(
+            "backend.util.file.Path"
+        ) as mock_path_class:
+
             # Mock cloud storage handler
             mock_handler = MagicMock()
             mock_handler.is_cloud_path.return_value = True
@@ -107,13 +110,18 @@ class TestFileCloudIntegration:
         cloud_path = "gcs://test-bucket/uploads/456/image.png"
         cloud_content = b"\\x89PNG\\r\\n\\x1a\\n\\x00\\x00\\x00\\rIHDR"  # PNG header
 
-        with (
-            patch("backend.util.file.get_cloud_storage_handler") as mock_handler_getter,
-            patch("backend.util.file.scan_content_safe") as mock_scan,
-            patch("backend.util.file.get_mime_type") as mock_mime,
-            patch("backend.util.file.base64.b64encode") as mock_b64,
-            patch("backend.util.file.Path") as mock_path_class,
-        ):
+        with patch(
+            "backend.util.file.get_cloud_storage_handler"
+        ) as mock_handler_getter, patch(
+            "backend.util.file.scan_content_safe"
+        ) as mock_scan, patch(
+            "backend.util.file.get_mime_type"
+        ) as mock_mime, patch(
+            "backend.util.file.base64.b64encode"
+        ) as mock_b64, patch(
+            "backend.util.file.Path"
+        ) as mock_path_class:
+
             # Mock cloud storage handler
             mock_handler = MagicMock()
             mock_handler.is_cloud_path.return_value = True
@@ -161,13 +169,18 @@ class TestFileCloudIntegration:
         graph_exec_id = "test-exec-123"
         data_uri = "data:text/plain;base64,SGVsbG8gd29ybGQ="
 
-        with (
-            patch("backend.util.file.get_cloud_storage_handler") as mock_handler_getter,
-            patch("backend.util.file.scan_content_safe") as mock_scan,
-            patch("backend.util.file.base64.b64decode") as mock_b64decode,
-            patch("backend.util.file.uuid.uuid4") as mock_uuid,
-            patch("backend.util.file.Path") as mock_path_class,
-        ):
+        with patch(
+            "backend.util.file.get_cloud_storage_handler"
+        ) as mock_handler_getter, patch(
+            "backend.util.file.scan_content_safe"
+        ) as mock_scan, patch(
+            "backend.util.file.base64.b64decode"
+        ) as mock_b64decode, patch(
+            "backend.util.file.uuid.uuid4"
+        ) as mock_uuid, patch(
+            "backend.util.file.Path"
+        ) as mock_path_class:
+
             # Mock cloud storage handler
             mock_handler = MagicMock()
             mock_handler.is_cloud_path.return_value = False
@@ -217,6 +230,7 @@ class TestFileCloudIntegration:
         with patch(
             "backend.util.file.get_cloud_storage_handler"
         ) as mock_handler_getter:
+
             # Mock cloud storage handler to raise error
             mock_handler = AsyncMock()
             mock_handler.is_cloud_path.return_value = True
@@ -241,11 +255,14 @@ class TestFileCloudIntegration:
         local_file = "test_video.mp4"
         file_content = b"fake video content"
 
-        with (
-            patch("backend.util.file.get_cloud_storage_handler") as mock_handler_getter,
-            patch("backend.util.file.scan_content_safe") as mock_scan,
-            patch("backend.util.file.Path") as mock_path_class,
-        ):
+        with patch(
+            "backend.util.file.get_cloud_storage_handler"
+        ) as mock_handler_getter, patch(
+            "backend.util.file.scan_content_safe"
+        ) as mock_scan, patch(
+            "backend.util.file.Path"
+        ) as mock_path_class:
+
             # Mock cloud storage handler - not a cloud path
             mock_handler = MagicMock()
             mock_handler.is_cloud_path.return_value = False
@@ -290,11 +307,14 @@ class TestFileCloudIntegration:
         local_file = "infected.exe"
         file_content = b"malicious content"
 
-        with (
-            patch("backend.util.file.get_cloud_storage_handler") as mock_handler_getter,
-            patch("backend.util.file.scan_content_safe") as mock_scan,
-            patch("backend.util.file.Path") as mock_path_class,
-        ):
+        with patch(
+            "backend.util.file.get_cloud_storage_handler"
+        ) as mock_handler_getter, patch(
+            "backend.util.file.scan_content_safe"
+        ) as mock_scan, patch(
+            "backend.util.file.Path"
+        ) as mock_path_class:
+
             # Mock cloud storage handler - not a cloud path
             mock_handler = MagicMock()
             mock_handler.is_cloud_path.return_value = False

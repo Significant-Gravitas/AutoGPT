@@ -60,9 +60,9 @@ async def test_user_balance_migration_complete(server: SpinTestServer):
         # User.balance should not exist or should be None/0 if it exists
         user_balance_attr = getattr(user, "balance", None)
         if user_balance_attr is not None:
-            assert user_balance_attr == 0 or user_balance_attr is None, (
-                f"User.balance should be 0 or None, got {user_balance_attr}"
-            )
+            assert (
+                user_balance_attr == 0 or user_balance_attr is None
+            ), f"User.balance should be 0 or None, got {user_balance_attr}"
 
         # 2. Perform various credit operations using internal method (bypasses Stripe)
         await credit_system._add_transaction(
@@ -87,9 +87,9 @@ async def test_user_balance_migration_complete(server: SpinTestServer):
         # 3. Verify UserBalance table has correct values
         user_balance = await UserBalance.prisma().find_unique(where={"userId": user_id})
         assert user_balance is not None
-        assert user_balance.balance == 700, (
-            f"UserBalance should be 700, got {user_balance.balance}"
-        )
+        assert (
+            user_balance.balance == 700
+        ), f"UserBalance should be 700, got {user_balance.balance}"
 
         # 4. CRITICAL: Verify User.balance is NEVER updated during operations
         user_after = await User.prisma().find_unique(where={"id": user_id})
@@ -97,15 +97,15 @@ async def test_user_balance_migration_complete(server: SpinTestServer):
         user_balance_after = getattr(user_after, "balance", None)
         if user_balance_after is not None:
             # If User.balance exists, it should still be 0 (never updated)
-            assert user_balance_after == 0 or user_balance_after is None, (
-                f"User.balance should remain 0/None after operations, got {user_balance_after}. This indicates User.balance is still being used!"
-            )
+            assert (
+                user_balance_after == 0 or user_balance_after is None
+            ), f"User.balance should remain 0/None after operations, got {user_balance_after}. This indicates User.balance is still being used!"
 
         # 5. Verify get_credits always returns UserBalance value, not User.balance
         final_balance = await credit_system.get_credits(user_id)
-        assert final_balance == user_balance.balance, (
-            f"get_credits should return UserBalance value {user_balance.balance}, got {final_balance}"
-        )
+        assert (
+            final_balance == user_balance.balance
+        ), f"get_credits should return UserBalance value {user_balance.balance}, got {final_balance}"
 
     finally:
         await cleanup_test_user(user_id)
@@ -126,9 +126,9 @@ async def test_detect_stale_user_balance_queries(server: SpinTestServer):
 
         # Verify that get_credits returns UserBalance value (5000), not any stale User.balance value
         balance = await credit_system.get_credits(user_id)
-        assert balance == 5000, (
-            f"Expected get_credits to return 5000 from UserBalance, got {balance}"
-        )
+        assert (
+            balance == 5000
+        ), f"Expected get_credits to return 5000 from UserBalance, got {balance}"
 
         # Verify all operations use UserBalance using internal method (bypasses Stripe)
         await credit_system._add_transaction(
@@ -143,9 +143,9 @@ async def test_detect_stale_user_balance_queries(server: SpinTestServer):
         # Verify UserBalance table has the correct value
         user_balance = await UserBalance.prisma().find_unique(where={"userId": user_id})
         assert user_balance is not None
-        assert user_balance.balance == 6000, (
-            f"UserBalance should be 6000, got {user_balance.balance}"
-        )
+        assert (
+            user_balance.balance == 6000
+        ), f"UserBalance should be 6000, got {user_balance.balance}"
 
     finally:
         await cleanup_test_user(user_id)
@@ -196,9 +196,9 @@ async def test_concurrent_operations_use_userbalance_only(server: SpinTestServer
         # Verify UserBalance has correct value
         user_balance = await UserBalance.prisma().find_unique(where={"userId": user_id})
         assert user_balance is not None
-        assert user_balance.balance == 400, (
-            f"UserBalance should be 400, got {user_balance.balance}"
-        )
+        assert (
+            user_balance.balance == 400
+        ), f"UserBalance should be 400, got {user_balance.balance}"
 
         # Critical: If User.balance exists and was used, it might have wrong value
         try:

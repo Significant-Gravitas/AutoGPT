@@ -197,7 +197,8 @@ def _validate_bash_command(
                 allowed = ", ".join(sorted(ALLOWED_BASH_COMMANDS))
                 logger.warning(f"Blocked Bash command: {cmd_name}")
                 return _deny(
-                    f"Command '{cmd_name}' is not allowed. Allowed commands: {allowed}"
+                    f"Command '{cmd_name}' is not allowed. "
+                    f"Allowed commands: {allowed}"
                 )
             expect_command = False
 

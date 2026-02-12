@@ -97,9 +97,9 @@ class StagehandRecommendedLlmModel(str, Enum):
         if len(model_name.split("/")) == 1 and not self.value.startswith(
             model_metadata.provider
         ):
-            assert model_metadata.provider != "open_router", (
-                "Logic failed and open_router provider attempted to be prepended to model name! in stagehand/_config.py"
-            )
+            assert (
+                model_metadata.provider != "open_router"
+            ), "Logic failed and open_router provider attempted to be prepended to model name! in stagehand/_config.py"
             model_name = f"{model_metadata.provider}/{model_name}"
 
         logger.error(f"Model name: {model_name}")

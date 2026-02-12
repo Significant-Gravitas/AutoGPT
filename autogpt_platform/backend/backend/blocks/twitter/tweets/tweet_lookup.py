@@ -159,6 +159,7 @@ class TwitterGetTweetBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         try:
+
             tweet_data, included, meta, user_id, user_name = self.get_tweet(
                 credentials,
                 input_data.tweet_id,

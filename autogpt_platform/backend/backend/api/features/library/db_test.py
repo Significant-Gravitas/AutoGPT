@@ -152,7 +152,9 @@ async def test_add_agent_to_library(mocker):
     # Mock graph_db.get_graph function that's called to check for HITL blocks
     mock_graph_db = mocker.patch("backend.api.features.library.db.graph_db")
     mock_graph_model = mocker.Mock()
-    mock_graph_model.nodes = []  # Empty list so _has_human_in_the_loop_blocks returns False
+    mock_graph_model.nodes = (
+        []
+    )  # Empty list so _has_human_in_the_loop_blocks returns False
     mock_graph_db.get_graph = mocker.AsyncMock(return_value=mock_graph_model)
 
     # Mock the model conversion

@@ -933,10 +933,7 @@ class SmartDecisionMakerBlock(Block):
                     credentials, input_data, iteration_prompt, tool_functions
                 )
             except Exception as e:
-                yield (
-                    "error",
-                    f"LLM call failed in agent mode iteration {iteration}: {str(e)}",
-                )
+                yield "error", f"LLM call failed in agent mode iteration {iteration}: {str(e)}"
                 return
 
             # Process tool calls
@@ -976,10 +973,7 @@ class SmartDecisionMakerBlock(Block):
         if max_iterations < 0:
             yield "finished", f"Agent mode completed after {iteration} iterations"
         else:
-            yield (
-                "finished",
-                f"Agent mode completed after {max_iterations} iterations (limit reached)",
-            )
+            yield "finished", f"Agent mode completed after {max_iterations} iterations (limit reached)"
         yield "conversations", current_prompt
 
     async def run(

@@ -486,6 +486,7 @@ class IntegrationCredentialsStore:
             user_integrations.oauth_states.append(state)
 
         async with await self.locked_user_integrations(user_id):
+
             user_integrations = await self._get_user_integrations(user_id)
             oauth_states = user_integrations.oauth_states
             oauth_states.append(state)

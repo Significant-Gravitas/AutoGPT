@@ -556,9 +556,9 @@ async def create_table(
 ) -> dict:
     for field in table_fields:
         assert field.get("name"), "Field name is required"
-        assert field.get("type") in TABLE_FIELD_TYPES, (
-            f"Field type {field.get('type')} is not valid. Valid types are {TABLE_FIELD_TYPES}."
-        )
+        assert (
+            field.get("type") in TABLE_FIELD_TYPES
+        ), f"Field type {field.get('type')} is not valid. Valid types are {TABLE_FIELD_TYPES}."
         # Note fields have differnet options for different types we are not currently validating them
 
     response = await Requests().post(
@@ -582,9 +582,9 @@ async def update_table(
     date_dependency: dict | None = None,
 ) -> dict:
 
-    assert table_name or table_description or date_dependency, (
-        "At least one of table_name, table_description, or date_dependency must be provided"
-    )
+    assert (
+        table_name or table_description or date_dependency
+    ), "At least one of table_name, table_description, or date_dependency must be provided"
 
     params: dict[str, str | dict[str, str]] = {}
     if table_name:
@@ -613,9 +613,9 @@ async def create_field(
     options: dict[str, str] | None = None,
 ) -> dict[str, str | dict[str, str]]:
 
-    assert field_type in TABLE_FIELD_TYPES, (
-        f"Field type {field_type} is not valid. Valid types are {TABLE_FIELD_TYPES}."
-    )
+    assert (
+        field_type in TABLE_FIELD_TYPES
+    ), f"Field type {field_type} is not valid. Valid types are {TABLE_FIELD_TYPES}."
     params: dict[str, str | dict[str, str]] = {}
     params["type"] = field_type
     params["name"] = name
@@ -928,9 +928,9 @@ async def update_record(
     typecast: bool | None = None,
     fields: dict[str, Any] | None = None,
 ) -> dict[str, dict[str, dict[str, str]]]:
-    params: dict[
-        str, str | bool | dict[str, Any] | list[dict[str, dict[str, str]]]
-    ] = {}
+    params: dict[str, str | bool | dict[str, Any] | list[dict[str, dict[str, str]]]] = (
+        {}
+    )
     if return_fields_by_field_id:
         params["returnFieldsByFieldId"] = return_fields_by_field_id
     if typecast:
@@ -958,9 +958,9 @@ async def create_record(
     assert fields or records, "At least one of fields or records must be provided"
     assert not (fields and records), "Only one of fields or records can be provided"
     if records is not None:
-        assert len(records) <= 10, (
-            "Only up to 10 records can be provided when using records"
-        )
+        assert (
+            len(records) <= 10
+        ), "Only up to 10 records can be provided when using records"
 
     params: dict[str, str | bool | dict[str, Any] | list[dict[str, Any]]] = {}
     if fields:

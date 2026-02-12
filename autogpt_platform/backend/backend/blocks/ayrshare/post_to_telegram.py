@@ -68,10 +68,7 @@ class PostToTelegramBlock(Block):
 
         client = create_ayrshare_client()
         if not client:
-            yield (
-                "error",
-                "Ayrshare integration is not configured. Please set up the AYRSHARE_API_KEY.",
-            )
+            yield "error", "Ayrshare integration is not configured. Please set up the AYRSHARE_API_KEY."
             return
 
         # Validate Telegram constraints

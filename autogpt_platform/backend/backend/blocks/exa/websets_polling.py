@@ -523,20 +523,16 @@ class ExaWaitForEnrichmentBlock(Block):
                     items_enriched = 0
 
                     if input_data.sample_results and status == "completed":
-                        (
-                            sample_data,
-                            items_enriched,
-                        ) = await self._get_sample_enrichments(
-                            input_data.webset_id, input_data.enrichment_id, aexa
+                        sample_data, items_enriched = (
+                            await self._get_sample_enrichments(
+                                input_data.webset_id, input_data.enrichment_id, aexa
+                            )
                         )
 
                     yield "enrichment_id", input_data.enrichment_id
                     yield "final_status", status
                     yield "items_enriched", items_enriched
-                    yield (
-                        "enrichment_title",
-                        enrichment.title or enrichment.description or "",
-                    )
+                    yield "enrichment_title", enrichment.title or enrichment.description or ""
                     yield "elapsed_time", elapsed
                     if input_data.sample_results:
                         yield "sample_data", sample_data

@@ -69,18 +69,12 @@ class PostToBlueskyBlock(Block):
 
         client = create_ayrshare_client()
         if not client:
-            yield (
-                "error",
-                "Ayrshare integration is not configured. Please set up the AYRSHARE_API_KEY.",
-            )
+            yield "error", "Ayrshare integration is not configured. Please set up the AYRSHARE_API_KEY."
             return
 
         # Validate character limit for Bluesky
         if len(input_data.post) > 300:
-            yield (
-                "error",
-                f"Post text exceeds Bluesky's 300 character limit ({len(input_data.post)} characters)",
-            )
+            yield "error", f"Post text exceeds Bluesky's 300 character limit ({len(input_data.post)} characters)"
             return
 
         # Validate media constraints for Bluesky

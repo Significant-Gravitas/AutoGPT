@@ -232,7 +232,7 @@ class TwitterCreateListBlock(Block):
                 ("list_id", "1234567890"),
                 ("url", "https://twitter.com/i/lists/1234567890"),
             ],
-            test_mock={"create_list": lambda *args, **kwargs: "1234567890"},
+            test_mock={"create_list": lambda *args, **kwargs: ("1234567890")},
         )
 
     @staticmethod

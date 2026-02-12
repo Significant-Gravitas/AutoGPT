@@ -160,13 +160,10 @@ class PineconeQueryBlock(Block):
                 combined_text = "\n\n".join(texts)
 
             # Return both the raw matches and combined text
-            yield (
-                "results",
-                {
-                    "matches": results["matches"],
-                    "combined_text": combined_text,
-                },
-            )
+            yield "results", {
+                "matches": results["matches"],
+                "combined_text": combined_text,
+            }
             yield "combined_results", combined_text
 
         except Exception as e:
