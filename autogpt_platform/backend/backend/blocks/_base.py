@@ -243,7 +243,8 @@ class BlockSchema(BaseModel):
         super().__pydantic_init_subclass__(**kwargs)
 
         # Reset cached JSON schema to prevent inheriting it from parent class
-        cls.cached_jsonschema = {}
+        # Use None instead of {} because {} is truthy and would prevent regeneration
+        cls.cached_jsonschema = None
 
         credentials_fields = cls.get_credentials_fields()
 

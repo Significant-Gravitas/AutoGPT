@@ -102,7 +102,7 @@ class StagehandRecommendedLlmModel(str, Enum):
             ), "Logic failed and open_router provider attempted to be prepended to model name! in stagehand/_config.py"
             model_name = f"{model_metadata.provider}/{model_name}"
 
-        logger.error(f"Model name: {model_name}")
+        logger.debug(f"Model name: {model_name}")
         return model_name
 
     @property
