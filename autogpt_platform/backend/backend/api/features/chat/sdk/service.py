@@ -46,7 +46,6 @@ from .tool_adapter import (
     set_execution_context,
 )
 from .transcript import (
-    delete_transcript,
     download_transcript,
     read_transcript_file,
     upload_transcript,
@@ -278,13 +277,8 @@ def _cleanup_sdk_tool_results(cwd: str) -> None:
     """
     import shutil
 
-    # Security check 1: Validate cwd is under the expected prefix
+    # Validate cwd is under the expected prefix
     normalized = os.path.normpath(cwd)
-    if not normalized.startswith(_SDK_CWD_PREFIX):
-        logger.warning(f"[SDK] Rejecting cleanup for invalid path: {cwd}")
-        return
-
-    # Security check 2: Verify path stayed within workspace after normalization
     if not normalized.startswith(_SDK_CWD_PREFIX):
         logger.warning(f"[SDK] Rejecting cleanup for path outside workspace: {cwd}")
         return
@@ -718,11 +712,6 @@ async def stream_chat_completion_sdk(
 
     except Exception as e:
         logger.error(f"[SDK] Error: {e}", exc_info=True)
-        if use_resume and user_id:
-            logger.warning("[SDK] Deleting transcript after resume failure")
-            task = asyncio.create_task(delete_transcript(user_id, session_id))
-            _background_tasks.add(task)
-            task.add_done_callback(_background_tasks.discard)
         try:
             await upsert_chat_session(session)
         except Exception as save_err:

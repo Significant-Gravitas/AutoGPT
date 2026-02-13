@@ -180,7 +180,12 @@ def write_transcript_to_tempfile(
     try:
         os.makedirs(real_cwd, exist_ok=True)
         safe_id = _sanitize_id(session_id, max_len=8)
-        jsonl_path = os.path.join(real_cwd, f"transcript-{safe_id}.jsonl")
+        jsonl_path = os.path.realpath(
+            os.path.join(real_cwd, f"transcript-{safe_id}.jsonl")
+        )
+        if not jsonl_path.startswith(real_cwd):
+            logger.warning(f"[Transcript] Path escaped cwd: {jsonl_path}")
+            return None
 
         with open(jsonl_path, "w") as f:
             f.write(transcript_content)
