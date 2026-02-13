@@ -665,6 +665,14 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     linear_api_key: str = Field(
         default="", description="Linear API key for system-level operations"
     )
+    linear_feature_request_project_id: str = Field(
+        default="",
+        description="Linear project ID where feature requests are tracked",
+    )
+    linear_feature_request_team_id: str = Field(
+        default="",
+        description="Linear team ID used when creating feature request issues",
+    )
     linear_client_id: str = Field(default="", description="Linear client ID")
     linear_client_secret: str = Field(default="", description="Linear client secret")
 

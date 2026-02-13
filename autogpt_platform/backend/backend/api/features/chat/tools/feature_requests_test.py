@@ -18,6 +18,7 @@ from backend.api.features.chat.tools.models import (
 from ._test_data import make_session
 
 _TEST_USER_ID = "test-user-feature-requests"
+_TEST_USER_EMAIL = "testuser@example.com"
 
 
 # ---------------------------------------------------------------------------
@@ -46,7 +47,7 @@ def _search_response(nodes: list[dict]) -> dict:
 
 
 def _customer_upsert_response(
-    customer_id: str = "cust-1", name: str = _TEST_USER_ID, success: bool = True
+    customer_id: str = "cust-1", name: str = _TEST_USER_EMAIL, success: bool = True
 ) -> dict:
     return {
         "customerUpsert": {
@@ -88,7 +89,7 @@ def _need_create_response(
             "need": {
                 "id": need_id,
                 "body": "description",
-                "customer": {"id": "cust-1", "name": _TEST_USER_ID},
+                "customer": {"id": "cust-1", "name": _TEST_USER_EMAIL},
                 "issue": {
                     "id": issue_id,
                     "identifier": identifier,
@@ -224,6 +225,15 @@ class TestSearchFeatureRequestsTool:
 class TestCreateFeatureRequestTool:
     """Tests for CreateFeatureRequestTool._execute."""
 
+    @pytest.fixture(autouse=True)
+    def _patch_email_lookup(self):
+        with patch(
+            "backend.api.features.chat.tools.feature_requests.get_user_email_by_id",
+            new_callable=AsyncMock,
+            return_value=_TEST_USER_EMAIL,
+        ):
+            yield
+
     # ---- Happy paths -------------------------------------------------------
 
     @pytest.mark.asyncio(loop_scope="session")
@@ -250,7 +260,7 @@ class TestCreateFeatureRequestTool:
         assert isinstance(resp, FeatureRequestCreatedResponse)
         assert resp.is_new_issue is True
         assert resp.issue_identifier == "FR-1"
-        assert resp.customer_name == _TEST_USER_ID
+        assert resp.customer_name == _TEST_USER_EMAIL
         assert client.mutate.call_count == 3
 
     @pytest.mark.asyncio(loop_scope="session")

@@ -17,13 +17,10 @@ from backend.api.features.chat.tools.models import (
 )
 from backend.blocks.linear._api import LinearClient
 from backend.data.model import APIKeyCredentials
+from backend.data.user import get_user_email_by_id
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
-
-# Target project and team IDs in our Linear workspace
-FEATURE_REQUEST_PROJECT_ID = "13f066f3-f639-4a67-aaa3-31483ebdf8cd"
-TEAM_ID = "557fd3d5-087e-43a9-83e3-476c8313ce49"
 
 MAX_SEARCH_RESULTS = 10
 
@@ -164,13 +161,16 @@ class SearchFeatureRequestsTool(BaseTool):
             )
 
         try:
+            secrets = _get_settings().secrets
             client = _get_linear_client()
             data = await client.query(
                 SEARCH_ISSUES_QUERY,
                 {
                     "term": query,
                     "filter": {
-                        "project": {"id": {"eq": FEATURE_REQUEST_PROJECT_ID}},
+                        "project": {
+                            "id": {"eq": secrets.linear_feature_request_project_id}
+                        },
                     },
                     "first": MAX_SEARCH_RESULTS,
                 },
@@ -261,14 +261,20 @@ class CreateFeatureRequestTool(BaseTool):
         return True
 
     async def _find_or_create_customer(
-        self, client: LinearClient, user_id: str
+        self, client: LinearClient, user_id: str, name: str
     ) -> dict:
-        """Find existing customer by user_id or create a new one via upsert."""
+        """Find existing customer by user_id or create a new one via upsert.
+
+        Args:
+            client: Linear API client.
+            user_id: Stable external ID used to deduplicate customers.
+            name: Human-readable display name (e.g. the user's email).
+        """
         data = await client.mutate(
             CUSTOMER_UPSERT_MUTATION,
             {
                 "input": {
-                    "name": user_id,
+                    "name": name,
                     "externalId": user_id,
                 },
             },
@@ -304,6 +310,7 @@ class CreateFeatureRequestTool(BaseTool):
             )
 
         try:
+            secrets = _get_settings().secrets
             client = _get_linear_client()
         except Exception as e:
             logger.exception("Failed to create Linear client")
@@ -313,9 +320,18 @@ class CreateFeatureRequestTool(BaseTool):
                 session_id=session_id,
             )
 
+        # Resolve a human-readable name (email) for the Linear customer record.
+        # Fall back to user_id if the lookup fails or returns None.
+        try:
+            customer_display_name = await get_user_email_by_id(user_id) or user_id
+        except Exception:
+            customer_display_name = user_id
+
         # Step 1: Find or create customer for this user
         try:
-            customer = await self._find_or_create_customer(client, user_id)
+            customer = await self._find_or_create_customer(
+                client, user_id, customer_display_name
+            )
             customer_id = customer["id"]
             customer_name = customer["name"]
         except Exception as e:
@@ -342,8 +358,8 @@ class CreateFeatureRequestTool(BaseTool):
                         "input": {
                             "title": title,
                             "description": description,
-                            "teamId": TEAM_ID,
-                            "projectId": FEATURE_REQUEST_PROJECT_ID,
+                            "teamId": secrets.linear_feature_request_team_id,
+                            "projectId": secrets.linear_feature_request_project_id,
                         },
                     },
                 )
