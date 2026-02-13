@@ -219,11 +219,8 @@ async def _read_file_handler(args: dict[str, Any]) -> dict[str, Any]:
             lines = f.readlines()
         selected = lines[offset : offset + limit]
         content = "".join(selected)
-        # Clean up to prevent accumulation in long-running pods
-        try:
-            os.remove(real_path)
-        except OSError:
-            pass
+        # Cleanup happens in _cleanup_sdk_tool_results after session ends;
+        # don't delete here — the SDK may read in multiple chunks.
         return {"content": [{"type": "text", "text": content}], "isError": False}
     except FileNotFoundError:
         return {
