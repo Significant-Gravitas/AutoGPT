@@ -509,8 +509,8 @@ async def _get_static_counts():
 def _matches_llm_model(schema_cls: type[BlockSchema], query: str) -> bool:
     for field in schema_cls.model_fields.values():
         if field.annotation == LlmModel:
-            # Normalize query same as model slugs (hyphens to spaces) for matching
-            normalized_model_query = query.replace("-", " ")
+            # Normalize query same as model slugs (lowercase, hyphens to spaces)
+            normalized_model_query = query.lower().replace("-", " ")
             # Check if query matches any value in llm_models from registry
             if any(normalized_model_query in name for name in _get_llm_models()):
                 return True
