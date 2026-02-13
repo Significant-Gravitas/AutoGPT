@@ -1053,6 +1053,7 @@
                       "$ref": "#/components/schemas/ClarificationNeededResponse"
                     },
                     { "$ref": "#/components/schemas/BlockListResponse" },
+                    { "$ref": "#/components/schemas/BlockDetailsResponse" },
                     { "$ref": "#/components/schemas/BlockOutputResponse" },
                     { "$ref": "#/components/schemas/DocSearchResultsResponse" },
                     { "$ref": "#/components/schemas/DocPageResponse" },
@@ -6958,6 +6959,58 @@
         "enum": ["run", "byte", "second"],
         "title": "BlockCostType"
       },
+      "BlockDetails": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "name": { "type": "string", "title": "Name" },
+          "description": { "type": "string", "title": "Description" },
+          "inputs": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Inputs",
+            "default": {}
+          },
+          "outputs": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Outputs",
+            "default": {}
+          },
+          "credentials": {
+            "items": { "$ref": "#/components/schemas/CredentialsMetaInput" },
+            "type": "array",
+            "title": "Credentials",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": ["id", "name", "description"],
+        "title": "BlockDetails",
+        "description": "Detailed block information."
+      },
+      "BlockDetailsResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "block_details"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "block": { "$ref": "#/components/schemas/BlockDetails" },
+          "user_authenticated": {
+            "type": "boolean",
+            "title": "User Authenticated",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": ["message", "block"],
+        "title": "BlockDetailsResponse",
+        "description": "Response for block details (first run_block attempt)."
+      },
       "BlockInfo": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -7013,61 +7066,12 @@
         "properties": {
           "id": { "type": "string", "title": "Id" },
           "name": { "type": "string", "title": "Name" },
-          "description": { "type": "string", "title": "Description" },
-          "categories": {
-            "items": { "type": "string" },
-            "type": "array",
-            "title": "Categories"
-          },
-          "input_schema": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Input Schema"
-          },
-          "output_schema": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Output Schema"
-          },
-          "required_inputs": {
-            "items": { "$ref": "#/components/schemas/BlockInputFieldInfo" },
-            "type": "array",
-            "title": "Required Inputs",
-            "description": "List of required input fields for this block"
-          }
+          "description": { "type": "string", "title": "Description" }
         },
         "type": "object",
-        "required": [
-          "id",
-          "name",
-          "description",
-          "categories",
-          "input_schema",
-          "output_schema"
-        ],
+        "required": ["id", "name", "description"],
         "title": "BlockInfoSummary",
         "description": "Summary of a block for search results."
-      },
-      "BlockInputFieldInfo": {
-        "properties": {
-          "name": { "type": "string", "title": "Name" },
-          "type": { "type": "string", "title": "Type" },
-          "description": {
-            "type": "string",
-            "title": "Description",
-            "default": ""
-          },
-          "required": {
-            "type": "boolean",
-            "title": "Required",
-            "default": false
-          },
-          "default": { "anyOf": [{}, { "type": "null" }], "title": "Default" }
-        },
-        "type": "object",
-        "required": ["name", "type"],
-        "title": "BlockInputFieldInfo",
-        "description": "Information about a block input field."
       },
       "BlockListResponse": {
         "properties": {
@@ -7086,12 +7090,7 @@
             "title": "Blocks"
           },
           "count": { "type": "integer", "title": "Count" },
-          "query": { "type": "string", "title": "Query" },
-          "usage_hint": {
-            "type": "string",
-            "title": "Usage Hint",
-            "default": "To execute a block, call run_block with block_id set to the block's 'id' field and input_data containing the required fields from input_schema."
-          }
+          "query": { "type": "string", "title": "Query" }
         },
         "type": "object",
         "required": ["message", "blocks", "count", "query"],
@@ -10484,6 +10483,7 @@
           "agent_saved",
           "clarification_needed",
           "block_list",
+          "block_details",
           "block_output",
           "doc_search_results",
           "doc_page",

@@ -180,3 +180,14 @@ body[data-google-picker-open="true"] [data-dialog-content] {
   z-index: 1 !important;
   pointer-events: none !important;
 }
+
+/* CoPilot chat table styling — remove left/right borders, increase padding */
+[data-streamdown="table-wrapper"] table {
+  border-left: none;
+  border-right: none;
+}
+
+[data-streamdown="table-wrapper"] th,
+[data-streamdown="table-wrapper"] td {
+  padding: 0.875rem 1rem; /* py-3.5 px-4 */
+}
