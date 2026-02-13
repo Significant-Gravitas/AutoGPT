@@ -830,7 +830,9 @@ Flattens a nested list structure into a single flat list. Supports configurable 
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block recursively traverses a nested list and extracts all leaf elements into a single flat list. You can control how deep the flattening goes with the max_depth parameter: set it to -1 to flatten completely, or to a positive integer to flatten only that many levels.
+
+The block also reports the original nesting depth of the input, which is useful for understanding the structure of data coming from sources with varying levels of nesting.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -851,7 +853,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Normalizing API Responses**: Flatten nested JSON arrays from different API endpoints into a uniform single-level list for consistent processing.
+
+**Aggregating Nested Results**: Combine results from recursive file searches or nested category trees into a flat list of items for display or export.
+
+**Data Pipeline Cleanup**: Simplify deeply nested data structures from multiple transformation steps into a clean flat list before final output.
 <!-- END MANUAL -->
 
 ---
@@ -1055,7 +1061,9 @@ Interleaves elements from multiple lists in round-robin fashion, alternating bet
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block takes elements from each input list in round-robin order, picking one element from each list in turn. For example, given `[[1, 2, 3], ['a', 'b', 'c']]`, it produces `[1, 'a', 2, 'b', 3, 'c']`.
+
+When lists have different lengths, shorter lists stop contributing once exhausted, and remaining elements from longer lists continue to be added in order.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -1074,7 +1082,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Balanced Content Mixing**: Alternate between content from different sources (e.g., mixing promotional and organic posts) for a balanced feed.
+
+**Round-Robin Scheduling**: Distribute tasks evenly across workers or queues by interleaving items from separate task lists.
+
+**Multi-Language Output**: Weave together translated text segments with their original counterparts for side-by-side comparison.
 <!-- END MANUAL -->
 
 ---
@@ -1122,7 +1134,9 @@ Computes the difference between two lists. Returns elements in the first list no
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block compares two lists and returns elements from list_a that do not appear in list_b. It uses hash-based lookup for efficient comparison. When symmetric mode is enabled, it returns elements that are in either list but not in both.
+
+The order of elements from list_a is preserved in the output, and elements from list_b are appended when using symmetric difference.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -1143,7 +1157,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Change Detection**: Compare a current list of records against a previous snapshot to find newly added or removed items.
+
+**Exclusion Filtering**: Remove items from a list that appear in a blocklist or already-processed list to avoid duplicates.
+
+**Data Sync**: Identify which items exist in one system but not another to determine what needs to be synced.
 <!-- END MANUAL -->
 
 ---
@@ -1155,7 +1173,9 @@ Computes the intersection of two lists, returning only elements present in both.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block finds elements that appear in both input lists by hashing elements from list_b for efficient lookup, then checking each element of list_a against that set. The output preserves the order from list_a and removes duplicates.
+
+This is useful for finding common items between two datasets without needing to manually iterate or compare.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -1175,7 +1195,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Finding Common Tags**: Identify shared tags or categories between two items for recommendation or grouping purposes.
+
+**Mutual Connections**: Find users or contacts that appear in both of two different lists, such as shared friends or overlapping team members.
+
+**Feature Comparison**: Determine which features or capabilities are supported by both of two systems or products.
 <!-- END MANUAL -->
 
 ---
@@ -1592,7 +1616,9 @@ Zips multiple lists together into a list of grouped elements. Supports padding t
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block pairs up corresponding elements from multiple input lists into sub-lists. For example, zipping `[[1, 2, 3], ['a', 'b', 'c']]` produces `[[1, 'a'], [2, 'b'], [3, 'c']]`.
+
+By default, the result is truncated to the length of the shortest input list. Enable pad_to_longest to instead pad shorter lists with a fill_value so no elements from longer lists are lost.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -1613,7 +1639,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Creating Key-Value Pairs**: Combine a list of field names with a list of values to build structured records or dictionaries.
+
+**Parallel Data Alignment**: Pair up corresponding items from separate data sources (e.g., names and email addresses) for processing together.
+
+**Table Row Construction**: Group column data into rows by zipping each column's values together for CSV export or display.
 <!-- END MANUAL -->
 
 ---
