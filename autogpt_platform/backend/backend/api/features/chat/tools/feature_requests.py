@@ -107,9 +107,7 @@ def _get_linear_config() -> tuple[LinearClient, str, str]:
     if not secrets.linear_api_key:
         raise RuntimeError("LINEAR_API_KEY is not configured")
     if not secrets.linear_feature_request_project_id:
-        raise RuntimeError(
-            "LINEAR_FEATURE_REQUEST_PROJECT_ID is not configured"
-        )
+        raise RuntimeError("LINEAR_FEATURE_REQUEST_PROJECT_ID is not configured")
     if not secrets.linear_feature_request_team_id:
         raise RuntimeError("LINEAR_FEATURE_REQUEST_TEAM_ID is not configured")
 
