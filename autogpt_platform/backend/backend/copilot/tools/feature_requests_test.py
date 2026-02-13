@@ -1,6 +1,6 @@
 """Tests for SearchFeatureRequestsTool and CreateFeatureRequestTool."""
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -227,10 +227,11 @@ class TestCreateFeatureRequestTool:
 
     @pytest.fixture(autouse=True)
     def _patch_email_lookup(self):
+        mock_user_db = MagicMock()
+        mock_user_db.get_user_email_by_id = AsyncMock(return_value=_TEST_USER_EMAIL)
         with patch(
-            "backend.copilot.tools.feature_requests.get_user_email_by_id",
-            new_callable=AsyncMock,
-            return_value=_TEST_USER_EMAIL,
+            "backend.copilot.tools.feature_requests.user_db",
+            return_value=mock_user_db,
         ):
             yield
 
