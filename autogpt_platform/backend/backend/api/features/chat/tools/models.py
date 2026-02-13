@@ -477,6 +477,8 @@ class BashExecResponse(ToolResponseBase):
     stderr: str
     exit_code: int
     timed_out: bool = False
+
+
 # Feature request models
 class FeatureRequestInfo(BaseModel):
     """Information about a feature request issue."""
