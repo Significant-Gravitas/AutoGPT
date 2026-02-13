@@ -216,17 +216,17 @@ def find_file_overlap_candidates(
 
 
 def report_results(overlaps: list["Overlap"]):
-    """Report results and exit with appropriate code."""
+    """Report results (informational only, always exits 0)."""
     conflicts = [o for o in overlaps if o.has_merge_conflict]
     if conflicts:
         print(f"\n⚠️  Found {len(conflicts)} merge conflict(s)")
-        sys.exit(1)
     
     line_overlap_count = len([o for o in overlaps if o.line_overlaps])
     if line_overlap_count:
         print(f"\n⚠️  Found {line_overlap_count} PR(s) with line overlap")
     
     print("\n✅ Done")
+    # Always exit 0 - this check is informational, not a merge blocker
 
 
 # =============================================================================

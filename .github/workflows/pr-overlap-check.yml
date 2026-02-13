@@ -33,5 +33,7 @@ jobs:
       - name: Run overlap detection
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # Always succeed - this check informs contributors, it shouldn't block merging
+        continue-on-error: true
         run: |
           python .github/scripts/detect_overlaps.py ${{ github.event.pull_request.number }}
