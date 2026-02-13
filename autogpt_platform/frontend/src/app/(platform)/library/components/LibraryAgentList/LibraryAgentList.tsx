@@ -21,61 +21,56 @@ import { LibraryFolderEditDialog } from "../LibraryFolderEditDialog/LibraryFolde
 import { LibraryFolderDeleteDialog } from "../LibraryFolderDeleteDialog/LibraryFolderDeleteDialog";
 import { useLibraryAgentList } from "./useLibraryAgentList";
 
+// Spring-based enter/exit animations (Emil Kowalski principles)
+// Springs are naturally interruptible — switching tabs mid-animation
+// cancels the current spring and starts a new one from current state.
 const containerVariants = {
   hidden: {},
-  show: {
-    transition: {
-      staggerChildren: 0.04,
-      delayChildren: 0.04,
-    },
-  },
+  show: {},
   exit: {
     opacity: 0,
     filter: "blur(4px)",
-    transition: {
-      duration: 0.15,
-      ease: [0.25, 0.1, 0.25, 1],
-    },
+    transition: { duration: 0.12 },
   },
 };
 
-const itemVariants = {
-  hidden: {
-    opacity: 0,
-    y: 8,
-    scale: 0.96,
-    filter: "blur(4px)",
-  },
-  show: {
-    opacity: 1,
-    y: 0,
-    scale: 1,
-    filter: "blur(0px)",
-    transition: {
-      duration: 0.25,
-      ease: [0.25, 0.1, 0.25, 1],
-    },
-  },
-};
-
+// Reduced motion fallback
 const reducedContainerVariants = {
   hidden: {},
-  show: {
-    transition: { staggerChildren: 0.02 },
-  },
+  show: {},
   exit: {
     opacity: 0,
-    transition: { duration: 0.15 },
+    transition: { duration: 0.12 },
   },
 };
 
-const reducedItemVariants = {
-  hidden: { opacity: 0 },
-  show: {
-    opacity: 1,
-    transition: { duration: 0.2 },
-  },
+// Per-item animation values (explicit initial/animate, not variant-based).
+// This ensures items animate in on mount regardless of parent state — fixes
+// the bug where dynamically added children (e.g. folders reappearing after
+// search is cleared) stayed invisible with variant inheritance.
+const itemInitial = {
+  opacity: 0,
+  y: 8,
+  filter: "blur(4px)",
 };
+
+const itemAnimate = {
+  opacity: 1,
+  y: 0,
+  filter: "blur(0px)",
+};
+
+const itemTransition = {
+  type: "spring" as const,
+  stiffness: 300,
+  damping: 25,
+  opacity: { duration: 0.2 },
+  filter: { duration: 0.15 },
+};
+
+const reducedItemInitial = { opacity: 0 };
+const reducedItemAnimate = { opacity: 1 };
+const reducedItemTransition = { duration: 0.15 };
 
 interface Props {
   searchTerm: string;
@@ -102,9 +97,11 @@ export function LibraryAgentList({
   const activeContainerVariants = shouldReduceMotion
     ? reducedContainerVariants
     : containerVariants;
-  const activeItemVariants = shouldReduceMotion
-    ? reducedItemVariants
-    : itemVariants;
+  const activeInitial = shouldReduceMotion ? reducedItemInitial : itemInitial;
+  const activeAnimate = shouldReduceMotion ? reducedItemAnimate : itemAnimate;
+  const activeTransition = shouldReduceMotion
+    ? reducedItemTransition
+    : itemTransition;
 
   const {
     isFavoritesTab,
@@ -181,7 +178,7 @@ export function LibraryAgentList({
             loader={<LoadingSpinner size="medium" />}
           >
             <LayoutGroup>
-              <AnimatePresence mode="wait">
+              <AnimatePresence mode="popLayout">
                 <motion.div
                   key={`${activeTab}-${selectedFolderId || "all"}`}
                   className="grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
@@ -191,8 +188,16 @@ export function LibraryAgentList({
                   exit="exit"
                 >
                   {showFolders &&
-                    foldersData?.folders.map((folder) => (
-                      <motion.div key={folder.id} variants={activeItemVariants}>
+                    foldersData?.folders.map((folder, i) => (
+                      <motion.div
+                        key={folder.id}
+                        initial={activeInitial}
+                        animate={activeAnimate}
+                        transition={{
+                          ...activeTransition,
+                          delay: i * 0.04,
+                        }}
+                      >
                         <LibraryFolder
                           id={folder.id}
                           name={folder.name}
@@ -206,8 +211,19 @@ export function LibraryAgentList({
                         />
                       </motion.div>
                     ))}
-                  {agents.map((agent) => (
-                    <motion.div key={agent.id} variants={activeItemVariants}>
+                  {agents.map((agent, i) => (
+                    <motion.div
+                      key={agent.id}
+                      initial={activeInitial}
+                      animate={activeAnimate}
+                      transition={{
+                        ...activeTransition,
+                        delay:
+                          ((showFolders ? foldersData?.folders.length ?? 0 : 0) +
+                            i) *
+                          0.04,
+                      }}
+                    >
                       <LibraryAgentCard agent={agent} />
                     </motion.div>
                   ))}

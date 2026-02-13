@@ -20,10 +20,8 @@ import { z } from "zod";
 import { EmojiPicker } from "@ferrucc-io/emoji-picker";
 import {
   usePatchV2UpdateFolder,
-  useGetV2ListLibraryFolders,
   getGetV2ListLibraryFoldersQueryKey,
 } from "@/app/api/__generated__/endpoints/folders/folders";
-import { okData } from "@/app/api/helpers";
 import { useQueryClient } from "@tanstack/react-query";
 import type { LibraryFolder } from "@/app/api/__generated__/models/libraryFolder";
 import type { getV2ListLibraryFoldersResponseSuccess } from "@/app/api/__generated__/endpoints/folders/folders";
@@ -51,10 +49,6 @@ interface Props {
 export function LibraryFolderEditDialog({ folder, isOpen, setIsOpen }: Props) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
-
-  const { data: foldersData } = useGetV2ListLibraryFolders(undefined, {
-    query: { select: okData },
-  });
 
   const form = useForm<z.infer<typeof editFolderSchema>>({
     resolver: zodResolver(editFolderSchema),
@@ -154,22 +148,10 @@ export function LibraryFolderEditDialog({ folder, isOpen, setIsOpen }: Props) {
   });
 
   function onSubmit(values: z.infer<typeof editFolderSchema>) {
-    const trimmedName = values.folderName.trim();
-    const existingNames = (foldersData?.folders ?? [])
-      .filter((f) => f.id !== folder.id)
-      .map((f) => f.name.toLowerCase());
-
-    if (existingNames.includes(trimmedName.toLowerCase())) {
-      form.setError("folderName", {
-        message: "A folder with this name already exists",
-      });
-      return;
-    }
-
     updateFolder({
       folderId: folder.id,
       data: {
-        name: trimmedName,
+        name: values.folderName.trim(),
         color: values.folderColor,
         icon: values.folderIcon,
       },

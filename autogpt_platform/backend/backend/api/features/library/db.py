@@ -87,10 +87,10 @@ async def list_library_agents(
         "isArchived": False,
     }
 
-    # Apply folder filter
-    if folder_id is not None:
+    # Apply folder filter (skip when searching — search spans all folders)
+    if folder_id is not None and not search_term:
         where_clause["folderId"] = folder_id
-    elif include_root_only:
+    elif include_root_only and not search_term:
         where_clause["folderId"] = None
 
     # Build search filter if applicable

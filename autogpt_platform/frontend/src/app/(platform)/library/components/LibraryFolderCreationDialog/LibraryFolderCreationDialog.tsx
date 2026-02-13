@@ -19,10 +19,8 @@ import { z } from "zod";
 import { EmojiPicker } from "@ferrucc-io/emoji-picker";
 import {
   usePostV2CreateFolder,
-  useGetV2ListLibraryFolders,
   getGetV2ListLibraryFoldersQueryKey,
 } from "@/app/api/__generated__/endpoints/folders/folders";
-import { okData } from "@/app/api/helpers";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -44,10 +42,6 @@ export default function LibraryFolderCreationDialog() {
   const [isOpen, setIsOpen] = useState(false);
   const queryClient = useQueryClient();
   const { toast } = useToast();
-
-  const { data: foldersData } = useGetV2ListLibraryFolders(undefined, {
-    query: { select: okData },
-  });
 
   const { mutate: createFolder, isPending } = usePostV2CreateFolder({
     mutation: {
@@ -80,16 +74,6 @@ export default function LibraryFolderCreationDialog() {
   });
 
   function onSubmit(values: z.infer<typeof libraryFolderCreationFormSchema>) {
-    const existingNames = (foldersData?.folders ?? []).map((f) =>
-      f.name.toLowerCase(),
-    );
-    if (existingNames.includes(values.folderName.trim().toLowerCase())) {
-      form.setError("folderName", {
-        message: "A folder with this name already exists",
-      });
-      return;
-    }
-
     createFolder({
       data: {
         name: values.folderName.trim(),

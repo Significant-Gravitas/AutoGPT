@@ -19,7 +19,7 @@ import {
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useFavoriteAgents } from "../../hooks/useFavoriteAgents";
 import { getQueryClient } from "@/lib/react-query/queryClient";
-import { useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 
 interface Props {
@@ -49,8 +49,6 @@ export function useLibraryAgentList({
   const [deletingFolder, setDeletingFolder] = useState<LibraryFolder | null>(
     null,
   );
-
-  // --- Agent list fetching ---
 
   const {
     data: agentsQueryData,
@@ -112,9 +110,12 @@ export function useLibraryAgentList({
 
   // --- Folders ---
 
-  const { data: foldersData } = useGetV2ListLibraryFolders(undefined, {
+  const { data: rawFoldersData } = useGetV2ListLibraryFolders(undefined, {
     query: { select: okData },
   });
+
+  // When searching, suppress folder data so only agent results show
+  const foldersData = searchTerm ? undefined : rawFoldersData;
 
   const { mutate: moveAgentToFolder } = usePostV2BulkMoveAgents({
     mutation: {
@@ -126,9 +127,10 @@ export function useLibraryAgentList({
           queryKey: getGetV2ListLibraryAgentsQueryKey(),
         });
 
-        const previousFolders = queryClient.getQueriesData<
-          getV2ListLibraryFoldersResponseSuccess
-        >({ queryKey: getGetV2ListLibraryFoldersQueryKey() });
+        const previousFolders =
+          queryClient.getQueriesData<getV2ListLibraryFoldersResponseSuccess>({
+            queryKey: getGetV2ListLibraryFoldersQueryKey(),
+          });
 
         if (data.folder_id) {
           queryClient.setQueriesData<getV2ListLibraryFoldersResponseSuccess>(
