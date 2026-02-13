@@ -88,7 +88,9 @@ class ListWorkspaceFilesTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "List files in the user's workspace. "
+            "List files in the user's persistent workspace (cloud storage). "
+            "These files survive across sessions. "
+            "For ephemeral session files, use the SDK Read/Glob tools instead. "
             "Returns file names, paths, sizes, and metadata. "
             "Optionally filter by path prefix."
         )
@@ -204,7 +206,9 @@ class ReadWorkspaceFileTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Read a file from the user's workspace. "
+            "Read a file from the user's persistent workspace (cloud storage). "
+            "These files survive across sessions. "
+            "For ephemeral session files, use the SDK Read tool instead. "
             "Specify either file_id or path to identify the file. "
             "For small text files, returns content directly. "
             "For large or binary files, returns metadata and a download URL. "
@@ -378,7 +382,9 @@ class WriteWorkspaceFileTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Write or create a file in the user's workspace. "
+            "Write or create a file in the user's persistent workspace (cloud storage). "
+            "These files survive across sessions. "
+            "For ephemeral session files, use the SDK Write tool instead. "
             "Provide the content as a base64-encoded string. "
             f"Maximum file size is {Config().max_file_size_mb}MB. "
             "Files are saved to the current session's folder by default. "
@@ -523,7 +529,7 @@ class DeleteWorkspaceFileTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Delete a file from the user's workspace. "
+            "Delete a file from the user's persistent workspace (cloud storage). "
             "Specify either file_id or path to identify the file. "
             "Paths are scoped to the current session by default. "
             "Use /sessions/<session_id>/... for cross-session access."

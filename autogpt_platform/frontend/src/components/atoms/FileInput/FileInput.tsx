@@ -104,7 +104,31 @@ export function FileInput(props: Props) {
     return false;
   }
 
-  const getFileLabelFromValue = (val: string) => {
+  const getFileLabelFromValue = (val: unknown): string => {
+    // Handle object format from external API: { name, type, size, data }
+    if (val && typeof val === "object") {
+      const obj = val as Record<string, unknown>;
+      if (typeof obj.name === "string") {
+        return getFileLabel(
+          obj.name,
+          typeof obj.type === "string" ? obj.type : "",
+        );
+      }
+      if (typeof obj.type === "string") {
+        const mimeParts = obj.type.split("/");
+        if (mimeParts.length > 1) {
+          return `${mimeParts[1].toUpperCase()} file`;
+        }
+        return `${obj.type} file`;
+      }
+      return "File";
+    }
+
+    // Handle string values (data URIs or file paths)
+    if (typeof val !== "string") {
+      return "File";
+    }
+
     if (val.startsWith("data:")) {
       const matches = val.match(/^data:([^;]+);/);
       if (matches?.[1]) {

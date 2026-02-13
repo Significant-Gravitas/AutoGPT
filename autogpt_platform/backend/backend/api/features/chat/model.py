@@ -2,7 +2,7 @@ import asyncio
 import logging
 import uuid
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 from weakref import WeakValueDictionary
 
 from openai.types.chat import (
@@ -104,6 +104,26 @@ class ChatSession(BaseModel):
     successful_agent_runs: dict[str, int] = {}
     successful_agent_schedules: dict[str, int] = {}
 
+    def add_tool_call_to_current_turn(self, tool_call: dict) -> None:
+        """Attach a tool_call to the current turn's assistant message.
+
+        Searches backwards for the most recent assistant message (stopping at
+        any user message boundary). If found, appends the tool_call to it.
+        Otherwise creates a new assistant message with the tool_call.
+        """
+        for msg in reversed(self.messages):
+            if msg.role == "user":
+                break
+            if msg.role == "assistant":
+                if not msg.tool_calls:
+                    msg.tool_calls = []
+                msg.tool_calls.append(tool_call)
+                return
+
+        self.messages.append(
+            ChatMessage(role="assistant", content="", tool_calls=[tool_call])
+        )
+
     @staticmethod
     def new(user_id: str) -> "ChatSession":
         return ChatSession(
@@ -171,6 +191,47 @@ class ChatSession(BaseModel):
             successful_agent_runs=successful_agent_runs,
             successful_agent_schedules=successful_agent_schedules,
         )
+
+    @staticmethod
+    def _merge_consecutive_assistant_messages(
+        messages: list[ChatCompletionMessageParam],
+    ) -> list[ChatCompletionMessageParam]:
+        """Merge consecutive assistant messages into single messages.
+
+        Long-running tool flows can create split assistant messages: one with
+        text content and another with tool_calls. Anthropic's API requires
+        tool_result blocks to reference a tool_use in the immediately preceding
+        assistant message, so these splits cause 400 errors via OpenRouter.
+        """
+        if len(messages) < 2:
+            return messages
+
+        result: list[ChatCompletionMessageParam] = [messages[0]]
+        for msg in messages[1:]:
+            prev = result[-1]
+            if prev.get("role") != "assistant" or msg.get("role") != "assistant":
+                result.append(msg)
+                continue
+
+            prev = cast(ChatCompletionAssistantMessageParam, prev)
+            curr = cast(ChatCompletionAssistantMessageParam, msg)
+
+            curr_content = curr.get("content") or ""
+            if curr_content:
+                prev_content = prev.get("content") or ""
+                prev["content"] = (
+                    f"{prev_content}\n{curr_content}" if prev_content else curr_content
+                )
+
+            curr_tool_calls = curr.get("tool_calls")
+            if curr_tool_calls:
+                prev_tool_calls = prev.get("tool_calls")
+                prev["tool_calls"] = (
+                    list(prev_tool_calls) + list(curr_tool_calls)
+                    if prev_tool_calls
+                    else list(curr_tool_calls)
+                )
+        return result
 
     def to_openai_messages(self) -> list[ChatCompletionMessageParam]:
         messages = []
@@ -258,7 +319,7 @@ class ChatSession(BaseModel):
                         name=message.name or "",
                     )
                 )
-        return messages
+        return self._merge_consecutive_assistant_messages(messages)
 
 
 async def _get_session_from_cache(session_id: str) -> ChatSession | None:
@@ -273,9 +334,8 @@ async def _get_session_from_cache(session_id: str) -> ChatSession | None:
     try:
         session = ChatSession.model_validate_json(raw_session)
         logger.info(
-            f"Loading session {session_id} from cache: "
-            f"message_count={len(session.messages)}, "
-            f"roles={[m.role for m in session.messages]}"
+            f"[CACHE] Loaded session {session_id}: {len(session.messages)} messages, "
+            f"last_roles={[m.role for m in session.messages[-3:]]}"  # Last 3 roles
         )
         return session
     except Exception as e:
@@ -317,11 +377,9 @@ async def _get_session_from_db(session_id: str) -> ChatSession | None:
         return None
 
     messages = prisma_session.Messages
-    logger.info(
-        f"Loading session {session_id} from DB: "
-        f"has_messages={messages is not None}, "
-        f"message_count={len(messages) if messages else 0}, "
-        f"roles={[m.role for m in messages] if messages else []}"
+    logger.debug(
+        f"[DB] Loaded session {session_id}: {len(messages) if messages else 0} messages, "
+        f"roles={[m.role for m in messages[-3:]] if messages else []}"  # Last 3 roles
     )
 
     return ChatSession.from_db(prisma_session, messages)
@@ -372,10 +430,9 @@ async def _save_session_to_db(
                     "function_call": msg.function_call,
                 }
             )
-        logger.info(
-            f"Saving {len(new_messages)} new messages to DB for session {session.session_id}: "
-            f"roles={[m['role'] for m in messages_data]}, "
-            f"start_sequence={existing_message_count}"
+        logger.debug(
+            f"[DB] Saving {len(new_messages)} messages to session {session.session_id}, "
+            f"roles={[m['role'] for m in messages_data]}"
         )
         await chat_db.add_chat_messages_batch(
             session_id=session.session_id,
@@ -415,7 +472,7 @@ async def get_chat_session(
         logger.warning(f"Unexpected cache error for session {session_id}: {e}")
 
     # Fall back to database
-    logger.info(f"Session {session_id} not in cache, checking database")
+    logger.debug(f"Session {session_id} not in cache, checking database")
     session = await _get_session_from_db(session_id)
 
     if session is None:
@@ -432,7 +489,6 @@ async def get_chat_session(
     # Cache the session from DB
     try:
         await _cache_session(session)
-        logger.info(f"Cached session {session_id} from database")
     except Exception as e:
         logger.warning(f"Failed to cache session {session_id}: {e}")
 
@@ -493,6 +549,40 @@ async def upsert_chat_session(
             raise DatabaseError(
                 f"Failed to persist chat session {session.session_id} to database"
             ) from db_error
+
+        return session
+
+
+async def append_and_save_message(session_id: str, message: ChatMessage) -> ChatSession:
+    """Atomically append a message to a session and persist it.
+
+    Acquires the session lock, re-fetches the latest session state,
+    appends the message, and saves — preventing message loss when
+    concurrent requests modify the same session.
+    """
+    lock = await _get_session_lock(session_id)
+
+    async with lock:
+        session = await get_chat_session(session_id)
+        if session is None:
+            raise ValueError(f"Session {session_id} not found")
+
+        session.messages.append(message)
+        existing_message_count = await chat_db.get_chat_session_message_count(
+            session_id
+        )
+
+        try:
+            await _save_session_to_db(session, existing_message_count)
+        except Exception as e:
+            raise DatabaseError(
+                f"Failed to persist message to session {session_id}"
+            ) from e
+
+        try:
+            await _cache_session(session)
+        except Exception as e:
+            logger.warning(f"Cache write failed for session {session_id}: {e}")
 
         return session
 
@@ -603,13 +693,19 @@ async def update_session_title(session_id: str, title: str) -> bool:
             logger.warning(f"Session {session_id} not found for title update")
             return False
 
-        # Invalidate cache so next fetch gets updated title
+        # Update title in cache if it exists (instead of invalidating).
+        # This prevents race conditions where cache invalidation causes
+        # the frontend to see stale DB data while streaming is still in progress.
         try:
-            redis_key = _get_session_cache_key(session_id)
-            async_redis = await get_redis_async()
-            await async_redis.delete(redis_key)
+            cached = await _get_session_from_cache(session_id)
+            if cached:
+                cached.title = title
+                await _cache_session(cached)
         except Exception as e:
-            logger.warning(f"Failed to invalidate cache for session {session_id}: {e}")
+            # Not critical - title will be correct on next full cache refresh
+            logger.warning(
+                f"Failed to update title in cache for session {session_id}: {e}"
+            )
 
         return True
     except Exception as e:

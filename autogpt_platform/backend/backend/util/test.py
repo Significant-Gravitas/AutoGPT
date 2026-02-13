@@ -8,8 +8,9 @@ from typing import Sequence, cast
 from autogpt_libs.auth import get_user_id
 
 from backend.api.rest_api import AgentServer
+from backend.blocks._base import Block, BlockSchema
 from backend.data import db
-from backend.data.block import Block, BlockSchema, initialize_blocks
+from backend.data.block import initialize_blocks
 from backend.data.execution import (
     ExecutionContext,
     ExecutionStatus,

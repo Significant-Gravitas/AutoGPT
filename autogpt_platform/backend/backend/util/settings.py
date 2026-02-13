@@ -368,6 +368,10 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=600,
         description="The timeout in seconds for Agent Generator service requests (includes retries for rate limits)",
     )
+    agentgenerator_use_dummy: bool = Field(
+        default=False,
+        description="Use dummy agent generator responses for testing (bypasses external service)",
+    )
 
     enable_example_blocks: bool = Field(
         default=False,
@@ -658,6 +662,17 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     mem0_api_key: str = Field(default="", description="Mem0 API key")
     elevenlabs_api_key: str = Field(default="", description="ElevenLabs API key")
 
+    linear_api_key: str = Field(
+        default="", description="Linear API key for system-level operations"
+    )
+    linear_feature_request_project_id: str = Field(
+        default="",
+        description="Linear project ID where feature requests are tracked",
+    )
+    linear_feature_request_team_id: str = Field(
+        default="",
+        description="Linear team ID used when creating feature request issues",
+    )
     linear_client_id: str = Field(default="", description="Linear client ID")
     linear_client_secret: str = Field(default="", description="Linear client secret")
 

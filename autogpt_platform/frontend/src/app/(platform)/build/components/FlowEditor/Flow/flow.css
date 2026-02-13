@@ -1,0 +1,9 @@
+/* Reset default xyflow handle styles so custom Phosphor icon handles render correctly */
+.react-flow__handle {
+  background: transparent;
+  width: auto;
+  height: auto;
+  border: 0;
+  position: relative;
+  transform: none;
+}

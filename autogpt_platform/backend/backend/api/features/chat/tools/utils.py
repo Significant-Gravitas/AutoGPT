@@ -8,12 +8,14 @@ from backend.api.features.library import model as library_model
 from backend.api.features.store import db as store_db
 from backend.data.graph import GraphModel
 from backend.data.model import (
+    Credentials,
     CredentialsFieldInfo,
     CredentialsMetaInput,
     HostScopedCredentials,
     OAuth2Credentials,
 )
 from backend.integrations.creds_manager import IntegrationCredentialsManager
+from backend.integrations.providers import ProviderName
 from backend.util.exceptions import NotFoundError
 
 logger = logging.getLogger(__name__)
@@ -223,6 +225,99 @@ async def get_or_create_library_agent(
     return library_agents[0]
 
 
+async def match_credentials_to_requirements(
+    user_id: str,
+    requirements: dict[str, CredentialsFieldInfo],
+) -> tuple[dict[str, CredentialsMetaInput], list[CredentialsMetaInput]]:
+    """
+    Match user's credentials against a dictionary of credential requirements.
+
+    This is the core matching logic shared by both graph and block credential matching.
+    """
+    matched: dict[str, CredentialsMetaInput] = {}
+    missing: list[CredentialsMetaInput] = []
+
+    if not requirements:
+        return matched, missing
+
+    available_creds = await get_user_credentials(user_id)
+
+    for field_name, field_info in requirements.items():
+        matching_cred = find_matching_credential(available_creds, field_info)
+
+        if matching_cred:
+            try:
+                matched[field_name] = create_credential_meta_from_match(matching_cred)
+            except Exception as e:
+                logger.error(
+                    f"Failed to create CredentialsMetaInput for field '{field_name}': "
+                    f"provider={matching_cred.provider}, type={matching_cred.type}, "
+                    f"credential_id={matching_cred.id}",
+                    exc_info=True,
+                )
+                provider = next(iter(field_info.provider), "unknown")
+                cred_type = next(iter(field_info.supported_types), "api_key")
+                missing.append(
+                    CredentialsMetaInput(
+                        id=field_name,
+                        provider=provider,  # type: ignore
+                        type=cred_type,  # type: ignore
+                        title=f"{field_name} (validation failed: {e})",
+                    )
+                )
+        else:
+            provider = next(iter(field_info.provider), "unknown")
+            cred_type = next(iter(field_info.supported_types), "api_key")
+            missing.append(
+                CredentialsMetaInput(
+                    id=field_name,
+                    provider=provider,  # type: ignore
+                    type=cred_type,  # type: ignore
+                    title=field_name.replace("_", " ").title(),
+                )
+            )
+
+    return matched, missing
+
+
+async def get_user_credentials(user_id: str) -> list[Credentials]:
+    """Get all available credentials for a user."""
+    creds_manager = IntegrationCredentialsManager()
+    return await creds_manager.store.get_all_creds(user_id)
+
+
+def find_matching_credential(
+    available_creds: list[Credentials],
+    field_info: CredentialsFieldInfo,
+) -> Credentials | None:
+    """Find a credential that matches the required provider, type, scopes, and host."""
+    for cred in available_creds:
+        if cred.provider not in field_info.provider:
+            continue
+        if cred.type not in field_info.supported_types:
+            continue
+        if cred.type == "oauth2" and not _credential_has_required_scopes(
+            cred, field_info
+        ):
+            continue
+        if cred.type == "host_scoped" and not _credential_is_for_host(cred, field_info):
+            continue
+        return cred
+    return None
+
+
+def create_credential_meta_from_match(
+    matching_cred: Credentials,
+) -> CredentialsMetaInput:
+    """Create a CredentialsMetaInput from a matched credential."""
+    return CredentialsMetaInput(
+        id=matching_cred.id,
+        provider=matching_cred.provider,  # type: ignore
+        type=matching_cred.type,
+        title=matching_cred.title,
+    )
+
+
 async def match_user_credentials_to_graph(
     user_id: str,
     graph: GraphModel,
@@ -265,7 +360,7 @@ async def match_user_credentials_to_graph(
         _,
         _,
     ) in aggregated_creds.items():
-        # Find first matching credential by provider, type, and scopes
+        # Find first matching credential by provider, type, scopes, and host/URL
         matching_cred = next(
             (
                 cred
@@ -279,6 +374,10 @@ async def match_user_credentials_to_graph(
                 and (
                     cred.type != "host_scoped"
                     or _credential_is_for_host(cred, credential_requirements)
+                )
+                and (
+                    cred.provider != ProviderName.MCP
+                    or _credential_is_for_mcp_server(cred, credential_requirements)
                 )
             ),
             None,
@@ -331,8 +430,6 @@ def _credential_has_required_scopes(
     # If no scopes are required, any credential matches
     if not requirements.required_scopes:
         return True
-
-    # Check that credential scopes are a superset of required scopes
     return set(credential.scopes).issuperset(requirements.required_scopes)
 
 
@@ -350,6 +447,22 @@ def _credential_is_for_host(
     # Check that credential host matches required host.
     # Host-scoped credential inputs are grouped by host, so any item from the set works.
     return credential.matches_url(list(requirements.discriminator_values)[0])
+
+
+def _credential_is_for_mcp_server(
+    credential: Credentials,
+    requirements: CredentialsFieldInfo,
+) -> bool:
+    """Check if an MCP OAuth credential matches the required server URL."""
+    if not requirements.discriminator_values:
+        return True
+
+    server_url = (
+        credential.metadata.get("mcp_server_url")
+        if isinstance(credential, OAuth2Credentials)
+        else None
+    )
+    return server_url in requirements.discriminator_values if server_url else False
 
 
 async def check_user_has_required_credentials(

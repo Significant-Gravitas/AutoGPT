@@ -178,7 +178,7 @@ class ExaGetWebsetItemBlock(Block):
     ) -> BlockOutput:
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        sdk_item = aexa.websets.items.get(
+        sdk_item = await aexa.websets.items.get(
             webset_id=input_data.webset_id, id=input_data.item_id
         )
 
@@ -269,7 +269,7 @@ class ExaListWebsetItemsBlock(Block):
             response = None
 
             while time.time() - start_time < input_data.wait_timeout:
-                response = aexa.websets.items.list(
+                response = await aexa.websets.items.list(
                     webset_id=input_data.webset_id,
                     cursor=input_data.cursor,
                     limit=input_data.limit,
@@ -282,13 +282,13 @@ class ExaListWebsetItemsBlock(Block):
                 interval = min(interval * 1.2, 10)
 
             if not response:
-                response = aexa.websets.items.list(
+                response = await aexa.websets.items.list(
                     webset_id=input_data.webset_id,
                     cursor=input_data.cursor,
                     limit=input_data.limit,
                 )
         else:
-            response = aexa.websets.items.list(
+            response = await aexa.websets.items.list(
                 webset_id=input_data.webset_id,
                 cursor=input_data.cursor,
                 limit=input_data.limit,
@@ -340,7 +340,7 @@ class ExaDeleteWebsetItemBlock(Block):
     ) -> BlockOutput:
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        deleted_item = aexa.websets.items.delete(
+        deleted_item = await aexa.websets.items.delete(
             webset_id=input_data.webset_id, id=input_data.item_id
         )
 
@@ -408,7 +408,7 @@ class ExaBulkWebsetItemsBlock(Block):
             webset_id=input_data.webset_id, limit=input_data.max_items
         )
 
-        for sdk_item in item_iterator:
+        async for sdk_item in item_iterator:
             if len(all_items) >= input_data.max_items:
                 break
 
@@ -475,7 +475,7 @@ class ExaWebsetItemsSummaryBlock(Block):
         # Use AsyncExa SDK
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        webset = aexa.websets.get(id=input_data.webset_id)
+        webset = await aexa.websets.get(id=input_data.webset_id)
 
         entity_type = "unknown"
         if webset.searches:
@@ -495,7 +495,7 @@ class ExaWebsetItemsSummaryBlock(Block):
         # Get sample items if requested
         sample_items: List[WebsetItemModel] = []
         if input_data.sample_size > 0:
-            items_response = aexa.websets.items.list(
+            items_response = await aexa.websets.items.list(
                 webset_id=input_data.webset_id, limit=input_data.sample_size
             )
             # Convert to our stable models
@@ -569,7 +569,7 @@ class ExaGetNewItemsBlock(Block):
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
         # Get items starting from cursor
-        response = aexa.websets.items.list(
+        response = await aexa.websets.items.list(
             webset_id=input_data.webset_id,
             cursor=input_data.since_cursor,
             limit=input_data.max_items,

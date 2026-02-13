@@ -8,23 +8,35 @@ from typing import Any
 from pydantic_core import PydanticUndefined
 
 from backend.api.features.chat.model import ChatSession
-from backend.data.block import get_block
+from backend.api.features.chat.tools.find_block import (
+    COPILOT_EXCLUDED_BLOCK_IDS,
+    COPILOT_EXCLUDED_BLOCK_TYPES,
+)
+from backend.blocks import get_block
+from backend.blocks._base import AnyBlockSchema
 from backend.data.execution import ExecutionContext
-from backend.data.model import CredentialsMetaInput
+from backend.data.model import CredentialsFieldInfo, CredentialsMetaInput
 from backend.data.workspace import get_or_create_workspace
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util.exceptions import BlockError
 
 from .base import BaseTool
+from .helpers import get_inputs_from_schema
 from .models import (
+    BlockDetails,
+    BlockDetailsResponse,
     BlockOutputResponse,
     ErrorResponse,
+    InputValidationErrorResponse,
     SetupInfo,
     SetupRequirementsResponse,
     ToolResponseBase,
     UserReadiness,
 )
-from .utils import build_missing_credentials_from_field_info
+from .utils import (
+    build_missing_credentials_from_field_info,
+    match_credentials_to_requirements,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -42,8 +54,8 @@ class RunBlockTool(BaseTool):
             "Execute a specific block with the provided input data. "
             "IMPORTANT: You MUST call find_block first to get the block's 'id' - "
             "do NOT guess or make up block IDs. "
-            "Use the 'id' from find_block results and provide input_data "
-            "matching the block's required_inputs."
+            "On first attempt (without input_data), returns detailed schema showing "
+            "required inputs and outputs. Then call again with proper input_data to execute."
         )
 
     @property
@@ -58,11 +70,19 @@ class RunBlockTool(BaseTool):
                         "NEVER guess this - always get it from find_block first."
                     ),
                 },
+                "block_name": {
+                    "type": "string",
+                    "description": (
+                        "The block's human-readable name from find_block results. "
+                        "Used for display purposes in the UI."
+                    ),
+                },
                 "input_data": {
                     "type": "object",
                     "description": (
-                        "Input values for the block. Use the 'required_inputs' field "
-                        "from find_block to see what fields are needed."
+                        "Input values for the block. "
+                        "First call with empty {} to see the block's schema, "
+                        "then call again with proper values to execute."
                     ),
                 },
             },
@@ -72,91 +92,6 @@ class RunBlockTool(BaseTool):
     @property
     def requires_auth(self) -> bool:
         return True
-
-    async def _check_block_credentials(
-        self,
-        user_id: str,
-        block: Any,
-        input_data: dict[str, Any] | None = None,
-    ) -> tuple[dict[str, CredentialsMetaInput], list[CredentialsMetaInput]]:
-        """
-        Check if user has required credentials for a block.
-
-        Args:
-            user_id: User ID
-            block: Block to check credentials for
-            input_data: Input data for the block (used to determine provider via discriminator)
-
-        Returns:
-            tuple[matched_credentials, missing_credentials]
-        """
-        matched_credentials: dict[str, CredentialsMetaInput] = {}
-        missing_credentials: list[CredentialsMetaInput] = []
-        input_data = input_data or {}
-
-        # Get credential field info from block's input schema
-        credentials_fields_info = block.input_schema.get_credentials_fields_info()
-
-        if not credentials_fields_info:
-            return matched_credentials, missing_credentials
-
-        # Get user's available credentials
-        creds_manager = IntegrationCredentialsManager()
-        available_creds = await creds_manager.store.get_all_creds(user_id)
-
-        for field_name, field_info in credentials_fields_info.items():
-            effective_field_info = field_info
-            if field_info.discriminator and field_info.discriminator_mapping:
-                # Get discriminator from input, falling back to schema default
-                discriminator_value = input_data.get(field_info.discriminator)
-                if discriminator_value is None:
-                    field = block.input_schema.model_fields.get(
-                        field_info.discriminator
-                    )
-                    if field and field.default is not PydanticUndefined:
-                        discriminator_value = field.default
-
-                if (
-                    discriminator_value
-                    and discriminator_value in field_info.discriminator_mapping
-                ):
-                    effective_field_info = field_info.discriminate(discriminator_value)
-                    logger.debug(
-                        f"Discriminated provider for {field_name}: "
-                        f"{discriminator_value} -> {effective_field_info.provider}"
-                    )
-
-            matching_cred = next(
-                (
-                    cred
-                    for cred in available_creds
-                    if cred.provider in effective_field_info.provider
-                    and cred.type in effective_field_info.supported_types
-                ),
-                None,
-            )
-
-            if matching_cred:
-                matched_credentials[field_name] = CredentialsMetaInput(
-                    id=matching_cred.id,
-                    provider=matching_cred.provider,  # type: ignore
-                    type=matching_cred.type,
-                    title=matching_cred.title,
-                )
-            else:
-                # Create a placeholder for the missing credential
-                provider = next(iter(effective_field_info.provider), "unknown")
-                cred_type = next(iter(effective_field_info.supported_types), "api_key")
-                missing_credentials.append(
-                    CredentialsMetaInput(
-                        id=field_name,
-                        provider=provider,  # type: ignore
-                        type=cred_type,  # type: ignore
-                        title=field_name.replace("_", " ").title(),
-                    )
-                )
-
-        return matched_credentials, missing_credentials
 
     async def _execute(
         self,
@@ -212,12 +147,53 @@ class RunBlockTool(BaseTool):
                 session_id=session_id,
             )
 
+        # Check if block is excluded from CoPilot (graph-only blocks)
+        if (
+            block.block_type in COPILOT_EXCLUDED_BLOCK_TYPES
+            or block.id in COPILOT_EXCLUDED_BLOCK_IDS
+        ):
+            return ErrorResponse(
+                message=(
+                    f"Block '{block.name}' cannot be run directly in CoPilot. "
+                    "This block is designed for use within graphs only."
+                ),
+                session_id=session_id,
+            )
+
         logger.info(f"Executing block {block.name} ({block_id}) for user {user_id}")
 
         creds_manager = IntegrationCredentialsManager()
-        matched_credentials, missing_credentials = await self._check_block_credentials(
-            user_id, block, input_data
+        matched_credentials, missing_credentials = (
+            await self._resolve_block_credentials(user_id, block, input_data)
         )
+
+        # Get block schemas for details/validation
+        try:
+            input_schema: dict[str, Any] = block.input_schema.jsonschema()
+        except Exception as e:
+            logger.warning(
+                "Failed to generate input schema for block %s: %s",
+                block_id,
+                e,
+            )
+            return ErrorResponse(
+                message=f"Block '{block.name}' has an invalid input schema",
+                error=str(e),
+                session_id=session_id,
+            )
+        try:
+            output_schema: dict[str, Any] = block.output_schema.jsonschema()
+        except Exception as e:
+            logger.warning(
+                "Failed to generate output schema for block %s: %s",
+                block_id,
+                e,
+            )
+            return ErrorResponse(
+                message=f"Block '{block.name}' has an invalid output schema",
+                error=str(e),
+                session_id=session_id,
+            )
 
         if missing_credentials:
             # Return setup requirements response with missing credentials
@@ -249,6 +225,53 @@ class RunBlockTool(BaseTool):
                 ),
                 graph_id=None,
                 graph_version=None,
+            )
+
+        # Check if this is a first attempt (required inputs missing)
+        # Return block details so user can see what inputs are needed
+        credentials_fields = set(block.input_schema.get_credentials_fields().keys())
+        required_keys = set(input_schema.get("required", []))
+        required_non_credential_keys = required_keys - credentials_fields
+        provided_input_keys = set(input_data.keys()) - credentials_fields
+
+        # Check for unknown input fields
+        valid_fields = (
+            set(input_schema.get("properties", {}).keys()) - credentials_fields
+        )
+        unrecognized_fields = provided_input_keys - valid_fields
+        if unrecognized_fields:
+            return InputValidationErrorResponse(
+                message=(
+                    f"Unknown input field(s) provided: {', '.join(sorted(unrecognized_fields))}. "
+                    f"Block was not executed. Please use the correct field names from the schema."
+                ),
+                session_id=session_id,
+                unrecognized_fields=sorted(unrecognized_fields),
+                inputs=input_schema,
+            )
+
+        # Show details when not all required non-credential inputs are provided
+        if not (required_non_credential_keys <= provided_input_keys):
+            # Get credentials info for the response
+            credentials_meta = []
+            for field_name, cred_meta in matched_credentials.items():
+                credentials_meta.append(cred_meta)
+
+            return BlockDetailsResponse(
+                message=(
+                    f"Block '{block.name}' details. "
+                    "Provide input_data matching the inputs schema to execute the block."
+                ),
+                session_id=session_id,
+                block=BlockDetails(
+                    id=block_id,
+                    name=block.name,
+                    description=block.description or "",
+                    inputs=input_schema,
+                    outputs=output_schema,
+                    credentials=credentials_meta,
+                ),
+                user_authenticated=True,
             )
 
         try:
@@ -345,29 +368,75 @@ class RunBlockTool(BaseTool):
                 session_id=session_id,
             )
 
-    def _get_inputs_list(self, block: Any) -> list[dict[str, Any]]:
+    async def _resolve_block_credentials(
+        self,
+        user_id: str,
+        block: AnyBlockSchema,
+        input_data: dict[str, Any] | None = None,
+    ) -> tuple[dict[str, CredentialsMetaInput], list[CredentialsMetaInput]]:
+        """
+        Resolve credentials for a block by matching user's available credentials.
+
+        Args:
+            user_id: User ID
+            block: Block to resolve credentials for
+            input_data: Input data for the block (used to determine provider via discriminator)
+
+        Returns:
+            tuple of (matched_credentials, missing_credentials) - matched credentials
+            are used for block execution, missing ones indicate setup requirements.
+        """
+        input_data = input_data or {}
+        requirements = self._resolve_discriminated_credentials(block, input_data)
+
+        if not requirements:
+            return {}, []
+
+        return await match_credentials_to_requirements(user_id, requirements)
+
+    def _get_inputs_list(self, block: AnyBlockSchema) -> list[dict[str, Any]]:
         """Extract non-credential inputs from block schema."""
-        inputs_list = []
         schema = block.input_schema.jsonschema()
-        properties = schema.get("properties", {})
-        required_fields = set(schema.get("required", []))
-
-        # Get credential field names to exclude
         credentials_fields = set(block.input_schema.get_credentials_fields().keys())
+        return get_inputs_from_schema(schema, exclude_fields=credentials_fields)
 
-        for field_name, field_schema in properties.items():
-            # Skip credential fields
-            if field_name in credentials_fields:
-                continue
+    def _resolve_discriminated_credentials(
+        self,
+        block: AnyBlockSchema,
+        input_data: dict[str, Any],
+    ) -> dict[str, CredentialsFieldInfo]:
+        """Resolve credential requirements, applying discriminator logic where needed."""
+        credentials_fields_info = block.input_schema.get_credentials_fields_info()
+        if not credentials_fields_info:
+            return {}
 
-            inputs_list.append(
-                {
-                    "name": field_name,
-                    "title": field_schema.get("title", field_name),
-                    "type": field_schema.get("type", "string"),
-                    "description": field_schema.get("description", ""),
-                    "required": field_name in required_fields,
-                }
-            )
+        resolved: dict[str, CredentialsFieldInfo] = {}
 
-        return inputs_list
+        for field_name, field_info in credentials_fields_info.items():
+            effective_field_info = field_info
+
+            if field_info.discriminator and field_info.discriminator_mapping:
+                discriminator_value = input_data.get(field_info.discriminator)
+                if discriminator_value is None:
+                    field = block.input_schema.model_fields.get(
+                        field_info.discriminator
+                    )
+                    if field and field.default is not PydanticUndefined:
+                        discriminator_value = field.default
+
+                if (
+                    discriminator_value
+                    and discriminator_value in field_info.discriminator_mapping
+                ):
+                    effective_field_info = field_info.discriminate(discriminator_value)
+                    # For host-scoped credentials, add the discriminator value
+                    # (e.g., URL) so _credential_is_for_host can match it
+                    effective_field_info.discriminator_values.add(discriminator_value)
+                    logger.debug(
+                        f"Discriminated provider for {field_name}: "
+                        f"{discriminator_value} -> {effective_field_info.provider}"
+                    )
+
+            resolved[field_name] = effective_field_info
+
+        return resolved

@@ -5,14 +5,14 @@ import {
   BlockIOCredentialsSubSchema,
   CredentialsMetaInput,
 } from "@/lib/autogpt-server-api/types";
+import { postV2InitiateOauthLoginForAnMcpServer } from "@/app/api/__generated__/endpoints/mcp/mcp";
+import { openOAuthPopup } from "@/lib/oauth-popup";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import {
   filterSystemCredentials,
   getActionButtonText,
   getSystemCredentials,
-  OAUTH_TIMEOUT_MS,
-  OAuthPopupResultMessage,
 } from "./helpers";
 
 export type CredentialsInputState = ReturnType<typeof useCredentialsInput>;
@@ -57,6 +57,14 @@ export function useCredentialsInput({
   const queryClient = useQueryClient();
   const credentials = useCredentials(schema, siblingInputs);
   const hasAttemptedAutoSelect = useRef(false);
+  const oauthAbortRef = useRef<((reason?: string) => void) | null>(null);
+
+  // Clean up on unmount
+  useEffect(() => {
+    return () => {
+      oauthAbortRef.current?.();
+    };
+  }, []);
 
   const deleteCredentialsMutation = useDeleteV1DeleteCredentials({
     mutation: {
@@ -81,11 +89,14 @@ export function useCredentialsInput({
     }
   }, [credentials, onLoaded]);
 
-  // Unselect credential if not available
+  // Unselect credential if not available in the loaded credential list.
+  // Skip when no credentials have been loaded yet (empty list could mean
+  // the provider data hasn't finished loading, not that the credential is invalid).
   useEffect(() => {
     if (readOnly) return;
     if (!credentials || !("savedCredentials" in credentials)) return;
     const availableCreds = credentials.savedCredentials;
+    if (availableCreds.length === 0) return;
     if (
       selectedCredential &&
       !availableCreds.some((c) => c.id === selectedCredential.id)
@@ -110,7 +121,9 @@ export function useCredentialsInput({
       if (hasAttemptedAutoSelect.current) return;
       hasAttemptedAutoSelect.current = true;
 
-      if (isOptional) return;
+      // Auto-select if exactly one credential matches.
+      // For optional fields with multiple options, let the user choose.
+      if (isOptional && savedCreds.length > 1) return;
 
       const cred = savedCreds[0];
       onSelectCredential({
@@ -148,7 +161,9 @@ export function useCredentialsInput({
     supportsHostScoped,
     savedCredentials,
     oAuthCallback,
+    mcpOAuthCallback,
     isSystemProvider,
+    discriminatorValue,
   } = credentials;
 
   // Split credentials into user and system
@@ -157,72 +172,66 @@ export function useCredentialsInput({
 
   async function handleOAuthLogin() {
     setOAuthError(null);
-    const { login_url, state_token } = await api.oAuthLogin(
-      provider,
-      schema.credentials_scopes,
-    );
-    setOAuth2FlowInProgress(true);
-    const popup = window.open(login_url, "_blank", "popup=true");
 
-    if (!popup) {
-      throw new Error(
-        "Failed to open popup window. Please allow popups for this site.",
+    // Abort any previous OAuth flow
+    oauthAbortRef.current?.();
+
+    // MCP uses dynamic OAuth discovery per server URL
+    const isMCP = provider === "mcp" && !!discriminatorValue;
+
+    try {
+      let login_url: string;
+      let state_token: string;
+
+      if (isMCP) {
+        const mcpLoginResponse = await postV2InitiateOauthLoginForAnMcpServer({
+          server_url: discriminatorValue!,
+        });
+        if (mcpLoginResponse.status !== 200) throw mcpLoginResponse.data;
+        ({ login_url, state_token } = mcpLoginResponse.data);
+      } else {
+        ({ login_url, state_token } = await api.oAuthLogin(
+          provider,
+          schema.credentials_scopes,
+        ));
+      }
+
+      setOAuth2FlowInProgress(true);
+
+      const { promise, cleanup } = openOAuthPopup(login_url, {
+        stateToken: state_token,
+        useCrossOriginListeners: isMCP,
+        // Standard OAuth uses "oauth_popup_result", MCP uses "mcp_oauth_result"
+        acceptMessageTypes: isMCP
+          ? ["mcp_oauth_result"]
+          : ["oauth_popup_result"],
+      });
+
+      oauthAbortRef.current = cleanup.abort;
+      // Expose abort signal for the waiting modal's cancel button
+      const controller = new AbortController();
+      cleanup.signal.addEventListener("abort", () =>
+        controller.abort("completed"),
       );
-    }
+      setOAuthPopupController(controller);
 
-    const controller = new AbortController();
-    setOAuthPopupController(controller);
-    controller.signal.onabort = () => {
-      console.debug("OAuth flow aborted");
-      setOAuth2FlowInProgress(false);
-      popup.close();
-    };
+      const result = await promise;
 
-    const handleMessage = async (e: MessageEvent<OAuthPopupResultMessage>) => {
-      console.debug("Message received:", e.data);
-      if (
-        typeof e.data != "object" ||
-        !("message_type" in e.data) ||
-        e.data.message_type !== "oauth_popup_result"
-      ) {
-        console.debug("Ignoring irrelevant message");
-        return;
-      }
+      // Exchange code for tokens via the provider (updates credential cache)
+      const credentialResult = isMCP
+        ? await mcpOAuthCallback(result.code, state_token)
+        : await oAuthCallback(result.code, result.state);
 
-      if (!e.data.success) {
-        console.error("OAuth flow failed:", e.data.message);
-        setOAuthError(`OAuth flow failed: ${e.data.message}`);
-        setOAuth2FlowInProgress(false);
-        return;
-      }
-
-      if (e.data.state !== state_token) {
-        console.error("Invalid state token received");
-        setOAuthError("Invalid state token received");
-        setOAuth2FlowInProgress(false);
-        return;
-      }
-
-      try {
-        console.debug("Processing OAuth callback");
-        const credentials = await oAuthCallback(e.data.code, e.data.state);
-        console.debug("OAuth callback processed successfully");
-
-        // Check if the credential's scopes match the required scopes
+      // Check if the credential's scopes match the required scopes (skip for MCP)
+      if (!isMCP) {
         const requiredScopes = schema.credentials_scopes;
         if (requiredScopes && requiredScopes.length > 0) {
-          const grantedScopes = new Set(credentials.scopes || []);
+          const grantedScopes = new Set(credentialResult.scopes || []);
           const hasAllRequiredScopes = new Set(requiredScopes).isSubsetOf(
             grantedScopes,
           );
 
           if (!hasAllRequiredScopes) {
-            console.error(
-              `Newly created OAuth credential for ${providerName} has insufficient scopes. Required:`,
-              requiredScopes,
-              "Granted:",
-              credentials.scopes,
-            );
             setOAuthError(
               "Connection failed: the granted permissions don't match what's required. " +
                 "Please contact the application administrator.",
@@ -230,38 +239,28 @@ export function useCredentialsInput({
             return;
           }
         }
+      }
 
-        onSelectCredential({
-          id: credentials.id,
-          type: "oauth2",
-          title: credentials.title,
-          provider,
-        });
-      } catch (error) {
-        console.error("Error in OAuth callback:", error);
+      onSelectCredential({
+        id: credentialResult.id,
+        type: "oauth2",
+        title: credentialResult.title,
+        provider,
+      });
+    } catch (error) {
+      if (error instanceof Error && error.message === "OAuth flow timed out") {
+        setOAuthError("OAuth flow timed out");
+      } else {
         setOAuthError(
-          `Error in OAuth callback: ${
+          `OAuth error: ${
             error instanceof Error ? error.message : String(error)
           }`,
         );
-      } finally {
-        console.debug("Finalizing OAuth flow");
-        setOAuth2FlowInProgress(false);
-        controller.abort("success");
       }
-    };
-
-    console.debug("Adding message event listener");
-    window.addEventListener("message", handleMessage, {
-      signal: controller.signal,
-    });
-
-    setTimeout(() => {
-      console.debug("OAuth flow timed out");
-      controller.abort("timeout");
+    } finally {
       setOAuth2FlowInProgress(false);
-      setOAuthError("OAuth flow timed out");
-    }, OAUTH_TIMEOUT_MS);
+      oauthAbortRef.current = null;
+    }
   }
 
   function handleActionButtonClick() {

@@ -25,6 +25,7 @@ class TestServiceConfiguration:
         """Test that external service is not configured when host is empty."""
         mock_settings = MagicMock()
         mock_settings.config.agentgenerator_host = ""
+        mock_settings.config.agentgenerator_use_dummy = False
 
         with patch.object(service, "_get_settings", return_value=mock_settings):
             assert service.is_external_service_configured() is False
