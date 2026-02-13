@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -40,6 +40,8 @@ class ResponseType(str, Enum):
     OPERATION_IN_PROGRESS = "operation_in_progress"
     # Input validation
     INPUT_VALIDATION_ERROR = "input_validation_error"
+    # Agent creation steps
+    AGENT_CREATION_STEPS = "agent_creation_steps"
 
 
 # Base response model
@@ -284,6 +286,21 @@ class ClarificationNeededResponse(ToolResponseBase):
 
     type: ResponseType = ResponseType.CLARIFICATION_NEEDED
     questions: list[ClarifyingQuestion] = Field(default_factory=list)
+
+
+class AgentCreationStep(BaseModel):
+    """A single step in the agent creation process."""
+
+    title: str
+    description: str
+    status: Literal["pending", "in_progress", "completed"] = "pending"
+
+
+class AgentCreationStepsResponse(ToolResponseBase):
+    """Response showing the steps for agent creation as a checklist."""
+
+    type: ResponseType = ResponseType.AGENT_CREATION_STEPS
+    steps: list[AgentCreationStep] = Field(default_factory=list)
 
 
 # Documentation search models
