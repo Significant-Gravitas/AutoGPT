@@ -265,12 +265,12 @@ class LLMResponse(BaseModel):
 
 def convert_openai_tool_fmt_to_anthropic(
     openai_tools: list[dict] | None = None,
-) -> Iterable[ToolParam] | anthropic.Omit:
+) -> Iterable[ToolParam] | anthropic.NotGiven:
     """
     Convert OpenAI tool format to Anthropic tool format.
     """
     if not openai_tools or len(openai_tools) == 0:
-        return anthropic.omit
+        return anthropic.NOT_GIVEN
 
     anthropic_tools = []
     for tool in openai_tools:
@@ -330,7 +330,7 @@ def extract_openai_tool_calls(response) -> list[ToolContentBlock] | None:
 
 def get_parallel_tool_calls_param(
     llm_model: LlmModel, parallel_tool_calls: bool | None
-) -> bool | openai.Omit:
+) -> bool | openai.NotGiven:
     """Get the appropriate parallel_tool_calls parameter for OpenAI-compatible APIs."""
     # Check for o-series models (o1, o1-mini, o3-mini, etc.) which don't support
     # parallel tool calls. Use regex to avoid false positives like "openai/gpt-oss".

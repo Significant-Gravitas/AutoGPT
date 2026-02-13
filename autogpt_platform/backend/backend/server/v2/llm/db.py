@@ -614,8 +614,8 @@ def _map_migration(
         node_count=record.nodeCount,
         custom_credit_cost=record.customCreditCost,
         is_reverted=record.isReverted,
-        created_at=record.createdAt.isoformat(),
-        reverted_at=record.revertedAt.isoformat() if record.revertedAt else None,
+        created_at=record.createdAt,
+        reverted_at=record.revertedAt,
     )
 
 

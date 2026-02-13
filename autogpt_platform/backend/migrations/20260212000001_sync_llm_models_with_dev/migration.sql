@@ -12,7 +12,7 @@ DELETE FROM "LlmModel" WHERE "slug" IN ('o3', 'o3-mini', 'claude-3-7-sonnet-2025
 WITH provider_ids AS (
     SELECT "id", "name" FROM "LlmProvider"
 )
-INSERT INTO "LlmModel" ("id", "slug", "displayName", "description", "providerId", "contextWindow", "maxOutputTokens", "isEnabled", "capabilities", "metadata")
+INSERT INTO "LlmModel" ("id", "slug", "displayName", "description", "providerId", "contextWindow", "maxOutputTokens", "isEnabled", "capabilities", "metadata", "createdAt", "updatedAt")
 SELECT
     gen_random_uuid(),
     model_slug,
@@ -23,7 +23,9 @@ SELECT
     max_output_tokens,
     true,
     '{}'::jsonb,
-    '{}'::jsonb
+    '{}'::jsonb,
+    NOW(),
+    NOW()
 FROM (VALUES
     -- New OpenAI model
     ('gpt-5.2-2025-12-11', 'GPT 5.2', 'openai', 400000, 128000),
@@ -40,7 +42,7 @@ WITH model_ids AS (
 provider_ids AS (
     SELECT "id", "name" FROM "LlmProvider"
 )
-INSERT INTO "LlmModelCost" ("id", "unit", "creditCost", "credentialProvider", "credentialId", "credentialType", "currency", "metadata", "llmModelId")
+INSERT INTO "LlmModelCost" ("id", "unit", "creditCost", "credentialProvider", "credentialId", "credentialType", "currency", "metadata", "llmModelId", "createdAt", "updatedAt")
 SELECT
     gen_random_uuid(),
     'RUN'::"LlmCostUnit",
@@ -50,7 +52,9 @@ SELECT
     'api_key',
     NULL,
     '{}'::jsonb,
-    m."id"
+    m."id",
+    NOW(),
+    NOW()
 FROM (VALUES
     -- New model costs (estimate based on similar models)
     ('gpt-5.2-2025-12-11', 5),  -- Similar to GPT 5.1
