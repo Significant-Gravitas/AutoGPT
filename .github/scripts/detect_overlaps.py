@@ -826,7 +826,7 @@ def query_open_prs(owner: str, repo: str, base_branch: str) -> list[dict]:
                             author {{ login }}
                             headRefName
                             baseRefName
-                            files(first: 250) {{
+                            files(first: 100) {{
                                 nodes {{ path }}
                                 pageInfo {{ hasNextPage }}
                             }}
@@ -852,9 +852,9 @@ def query_open_prs(owner: str, repo: str, base_branch: str) -> list[dict]:
         for edge in pr_data["edges"]:
             node = edge["node"]
             files_data = node["files"]
-            # Warn if PR has more than 250 files (we only fetch first 250)
+            # Warn if PR has more than 100 files (API limit, we only fetch first 100)
             if files_data.get("pageInfo", {}).get("hasNextPage"):
-                print(f"Warning: PR #{node['number']} has >250 files, overlap detection may be incomplete", file=sys.stderr)
+                print(f"Warning: PR #{node['number']} has >100 files, overlap detection may be incomplete", file=sys.stderr)
             prs.append({
                 "number": node["number"],
                 "title": node["title"],
