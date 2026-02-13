@@ -44,6 +44,14 @@ from .tool_adapter import (
     create_copilot_mcp_server,
     set_execution_context,
 )
+from .transcript import (
+    delete_transcript,
+    download_transcript,
+    read_transcript_file,
+    upload_transcript,
+    validate_transcript,
+    write_transcript_to_tempfile,
+)
 
 logger = logging.getLogger(__name__)
 config = ChatConfig()
@@ -480,12 +488,6 @@ async def stream_chat_completion_sdk(
         try:
             from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 
-            from .transcript import (
-                read_transcript_file,
-                validate_transcript,
-                write_transcript_to_tempfile,
-            )
-
             # Fail fast when no API credentials are available at all
             sdk_env = _build_sdk_env()
             if not sdk_env and not os.environ.get("ANTHROPIC_API_KEY"):
@@ -513,25 +515,22 @@ async def stream_chat_completion_sdk(
                 on_stop=_on_stop if config.claude_agent_use_resume else None,
             )
 
-            # --- Resume strategy: try JSONL resume, fall back to compression ---
+            # --- Resume strategy: download transcript from bucket ---
             resume_file: str | None = None
             use_resume = False
 
-            if (
-                config.claude_agent_use_resume
-                and session.sdk_transcript
-                and len(session.messages) > 1
-                and validate_transcript(session.sdk_transcript)
-            ):
-                resume_file = write_transcript_to_tempfile(
-                    session.sdk_transcript, session_id, sdk_cwd
-                )
-                if resume_file:
-                    use_resume = True
-                    logger.info(
-                        f"[SDK] Using --resume with transcript "
-                        f"({len(session.sdk_transcript)} bytes)"
+            if config.claude_agent_use_resume and user_id and len(session.messages) > 1:
+                transcript_content = await download_transcript(user_id, session_id)
+                if transcript_content and validate_transcript(transcript_content):
+                    resume_file = write_transcript_to_tempfile(
+                        transcript_content, session_id, sdk_cwd
                     )
+                    if resume_file:
+                        use_resume = True
+                        logger.info(
+                            f"[SDK] Using --resume with transcript "
+                            f"({len(transcript_content)} bytes)"
+                        )
 
             sdk_options_kwargs: dict[str, Any] = {
                 "system_prompt": system_prompt,
@@ -573,6 +572,11 @@ async def stream_chat_completion_sdk(
                 # history into a context prefix as before.
                 query_message = current_message
                 if not use_resume and len(session.messages) > 1:
+                    logger.warning(
+                        f"[SDK] Using compression fallback for session "
+                        f"{session_id} ({len(session.messages)} messages) — "
+                        f"no transcript available for --resume"
+                    )
                     compressed = await _compress_conversation_history(session)
                     history_context = _format_conversation_context(compressed)
                     if history_context:
@@ -668,18 +672,21 @@ async def stream_chat_completion_sdk(
                 # --- Capture transcript while CLI is still alive ---
                 # Must happen INSIDE async with: close() sends SIGTERM
                 # which kills the CLI before it can flush the JSONL.
-                if config.claude_agent_use_resume and captured_transcript.get("path"):
+                if (
+                    config.claude_agent_use_resume
+                    and user_id
+                    and captured_transcript.get("path")
+                ):
                     # Give CLI time to flush JSONL writes before we read
                     await asyncio.sleep(0.5)
-                    transcript_content = read_transcript_file(
-                        captured_transcript["path"]
-                    )
-                    if transcript_content:
-                        session.sdk_transcript = transcript_content
-                        logger.info(
-                            f"[SDK] Captured transcript: "
-                            f"{len(transcript_content)} bytes"
+                    raw_transcript = read_transcript_file(captured_transcript["path"])
+                    if raw_transcript:
+                        # Upload in background — strip + store to bucket
+                        task = asyncio.create_task(
+                            _upload_transcript_bg(user_id, session_id, raw_transcript)
                         )
+                        _background_tasks.add(task)
+                        task.add_done_callback(_background_tasks.discard)
                     else:
                         logger.debug("[SDK] Stop hook fired but transcript not usable")
 
@@ -699,9 +706,11 @@ async def stream_chat_completion_sdk(
 
     except Exception as e:
         logger.error(f"[SDK] Error: {e}", exc_info=True)
-        if use_resume:
-            session.sdk_transcript = None
-            logger.warning("[SDK] Clearing transcript after resume failure")
+        if use_resume and user_id:
+            logger.warning("[SDK] Deleting transcript after resume failure")
+            task = asyncio.create_task(delete_transcript(user_id, session_id))
+            _background_tasks.add(task)
+            task.add_done_callback(_background_tasks.discard)
         try:
             await upsert_chat_session(session)
         except Exception as save_err:
@@ -714,6 +723,16 @@ async def stream_chat_completion_sdk(
     finally:
         if sdk_cwd:
             _cleanup_sdk_tool_results(sdk_cwd)
+
+
+async def _upload_transcript_bg(
+    user_id: str, session_id: str, raw_content: str
+) -> None:
+    """Background task to strip progress entries and upload transcript."""
+    try:
+        await upload_transcript(user_id, session_id, raw_content)
+    except Exception as e:
+        logger.error(f"[SDK] Failed to upload transcript for {session_id}: {e}")
 
 
 async def _update_title_async(

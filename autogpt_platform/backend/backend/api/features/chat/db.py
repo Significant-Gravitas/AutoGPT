@@ -56,7 +56,6 @@ async def update_chat_session(
     total_prompt_tokens: int | None = None,
     total_completion_tokens: int | None = None,
     title: str | None = None,
-    sdk_transcript: str | None = None,
 ) -> PrismaChatSession | None:
     """Update a chat session's metadata."""
     data: ChatSessionUpdateInput = {"updatedAt": datetime.now(UTC)}
@@ -73,8 +72,6 @@ async def update_chat_session(
         data["totalCompletionTokens"] = total_completion_tokens
     if title is not None:
         data["title"] = title
-    if sdk_transcript is not None:
-        data["sdkTranscript"] = sdk_transcript
 
     session = await PrismaChatSession.prisma().update(
         where={"id": session_id},

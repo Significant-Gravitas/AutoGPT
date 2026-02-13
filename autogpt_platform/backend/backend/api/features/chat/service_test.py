@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from os import getenv
 
@@ -12,6 +13,7 @@ from .response_model import (
     StreamToolOutputAvailable,
 )
 from .sdk import service as sdk_service
+from .sdk.transcript import download_transcript
 
 logger = logging.getLogger(__name__)
 
@@ -130,14 +132,22 @@ async def test_sdk_resume_multi_turn(setup_test_user, test_user_id):
     assert not turn1_errors, f"Turn 1 errors: {turn1_errors}"
     assert turn1_text, "Turn 1 produced no text"
 
-    # Reload session from DB and verify transcript was captured
-    session = await get_chat_session(session.session_id, test_user_id)
-    assert session, "Session not found after turn 1"
-    assert session.sdk_transcript, (
-        "sdk_transcript was not captured after turn 1 — "
+    # Wait for background upload task to complete (retry up to 5s)
+    transcript = None
+    for _ in range(10):
+        await asyncio.sleep(0.5)
+        transcript = await download_transcript(test_user_id, session.session_id)
+        if transcript:
+            break
+    assert transcript, (
+        "Transcript was not uploaded to bucket after turn 1 — "
         "Stop hook may not have fired or transcript was too small"
     )
-    logger.info(f"Turn 1 transcript captured: {len(session.sdk_transcript)} bytes")
+    logger.info(f"Turn 1 transcript uploaded: {len(transcript)} bytes")
+
+    # Reload session for turn 2
+    session = await get_chat_session(session.session_id, test_user_id)
+    assert session, "Session not found after turn 1"
 
     # --- Turn 2: ask model to recall the keyword ---
     turn2_msg = "What was the special keyword I asked you to remember?"

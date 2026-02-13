@@ -1,9 +1,13 @@
 """JSONL transcript management for stateless multi-turn resume.
 
 The Claude Code CLI persists conversations as JSONL files (one JSON object per
-line).  When the SDK's ``Stop`` hook fires we read this file, store it in the DB,
-and on the next turn write it back to a temp file + pass ``--resume`` so the CLI
-can reconstruct the full conversation without lossy history compression.
+line).  When the SDK's ``Stop`` hook fires we read this file, strip bloat
+(progress entries, metadata), and upload the result to bucket storage.  On the
+next turn we download the transcript, write it to a temp file, and pass
+``--resume`` so the CLI can reconstruct the full conversation.
+
+Storage is handled via ``WorkspaceStorageBackend`` (GCS in prod, local
+filesystem for self-hosted) — no DB column needed.
 """
 
 import json
@@ -12,8 +16,88 @@ import os
 
 logger = logging.getLogger(__name__)
 
-# Safety limit — large transcripts are truncated to keep DB writes reasonable.
-MAX_TRANSCRIPT_SIZE = 512 * 1024  # 512 KB
+# Entry types that can be safely removed from the transcript without breaking
+# the parentUuid conversation tree that ``--resume`` relies on.
+# - progress: UI progress ticks, no message content (avg 97KB for agent_progress)
+# - file-history-snapshot: undo tracking metadata
+# - queue-operation: internal queue bookkeeping
+# - summary: session summaries
+# - pr-link: PR link metadata
+STRIPPABLE_TYPES = frozenset(
+    {"progress", "file-history-snapshot", "queue-operation", "summary", "pr-link"}
+)
+
+# Workspace storage constants — deterministic path from session_id.
+TRANSCRIPT_STORAGE_PREFIX = "chat-transcripts"
+
+
+# ---------------------------------------------------------------------------
+# Progress stripping
+# ---------------------------------------------------------------------------
+
+
+def strip_progress_entries(content: str) -> str:
+    """Remove progress/metadata entries from a JSONL transcript.
+
+    Removes entries whose ``type`` is in ``STRIPPABLE_TYPES`` and reparents
+    any remaining child entries so the ``parentUuid`` chain stays intact.
+    Typically reduces transcript size by ~30%.
+    """
+    lines = content.strip().split("\n")
+
+    entries: list[dict] = []
+    for line in lines:
+        try:
+            entries.append(json.loads(line))
+        except json.JSONDecodeError:
+            # Keep unparseable lines as-is (safety)
+            entries.append({"_raw": line})
+
+    stripped_uuids: set[str] = set()
+    uuid_to_parent: dict[str, str] = {}
+    kept: list[dict] = []
+
+    for entry in entries:
+        if "_raw" in entry:
+            kept.append(entry)
+            continue
+        uid = entry.get("uuid", "")
+        parent = entry.get("parentUuid", "")
+        entry_type = entry.get("type", "")
+
+        if uid:
+            uuid_to_parent[uid] = parent
+
+        if entry_type in STRIPPABLE_TYPES:
+            if uid:
+                stripped_uuids.add(uid)
+        else:
+            kept.append(entry)
+
+    # Reparent: walk up chain through stripped entries to find surviving ancestor
+    for entry in kept:
+        if "_raw" in entry:
+            continue
+        parent = entry.get("parentUuid", "")
+        original_parent = parent
+        while parent in stripped_uuids:
+            parent = uuid_to_parent.get(parent, "")
+        if parent != original_parent:
+            entry["parentUuid"] = parent
+
+    result_lines: list[str] = []
+    for entry in kept:
+        if "_raw" in entry:
+            result_lines.append(entry["_raw"])
+        else:
+            result_lines.append(json.dumps(entry, separators=(",", ":")))
+
+    return "\n".join(result_lines) + "\n"
+
+
+# ---------------------------------------------------------------------------
+# Local file I/O (read from CLI's JSONL, write temp file for --resume)
+# ---------------------------------------------------------------------------
 
 
 def read_transcript_file(transcript_path: str) -> str | None:
@@ -46,18 +130,8 @@ def read_transcript_file(transcript_path: str) -> str | None:
         json.loads(lines[0])
         json.loads(lines[-1])
 
-        if len(content) > MAX_TRANSCRIPT_SIZE:
-            # Truncating a JSONL transcript would break the parentUuid tree
-            # structure that --resume relies on.  Instead, return None so the
-            # caller falls back to the compression approach.
-            logger.warning(
-                f"[Transcript] Transcript too large ({len(content)} bytes), "
-                "skipping — will fall back to history compression"
-            )
-            return None
-
         logger.info(
-            f"[Transcript] Captured {len(lines)} lines, "
+            f"[Transcript] Read {len(lines)} lines, "
             f"{len(content)} bytes from {transcript_path}"
         )
         return content
@@ -123,3 +197,125 @@ def validate_transcript(content: str | None) -> bool:
             return False
 
     return has_user and has_assistant
+
+
+# ---------------------------------------------------------------------------
+# Bucket storage (GCS / local via WorkspaceStorageBackend)
+# ---------------------------------------------------------------------------
+
+
+def _storage_path_parts(user_id: str, session_id: str) -> tuple[str, str, str]:
+    """Return (workspace_id, file_id, filename) for a session's transcript.
+
+    Path structure: ``chat-transcripts/{user_id}/{session_id}.jsonl``
+    """
+    workspace_id = f"{TRANSCRIPT_STORAGE_PREFIX}/{user_id}"
+    return (workspace_id, session_id, f"{session_id}.jsonl")
+
+
+def _build_storage_path(user_id: str, session_id: str, backend: object) -> str:
+    """Build the full storage path string that ``retrieve()`` expects.
+
+    ``store()`` returns a path like ``gcs://bucket/workspaces/...`` or
+    ``local://workspace_id/file_id/filename``.  Since we use deterministic
+    arguments we can reconstruct the same path for download/delete without
+    having stored the return value.
+    """
+    from backend.util.workspace_storage import GCSWorkspaceStorage
+
+    wid, fid, fname = _storage_path_parts(user_id, session_id)
+
+    if isinstance(backend, GCSWorkspaceStorage):
+        blob = f"workspaces/{wid}/{fid}/{fname}"
+        return f"gcs://{backend.bucket_name}/{blob}"
+    else:
+        # LocalWorkspaceStorage returns local://{relative_path}
+        return f"local://{wid}/{fid}/{fname}"
+
+
+async def upload_transcript(user_id: str, session_id: str, content: str) -> None:
+    """Strip progress entries and upload transcript to bucket storage.
+
+    Safety: only overwrites when the new (stripped) transcript is larger than
+    what is already stored.  Since JSONL is append-only, the latest transcript
+    is always the longest.  This prevents a slow/stale background task from
+    clobbering a newer upload from a concurrent turn.
+    """
+    from backend.util.workspace_storage import get_workspace_storage
+
+    stripped = strip_progress_entries(content)
+    if not validate_transcript(stripped):
+        logger.warning(
+            f"[Transcript] Skipping upload — stripped content is not a valid "
+            f"transcript for session {session_id}"
+        )
+        return
+
+    storage = await get_workspace_storage()
+    wid, fid, fname = _storage_path_parts(user_id, session_id)
+    new_size = len(stripped)
+
+    # Check existing transcript size to avoid overwriting newer with older
+    path = _build_storage_path(user_id, session_id, storage)
+    try:
+        existing = await storage.retrieve(path)
+        existing_size = len(existing)
+        if existing_size >= new_size:
+            logger.info(
+                f"[Transcript] Skipping upload — existing transcript "
+                f"({existing_size}B) >= new ({new_size}B) for session "
+                f"{session_id}"
+            )
+            return
+    except (FileNotFoundError, Exception):
+        pass  # No existing transcript or retrieval error — proceed with upload
+
+    await storage.store(
+        workspace_id=wid,
+        file_id=fid,
+        filename=fname,
+        content=stripped.encode("utf-8"),
+    )
+    logger.info(
+        f"[Transcript] Uploaded {new_size} bytes "
+        f"(stripped from {len(content)}) for session {session_id}"
+    )
+
+
+async def download_transcript(user_id: str, session_id: str) -> str | None:
+    """Download transcript from bucket storage.
+
+    Returns the JSONL content string, or ``None`` if not found.
+    """
+    from backend.util.workspace_storage import get_workspace_storage
+
+    storage = await get_workspace_storage()
+    path = _build_storage_path(user_id, session_id, storage)
+
+    try:
+        data = await storage.retrieve(path)
+        content = data.decode("utf-8")
+        logger.info(
+            f"[Transcript] Downloaded {len(content)} bytes for session {session_id}"
+        )
+        return content
+    except FileNotFoundError:
+        logger.debug(f"[Transcript] No transcript in storage for {session_id}")
+        return None
+    except Exception as e:
+        logger.warning(f"[Transcript] Failed to download transcript: {e}")
+        return None
+
+
+async def delete_transcript(user_id: str, session_id: str) -> None:
+    """Delete transcript from bucket storage (e.g. after resume failure)."""
+    from backend.util.workspace_storage import get_workspace_storage
+
+    storage = await get_workspace_storage()
+    path = _build_storage_path(user_id, session_id, storage)
+
+    try:
+        await storage.delete(path)
+        logger.info(f"[Transcript] Deleted transcript for session {session_id}")
+    except Exception as e:
+        logger.warning(f"[Transcript] Failed to delete transcript: {e}")
