@@ -123,8 +123,8 @@ def read_transcript_file(transcript_path: str) -> str | None:
             return None
 
         lines = content.strip().split("\n")
-        if len(lines) < 3:
-            # Metadata-only files have ≤2 lines (queue-operation + file-history-snapshot).
+        if len(lines) < 2:
+            # Metadata-only files have 1 line (single queue-operation or snapshot).
             logger.debug(
                 f"[Transcript] Too few lines ({len(lines)}): {transcript_path}"
             )
