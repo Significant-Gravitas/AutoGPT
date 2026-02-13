@@ -267,7 +267,6 @@ class TestMakeHashable:
 
     def test_dict_key_order_independent(self):
         """Dicts with same keys in different insertion order produce same result."""
-        from collections import OrderedDict
         d1 = {"b": 2, "a": 1}
         d2 = {"a": 1, "b": 2}
         assert _make_hashable(d1) == _make_hashable(d2)
@@ -303,7 +302,6 @@ class TestFilterNoneValues:
 
     def test_preserves_falsy_values(self):
         assert _filter_none_values([0, False, "", None, []]) == [0, False, "", []]
-
 
 
 class TestComputeNestingDepth:
@@ -364,7 +362,6 @@ class TestInterleaveListsHelper:
     def test_all_none_lists(self):
         """All-None inputs should return empty list, not crash."""
         assert _interleave_lists([None, None, None]) == []
-
 
 
 # =============================================================================
@@ -463,9 +460,7 @@ class TestConcatenateListsBlockManual:
         """Test concatenation of five lists."""
         results = {}
         async for name, value in self.block.run(
-            ConcatenateListsBlock.Input(
-                lists=[[1], [2], [3], [4], [5]]
-            )
+            ConcatenateListsBlock.Input(lists=[[1], [2], [3], [4], [5]])
         ):
             results[name] = value
         assert results["concatenated_list"] == [1, 2, 3, 4, 5]
@@ -492,7 +487,14 @@ class TestConcatenateListsBlockManual:
             )
         ):
             results[name] = value
-        assert results["concatenated_list"] == [1, "a", True, 3.14, None, {"key": "val"}]
+        assert results["concatenated_list"] == [
+            1,
+            "a",
+            True,
+            3.14,
+            None,
+            {"key": "val"},
+        ]
 
     @pytest.mark.asyncio
     async def test_deduplication_enabled(self):
@@ -552,9 +554,7 @@ class TestConcatenateListsBlockManual:
         """Test that nested lists are not flattened during concatenation."""
         results = {}
         async for name, value in self.block.run(
-            ConcatenateListsBlock.Input(
-                lists=[[[1, 2]], [[3, 4]]]
-            )
+            ConcatenateListsBlock.Input(lists=[[[1, 2]], [[3, 4]]])
         ):
             results[name] = value
         assert results["concatenated_list"] == [[1, 2], [3, 4]]
@@ -668,9 +668,7 @@ class TestFlattenListBlockManual:
         """Test that non-list types are preserved during flattening."""
         results = {}
         async for name, value in self.block.run(
-            FlattenListBlock.Input(
-                nested_list=["hello", [1, {"a": 1}], [True]]
-            )
+            FlattenListBlock.Input(nested_list=["hello", [1, {"a": 1}], [True]])
         ):
             results[name] = value
         assert results["flattened_list"] == ["hello", 1, {"a": 1}, True]
@@ -730,9 +728,7 @@ class TestInterleaveListsBlockManual:
         """Test interleaving three lists."""
         results = {}
         async for name, value in self.block.run(
-            InterleaveListsBlock.Input(
-                lists=[[1, 2], ["a", "b"], ["x", "y"]]
-            )
+            InterleaveListsBlock.Input(lists=[[1, 2], ["a", "b"], ["x", "y"]])
         ):
             results[name] = value
         assert results["interleaved_list"] == [1, "a", "x", 2, "b", "y"]
@@ -829,9 +825,7 @@ class TestZipListsBlockManual:
     async def test_empty_lists_zip(self):
         """Test zipping empty input."""
         results = {}
-        async for name, value in self.block.run(
-            ZipListsBlock.Input(lists=[])
-        ):
+        async for name, value in self.block.run(ZipListsBlock.Input(lists=[])):
             results[name] = value
         assert results["zipped_list"] == []
         assert results["length"] == 0

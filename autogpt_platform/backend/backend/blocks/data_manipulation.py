@@ -783,7 +783,9 @@ def _make_hashable(item: Any):
     Converts unhashable types (dicts, lists) into deterministic tuple structures.
     """
     if isinstance(item, dict):
-        return tuple(sorted((_make_hashable(k), _make_hashable(v)) for k, v in item.items()))
+        return tuple(
+            sorted((_make_hashable(k), _make_hashable(v)) for k, v in item.items())
+        )
     if isinstance(item, (list, tuple)):
         return tuple(_make_hashable(i) for i in item)
     if isinstance(item, set):
@@ -794,7 +796,6 @@ def _make_hashable(item: Any):
 def _filter_none_values(items: List[Any]) -> List[Any]:
     """Remove None values from a list."""
     return [item for item in items if item is not None]
-
 
 
 def _compute_nesting_depth(items: Any, current: int = 0) -> int:
@@ -828,7 +829,6 @@ def _interleave_lists(lists: List[List[Any]]) -> List[Any]:
             if i < len(lst):
                 result.append(lst[i])
     return result
-
 
 
 # =============================================================================
@@ -981,9 +981,7 @@ class FlattenListBlock(Block):
         original_depth: int = SchemaField(
             description="The maximum nesting depth of the original input list."
         )
-        error: str = SchemaField(
-            description="Error message if flattening failed."
-        )
+        error: str = SchemaField(description="Error message if flattening failed.")
 
     def __init__(self):
         super().__init__(
@@ -1070,9 +1068,7 @@ class InterleaveListsBlock(Block):
         length: int = SchemaField(
             description="The total number of elements in the interleaved list."
         )
-        error: str = SchemaField(
-            description="Error message if interleaving failed."
-        )
+        error: str = SchemaField(description="Error message if interleaving failed.")
 
     def __init__(self):
         super().__init__(
@@ -1151,9 +1147,7 @@ class ZipListsBlock(Block):
         length: int = SchemaField(
             description="The number of groups in the zipped result."
         )
-        error: str = SchemaField(
-            description="Error message if zipping failed."
-        )
+        error: str = SchemaField(description="Error message if zipping failed.")
 
     def __init__(self):
         super().__init__(
@@ -1260,9 +1254,7 @@ class ListDifferenceBlock(Block):
         length: int = SchemaField(
             description="The number of elements in the difference result."
         )
-        error: str = SchemaField(
-            description="Error message if the operation failed."
-        )
+        error: str = SchemaField(description="Error message if the operation failed.")
 
     def __init__(self):
         super().__init__(
@@ -1345,9 +1337,7 @@ class ListIntersectionBlock(Block):
         length: int = SchemaField(
             description="The number of elements in the intersection."
         )
-        error: str = SchemaField(
-            description="Error message if the operation failed."
-        )
+        error: str = SchemaField(description="Error message if the operation failed.")
 
     def __init__(self):
         super().__init__(
@@ -1374,9 +1364,7 @@ class ListIntersectionBlock(Block):
             ],
         )
 
-    def _compute_intersection(
-        self, list_a: List[Any], list_b: List[Any]
-    ) -> List[Any]:
+    def _compute_intersection(self, list_a: List[Any], list_b: List[Any]) -> List[Any]:
         """Compute elements present in both lists, preserving order from list_a."""
         b_hashes = {_make_hashable(item) for item in list_b}
         seen: set[int] = set()
