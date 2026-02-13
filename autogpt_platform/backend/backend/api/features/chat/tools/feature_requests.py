@@ -175,6 +175,37 @@ class SearchFeatureRequestsTool(BaseTool):
                     "first": MAX_SEARCH_RESULTS,
                 },
             )
+
+            nodes = data.get("searchIssues", {}).get("nodes", [])
+
+            if not nodes:
+                return NoResultsResponse(
+                    message=f"No feature requests found matching '{query}'.",
+                    suggestions=[
+                        "Try different keywords",
+                        "Use broader search terms",
+                        "You can create a new feature request if none exists",
+                    ],
+                    session_id=session_id,
+                )
+
+            results = [
+                FeatureRequestInfo(
+                    id=node["id"],
+                    identifier=node["identifier"],
+                    title=node["title"],
+                    description=node.get("description"),
+                )
+                for node in nodes
+            ]
+
+            return FeatureRequestSearchResponse(
+                message=f"Found {len(results)} feature request(s) matching '{query}'.",
+                results=results,
+                count=len(results),
+                query=query,
+                session_id=session_id,
+            )
         except Exception as e:
             logger.exception("Failed to search feature requests")
             return ErrorResponse(
@@ -182,37 +213,6 @@ class SearchFeatureRequestsTool(BaseTool):
                 error=str(e),
                 session_id=session_id,
             )
-
-        nodes = data.get("searchIssues", {}).get("nodes", [])
-
-        if not nodes:
-            return NoResultsResponse(
-                message=f"No feature requests found matching '{query}'.",
-                suggestions=[
-                    "Try different keywords",
-                    "Use broader search terms",
-                    "You can create a new feature request if none exists",
-                ],
-                session_id=session_id,
-            )
-
-        results = [
-            FeatureRequestInfo(
-                id=node["id"],
-                identifier=node["identifier"],
-                title=node["title"],
-                description=node.get("description"),
-            )
-            for node in nodes
-        ]
-
-        return FeatureRequestSearchResponse(
-            message=f"Found {len(results)} feature request(s) matching '{query}'.",
-            results=results,
-            count=len(results),
-            query=query,
-            session_id=session_id,
-        )
 
 
 class CreateFeatureRequestTool(BaseTool):
@@ -316,6 +316,8 @@ class CreateFeatureRequestTool(BaseTool):
         # Step 1: Find or create customer for this user
         try:
             customer = await self._find_or_create_customer(client, user_id)
+            customer_id = customer["id"]
+            customer_name = customer["name"]
         except Exception as e:
             logger.exception("Failed to upsert customer in Linear")
             return ErrorResponse(
@@ -323,10 +325,10 @@ class CreateFeatureRequestTool(BaseTool):
                 error=str(e),
                 session_id=session_id,
             )
-        customer_id = customer["id"]
-        customer_name = customer["name"]
 
         # Step 2: Create or reuse issue
+        issue_id: str | None = None
+        issue_identifier: str | None = None
         if existing_issue_id:
             # Add need to existing issue - we still need the issue details for response
             is_new_issue = False
@@ -345,6 +347,16 @@ class CreateFeatureRequestTool(BaseTool):
                         },
                     },
                 )
+                result = data.get("issueCreate", {})
+                if not result.get("success"):
+                    return ErrorResponse(
+                        message="Failed to create feature request issue.",
+                        error=str(data),
+                        session_id=session_id,
+                    )
+                issue = result["issue"]
+                issue_id = issue["id"]
+                issue_identifier = issue.get("identifier")
             except Exception as e:
                 logger.exception("Failed to create feature request issue")
                 return ErrorResponse(
@@ -352,15 +364,6 @@ class CreateFeatureRequestTool(BaseTool):
                     error=str(e),
                     session_id=session_id,
                 )
-            result = data.get("issueCreate", {})
-            if not result.get("success"):
-                return ErrorResponse(
-                    message="Failed to create feature request issue.",
-                    error=str(data),
-                    session_id=session_id,
-                )
-            issue = result["issue"]
-            issue_id = issue["id"]
             is_new_issue = True
 
         # Step 3: Create customer need on the issue
@@ -376,23 +379,34 @@ class CreateFeatureRequestTool(BaseTool):
                     },
                 },
             )
+            need_result = data.get("customerNeedCreate", {})
+            if not need_result.get("success"):
+                orphaned = (
+                    {"issue_id": issue_id, "issue_identifier": issue_identifier}
+                    if is_new_issue
+                    else None
+                )
+                return ErrorResponse(
+                    message="Failed to attach customer need to the feature request.",
+                    error=str(data),
+                    details=orphaned,
+                    session_id=session_id,
+                )
+            need = need_result["need"]
+            issue_info = need["issue"]
         except Exception as e:
             logger.exception("Failed to create customer need")
+            orphaned = (
+                {"issue_id": issue_id, "issue_identifier": issue_identifier}
+                if is_new_issue
+                else None
+            )
             return ErrorResponse(
                 message="Failed to attach customer need to the feature request.",
                 error=str(e),
+                details=orphaned,
                 session_id=session_id,
             )
-        need_result = data.get("customerNeedCreate", {})
-        if not need_result.get("success"):
-            return ErrorResponse(
-                message="Failed to attach customer need to the feature request.",
-                error=str(data),
-                session_id=session_id,
-            )
-
-        need = need_result["need"]
-        issue_info = need["issue"]
 
         return FeatureRequestCreatedResponse(
             message=(
