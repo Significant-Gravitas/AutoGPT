@@ -115,7 +115,7 @@ def find_overlapping_prs(
     
     print(f"Found {len(other_prs)} other open PRs targeting {base_branch}")
     
-    # Find file overlaps (excluding ignored files)
+    # Find file overlaps (excluding ignored files, filtering by age)
     candidates = find_file_overlap_candidates(current_pr.files, other_prs)
     
     print(f"Found {len(candidates)} PRs with file overlap (excluding ignored files)")
@@ -123,19 +123,90 @@ def find_overlapping_prs(
     if not candidates:
         return [], {}
     
-    # Analyze each candidate for line overlaps and conflicts
+    # First pass: analyze line overlaps (no merge testing yet)
     overlaps = []
     all_changes = {}
+    prs_needing_merge_test = []
     
     for pr_data, shared_files in candidates:
         overlap, pr_changes = analyze_pr_overlap(
-            owner, repo, base_branch, current_pr, pr_data, shared_files, skip_merge_test
+            owner, repo, base_branch, current_pr, pr_data, shared_files,
+            skip_merge_test=True  # Always skip in first pass
         )
         if overlap:
             overlaps.append(overlap)
             all_changes[pr_data["number"]] = pr_changes
+            # Track PRs that need merge testing
+            if overlap.line_overlaps and not skip_merge_test:
+                prs_needing_merge_test.append(overlap)
+    
+    # Second pass: batch merge testing with shared clone
+    if prs_needing_merge_test:
+        run_batch_merge_tests(owner, repo, base_branch, current_pr, prs_needing_merge_test)
     
     return overlaps, all_changes
+
+
+def run_batch_merge_tests(
+    owner: str,
+    repo: str,
+    base_branch: str,
+    current_pr: "PullRequest",
+    overlaps: list["Overlap"]
+):
+    """Run merge tests for multiple PRs using a shared clone."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Clone once
+        if not clone_repo(owner, repo, base_branch, tmpdir):
+            return
+        
+        configure_git(tmpdir)
+        
+        # Fetch current PR branch once
+        result = run_git(["fetch", "origin", f"pull/{current_pr.number}/head:pr-{current_pr.number}"], cwd=tmpdir, check=False)
+        if result.returncode != 0:
+            print(f"Warning: Could not fetch current PR #{current_pr.number}", file=sys.stderr)
+            return
+        
+        for overlap in overlaps:
+            other_pr = overlap.pr_b if overlap.pr_a.number == current_pr.number else overlap.pr_a
+            print(f"Testing merge conflict with PR #{other_pr.number}...", flush=True)
+            
+            # Reset to base branch
+            run_git(["checkout", base_branch], cwd=tmpdir, check=False)
+            run_git(["reset", "--hard", f"origin/{base_branch}"], cwd=tmpdir, check=False)
+            run_git(["clean", "-fdx"], cwd=tmpdir, check=False)
+            
+            # Fetch the other PR branch
+            result = run_git(["fetch", "origin", f"pull/{other_pr.number}/head:pr-{other_pr.number}"], cwd=tmpdir, check=False)
+            if result.returncode != 0:
+                print(f"Warning: Could not fetch PR #{other_pr.number}: {result.stderr.strip()}", file=sys.stderr)
+                continue
+            
+            # Try merging current PR first
+            result = run_git(["merge", "--no-commit", "--no-ff", f"pr-{current_pr.number}"], cwd=tmpdir, check=False)
+            if result.returncode != 0:
+                # Current PR conflicts with base
+                conflict_files, conflict_details = extract_conflict_info(tmpdir, result.stderr)
+                overlap.has_merge_conflict = True
+                overlap.conflict_files = conflict_files
+                overlap.conflict_details = conflict_details
+                overlap.conflict_type = 'pr_a_conflicts_base'
+                run_git(["merge", "--abort"], cwd=tmpdir, check=False)
+                continue
+            
+            # Commit and try merging other PR
+            run_git(["commit", "-m", f"Merge PR #{current_pr.number}"], cwd=tmpdir, check=False)
+            
+            result = run_git(["merge", "--no-commit", "--no-ff", f"pr-{other_pr.number}"], cwd=tmpdir, check=False)
+            if result.returncode != 0:
+                # Conflict between PRs
+                conflict_files, conflict_details = extract_conflict_info(tmpdir, result.stderr)
+                overlap.has_merge_conflict = True
+                overlap.conflict_files = conflict_files
+                overlap.conflict_details = conflict_details
+                overlap.conflict_type = 'conflict'
+                run_git(["merge", "--abort"], cwd=tmpdir, check=False)
 
 
 def analyze_pr_overlap(
@@ -199,13 +270,27 @@ def analyze_pr_overlap(
 
 def find_file_overlap_candidates(
     current_files: list[str],
-    other_prs: list[dict]
+    other_prs: list[dict],
+    max_age_days: int = 14
 ) -> list[tuple[dict, list[str]]]:
     """Find PRs that share files with the current PR."""
+    from datetime import datetime, timezone, timedelta
+    
     current_files_set = set(f for f in current_files if not should_ignore_file(f))
     candidates = []
+    cutoff_date = datetime.now(timezone.utc) - timedelta(days=max_age_days)
     
     for pr_data in other_prs:
+        # Filter out PRs older than max_age_days
+        updated_at = pr_data.get("updated_at")
+        if updated_at:
+            try:
+                pr_date = datetime.fromisoformat(updated_at.replace('Z', '+00:00'))
+                if pr_date < cutoff_date:
+                    continue  # Skip old PRs
+            except Exception:
+                pass  # If we can't parse date, include the PR
+        
         other_files = set(f for f in pr_data["files"] if not should_ignore_file(f))
         shared = current_files_set & other_files
         
@@ -381,15 +466,17 @@ def format_low_risk_section(low_risk: list[tuple], current_pr: int, lines: list[
                     lines.append(f"  - `{file_path}`: {', '.join(range_strs)}")
             else:
                 lines.append(f"  - Shared files: `{'`, `'.join(non_ignored[:5])}`")
+            lines.append("")  # Add blank line between entries
     
-    lines.append("\n</details>\n")
+    lines.append("</details>\n")
 
 
 def format_pr_entry(pr: "PullRequest", lines: list[str]):
     """Format a single PR entry line."""
     updated = format_relative_time(pr.updated_at)
     updated_str = f" · updated {updated}" if updated else ""
-    lines.append(f"- **#{pr.number}** ({pr.author}{updated_str}): [{pr.title}]({pr.url})")
+    # Just use #number - GitHub auto-renders it with title
+    lines.append(f"- #{pr.number} ({pr.author}{updated_str})")
 
 
 def format_conflict_details(overlap: "Overlap", lines: list[str]):
@@ -461,8 +548,14 @@ def classify_all_overlaps(
         risk = classify_overlap_risk(o, changes_current, other_changes)
         classified.append((o, risk))
     
-    risk_order = {'conflict': 0, 'high': 1, 'medium': 2, 'low': 3}
-    classified.sort(key=lambda x: risk_order.get(x[1], 99))
+    def sort_key(item):
+        o, risk = item
+        risk_order = {'conflict': 0, 'high': 1, 'medium': 2, 'low': 3}
+        # For conflicts, also sort by total conflict lines (descending)
+        conflict_lines = sum(d.conflict_lines for d in o.conflict_details) if o.conflict_details else 0
+        return (risk_order.get(risk, 99), -conflict_lines)
+    
+    classified.sort(key=sort_key)
     
     return classified
 
