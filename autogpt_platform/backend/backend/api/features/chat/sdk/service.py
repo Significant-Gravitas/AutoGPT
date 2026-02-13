@@ -6,6 +6,7 @@ import logging
 import os
 import uuid
 from collections.abc import AsyncGenerator
+from dataclasses import dataclass
 from typing import Any
 
 from backend.util.exceptions import NotFoundError
@@ -58,6 +59,18 @@ config = ChatConfig()
 
 # Set to hold background tasks to prevent garbage collection
 _background_tasks: set[asyncio.Task[Any]] = set()
+
+
+@dataclass
+class CapturedTranscript:
+    """Info captured by the SDK Stop hook for stateless --resume."""
+
+    path: str = ""
+    sdk_session_id: str = ""
+
+    @property
+    def available(self) -> bool:
+        return bool(self.path)
 
 
 _SDK_CWD_PREFIX = WORKSPACE_PREFIX
@@ -502,11 +515,11 @@ async def stream_chat_completion_sdk(
             sdk_model = _resolve_sdk_model()
 
             # --- Transcript capture via Stop hook ---
-            captured_transcript: dict[str, str] = {}
+            captured_transcript = CapturedTranscript()
 
             def _on_stop(transcript_path: str, sdk_session_id: str) -> None:
-                captured_transcript["path"] = transcript_path
-                captured_transcript["session_id"] = sdk_session_id
+                captured_transcript.path = transcript_path
+                captured_transcript.sdk_session_id = sdk_session_id
 
             security_hooks = create_security_hooks(
                 user_id,
@@ -567,9 +580,9 @@ async def stream_chat_completion_sdk(
                     yield StreamFinish()
                     return
 
-                # Build query: with --resume the CLI already has full context,
-                # so we only send the new message.  Without resume, compress
-                # history into a context prefix as before.
+                # Build query: with --resume the CLI already has full
+                # context, so we only send the new message.  Without
+                # resume, compress history into a context prefix.
                 query_message = current_message
                 if not use_resume and len(session.messages) > 1:
                     logger.warning(
@@ -675,13 +688,12 @@ async def stream_chat_completion_sdk(
                 if (
                     config.claude_agent_use_resume
                     and user_id
-                    and captured_transcript.get("path")
+                    and captured_transcript.available
                 ):
                     # Give CLI time to flush JSONL writes before we read
                     await asyncio.sleep(0.5)
-                    raw_transcript = read_transcript_file(captured_transcript["path"])
+                    raw_transcript = read_transcript_file(captured_transcript.path)
                     if raw_transcript:
-                        # Upload in background — strip + store to bucket
                         task = asyncio.create_task(
                             _upload_transcript_bg(user_id, session_id, raw_transcript)
                         )

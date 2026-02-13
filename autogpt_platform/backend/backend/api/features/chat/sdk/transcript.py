@@ -145,13 +145,15 @@ def read_transcript_file(transcript_path: str) -> str | None:
         return None
 
 
-def _sanitize_id(raw_id: str) -> str:
+def _sanitize_id(raw_id: str, max_len: int = 36) -> str:
     """Sanitize an ID for safe use in file paths.
 
-    Session/user IDs are UUIDs (hex + hyphens).  Strip everything else
-    to prevent path traversal or injection via crafted IDs.
+    Session/user IDs are expected to be UUIDs (hex + hyphens).  Strip
+    everything else and truncate to *max_len* so the result cannot introduce
+    path separators or other special characters.
     """
-    return _SAFE_ID_RE.sub("", raw_id)
+    cleaned = _SAFE_ID_RE.sub("", raw_id or "")[:max_len]
+    return cleaned or "unknown"
 
 
 _SAFE_CWD_PREFIX = os.path.realpath("/tmp/copilot-")
@@ -177,7 +179,7 @@ def write_transcript_to_tempfile(
 
     try:
         os.makedirs(real_cwd, exist_ok=True)
-        safe_id = _sanitize_id(session_id)[:8]
+        safe_id = _sanitize_id(session_id, max_len=8)
         jsonl_path = os.path.join(real_cwd, f"transcript-{safe_id}.jsonl")
 
         with open(jsonl_path, "w") as f:
@@ -202,7 +204,7 @@ def validate_transcript(content: str | None) -> bool:
         return False
 
     lines = content.strip().split("\n")
-    if len(lines) < 3:
+    if len(lines) < 2:
         return False
 
     has_user = False
