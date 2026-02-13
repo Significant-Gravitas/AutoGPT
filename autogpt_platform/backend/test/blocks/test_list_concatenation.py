@@ -20,12 +20,9 @@ from backend.blocks.data_manipulation import (
     ListDifferenceBlock,
     ListIntersectionBlock,
     ZipListsBlock,
-    _chunk_list,
-    _compute_list_statistics,
     _compute_nesting_depth,
     _concatenate_lists_simple,
     _deduplicate_list,
-    _filter_empty_collections,
     _filter_none_values,
     _flatten_nested_list,
     _interleave_lists,
@@ -189,6 +186,15 @@ class TestFlattenNestedList:
         result = _flatten_nested_list([{"a": 1}, [{"b": 2}]])
         assert result == [{"a": 1}, {"b": 2}]
 
+    def test_excessive_depth_raises_recursion_error(self):
+        """Deeply nested lists beyond 1000 levels should raise RecursionError."""
+        # Build a list nested 1100 levels deep
+        nested = [42]
+        for _ in range(1100):
+            nested = [nested]
+        with pytest.raises(RecursionError, match="maximum depth"):
+            _flatten_nested_list(nested, max_depth=-1)
+
 
 class TestDeduplicateList:
     """Tests for the _deduplicate_list helper."""
@@ -206,7 +212,7 @@ class TestDeduplicateList:
         assert _deduplicate_list([]) == []
 
     def test_preserves_order(self):
-        result = _deduplicate_list([3, 1, 2, 1, 3], preserve_order=True)
+        result = _deduplicate_list([3, 1, 2, 1, 3])
         assert result == [3, 1, 2]
 
     def test_string_duplicates(self):
@@ -228,32 +234,31 @@ class TestDeduplicateList:
         result = _deduplicate_list([None, 1, None, 2])
         assert result == [None, 1, 2]
 
-    def test_non_order_preserving(self):
-        result = _deduplicate_list([3, 1, 2, 1, 3], preserve_order=False)
-        # Should still have unique elements
-        assert set(result) == {1, 2, 3}
-        assert len(result) == 3
+    def test_single_element(self):
+        assert _deduplicate_list([42]) == [42]
 
 
 class TestMakeHashable:
     """Tests for the _make_hashable helper."""
 
     def test_integer(self):
-        assert _make_hashable(42) == hash(42)
+        assert _make_hashable(42) == 42
 
     def test_string(self):
-        assert _make_hashable("hello") == hash("hello")
+        assert _make_hashable("hello") == "hello"
 
     def test_none(self):
-        assert _make_hashable(None) == hash(None)
+        assert _make_hashable(None) is None
 
-    def test_dict_returns_hash(self):
+    def test_dict_returns_tuple(self):
         result = _make_hashable({"a": 1})
-        assert isinstance(result, int)
+        assert isinstance(result, tuple)
+        # Should be hashable
+        hash(result)
 
-    def test_list_returns_hash(self):
+    def test_list_returns_tuple(self):
         result = _make_hashable([1, 2, 3])
-        assert isinstance(result, int)
+        assert result == (1, 2, 3)
 
     def test_same_dict_same_hash(self):
         assert _make_hashable({"a": 1, "b": 2}) == _make_hashable({"a": 1, "b": 2})
@@ -261,17 +266,25 @@ class TestMakeHashable:
     def test_different_dict_different_hash(self):
         assert _make_hashable({"a": 1}) != _make_hashable({"a": 2})
 
+    def test_dict_key_order_independent(self):
+        """Dicts with same keys in different insertion order produce same result."""
+        from collections import OrderedDict
+        d1 = {"b": 2, "a": 1}
+        d2 = {"a": 1, "b": 2}
+        assert _make_hashable(d1) == _make_hashable(d2)
+
     def test_tuple_hashable(self):
         result = _make_hashable((1, 2, 3))
-        assert isinstance(result, int)
+        assert result == (1, 2, 3)
+        hash(result)
 
     def test_boolean(self):
         result = _make_hashable(True)
-        assert isinstance(result, int)
+        assert result is True
 
     def test_float(self):
         result = _make_hashable(3.14)
-        assert isinstance(result, int)
+        assert result == 3.14
 
 
 class TestFilterNoneValues:
@@ -292,74 +305,6 @@ class TestFilterNoneValues:
     def test_preserves_falsy_values(self):
         assert _filter_none_values([0, False, "", None, []]) == [0, False, "", []]
 
-
-class TestFilterEmptyCollections:
-    """Tests for the _filter_empty_collections helper."""
-
-    def test_removes_empty_list(self):
-        assert _filter_empty_collections([1, [], 2]) == [1, 2]
-
-    def test_removes_empty_dict(self):
-        assert _filter_empty_collections([1, {}, 2]) == [1, 2]
-
-    def test_removes_empty_string(self):
-        assert _filter_empty_collections([1, "", 2]) == [1, 2]
-
-    def test_keeps_non_empty(self):
-        result = _filter_empty_collections([[1], {"a": 1}, "hello"])
-        assert result == [[1], {"a": 1}, "hello"]
-
-    def test_keeps_numbers(self):
-        assert _filter_empty_collections([0, 1, 2]) == [0, 1, 2]
-
-    def test_keeps_none(self):
-        assert _filter_empty_collections([None, 1]) == [None, 1]
-
-    def test_empty_input(self):
-        assert _filter_empty_collections([]) == []
-
-
-class TestComputeListStatistics:
-    """Tests for the _compute_list_statistics helper."""
-
-    def test_basic_statistics(self):
-        stats = _compute_list_statistics([1, 2, 3])
-        assert stats["total_elements"] == 3
-        assert stats["unique_elements"] == 3
-        assert stats["has_duplicates"] is False
-        assert stats["contains_none"] is False
-
-    def test_with_duplicates(self):
-        stats = _compute_list_statistics([1, 2, 2, 3, 3])
-        assert stats["total_elements"] == 5
-        assert stats["unique_elements"] == 3
-        assert stats["has_duplicates"] is True
-
-    def test_with_none(self):
-        stats = _compute_list_statistics([1, None, 2])
-        assert stats["contains_none"] is True
-
-    def test_type_counts(self):
-        stats = _compute_list_statistics([1, "a", True, 3.14])
-        assert stats["type_counts"]["int"] == 1
-        assert stats["type_counts"]["str"] == 1
-        assert stats["type_counts"]["bool"] == 1
-        assert stats["type_counts"]["float"] == 1
-
-    def test_empty_list(self):
-        stats = _compute_list_statistics([])
-        assert stats["total_elements"] == 0
-        assert stats["unique_elements"] == 0
-        assert stats["has_duplicates"] is False
-
-    def test_nested_depth(self):
-        stats = _compute_list_statistics([[1, [2, [3]]]])
-        assert stats["nested_depth"] >= 3
-
-    def test_single_element(self):
-        stats = _compute_list_statistics([42])
-        assert stats["total_elements"] == 1
-        assert stats["unique_elements"] == 1
 
 
 class TestComputeNestingDepth:
@@ -417,32 +362,10 @@ class TestInterleaveListsHelper:
     def test_all_empty_lists(self):
         assert _interleave_lists([[], [], []]) == []
 
+    def test_all_none_lists(self):
+        """All-None inputs should return empty list, not crash."""
+        assert _interleave_lists([None, None, None]) == []
 
-class TestChunkList:
-    """Tests for the _chunk_list helper."""
-
-    def test_even_chunks(self):
-        assert _chunk_list([1, 2, 3, 4], 2) == [[1, 2], [3, 4]]
-
-    def test_uneven_chunks(self):
-        assert _chunk_list([1, 2, 3, 4, 5], 2) == [[1, 2], [3, 4], [5]]
-
-    def test_chunk_size_larger_than_list(self):
-        assert _chunk_list([1, 2], 5) == [[1, 2]]
-
-    def test_chunk_size_one(self):
-        assert _chunk_list([1, 2, 3], 1) == [[1], [2], [3]]
-
-    def test_empty_list(self):
-        assert _chunk_list([], 3) == []
-
-    def test_invalid_chunk_size(self):
-        with pytest.raises(ValueError):
-            _chunk_list([1, 2, 3], 0)
-
-    def test_negative_chunk_size(self):
-        with pytest.raises(ValueError):
-            _chunk_list([1, 2, 3], -1)
 
 
 # =============================================================================

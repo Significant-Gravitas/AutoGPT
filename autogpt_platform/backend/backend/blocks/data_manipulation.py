@@ -735,6 +735,9 @@ def _flatten_nested_list(nested: List[Any], max_depth: int = -1) -> List[Any]:
     return result
 
 
+_MAX_FLATTEN_DEPTH = 1000
+
+
 def _flatten_recursive(
     items: List[Any],
     result: List[Any],
@@ -742,6 +745,11 @@ def _flatten_recursive(
     max_depth: int,
 ) -> None:
     """Internal recursive helper for flattening nested lists."""
+    if current_depth > _MAX_FLATTEN_DEPTH:
+        raise RecursionError(
+            f"Flattening exceeded maximum depth of {_MAX_FLATTEN_DEPTH} levels. "
+            "Input may be too deeply nested."
+        )
     for item in items:
         if isinstance(item, list) and (max_depth == -1 or current_depth < max_depth):
             _flatten_recursive(item, result, current_depth + 1, max_depth)
@@ -749,99 +757,44 @@ def _flatten_recursive(
             result.append(item)
 
 
-def _deduplicate_list(items: List[Any], preserve_order: bool = True) -> List[Any]:
+def _deduplicate_list(items: List[Any]) -> List[Any]:
     """
-    Remove duplicate elements from a list.
+    Remove duplicate elements from a list, preserving order of first occurrences.
 
     Args:
         items: The list to deduplicate.
-        preserve_order: If True, maintain original order of first occurrences.
 
     Returns:
-        A list with duplicates removed.
+        A list with duplicates removed, maintaining original order.
     """
-    if preserve_order:
-        seen: set[int] = set()
-        result: List[Any] = []
-        for item in items:
-            item_id = _make_hashable(item)
-            if item_id not in seen:
-                seen.add(item_id)
-                result.append(item)
-        return result
-    else:
-        # For non-order-preserving, use a set-like approach
-        seen_set: set[int] = set()
-        result_list: List[Any] = []
-        for item in items:
-            item_id = _make_hashable(item)
-            if item_id not in seen_set:
-                seen_set.add(item_id)
-                result_list.append(item)
-        return result_list
+    seen: set = set()
+    result: List[Any] = []
+    for item in items:
+        item_id = _make_hashable(item)
+        if item_id not in seen:
+            seen.add(item_id)
+            result.append(item)
+    return result
 
 
-def _make_hashable(item: Any) -> int:
+def _make_hashable(item: Any):
     """
     Create a hashable representation of any item for deduplication.
-    Uses id-based hashing for unhashable types like dicts and lists.
+    Converts unhashable types (dicts, lists) into deterministic tuple structures.
     """
-    try:
-        return hash(item)
-    except TypeError:
-        # For unhashable types (dict, list), use repr-based hashing
-        return hash(repr(item))
+    if isinstance(item, dict):
+        return tuple(sorted((_make_hashable(k), _make_hashable(v)) for k, v in item.items()))
+    if isinstance(item, (list, tuple)):
+        return tuple(_make_hashable(i) for i in item)
+    if isinstance(item, set):
+        return frozenset(_make_hashable(i) for i in item)
+    return item
 
 
 def _filter_none_values(items: List[Any]) -> List[Any]:
     """Remove None values from a list."""
     return [item for item in items if item is not None]
 
-
-def _filter_empty_collections(items: List[Any]) -> List[Any]:
-    """Remove empty collections (empty lists, dicts, strings, sets) from a list."""
-    result: List[Any] = []
-    for item in items:
-        if isinstance(item, (list, dict, str, set, tuple)) and len(item) == 0:
-            continue
-        result.append(item)
-    return result
-
-
-def _compute_list_statistics(items: List[Any]) -> dict[str, Any]:
-    """
-    Compute basic statistics about a list's contents.
-
-    Returns a dictionary with:
-        - total_elements: total number of elements
-        - unique_elements: number of unique elements
-        - has_duplicates: whether any duplicates exist
-        - contains_none: whether the list contains None
-        - nested_depth: maximum nesting depth
-        - type_counts: count of each type of element
-    """
-    total = len(items)
-    unique_ids = set()
-    contains_none = False
-    type_counts: dict[str, int] = {}
-
-    for item in items:
-        unique_ids.add(_make_hashable(item))
-        if item is None:
-            contains_none = True
-        type_name = type(item).__name__
-        type_counts[type_name] = type_counts.get(type_name, 0) + 1
-
-    max_depth = _compute_nesting_depth(items)
-
-    return {
-        "total_elements": total,
-        "unique_elements": len(unique_ids),
-        "has_duplicates": len(unique_ids) < total,
-        "contains_none": contains_none,
-        "nested_depth": max_depth,
-        "type_counts": type_counts,
-    }
 
 
 def _compute_nesting_depth(items: Any, current: int = 0) -> int:
@@ -865,20 +818,17 @@ def _interleave_lists(lists: List[List[Any]]) -> List[Any]:
     """
     if not lists:
         return []
+    filtered = [lst for lst in lists if lst is not None]
+    if not filtered:
+        return []
     result: List[Any] = []
-    max_len = max(len(lst) for lst in lists if lst is not None)
+    max_len = max(len(lst) for lst in filtered)
     for i in range(max_len):
-        for lst in lists:
-            if lst is not None and i < len(lst):
+        for lst in filtered:
+            if i < len(lst):
                 result.append(lst[i])
     return result
 
-
-def _chunk_list(items: List[Any], chunk_size: int) -> List[List[Any]]:
-    """Split a list into chunks of the specified size."""
-    if chunk_size <= 0:
-        raise ValueError("chunk_size must be a positive integer")
-    return [items[i : i + chunk_size] for i in range(0, len(items), chunk_size)]
 
 
 # =============================================================================
@@ -964,7 +914,7 @@ class ConcatenateListsBlock(Block):
 
     def _apply_deduplication(self, items: List[Any]) -> List[Any]:
         """Apply deduplication to the result list."""
-        return _deduplicate_list(items, preserve_order=True)
+        return _deduplicate_list(items)
 
     def _apply_none_removal(self, items: List[Any]) -> List[Any]:
         """Remove None values from the result list."""
