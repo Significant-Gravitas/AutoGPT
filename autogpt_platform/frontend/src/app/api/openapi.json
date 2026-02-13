@@ -9498,12 +9498,6 @@
           "webhook_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Webhook Id"
-          },
-          "webhook": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/Webhook" },
-              { "type": "null" }
-            ]
           }
         },
         "type": "object",
