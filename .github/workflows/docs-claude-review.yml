@@ -57,23 +57,6 @@ jobs:
           poetry install --only main
           poetry run prisma generate
 
-      - name: Delete previous Claude review comment
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          # Find comment with our marker
-          COMMENT_ID=$(gh api \
-            repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments \
-            --jq '.[] | select(.body | contains("<!-- CLAUDE_DOCS_REVIEW -->")) | .id' \
-            | head -1)
-
-          if [ -n "$COMMENT_ID" ]; then
-            echo "Deleting previous review comment: $COMMENT_ID"
-            gh api -X DELETE repos/${{ github.repository }}/issues/comments/$COMMENT_ID
-          else
-            echo "No previous review comment found"
-          fi
-
       - name: Run Claude Code Review
         uses: anthropics/claude-code-action@v1
         with:
@@ -120,3 +103,27 @@ jobs:
 
             Be constructive and specific. If everything looks good, say so!
             If there are issues, explain what's wrong and suggest how to fix it.
+
+      - name: Delete old Claude review comments
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Get all comment IDs with our marker, sorted by creation date (oldest first)
+          COMMENT_IDS=$(gh api \
+            repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments \
+            --jq '[.[] | select(.body | contains("<!-- CLAUDE_DOCS_REVIEW -->"))] | sort_by(.created_at) | .[].id')
+
+          # Count comments
+          COMMENT_COUNT=$(echo "$COMMENT_IDS" | grep -c . || true)
+
+          if [ "$COMMENT_COUNT" -gt 1 ]; then
+            # Delete all but the last (newest) comment
+            echo "$COMMENT_IDS" | head -n -1 | while read -r COMMENT_ID; do
+              if [ -n "$COMMENT_ID" ]; then
+                echo "Deleting old review comment: $COMMENT_ID"
+                gh api -X DELETE repos/${{ github.repository }}/issues/comments/$COMMENT_ID
+              fi
+            done
+          else
+            echo "No old review comments to clean up"
+          fi
