@@ -4696,7 +4696,7 @@
       "delete": {
         "tags": ["v2", "admin", "llm", "llm", "admin"],
         "summary": "Delete LLM model and migrate workflows",
-        "description": "Delete a model and optionally migrate workflows using it to a replacement model.\n\nIf no workflows are using this model, it can be deleted without providing a\nreplacement. If workflows exist, replacement_model_slug is required.\n\nThis endpoint:\n1. Counts how many workflow nodes use the model being deleted\n2. If nodes exist, validates the replacement model and migrates them\n3. Deletes the model record\n4. Refreshes all caches and notifies executors\n\nExample: DELETE /admin/llm/models/{id}?replacement_model_slug=gpt-4o\nExample (no usage): DELETE /admin/llm/models/{id}",
+        "description": "Delete a model and optionally migrate workflows using it to a replacement model.\n\nIf no workflows are using this model, it can be deleted without providing a\nreplacement. If workflows exist, replacement_model_slug is required.\n\nThis endpoint:\n1. Counts how many workflow nodes use the model being deleted\n2. If nodes exist, validates the replacement model and migrates them\n3. Deletes the model record\n4. Refreshes all caches and notifies executors\n\nExample: DELETE /api/llm/admin/models/{id}?replacement_model_slug=gpt-4o\nExample (no usage): DELETE /api/llm/admin/models/{id}",
         "operationId": "deleteV2Delete llm model and migrate workflows",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
