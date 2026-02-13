@@ -163,17 +163,25 @@ class SearchFeatureRequestsTool(BaseTool):
                 session_id=session_id,
             )
 
-        client = _get_linear_client()
-        data = await client.query(
-            SEARCH_ISSUES_QUERY,
-            {
-                "term": query,
-                "filter": {
-                    "project": {"id": {"eq": FEATURE_REQUEST_PROJECT_ID}},
+        try:
+            client = _get_linear_client()
+            data = await client.query(
+                SEARCH_ISSUES_QUERY,
+                {
+                    "term": query,
+                    "filter": {
+                        "project": {"id": {"eq": FEATURE_REQUEST_PROJECT_ID}},
+                    },
+                    "first": MAX_SEARCH_RESULTS,
                 },
-                "first": MAX_SEARCH_RESULTS,
-            },
-        )
+            )
+        except Exception as e:
+            logger.exception("Failed to search feature requests")
+            return ErrorResponse(
+                message="Failed to search feature requests.",
+                error=str(e),
+                session_id=session_id,
+            )
 
         nodes = data.get("searchIssues", {}).get("nodes", [])
 
@@ -295,10 +303,26 @@ class CreateFeatureRequestTool(BaseTool):
                 session_id=session_id,
             )
 
-        client = _get_linear_client()
+        try:
+            client = _get_linear_client()
+        except Exception as e:
+            logger.exception("Failed to create Linear client")
+            return ErrorResponse(
+                message="Failed to create feature request.",
+                error=str(e),
+                session_id=session_id,
+            )
 
         # Step 1: Find or create customer for this user
-        customer = await self._find_or_create_customer(client, user_id)
+        try:
+            customer = await self._find_or_create_customer(client, user_id)
+        except Exception as e:
+            logger.exception("Failed to upsert customer in Linear")
+            return ErrorResponse(
+                message="Failed to create feature request.",
+                error=str(e),
+                session_id=session_id,
+            )
         customer_id = customer["id"]
         customer_name = customer["name"]
 
@@ -309,17 +333,25 @@ class CreateFeatureRequestTool(BaseTool):
             issue_id = existing_issue_id
         else:
             # Create new issue in the feature requests project
-            data = await client.mutate(
-                ISSUE_CREATE_MUTATION,
-                {
-                    "input": {
-                        "title": title,
-                        "description": description,
-                        "teamId": TEAM_ID,
-                        "projectId": FEATURE_REQUEST_PROJECT_ID,
+            try:
+                data = await client.mutate(
+                    ISSUE_CREATE_MUTATION,
+                    {
+                        "input": {
+                            "title": title,
+                            "description": description,
+                            "teamId": TEAM_ID,
+                            "projectId": FEATURE_REQUEST_PROJECT_ID,
+                        },
                     },
-                },
-            )
+                )
+            except Exception as e:
+                logger.exception("Failed to create feature request issue")
+                return ErrorResponse(
+                    message="Failed to create feature request.",
+                    error=str(e),
+                    session_id=session_id,
+                )
             result = data.get("issueCreate", {})
             if not result.get("success"):
                 return ErrorResponse(
@@ -332,17 +364,25 @@ class CreateFeatureRequestTool(BaseTool):
             is_new_issue = True
 
         # Step 3: Create customer need on the issue
-        data = await client.mutate(
-            CUSTOMER_NEED_CREATE_MUTATION,
-            {
-                "input": {
-                    "customerId": customer_id,
-                    "issueId": issue_id,
-                    "body": description,
-                    "priority": 0,
+        try:
+            data = await client.mutate(
+                CUSTOMER_NEED_CREATE_MUTATION,
+                {
+                    "input": {
+                        "customerId": customer_id,
+                        "issueId": issue_id,
+                        "body": description,
+                        "priority": 0,
+                    },
                 },
-            },
-        )
+            )
+        except Exception as e:
+            logger.exception("Failed to create customer need")
+            return ErrorResponse(
+                message="Failed to attach customer need to the feature request.",
+                error=str(e),
+                session_id=session_id,
+            )
         need_result = data.get("customerNeedCreate", {})
         if not need_result.get("success"):
             return ErrorResponse(
