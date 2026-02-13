@@ -85,26 +85,52 @@ class TestReadTranscriptFile:
 
 
 class TestWriteTranscriptToTempfile:
-    def test_writes_file_and_returns_path(self, tmp_path):
-        cwd = str(tmp_path / "workspace")
-        result = write_transcript_to_tempfile(VALID_TRANSCRIPT, "sess-1234-abcd", cwd)
-        assert result is not None
-        assert os.path.isfile(result)
-        assert result.endswith(".jsonl")
-        with open(result) as f:
-            assert f.read() == VALID_TRANSCRIPT
+    """Tests use /tmp/copilot-* paths to satisfy the sandbox prefix check."""
 
-    def test_creates_parent_directory(self, tmp_path):
-        cwd = str(tmp_path / "new" / "dir")
+    def test_writes_file_and_returns_path(self):
+        cwd = "/tmp/copilot-test-write"
+        try:
+            result = write_transcript_to_tempfile(
+                VALID_TRANSCRIPT, "sess-1234-abcd", cwd
+            )
+            assert result is not None
+            assert os.path.isfile(result)
+            assert result.endswith(".jsonl")
+            with open(result) as f:
+                assert f.read() == VALID_TRANSCRIPT
+        finally:
+            import shutil
+
+            shutil.rmtree(cwd, ignore_errors=True)
+
+    def test_creates_parent_directory(self):
+        cwd = "/tmp/copilot-test-mkdir"
+        try:
+            result = write_transcript_to_tempfile(VALID_TRANSCRIPT, "sess-1234", cwd)
+            assert result is not None
+            assert os.path.isdir(cwd)
+        finally:
+            import shutil
+
+            shutil.rmtree(cwd, ignore_errors=True)
+
+    def test_uses_session_id_prefix(self):
+        cwd = "/tmp/copilot-test-prefix"
+        try:
+            result = write_transcript_to_tempfile(
+                VALID_TRANSCRIPT, "abcdef12-rest", cwd
+            )
+            assert result is not None
+            assert "abcdef12" in os.path.basename(result)
+        finally:
+            import shutil
+
+            shutil.rmtree(cwd, ignore_errors=True)
+
+    def test_rejects_cwd_outside_sandbox(self, tmp_path):
+        cwd = str(tmp_path / "not-copilot")
         result = write_transcript_to_tempfile(VALID_TRANSCRIPT, "sess-1234", cwd)
-        assert result is not None
-        assert os.path.isdir(cwd)
-
-    def test_uses_session_id_prefix(self, tmp_path):
-        cwd = str(tmp_path)
-        result = write_transcript_to_tempfile(VALID_TRANSCRIPT, "abcdef12-rest", cwd)
-        assert result is not None
-        assert "abcdef12" in os.path.basename(result)
+        assert result is None
 
 
 # --- validate_transcript ---

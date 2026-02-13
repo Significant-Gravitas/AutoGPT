@@ -154,6 +154,9 @@ def _sanitize_id(raw_id: str) -> str:
     return _SAFE_ID_RE.sub("", raw_id)
 
 
+_SAFE_CWD_PREFIX = os.path.realpath("/tmp/copilot-")
+
+
 def write_transcript_to_tempfile(
     transcript_content: str,
     session_id: str,
@@ -166,15 +169,16 @@ def write_transcript_to_tempfile(
 
     Returns the absolute path to the file, or ``None`` on failure.
     """
-    try:
-        os.makedirs(cwd, exist_ok=True)
-        safe_id = _sanitize_id(session_id)[:8]
-        jsonl_path = os.path.join(cwd, f"transcript-{safe_id}.jsonl")
+    # Validate cwd is under the expected sandbox prefix (CodeQL sanitizer).
+    real_cwd = os.path.realpath(cwd)
+    if not real_cwd.startswith(_SAFE_CWD_PREFIX):
+        logger.warning(f"[Transcript] cwd outside sandbox: {cwd}")
+        return None
 
-        # Defence-in-depth: ensure the resolved path stays inside cwd
-        if not os.path.realpath(jsonl_path).startswith(os.path.realpath(cwd)):
-            logger.warning(f"[Transcript] Path escaped cwd: {jsonl_path}")
-            return None
+    try:
+        os.makedirs(real_cwd, exist_ok=True)
+        safe_id = _sanitize_id(session_id)[:8]
+        jsonl_path = os.path.join(real_cwd, f"transcript-{safe_id}.jsonl")
 
         with open(jsonl_path, "w") as f:
             f.write(transcript_content)
