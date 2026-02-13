@@ -7066,12 +7066,56 @@
         "properties": {
           "id": { "type": "string", "title": "Id" },
           "name": { "type": "string", "title": "Name" },
-          "description": { "type": "string", "title": "Description" }
+          "description": { "type": "string", "title": "Description" },
+          "categories": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Categories"
+          },
+          "input_schema": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Input Schema",
+            "description": "Full JSON schema for block inputs"
+          },
+          "output_schema": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Output Schema",
+            "description": "Full JSON schema for block outputs"
+          },
+          "required_inputs": {
+            "items": { "$ref": "#/components/schemas/BlockInputFieldInfo" },
+            "type": "array",
+            "title": "Required Inputs",
+            "description": "List of input fields for this block"
+          }
         },
         "type": "object",
-        "required": ["id", "name", "description"],
+        "required": ["id", "name", "description", "categories"],
         "title": "BlockInfoSummary",
         "description": "Summary of a block for search results."
+      },
+      "BlockInputFieldInfo": {
+        "properties": {
+          "name": { "type": "string", "title": "Name" },
+          "type": { "type": "string", "title": "Type" },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "default": ""
+          },
+          "required": {
+            "type": "boolean",
+            "title": "Required",
+            "default": false
+          },
+          "default": { "anyOf": [{}, { "type": "null" }], "title": "Default" }
+        },
+        "type": "object",
+        "required": ["name", "type"],
+        "title": "BlockInputFieldInfo",
+        "description": "Information about a block input field."
       },
       "BlockListResponse": {
         "properties": {
@@ -7090,7 +7134,12 @@
             "title": "Blocks"
           },
           "count": { "type": "integer", "title": "Count" },
-          "query": { "type": "string", "title": "Query" }
+          "query": { "type": "string", "title": "Query" },
+          "usage_hint": {
+            "type": "string",
+            "title": "Usage Hint",
+            "default": "To execute a block, call run_block with block_id set to the block's 'id' field and input_data containing the fields listed in required_inputs."
+          }
         },
         "type": "object",
         "required": ["message", "blocks", "count", "query"],
@@ -10496,6 +10545,9 @@
           "operation_pending",
           "operation_in_progress",
           "input_validation_error",
+          "web_fetch",
+          "bash_exec",
+          "operation_status",
           "feature_request_search",
           "feature_request_created"
         ],
