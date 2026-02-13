@@ -138,7 +138,7 @@ class CoPilotExecutor(AppProcess):
                 # Refresh cluster locks periodically
                 current_time = time.monotonic()
                 if current_time - last_refresh >= lock_refresh_interval:
-                    for lock in self._task_locks.values():
+                    for lock in list(self._task_locks.values()):
                         try:
                             lock.refresh()
                         except Exception as e:

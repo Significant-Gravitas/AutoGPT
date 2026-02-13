@@ -9,7 +9,8 @@ import logging
 from typing import Any
 
 import orjson
-from prisma import Prisma
+
+from backend.data.db_accessors import chat_db
 
 from . import service as chat_service
 from . import stream_registry
@@ -72,48 +73,40 @@ async def _update_tool_message(
     session_id: str,
     tool_call_id: str,
     content: str,
-    prisma_client: Prisma | None,
 ) -> None:
-    """Update tool message in database.
+    """Update tool message in database using the chat_db accessor.
+
+    Routes through DatabaseManager RPC when Prisma is not directly
+    connected (e.g. in the CoPilot Executor microservice).
 
     Args:
         session_id: The session ID
         tool_call_id: The tool call ID to update
         content: The new content for the message
-        prisma_client: Optional Prisma client. If None, uses chat_service.
 
     Raises:
-        ToolMessageUpdateError: If the database update fails. The caller should
-            handle this to avoid marking the task as completed with inconsistent state.
+        ToolMessageUpdateError: If the database update fails.
     """
     try:
-        if prisma_client:
-            # Use provided Prisma client (for consumer with its own connection)
-            updated_count = await prisma_client.chatmessage.update_many(
-                where={
-                    "sessionId": session_id,
-                    "toolCallId": tool_call_id,
-                },
-                data={"content": content},
-            )
-            # Check if any rows were updated - 0 means message not found
-            if updated_count == 0:
-                raise ToolMessageUpdateError(
-                    f"No message found with tool_call_id={tool_call_id} in session {session_id}"
-                )
-        else:
-            # Use service function (for webhook endpoint)
-            await chat_service._update_pending_operation(
-                session_id=session_id,
-                tool_call_id=tool_call_id,
-                result=content,
+        updated = await chat_db().update_tool_message_content(
+            session_id=session_id,
+            tool_call_id=tool_call_id,
+            new_content=content,
+        )
+        if not updated:
+            raise ToolMessageUpdateError(
+                f"No message found with tool_call_id="
+                f"{tool_call_id} in session {session_id}"
             )
     except ToolMessageUpdateError:
         raise
     except Exception as e:
-        logger.error(f"[COMPLETION] Failed to update tool message: {e}", exc_info=True)
+        logger.error(
+            f"[COMPLETION] Failed to update tool message: {e}",
+            exc_info=True,
+        )
         raise ToolMessageUpdateError(
-            f"Failed to update tool message for tool_call_id={tool_call_id}: {e}"
+            f"Failed to update tool message for tool call #{tool_call_id}: {e}"
         ) from e
 
 
@@ -202,7 +195,6 @@ async def _save_agent_from_result(
 async def process_operation_success(
     task: stream_registry.ActiveTask,
     result: dict | str | None,
-    prisma_client: Prisma | None = None,
 ) -> None:
     """Handle successful operation completion.
 
@@ -212,12 +204,10 @@ async def process_operation_success(
     Args:
         task: The active task that completed
         result: The result data from the operation
-        prisma_client: Optional Prisma client for database operations.
-            If None, uses chat_service._update_pending_operation instead.
 
     Raises:
-        ToolMessageUpdateError: If the database update fails. The task will be
-            marked as failed instead of completed to avoid inconsistent state.
+        ToolMessageUpdateError: If the database update fails. The task
+            will be marked as failed instead of completed.
     """
     # For agent generation tools, save the agent to library
     if task.tool_name in AGENT_GENERATION_TOOLS and isinstance(result, dict):
@@ -250,7 +240,6 @@ async def process_operation_success(
             session_id=task.session_id,
             tool_call_id=task.tool_call_id,
             content=result_str,
-            prisma_client=prisma_client,
         )
     except ToolMessageUpdateError:
         # DB update failed - mark task as failed to avoid inconsistent state
@@ -293,18 +282,15 @@ async def process_operation_success(
 async def process_operation_failure(
     task: stream_registry.ActiveTask,
     error: str | None,
-    prisma_client: Prisma | None = None,
 ) -> None:
     """Handle failed operation completion.
 
-    Publishes the error to the stream registry, updates the database with
-    the error response, and marks the task as failed.
+    Publishes the error to the stream registry, updates the database
+    with the error response, and marks the task as failed.
 
     Args:
         task: The active task that failed
         error: The error message from the operation
-        prisma_client: Optional Prisma client for database operations.
-            If None, uses chat_service._update_pending_operation instead.
     """
     error_msg = error or "Operation failed"
 
@@ -325,7 +311,6 @@ async def process_operation_failure(
             session_id=task.session_id,
             tool_call_id=task.tool_call_id,
             content=error_response.model_dump_json(),
-            prisma_client=prisma_client,
         )
     except ToolMessageUpdateError:
         # DB update failed - log but continue with cleanup

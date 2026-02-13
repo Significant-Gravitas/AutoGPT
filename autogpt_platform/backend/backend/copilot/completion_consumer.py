@@ -37,12 +37,10 @@ stale pending messages from dead consumers.
 
 import asyncio
 import logging
-import os
 import uuid
 from typing import Any
 
 import orjson
-from prisma import Prisma
 from pydantic import BaseModel
 from redis.exceptions import ResponseError
 
@@ -69,8 +67,8 @@ class OperationCompleteMessage(BaseModel):
 class ChatCompletionConsumer:
     """Consumer for chat operation completion messages from Redis Streams.
 
-    This consumer initializes its own Prisma client in start() to ensure
-    database operations work correctly within this async context.
+    Database operations are handled through the chat_db() accessor, which
+    routes through DatabaseManager RPC when Prisma is not directly connected.
 
     Uses Redis consumer groups to allow multiple platform pods to consume
     messages reliably with automatic redelivery on failure.
@@ -79,7 +77,6 @@ class ChatCompletionConsumer:
     def __init__(self):
         self._consumer_task: asyncio.Task | None = None
         self._running = False
-        self._prisma: Prisma | None = None
         self._consumer_name = f"consumer-{uuid.uuid4().hex[:8]}"
 
     async def start(self) -> None:
@@ -115,16 +112,6 @@ class ChatCompletionConsumer:
             f"Chat completion consumer started (consumer: {self._consumer_name})"
         )
 
-    async def _ensure_prisma(self) -> Prisma:
-        """Lazily initialize Prisma client on first use."""
-        if self._prisma is None:
-            database_url = os.getenv("DATABASE_URL", "postgresql://localhost:5432")
-            prisma = Prisma(datasource={"url": database_url})
-            await prisma.connect()
-            self._prisma = prisma
-            logger.info("[COMPLETION] Consumer Prisma client connected (lazy init)")
-        return self._prisma
-
     async def stop(self) -> None:
         """Stop the completion consumer."""
         self._running = False
@@ -136,11 +123,6 @@ class ChatCompletionConsumer:
             except asyncio.CancelledError:
                 pass
             self._consumer_task = None
-
-        if self._prisma:
-            await self._prisma.disconnect()
-            self._prisma = None
-            logger.info("[COMPLETION] Consumer Prisma client disconnected")
 
         logger.info("Chat completion consumer stopped")
 
@@ -253,7 +235,7 @@ class ChatCompletionConsumer:
             # XAUTOCLAIM after min_idle_time expires
 
     async def _handle_message(self, body: bytes) -> None:
-        """Handle a completion message using our own Prisma client."""
+        """Handle a completion message."""
         try:
             data = orjson.loads(body)
             message = OperationCompleteMessage(**data)
@@ -303,8 +285,7 @@ class ChatCompletionConsumer:
         message: OperationCompleteMessage,
     ) -> None:
         """Handle successful operation completion."""
-        prisma = await self._ensure_prisma()
-        await process_operation_success(task, message.result, prisma)
+        await process_operation_success(task, message.result)
 
     async def _handle_failure(
         self,
@@ -312,8 +293,7 @@ class ChatCompletionConsumer:
         message: OperationCompleteMessage,
     ) -> None:
         """Handle failed operation completion."""
-        prisma = await self._ensure_prisma()
-        await process_operation_failure(task, message.error, prisma)
+        await process_operation_failure(task, message.error)
 
 
 # Module-level consumer instance

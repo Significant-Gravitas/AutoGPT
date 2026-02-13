@@ -55,6 +55,19 @@ class ChatMessage(BaseModel):
     tool_calls: list[dict] | None = None
     function_call: dict | None = None
 
+    @staticmethod
+    def from_db(prisma_message: PrismaChatMessage) -> "ChatMessage":
+        """Convert a Prisma ChatMessage to a Pydantic ChatMessage."""
+        return ChatMessage(
+            role=prisma_message.role,
+            content=prisma_message.content,
+            name=prisma_message.name,
+            tool_call_id=prisma_message.toolCallId,
+            refusal=prisma_message.refusal,
+            tool_calls=_parse_json_field(prisma_message.toolCalls),
+            function_call=_parse_json_field(prisma_message.functionCall),
+        )
+
 
 class Usage(BaseModel):
     prompt_tokens: int
@@ -108,26 +121,8 @@ class ChatSession(BaseModel):
         )
 
     @staticmethod
-    def from_db(
-        prisma_session: PrismaChatSession,
-        prisma_messages: list[PrismaChatMessage] | None = None,
-    ) -> "ChatSession":
-        """Convert Prisma models to Pydantic ChatSession."""
-        messages = []
-        if prisma_messages:
-            for msg in prisma_messages:
-                messages.append(
-                    ChatMessage(
-                        role=msg.role,
-                        content=msg.content,
-                        name=msg.name,
-                        tool_call_id=msg.toolCallId,
-                        refusal=msg.refusal,
-                        tool_calls=_parse_json_field(msg.toolCalls),
-                        function_call=_parse_json_field(msg.functionCall),
-                    )
-                )
-
+    def from_db(prisma_session: PrismaChatSession) -> "ChatSession":
+        """Convert Prisma ChatSession to Pydantic ChatSession."""
         # Parse JSON fields from Prisma
         credentials = _parse_json_field(prisma_session.credentials, default={})
         successful_agent_runs = _parse_json_field(
@@ -153,7 +148,11 @@ class ChatSession(BaseModel):
             session_id=prisma_session.id,
             user_id=prisma_session.userId,
             title=prisma_session.title,
-            messages=messages,
+            messages=(
+                [ChatMessage.from_db(m) for m in prisma_session.Messages]
+                if prisma_session.Messages
+                else []
+            ),
             usage=usage,
             credentials=credentials,
             started_at=prisma_session.createdAt,
@@ -408,19 +407,18 @@ async def _get_session_from_cache(session_id: str) -> ChatSession | None:
 
 async def _get_session_from_db(session_id: str) -> ChatSession | None:
     """Get a chat session from the database."""
-    prisma_session = await chat_db().get_chat_session(session_id)
-    if not prisma_session:
+    session = await chat_db().get_chat_session(session_id)
+    if not session:
         return None
 
-    messages = prisma_session.Messages
     logger.info(
-        f"Loading session {session_id} from DB: "
-        f"has_messages={messages is not None}, "
-        f"message_count={len(messages) if messages else 0}, "
-        f"roles={[m.role for m in messages] if messages else []}"
+        f"Loaded session {session_id} from DB: "
+        f"has_messages={bool(session.messages)}, "
+        f"message_count={len(session.messages)}, "
+        f"roles={[m.role for m in session.messages]}"
     )
 
-    return ChatSession.from_db(prisma_session, messages)
+    return session
 
 
 async def upsert_chat_session(
@@ -617,13 +615,8 @@ async def get_user_sessions(
         number of sessions for the user (not just the current page).
     """
     db = chat_db()
-    prisma_sessions = await db.get_user_chat_sessions(user_id, limit, offset)
+    sessions = await db.get_user_chat_sessions(user_id, limit, offset)
     total_count = await db.get_user_session_count(user_id)
-
-    sessions = []
-    for prisma_session in prisma_sessions:
-        # Convert without messages for listing (lighter weight)
-        sessions.append(ChatSession.from_db(prisma_session, None))
 
     return sessions, total_count
 

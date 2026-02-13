@@ -17,26 +17,24 @@ from prisma.types import (
 from backend.data import db
 from backend.util.json import SafeJson
 
+from .model import ChatMessage, ChatSession
+
 logger = logging.getLogger(__name__)
 
 
-async def get_chat_session(session_id: str) -> PrismaChatSession | None:
+async def get_chat_session(session_id: str) -> ChatSession | None:
     """Get a chat session by ID from the database."""
     session = await PrismaChatSession.prisma().find_unique(
         where={"id": session_id},
-        include={"Messages": True},
+        include={"Messages": {"order_by": {"sequence": "asc"}}},
     )
-    if session and session.Messages:
-        # Sort messages by sequence in Python - Prisma Python client doesn't support
-        # order_by in include clauses (unlike Prisma JS), so we sort after fetching
-        session.Messages.sort(key=lambda m: m.sequence)
-    return session
+    return ChatSession.from_db(session) if session else None
 
 
 async def create_chat_session(
     session_id: str,
     user_id: str,
-) -> PrismaChatSession:
+) -> ChatSession:
     """Create a new chat session in the database."""
     data = ChatSessionCreateInput(
         id=session_id,
@@ -45,7 +43,8 @@ async def create_chat_session(
         successfulAgentRuns=SafeJson({}),
         successfulAgentSchedules=SafeJson({}),
     )
-    return await PrismaChatSession.prisma().create(data=data)
+    prisma_session = await PrismaChatSession.prisma().create(data=data)
+    return ChatSession.from_db(prisma_session)
 
 
 async def update_chat_session(
@@ -56,7 +55,7 @@ async def update_chat_session(
     total_prompt_tokens: int | None = None,
     total_completion_tokens: int | None = None,
     title: str | None = None,
-) -> PrismaChatSession | None:
+) -> ChatSession | None:
     """Update a chat session's metadata."""
     data: ChatSessionUpdateInput = {"updatedAt": datetime.now(UTC)}
 
@@ -76,12 +75,9 @@ async def update_chat_session(
     session = await PrismaChatSession.prisma().update(
         where={"id": session_id},
         data=data,
-        include={"Messages": True},
+        include={"Messages": {"order_by": {"sequence": "asc"}}},
     )
-    if session and session.Messages:
-        # Sort in Python - Prisma Python doesn't support order_by in include clauses
-        session.Messages.sort(key=lambda m: m.sequence)
-    return session
+    return ChatSession.from_db(session) if session else None
 
 
 async def add_chat_message(
@@ -94,7 +90,7 @@ async def add_chat_message(
     refusal: str | None = None,
     tool_calls: list[dict[str, Any]] | None = None,
     function_call: dict[str, Any] | None = None,
-) -> PrismaChatMessage:
+) -> ChatMessage:
     """Add a message to a chat session."""
     # Build input dict dynamically rather than using ChatMessageCreateInput directly
     # because Prisma's TypedDict validation rejects optional fields set to None.
@@ -129,14 +125,14 @@ async def add_chat_message(
         ),
         PrismaChatMessage.prisma().create(data=cast(ChatMessageCreateInput, data)),
     )
-    return message
+    return ChatMessage.from_db(message)
 
 
 async def add_chat_messages_batch(
     session_id: str,
     messages: list[dict[str, Any]],
     start_sequence: int,
-) -> list[PrismaChatMessage]:
+) -> list[ChatMessage]:
     """Add multiple messages to a chat session in a batch.
 
     Uses a transaction for atomicity - if any message creation fails,
@@ -187,21 +183,22 @@ async def add_chat_messages_batch(
             data={"updatedAt": datetime.now(UTC)},
         )
 
-    return created_messages
+    return [ChatMessage.from_db(m) for m in created_messages]
 
 
 async def get_user_chat_sessions(
     user_id: str,
     limit: int = 50,
     offset: int = 0,
-) -> list[PrismaChatSession]:
+) -> list[ChatSession]:
     """Get chat sessions for a user, ordered by most recent."""
-    return await PrismaChatSession.prisma().find_many(
+    prisma_sessions = await PrismaChatSession.prisma().find_many(
         where={"userId": user_id},
         order={"updatedAt": "desc"},
         take=limit,
         skip=offset,
     )
+    return [ChatSession.from_db(s) for s in prisma_sessions]
 
 
 async def get_user_session_count(user_id: str) -> int:
