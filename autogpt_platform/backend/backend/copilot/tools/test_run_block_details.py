@@ -5,12 +5,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.blocks._base import BlockType
-from backend.copilot.tools.models import BlockDetailsResponse
-from backend.copilot.tools.run_block import RunBlockTool
 from backend.data.model import CredentialsMetaInput
 from backend.integrations.providers import ProviderName
 
 from ._test_data import make_session
+from .models import BlockDetailsResponse
+from .run_block import RunBlockTool
 
 _TEST_USER_ID = "test-user-run-block-details"
 

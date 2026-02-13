@@ -6,14 +6,15 @@ from prisma.enums import ContentType
 from backend.blocks import get_block
 from backend.blocks._base import BlockType
 from backend.copilot.model import ChatSession
-from backend.copilot.tools.base import BaseTool, ToolResponseBase
-from backend.copilot.tools.models import (
+from backend.data.db_accessors import search
+
+from .base import BaseTool, ToolResponseBase
+from .models import (
     BlockInfoSummary,
     BlockListResponse,
     ErrorResponse,
     NoResultsResponse,
 )
-from backend.data.db_accessors import search
 
 logger = logging.getLogger(__name__)
 
@@ -146,6 +147,7 @@ class FindBlockTool(BaseTool):
                         id=block_id,
                         name=block.name,
                         description=block.description or "",
+                        categories=[c.value for c in block.categories],
                     )
                 )
 

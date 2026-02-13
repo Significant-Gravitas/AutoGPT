@@ -15,11 +15,16 @@ import { ToolUIPart, UIDataTypes, UIMessage, UITools } from "ai";
 import { useEffect, useRef, useState } from "react";
 import { CreateAgentTool } from "../../tools/CreateAgent/CreateAgent";
 import { EditAgentTool } from "../../tools/EditAgent/EditAgent";
+import {
+  CreateFeatureRequestTool,
+  SearchFeatureRequestsTool,
+} from "../../tools/FeatureRequests/FeatureRequests";
 import { FindAgentsTool } from "../../tools/FindAgents/FindAgents";
 import { FindBlocksTool } from "../../tools/FindBlocks/FindBlocks";
 import { RunAgentTool } from "../../tools/RunAgent/RunAgent";
 import { RunBlockTool } from "../../tools/RunBlock/RunBlock";
 import { SearchDocsTool } from "../../tools/SearchDocs/SearchDocs";
+import { GenericTool } from "../../tools/GenericTool/GenericTool";
 import { ViewAgentOutputTool } from "../../tools/ViewAgentOutput/ViewAgentOutput";
 
 // ---------------------------------------------------------------------------
@@ -254,7 +259,31 @@ export const ChatMessagesContainer = ({
                           part={part as ToolUIPart}
                         />
                       );
+                    case "tool-search_feature_requests":
+                      return (
+                        <SearchFeatureRequestsTool
+                          key={`${message.id}-${i}`}
+                          part={part as ToolUIPart}
+                        />
+                      );
+                    case "tool-create_feature_request":
+                      return (
+                        <CreateFeatureRequestTool
+                          key={`${message.id}-${i}`}
+                          part={part as ToolUIPart}
+                        />
+                      );
                     default:
+                      // Render a generic tool indicator for SDK built-in
+                      // tools (Read, Glob, Grep, etc.) or any unrecognized tool
+                      if (part.type.startsWith("tool-")) {
+                        return (
+                          <GenericTool
+                            key={`${message.id}-${i}`}
+                            part={part as ToolUIPart}
+                          />
+                        );
+                      }
                       return null;
                   }
                 })}

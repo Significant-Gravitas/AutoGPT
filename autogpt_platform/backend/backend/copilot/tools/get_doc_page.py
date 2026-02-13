@@ -5,12 +5,9 @@ from pathlib import Path
 from typing import Any
 
 from backend.copilot.model import ChatSession
-from backend.copilot.tools.base import BaseTool
-from backend.copilot.tools.models import (
-    DocPageResponse,
-    ErrorResponse,
-    ToolResponseBase,
-)
+
+from .base import BaseTool
+from .models import DocPageResponse, ErrorResponse, ToolResponseBase
 
 logger = logging.getLogger(__name__)
 

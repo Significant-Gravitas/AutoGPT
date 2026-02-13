@@ -10,10 +10,6 @@ from pydantic_core import PydanticUndefined
 from backend.blocks import get_block
 from backend.blocks._base import AnyBlockSchema
 from backend.copilot.model import ChatSession
-from backend.copilot.tools.find_block import (
-    COPILOT_EXCLUDED_BLOCK_IDS,
-    COPILOT_EXCLUDED_BLOCK_TYPES,
-)
 from backend.data.db_accessors import workspace_db
 from backend.data.execution import ExecutionContext
 from backend.data.model import CredentialsFieldInfo, CredentialsMetaInput
@@ -21,6 +17,7 @@ from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util.exceptions import BlockError
 
 from .base import BaseTool
+from .find_block import COPILOT_EXCLUDED_BLOCK_IDS, COPILOT_EXCLUDED_BLOCK_TYPES
 from .helpers import get_inputs_from_schema
 from .models import (
     BlockDetails,
