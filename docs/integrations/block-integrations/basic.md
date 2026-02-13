@@ -1091,42 +1091,6 @@ When lists have different lengths, shorter lists stop contributing once exhauste
 
 ---
 
-## List Is Empty
-
-### What it is
-Checks if a list is empty.
-
-### How it works
-<!-- MANUAL: how_it_works -->
-This block checks whether a list contains any items and returns a boolean result. An empty list (no elements) returns true, while a list with any elements returns false.
-
-This is useful for conditional logic where you need to verify if search results were found, if items are available for processing, or if a collection has any entries to iterate over.
-<!-- END MANUAL -->
-
-### Inputs
-
-| Input | Description | Type | Required |
-|-------|-------------|------|----------|
-| list | The list to check. | List[Any] | Yes |
-
-### Outputs
-
-| Output | Description | Type |
-|--------|-------------|------|
-| error | Error message if the operation failed | str |
-| is_empty | True if the list is empty. | bool |
-
-### Possible use case
-<!-- MANUAL: use_case -->
-**Search Result Handling**: Check if a search returned any results before processing, displaying "no results found" when empty.
-
-**Batch Processing Guard**: Verify that a list has items before starting a batch operation to avoid empty iterations.
-
-**Conditional Messaging**: Send different notifications based on whether pending items exist or the queue is empty.
-<!-- END MANUAL -->
-
----
-
 ## List Difference
 
 ### What it is
@@ -1200,6 +1164,42 @@ This is useful for finding common items between two datasets without needing to 
 **Mutual Connections**: Find users or contacts that appear in both of two different lists, such as shared friends or overlapping team members.
 
 **Feature Comparison**: Determine which features or capabilities are supported by both of two systems or products.
+<!-- END MANUAL -->
+
+---
+
+## List Is Empty
+
+### What it is
+Checks if a list is empty.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+This block checks whether a list contains any items and returns a boolean result. An empty list (no elements) returns true, while a list with any elements returns false.
+
+This is useful for conditional logic where you need to verify if search results were found, if items are available for processing, or if a collection has any entries to iterate over.
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| list | The list to check. | List[Any] | Yes |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if the operation failed | str |
+| is_empty | True if the list is empty. | bool |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+**Search Result Handling**: Check if a search returned any results before processing, displaying "no results found" when empty.
+
+**Batch Processing Guard**: Verify that a list has items before starting a batch operation to avoid empty iterations.
+
+**Conditional Messaging**: Send different notifications based on whether pending items exist or the queue is empty.
 <!-- END MANUAL -->
 
 ---

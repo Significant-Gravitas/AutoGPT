@@ -32,7 +32,6 @@ from backend.blocks.data_manipulation import (
 )
 from backend.util.test import execute_block_test
 
-
 # =============================================================================
 # Helper Function Tests
 # =============================================================================
@@ -192,7 +191,7 @@ class TestFlattenNestedList:
         nested = [42]
         for _ in range(1100):
             nested = [nested]
-        with pytest.raises(RecursionError, match="maximum depth"):
+        with pytest.raises(RecursionError, match="maximum.*depth"):
             _flatten_nested_list(nested, max_depth=-1)
 
 
@@ -594,7 +593,7 @@ class TestConcatenateListsBlockManual:
     @pytest.mark.asyncio
     async def test_block_category(self):
         """Test that the block has the correct category."""
-        from backend.data.block import BlockCategory
+        from backend.blocks._base import BlockCategory
 
         assert BlockCategory.BASIC in self.block.categories
 
