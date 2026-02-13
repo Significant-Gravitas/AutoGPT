@@ -172,6 +172,9 @@ def run_batch_merge_tests(
             other_pr = overlap.pr_b if overlap.pr_a.number == current_pr.number else overlap.pr_a
             print(f"Testing merge conflict with PR #{other_pr.number}...", flush=True)
             
+            # Clean up any in-progress merge from previous iteration
+            run_git(["merge", "--abort"], cwd=tmpdir, check=False)
+            
             # Reset to base branch
             run_git(["checkout", base_branch], cwd=tmpdir, check=False)
             run_git(["reset", "--hard", f"origin/{base_branch}"], cwd=tmpdir, check=False)
