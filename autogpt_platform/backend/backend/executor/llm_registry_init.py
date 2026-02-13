@@ -7,8 +7,9 @@ and subscribing to real-time updates via Redis pub/sub.
 
 import logging
 
+from backend.blocks._base import BlockSchema
 from backend.data import db, llm_registry
-from backend.data.block import BlockSchema, initialize_blocks
+from backend.data.block import initialize_blocks
 from backend.data.block_cost_config import refresh_llm_costs
 from backend.data.llm_registry import subscribe_to_registry_refresh
 

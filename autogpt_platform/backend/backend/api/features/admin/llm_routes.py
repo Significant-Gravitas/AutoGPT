@@ -25,7 +25,7 @@ async def _refresh_runtime_state() -> None:
         await refresh_llm_costs()
 
         # Clear block schema caches so they're regenerated with updated model options
-        from backend.data.block import BlockSchema
+        from backend.blocks._base import BlockSchema
 
         BlockSchema.clear_all_schema_caches()
         logger.info("Cleared all block schema caches")

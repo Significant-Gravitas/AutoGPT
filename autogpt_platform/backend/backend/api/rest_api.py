@@ -123,7 +123,7 @@ async def lifespan_context(app: fastapi.FastAPI):
     await refresh_llm_costs()
 
     # Clear block schema caches so they're regenerated with updated discriminator_mapping
-    from backend.data.block import BlockSchema
+    from backend.blocks._base import BlockSchema
 
     BlockSchema.clear_all_schema_caches()
 
