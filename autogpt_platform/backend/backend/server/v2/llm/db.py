@@ -520,7 +520,7 @@ async def delete_model(
         ValueError: If model not found, nodes exist but no replacement provided,
                     replacement not found, or replacement is disabled
     """
-    # 1. Get the model being deleted (validation - outside transaction)
+    # 1. Get the model being deleted (early validation - outside transaction)
     model = await prisma.models.LlmModel.prisma().find_unique(
         where={"id": model_id}, include={"Costs": True}
     )
@@ -530,41 +530,41 @@ async def delete_model(
     deleted_slug = model.slug
     deleted_display_name = model.displayName
 
-    # 2. Count affected nodes first to determine if replacement is needed
-    import prisma as prisma_module
-
-    count_result = await prisma_module.get_client().query_raw(
-        """
-        SELECT COUNT(*) as count
-        FROM "AgentNode"
-        WHERE "constantInput"::jsonb->>'model' = $1
-        """,
-        deleted_slug,
-    )
-    nodes_to_migrate = int(count_result[0]["count"]) if count_result else 0
-
-    # 3. Validate replacement model only if there are nodes to migrate
-    if nodes_to_migrate > 0:
-        if not replacement_model_slug:
-            raise ValueError(
-                f"Cannot delete model '{deleted_slug}': {nodes_to_migrate} workflow node(s) "
-                f"are using it. Please provide a replacement_model_slug to migrate them."
-            )
-        replacement = await prisma.models.LlmModel.prisma().find_unique(
-            where={"slug": replacement_model_slug}
-        )
-        if not replacement:
-            raise ValueError(f"Replacement model '{replacement_model_slug}' not found")
-        if not replacement.isEnabled:
-            raise ValueError(
-                f"Replacement model '{replacement_model_slug}' is disabled. "
-                f"Please enable it before using it as a replacement."
-            )
-
-    # 4. Perform migration (if needed) and deletion atomically within a transaction
+    # 2. Perform all mutation logic atomically within a transaction
+    # This prevents TOCTOU issues where nodes could be created between count and delete
     async with transaction() as tx:
-        # Migrate all AgentNode.constantInput->model to replacement
-        if nodes_to_migrate > 0 and replacement_model_slug:
+        # Count affected nodes inside the transaction
+        count_result = await tx.query_raw(
+            """
+            SELECT COUNT(*) as count
+            FROM "AgentNode"
+            WHERE "constantInput"::jsonb->>'model' = $1
+            """,
+            deleted_slug,
+        )
+        nodes_to_migrate = int(count_result[0]["count"]) if count_result else 0
+
+        # Validate replacement model only if there are nodes to migrate
+        if nodes_to_migrate > 0:
+            if not replacement_model_slug:
+                raise ValueError(
+                    f"Cannot delete model '{deleted_slug}': {nodes_to_migrate} workflow node(s) "
+                    f"are using it. Please provide a replacement_model_slug to migrate them."
+                )
+            replacement = await tx.llmmodel.find_unique(
+                where={"slug": replacement_model_slug}
+            )
+            if not replacement:
+                raise ValueError(
+                    f"Replacement model '{replacement_model_slug}' not found"
+                )
+            if not replacement.isEnabled:
+                raise ValueError(
+                    f"Replacement model '{replacement_model_slug}' is disabled. "
+                    f"Please enable it before using it as a replacement."
+                )
+
+            # Migrate all AgentNode.constantInput->model to replacement
             await tx.execute_raw(
                 """
                 UPDATE "AgentNode"
