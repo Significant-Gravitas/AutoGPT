@@ -12,7 +12,6 @@ from .base import BaseTool
 from .create_agent import CreateAgentTool
 from .customize_agent import CustomizeAgentTool
 from .edit_agent import EditAgentTool
-from .feature_requests import CreateFeatureRequestTool, SearchFeatureRequestsTool
 from .find_agent import FindAgentTool
 from .find_block import FindBlockTool
 from .find_library_agent import FindLibraryAgentTool
@@ -46,15 +45,44 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "view_agent_output": AgentOutputTool(),
     "search_docs": SearchDocsTool(),
     "get_doc_page": GetDocPageTool(),
-    # Feature request tools
-    "search_feature_requests": SearchFeatureRequestsTool(),
-    "create_feature_request": CreateFeatureRequestTool(),
     # Workspace tools for CoPilot file operations
     "list_workspace_files": ListWorkspaceFilesTool(),
     "read_workspace_file": ReadWorkspaceFileTool(),
     "write_workspace_file": WriteWorkspaceFileTool(),
     "delete_workspace_file": DeleteWorkspaceFileTool(),
 }
+
+
+def _register_feature_request_tools() -> None:
+    """Register feature request tools only if Linear configuration is available."""
+    from backend.util.settings import Settings
+
+    try:
+        secrets = Settings().secrets
+    except Exception:
+        logger.warning("Feature request tools disabled: failed to load settings")
+        return
+
+    if not (
+        secrets.linear_api_key
+        and secrets.linear_feature_request_project_id
+        and secrets.linear_feature_request_team_id
+    ):
+        logger.info(
+            "Feature request tools disabled: LINEAR_API_KEY, "
+            "LINEAR_FEATURE_REQUEST_PROJECT_ID, or "
+            "LINEAR_FEATURE_REQUEST_TEAM_ID is not configured"
+        )
+        return
+
+    from .feature_requests import CreateFeatureRequestTool, SearchFeatureRequestsTool
+
+    TOOL_REGISTRY["search_feature_requests"] = SearchFeatureRequestsTool()
+    TOOL_REGISTRY["create_feature_request"] = CreateFeatureRequestTool()
+    logger.info("Feature request tools enabled")
+
+
+_register_feature_request_tools()
 
 # Export individual tool instances for backwards compatibility
 find_agent_tool = TOOL_REGISTRY["find_agent"]
