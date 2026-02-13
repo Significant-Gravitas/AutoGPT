@@ -784,7 +784,10 @@ def _make_hashable(item: Any):
     """
     if isinstance(item, dict):
         return tuple(
-            sorted((_make_hashable(k), _make_hashable(v)) for k, v in item.items())
+            sorted(
+                ((_make_hashable(k), _make_hashable(v)) for k, v in item.items()),
+                key=lambda x: (str(type(x[0])), str(x[0])),
+            )
         )
     if isinstance(item, (list, tuple)):
         return tuple(_make_hashable(i) for i in item)
@@ -798,15 +801,19 @@ def _filter_none_values(items: List[Any]) -> List[Any]:
     return [item for item in items if item is not None]
 
 
-def _compute_nesting_depth(items: Any, current: int = 0) -> int:
+def _compute_nesting_depth(
+    items: Any, current: int = 0, max_depth: int = _MAX_FLATTEN_DEPTH
+) -> int:
     """Compute the maximum nesting depth of a list structure."""
     if not isinstance(items, list):
+        return current
+    if current > max_depth:
         return current
     if len(items) == 0:
         return current + 1
     max_child_depth = current + 1
     for item in items:
-        child_depth = _compute_nesting_depth(item, current + 1)
+        child_depth = _compute_nesting_depth(item, current + 1, max_depth)
         if child_depth > max_child_depth:
             max_child_depth = child_depth
     return max_child_depth
@@ -1184,10 +1191,16 @@ class ZipListsBlock(Block):
 
     def _zip_truncate(self, lists: List[List[Any]]) -> List[List[Any]]:
         """Zip lists, truncating to shortest."""
-        return [list(group) for group in zip(*lists)]
+        filtered = [lst for lst in lists if lst is not None]
+        if not filtered:
+            return []
+        return [list(group) for group in zip(*filtered)]
 
     def _zip_pad(self, lists: List[List[Any]], fill_value: Any) -> List[List[Any]]:
         """Zip lists, padding shorter ones with fill_value."""
+        if not lists:
+            return []
+        lists = [lst for lst in lists if lst is not None]
         if not lists:
             return []
         max_len = max(len(lst) for lst in lists)

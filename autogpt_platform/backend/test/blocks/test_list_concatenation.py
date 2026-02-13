@@ -14,6 +14,7 @@ Tests cover:
 import pytest
 
 from backend.blocks.data_manipulation import (
+    _MAX_FLATTEN_DEPTH,
     ConcatenateListsBlock,
     FlattenListBlock,
     InterleaveListsBlock,
@@ -362,6 +363,63 @@ class TestInterleaveListsHelper:
     def test_all_none_lists(self):
         """All-None inputs should return empty list, not crash."""
         assert _interleave_lists([None, None, None]) == []  # type: ignore[arg-type]
+
+
+class TestComputeNestingDepthEdgeCases:
+    """Tests for _compute_nesting_depth with deeply nested input."""
+
+    def test_deeply_nested_does_not_crash(self):
+        """Deeply nested lists beyond 1000 levels should not raise RecursionError."""
+        nested = [42]
+        for _ in range(1100):
+            nested = [nested]
+        # Should return a depth value without crashing
+        depth = _compute_nesting_depth(nested)
+        assert depth >= _MAX_FLATTEN_DEPTH
+
+
+class TestMakeHashableMixedKeys:
+    """Tests for _make_hashable with mixed-type dict keys."""
+
+    def test_mixed_type_dict_keys(self):
+        """Dicts with mixed-type keys (int and str) should not crash sorted()."""
+        d = {1: "one", "two": 2}
+        result = _make_hashable(d)
+        assert isinstance(result, tuple)
+        hash(result)  # Should be hashable without error
+
+    def test_mixed_type_keys_deterministic(self):
+        """Same dict with mixed keys produces same result."""
+        d1 = {1: "a", "b": 2}
+        d2 = {1: "a", "b": 2}
+        assert _make_hashable(d1) == _make_hashable(d2)
+
+
+class TestZipListsNoneHandling:
+    """Tests for ZipListsBlock with None values in input."""
+
+    def setup_method(self):
+        self.block = ZipListsBlock()
+
+    def test_zip_truncate_with_none(self):
+        """_zip_truncate should handle None values in input lists."""
+        result = self.block._zip_truncate([[1, 2], None, [3, 4]])  # type: ignore[arg-type]
+        assert result == [[1, 3], [2, 4]]
+
+    def test_zip_pad_with_none(self):
+        """_zip_pad should handle None values in input lists."""
+        result = self.block._zip_pad([[1, 2, 3], None, ["a"]], fill_value="X")  # type: ignore[arg-type]
+        assert result == [[1, "a"], [2, "X"], [3, "X"]]
+
+    def test_zip_truncate_all_none(self):
+        """All-None inputs should return empty list."""
+        result = self.block._zip_truncate([None, None])  # type: ignore[arg-type]
+        assert result == []
+
+    def test_zip_pad_all_none(self):
+        """All-None inputs should return empty list."""
+        result = self.block._zip_pad([None, None], fill_value=0)  # type: ignore[arg-type]
+        assert result == []
 
 
 # =============================================================================
