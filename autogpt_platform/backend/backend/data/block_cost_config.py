@@ -94,8 +94,10 @@ async def _build_llm_costs_from_registry() -> list[BlockCost]:
                 "customCreditCost": {"not": None},
             }
         )
+        # Key by targetModelSlug since that's the model nodes are now using
+        # after migration. The custom cost applies to the target model.
         migration_overrides = {
-            migration.sourceModelSlug: migration.customCreditCost
+            migration.targetModelSlug: migration.customCreditCost
             for migration in active_migrations
             if migration.customCreditCost is not None
         }
