@@ -17,6 +17,10 @@ import {
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
 import { useAsymptoticProgress } from "../../hooks/useAsymptoticProgress";
 import {
+  AgentCreationChecklistCard,
+  AgentCreationChecklistStep,
+} from "./components/AgentCreationChecklistCard";
+import {
   ClarificationQuestionsCard,
   ClarifyingQuestion,
 } from "./components/ClarificationQuestionsCard";
@@ -153,6 +157,9 @@ export function CreateAgentTool({ part }: Props) {
         <ToolAccordion {...getAccordionMeta(output)}>
           {isOperating && (
             <ContentGrid>
+              <AgentCreationChecklistCard
+                steps={getAgentCreationSteps(progress)}
+              />
               <ProgressBar value={progress} className="max-w-[280px]" />
               <ContentHint>
                 This could take a few minutes, grab a coffee ☕
@@ -232,4 +239,35 @@ export function CreateAgentTool({ part }: Props) {
       )}
     </div>
   );
+}
+
+function getAgentCreationSteps(
+  progress: number,
+): AgentCreationChecklistStep[] {
+  return [
+    {
+      title: "Analyzing your request",
+      description:
+        "Understanding your requirements and breaking down the goal into actionable steps",
+      status: progress > 10 ? "completed" : "pending",
+    },
+    {
+      title: "Searching for relevant blocks",
+      description:
+        "Finding the best building blocks to accomplish your agent's tasks",
+      status: progress > 30 ? "completed" : "pending",
+    },
+    {
+      title: "Designing the workflow",
+      description:
+        "Creating the agent structure and connecting blocks together",
+      status: progress > 60 ? "completed" : "pending",
+    },
+    {
+      title: "Validating and optimizing",
+      description:
+        "Ensuring the agent works correctly and optimizing the workflow",
+      status: progress > 85 ? "completed" : "pending",
+    },
+  ];
 }
