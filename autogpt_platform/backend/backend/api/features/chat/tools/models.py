@@ -47,6 +47,9 @@ class ResponseType(str, Enum):
     BASH_EXEC = "bash_exec"
     # Operation status check
     OPERATION_STATUS = "operation_status"
+    # Feature request types
+    FEATURE_REQUEST_SEARCH = "feature_request_search"
+    FEATURE_REQUEST_CREATED = "feature_request_created"
 
 
 # Base response model
@@ -474,3 +477,32 @@ class BashExecResponse(ToolResponseBase):
     stderr: str
     exit_code: int
     timed_out: bool = False
+# Feature request models
+class FeatureRequestInfo(BaseModel):
+    """Information about a feature request issue."""
+
+    id: str
+    identifier: str
+    title: str
+    description: str | None = None
+
+
+class FeatureRequestSearchResponse(ToolResponseBase):
+    """Response for search_feature_requests tool."""
+
+    type: ResponseType = ResponseType.FEATURE_REQUEST_SEARCH
+    results: list[FeatureRequestInfo]
+    count: int
+    query: str
+
+
+class FeatureRequestCreatedResponse(ToolResponseBase):
+    """Response for create_feature_request tool."""
+
+    type: ResponseType = ResponseType.FEATURE_REQUEST_CREATED
+    issue_id: str
+    issue_identifier: str
+    issue_title: str
+    issue_url: str
+    is_new_issue: bool  # False if added to existing
+    customer_name: str

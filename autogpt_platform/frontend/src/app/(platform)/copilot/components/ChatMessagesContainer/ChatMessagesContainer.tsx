@@ -15,6 +15,10 @@ import { ToolUIPart, UIDataTypes, UIMessage, UITools } from "ai";
 import { useEffect, useRef, useState } from "react";
 import { CreateAgentTool } from "../../tools/CreateAgent/CreateAgent";
 import { EditAgentTool } from "../../tools/EditAgent/EditAgent";
+import {
+  CreateFeatureRequestTool,
+  SearchFeatureRequestsTool,
+} from "../../tools/FeatureRequests/FeatureRequests";
 import { FindAgentsTool } from "../../tools/FindAgents/FindAgents";
 import { FindBlocksTool } from "../../tools/FindBlocks/FindBlocks";
 import { RunAgentTool } from "../../tools/RunAgent/RunAgent";
@@ -251,6 +255,20 @@ export const ChatMessagesContainer = ({
                     case "tool-view_agent_output":
                       return (
                         <ViewAgentOutputTool
+                          key={`${message.id}-${i}`}
+                          part={part as ToolUIPart}
+                        />
+                      );
+                    case "tool-search_feature_requests":
+                      return (
+                        <SearchFeatureRequestsTool
+                          key={`${message.id}-${i}`}
+                          part={part as ToolUIPart}
+                        />
+                      );
+                    case "tool-create_feature_request":
+                      return (
+                        <CreateFeatureRequestTool
                           key={`${message.id}-${i}`}
                           part={part as ToolUIPart}
                         />

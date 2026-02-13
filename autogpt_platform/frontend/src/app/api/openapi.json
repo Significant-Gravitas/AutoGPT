@@ -10548,6 +10548,8 @@
           "web_fetch",
           "bash_exec",
           "operation_status"
+          "feature_request_search",
+          "feature_request_created"
         ],
         "title": "ResponseType",
         "description": "Types of tool responses."
