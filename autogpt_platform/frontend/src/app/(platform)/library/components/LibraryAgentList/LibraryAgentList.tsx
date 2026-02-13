@@ -50,13 +50,11 @@ const reducedContainerVariants = {
 // search is cleared) stayed invisible with variant inheritance.
 const itemInitial = {
   opacity: 0,
-  y: 8,
   filter: "blur(4px)",
 };
 
 const itemAnimate = {
   opacity: 1,
-  y: 0,
   filter: "blur(0px)",
 };
 

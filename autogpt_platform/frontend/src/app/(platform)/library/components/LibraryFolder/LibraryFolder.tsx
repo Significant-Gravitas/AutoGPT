@@ -2,7 +2,12 @@
 
 import { Text } from "@/components/atoms/Text/Text";
 import { Button } from "@/components/atoms/Button/Button";
-import { FolderIcon, FolderColor } from "./FolderIcon";
+import {
+  FolderIcon,
+  FolderColor,
+  folderCardStyles,
+  resolveColor,
+} from "./FolderIcon";
 import { useState } from "react";
 import { PencilSimpleIcon, TrashIcon } from "@phosphor-icons/react";
 
@@ -31,6 +36,8 @@ export function LibraryFolder({
 }: Props) {
   const [isHovered, setIsHovered] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
+  const resolvedColor = resolveColor(color);
+  const cardStyle = folderCardStyles[resolvedColor];
 
   function handleDragOver(e: React.DragEvent<HTMLDivElement>) {
     if (e.dataTransfer.types.includes("application/agent-id")) {
@@ -57,10 +64,10 @@ export function LibraryFolder({
     <div
       data-testid="library-folder"
       data-folder-id={id}
-      className={`group relative inline-flex h-[10.625rem] w-full max-w-[25rem] cursor-pointer flex-col items-start justify-between gap-2.5 rounded-medium border bg-white p-4 transition-all duration-200 hover:shadow-md ${
+      className={`group relative inline-flex h-[10.625rem] w-full max-w-[25rem] cursor-pointer flex-col items-start justify-between gap-2.5 rounded-medium border p-4 transition-all duration-200 hover:shadow-md ${
         isDragOver
           ? "border-blue-400 bg-blue-50 ring-2 ring-blue-200"
-          : "border-zinc-100"
+          : `${cardStyle.border} ${cardStyle.bg}`
       }`}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}

@@ -41,7 +41,7 @@ const hexToColorName: Record<string, FolderColorName> = {
   "#ec4899": "pink",
 };
 
-function resolveColor(color: FolderColor | undefined): FolderColorName {
+export function resolveColor(color: FolderColor | undefined): FolderColorName {
   if (!color) return "blue";
   if (color in hexToColorName) return hexToColorName[color];
   if (color in colorMap) return color as FolderColorName;
@@ -221,6 +221,34 @@ const colorMap: Record<
     fill: "fill-rose-300",
     stroke: "stroke-rose-400",
   },
+};
+
+// Card-level bg (50) and border (200) classes per folder color
+export const folderCardStyles: Record<
+  FolderColorName,
+  { bg: string; border: string }
+> = {
+  neutral: { bg: "bg-neutral-50", border: "border-neutral-200" },
+  slate: { bg: "bg-slate-50", border: "border-slate-200" },
+  zinc: { bg: "bg-zinc-50", border: "border-zinc-200" },
+  stone: { bg: "bg-stone-50", border: "border-stone-200" },
+  red: { bg: "bg-red-50", border: "border-red-200" },
+  orange: { bg: "bg-orange-50", border: "border-orange-200" },
+  amber: { bg: "bg-amber-50", border: "border-amber-200" },
+  yellow: { bg: "bg-yellow-50", border: "border-yellow-200" },
+  lime: { bg: "bg-lime-50", border: "border-lime-200" },
+  green: { bg: "bg-green-50", border: "border-green-200" },
+  emerald: { bg: "bg-emerald-50", border: "border-emerald-200" },
+  teal: { bg: "bg-teal-50", border: "border-teal-200" },
+  cyan: { bg: "bg-cyan-50", border: "border-cyan-200" },
+  sky: { bg: "bg-sky-50", border: "border-sky-200" },
+  blue: { bg: "bg-blue-50", border: "border-blue-200" },
+  indigo: { bg: "bg-indigo-50", border: "border-indigo-200" },
+  violet: { bg: "bg-violet-50", border: "border-violet-200" },
+  purple: { bg: "bg-purple-50", border: "border-purple-200" },
+  fuchsia: { bg: "bg-fuchsia-50", border: "border-fuchsia-200" },
+  pink: { bg: "bg-pink-50", border: "border-pink-200" },
+  rose: { bg: "bg-rose-50", border: "border-rose-200" },
 };
 
 export function FolderIcon({
