@@ -288,8 +288,9 @@ def find_file_overlap_candidates(
                 pr_date = datetime.fromisoformat(updated_at.replace('Z', '+00:00'))
                 if pr_date < cutoff_date:
                     continue  # Skip old PRs
-            except Exception:
-                pass  # If we can't parse date, include the PR
+            except Exception as e:
+                # If we can't parse date, include the PR (safe fallback)
+                print(f"Warning: Could not parse date for PR: {e}", file=sys.stderr)
         
         other_files = set(f for f in pr_data["files"] if not should_ignore_file(f))
         shared = current_files_set & other_files
@@ -1143,7 +1144,8 @@ def format_relative_time(iso_timestamp: str) -> str:
             return f"{int(seconds / 3600)}h ago"
         else:
             return f"{int(seconds / 86400)}d ago"
-    except Exception:
+    except Exception as e:
+        print(f"Warning: Could not format relative time: {e}", file=sys.stderr)
         return ""
 
 
