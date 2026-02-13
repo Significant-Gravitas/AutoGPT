@@ -16,8 +16,6 @@ import shutil
 
 logger = logging.getLogger(__name__)
 
-# Output limits — prevent blowing up LLM context
-_MAX_OUTPUT_CHARS = 50_000
 _DEFAULT_TIMEOUT = 30
 _MAX_TIMEOUT = 120
 
@@ -253,8 +251,8 @@ async def run_sandboxed(
             stdout_bytes, stderr_bytes = await asyncio.wait_for(
                 proc.communicate(), timeout=timeout
             )
-            stdout = stdout_bytes.decode("utf-8", errors="replace")[:_MAX_OUTPUT_CHARS]
-            stderr = stderr_bytes.decode("utf-8", errors="replace")[:_MAX_OUTPUT_CHARS]
+            stdout = stdout_bytes.decode("utf-8", errors="replace")
+            stderr = stderr_bytes.decode("utf-8", errors="replace")
             return stdout, stderr, proc.returncode or 0, False
         except asyncio.TimeoutError:
             proc.kill()

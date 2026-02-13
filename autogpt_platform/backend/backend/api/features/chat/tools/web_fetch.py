@@ -19,7 +19,6 @@ logger = logging.getLogger(__name__)
 
 # Limits
 _MAX_CONTENT_BYTES = 102_400  # 100 KB download cap
-_MAX_OUTPUT_CHARS = 50_000  # 50K char truncation for LLM context
 _REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=15)
 
 # Content types we'll read as text
@@ -141,16 +140,12 @@ class WebFetchTool(BaseTool):
         if extract_text and "html" in content_type.lower():
             text = _html_to_text(text)
 
-        truncated = len(text) > _MAX_OUTPUT_CHARS
-        if truncated:
-            text = text[:_MAX_OUTPUT_CHARS]
-
         return WebFetchResponse(
-            message=f"Fetched {url}" + (" (truncated)" if truncated else ""),
+            message=f"Fetched {url}",
             url=response.url,
             status_code=response.status,
             content_type=content_type.split(";")[0].strip(),
             content=text,
-            truncated=truncated,
+            truncated=False,
             session_id=session_id,
         )
