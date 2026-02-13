@@ -271,9 +271,9 @@ def _cleanup_sdk_tool_results(cwd: str) -> None:
         logger.warning(f"[SDK] Rejecting cleanup for invalid path: {cwd}")
         return
 
-    # Security check 2: Ensure no path traversal in the normalized path
-    if ".." in normalized:
-        logger.warning(f"[SDK] Rejecting cleanup for traversal attempt: {cwd}")
+    # Security check 2: Verify path stayed within workspace after normalization
+    if not normalized.startswith(_SDK_CWD_PREFIX):
+        logger.warning(f"[SDK] Rejecting cleanup for path outside workspace: {cwd}")
         return
 
     # SDK encodes the cwd path by replacing '/' with '-'

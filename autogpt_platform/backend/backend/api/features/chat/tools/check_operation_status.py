@@ -80,8 +80,8 @@ class CheckOperationStatusTool(BaseTool):
     ) -> ToolResponseBase:
         from backend.api.features.chat import stream_registry
 
-        operation_id: str = kwargs.get("operation_id", "").strip()
-        task_id: str = kwargs.get("task_id", "").strip()
+        operation_id = (kwargs.get("operation_id") or "").strip()
+        task_id = (kwargs.get("task_id") or "").strip()
 
         if not operation_id and not task_id:
             return ErrorResponse(

@@ -80,21 +80,22 @@ def _validate_workspace_path(
     # naturally uses relative paths like "test.txt" instead of absolute ones).
     # Tilde paths (~/) are home-dir references, not relative — expand first.
     if path.startswith("~"):
-        resolved = os.path.normpath(os.path.expanduser(path))
+        resolved = os.path.realpath(os.path.expanduser(path))
     elif not os.path.isabs(path) and sdk_cwd:
-        resolved = os.path.normpath(os.path.join(sdk_cwd, path))
+        resolved = os.path.realpath(os.path.join(sdk_cwd, path))
     else:
-        resolved = os.path.normpath(path)
+        resolved = os.path.realpath(path)
 
     # Allow access within the SDK working directory
     if sdk_cwd:
-        norm_cwd = os.path.normpath(sdk_cwd)
+        norm_cwd = os.path.realpath(sdk_cwd)
         if resolved.startswith(norm_cwd + os.sep) or resolved == norm_cwd:
             return {}
 
     # Allow access to ~/.claude/projects/*/tool-results/ (big tool results)
-    claude_dir = os.path.normpath(os.path.expanduser("~/.claude/projects"))
-    if resolved.startswith(claude_dir + os.sep) and "tool-results" in resolved:
+    claude_dir = os.path.realpath(os.path.expanduser("~/.claude/projects"))
+    tool_results_seg = os.sep + "tool-results" + os.sep
+    if resolved.startswith(claude_dir + os.sep) and tool_results_seg in resolved:
         return {}
 
     logger.warning(

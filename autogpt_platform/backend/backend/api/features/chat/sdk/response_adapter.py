@@ -156,6 +156,11 @@ class SDKResponseAdapter:
                     StreamError(errorText=str(error_msg), code="sdk_error")
                 )
                 responses.append(StreamFinish())
+            else:
+                logger.warning(
+                    f"Unexpected ResultMessage subtype: {sdk_message.subtype}"
+                )
+                responses.append(StreamFinish())
 
         else:
             logger.debug(f"Unhandled SDK message type: {type(sdk_message).__name__}")
