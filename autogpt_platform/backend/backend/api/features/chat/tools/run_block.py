@@ -27,6 +27,7 @@ from .models import (
     BlockDetailsResponse,
     BlockOutputResponse,
     ErrorResponse,
+    InputValidationErrorResponse,
     SetupInfo,
     SetupRequirementsResponse,
     ToolResponseBase,
@@ -232,6 +233,22 @@ class RunBlockTool(BaseTool):
         required_keys = set(input_schema.get("required", []))
         required_non_credential_keys = required_keys - credentials_fields
         provided_input_keys = set(input_data.keys()) - credentials_fields
+
+        # Check for unknown input fields
+        valid_fields = (
+            set(input_schema.get("properties", {}).keys()) - credentials_fields
+        )
+        unrecognized_fields = provided_input_keys - valid_fields
+        if unrecognized_fields:
+            return InputValidationErrorResponse(
+                message=(
+                    f"Unknown input field(s) provided: {', '.join(sorted(unrecognized_fields))}. "
+                    f"Block was not executed. Please use the correct field names from the schema."
+                ),
+                session_id=session_id,
+                unrecognized_fields=sorted(unrecognized_fields),
+                inputs=input_schema,
+            )
 
         # Show details when not all required non-credential inputs are provided
         if not (required_non_credential_keys <= provided_input_keys):
