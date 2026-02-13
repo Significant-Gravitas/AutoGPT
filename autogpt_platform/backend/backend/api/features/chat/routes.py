@@ -371,7 +371,6 @@ async def stream_chat_post(
         },
     )
 
-    # Enqueue the task to RabbitMQ for processing by the CoPilot executor
     await enqueue_copilot_task(
         task_id=task_id,
         session_id=session_id,
