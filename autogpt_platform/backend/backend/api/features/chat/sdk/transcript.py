@@ -13,8 +13,12 @@ filesystem for self-hosted) — no DB column needed.
 import json
 import logging
 import os
+import re
 
 logger = logging.getLogger(__name__)
+
+# UUIDs are hex + hyphens; strip everything else to prevent path injection.
+_SAFE_ID_RE = re.compile(r"[^0-9a-fA-F-]")
 
 # Entry types that can be safely removed from the transcript without breaking
 # the parentUuid conversation tree that ``--resume`` relies on.
@@ -141,6 +145,15 @@ def read_transcript_file(transcript_path: str) -> str | None:
         return None
 
 
+def _sanitize_id(raw_id: str) -> str:
+    """Sanitize an ID for safe use in file paths.
+
+    Session/user IDs are UUIDs (hex + hyphens).  Strip everything else
+    to prevent path traversal or injection via crafted IDs.
+    """
+    return _SAFE_ID_RE.sub("", raw_id)
+
+
 def write_transcript_to_tempfile(
     transcript_content: str,
     session_id: str,
@@ -155,7 +168,13 @@ def write_transcript_to_tempfile(
     """
     try:
         os.makedirs(cwd, exist_ok=True)
-        jsonl_path = os.path.join(cwd, f"transcript-{session_id[:8]}.jsonl")
+        safe_id = _sanitize_id(session_id)[:8]
+        jsonl_path = os.path.join(cwd, f"transcript-{safe_id}.jsonl")
+
+        # Defence-in-depth: ensure the resolved path stays inside cwd
+        if not os.path.realpath(jsonl_path).startswith(os.path.realpath(cwd)):
+            logger.warning(f"[Transcript] Path escaped cwd: {jsonl_path}")
+            return None
 
         with open(jsonl_path, "w") as f:
             f.write(transcript_content)
@@ -208,8 +227,13 @@ def _storage_path_parts(user_id: str, session_id: str) -> tuple[str, str, str]:
     """Return (workspace_id, file_id, filename) for a session's transcript.
 
     Path structure: ``chat-transcripts/{user_id}/{session_id}.jsonl``
+    IDs are sanitized to hex+hyphen to prevent path traversal.
     """
-    return (TRANSCRIPT_STORAGE_PREFIX, user_id, f"{session_id}.jsonl")
+    return (
+        TRANSCRIPT_STORAGE_PREFIX,
+        _sanitize_id(user_id),
+        f"{_sanitize_id(session_id)}.jsonl",
+    )
 
 
 def _build_storage_path(user_id: str, session_id: str, backend: object) -> str:
