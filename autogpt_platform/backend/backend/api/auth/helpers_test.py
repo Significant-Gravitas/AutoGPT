@@ -3,13 +3,11 @@ Comprehensive tests for auth helpers module to achieve 100% coverage.
 Tests OpenAPI schema generation and authentication response handling.
 """
 
-from unittest import mock
-
 from fastapi import FastAPI
 from fastapi.openapi.utils import get_openapi
 
-from autogpt_libs.auth.helpers import add_auth_responses_to_openapi
-from autogpt_libs.auth.jwt_utils import bearer_jwt_auth
+from backend.api.auth.helpers import add_auth_responses_to_openapi
+from backend.api.auth.jwt_utils import bearer_jwt_auth
 
 
 def test_add_auth_responses_to_openapi_basic():
@@ -19,7 +17,7 @@ def test_add_auth_responses_to_openapi_basic():
     # Add some test endpoints with authentication
     from fastapi import Depends
 
-    from autogpt_libs.auth.dependencies import requires_user
+    from backend.api.auth.dependencies import requires_user
 
     @app.get("/protected", dependencies=[Depends(requires_user)])
     def protected_endpoint():
@@ -64,7 +62,7 @@ def test_add_auth_responses_to_openapi_with_security():
     # Mock endpoint with security
     from fastapi import Security
 
-    from autogpt_libs.auth.dependencies import get_user_id
+    from backend.api.auth.dependencies import get_user_id
 
     @app.get("/secured")
     def secured_endpoint(user_id: str = Security(get_user_id)):
@@ -130,7 +128,7 @@ def test_add_auth_responses_to_openapi_existing_responses():
 
     from fastapi import Security
 
-    from autogpt_libs.auth.jwt_utils import get_jwt_payload
+    from backend.api.auth.jwt_utils import get_jwt_payload
 
     @app.get(
         "/with-responses",
@@ -197,8 +195,8 @@ def test_add_auth_responses_to_openapi_multiple_security_schemes():
 
     from fastapi import Security
 
-    from autogpt_libs.auth.dependencies import requires_admin_user, requires_user
-    from autogpt_libs.auth.models import User
+    from backend.api.auth.dependencies import requires_admin_user, requires_user
+    from backend.api.auth.models import User
 
     @app.get("/multi-auth")
     def multi_auth(
@@ -227,26 +225,29 @@ def test_add_auth_responses_to_openapi_empty_components():
     """Test when OpenAPI schema has no components section initially."""
     app = FastAPI()
 
-    # Mock get_openapi to return schema without components
-    original_get_openapi = get_openapi
-
-    def mock_get_openapi(*args, **kwargs):
-        schema = original_get_openapi(*args, **kwargs)
-        # Remove components if it exists
+    def mock_openapi():
+        schema = get_openapi(
+            title=app.title,
+            version=app.version,
+            routes=app.routes,
+        )
+        # Remove components if it exists to test component creation
         if "components" in schema:
             del schema["components"]
         return schema
 
-    with mock.patch("autogpt_libs.auth.helpers.get_openapi", mock_get_openapi):
-        # Apply customization
-        add_auth_responses_to_openapi(app)
+    # Replace app's openapi method
+    app.openapi = mock_openapi
 
-        schema = app.openapi()
+    # Apply customization (this wraps our mock)
+    add_auth_responses_to_openapi(app)
 
-        # Components should be created
-        assert "components" in schema
-        assert "responses" in schema["components"]
-        assert "HTTP401NotAuthenticatedError" in schema["components"]["responses"]
+    schema = app.openapi()
+
+    # Components should be created
+    assert "components" in schema
+    assert "responses" in schema["components"]
+    assert "HTTP401NotAuthenticatedError" in schema["components"]["responses"]
 
 
 def test_add_auth_responses_to_openapi_all_http_methods():
@@ -255,7 +256,7 @@ def test_add_auth_responses_to_openapi_all_http_methods():
 
     from fastapi import Security
 
-    from autogpt_libs.auth.jwt_utils import get_jwt_payload
+    from backend.api.auth.jwt_utils import get_jwt_payload
 
     @app.get("/resource")
     def get_resource(jwt: dict = Security(get_jwt_payload)):
@@ -333,53 +334,59 @@ def test_endpoint_without_responses_section():
     app = FastAPI()
 
     from fastapi import Security
-    from fastapi.openapi.utils import get_openapi as original_get_openapi
 
-    from autogpt_libs.auth.jwt_utils import get_jwt_payload
+    from backend.api.auth.jwt_utils import get_jwt_payload
 
     # Create endpoint
     @app.get("/no-responses")
     def endpoint_without_responses(jwt: dict = Security(get_jwt_payload)):
         return {"data": "test"}
 
-    # Mock get_openapi to remove responses from the endpoint
-    def mock_get_openapi(*args, **kwargs):
-        schema = original_get_openapi(*args, **kwargs)
-        # Remove responses from our endpoint to trigger line 40
+    # Create a mock openapi method that removes responses from the endpoint
+    def mock_openapi():
+        schema = get_openapi(
+            title=app.title,
+            version=app.version,
+            routes=app.routes,
+        )
+        # Remove responses from our endpoint to test response creation
         if "/no-responses" in schema.get("paths", {}):
             if "get" in schema["paths"]["/no-responses"]:
-                # Delete responses to force the code to create it
                 if "responses" in schema["paths"]["/no-responses"]["get"]:
                     del schema["paths"]["/no-responses"]["get"]["responses"]
         return schema
 
-    with mock.patch("autogpt_libs.auth.helpers.get_openapi", mock_get_openapi):
-        # Apply customization
-        add_auth_responses_to_openapi(app)
+    # Replace app's openapi method
+    app.openapi = mock_openapi
 
-        # Get schema and verify 401 was added
-        schema = app.openapi()
+    # Apply customization (this wraps our mock)
+    add_auth_responses_to_openapi(app)
 
-        # The endpoint should now have 401 response
-        if "/no-responses" in schema["paths"]:
-            if "get" in schema["paths"]["/no-responses"]:
-                responses = schema["paths"]["/no-responses"]["get"].get("responses", {})
-                assert "401" in responses
-                assert (
-                    responses["401"]["$ref"]
-                    == "#/components/responses/HTTP401NotAuthenticatedError"
-                )
+    # Get schema and verify 401 was added
+    schema = app.openapi()
+
+    # The endpoint should now have 401 response
+    if "/no-responses" in schema["paths"]:
+        if "get" in schema["paths"]["/no-responses"]:
+            responses = schema["paths"]["/no-responses"]["get"].get("responses", {})
+            assert "401" in responses
+            assert (
+                responses["401"]["$ref"]
+                == "#/components/responses/HTTP401NotAuthenticatedError"
+            )
 
 
 def test_components_with_existing_responses():
     """Test when components already has a responses section."""
     app = FastAPI()
 
-    # Mock get_openapi to return schema with existing components/responses
-    from fastapi.openapi.utils import get_openapi as original_get_openapi
-
-    def mock_get_openapi(*args, **kwargs):
-        schema = original_get_openapi(*args, **kwargs)
+    # Create a mock openapi method that adds existing components/responses
+    def mock_openapi():
+        schema = get_openapi(
+            title=app.title,
+            version=app.version,
+            routes=app.routes,
+        )
         # Add existing components/responses
         if "components" not in schema:
             schema["components"] = {}
@@ -388,21 +395,21 @@ def test_components_with_existing_responses():
         }
         return schema
 
-    with mock.patch("autogpt_libs.auth.helpers.get_openapi", mock_get_openapi):
-        # Apply customization
-        add_auth_responses_to_openapi(app)
+    # Replace app's openapi method
+    app.openapi = mock_openapi
 
-        schema = app.openapi()
+    # Apply customization (this wraps our mock)
+    add_auth_responses_to_openapi(app)
 
-        # Both responses should exist
-        assert "ExistingResponse" in schema["components"]["responses"]
-        assert "HTTP401NotAuthenticatedError" in schema["components"]["responses"]
+    schema = app.openapi()
 
-        # Verify our 401 response structure
-        error_response = schema["components"]["responses"][
-            "HTTP401NotAuthenticatedError"
-        ]
-        assert error_response["description"] == "Authentication required"
+    # Both responses should exist
+    assert "ExistingResponse" in schema["components"]["responses"]
+    assert "HTTP401NotAuthenticatedError" in schema["components"]["responses"]
+
+    # Verify our 401 response structure
+    error_response = schema["components"]["responses"]["HTTP401NotAuthenticatedError"]
+    assert error_response["description"] == "Authentication required"
 
 
 def test_openapi_schema_persistence():
@@ -411,7 +418,7 @@ def test_openapi_schema_persistence():
 
     from fastapi import Security
 
-    from autogpt_libs.auth.jwt_utils import get_jwt_payload
+    from backend.api.auth.jwt_utils import get_jwt_payload
 
     @app.get("/test")
     def test_endpoint(jwt: dict = Security(get_jwt_payload)):

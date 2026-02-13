@@ -1,29 +1,5 @@
 version: 2
 updates:
-  # autogpt_libs (Poetry project)
-  - package-ecosystem: "pip"
-    directory: "autogpt_platform/autogpt_libs"
-    schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 10
-    target-branch: "dev"
-    commit-message:
-      prefix: "chore(libs/deps)"
-      prefix-development: "chore(libs/deps-dev)"
-    ignore:
-      - dependency-name: "poetry"
-    groups:
-      production-dependencies:
-        dependency-type: "production"
-        update-types:
-          - "minor"
-          - "patch"
-      development-dependencies:
-        dependency-type: "development"
-        update-types:
-          - "minor"
-          - "patch"
-
   # backend (Poetry project)
   - package-ecosystem: "pip"
     directory: "autogpt_platform/backend"

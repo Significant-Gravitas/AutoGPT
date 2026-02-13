@@ -405,9 +405,10 @@ async def validate_graph_with_credentials(
     )
 
     # Get credential input/availability/validation errors and nodes to skip
-    node_credential_input_errors, nodes_to_skip = (
-        await _validate_node_input_credentials(graph, user_id, nodes_input_masks)
-    )
+    (
+        node_credential_input_errors,
+        nodes_to_skip,
+    ) = await _validate_node_input_credentials(graph, user_id, nodes_input_masks)
 
     # Merge credential errors with structural errors
     for node_id, field_errors in node_credential_input_errors.items():
@@ -555,13 +556,14 @@ async def validate_and_construct_node_execution_input(
         nodes_input_masks or {},
     )
 
-    starting_nodes_input, nodes_to_skip = (
-        await _construct_starting_node_execution_input(
-            graph=graph,
-            user_id=user_id,
-            graph_inputs=graph_inputs,
-            nodes_input_masks=nodes_input_masks,
-        )
+    (
+        starting_nodes_input,
+        nodes_to_skip,
+    ) = await _construct_starting_node_execution_input(
+        graph=graph,
+        user_id=user_id,
+        graph_inputs=graph_inputs,
+        nodes_input_masks=nodes_input_masks,
     )
 
     return graph, starting_nodes_input, nodes_input_masks, nodes_to_skip
@@ -852,16 +854,19 @@ async def add_graph_execution(
         )
 
         # Create new execution
-        graph, starting_nodes_input, compiled_nodes_input_masks, nodes_to_skip = (
-            await validate_and_construct_node_execution_input(
-                graph_id=graph_id,
-                user_id=user_id,
-                graph_inputs=inputs or {},
-                graph_version=graph_version,
-                graph_credentials_inputs=graph_credentials_inputs,
-                nodes_input_masks=nodes_input_masks,
-                is_sub_graph=parent_exec_id is not None,
-            )
+        (
+            graph,
+            starting_nodes_input,
+            compiled_nodes_input_masks,
+            nodes_to_skip,
+        ) = await validate_and_construct_node_execution_input(
+            graph_id=graph_id,
+            user_id=user_id,
+            graph_inputs=inputs or {},
+            graph_version=graph_version,
+            graph_credentials_inputs=graph_credentials_inputs,
+            nodes_input_masks=nodes_input_masks,
+            is_sub_graph=parent_exec_id is not None,
         )
 
         graph_exec = await edb.create_graph_execution(

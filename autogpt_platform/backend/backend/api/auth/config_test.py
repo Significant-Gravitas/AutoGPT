@@ -9,7 +9,7 @@ import os
 import pytest
 from pytest_mock import MockerFixture
 
-from autogpt_libs.auth.config import AuthConfigError, Settings
+from backend.api.auth.config import AuthConfigError, Settings
 
 
 def test_environment_variable_precedence(mocker: MockerFixture):
@@ -228,7 +228,7 @@ def test_no_crypto_warning(mocker: MockerFixture, caplog: pytest.LogCaptureFixtu
     mocker.patch.dict(os.environ, {"JWT_VERIFY_KEY": secret}, clear=True)
 
     # Mock has_crypto to return False
-    mocker.patch("autogpt_libs.auth.config.has_crypto", False)
+    mocker.patch("backend.api.auth.config.has_crypto", False)
 
     with caplog.at_level(logging.WARNING):
         Settings()

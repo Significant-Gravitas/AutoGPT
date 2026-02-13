@@ -9,8 +9,6 @@ from typing import Annotated, Any, Sequence, get_args
 
 import pydantic
 import stripe
-from autogpt_libs.auth import get_user_id, requires_user
-from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from fastapi import (
     APIRouter,
     Body,
@@ -28,6 +26,8 @@ from pydantic import BaseModel
 from starlette.status import HTTP_204_NO_CONTENT, HTTP_404_NOT_FOUND
 from typing_extensions import Optional, TypedDict
 
+from backend.api.auth import get_user_id, requires_user
+from backend.api.auth.jwt_utils import get_jwt_payload
 from backend.api.model import (
     CreateAPIKeyRequest,
     CreateAPIKeyResponse,

@@ -556,7 +556,6 @@ class GraphModel(Graph, GraphMeta):
                     field_name,
                     field_info,
                 ) in node.block.input_schema.get_credentials_fields_info().items():
-
                     discriminator = field_info.discriminator
                     if not discriminator:
                         node_credential_data.append((field_info, (node.id, field_name)))

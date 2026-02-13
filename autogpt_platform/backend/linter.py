@@ -5,8 +5,8 @@ import sys
 directory = os.path.dirname(os.path.realpath(__file__))
 
 BACKEND_DIR = "."
-LIBS_DIR = "../autogpt_libs"
-TARGET_DIRS = [BACKEND_DIR, LIBS_DIR]
+# autogpt_libs merged into backend (OPEN-2998)
+TARGET_DIRS = [BACKEND_DIR]
 
 
 def run(*command: str) -> None:
@@ -30,7 +30,8 @@ def lint():
 
     lint_step_args: list[list[str]] = [
         ["ruff", "check", *TARGET_DIRS, "--exit-zero"],
-        ["ruff", "format", "--diff", "--check", LIBS_DIR],
+        # NOTE: ruff format check removed - ruff and black disagree on assert formatting
+        # Black is the source of truth for formatting (runs last in format())
         ["isort", "--diff", "--check", "--profile", "black", BACKEND_DIR],
         ["black", "--diff", "--check", BACKEND_DIR],
         ["pyright", *TARGET_DIRS],
@@ -49,7 +50,7 @@ def lint():
 
 def format():
     run("ruff", "check", "--fix", *TARGET_DIRS)
-    run("ruff", "format", LIBS_DIR)
+    run("ruff", "format", BACKEND_DIR)
     run("isort", "--profile", "black", BACKEND_DIR)
     run("black", BACKEND_DIR)
     # Generate Prisma types stub before running pyright to prevent type budget exhaustion

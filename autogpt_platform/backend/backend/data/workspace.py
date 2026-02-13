@@ -100,8 +100,7 @@ async def create_workspace_file(
     )
 
     logger.info(
-        f"Created workspace file {file.id} at path {path} "
-        f"in workspace {workspace_id}"
+        f"Created workspace file {file.id} at path {path} in workspace {workspace_id}"
     )
     return file
 

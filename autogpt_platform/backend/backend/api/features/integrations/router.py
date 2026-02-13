@@ -3,7 +3,6 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Annotated, List, Literal
 
-from autogpt_libs.auth import get_user_id
 from fastapi import (
     APIRouter,
     Body,
@@ -17,6 +16,7 @@ from fastapi import (
 from pydantic import BaseModel, Field, SecretStr
 from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR, HTTP_502_BAD_GATEWAY
 
+from backend.api.auth import get_user_id
 from backend.api.features.library.db import set_preset_webhook, update_preset
 from backend.api.features.library.model import LibraryAgentPreset
 from backend.data.graph import NodeModel, get_graph, set_node_webhook

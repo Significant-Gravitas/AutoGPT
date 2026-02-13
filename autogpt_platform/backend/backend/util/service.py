@@ -558,7 +558,6 @@ def get_service_client(
                 self._connection_failure_count >= 3
                 and current_time - self._last_client_reset > 30
             ):
-
                 logger.warning(
                     f"Connection failures detected ({self._connection_failure_count}), recreating HTTP clients"
                 )

@@ -154,7 +154,6 @@ class TestDynamicClientConnectionHealing:
                     self._connection_failure_count >= 3
                     and current_time - self._last_client_reset > 30
                 ):
-
                     # Clear cached clients to force recreation on next access
                     if hasattr(self, "sync_client"):
                         delattr(self, "sync_client")

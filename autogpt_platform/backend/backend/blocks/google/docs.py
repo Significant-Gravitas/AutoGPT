@@ -341,14 +341,17 @@ class GoogleDocsCreateBlock(Block):
             )
             doc_id = result["document_id"]
             doc_url = result["document_url"]
-            yield "document", GoogleDriveFile(
-                id=doc_id,
-                name=input_data.title,
-                mimeType="application/vnd.google-apps.document",
-                url=doc_url,
-                iconUrl="https://www.gstatic.com/images/branding/product/1x/docs_48dp.png",
-                isFolder=False,
-                _credentials_id=input_data.credentials.id,
+            yield (
+                "document",
+                GoogleDriveFile(
+                    id=doc_id,
+                    name=input_data.title,
+                    mimeType="application/vnd.google-apps.document",
+                    url=doc_url,
+                    iconUrl="https://www.gstatic.com/images/branding/product/1x/docs_48dp.png",
+                    isFolder=False,
+                    _credentials_id=input_data.credentials.id,
+                ),
             )
             yield "document_id", doc_id
             yield "document_url", doc_url
@@ -815,7 +818,10 @@ class GoogleDocsGetMetadataBlock(Block):
             yield "title", result["title"]
             yield "document_id", input_data.document.id
             yield "revision_id", result["revision_id"]
-            yield "document_url", f"https://docs.google.com/document/d/{input_data.document.id}/edit"
+            yield (
+                "document_url",
+                f"https://docs.google.com/document/d/{input_data.document.id}/edit",
+            )
             yield "document", _make_document_output(input_data.document)
         except Exception as e:
             yield "error", f"Failed to get metadata: {str(e)}"

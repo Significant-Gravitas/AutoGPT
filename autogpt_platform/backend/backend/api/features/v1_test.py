@@ -25,7 +25,7 @@ client = fastapi.testclient.TestClient(app)
 @pytest.fixture(autouse=True)
 def setup_app_auth(mock_jwt_user, setup_test_user):
     """Setup auth overrides for all tests in this module"""
-    from autogpt_libs.auth.jwt_utils import get_jwt_payload
+    from backend.api.auth.jwt_utils import get_jwt_payload
 
     # setup_test_user fixture already executed and user is created in database
     # It returns the user_id which we don't need to await
@@ -499,10 +499,12 @@ async def test_upload_file_success(test_user_id: str):
     )
 
     # Mock dependencies
-    with patch("backend.api.features.v1.scan_content_safe") as mock_scan, patch(
-        "backend.api.features.v1.get_cloud_storage_handler"
-    ) as mock_handler_getter:
-
+    with (
+        patch("backend.api.features.v1.scan_content_safe") as mock_scan,
+        patch(
+            "backend.api.features.v1.get_cloud_storage_handler"
+        ) as mock_handler_getter,
+    ):
         mock_scan.return_value = None
         mock_handler = AsyncMock()
         mock_handler.store_file.return_value = "gcs://test-bucket/uploads/123/test.txt"
@@ -551,10 +553,12 @@ async def test_upload_file_no_filename(test_user_id: str):
         ),
     )
 
-    with patch("backend.api.features.v1.scan_content_safe") as mock_scan, patch(
-        "backend.api.features.v1.get_cloud_storage_handler"
-    ) as mock_handler_getter:
-
+    with (
+        patch("backend.api.features.v1.scan_content_safe") as mock_scan,
+        patch(
+            "backend.api.features.v1.get_cloud_storage_handler"
+        ) as mock_handler_getter,
+    ):
         mock_scan.return_value = None
         mock_handler = AsyncMock()
         mock_handler.store_file.return_value = (
@@ -632,10 +636,12 @@ async def test_upload_file_cloud_storage_failure(test_user_id: str):
         headers=starlette.datastructures.Headers({"content-type": "text/plain"}),
     )
 
-    with patch("backend.api.features.v1.scan_content_safe") as mock_scan, patch(
-        "backend.api.features.v1.get_cloud_storage_handler"
-    ) as mock_handler_getter:
-
+    with (
+        patch("backend.api.features.v1.scan_content_safe") as mock_scan,
+        patch(
+            "backend.api.features.v1.get_cloud_storage_handler"
+        ) as mock_handler_getter,
+    ):
         mock_scan.return_value = None
         mock_handler = AsyncMock()
         mock_handler.store_file.side_effect = RuntimeError("Storage error!")
@@ -679,10 +685,12 @@ async def test_upload_file_gcs_not_configured_fallback(test_user_id: str):
         headers=starlette.datastructures.Headers({"content-type": "text/plain"}),
     )
 
-    with patch("backend.api.features.v1.scan_content_safe") as mock_scan, patch(
-        "backend.api.features.v1.get_cloud_storage_handler"
-    ) as mock_handler_getter:
-
+    with (
+        patch("backend.api.features.v1.scan_content_safe") as mock_scan,
+        patch(
+            "backend.api.features.v1.get_cloud_storage_handler"
+        ) as mock_handler_getter,
+    ):
         mock_scan.return_value = None
         mock_handler = AsyncMock()
         mock_handler.config.gcs_bucket_name = ""  # Simulate no GCS bucket configured

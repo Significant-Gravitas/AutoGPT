@@ -21,7 +21,6 @@ from typing import AsyncGenerator
 import httpx
 import pytest
 import pytest_asyncio
-from autogpt_libs.api_key.keysmith import APIKeySmith
 from prisma.enums import APIKeyPermission
 from prisma.models import OAuthAccessToken as PrismaOAuthAccessToken
 from prisma.models import OAuthApplication as PrismaOAuthApplication
@@ -29,6 +28,7 @@ from prisma.models import OAuthAuthorizationCode as PrismaOAuthAuthorizationCode
 from prisma.models import OAuthRefreshToken as PrismaOAuthRefreshToken
 from prisma.models import User as PrismaUser
 
+from backend.api.auth.api_key.keysmith import APIKeySmith
 from backend.api.rest_api import app
 
 keysmith = APIKeySmith()
@@ -134,7 +134,7 @@ async def client(server, test_user: str) -> AsyncGenerator[httpx.AsyncClient, No
     Depends on `server` to ensure the DB is connected and `test_user` to ensure
     the user exists in the database before running tests.
     """
-    from autogpt_libs.auth import get_user_id
+    from backend.api.auth import get_user_id
 
     # Override get_user_id dependency to return our test user
     def override_get_user_id():

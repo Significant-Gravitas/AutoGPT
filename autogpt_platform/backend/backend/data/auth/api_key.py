@@ -3,12 +3,12 @@ import uuid
 from datetime import datetime, timezone
 from typing import Literal, Optional
 
-from autogpt_libs.api_key.keysmith import APIKeySmith
 from prisma.enums import APIKeyPermission, APIKeyStatus
 from prisma.models import APIKey as PrismaAPIKey
 from prisma.types import APIKeyWhereUniqueInput
 from pydantic import Field
 
+from backend.api.auth.api_key.keysmith import APIKeySmith
 from backend.data.includes import MAX_USER_API_KEYS_FETCH
 from backend.util.exceptions import NotAuthorizedError, NotFoundError
 

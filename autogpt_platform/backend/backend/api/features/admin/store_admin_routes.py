@@ -2,11 +2,11 @@ import logging
 import tempfile
 import typing
 
-import autogpt_libs.auth
 import fastapi
 import fastapi.responses
 import prisma.enums
 
+import backend.api.auth
 import backend.api.features.store.cache as store_cache
 import backend.api.features.store.db as store_db
 import backend.api.features.store.model as store_model
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 router = fastapi.APIRouter(
     prefix="/admin",
     tags=["store", "admin"],
-    dependencies=[fastapi.Security(autogpt_libs.auth.requires_admin_user)],
+    dependencies=[fastapi.Security(backend.api.auth.requires_admin_user)],
 )
 
 
@@ -73,7 +73,7 @@ async def get_admin_listings_with_versions(
 async def review_submission(
     store_listing_version_id: str,
     request: store_model.ReviewSubmissionRequest,
-    user_id: str = fastapi.Security(autogpt_libs.auth.get_user_id),
+    user_id: str = fastapi.Security(backend.api.auth.get_user_id),
 ):
     """
     Review a store listing submission.
@@ -117,7 +117,7 @@ async def review_submission(
     tags=["store", "admin"],
 )
 async def admin_download_agent_file(
-    user_id: str = fastapi.Security(autogpt_libs.auth.get_user_id),
+    user_id: str = fastapi.Security(backend.api.auth.get_user_id),
     store_listing_version_id: str = fastapi.Path(
         ..., description="The ID of the agent to download"
     ),

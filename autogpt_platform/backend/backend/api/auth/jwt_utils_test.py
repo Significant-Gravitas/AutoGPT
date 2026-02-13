@@ -12,9 +12,9 @@ from fastapi import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
 from pytest_mock import MockerFixture
 
-from autogpt_libs.auth import config, jwt_utils
-from autogpt_libs.auth.config import Settings
-from autogpt_libs.auth.models import User
+from backend.api.auth import config, jwt_utils
+from backend.api.auth.config import Settings
+from backend.api.auth.models import User
 
 MOCK_JWT_SECRET = "test-secret-key-with-at-least-32-characters"
 TEST_USER_PAYLOAD = {

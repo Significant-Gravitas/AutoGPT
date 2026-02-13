@@ -5,11 +5,11 @@ import uuid as uuid_module
 from collections.abc import AsyncGenerator
 from typing import Annotated
 
-from autogpt_libs import auth
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, Security
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from backend.api import auth
 from backend.util.exceptions import NotFoundError
 
 from . import service as chat_service
@@ -303,7 +303,7 @@ async def stream_chat_post(
 
     session = await _validate_and_get_session(session_id, user_id)
     logger.info(
-        f"[TIMING] session validated in {(time.perf_counter() - stream_start_time)*1000:.1f}ms",
+        f"[TIMING] session validated in {(time.perf_counter() - stream_start_time) * 1000:.1f}ms",
         extra={
             "json_fields": {
                 **log_meta,
@@ -327,7 +327,7 @@ async def stream_chat_post(
         operation_id=operation_id,
     )
     logger.info(
-        f"[TIMING] create_task completed in {(time.perf_counter() - task_create_start)*1000:.1f}ms",
+        f"[TIMING] create_task completed in {(time.perf_counter() - task_create_start) * 1000:.1f}ms",
         extra={
             "json_fields": {
                 **log_meta,
@@ -377,7 +377,7 @@ async def stream_chat_post(
             gen_end_time = time_module.perf_counter()
             total_time = (gen_end_time - gen_start_time) * 1000
             logger.info(
-                f"[TIMING] run_ai_generation FINISHED in {total_time/1000:.1f}s; "
+                f"[TIMING] run_ai_generation FINISHED in {total_time / 1000:.1f}s; "
                 f"task={task_id}, session={session_id}, "
                 f"ttfc={ttfc or -1:.2f}s, n_chunks={chunk_count}",
                 extra={

@@ -91,7 +91,6 @@ class AutoRegistry:
                     not hasattr(provider.webhook_manager, "PROVIDER_NAME")
                     or provider.webhook_manager.PROVIDER_NAME is None
                 ):
-
                     # This works because ProviderName has _missing_ method
                     provider.webhook_manager.PROVIDER_NAME = ProviderName(provider.name)
                 cls._webhook_managers[provider.name] = provider.webhook_manager

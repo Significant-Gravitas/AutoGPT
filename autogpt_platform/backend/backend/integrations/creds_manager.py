@@ -4,7 +4,6 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Callable, Coroutine
 
-from autogpt_libs.utils.synchronize import AsyncRedisKeyedMutex
 from redis.asyncio.lock import Lock as AsyncRedisLock
 
 from backend.data.model import Credentials, OAuth2Credentials
@@ -14,6 +13,7 @@ from backend.integrations.oauth import CREDENTIALS_BY_PROVIDER, HANDLERS_BY_NAME
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import MissingConfigError
 from backend.util.settings import Settings
+from backend.util.synchronize import AsyncRedisKeyedMutex
 
 if TYPE_CHECKING:
     from backend.integrations.oauth import BaseOAuthHandler
@@ -140,8 +140,7 @@ class IntegrationCredentialsManager:
             oauth_handler = await _get_provider_oauth_handler(credentials.provider)
             if oauth_handler.needs_refresh(credentials):
                 logger.debug(
-                    f"Refreshing '{credentials.provider}' "
-                    f"credentials #{credentials.id}"
+                    f"Refreshing '{credentials.provider}' credentials #{credentials.id}"
                 )
                 _lock = None
                 if lock:

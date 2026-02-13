@@ -2,10 +2,10 @@ import asyncio
 import logging
 from typing import Any, List
 
-import autogpt_libs.auth as autogpt_auth_lib
 from fastapi import APIRouter, HTTPException, Query, Security, status
 from prisma.enums import ReviewStatus
 
+import backend.api.auth as autogpt_auth_lib
 from backend.data.execution import (
     ExecutionContext,
     ExecutionStatus,

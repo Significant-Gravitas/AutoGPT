@@ -1,6 +1,6 @@
 import hashlib
 
-from autogpt_libs.api_key.keysmith import APIKeySmith
+from backend.api.auth.api_key.keysmith import APIKeySmith
 
 
 def test_generate_api_key():

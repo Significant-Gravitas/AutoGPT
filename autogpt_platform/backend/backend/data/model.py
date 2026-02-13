@@ -471,7 +471,6 @@ class UserMetadataRaw(TypedDict, total=False):
 
 
 class UserIntegrations(BaseModel):
-
     class ManagedCredentials(BaseModel):
         """Integration credentials managed by us, rather than by the user"""
 

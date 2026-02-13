@@ -499,10 +499,13 @@ class TestComplexBlockScenarios:
 
             async def run(self, input_data: Input, **kwargs) -> BlockOutput:
                 if input_data.value < 0:
-                    yield "error", {
-                        "type": "ValidationError",
-                        "message": "Value must be non-negative",
-                    }
+                    yield (
+                        "error",
+                        {
+                            "type": "ValidationError",
+                            "message": "Value must be non-negative",
+                        },
+                    )
                     yield "result", 0
                 else:
                     yield "result", input_data.value * 2
@@ -621,12 +624,15 @@ class TestAuthenticationVariants:
 
                 yield "data", f"OAuth data for {input_data.resource}"
                 yield "scopes_used", credentials.scopes or []
-                yield "token_info", {
-                    "has_token": bool(token),
-                    "has_refresh": credentials.refresh_token is not None,
-                    "provider": credentials.provider,
-                    "expires_at": credentials.access_token_expires_at,
-                }
+                yield (
+                    "token_info",
+                    {
+                        "has_token": bool(token),
+                        "has_refresh": credentials.refresh_token is not None,
+                        "provider": credentials.provider,
+                        "expires_at": credentials.access_token_expires_at,
+                    },
+                )
 
         # Create test OAuth credentials
         test_oauth_creds = OAuth2Credentials(

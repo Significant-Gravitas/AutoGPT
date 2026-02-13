@@ -1237,7 +1237,7 @@ async def _stream_chat_chunks(
 
                 total_time = (time_module.perf_counter() - stream_chunks_start) * 1000
                 logger.info(
-                    f"[TIMING] _stream_chat_chunks COMPLETED in {total_time/1000:.1f}s; "
+                    f"[TIMING] _stream_chat_chunks COMPLETED in {total_time / 1000:.1f}s; "
                     f"session={session.session_id}, user={session.user_id}",
                     extra={"json_fields": {**log_meta, "total_time_ms": total_time}},
                 )

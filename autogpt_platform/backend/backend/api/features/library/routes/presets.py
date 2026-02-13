@@ -1,9 +1,9 @@
 import logging
 from typing import Any, Optional
 
-import autogpt_libs.auth as autogpt_auth_lib
 from fastapi import APIRouter, Body, HTTPException, Query, Security, status
 
+import backend.api.auth as autogpt_auth_lib
 from backend.data.execution import GraphExecutionMeta
 from backend.data.graph import get_graph
 from backend.data.integrations import get_webhook

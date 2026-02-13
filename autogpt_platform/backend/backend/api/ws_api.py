@@ -5,10 +5,10 @@ from typing import Protocol
 
 import pydantic
 import uvicorn
-from autogpt_libs.auth.jwt_utils import parse_jwt_token
 from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
 from starlette.middleware.cors import CORSMiddleware
 
+from backend.api.auth.jwt_utils import parse_jwt_token
 from backend.api.conn_manager import ConnectionManager
 from backend.api.model import (
     WSMessage,

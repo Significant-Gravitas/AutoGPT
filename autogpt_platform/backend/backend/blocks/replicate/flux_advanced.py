@@ -141,7 +141,9 @@ class ReplicateFluxAdvancedModelBlock(Block):
                 ),
             ],
             test_mock={
-                "run_model": lambda api_key, model_name, prompt, seed, steps, guidance, interval, aspect_ratio, output_format, output_quality, safety_tolerance: "https://replicate.com/output/generated-image-url.jpg",
+                "run_model": lambda api_key, model_name, prompt, seed, steps, guidance, interval, aspect_ratio, output_format, output_quality, safety_tolerance: (
+                    "https://replicate.com/output/generated-image-url.jpg"
+                ),
             },
             test_credentials=TEST_CREDENTIALS,
         )
