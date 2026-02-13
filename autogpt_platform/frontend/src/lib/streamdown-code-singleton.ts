@@ -80,7 +80,7 @@ async function getHighlighter(themes: [string, string]): Promise<Highlighter> {
       themes: themes as [BundledTheme, BundledTheme],
       // Start with common languages pre-loaded for faster first render
       langs: ["javascript", "typescript", "python", "json", "html", "css", "bash", "markdown"],
-    }).then((h) => {
+    }).then((h: Highlighter) => {
       highlighterInstance = h;
       ["javascript", "typescript", "python", "json", "html", "css", "bash", "markdown"].forEach(
         (l) => loadedLanguages.add(l)
@@ -111,7 +111,7 @@ async function ensureLanguageLoaded(
       loadedLanguages.add(language);
       pendingLanguages.delete(language);
     })
-    .catch((err) => {
+    .catch((err: Error) => {
       console.warn(`[streamdown-code-singleton] Failed to load language: ${language}`, err);
       pendingLanguages.delete(language);
     });
@@ -120,13 +120,20 @@ async function ensureLanguageLoaded(
   return loadPromise;
 }
 
+// Shiki token types
+interface ShikiToken {
+  content: string;
+  color?: string;
+  htmlStyle?: Record<string, string>;
+}
+
 // Convert shiki tokens to streamdown format
 function convertTokens(
   shikiResult: ReturnType<Highlighter["codeToTokens"]>
 ): HighlightResult {
   return {
-    tokens: shikiResult.tokens.map((line) =>
-      line.map((token) => ({
+    tokens: shikiResult.tokens.map((line: ShikiToken[]) =>
+      line.map((token: ShikiToken) => ({
         content: token.content,
         color: token.color,
         htmlStyle: token.htmlStyle,
