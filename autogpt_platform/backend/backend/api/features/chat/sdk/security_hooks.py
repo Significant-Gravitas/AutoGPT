@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import re
+from collections.abc import Callable
 from typing import Any, cast
 
 from backend.api.features.chat.sdk.tool_adapter import MCP_TOOL_PREFIX
@@ -173,6 +174,7 @@ def create_security_hooks(
     user_id: str | None,
     sdk_cwd: str | None = None,
     max_subtasks: int = 3,
+    on_stop: Callable[[str, str], None] | None = None,
 ) -> dict[str, Any]:
     """Create the security hooks configuration for Claude Agent SDK.
 
@@ -181,11 +183,15 @@ def create_security_hooks(
     - PostToolUse: Log successful tool executions
     - PostToolUseFailure: Log and handle failed tool executions
     - PreCompact: Log context compaction events (SDK handles compaction automatically)
+    - Stop: Capture transcript path for stateless resume (when *on_stop* is provided)
 
     Args:
         user_id: Current user ID for isolation validation
         sdk_cwd: SDK working directory for workspace-scoped tool validation
         max_subtasks: Maximum Task (sub-agent) spawns allowed per session
+        on_stop: Callback ``(transcript_path, sdk_session_id)`` invoked when
+            the SDK finishes processing — used to read the JSONL transcript
+            before the CLI process exits.
 
     Returns:
         Hooks configuration dict for ClaudeAgentOptions
@@ -285,7 +291,31 @@ def create_security_hooks(
             )
             return cast(SyncHookJSONOutput, {})
 
-        return {
+        # --- Stop hook: capture transcript path for stateless resume ---
+        async def stop_hook(
+            input_data: HookInput,
+            tool_use_id: str | None,
+            context: HookContext,
+        ) -> SyncHookJSONOutput:
+            """Capture transcript path when SDK finishes processing.
+
+            The Stop hook fires while the CLI process is still alive, giving us
+            a reliable window to read the JSONL transcript before SIGTERM.
+            """
+            _ = context, tool_use_id
+            transcript_path = cast(str, input_data.get("transcript_path", ""))
+            sdk_session_id = cast(str, input_data.get("session_id", ""))
+
+            if transcript_path and on_stop:
+                logger.info(
+                    f"[SDK] Stop hook: transcript_path={transcript_path}, "
+                    f"sdk_session_id={sdk_session_id[:12]}..."
+                )
+                on_stop(transcript_path, sdk_session_id)
+
+            return cast(SyncHookJSONOutput, {})
+
+        hooks: dict[str, Any] = {
             "PreToolUse": [HookMatcher(matcher="*", hooks=[pre_tool_use_hook])],
             "PostToolUse": [HookMatcher(matcher="*", hooks=[post_tool_use_hook])],
             "PostToolUseFailure": [
@@ -293,6 +323,11 @@ def create_security_hooks(
             ],
             "PreCompact": [HookMatcher(matcher="*", hooks=[pre_compact_hook])],
         }
+
+        if on_stop is not None:
+            hooks["Stop"] = [HookMatcher(matcher=None, hooks=[stop_hook])]
+
+        return hooks
     except ImportError:
         # Fallback for when SDK isn't available - return empty hooks
         logger.warning("claude-agent-sdk not available, security hooks disabled")

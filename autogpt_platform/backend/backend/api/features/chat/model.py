@@ -103,6 +103,7 @@ class ChatSession(BaseModel):
     updated_at: datetime
     successful_agent_runs: dict[str, int] = {}
     successful_agent_schedules: dict[str, int] = {}
+    sdk_transcript: str | None = None  # Claude Code JSONL transcript for --resume
 
     def add_tool_call_to_current_turn(self, tool_call: dict) -> None:
         """Attach a tool_call to the current turn's assistant message.
@@ -190,6 +191,7 @@ class ChatSession(BaseModel):
             updated_at=prisma_session.updatedAt,
             successful_agent_runs=successful_agent_runs,
             successful_agent_schedules=successful_agent_schedules,
+            sdk_transcript=getattr(prisma_session, "sdkTranscript", None),
         )
 
     @staticmethod
@@ -412,6 +414,7 @@ async def _save_session_to_db(
         successful_agent_schedules=session.successful_agent_schedules,
         total_prompt_tokens=total_prompt,
         total_completion_tokens=total_completion,
+        sdk_transcript=session.sdk_transcript,
     )
 
     # Add new messages (only those after existing count)

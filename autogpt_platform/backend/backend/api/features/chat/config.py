@@ -111,6 +111,11 @@ class ChatConfig(BaseSettings):
         default=10,
         description="Max number of sub-agent Tasks the SDK can spawn per session.",
     )
+    claude_agent_use_resume: bool = Field(
+        default=False,
+        description="Use --resume for multi-turn conversations instead of "
+        "history compression. Falls back to compression when unavailable.",
+    )
 
     # Extended thinking configuration for Claude models
     thinking_enabled: bool = Field(

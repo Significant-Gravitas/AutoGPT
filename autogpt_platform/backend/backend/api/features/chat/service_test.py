@@ -11,6 +11,7 @@ from .response_model import (
     StreamTextDelta,
     StreamToolOutputAvailable,
 )
+from .sdk import service as sdk_service
 
 logger = logging.getLogger(__name__)
 
@@ -80,3 +81,88 @@ async def test_stream_chat_completion_with_tool_calls(setup_test_user, test_user
     session = await get_chat_session(session.session_id)
     assert session, "Session not found"
     assert session.usage, "Usage is empty"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_sdk_resume_multi_turn(setup_test_user, test_user_id):
+    """Test that the SDK --resume path captures and uses transcripts across turns.
+
+    Turn 1: Send a message containing a unique keyword.
+    Turn 2: Ask the model to recall that keyword — proving the transcript was
+    persisted and restored via --resume.
+    """
+    api_key: str | None = getenv("OPEN_ROUTER_API_KEY")
+    if not api_key:
+        return pytest.skip("OPEN_ROUTER_API_KEY is not set, skipping test")
+
+    from .config import ChatConfig
+
+    cfg = ChatConfig()
+    if not cfg.claude_agent_use_resume:
+        return pytest.skip("CLAUDE_AGENT_USE_RESUME is not enabled, skipping test")
+
+    session = await create_chat_session(test_user_id)
+    session = await upsert_chat_session(session)
+
+    # --- Turn 1: send a message with a unique keyword ---
+    keyword = "ZEPHYR42"
+    turn1_msg = (
+        f"Please remember this special keyword: {keyword}. "
+        "Just confirm you've noted it, keep your response brief."
+    )
+    turn1_text = ""
+    turn1_errors: list[str] = []
+    turn1_ended = False
+
+    async for chunk in sdk_service.stream_chat_completion_sdk(
+        session.session_id,
+        turn1_msg,
+        user_id=test_user_id,
+    ):
+        if isinstance(chunk, StreamTextDelta):
+            turn1_text += chunk.delta
+        elif isinstance(chunk, StreamError):
+            turn1_errors.append(chunk.errorText)
+        elif isinstance(chunk, StreamFinish):
+            turn1_ended = True
+
+    assert turn1_ended, "Turn 1 did not finish"
+    assert not turn1_errors, f"Turn 1 errors: {turn1_errors}"
+    assert turn1_text, "Turn 1 produced no text"
+
+    # Reload session from DB and verify transcript was captured
+    session = await get_chat_session(session.session_id, test_user_id)
+    assert session, "Session not found after turn 1"
+    assert session.sdk_transcript, (
+        "sdk_transcript was not captured after turn 1 — "
+        "Stop hook may not have fired or transcript was too small"
+    )
+    logger.info(f"Turn 1 transcript captured: {len(session.sdk_transcript)} bytes")
+
+    # --- Turn 2: ask model to recall the keyword ---
+    turn2_msg = "What was the special keyword I asked you to remember?"
+    turn2_text = ""
+    turn2_errors: list[str] = []
+    turn2_ended = False
+
+    async for chunk in sdk_service.stream_chat_completion_sdk(
+        session.session_id,
+        turn2_msg,
+        user_id=test_user_id,
+        session=session,
+    ):
+        if isinstance(chunk, StreamTextDelta):
+            turn2_text += chunk.delta
+        elif isinstance(chunk, StreamError):
+            turn2_errors.append(chunk.errorText)
+        elif isinstance(chunk, StreamFinish):
+            turn2_ended = True
+
+    assert turn2_ended, "Turn 2 did not finish"
+    assert not turn2_errors, f"Turn 2 errors: {turn2_errors}"
+    assert turn2_text, "Turn 2 produced no text"
+    assert keyword in turn2_text, (
+        f"Model did not recall keyword '{keyword}' in turn 2. "
+        f"Response: {turn2_text[:200]}"
+    )
+    logger.info(f"Turn 2 recalled keyword successfully: {turn2_text[:100]}")

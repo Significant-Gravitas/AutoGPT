@@ -223,6 +223,9 @@ model ChatSession {
   totalPromptTokens     Int @default(0)
   totalCompletionTokens Int @default(0)
 
+  // Claude Code JSONL transcript for stateless --resume across turns
+  sdkTranscript String? @db.Text
+
   Messages ChatMessage[]
 
   @@index([userId, updatedAt])

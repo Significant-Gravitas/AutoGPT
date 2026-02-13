@@ -464,6 +464,7 @@ async def stream_chat_completion_sdk(
     # Initialise sdk_cwd before the try so the finally can reference it
     # even if _make_sdk_cwd raises (in that case it stays as "").
     sdk_cwd = ""
+    use_resume = False
 
     try:
         # Use a session-specific temp dir to avoid cleanup race conditions
@@ -479,6 +480,12 @@ async def stream_chat_completion_sdk(
         try:
             from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 
+            from .transcript import (
+                read_transcript_file,
+                validate_transcript,
+                write_transcript_to_tempfile,
+            )
+
             # Fail fast when no API credentials are available at all
             sdk_env = _build_sdk_env()
             if not sdk_env and not os.environ.get("ANTHROPIC_API_KEY"):
@@ -492,22 +499,55 @@ async def stream_chat_completion_sdk(
 
             sdk_model = _resolve_sdk_model()
 
+            # --- Transcript capture via Stop hook ---
+            captured_transcript: dict[str, str] = {}
+
+            def _on_stop(transcript_path: str, sdk_session_id: str) -> None:
+                captured_transcript["path"] = transcript_path
+                captured_transcript["session_id"] = sdk_session_id
+
             security_hooks = create_security_hooks(
                 user_id,
                 sdk_cwd=sdk_cwd,
                 max_subtasks=config.claude_agent_max_subtasks,
+                on_stop=_on_stop if config.claude_agent_use_resume else None,
             )
 
-            options = ClaudeAgentOptions(
-                system_prompt=system_prompt,
-                mcp_servers={"copilot": mcp_server},  # type: ignore[arg-type]
-                allowed_tools=COPILOT_TOOL_NAMES,
-                hooks=security_hooks,  # type: ignore[arg-type]
-                cwd=sdk_cwd,
-                max_buffer_size=config.claude_agent_max_buffer_size,
-                # Only pass model/env when OpenRouter is configured
-                **({"model": sdk_model, "env": sdk_env} if sdk_env else {}),
-            )
+            # --- Resume strategy: try JSONL resume, fall back to compression ---
+            resume_file: str | None = None
+            use_resume = False
+
+            if (
+                config.claude_agent_use_resume
+                and session.sdk_transcript
+                and len(session.messages) > 1
+                and validate_transcript(session.sdk_transcript)
+            ):
+                resume_file = write_transcript_to_tempfile(
+                    session.sdk_transcript, session_id, sdk_cwd
+                )
+                if resume_file:
+                    use_resume = True
+                    logger.info(
+                        f"[SDK] Using --resume with transcript "
+                        f"({len(session.sdk_transcript)} bytes)"
+                    )
+
+            sdk_options_kwargs: dict[str, Any] = {
+                "system_prompt": system_prompt,
+                "mcp_servers": {"copilot": mcp_server},
+                "allowed_tools": COPILOT_TOOL_NAMES,
+                "hooks": security_hooks,
+                "cwd": sdk_cwd,
+                "max_buffer_size": config.claude_agent_max_buffer_size,
+            }
+            if sdk_env:
+                sdk_options_kwargs["model"] = sdk_model
+                sdk_options_kwargs["env"] = sdk_env
+            if use_resume and resume_file:
+                sdk_options_kwargs["resume"] = resume_file
+
+            options = ClaudeAgentOptions(**sdk_options_kwargs)  # type: ignore[arg-type]
 
             adapter = SDKResponseAdapter(message_id=message_id)
             adapter.set_task_id(task_id)
@@ -527,10 +567,11 @@ async def stream_chat_completion_sdk(
                     yield StreamFinish()
                     return
 
-                # Build query with conversation history context.
-                # Compress history first to handle long conversations.
+                # Build query: with --resume the CLI already has full context,
+                # so we only send the new message.  Without resume, compress
+                # history into a context prefix as before.
                 query_message = current_message
-                if len(session.messages) > 1:
+                if not use_resume and len(session.messages) > 1:
                     compressed = await _compress_conversation_history(session)
                     history_context = _format_conversation_context(compressed)
                     if history_context:
@@ -623,6 +664,24 @@ async def stream_chat_completion_sdk(
                 ) and not has_appended_assistant:
                     session.messages.append(assistant_response)
 
+                # --- Capture transcript while CLI is still alive ---
+                # Must happen INSIDE async with: close() sends SIGTERM
+                # which kills the CLI before it can flush the JSONL.
+                if config.claude_agent_use_resume and captured_transcript.get("path"):
+                    # Give CLI time to flush JSONL writes before we read
+                    await asyncio.sleep(0.5)
+                    transcript_content = read_transcript_file(
+                        captured_transcript["path"]
+                    )
+                    if transcript_content:
+                        session.sdk_transcript = transcript_content
+                        logger.info(
+                            f"[SDK] Captured transcript: "
+                            f"{len(transcript_content)} bytes"
+                        )
+                    else:
+                        logger.debug("[SDK] Stop hook fired but transcript not usable")
+
         except ImportError:
             raise RuntimeError(
                 "claude-agent-sdk is not installed. "
@@ -639,6 +698,9 @@ async def stream_chat_completion_sdk(
 
     except Exception as e:
         logger.error(f"[SDK] Error: {e}", exc_info=True)
+        if use_resume:
+            session.sdk_transcript = None
+            logger.warning("[SDK] Clearing transcript after resume failure")
         try:
             await upsert_chat_session(session)
         except Exception as save_err:
