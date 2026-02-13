@@ -4,6 +4,7 @@ import {
   CredentialsMetaInput,
 } from "@/lib/autogpt-server-api/types";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useState } from "react";
 import { useForm, type UseFormReturn } from "react-hook-form";
 import { z } from "zod";
 
@@ -26,6 +27,7 @@ export function useAPIKeyCredentialsModal({
 }: Args): {
   form: UseFormReturn<APIKeyFormValues>;
   isLoading: boolean;
+  isSubmitting: boolean;
   supportsApiKey: boolean;
   provider?: string;
   providerName?: string;
@@ -33,6 +35,7 @@ export function useAPIKeyCredentialsModal({
   onSubmit: (values: APIKeyFormValues) => Promise<void>;
 } {
   const credentials = useCredentials(schema, siblingInputs);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const formSchema = z.object({
     apiKey: z.string().min(1, "API Key is required"),
@@ -40,48 +43,42 @@ export function useAPIKeyCredentialsModal({
     expiresAt: z.string().optional(),
   });
 
-  function getDefaultExpirationDate(): string {
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    tomorrow.setHours(0, 0, 0, 0);
-    const year = tomorrow.getFullYear();
-    const month = String(tomorrow.getMonth() + 1).padStart(2, "0");
-    const day = String(tomorrow.getDate()).padStart(2, "0");
-    const hours = String(tomorrow.getHours()).padStart(2, "0");
-    const minutes = String(tomorrow.getMinutes()).padStart(2, "0");
-    return `${year}-${month}-${day}T${hours}:${minutes}`;
-  }
-
   const form = useForm<APIKeyFormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       apiKey: "",
       title: "",
-      expiresAt: getDefaultExpirationDate(),
+      expiresAt: "",
     },
   });
 
   async function onSubmit(values: APIKeyFormValues) {
     if (!credentials || credentials.isLoading) return;
-    const expiresAt = values.expiresAt
-      ? new Date(values.expiresAt).getTime() / 1000
-      : undefined;
-    const newCredentials = await credentials.createAPIKeyCredentials({
-      api_key: values.apiKey,
-      title: values.title,
-      expires_at: expiresAt,
-    });
-    onCredentialsCreate({
-      provider: credentials.provider,
-      id: newCredentials.id,
-      type: "api_key",
-      title: newCredentials.title,
-    });
+    setIsSubmitting(true);
+    try {
+      const expiresAt = values.expiresAt
+        ? new Date(values.expiresAt).getTime() / 1000
+        : undefined;
+      const newCredentials = await credentials.createAPIKeyCredentials({
+        api_key: values.apiKey,
+        title: values.title,
+        expires_at: expiresAt,
+      });
+      onCredentialsCreate({
+        provider: credentials.provider,
+        id: newCredentials.id,
+        type: "api_key",
+        title: newCredentials.title,
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   return {
     form,
     isLoading: !credentials || credentials.isLoading,
+    isSubmitting,
     supportsApiKey: !!credentials?.supportsApiKey,
     provider: credentials?.provider,
     providerName:
