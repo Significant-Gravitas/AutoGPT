@@ -25,6 +25,7 @@ class ResponseType(str, Enum):
     AGENT_SAVED = "agent_saved"
     CLARIFICATION_NEEDED = "clarification_needed"
     BLOCK_LIST = "block_list"
+    BLOCK_DETAILS = "block_details"
     BLOCK_OUTPUT = "block_output"
     DOC_SEARCH_RESULTS = "doc_search_results"
     DOC_PAGE = "doc_page"
@@ -40,6 +41,9 @@ class ResponseType(str, Enum):
     OPERATION_IN_PROGRESS = "operation_in_progress"
     # Input validation
     INPUT_VALIDATION_ERROR = "input_validation_error"
+    # Feature request types
+    FEATURE_REQUEST_SEARCH = "feature_request_search"
+    FEATURE_REQUEST_CREATED = "feature_request_created"
 
 
 # Base response model
@@ -334,13 +338,6 @@ class BlockInfoSummary(BaseModel):
     id: str
     name: str
     description: str
-    categories: list[str]
-    input_schema: dict[str, Any]
-    output_schema: dict[str, Any]
-    required_inputs: list[BlockInputFieldInfo] = Field(
-        default_factory=list,
-        description="List of required input fields for this block",
-    )
 
 
 class BlockListResponse(ToolResponseBase):
@@ -350,10 +347,25 @@ class BlockListResponse(ToolResponseBase):
     blocks: list[BlockInfoSummary]
     count: int
     query: str
-    usage_hint: str = Field(
-        default="To execute a block, call run_block with block_id set to the block's "
-        "'id' field and input_data containing the required fields from input_schema."
-    )
+
+
+class BlockDetails(BaseModel):
+    """Detailed block information."""
+
+    id: str
+    name: str
+    description: str
+    inputs: dict[str, Any] = {}
+    outputs: dict[str, Any] = {}
+    credentials: list[CredentialsMetaInput] = []
+
+
+class BlockDetailsResponse(ToolResponseBase):
+    """Response for block details (first run_block attempt)."""
+
+    type: ResponseType = ResponseType.BLOCK_DETAILS
+    block: BlockDetails
+    user_authenticated: bool = False
 
 
 class BlockOutputResponse(ToolResponseBase):
@@ -421,3 +433,34 @@ class AsyncProcessingResponse(ToolResponseBase):
     status: str = "accepted"  # Must be "accepted" for detection
     operation_id: str | None = None
     task_id: str | None = None
+
+
+# Feature request models
+class FeatureRequestInfo(BaseModel):
+    """Information about a feature request issue."""
+
+    id: str
+    identifier: str
+    title: str
+    description: str | None = None
+
+
+class FeatureRequestSearchResponse(ToolResponseBase):
+    """Response for search_feature_requests tool."""
+
+    type: ResponseType = ResponseType.FEATURE_REQUEST_SEARCH
+    results: list[FeatureRequestInfo]
+    count: int
+    query: str
+
+
+class FeatureRequestCreatedResponse(ToolResponseBase):
+    """Response for create_feature_request tool."""
+
+    type: ResponseType = ResponseType.FEATURE_REQUEST_CREATED
+    issue_id: str
+    issue_identifier: str
+    issue_title: str
+    issue_url: str
+    is_new_issue: bool  # False if added to existing
+    customer_name: str
