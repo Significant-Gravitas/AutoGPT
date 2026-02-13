@@ -1,7 +1,7 @@
 from gravitasml.parser import Parser
 from gravitasml.token import Token, tokenize
 
-from backend.data.block import Block, BlockOutput, BlockSchemaInput, BlockSchemaOutput
+from backend.blocks._base import Block, BlockOutput, BlockSchemaInput, BlockSchemaOutput
 from backend.data.model import SchemaField
 
 
