@@ -252,17 +252,17 @@ async def upload_transcript(user_id: str, session_id: str, content: str) -> None
 
     storage = await get_workspace_storage()
     wid, fid, fname = _storage_path_parts(user_id, session_id)
-    new_size = len(stripped)
+    encoded = stripped.encode("utf-8")
+    new_size = len(encoded)
 
     # Check existing transcript size to avoid overwriting newer with older
     path = _build_storage_path(user_id, session_id, storage)
     try:
         existing = await storage.retrieve(path)
-        existing_size = len(existing)
-        if existing_size >= new_size:
+        if len(existing) >= new_size:
             logger.info(
                 f"[Transcript] Skipping upload — existing transcript "
-                f"({existing_size}B) >= new ({new_size}B) for session "
+                f"({len(existing)}B) >= new ({new_size}B) for session "
                 f"{session_id}"
             )
             return
@@ -273,7 +273,7 @@ async def upload_transcript(user_id: str, session_id: str, content: str) -> None
         workspace_id=wid,
         file_id=fid,
         filename=fname,
-        content=stripped.encode("utf-8"),
+        content=encoded,
     )
     logger.info(
         f"[Transcript] Uploaded {new_size} bytes "

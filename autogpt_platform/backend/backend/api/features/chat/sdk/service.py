@@ -586,9 +586,9 @@ async def stream_chat_completion_sdk(
                         )
 
                 logger.info(
-                    f"[SDK] Sending query: {current_message[:80]!r}"
-                    f" ({len(session.messages)} msgs in session)"
+                    f"[SDK] Sending query ({len(session.messages)} msgs in session)"
                 )
+                logger.debug(f"[SDK] Query preview: {current_message[:80]!r}")
                 await client.query(query_message, session_id=session_id)
 
                 assistant_response = ChatMessage(role="assistant", content="")
