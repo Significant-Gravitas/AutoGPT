@@ -341,19 +341,17 @@ def format_comment(
     
     # Group by risk
     conflicts = [(o, r) for o, r in classified if r == 'conflict']
-    high_risk = [(o, r) for o, r in classified if r == 'high']
     medium_risk = [(o, r) for o, r in classified if r == 'medium']
     low_risk = [(o, r) for o, r in classified if r == 'low']
     
     # Format each section
     format_conflicts_section(conflicts, current_pr, lines)
-    format_high_risk_section(high_risk, current_pr, lines)
     format_medium_risk_section(medium_risk, current_pr, changes_current, all_changes, lines)
     format_low_risk_section(low_risk, current_pr, lines)
     
     # Summary
     total = len(overlaps)
-    lines.append(f"\n**Summary:** {len(conflicts)} conflicts, {len(high_risk)} high risk, {len(medium_risk)} medium risk, {len(low_risk)} low risk (out of {total} PRs with file overlap)")
+    lines.append(f"\n**Summary:** {len(conflicts)} conflict(s), {len(medium_risk)} medium risk, {len(low_risk)} low risk (out of {total} PRs with file overlap)")
     lines.append("\n---\n*Auto-generated on push. Ignores: `openapi.json`, lock files.*")
     
     return "\n".join(lines)
@@ -389,23 +387,6 @@ def format_conflicts_section(conflicts: list[tuple], current_pr: int, lines: lis
         other = o.pr_b if o.pr_a.number == current_pr else o.pr_a
         format_pr_entry(other, lines)
         format_conflict_details(o, lines)
-        lines.append("")
-
-
-def format_high_risk_section(high_risk: list[tuple], current_pr: int, lines: list[str]):
-    """Format the high risk section."""
-    if not high_risk:
-        return
-    
-    lines.append("### 🟠 High Risk — Significant Line Overlap")
-    lines.append("")
-    lines.append("These PRs modify many of the same lines (>20 lines). While not yet tested for conflicts, they have high potential to conflict.")
-    lines.append("")
-    
-    for o, _ in high_risk:
-        other = o.pr_b if o.pr_a.number == current_pr else o.pr_a
-        format_pr_entry(other, lines)
-        format_line_overlaps(o.line_overlaps, lines)
         lines.append("")
 
 
@@ -550,7 +531,7 @@ def classify_all_overlaps(
     
     def sort_key(item):
         o, risk = item
-        risk_order = {'conflict': 0, 'high': 1, 'medium': 2, 'low': 3}
+        risk_order = {'conflict': 0, 'medium': 1, 'low': 2}
         # For conflicts, also sort by total conflict lines (descending)
         conflict_lines = sum(d.conflict_lines for d in o.conflict_details) if o.conflict_details else 0
         return (risk_order.get(risk, 99), -conflict_lines)
@@ -582,9 +563,8 @@ def classify_overlap_risk(
             for start, end in ranges
         )
         
-        if total_overlap_lines > 20:
-            return 'high'
-        elif total_overlap_lines > 5:
+        # Medium risk: >20 lines overlap or file rename
+        if total_overlap_lines > 20 or has_rename:
             return 'medium'
         else:
             return 'low'
