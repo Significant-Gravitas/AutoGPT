@@ -1108,6 +1108,7 @@ async def _stream_chat_chunks(
                     # Non-retryable error or max retries exceeded
                     _log_api_error(
                         error=e,
+                        context="stream (not retrying)",
                         session_id=session.session_id if session else None,
                         message_count=len(messages) if messages else None,
                         model=model,
@@ -1144,6 +1145,7 @@ async def _stream_chat_chunks(
         if last_error:
             _log_api_error(
                 error=last_error,
+                context=f"stream (max retries {MAX_RETRIES} exceeded)",
                 session_id=session.session_id if session else None,
                 message_count=len(messages) if messages else None,
                 model=model,
@@ -1736,6 +1738,7 @@ async def _generate_llm_continuation(
                     # Non-retryable error - log details and exit gracefully
                     _log_api_error(
                         error=e,
+                        context="LLM continuation (not retrying)",
                         session_id=session_id,
                         message_count=len(messages) if messages else None,
                         model=config.model,
@@ -1746,6 +1749,7 @@ async def _generate_llm_continuation(
         if last_error:
             _log_api_error(
                 error=last_error,
+                context=f"LLM continuation (max retries {MAX_RETRIES} exceeded)",
                 session_id=session_id,
                 message_count=len(messages) if messages else None,
                 model=config.model,
@@ -1791,6 +1795,7 @@ async def _generate_llm_continuation(
 
 def _log_api_error(
     error: Exception,
+    context: str,
     session_id: str | None = None,
     message_count: int | None = None,
     model: str | None = None,
@@ -1798,19 +1803,20 @@ def _log_api_error(
 ) -> None:
     """Log detailed API error information for debugging."""
     details = _extract_api_error_details(error)
+    details["context"] = context
     details["session_id"] = session_id
     details["message_count"] = message_count
     details["model"] = model
     details["retry_count"] = retry_count
 
     if isinstance(error, RateLimitError):
-        logger.warning(f"Rate limit error: {details}", exc_info=error)
+        logger.warning(f"Rate limit error in {context}: {details}", exc_info=error)
     elif isinstance(error, APIConnectionError):
-        logger.warning(f"API connection error: {details}", exc_info=error)
+        logger.warning(f"API connection error in {context}: {details}", exc_info=error)
     elif isinstance(error, APIStatusError) and error.status_code >= 500:
-        logger.error(f"API server error (5xx): {details}", exc_info=error)
+        logger.error(f"API server error (5xx) in {context}: {details}", exc_info=error)
     else:
-        logger.error(f"API error: {details}", exc_info=error)
+        logger.error(f"API error in {context}: {details}", exc_info=error)
 
 
 def _extract_api_error_details(error: Exception) -> dict[str, Any]:
