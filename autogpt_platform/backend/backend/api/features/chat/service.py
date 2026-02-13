@@ -1804,13 +1804,13 @@ def _log_api_error(
     details["retry_count"] = retry_count
 
     if isinstance(error, RateLimitError):
-        logger.warning(f"Rate limit error: {details}")
+        logger.warning(f"Rate limit error: {details}", exc_info=error)
     elif isinstance(error, APIConnectionError):
-        logger.warning(f"API connection error: {details}")
+        logger.warning(f"API connection error: {details}", exc_info=error)
     elif isinstance(error, APIStatusError) and error.status_code >= 500:
-        logger.error(f"API server error (5xx): {details}")
+        logger.error(f"API server error (5xx): {details}", exc_info=error)
     else:
-        logger.error(f"API error: {details}")
+        logger.error(f"API error: {details}", exc_info=error)
 
 
 def _extract_api_error_details(error: Exception) -> dict[str, Any]:
