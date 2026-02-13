@@ -241,9 +241,7 @@ export function CreateAgentTool({ part }: Props) {
   );
 }
 
-function getAgentCreationSteps(
-  progress: number,
-): AgentCreationChecklistStep[] {
+function getAgentCreationSteps(progress: number): AgentCreationChecklistStep[] {
   return [
     {
       title: "Analyzing your request",

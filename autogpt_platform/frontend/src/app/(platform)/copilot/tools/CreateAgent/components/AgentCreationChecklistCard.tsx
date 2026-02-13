@@ -27,7 +27,11 @@ export function AgentCreationChecklistCard({ steps }: Props) {
                   className="text-green-500"
                 />
               ) : (
-                <CircleIcon size={20} weight="regular" className="text-neutral-400" />
+                <CircleIcon
+                  size={20}
+                  weight="regular"
+                  className="text-neutral-400"
+                />
               )}
             </div>
             <div className="flex-1 space-y-1">
