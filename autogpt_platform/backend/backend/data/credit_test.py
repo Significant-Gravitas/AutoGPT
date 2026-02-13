@@ -131,7 +131,7 @@ async def test_block_credit_reset(server: SpinTestServer):
 
     try:
         # Test month 1 behavior
-        month1 = datetime.now(timezone.utc).replace(year=2024, month=1, day=1)
+        month1 = datetime.now(timezone.utc).replace(month=1, day=1)
         user_credit.time_now = lambda: month1
 
         # First call in month 1 should trigger refill
@@ -160,7 +160,7 @@ async def test_block_credit_reset(server: SpinTestServer):
         )
 
         # Now test month 2 behavior
-        month2 = datetime.now(timezone.utc).replace(year=2024, month=2, day=1)
+        month2 = datetime.now(timezone.utc).replace(month=2, day=1)
         user_credit.time_now = lambda: month2
 
         # In month 2, since balance (1100) > refill (1000), no refill should happen
@@ -184,9 +184,9 @@ async def test_block_credit_reset(server: SpinTestServer):
                 "createdAt": month2,
             }
         )
-        month3 = datetime.now(timezone.utc).replace(year=2024, month=3, day=1)
 
         # Move to month 3
+        month3 = datetime.now(timezone.utc).replace(month=3, day=1)
         user_credit.time_now = lambda: month3
 
         # Should get refilled since balance (400) < refill value (1000)
