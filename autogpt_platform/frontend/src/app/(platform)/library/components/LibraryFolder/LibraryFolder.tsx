@@ -57,7 +57,7 @@ export function LibraryFolder({
     <div
       data-testid="library-folder"
       data-folder-id={id}
-      className={`group relative inline-flex h-[10.625rem] w-full max-w-[25rem] cursor-pointer flex-col items-start justify-start gap-2.5 rounded-medium border bg-white p-4 transition-all duration-200 hover:shadow-md ${
+      className={`group relative inline-flex h-[10.625rem] w-full max-w-[25rem] cursor-pointer flex-col items-start justify-between gap-2.5 rounded-medium border bg-white p-4 transition-all duration-200 hover:shadow-md ${
         isDragOver
           ? "border-blue-400 bg-blue-50 ring-2 ring-blue-200"
           : "border-zinc-100"

@@ -19,11 +19,16 @@ interface Props {
   layoutId?: string;
 }
 
-export function LibraryTabs({ tabs, activeTab, onTabChange, layoutId = "library-tabs" }: Props) {
+export function LibraryTabs({
+  tabs,
+  activeTab,
+  onTabChange,
+  layoutId = "library-tabs",
+}: Props) {
   const { registerFavoritesTabRef } = useFavoriteAnimation();
 
   return (
-    <div className="flex gap-2 items-center">
+    <div className="flex items-center gap-2">
       {tabs.map((tab) => (
         <TabButton
           key={tab.id}
@@ -31,7 +36,9 @@ export function LibraryTabs({ tabs, activeTab, onTabChange, layoutId = "library-
           isActive={activeTab === tab.id}
           onSelect={onTabChange}
           layoutId={layoutId}
-          onRefReady={tab.id === "favorites" ? registerFavoritesTabRef : undefined}
+          onRefReady={
+            tab.id === "favorites" ? registerFavoritesTabRef : undefined
+          }
         />
       ))}
     </div>
@@ -46,7 +53,13 @@ interface TabButtonProps {
   onRefReady?: (element: HTMLElement | null) => void;
 }
 
-function TabButton({ tab, isActive, onSelect, layoutId, onRefReady }: TabButtonProps) {
+function TabButton({
+  tab,
+  isActive,
+  onSelect,
+  layoutId,
+  onRefReady,
+}: TabButtonProps) {
   const [isLoaded, setIsLoaded] = useState(false);
   const buttonRef = useRef<HTMLDivElement>(null);
 
@@ -82,7 +95,7 @@ function TabButton({ tab, isActive, onSelect, layoutId, onRefReady }: TabButtonP
         onSelect(tab.id);
         setIsLoaded(true);
       }}
-      className="w-fit h-fit flex"
+      className="flex h-fit w-fit"
       style={{ willChange: "transform" }}
     >
       <motion.div
@@ -96,9 +109,9 @@ function TabButton({ tab, isActive, onSelect, layoutId, onRefReady }: TabButtonP
           },
         }}
         className={cn(
-          "flex items-center gap-1.5 bg-zinc-200 border-zinc-200 text-black hover:bg-zinc-300 hover:border-zinc-300 overflow-hidden transition-colors duration-75 ease-out py-2 px-3 cursor-pointer h-fit",
+          "flex h-fit cursor-pointer items-center gap-1.5 overflow-hidden border border-zinc-200 px-3 py-2 text-black transition-colors duration-75 ease-out hover:border-zinc-300 hover:bg-zinc-300",
           isActive && activeColor,
-          isActive ? "px-4" : "px-3"
+          isActive ? "px-4" : "px-3",
         )}
         style={{
           borderRadius: "25px",
@@ -122,7 +135,7 @@ function TabButton({ tab, isActive, onSelect, layoutId, onRefReady }: TabButtonP
           >
             <motion.span
               layoutId={`${layoutId}-text-${tab.id}`}
-              className="font-sans font-medium text-sm text-black"
+              className="font-sans text-sm font-medium text-black"
             >
               {tab.title}
             </motion.span>

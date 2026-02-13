@@ -11,10 +11,71 @@ import { Button } from "@/components/atoms/Button/Button";
 import { ArrowLeftIcon, HeartIcon } from "@phosphor-icons/react";
 import { Text } from "@/components/atoms/Text/Text";
 import { Tab } from "../LibraryTabs/LibraryTabs";
-import { LayoutGroup } from "framer-motion";
+import {
+  AnimatePresence,
+  LayoutGroup,
+  motion,
+  useReducedMotion,
+} from "framer-motion";
 import { LibraryFolderEditDialog } from "../LibraryFolderEditDialog/LibraryFolderEditDialog";
 import { LibraryFolderDeleteDialog } from "../LibraryFolderDeleteDialog/LibraryFolderDeleteDialog";
 import { useLibraryAgentList } from "./useLibraryAgentList";
+
+const containerVariants = {
+  hidden: {},
+  show: {
+    transition: {
+      staggerChildren: 0.04,
+      delayChildren: 0.04,
+    },
+  },
+  exit: {
+    opacity: 0,
+    filter: "blur(4px)",
+    transition: {
+      duration: 0.15,
+      ease: [0.25, 0.1, 0.25, 1],
+    },
+  },
+};
+
+const itemVariants = {
+  hidden: {
+    opacity: 0,
+    y: 8,
+    scale: 0.96,
+    filter: "blur(4px)",
+  },
+  show: {
+    opacity: 1,
+    y: 0,
+    scale: 1,
+    filter: "blur(0px)",
+    transition: {
+      duration: 0.25,
+      ease: [0.25, 0.1, 0.25, 1],
+    },
+  },
+};
+
+const reducedContainerVariants = {
+  hidden: {},
+  show: {
+    transition: { staggerChildren: 0.02 },
+  },
+  exit: {
+    opacity: 0,
+    transition: { duration: 0.15 },
+  },
+};
+
+const reducedItemVariants = {
+  hidden: { opacity: 0 },
+  show: {
+    opacity: 1,
+    transition: { duration: 0.2 },
+  },
+};
 
 interface Props {
   searchTerm: string;
@@ -37,6 +98,14 @@ export function LibraryAgentList({
   activeTab,
   onTabChange,
 }: Props) {
+  const shouldReduceMotion = useReducedMotion();
+  const activeContainerVariants = shouldReduceMotion
+    ? reducedContainerVariants
+    : containerVariants;
+  const activeItemVariants = shouldReduceMotion
+    ? reducedItemVariants
+    : itemVariants;
+
   const {
     isFavoritesTab,
     agentLoading,
@@ -112,26 +181,38 @@ export function LibraryAgentList({
             loader={<LoadingSpinner size="medium" />}
           >
             <LayoutGroup>
-              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                {showFolders &&
-                  foldersData?.folders.map((folder) => (
-                    <LibraryFolder
-                      key={folder.id}
-                      id={folder.id}
-                      name={folder.name}
-                      agentCount={folder.agent_count ?? 0}
-                      color={folder.color ?? undefined}
-                      icon={folder.icon ?? "📁"}
-                      onAgentDrop={handleAgentDrop}
-                      onClick={() => onFolderSelect(folder.id)}
-                      onEdit={() => setEditingFolder(folder)}
-                      onDelete={() => setDeletingFolder(folder)}
-                    />
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={`${activeTab}-${selectedFolderId || "all"}`}
+                  className="grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+                  variants={activeContainerVariants}
+                  initial="hidden"
+                  animate="show"
+                  exit="exit"
+                >
+                  {showFolders &&
+                    foldersData?.folders.map((folder) => (
+                      <motion.div key={folder.id} variants={activeItemVariants}>
+                        <LibraryFolder
+                          id={folder.id}
+                          name={folder.name}
+                          agentCount={folder.agent_count ?? 0}
+                          color={folder.color ?? undefined}
+                          icon={folder.icon ?? "📁"}
+                          onAgentDrop={handleAgentDrop}
+                          onClick={() => onFolderSelect(folder.id)}
+                          onEdit={() => setEditingFolder(folder)}
+                          onDelete={() => setDeletingFolder(folder)}
+                        />
+                      </motion.div>
+                    ))}
+                  {agents.map((agent) => (
+                    <motion.div key={agent.id} variants={activeItemVariants}>
+                      <LibraryAgentCard agent={agent} />
+                    </motion.div>
                   ))}
-                {agents.map((agent) => (
-                  <LibraryAgentCard key={agent.id} agent={agent} />
-                ))}
-              </div>
+                </motion.div>
+              </AnimatePresence>
             </LayoutGroup>
           </InfiniteScroll>
         )}

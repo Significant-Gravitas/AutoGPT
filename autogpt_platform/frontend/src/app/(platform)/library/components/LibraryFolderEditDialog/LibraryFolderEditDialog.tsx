@@ -82,11 +82,10 @@ export function LibraryFolderEditDialog({ folder, isOpen, setIsOpen }: Props) {
           queryKey: getGetV2ListLibraryFoldersQueryKey(),
         });
 
-        const previousData = queryClient.getQueriesData<
-          getV2ListLibraryFoldersResponseSuccess
-        >({
-          queryKey: getGetV2ListLibraryFoldersQueryKey(),
-        });
+        const previousData =
+          queryClient.getQueriesData<getV2ListLibraryFoldersResponseSuccess>({
+            queryKey: getGetV2ListLibraryFoldersQueryKey(),
+          });
 
         queryClient.setQueriesData<getV2ListLibraryFoldersResponseSuccess>(
           { queryKey: getGetV2ListLibraryFoldersQueryKey() },
@@ -123,8 +122,7 @@ export function LibraryFolderEditDialog({ folder, isOpen, setIsOpen }: Props) {
             queryClient.setQueryData(queryKey, data);
           }
         }
-        const detail =
-          error.detail ?? error.response?.detail ?? "";
+        const detail = error.detail ?? error.response?.detail ?? "";
         if (
           typeof detail === "string" &&
           detail.toLowerCase().includes("already exists")
@@ -191,7 +189,7 @@ export function LibraryFolderEditDialog({ folder, isOpen, setIsOpen }: Props) {
         <Form
           form={form}
           onSubmit={(values) => onSubmit(values)}
-          className="flex flex-col justify-center gap-4 px-1"
+          className="flex flex-col justify-center gap-2 px-1"
         >
           <FormField
             control={form.control}
@@ -204,7 +202,8 @@ export function LibraryFolderEditDialog({ folder, isOpen, setIsOpen }: Props) {
                     id={field.name}
                     label="Folder name"
                     placeholder="Enter folder name"
-                    className="w-full rounded-[10px]"
+                    className="w-full"
+                    wrapperClassName="!mb-0"
                   />
                 </FormControl>
                 <FormMessage />
@@ -224,6 +223,7 @@ export function LibraryFolderEditDialog({ folder, isOpen, setIsOpen }: Props) {
                     placeholder="Select a color"
                     value={field.value}
                     onValueChange={field.onChange}
+                    wrapperClassName="!mb-0"
                     options={FOLDER_COLORS.map((color) => ({
                       value: color.value,
                       label: color.label,
@@ -273,10 +273,13 @@ export function LibraryFolderEditDialog({ folder, isOpen, setIsOpen }: Props) {
                           field.onChange(emoji);
                         }}
                         emojiSize={32}
-                        className="w-full"
+                        className="w-full rounded-2xl px-2"
                       >
-                        <EmojiPicker.Group>
-                          <EmojiPicker.List hideStickyHeader containerHeight={295} />
+                        <EmojiPicker.Group className="pt-2">
+                          <EmojiPicker.List
+                            hideStickyHeader
+                            containerHeight={295}
+                          />
                         </EmojiPicker.Group>
                       </EmojiPicker>
                     </div>
