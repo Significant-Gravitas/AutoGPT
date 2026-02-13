@@ -988,13 +988,13 @@ def post_or_update_comment(pr_number: int, body: str):
                 if marker in comment.get("body", ""):
                     existing_comment_id = comment["id"]
                     break
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"Warning: Could not search for existing comment: {e}", file=sys.stderr)
     
     if existing_comment_id:
         # Update existing comment using GraphQL mutation
-        # Escape the body for GraphQL
-        escaped_body = body.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+        # Use json.dumps for proper escaping of all special characters
+        escaped_body = json.dumps(body)[1:-1]  # Strip outer quotes added by json.dumps
         mutation = f'''
         mutation {{
             updateIssueComment(input: {{id: "{existing_comment_id}", body: "{escaped_body}"}}) {{
@@ -1034,11 +1034,16 @@ def send_discord_notification(webhook_url: str, pr: "PullRequest", overlaps: lis
         ]
     }
     
-    subprocess.run(
-        ["curl", "-X", "POST", "-H", "Content-Type: application/json",
-         "-d", json.dumps({"embeds": [embed]}), webhook_url],
-        capture_output=True
-    )
+    try:
+        subprocess.run(
+            ["curl", "-X", "POST", "-H", "Content-Type: application/json",
+             "--max-time", "10",
+             "-d", json.dumps({"embeds": [embed]}), webhook_url],
+            capture_output=True,
+            timeout=15
+        )
+    except subprocess.TimeoutExpired:
+        print("Warning: Discord webhook timed out", file=sys.stderr)
 
 
 # =============================================================================
