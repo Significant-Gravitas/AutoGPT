@@ -1,5 +1,6 @@
 """Chat API routes for chat session management and streaming via SSE."""
 
+import asyncio
 import logging
 import uuid as uuid_module
 from collections.abc import AsyncGenerator
@@ -19,12 +20,14 @@ from backend.copilot.completion_handler import (
 from backend.copilot.config import ChatConfig
 from backend.copilot.executor.utils import enqueue_copilot_task
 from backend.copilot.model import (
+    ChatMessage,
     ChatSession,
+    append_and_save_message,
     create_chat_session,
     get_chat_session,
     get_user_sessions,
 )
-from backend.copilot.response_model import StreamFinish, StreamHeartbeat
+from backend.copilot.response_model import StreamError, StreamFinish, StreamHeartbeat
 from backend.copilot.tools.models import (
     AgentDetailsResponse,
     AgentOutputResponse,
@@ -48,6 +51,7 @@ from backend.copilot.tools.models import (
     SetupRequirementsResponse,
     UnderstandingUpdatedResponse,
 )
+from backend.copilot.tracking import track_user_message
 from backend.util.exceptions import NotFoundError
 
 config = ChatConfig()
@@ -240,6 +244,10 @@ async def get_session(
     active_task, last_message_id = await stream_registry.get_active_task_for_session(
         session_id, user_id
     )
+    logger.info(
+        f"[GET_SESSION] session={session_id}, active_task={active_task is not None}, "
+        f"msg_count={len(messages)}, last_role={messages[-1].get('role') if messages else 'none'}"
+    )
     if active_task:
         # Filter out the in-progress assistant message from the session response.
         # The client will receive the complete assistant response through the SSE
@@ -309,10 +317,9 @@ async def stream_chat_post(
         f"user={user_id}, message_len={len(request.message)}",
         extra={"json_fields": log_meta},
     )
-
-    _session = await _validate_and_get_session(session_id, user_id)  # noqa: F841
+    await _validate_and_get_session(session_id, user_id)
     logger.info(
-        f"[TIMING] session validated in {(time.perf_counter() - stream_start_time)*1000:.1f}ms",
+        f"[TIMING] session validated in {(time.perf_counter() - stream_start_time) * 1000:.1f}ms",
         extra={
             "json_fields": {
                 **log_meta,
@@ -320,6 +327,25 @@ async def stream_chat_post(
             }
         },
     )
+
+    # Atomically append user message to session BEFORE creating task to avoid
+    # race condition where GET_SESSION sees task as "running" but message isn't
+    # saved yet.  append_and_save_message re-fetches inside a lock to prevent
+    # message loss from concurrent requests.
+    if request.message:
+        message = ChatMessage(
+            role="user" if request.is_user_message else "assistant",
+            content=request.message,
+        )
+        if request.is_user_message:
+            track_user_message(
+                user_id=user_id,
+                session_id=session_id,
+                message_length=len(request.message),
+            )
+        logger.info(f"[STREAM] Saving user message to session {session_id}")
+        await append_and_save_message(session_id, message)
+        logger.info(f"[STREAM] User message saved for session {session_id}")
 
     # Create a task in the stream registry for reconnection support
     task_id = str(uuid_module.uuid4())
@@ -336,7 +362,7 @@ async def stream_chat_post(
         operation_id=operation_id,
     )
     logger.info(
-        f"[TIMING] create_task completed in {(time.perf_counter() - task_create_start)*1000:.1f}ms",
+        f"[TIMING] create_task completed in {(time.perf_counter() - task_create_start) * 1000:.1f}ms",
         extra={
             "json_fields": {
                 **log_meta,
@@ -453,8 +479,14 @@ async def stream_chat_post(
                     "json_fields": {**log_meta, "elapsed_ms": elapsed, "error": str(e)}
                 },
             )
+            # Surface error to frontend so it doesn't appear stuck
+            yield StreamError(
+                errorText="An error occurred. Please try again.",
+                code="stream_error",
+            ).to_sse()
+            yield StreamFinish().to_sse()
         finally:
-            # Unsubscribe when client disconnects or stream ends to prevent resource leak
+            # Unsubscribe when client disconnects or stream ends
             if subscriber_queue is not None:
                 try:
                     await stream_registry.unsubscribe_from_task(
@@ -698,8 +730,6 @@ async def stream_task(
         )
 
     async def event_generator() -> AsyncGenerator[str, None]:
-        import asyncio
-
         heartbeat_interval = 15.0  # Send heartbeat every 15 seconds
         try:
             while True:

@@ -360,7 +360,7 @@ async def get_chat_session(
         logger.warning(f"Unexpected cache error for session {session_id}: {e}")
 
     # Fall back to database
-    logger.info(f"Session {session_id} not in cache, checking database")
+    logger.debug(f"Session {session_id} not in cache, checking database")
     session = await _get_session_from_db(session_id)
 
     if session is None:
@@ -540,6 +540,40 @@ async def _save_session_to_db(
         )
 
 
+async def append_and_save_message(session_id: str, message: ChatMessage) -> ChatSession:
+    """Atomically append a message to a session and persist it.
+
+    Acquires the session lock, re-fetches the latest session state,
+    appends the message, and saves — preventing message loss when
+    concurrent requests modify the same session.
+    """
+    lock = await _get_session_lock(session_id)
+
+    async with lock:
+        session = await get_chat_session(session_id)
+        if session is None:
+            raise ValueError(f"Session {session_id} not found")
+
+        session.messages.append(message)
+        existing_message_count = await chat_db().get_chat_session_message_count(
+            session_id
+        )
+
+        try:
+            await _save_session_to_db(session, existing_message_count)
+        except Exception as e:
+            raise DatabaseError(
+                f"Failed to persist message to session {session_id}"
+            ) from e
+
+        try:
+            await cache_chat_session(session)
+        except Exception as e:
+            logger.warning(f"Cache write failed for session {session_id}: {e}")
+
+        return session
+
+
 async def create_chat_session(user_id: str) -> ChatSession:
     """Create a new chat session and persist it.
 
@@ -647,13 +681,19 @@ async def update_session_title(session_id: str, title: str) -> bool:
             logger.warning(f"Session {session_id} not found for title update")
             return False
 
-        # Invalidate cache so next fetch gets updated title
+        # Update title in cache if it exists (instead of invalidating).
+        # This prevents race conditions where cache invalidation causes
+        # the frontend to see stale DB data while streaming is still in progress.
         try:
-            redis_key = _get_session_cache_key(session_id)
-            async_redis = await get_redis_async()
-            await async_redis.delete(redis_key)
+            cached = await _get_session_from_cache(session_id)
+            if cached:
+                cached.title = title
+                await cache_chat_session(cached)
         except Exception as e:
-            logger.warning(f"Failed to invalidate cache for session {session_id}: {e}")
+            # Not critical - title will be correct on next full cache refresh
+            logger.warning(
+                f"Failed to update title in cache for session {session_id}: {e}"
+            )
 
         return True
     except Exception as e:

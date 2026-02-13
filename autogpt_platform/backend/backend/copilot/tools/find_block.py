@@ -146,6 +146,7 @@ class FindBlockTool(BaseTool):
                         id=block_id,
                         name=block.name,
                         description=block.description or "",
+                        categories=[c.value for c in block.categories],
                     )
                 )
 
