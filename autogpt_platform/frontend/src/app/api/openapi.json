@@ -7066,7 +7066,6 @@
         "properties": {
           "id": { "type": "string", "title": "Id" },
           "name": { "type": "string", "title": "Name" },
-<<<<<<< HEAD
           "description": { "type": "string", "title": "Description" },
           "categories": {
             "items": { "type": "string" },
@@ -7094,14 +7093,29 @@
         },
         "type": "object",
         "required": ["id", "name", "description", "categories"],
-=======
-          "description": { "type": "string", "title": "Description" }
-        },
-        "type": "object",
-        "required": ["id", "name", "description"],
->>>>>>> 43b25b5e2fdec3fa0579f952d835355cddbd00f8
         "title": "BlockInfoSummary",
         "description": "Summary of a block for search results."
+      },
+      "BlockInputFieldInfo": {
+        "properties": {
+          "name": { "type": "string", "title": "Name" },
+          "type": { "type": "string", "title": "Type" },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "default": ""
+          },
+          "required": {
+            "type": "boolean",
+            "title": "Required",
+            "default": false
+          },
+          "default": { "anyOf": [{}, { "type": "null" }], "title": "Default" }
+        },
+        "type": "object",
+        "required": ["name", "type"],
+        "title": "BlockInputFieldInfo",
+        "description": "Information about a block input field."
       },
       "BlockListResponse": {
         "properties": {
@@ -7120,16 +7134,12 @@
             "title": "Blocks"
           },
           "count": { "type": "integer", "title": "Count" },
-<<<<<<< HEAD
           "query": { "type": "string", "title": "Query" },
           "usage_hint": {
             "type": "string",
             "title": "Usage Hint",
             "default": "To execute a block, call run_block with block_id set to the block's 'id' field and input_data containing the fields listed in required_inputs."
           }
-=======
-          "query": { "type": "string", "title": "Query" }
->>>>>>> 43b25b5e2fdec3fa0579f952d835355cddbd00f8
         },
         "type": "object",
         "required": ["message", "blocks", "count", "query"],

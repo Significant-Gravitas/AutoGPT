@@ -66,16 +66,11 @@ ENV POETRY_HOME=/opt/poetry \
     DEBIAN_FRONTEND=noninteractive
 ENV PATH=/opt/poetry/bin:$PATH
 
-<<<<<<< HEAD
 # Install Python, FFmpeg, ImageMagick, and CLI tools for agent use.
 # bubblewrap provides OS-level sandbox (whitelist-only FS + no network)
 # for the bash_exec MCP tool.
-RUN apt-get update && apt-get install -y \
-=======
-# Install Python, FFmpeg, and ImageMagick (required for video processing blocks)
 # Using --no-install-recommends saves ~650MB by skipping unnecessary deps like llvm, mesa, etc.
 RUN apt-get update && apt-get install -y --no-install-recommends \
->>>>>>> 43b25b5e2fdec3fa0579f952d835355cddbd00f8
     python3.13 \
     python3-pip \
     ffmpeg \

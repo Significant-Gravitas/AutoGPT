@@ -341,7 +341,6 @@ class BlockInfoSummary(BaseModel):
     id: str
     name: str
     description: str
-<<<<<<< HEAD
     categories: list[str]
     input_schema: dict[str, Any] = Field(
         default_factory=dict,
@@ -355,8 +354,6 @@ class BlockInfoSummary(BaseModel):
         default_factory=list,
         description="List of input fields for this block",
     )
-=======
->>>>>>> 43b25b5e2fdec3fa0579f952d835355cddbd00f8
 
 
 class BlockListResponse(ToolResponseBase):
@@ -366,12 +363,10 @@ class BlockListResponse(ToolResponseBase):
     blocks: list[BlockInfoSummary]
     count: int
     query: str
-<<<<<<< HEAD
     usage_hint: str = Field(
         default="To execute a block, call run_block with block_id set to the block's "
         "'id' field and input_data containing the fields listed in required_inputs."
     )
-=======
 
 
 class BlockDetails(BaseModel):
@@ -391,7 +386,6 @@ class BlockDetailsResponse(ToolResponseBase):
     type: ResponseType = ResponseType.BLOCK_DETAILS
     block: BlockDetails
     user_authenticated: bool = False
->>>>>>> 43b25b5e2fdec3fa0579f952d835355cddbd00f8
 
 
 class BlockOutputResponse(ToolResponseBase):
