@@ -41,6 +41,9 @@ class ResponseType(str, Enum):
     OPERATION_IN_PROGRESS = "operation_in_progress"
     # Input validation
     INPUT_VALIDATION_ERROR = "input_validation_error"
+    # Feature request types
+    FEATURE_REQUEST_SEARCH = "feature_request_search"
+    FEATURE_REQUEST_CREATED = "feature_request_created"
 
 
 # Base response model
@@ -430,3 +433,34 @@ class AsyncProcessingResponse(ToolResponseBase):
     status: str = "accepted"  # Must be "accepted" for detection
     operation_id: str | None = None
     task_id: str | None = None
+
+
+# Feature request models
+class FeatureRequestInfo(BaseModel):
+    """Information about a feature request issue."""
+
+    id: str
+    identifier: str
+    title: str
+    description: str | None = None
+
+
+class FeatureRequestSearchResponse(ToolResponseBase):
+    """Response for search_feature_requests tool."""
+
+    type: ResponseType = ResponseType.FEATURE_REQUEST_SEARCH
+    results: list[FeatureRequestInfo]
+    count: int
+    query: str
+
+
+class FeatureRequestCreatedResponse(ToolResponseBase):
+    """Response for create_feature_request tool."""
+
+    type: ResponseType = ResponseType.FEATURE_REQUEST_CREATED
+    issue_id: str
+    issue_identifier: str
+    issue_title: str
+    issue_url: str
+    is_new_issue: bool  # False if added to existing
+    customer_name: str
