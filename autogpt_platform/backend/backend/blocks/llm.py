@@ -291,10 +291,8 @@ async def resolve_model_for_call(llm_model: LlmModel) -> ResolvedModel:
         fallback = get_fallback_model_for_disabled(llm_model.value)
         if fallback:
             logger.warning(
-                "Model '%s' is disabled. Using fallback '%s' from same provider (%s).",
-                llm_model.value,
-                fallback.slug,
-                fallback.metadata.provider,
+                f"Model '{llm_model.value}' is disabled. Using fallback "
+                f"'{fallback.slug}' from same provider ({fallback.metadata.provider})."
             )
             return ResolvedModel(
                 slug=fallback.slug,
@@ -319,7 +317,7 @@ async def resolve_model_for_call(llm_model: LlmModel) -> ResolvedModel:
         )
 
     # Case 3: Model not in registry - try refresh if DB available
-    logger.warning("Model '%s' not found in registry cache", llm_model.value)
+    logger.warning(f"Model '{llm_model.value}' not found in registry cache")
 
     from backend.data.db import is_connected
 
@@ -331,7 +329,7 @@ async def resolve_model_for_call(llm_model: LlmModel) -> ResolvedModel:
 
     # Try refreshing the registry
     try:
-        logger.info("Refreshing LLM registry for model '%s'", llm_model.value)
+        logger.info(f"Refreshing LLM registry for model '{llm_model.value}'")
         await llm_registry.refresh_llm_registry()
     except Exception as e:
         raise ModelUnavailableError(
@@ -352,7 +350,7 @@ async def resolve_model_for_call(llm_model: LlmModel) -> ResolvedModel:
             f"Enable it via the admin UI at /admin/llms."
         )
 
-    logger.info("Model '%s' loaded after registry refresh", llm_model.value)
+    logger.info(f"Model '{llm_model.value}' loaded after registry refresh")
     return ResolvedModel(
         slug=llm_model.value,
         provider=model_info.metadata.provider,
@@ -449,7 +447,7 @@ def extract_openai_tool_calls(response) -> list[ToolContentBlock] | None:
 
 def get_parallel_tool_calls_param(
     llm_model: LlmModel, parallel_tool_calls: bool | None
-) -> bool | openai.NotGiven:
+) -> bool | openai.Omit:
     """Get the appropriate parallel_tool_calls parameter for OpenAI-compatible APIs."""
     # Check for o-series models (o1, o1-mini, o3-mini, etc.) which don't support
     # parallel tool calls. Handle both bare slugs ("o1-mini") and provider-prefixed
@@ -457,7 +455,7 @@ def get_parallel_tool_calls_param(
     # start of the string or after a "/" separator.
     is_o_series = re.search(r"(^|/)o\d", llm_model) is not None
     if is_o_series or parallel_tool_calls is None:
-        return openai.NOT_GIVEN
+        return openai.omit
     return parallel_tool_calls
 
 

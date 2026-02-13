@@ -85,7 +85,9 @@ async def _build_llm_costs_from_registry() -> list[BlockCost]:
     When a model has been migrated with a custom price, that price is used instead
     of the target model's default cost.
     """
-    # Query active migrations with custom pricing overrides
+    # Query active migrations with custom pricing overrides.
+    # Note: LlmModelMigration is system-level data (no userId field) and this function
+    # is only called during app startup and admin operations, so no user ID filter needed.
     migration_overrides: dict[str, int] = {}
     try:
         active_migrations = await prisma.models.LlmModelMigration.prisma().find_many(

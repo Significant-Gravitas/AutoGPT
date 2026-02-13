@@ -204,6 +204,12 @@ async def list_models(
         page: Page number (1-indexed)
         page_size: Number of models per page
     """
+    # Validate pagination inputs to avoid runtime errors
+    if page_size < 1:
+        page_size = 50
+    if page < 1:
+        page = 1
+
     where: Any = {}
     if provider_id:
         where["providerId"] = provider_id
