@@ -9,6 +9,10 @@ import argparse
 import yaml
 
 
+DEFAULT_BRANCH = "dev"
+CACHE_BUILDS_FOR_COMPONENTS = ["backend", "frontend"]
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Add cache config to a resolved compose file"
@@ -28,17 +32,23 @@ def main():
         default="type=gha,mode=max",
         help="Cache destination configuration",
     )
+    for component in CACHE_BUILDS_FOR_COMPONENTS:
+        parser.add_argument(
+            f"--{component}-hash",
+            default="",
+            help=f"Hash for {component} cache scope (e.g., from hashFiles())",
+        )
     parser.add_argument(
-        "--backend-scope",
+        "--git-ref",
         default="",
-        help="GHA cache scope for backend services (e.g., platform-backend-{hash})",
-    )
-    parser.add_argument(
-        "--frontend-scope",
-        default="",
-        help="GHA cache scope for frontend service (e.g., platform-frontend-{hash})",
+        help="Git ref for branch-based cache scope (e.g., refs/heads/master)",
     )
     args = parser.parse_args()
+
+    # Normalize git ref to a safe scope name (e.g., refs/heads/master -> master)
+    git_ref_scope = ""
+    if args.git_ref:
+        git_ref_scope = args.git_ref.replace("refs/heads/", "").replace("/", "-")
 
     with open(args.source, "r") as f:
         compose = yaml.safe_load(f)
@@ -58,6 +68,13 @@ def main():
     def get_build_key(dockerfile: str, target: str) -> str:
         """Generate a unique key for a Dockerfile+target combination."""
         return f"{dockerfile}:{target}"
+
+    def get_component(dockerfile: str) -> str | None:
+        """Get component name (frontend/backend) from dockerfile path."""
+        for component in CACHE_BUILDS_FOR_COMPONENTS:
+            if component in dockerfile:
+                return component
+        return None
 
     # First pass: collect all services with build configs and identify duplicates
     # Track which (dockerfile, target) combinations we've seen
@@ -102,30 +119,54 @@ def main():
             continue
 
         # This service will do the actual build - add cache config
-        cache_from = args.cache_from
-        cache_to = args.cache_to
+        cache_from_list = []
+        cache_to_list = []
 
-        # Determine scope based on Dockerfile path and target
-        # Each unique (dockerfile, target) combination gets its own cache scope
-        if "type=gha" in args.cache_from or "type=gha" in args.cache_to:
-            if "frontend" in dockerfile:
-                base_scope = args.frontend_scope
-            elif "backend" in dockerfile:
-                base_scope = args.backend_scope
-            else:
-                # Skip services that don't clearly match frontend/backend
-                continue
+        component = get_component(dockerfile)
+        if not component:
+            # Skip services that don't clearly match frontend/backend
+            continue
 
-            if base_scope:
-                # Append target to scope to differentiate e.g. migrate vs server
-                scope = f"{base_scope}-{target}"
-                if "type=gha" in args.cache_from:
-                    cache_from = f"{args.cache_from},scope={scope}"
-                if "type=gha" in args.cache_to:
-                    cache_to = f"{args.cache_to},scope={scope}"
+        # Get the hash for this component
+        component_hash = getattr(args, f"{component}_hash")
 
-        build_config["cache_from"] = [cache_from]
-        build_config["cache_to"] = [cache_to]
+        # Scope format: platform-{component}-{target}-{hash|ref}
+        # Example: platform-backend-server-abc123
+
+        if "type=gha" in args.cache_from:
+            # 1. Primary: exact hash match (most specific)
+            if component_hash:
+                hash_scope = f"platform-{component}-{target}-{component_hash}"
+                cache_from_list.append(f"{args.cache_from},scope={hash_scope}")
+
+            # 2. Fallback: branch-based cache
+            if git_ref_scope:
+                ref_scope = f"platform-{component}-{target}-{git_ref_scope}"
+                cache_from_list.append(f"{args.cache_from},scope={ref_scope}")
+
+            # 3. Fallback: dev branch cache (for PRs/feature branches)
+            if git_ref_scope and git_ref_scope != DEFAULT_BRANCH:
+                master_scope = f"platform-{component}-{target}-{DEFAULT_BRANCH}"
+                cache_from_list.append(f"{args.cache_from},scope={master_scope}")
+
+        if "type=gha" in args.cache_to:
+            # Write to both hash-based and branch-based scopes
+            if component_hash:
+                hash_scope = f"platform-{component}-{target}-{component_hash}"
+                cache_to_list.append(f"{args.cache_to},scope={hash_scope}")
+
+            if git_ref_scope:
+                ref_scope = f"platform-{component}-{target}-{git_ref_scope}"
+                cache_to_list.append(f"{args.cache_to},scope={ref_scope}")
+
+        # Ensure we have at least one cache source/target
+        if not cache_from_list:
+            cache_from_list.append(args.cache_from)
+        if not cache_to_list:
+            cache_to_list.append(args.cache_to)
+
+        build_config["cache_from"] = cache_from_list
+        build_config["cache_to"] = cache_to_list
         modified_services.append(service_name)
 
     # Write back to the same file
@@ -136,12 +177,12 @@ def main():
     for svc in modified_services:
         svc_config = compose["services"][svc]
         build_cfg = svc_config.get("build", {})
-        cache_from_val = build_cfg.get("cache_from", ["none"])[0]
-        cache_to_val = build_cfg.get("cache_to", ["none"])[0]
+        cache_from_list = build_cfg.get("cache_from", ["none"])
+        cache_to_list = build_cfg.get("cache_to", ["none"])
         print(f"  - {svc}")
         print(f"      image: {svc_config.get('image', 'N/A')}")
-        print(f"      cache_from: {cache_from_val}")
-        print(f"      cache_to: {cache_to_val}")
+        print(f"      cache_from: {cache_from_list}")
+        print(f"      cache_to: {cache_to_list}")
     if services_to_dedupe:
         print(
             f"Deduplicated {len(services_to_dedupe)} services (will use pre-built images):"

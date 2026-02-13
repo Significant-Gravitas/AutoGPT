@@ -158,8 +158,9 @@ jobs:
             --source docker-compose.resolved.yml \
             --cache-from "type=gha" \
             --cache-to "type=gha,mode=max" \
-            --backend-scope "platform-backend-${{ hashFiles('autogpt_platform/backend/Dockerfile', 'autogpt_platform/backend/poetry.lock', 'autogpt_platform/backend/backend') }}" \
-            --frontend-scope "platform-frontend-${{ hashFiles('autogpt_platform/frontend/Dockerfile', 'autogpt_platform/frontend/pnpm-lock.yaml', 'autogpt_platform/frontend/src') }}"
+            --backend-hash "${{ hashFiles('autogpt_platform/backend/Dockerfile', 'autogpt_platform/backend/poetry.lock', 'autogpt_platform/backend/backend') }}" \
+            --frontend-hash "${{ hashFiles('autogpt_platform/frontend/Dockerfile', 'autogpt_platform/frontend/pnpm-lock.yaml', 'autogpt_platform/frontend/src') }}" \
+            --git-ref "${{ github.ref }}"
 
           # Build with bake using the resolved compose file (now includes cache config)
           docker buildx bake --allow=fs.read=.. -f docker-compose.resolved.yml --load
