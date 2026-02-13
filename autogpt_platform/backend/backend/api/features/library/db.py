@@ -1102,7 +1102,7 @@ async def create_preset_from_graph_execution(
             raise NotFoundError(
                 f"Graph #{graph_execution.graph_id} not found or accessible"
             )
-        elif len(graph.aggregate_credentials_inputs()) > 0:
+        elif len(graph.regular_credentials_inputs) > 0:
             raise ValueError(
                 f"Graph execution #{graph_exec_id} can't be turned into a preset "
                 "because it was run before this feature existed "
