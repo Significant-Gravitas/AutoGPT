@@ -16,7 +16,6 @@ from groq import AsyncGroq
 from pydantic import BaseModel, GetCoreSchemaHandler, SecretStr
 from pydantic_core import CoreSchema, core_schema
 
-from backend.data import llm_registry
 from backend.blocks._base import (
     Block,
     BlockCategory,
@@ -24,6 +23,7 @@ from backend.blocks._base import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
+from backend.data import llm_registry
 from backend.data.llm_registry import ModelMetadata
 from backend.data.model import (
     APIKeyCredentials,
