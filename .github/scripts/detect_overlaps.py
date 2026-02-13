@@ -85,7 +85,7 @@ def fetch_pr_details(pr_number: int) -> "PullRequest":
     pr = PullRequest(
         number=data["number"],
         title=data["title"],
-        author=data["author"]["login"],
+        author=data["author"]["login"] if data.get("author") else "unknown",
         url=data["url"],
         head_ref=data["headRefName"],
         base_ref=data["baseRefName"],
@@ -593,7 +593,9 @@ def test_merge_conflict(
             return False, [], [], None
         
         configure_git(tmpdir)
-        fetch_pr_branches(tmpdir, pr_a.number, pr_b.number)
+        if not fetch_pr_branches(tmpdir, pr_a.number, pr_b.number):
+            # Fetch failed for one or both PRs - can't test merge
+            return False, [], [], None
         
         # Try merging PR A first
         conflict_result = try_merge_pr(tmpdir, pr_a.number)
@@ -629,10 +631,15 @@ def configure_git(tmpdir: str):
     run_git(["config", "user.name", "github-actions[bot]"], cwd=tmpdir, check=False)
 
 
-def fetch_pr_branches(tmpdir: str, pr_a: int, pr_b: int):
-    """Fetch both PR branches."""
-    run_git(["fetch", "origin", f"pull/{pr_a}/head:pr-{pr_a}"], cwd=tmpdir, check=False)
-    run_git(["fetch", "origin", f"pull/{pr_b}/head:pr-{pr_b}"], cwd=tmpdir, check=False)
+def fetch_pr_branches(tmpdir: str, pr_a: int, pr_b: int) -> bool:
+    """Fetch both PR branches. Returns False if any fetch fails."""
+    success = True
+    for pr_num in (pr_a, pr_b):
+        result = run_git(["fetch", "origin", f"pull/{pr_num}/head:pr-{pr_num}"], cwd=tmpdir, check=False)
+        if result.returncode != 0:
+            print(f"Warning: Could not fetch PR #{pr_num}: {result.stderr.strip()}", file=sys.stderr)
+            success = False
+    return success
 
 
 def try_merge_pr(tmpdir: str, pr_number: int) -> Optional[tuple[list[str], list["ConflictInfo"]]]:
@@ -713,8 +720,8 @@ def analyze_conflict_markers(file_path: str, cwd: str) -> "ConflictInfo":
                 info.conflict_lines += current_conflict_lines
             elif in_conflict:
                 current_conflict_lines += 1
-    except:
-        pass
+    except Exception as e:
+        print(f"Warning: Could not analyze conflict markers in {file_path}: {e}", file=sys.stderr)
     
     return info
 
@@ -731,11 +738,15 @@ def parse_diff_ranges(diff: str) -> dict[str, "ChangedFile"]:
     is_rename = False
     
     for line in diff.split("\n"):
-        if line.startswith("rename from "):
+        # Reset rename state on new file diff header
+        if line.startswith("diff --git "):
+            is_rename = False
+            pending_rename_from = None
+        elif line.startswith("rename from "):
             pending_rename_from = line[12:]
             is_rename = True
         elif line.startswith("rename to "):
-            pass  # Just tracking rename
+            pass  # rename target is captured via "+++ b/" line
         elif line.startswith("similarity index"):
             is_rename = True
         elif line.startswith("+++ b/"):
@@ -817,6 +828,7 @@ def query_open_prs(owner: str, repo: str, base_branch: str) -> list[dict]:
                             baseRefName
                             files(first: 100) {{
                                 nodes {{ path }}
+                                pageInfo {{ hasNextPage }}
                             }}
                         }}
                     }}
@@ -839,6 +851,10 @@ def query_open_prs(owner: str, repo: str, base_branch: str) -> list[dict]:
         pr_data = data["data"]["repository"]["pullRequests"]
         for edge in pr_data["edges"]:
             node = edge["node"]
+            files_data = node["files"]
+            # Warn if PR has more than 100 files (we only fetch first 100)
+            if files_data.get("pageInfo", {}).get("hasNextPage"):
+                print(f"Warning: PR #{node['number']} has >100 files, overlap detection may be incomplete", file=sys.stderr)
             prs.append({
                 "number": node["number"],
                 "title": node["title"],
@@ -847,7 +863,7 @@ def query_open_prs(owner: str, repo: str, base_branch: str) -> list[dict]:
                 "author": node["author"]["login"] if node["author"] else "unknown",
                 "head_ref": node["headRefName"],
                 "base_ref": node["baseRefName"],
-                "files": [f["path"] for f in node["files"]["nodes"]]
+                "files": [f["path"] for f in files_data["nodes"]]
             })
         
         if not pr_data["pageInfo"]["hasNextPage"]:
@@ -975,7 +991,7 @@ def format_relative_time(iso_timestamp: str) -> str:
             return f"{int(seconds / 3600)}h ago"
         else:
             return f"{int(seconds / 86400)}d ago"
-    except:
+    except Exception:
         return ""
 
 
