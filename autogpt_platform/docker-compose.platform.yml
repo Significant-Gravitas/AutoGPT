@@ -37,7 +37,7 @@ services:
       context: ../
       dockerfile: autogpt_platform/backend/Dockerfile
       target: migrate
-    command: ["sh", "-c", "poetry run prisma generate && poetry run gen-prisma-stub && poetry run prisma migrate deploy"]
+    command: ["sh", "-c", "prisma generate && python3 gen_prisma_types_stub.py && prisma migrate deploy"]
     develop:
       watch:
         - path: ./
@@ -56,7 +56,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "poetry run prisma migrate status | grep -q 'No pending migrations' || exit 1",
+          "prisma migrate status | grep -q 'No pending migrations' || exit 1",
         ]
       interval: 30s
       timeout: 10s
