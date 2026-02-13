@@ -435,8 +435,8 @@ class CreateFeatureRequestTool(BaseTool):
 
         return FeatureRequestCreatedResponse(
             message=(
-                f"{'Created new feature request' if is_new_issue else 'Added your request to existing feature request'} "
-                f"[{issue_info['identifier']}] {issue_info['title']}."
+                f"{'Created new feature request' if is_new_issue else 'Added your request to existing feature request'}: "
+                f"{issue_info['title']}."
             ),
             issue_id=issue_info["id"],
             issue_identifier=issue_info["identifier"],

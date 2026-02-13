@@ -212,8 +212,8 @@ export function getAnimationText(part: AnimationPart): string {
       if (!output) return `Creating feature request${titleText}`;
       if (isCreatedOutput(output)) {
         return output.is_new_issue
-          ? `Created ${output.issue_identifier}`
-          : `Added to ${output.issue_identifier}`;
+          ? "Feature request created"
+          : "Added to existing feature request";
       }
       if (isErrorOutput(output)) return "Error creating feature request";
       return `Created feature request${titleText}`;

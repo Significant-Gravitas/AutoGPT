@@ -11,7 +11,6 @@ import {
   ContentCardHeader,
   ContentCardTitle,
   ContentGrid,
-  ContentLink,
   ContentMessage,
   ContentSuggestionsList,
 } from "../../components/ToolAccordion/AccordionContent";
@@ -109,9 +108,7 @@ export function SearchFeatureRequestsTool({ part }: Props) {
               {searchOutput.results.map((r) => (
                 <ContentCard key={r.id}>
                   <ContentCardHeader>
-                    <ContentCardTitle>
-                      {r.identifier} — {r.title}
-                    </ContentCardTitle>
+                    <ContentCardTitle>{r.title}</ContentCardTitle>
                   </ContentCardHeader>
                   {r.description && (
                     <ContentCardDescription>
@@ -174,7 +171,7 @@ export function CreateFeatureRequestTool({ part }: Props) {
 
   const accordionDescription =
     hasExpandableContent && createdOutput
-      ? `${createdOutput.issue_identifier} — ${createdOutput.issue_title}`
+      ? createdOutput.issue_title
       : hasExpandableContent && errorOutput
         ? errorOutput.message
         : null;
@@ -201,18 +198,8 @@ export function CreateFeatureRequestTool({ part }: Props) {
         >
           {createdOutput && (
             <ContentCard>
-              <ContentCardHeader
-                action={
-                  createdOutput.issue_url ? (
-                    <ContentLink href={createdOutput.issue_url}>
-                      View
-                    </ContentLink>
-                  ) : undefined
-                }
-              >
-                <ContentCardTitle>
-                  {createdOutput.issue_identifier} — {createdOutput.issue_title}
-                </ContentCardTitle>
+              <ContentCardHeader>
+                <ContentCardTitle>{createdOutput.issue_title}</ContentCardTitle>
               </ContentCardHeader>
               <div className="mt-2 flex items-center gap-2">
                 <ContentBadge>
