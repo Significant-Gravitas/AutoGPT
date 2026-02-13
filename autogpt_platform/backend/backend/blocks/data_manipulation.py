@@ -1367,7 +1367,7 @@ class ListIntersectionBlock(Block):
     def _compute_intersection(self, list_a: List[Any], list_b: List[Any]) -> List[Any]:
         """Compute elements present in both lists, preserving order from list_a."""
         b_hashes = {_make_hashable(item) for item in list_b}
-        seen: set[int] = set()
+        seen: set = set()
         result: List[Any] = []
         for item in list_a:
             h = _make_hashable(item)

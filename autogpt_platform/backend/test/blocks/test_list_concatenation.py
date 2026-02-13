@@ -126,7 +126,7 @@ class TestConcatenateListsSimple:
         assert _concatenate_lists_simple([]) == []
 
     def test_skip_none_values(self):
-        assert _concatenate_lists_simple([[1, 2], None, [3, 4]]) == [1, 2, 3, 4]
+        assert _concatenate_lists_simple([[1, 2], None, [3, 4]]) == [1, 2, 3, 4]  # type: ignore[arg-type]
 
     def test_mixed_types(self):
         result = _concatenate_lists_simple([[1, "a"], [True, 3.14]])
@@ -353,7 +353,7 @@ class TestInterleaveListsHelper:
         assert result == [1, 2, 3]
 
     def test_with_none_list(self):
-        result = _interleave_lists([[1, 2], None, [3, 4]])
+        result = _interleave_lists([[1, 2], None, [3, 4]])  # type: ignore[arg-type]
         assert result == [1, 3, 2, 4]
 
     def test_all_empty_lists(self):
@@ -361,7 +361,7 @@ class TestInterleaveListsHelper:
 
     def test_all_none_lists(self):
         """All-None inputs should return empty list, not crash."""
-        assert _interleave_lists([None, None, None]) == []
+        assert _interleave_lists([None, None, None]) == []  # type: ignore[arg-type]
 
 
 # =============================================================================
