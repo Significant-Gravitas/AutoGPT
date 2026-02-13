@@ -599,6 +599,9 @@ def find_line_overlaps(
         if file_b.is_rename and not file_b.additions and not file_b.deletions:
             continue
         
+        # Note: This mixes old-file (deletions) and new-file (additions) line numbers,
+        # which can cause false positives when PRs insert/remove many lines.
+        # Acceptable for v1 since the real merge test is the authoritative check.
         file_overlaps = find_range_overlaps(
             file_a.additions + file_a.deletions,
             file_b.additions + file_b.deletions
@@ -1020,19 +1023,34 @@ def send_discord_notification(webhook_url: str, pr: "PullRequest", overlaps: lis
     if not conflicts:
         return
     
+    # Discord limits: max 25 fields, max 1024 chars per field value
+    fields = []
+    for o in conflicts[:25]:
+        other = o.pr_b if o.pr_a.number == pr.number else o.pr_a
+        # Build value string with truncation to stay under 1024 chars
+        file_list = o.conflict_files[:3]
+        files_str = f"Files: `{'`, `'.join(file_list)}`"
+        if len(o.conflict_files) > 3:
+            files_str += f" (+{len(o.conflict_files) - 3} more)"
+        value = f"[{other.title[:100]}]({other.url})\n{files_str}"
+        # Truncate if still too long
+        if len(value) > 1024:
+            value = value[:1020] + "..."
+        fields.append({
+            "name": f"Conflicts with #{other.number}",
+            "value": value,
+            "inline": False
+        })
+    
     embed = {
         "title": f"⚠️ PR #{pr.number} has merge conflicts",
         "description": f"[{pr.title}]({pr.url})",
         "color": 0xFF0000,
-        "fields": [
-            {
-                "name": f"Conflicts with #{(o.pr_b if o.pr_a.number == pr.number else o.pr_a).number}",
-                "value": f"[{(o.pr_b if o.pr_a.number == pr.number else o.pr_a).title}]({(o.pr_b if o.pr_a.number == pr.number else o.pr_a).url})\nFiles: `{'`, `'.join(o.conflict_files[:3])}`",
-                "inline": False
-            }
-            for o in conflicts
-        ]
+        "fields": fields
     }
+    
+    if len(conflicts) > 25:
+        embed["footer"] = {"text": f"... and {len(conflicts) - 25} more conflicts"}
     
     try:
         subprocess.run(
