@@ -610,8 +610,11 @@ const NodeOneOfDiscriminatorField: FC<{
 
     return oneOfVariants
       .map((variant) => {
-        const variantDiscValue = variant.properties?.[discriminatorProperty]
-          ?.const as string; // NOTE: can discriminators only be strings?
+        const discProperty = variant.properties?.[discriminatorProperty];
+        const variantDiscValue =
+          discProperty && "const" in discProperty
+            ? (discProperty.const as string)
+            : undefined; // NOTE: can discriminators only be strings?
 
         return {
           value: variantDiscValue,
@@ -1124,9 +1127,47 @@ const NodeStringInput: FC<{
   displayName,
 }) => {
   value ||= schema.default || "";
+
+  // Check if we have options with labels (e.g., LLM model picker)
+  const hasOptions = schema.options && schema.options.length > 0;
+  const hasEnum = schema.enum && schema.enum.length > 0;
+
+  // Helper to get display label for a value
+  const getDisplayLabel = (val: string) => {
+    if (hasOptions) {
+      const option = schema.options!.find((opt) => opt.value === val);
+      return option?.label || beautifyString(val);
+    }
+    return beautifyString(val);
+  };
+
   return (
     <div className={className}>
-      {schema.enum && schema.enum.length > 0 ? (
+      {hasOptions ? (
+        // Render options with proper labels (used by LLM model picker)
+        <Select
+          defaultValue={value}
+          onValueChange={(newValue) => handleInputChange(selfKey, newValue)}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder={schema.placeholder || displayName}>
+              {value ? getDisplayLabel(value) : undefined}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent className="nodrag">
+            {schema.options!.map((option, index) => (
+              <SelectItem
+                key={index}
+                value={option.value}
+                title={option.description}
+              >
+                {option.label || beautifyString(option.value)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      ) : hasEnum ? (
+        // Fallback to enum with beautified strings
         <Select
           defaultValue={value}
           onValueChange={(newValue) => handleInputChange(selfKey, newValue)}
@@ -1135,8 +1176,8 @@ const NodeStringInput: FC<{
             <SelectValue placeholder={schema.placeholder || displayName} />
           </SelectTrigger>
           <SelectContent className="nodrag">
-            {schema.enum
-              .filter((option) => option)
+            {schema
+              .enum!.filter((option) => option)
               .map((option, index) => (
                 <SelectItem key={index} value={option}>
                   {beautifyString(option)}
