@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -293,7 +293,7 @@ class AgentCreationStep(BaseModel):
 
     title: str
     description: str
-    status: str = "pending"  # pending, in_progress, completed
+    status: Literal["pending", "in_progress", "completed"] = "pending"
 
 
 class AgentCreationStepsResponse(ToolResponseBase):

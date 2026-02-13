@@ -3,7 +3,7 @@ import { CheckCircleIcon, CircleIcon } from "@phosphor-icons/react";
 export interface AgentCreationChecklistStep {
   title: string;
   description: string;
-  status: "pending" | "completed";
+  status: "pending" | "in_progress" | "completed";
 }
 
 interface Props {
@@ -17,8 +17,8 @@ export function AgentCreationChecklistCard({ steps }: Props) {
         Creating your custom agent...
       </p>
       <div className="space-y-2">
-        {steps.map((step, index) => (
-          <div key={index} className="flex items-start gap-3">
+        {steps.map((step) => (
+          <div key={step.title} className="flex items-start gap-3">
             <div className="mt-0.5 flex-shrink-0">
               {step.status === "completed" ? (
                 <CheckCircleIcon
