@@ -183,7 +183,7 @@ class TestRunBlockInputValidation:
         )
 
         with patch(
-            "backend.api.features.chat.tools.run_block.get_block",
+            "backend.copilot.tools.run_block.get_block",
             return_value=mock_block,
         ):
             tool = RunBlockTool()
@@ -222,7 +222,7 @@ class TestRunBlockInputValidation:
         )
 
         with patch(
-            "backend.api.features.chat.tools.run_block.get_block",
+            "backend.copilot.tools.run_block.get_block",
             return_value=mock_block,
         ):
             tool = RunBlockTool()
@@ -263,7 +263,7 @@ class TestRunBlockInputValidation:
         )
 
         with patch(
-            "backend.api.features.chat.tools.run_block.get_block",
+            "backend.copilot.tools.run_block.get_block",
             return_value=mock_block,
         ):
             tool = RunBlockTool()
@@ -302,15 +302,19 @@ class TestRunBlockInputValidation:
 
         mock_block.execute = mock_execute
 
+        mock_workspace_db = MagicMock()
+        mock_workspace_db.get_or_create_workspace = AsyncMock(
+            return_value=MagicMock(id="test-workspace-id")
+        )
+
         with (
             patch(
-                "backend.api.features.chat.tools.run_block.get_block",
+                "backend.copilot.tools.run_block.get_block",
                 return_value=mock_block,
             ),
             patch(
-                "backend.api.features.chat.tools.run_block.get_or_create_workspace",
-                new_callable=AsyncMock,
-                return_value=MagicMock(id="test-workspace-id"),
+                "backend.copilot.tools.run_block.workspace_db",
+                return_value=mock_workspace_db,
             ),
         ):
             tool = RunBlockTool()
@@ -344,7 +348,7 @@ class TestRunBlockInputValidation:
         )
 
         with patch(
-            "backend.api.features.chat.tools.run_block.get_block",
+            "backend.copilot.tools.run_block.get_block",
             return_value=mock_block,
         ):
             tool = RunBlockTool()

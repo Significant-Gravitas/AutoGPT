@@ -61,7 +61,7 @@ async def test_run_block_returns_details_when_no_input_provided():
     )
 
     with patch(
-        "backend.api.features.chat.tools.run_block.get_block",
+        "backend.copilot.tools.run_block.get_block",
         return_value=http_block,
     ):
         # Mock credentials check to return no missing credentials
@@ -120,7 +120,7 @@ async def test_run_block_returns_details_when_only_credentials_provided():
     }
 
     with patch(
-        "backend.api.features.chat.tools.run_block.get_block",
+        "backend.copilot.tools.run_block.get_block",
         return_value=mock,
     ):
         with patch.object(

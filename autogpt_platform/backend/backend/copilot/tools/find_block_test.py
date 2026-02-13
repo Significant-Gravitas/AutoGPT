@@ -361,12 +361,16 @@ class TestFindBlockFiltering:
             for d in block_defs
         }
 
+        mock_search_db = MagicMock()
+        mock_search_db.unified_hybrid_search = AsyncMock(
+            return_value=(search_results, len(search_results))
+        )
+
         with patch(
-            "backend.api.features.chat.tools.find_block.unified_hybrid_search",
-            new_callable=AsyncMock,
-            return_value=(search_results, len(search_results)),
+            "backend.copilot.tools.find_block.search",
+            return_value=mock_search_db,
         ), patch(
-            "backend.api.features.chat.tools.find_block.get_block",
+            "backend.copilot.tools.find_block.get_block",
             side_effect=lambda bid: mock_blocks.get(bid),
         ):
             tool = FindBlockTool()
