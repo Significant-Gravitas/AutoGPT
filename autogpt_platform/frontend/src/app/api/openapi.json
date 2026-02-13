@@ -10547,7 +10547,7 @@
           "input_validation_error",
           "web_fetch",
           "bash_exec",
-          "operation_status"
+          "operation_status",
           "feature_request_search",
           "feature_request_created"
         ],
