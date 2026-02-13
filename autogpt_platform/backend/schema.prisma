@@ -1289,6 +1289,7 @@ model LlmModelMigration {
   @@index([sourceModelSlug])
   @@index([targetModelSlug])
   @@index([isReverted])
+  @@index([sourceModelSlug, isReverted]) // Composite index for active migration queries
 }
 //////////////   OAUTH PROVIDER TABLES    //////////////////
 ////////////////////////////////////////////////////////////
