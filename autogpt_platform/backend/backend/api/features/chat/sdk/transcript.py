@@ -209,8 +209,7 @@ def _storage_path_parts(user_id: str, session_id: str) -> tuple[str, str, str]:
 
     Path structure: ``chat-transcripts/{user_id}/{session_id}.jsonl``
     """
-    workspace_id = f"{TRANSCRIPT_STORAGE_PREFIX}/{user_id}"
-    return (workspace_id, session_id, f"{session_id}.jsonl")
+    return (TRANSCRIPT_STORAGE_PREFIX, user_id, f"{session_id}.jsonl")
 
 
 def _build_storage_path(user_id: str, session_id: str, backend: object) -> str:
