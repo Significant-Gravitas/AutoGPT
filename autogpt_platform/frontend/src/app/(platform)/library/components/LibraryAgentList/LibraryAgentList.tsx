@@ -1,26 +1,20 @@
 "use client";
+
 import { LibraryAgentSort } from "@/app/api/__generated__/models/libraryAgentSort";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { InfiniteScroll } from "@/components/contextual/InfiniteScroll/InfiniteScroll";
 import { LibraryActionSubHeader } from "../LibraryActionSubHeader/LibraryActionSubHeader";
 import { LibraryAgentCard } from "../LibraryAgentCard/LibraryAgentCard";
-import { useLibraryAgentList } from "./useLibraryAgentList";
 import { LibraryFolder } from "../LibraryFolder/LibraryFolder";
-import {
-  useGetV2ListLibraryFolders,
-  usePostV2BulkMoveAgents,
-  getGetV2ListLibraryFoldersQueryKey,
-} from "@/app/api/__generated__/endpoints/folders/folders";
-import { okData } from "@/app/api/helpers";
 import { LibrarySubSection } from "../LibrarySubSection/LibrarySubSection";
-import { useQueryClient } from "@tanstack/react-query";
-import { getGetV2ListLibraryAgentsQueryKey } from "@/app/api/__generated__/endpoints/library/library";
 import { Button } from "@/components/atoms/Button/Button";
 import { ArrowLeftIcon, HeartIcon } from "@phosphor-icons/react";
 import { Text } from "@/components/atoms/Text/Text";
 import { Tab } from "../LibraryTabs/LibraryTabs";
-import { useFavoriteAgents } from "../../hooks/useFavoriteAgents";
 import { LayoutGroup } from "framer-motion";
+import { LibraryFolderEditDialog } from "../LibraryFolderEditDialog/LibraryFolderEditDialog";
+import { LibraryFolderDeleteDialog } from "../LibraryFolderDeleteDialog/LibraryFolderDeleteDialog";
+import { useLibraryAgentList } from "./useLibraryAgentList";
 
 interface Props {
   searchTerm: string;
@@ -43,57 +37,30 @@ export function LibraryAgentList({
   activeTab,
   onTabChange,
 }: Props) {
-  const isFavoritesTab = activeTab === "favorites";
-
-  const allAgentsData = useLibraryAgentList({
-    searchTerm,
-    librarySort,
-    folderId: selectedFolderId,
-  });
-
-  const favoriteAgentsData = useFavoriteAgents({ searchTerm });
-
   const {
+    isFavoritesTab,
     agentLoading,
     agentCount,
-    allAgents: agents,
+    agents,
     hasNextPage,
     isFetchingNextPage,
     fetchNextPage,
-  } = isFavoritesTab ? favoriteAgentsData : allAgentsData;
-
-  const { data: foldersData } = useGetV2ListLibraryFolders(undefined, {
-    query: { select: okData },
+    foldersData,
+    currentFolder,
+    showFolders,
+    editingFolder,
+    setEditingFolder,
+    deletingFolder,
+    setDeletingFolder,
+    handleAgentDrop,
+    handleFolderDeleted,
+  } = useLibraryAgentList({
+    searchTerm,
+    librarySort,
+    selectedFolderId,
+    onFolderSelect,
+    activeTab,
   });
-
-  const queryClient = useQueryClient();
-  const { mutate: moveAgentToFolder } = usePostV2BulkMoveAgents({
-    mutation: {
-      onSuccess: () => {
-        queryClient.invalidateQueries({
-          queryKey: getGetV2ListLibraryFoldersQueryKey(),
-        });
-        queryClient.invalidateQueries({
-          queryKey: getGetV2ListLibraryAgentsQueryKey(),
-        });
-      },
-    },
-  });
-
-  function handleAgentDrop(agentId: string, folderId: string) {
-    moveAgentToFolder({
-      data: {
-        agent_ids: [agentId],
-        folder_id: folderId,
-      },
-    });
-  }
-
-  const currentFolder = selectedFolderId
-    ? foldersData?.folders.find((f) => f.id === selectedFolderId)
-    : null;
-
-  const showFolders = !isFavoritesTab && !selectedFolderId;
 
   return (
     <>
@@ -157,6 +124,8 @@ export function LibraryAgentList({
                       icon={folder.icon ?? "📁"}
                       onAgentDrop={handleAgentDrop}
                       onClick={() => onFolderSelect(folder.id)}
+                      onEdit={() => setEditingFolder(folder)}
+                      onDelete={() => setDeletingFolder(folder)}
                     />
                   ))}
                 {agents.map((agent) => (
@@ -167,6 +136,27 @@ export function LibraryAgentList({
           </InfiniteScroll>
         )}
       </div>
+
+      {editingFolder && (
+        <LibraryFolderEditDialog
+          folder={editingFolder}
+          isOpen={!!editingFolder}
+          setIsOpen={(open) => {
+            if (!open) setEditingFolder(null);
+          }}
+        />
+      )}
+
+      {deletingFolder && (
+        <LibraryFolderDeleteDialog
+          folder={deletingFolder}
+          isOpen={!!deletingFolder}
+          setIsOpen={(open) => {
+            if (!open) setDeletingFolder(null);
+          }}
+          onDeleted={handleFolderDeleted}
+        />
+      )}
     </>
   );
 }

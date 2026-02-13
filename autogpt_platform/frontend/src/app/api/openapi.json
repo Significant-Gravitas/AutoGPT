@@ -8394,6 +8394,96 @@
         "title": "ExecutionStartedResponse",
         "description": "Response for run/schedule actions."
       },
+      "FolderCreateRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "icon": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Icon"
+          },
+          "color": {
+            "anyOf": [
+              { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+              { "type": "null" }
+            ],
+            "title": "Color",
+            "description": "Hex color code (#RRGGBB)"
+          },
+          "parent_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Parent Id"
+          }
+        },
+        "type": "object",
+        "required": ["name"],
+        "title": "FolderCreateRequest",
+        "description": "Request model for creating a folder."
+      },
+      "FolderListResponse": {
+        "properties": {
+          "folders": {
+            "items": { "$ref": "#/components/schemas/LibraryFolder" },
+            "type": "array",
+            "title": "Folders"
+          },
+          "pagination": { "$ref": "#/components/schemas/Pagination" }
+        },
+        "type": "object",
+        "required": ["folders", "pagination"],
+        "title": "FolderListResponse",
+        "description": "Response schema for a list of folders."
+      },
+      "FolderMoveRequest": {
+        "properties": {
+          "target_parent_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Target Parent Id"
+          }
+        },
+        "type": "object",
+        "title": "FolderMoveRequest",
+        "description": "Request model for moving a folder to a new parent."
+      },
+      "FolderTreeResponse": {
+        "properties": {
+          "tree": {
+            "items": { "$ref": "#/components/schemas/LibraryFolderTree" },
+            "type": "array",
+            "title": "Tree"
+          }
+        },
+        "type": "object",
+        "required": ["tree"],
+        "title": "FolderTreeResponse",
+        "description": "Response schema for folder tree structure."
+      },
+      "FolderUpdateRequest": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              { "type": "string", "maxLength": 100, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Name"
+          },
+          "icon": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Icon"
+          },
+          "color": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Color"
+          }
+        },
+        "type": "object",
+        "title": "FolderUpdateRequest",
+        "description": "Request model for updating a folder."
+      },
       "Graph": {
         "properties": {
           "id": { "type": "string", "title": "Id" },

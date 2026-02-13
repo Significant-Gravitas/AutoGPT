@@ -4,7 +4,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { Button } from "@/components/atoms/Button/Button";
 import { FolderIcon, FolderColor } from "./FolderIcon";
 import { useState } from "react";
-import { PencilSimpleIcon, TrashIcon, HeartIcon } from "@phosphor-icons/react";
+import { PencilSimpleIcon, TrashIcon } from "@phosphor-icons/react";
 
 interface Props {
   id: string;
@@ -14,10 +14,8 @@ interface Props {
   icon: string;
   onEdit?: () => void;
   onDelete?: () => void;
-  onFavorite?: () => void;
   onAgentDrop?: (agentId: string, folderId: string) => void;
   onClick?: () => void;
-  isFavorite?: boolean;
 }
 
 export function LibraryFolder({
@@ -28,10 +26,8 @@ export function LibraryFolder({
   icon,
   onEdit,
   onDelete,
-  onFavorite,
   onAgentDrop,
   onClick,
-  isFavorite = false,
 }: Props) {
   const [isHovered, setIsHovered] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -103,22 +99,6 @@ export function LibraryFolder({
         className="flex items-center justify-end gap-2"
         data-testid="library-folder-actions"
       >
-        <Button
-          variant="icon"
-          size="icon"
-          aria-label="Favorite agent"
-          onClick={(e) => {
-            e.stopPropagation();
-            onFavorite?.();
-          }}
-          className="h-8 w-8 p-2"
-        >
-          <HeartIcon
-            className="h-4 w-4"
-            weight={isFavorite ? "fill" : "regular"}
-            color={isFavorite ? "#facc15" : "currentColor"}
-          />
-        </Button>
         <Button
           variant="icon"
           size="icon"

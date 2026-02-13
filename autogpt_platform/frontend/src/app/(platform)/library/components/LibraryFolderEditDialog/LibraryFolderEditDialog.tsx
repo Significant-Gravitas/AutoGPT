@@ -1,4 +1,5 @@
 "use client";
+
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Select } from "@/components/atoms/Select/Select";
@@ -11,18 +12,19 @@ import {
   FormItem,
   FormMessage,
 } from "@/components/molecules/Form/Form";
+import { useToast } from "@/components/molecules/Toast/use-toast";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { FolderSimpleIcon } from "@phosphor-icons/react";
-import { useState } from "react";
+import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { EmojiPicker } from "@ferrucc-io/emoji-picker";
 import {
-  usePostV2CreateFolder,
+  usePatchV2UpdateFolder,
   getGetV2ListLibraryFoldersQueryKey,
 } from "@/app/api/__generated__/endpoints/folders/folders";
-import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
+import type { LibraryFolder } from "@/app/api/__generated__/models/libraryFolder";
+import type { getV2ListLibraryFoldersResponseSuccess } from "@/app/api/__generated__/endpoints/folders/folders";
 
 const FOLDER_COLORS = [
   { value: "#3B82F6", label: "Blue" },
@@ -32,49 +34,109 @@ const FOLDER_COLORS = [
   { value: "#EC4899", label: "Pink" },
 ];
 
-export const libraryFolderCreationFormSchema = z.object({
+const editFolderSchema = z.object({
   folderName: z.string().min(1, "Folder name is required"),
   folderColor: z.string().min(1, "Folder color is required"),
   folderIcon: z.string().min(1, "Folder icon is required"),
 });
 
-export default function LibraryFolderCreationDialog() {
-  const [isOpen, setIsOpen] = useState(false);
+interface Props {
+  folder: LibraryFolder;
+  isOpen: boolean;
+  setIsOpen: (open: boolean) => void;
+}
+
+export function LibraryFolderEditDialog({ folder, isOpen, setIsOpen }: Props) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  const { mutate: createFolder, isPending } = usePostV2CreateFolder({
+  const form = useForm<z.infer<typeof editFolderSchema>>({
+    resolver: zodResolver(editFolderSchema),
+    defaultValues: {
+      folderName: folder.name,
+      folderColor: folder.color ?? "",
+      folderIcon: folder.icon ?? "",
+    },
+  });
+
+  useEffect(() => {
+    if (isOpen) {
+      form.reset({
+        folderName: folder.name,
+        folderColor: folder.color ?? "",
+        folderIcon: folder.icon ?? "",
+      });
+    }
+  }, [isOpen, folder, form]);
+
+  const { mutate: updateFolder, isPending } = usePatchV2UpdateFolder({
     mutation: {
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: getGetV2ListLibraryFoldersQueryKey() });
-        setIsOpen(false);
-        form.reset();
-        toast({
-          title: "Folder created",
-          description: "Your folder has been created successfully.",
+      onMutate: async ({ folderId, data }) => {
+        await queryClient.cancelQueries({
+          queryKey: getGetV2ListLibraryFoldersQueryKey(),
         });
+
+        const previousData = queryClient.getQueriesData<
+          getV2ListLibraryFoldersResponseSuccess
+        >({
+          queryKey: getGetV2ListLibraryFoldersQueryKey(),
+        });
+
+        queryClient.setQueriesData<getV2ListLibraryFoldersResponseSuccess>(
+          { queryKey: getGetV2ListLibraryFoldersQueryKey() },
+          (old) => {
+            if (!old?.data?.folders) return old;
+            return {
+              ...old,
+              data: {
+                ...old.data,
+                folders: old.data.folders.map((f) =>
+                  f.id === folderId
+                    ? {
+                        ...f,
+                        name: data.name ?? f.name,
+                        color: data.color ?? f.color,
+                        icon: data.icon ?? f.icon,
+                      }
+                    : f,
+                ),
+              },
+            };
+          },
+        );
+
+        return { previousData };
       },
-      onError: () => {
+      onError: (_error, _variables, context) => {
+        if (context?.previousData) {
+          for (const [queryKey, data] of context.previousData) {
+            queryClient.setQueryData(queryKey, data);
+          }
+        }
         toast({
           title: "Error",
-          description: "Failed to create folder. Please try again.",
+          description: "Failed to update folder. Please try again.",
           variant: "destructive",
         });
       },
+      onSuccess: () => {
+        setIsOpen(false);
+        toast({
+          title: "Folder updated",
+          description: "Your folder has been updated successfully.",
+        });
+      },
+      onSettled: () => {
+        queryClient.invalidateQueries({
+          queryKey: getGetV2ListLibraryFoldersQueryKey(),
+        });
+      },
     },
   });
 
-  const form = useForm<z.infer<typeof libraryFolderCreationFormSchema>>({
-    resolver: zodResolver(libraryFolderCreationFormSchema),
-    defaultValues: {
-      folderName: "",
-      folderColor: "",
-      folderIcon: "",
-    },
-  });
-
-  function onSubmit(values: z.infer<typeof libraryFolderCreationFormSchema>) {
-    createFolder({
+  function onSubmit(values: z.infer<typeof editFolderSchema>) {
+    updateFolder({
+      folderId: folder.id,
       data: {
         name: values.folderName,
         color: values.folderColor,
@@ -85,27 +147,13 @@ export default function LibraryFolderCreationDialog() {
 
   return (
     <Dialog
-      title="Create Folder"
+      title="Edit Folder"
       styling={{ maxWidth: "30rem" }}
       controlled={{
         isOpen,
         set: setIsOpen,
       }}
-      onClose={() => {
-        setIsOpen(false);
-      }}
     >
-      <Dialog.Trigger>
-        <Button
-          data-testid="upload-agent-button"
-          variant="secondary"
-          className="h-fit w-fit"
-          size="small"
-        >
-          <FolderSimpleIcon width={18} height={18} />
-          <span className="create-folder">Create folder</span>
-        </Button>
-      </Dialog.Trigger>
       <Dialog.Content>
         <Form
           form={form}
@@ -123,7 +171,7 @@ export default function LibraryFolderCreationDialog() {
                     id={field.name}
                     label="Folder name"
                     placeholder="Enter folder name"
-                    className="w-full"
+                    className="w-full rounded-[10px]"
                   />
                 </FormControl>
                 <FormMessage />
@@ -187,13 +235,12 @@ export default function LibraryFolderCreationDialog() {
                       </div>
                     </div>
                     <div className="h-[295px] w-full overflow-hidden">
-
                       <EmojiPicker
                         onEmojiSelect={(emoji) => {
                           field.onChange(emoji);
                         }}
                         emojiSize={32}
-                        className="w-full rounded-2xl px-2"
+                        className="w-full"
                       >
                         <EmojiPicker.Group>
                           <EmojiPicker.List hideStickyHeader containerHeight={295} />
@@ -214,7 +261,7 @@ export default function LibraryFolderCreationDialog() {
             disabled={!form.formState.isValid || isPending}
             loading={isPending}
           >
-            Create
+            Save Changes
           </Button>
         </Form>
       </Dialog.Content>
