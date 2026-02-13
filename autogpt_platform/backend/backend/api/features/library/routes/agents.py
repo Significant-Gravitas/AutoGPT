@@ -194,16 +194,20 @@ async def update_library_agent(
             detail=str(e),
         ) from e
     except DatabaseError as e:
-        logger.error(f"Database error while updating library agent: {e}")
+        logger.error(
+            f"Database error while updating library agent: {e}", exc_info=True
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={"message": str(e), "hint": "Verify DB connection."},
+            detail={"message": "Internal server error", "hint": "Contact support"},
         ) from e
     except Exception as e:
-        logger.error(f"Unexpected error while updating library agent: {e}")
+        logger.error(
+            f"Unexpected error while updating library agent: {e}", exc_info=True
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={"message": str(e), "hint": "Check server logs."},
+            detail={"message": "Internal server error", "hint": "Contact support"},
         ) from e
 
 

@@ -688,6 +688,9 @@ async def update_library_agent(
         update_fields["isDeleted"] = is_deleted
     if settings is not None:
         update_fields["settings"] = SafeJson(settings.model_dump())
+    if folder_id is not None:
+        # Empty string means "move to root" (no folder)
+        update_fields["folderId"] = None if folder_id == "" else folder_id
 
     try:
         # If graph_version is provided, update to that specific version
@@ -1510,11 +1513,36 @@ async def delete_folder(
         if not existing:
             raise NotFoundError(f"Folder #{folder_id} not found")
 
+        # Collect all folder IDs (target + descendants) before the transaction
         async with transaction() as tx:
-            # Get all descendant folders recursively
             descendant_ids = await _get_descendant_folder_ids(folder_id, user_id, tx)
-            all_folder_ids = [folder_id] + descendant_ids
+        all_folder_ids = [folder_id] + descendant_ids
 
+        if soft_delete:
+            # Clean up schedules/webhooks for each affected agent before
+            # soft-deleting, matching what delete_library_agent() does.
+            affected_agents = await prisma.models.LibraryAgent.prisma().find_many(
+                where={
+                    "folderId": {"in": all_folder_ids},
+                    "userId": user_id,
+                    "isDeleted": False,
+                },
+            )
+            for agent in affected_agents:
+                try:
+                    await _cleanup_schedules_for_graph(
+                        graph_id=agent.agentGraphId, user_id=user_id
+                    )
+                    await _cleanup_webhooks_for_graph(
+                        graph_id=agent.agentGraphId, user_id=user_id
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"Cleanup failed for agent {agent.id} "
+                        f"(graph {agent.agentGraphId}): {e}"
+                    )
+
+        async with transaction() as tx:
             if soft_delete:
                 # Soft-delete all agents in these folders
                 await prisma.models.LibraryAgent.prisma(tx).update_many(

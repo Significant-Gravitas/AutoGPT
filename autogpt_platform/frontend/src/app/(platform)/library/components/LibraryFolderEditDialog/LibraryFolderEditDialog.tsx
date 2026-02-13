@@ -25,6 +25,7 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import type { LibraryFolder } from "@/app/api/__generated__/models/libraryFolder";
 import type { getV2ListLibraryFoldersResponseSuccess } from "@/app/api/__generated__/endpoints/folders/folders";
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 
 const FOLDER_COLORS = [
   { value: "#3B82F6", label: "Blue" },
@@ -106,25 +107,23 @@ export function LibraryFolderEditDialog({ folder, isOpen, setIsOpen }: Props) {
 
         return { previousData };
       },
-      onError: (
-        error: { detail?: string; response?: { detail?: string } },
-        _variables,
-        context,
-      ) => {
+      onError: (error: unknown, _variables, context) => {
         if (context?.previousData) {
           for (const [queryKey, data] of context.previousData) {
             queryClient.setQueryData(queryKey, data);
           }
         }
-        const detail = error.detail ?? error.response?.detail ?? "";
-        if (
-          typeof detail === "string" &&
-          detail.toLowerCase().includes("already exists")
-        ) {
-          form.setError("folderName", {
-            message: "A folder with this name already exists",
-          });
-          return;
+        if (error instanceof ApiError) {
+          const detail = (error.response as any)?.detail ?? "";
+          if (
+            typeof detail === "string" &&
+            detail.toLowerCase().includes("already exists")
+          ) {
+            form.setError("folderName", {
+              message: "A folder with this name already exists",
+            });
+            return;
+          }
         }
         toast({
           title: "Error",

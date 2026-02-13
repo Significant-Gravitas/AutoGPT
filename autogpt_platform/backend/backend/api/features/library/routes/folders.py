@@ -69,7 +69,7 @@ async def list_folders(
         logger.error(f"Could not list folders for user #{user_id}: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e),
+            detail="Internal server error",
         ) from e
 
 
@@ -101,7 +101,7 @@ async def get_folder_tree(
         logger.error(f"Could not get folder tree for user #{user_id}: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e),
+            detail="Internal server error",
         ) from e
 
 
@@ -140,7 +140,7 @@ async def get_folder(
         logger.error(f"Could not get folder #{folder_id}: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e),
+            detail="Internal server error",
         ) from e
 
 
@@ -198,7 +198,7 @@ async def create_folder(
         logger.error(f"Database error creating folder: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e),
+            detail="Internal server error",
         ) from e
 
 
@@ -257,7 +257,7 @@ async def update_folder(
         logger.error(f"Database error updating folder #{folder_id}: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e),
+            detail="Internal server error",
         ) from e
 
 
@@ -314,7 +314,7 @@ async def move_folder(
         logger.error(f"Database error moving folder #{folder_id}: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e),
+            detail="Internal server error",
         ) from e
 
 
@@ -358,7 +358,7 @@ async def delete_folder(
         logger.error(f"Database error deleting folder #{folder_id}: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e),
+            detail="Internal server error",
         ) from e
 
 
@@ -404,5 +404,5 @@ async def bulk_move_agents(
         logger.error(f"Database error bulk moving agents: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e),
+            detail="Internal server error",
         ) from e
