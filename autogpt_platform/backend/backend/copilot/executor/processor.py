@@ -11,9 +11,12 @@ import time
 
 from backend.copilot import service as copilot_service
 from backend.copilot import stream_registry
+from backend.copilot.config import ChatConfig
 from backend.copilot.response_model import StreamError, StreamFinish, StreamFinishStep
+from backend.copilot.sdk import service as sdk_service
 from backend.executor.cluster_lock import ClusterLock
 from backend.util.decorator import error_logged
+from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.logging import TruncatedLogger, configure_logging
 from backend.util.process import set_service_name
 from backend.util.retry import func_retry
@@ -177,14 +180,27 @@ class CoPilotProcessor:
         refresh_interval = 30.0  # Refresh lock every 30 seconds
 
         try:
+            # Choose service based on LaunchDarkly flag
+            config = ChatConfig()
+            use_sdk = await is_feature_enabled(
+                Flag.COPILOT_SDK,
+                entry.user_id or "anonymous",
+                default=config.use_claude_agent_sdk,
+            )
+            stream_fn = (
+                sdk_service.stream_chat_completion_sdk
+                if use_sdk
+                else copilot_service.stream_chat_completion
+            )
+            log.info(f"Using {'SDK' if use_sdk else 'standard'} service")
+
             # Stream chat completion and publish chunks to Redis
-            async for chunk in copilot_service.stream_chat_completion(
+            async for chunk in stream_fn(
                 session_id=entry.session_id,
                 message=entry.message if entry.message else None,
                 is_user_message=entry.is_user_message,
                 user_id=entry.user_id,
                 context=entry.context,
-                _task_id=entry.task_id,
             ):
                 # Check for cancellation
                 if cancel.is_set():

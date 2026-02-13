@@ -7,8 +7,8 @@ from pydantic import SecretStr
 
 from backend.blocks.linear._api import LinearClient
 from backend.copilot.model import ChatSession
+from backend.data.db_accessors import user_db
 from backend.data.model import APIKeyCredentials
-from backend.data.user import get_user_email_by_id
 from backend.util.settings import Settings
 
 from .base import BaseTool
@@ -333,7 +333,9 @@ class CreateFeatureRequestTool(BaseTool):
         # Resolve a human-readable name (email) for the Linear customer record.
         # Fall back to user_id if the lookup fails or returns None.
         try:
-            customer_display_name = await get_user_email_by_id(user_id) or user_id
+            customer_display_name = (
+                await user_db().get_user_email_by_id(user_id) or user_id
+            )
         except Exception:
             customer_display_name = user_id
 
