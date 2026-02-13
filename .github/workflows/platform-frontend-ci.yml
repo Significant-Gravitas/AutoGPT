@@ -176,7 +176,6 @@ jobs:
 
       - name: Set up Platform - Start Supabase DB + Auth
         run: |
-          # Start db and auth services
           docker compose -f ../docker-compose.resolved.yml up -d db auth --no-build
           echo "Waiting for database to be ready..."
           timeout 60 sh -c 'until docker compose -f ../docker-compose.resolved.yml exec -T db pg_isready -U postgres 2>/dev/null; do sleep 2; done'
@@ -185,7 +184,6 @@ jobs:
 
       - name: Set up Platform - Run migrations
         run: |
-          # Run migrate service and wait for it to complete (not just start)
           echo "Running migrations..."
           docker compose -f ../docker-compose.resolved.yml run --rm migrate
           echo "✅ Migrations completed"
@@ -207,9 +205,8 @@ jobs:
 
           echo "✅ E2E test data restored from cache"
 
-      - name: Set up Platform - Start remaining services
+      - name: Set up Platform - Start (all other services)
         run: |
-          # Now start all remaining services (rest_server will populate AgentBlock, etc.)
           docker compose -f ../docker-compose.resolved.yml up -d --no-build
           echo "Waiting for rest_server to be ready..."
           timeout 60 sh -c 'until curl -f http://localhost:8006/health 2>/dev/null; do sleep 2; done' || echo "Rest server health check timeout, continuing..."
@@ -219,7 +216,7 @@ jobs:
       - name: Set up tests - Create E2E test data
         if: steps.e2e-data-cache.outputs.cache-hit != 'true'
         run: |
-          echo "Creating E2E test data (cache miss)..."
+          echo "Creating E2E test data..."
           docker cp ../backend/test/e2e_test_data.py $(docker compose -f ../docker-compose.resolved.yml ps -q rest_server):/tmp/e2e_test_data.py
           docker compose -f ../docker-compose.resolved.yml exec -T rest_server sh -c "cd /app/autogpt_platform && python /tmp/e2e_test_data.py" || {
             echo "❌ E2E test data creation failed!"
