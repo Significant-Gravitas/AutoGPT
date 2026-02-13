@@ -26,8 +26,12 @@ _TEST_USER_EMAIL = "testuser@example.com"
 # ---------------------------------------------------------------------------
 
 
-def _mock_linear_client(*, query_return=None, mutate_return=None):
-    """Return a patched _get_linear_client that yields a mock LinearClient."""
+_FAKE_PROJECT_ID = "test-project-id"
+_FAKE_TEAM_ID = "test-team-id"
+
+
+def _mock_linear_config(*, query_return=None, mutate_return=None):
+    """Return a patched _get_linear_config that yields a mock LinearClient."""
     client = AsyncMock()
     if query_return is not None:
         client.query.return_value = query_return
@@ -35,8 +39,8 @@ def _mock_linear_client(*, query_return=None, mutate_return=None):
         client.mutate.return_value = mutate_return
     return (
         patch(
-            "backend.api.features.chat.tools.feature_requests._get_linear_client",
-            return_value=client,
+            "backend.api.features.chat.tools.feature_requests._get_linear_config",
+            return_value=(client, _FAKE_PROJECT_ID, _FAKE_TEAM_ID),
         ),
         client,
     )
@@ -126,7 +130,7 @@ class TestSearchFeatureRequestsTool:
                 "description": None,
             },
         ]
-        patcher, _ = _mock_linear_client(query_return=_search_response(nodes))
+        patcher, _ = _mock_linear_config(query_return=_search_response(nodes))
         with patcher:
             tool = SearchFeatureRequestsTool()
             resp = await tool._execute(
@@ -142,7 +146,7 @@ class TestSearchFeatureRequestsTool:
     @pytest.mark.asyncio(loop_scope="session")
     async def test_no_results(self):
         session = make_session(user_id=_TEST_USER_ID)
-        patcher, _ = _mock_linear_client(query_return=_search_response([]))
+        patcher, _ = _mock_linear_config(query_return=_search_response([]))
         with patcher:
             tool = SearchFeatureRequestsTool()
             resp = await tool._execute(
@@ -173,7 +177,7 @@ class TestSearchFeatureRequestsTool:
     @pytest.mark.asyncio(loop_scope="session")
     async def test_api_failure(self):
         session = make_session(user_id=_TEST_USER_ID)
-        patcher, client = _mock_linear_client()
+        patcher, client = _mock_linear_config()
         client.query.side_effect = RuntimeError("Linear API down")
         with patcher:
             tool = SearchFeatureRequestsTool()
@@ -191,7 +195,7 @@ class TestSearchFeatureRequestsTool:
         session = make_session(user_id=_TEST_USER_ID)
         # Node missing 'identifier' key
         bad_nodes = [{"id": "id-1", "title": "Missing identifier"}]
-        patcher, _ = _mock_linear_client(query_return=_search_response(bad_nodes))
+        patcher, _ = _mock_linear_config(query_return=_search_response(bad_nodes))
         with patcher:
             tool = SearchFeatureRequestsTool()
             resp = await tool._execute(
@@ -204,7 +208,7 @@ class TestSearchFeatureRequestsTool:
     async def test_linear_client_init_failure(self):
         session = make_session(user_id=_TEST_USER_ID)
         with patch(
-            "backend.api.features.chat.tools.feature_requests._get_linear_client",
+            "backend.api.features.chat.tools.feature_requests._get_linear_config",
             side_effect=RuntimeError("No API key"),
         ):
             tool = SearchFeatureRequestsTool()
@@ -241,7 +245,7 @@ class TestCreateFeatureRequestTool:
         """Full happy path: upsert customer -> create issue -> attach need."""
         session = make_session(user_id=_TEST_USER_ID)
 
-        patcher, client = _mock_linear_client()
+        patcher, client = _mock_linear_config()
         client.mutate.side_effect = [
             _customer_upsert_response(),
             _issue_create_response(),
@@ -268,7 +272,7 @@ class TestCreateFeatureRequestTool:
         """When existing_issue_id is provided, skip issue creation."""
         session = make_session(user_id=_TEST_USER_ID)
 
-        patcher, client = _mock_linear_client()
+        patcher, client = _mock_linear_config()
         client.mutate.side_effect = [
             _customer_upsert_response(),
             _need_create_response(issue_id="existing-1", identifier="FR-99"),
@@ -343,7 +347,7 @@ class TestCreateFeatureRequestTool:
     async def test_linear_client_init_failure(self):
         session = make_session(user_id=_TEST_USER_ID)
         with patch(
-            "backend.api.features.chat.tools.feature_requests._get_linear_client",
+            "backend.api.features.chat.tools.feature_requests._get_linear_config",
             side_effect=RuntimeError("No API key"),
         ):
             tool = CreateFeatureRequestTool()
@@ -363,7 +367,7 @@ class TestCreateFeatureRequestTool:
     @pytest.mark.asyncio(loop_scope="session")
     async def test_customer_upsert_api_error(self):
         session = make_session(user_id=_TEST_USER_ID)
-        patcher, client = _mock_linear_client()
+        patcher, client = _mock_linear_config()
         client.mutate.side_effect = RuntimeError("Customer API error")
 
         with patcher:
@@ -382,7 +386,7 @@ class TestCreateFeatureRequestTool:
     @pytest.mark.asyncio(loop_scope="session")
     async def test_customer_upsert_not_success(self):
         session = make_session(user_id=_TEST_USER_ID)
-        patcher, client = _mock_linear_client()
+        patcher, client = _mock_linear_config()
         client.mutate.return_value = _customer_upsert_response(success=False)
 
         with patcher:
@@ -400,7 +404,7 @@ class TestCreateFeatureRequestTool:
     async def test_customer_malformed_response(self):
         """Customer dict missing 'id' key should be caught."""
         session = make_session(user_id=_TEST_USER_ID)
-        patcher, client = _mock_linear_client()
+        patcher, client = _mock_linear_config()
         # success=True but customer has no 'id'
         client.mutate.return_value = {
             "customerUpsert": {
@@ -425,7 +429,7 @@ class TestCreateFeatureRequestTool:
     @pytest.mark.asyncio(loop_scope="session")
     async def test_issue_create_api_error(self):
         session = make_session(user_id=_TEST_USER_ID)
-        patcher, client = _mock_linear_client()
+        patcher, client = _mock_linear_config()
         client.mutate.side_effect = [
             _customer_upsert_response(),
             RuntimeError("Issue create failed"),
@@ -447,7 +451,7 @@ class TestCreateFeatureRequestTool:
     @pytest.mark.asyncio(loop_scope="session")
     async def test_issue_create_not_success(self):
         session = make_session(user_id=_TEST_USER_ID)
-        patcher, client = _mock_linear_client()
+        patcher, client = _mock_linear_config()
         client.mutate.side_effect = [
             _customer_upsert_response(),
             _issue_create_response(success=False),
@@ -469,7 +473,7 @@ class TestCreateFeatureRequestTool:
     async def test_issue_create_malformed_response(self):
         """issueCreate success=True but missing 'issue' key."""
         session = make_session(user_id=_TEST_USER_ID)
-        patcher, client = _mock_linear_client()
+        patcher, client = _mock_linear_config()
         client.mutate.side_effect = [
             _customer_upsert_response(),
             {"issueCreate": {"success": True}},  # no 'issue' key
@@ -492,7 +496,7 @@ class TestCreateFeatureRequestTool:
     async def test_need_create_api_error_new_issue(self):
         """Need creation fails after new issue was created -> orphaned issue info."""
         session = make_session(user_id=_TEST_USER_ID)
-        patcher, client = _mock_linear_client()
+        patcher, client = _mock_linear_config()
         client.mutate.side_effect = [
             _customer_upsert_response(),
             _issue_create_response(issue_id="orphan-1", identifier="FR-10"),
@@ -519,7 +523,7 @@ class TestCreateFeatureRequestTool:
     async def test_need_create_api_error_existing_issue(self):
         """Need creation fails on existing issue -> no orphaned info."""
         session = make_session(user_id=_TEST_USER_ID)
-        patcher, client = _mock_linear_client()
+        patcher, client = _mock_linear_config()
         client.mutate.side_effect = [
             _customer_upsert_response(),
             RuntimeError("Need attach failed"),
@@ -542,7 +546,7 @@ class TestCreateFeatureRequestTool:
     async def test_need_create_not_success_includes_orphaned_info(self):
         """customerNeedCreate returns success=False -> includes orphaned issue."""
         session = make_session(user_id=_TEST_USER_ID)
-        patcher, client = _mock_linear_client()
+        patcher, client = _mock_linear_config()
         client.mutate.side_effect = [
             _customer_upsert_response(),
             _issue_create_response(issue_id="orphan-2", identifier="FR-20"),
@@ -567,7 +571,7 @@ class TestCreateFeatureRequestTool:
     async def test_need_create_not_success_existing_issue_no_details(self):
         """customerNeedCreate fails on existing issue -> no orphaned info."""
         session = make_session(user_id=_TEST_USER_ID)
-        patcher, client = _mock_linear_client()
+        patcher, client = _mock_linear_config()
         client.mutate.side_effect = [
             _customer_upsert_response(),
             _need_create_response(success=False),
@@ -590,7 +594,7 @@ class TestCreateFeatureRequestTool:
     async def test_need_create_malformed_response(self):
         """need_result missing 'need' key after success=True."""
         session = make_session(user_id=_TEST_USER_ID)
-        patcher, client = _mock_linear_client()
+        patcher, client = _mock_linear_config()
         client.mutate.side_effect = [
             _customer_upsert_response(),
             _issue_create_response(),

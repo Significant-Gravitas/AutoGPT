@@ -98,18 +98,33 @@ def _get_settings() -> Settings:
     return _settings
 
 
-def _get_linear_client() -> LinearClient:
-    """Create a Linear client using the system API key from settings."""
-    api_key = _get_settings().secrets.linear_api_key
-    if not api_key:
-        raise RuntimeError("LINEAR_API_KEY secret is not configured")
+def _get_linear_config() -> tuple[LinearClient, str, str]:
+    """Return a configured Linear client, project ID, and team ID.
+
+    Raises RuntimeError if any required setting is missing.
+    """
+    secrets = _get_settings().secrets
+    if not secrets.linear_api_key:
+        raise RuntimeError("LINEAR_API_KEY is not configured")
+    if not secrets.linear_feature_request_project_id:
+        raise RuntimeError(
+            "LINEAR_FEATURE_REQUEST_PROJECT_ID is not configured"
+        )
+    if not secrets.linear_feature_request_team_id:
+        raise RuntimeError("LINEAR_FEATURE_REQUEST_TEAM_ID is not configured")
+
     credentials = APIKeyCredentials(
         id="system-linear",
         provider="linear",
-        api_key=SecretStr(api_key),
+        api_key=SecretStr(secrets.linear_api_key),
         title="System Linear API Key",
     )
-    return LinearClient(credentials=credentials)
+    client = LinearClient(credentials=credentials)
+    return (
+        client,
+        secrets.linear_feature_request_project_id,
+        secrets.linear_feature_request_team_id,
+    )
 
 
 class SearchFeatureRequestsTool(BaseTool):
@@ -161,16 +176,13 @@ class SearchFeatureRequestsTool(BaseTool):
             )
 
         try:
-            secrets = _get_settings().secrets
-            client = _get_linear_client()
+            client, project_id, _team_id = _get_linear_config()
             data = await client.query(
                 SEARCH_ISSUES_QUERY,
                 {
                     "term": query,
                     "filter": {
-                        "project": {
-                            "id": {"eq": secrets.linear_feature_request_project_id}
-                        },
+                        "project": {"id": {"eq": project_id}},
                     },
                     "first": MAX_SEARCH_RESULTS,
                 },
@@ -310,10 +322,9 @@ class CreateFeatureRequestTool(BaseTool):
             )
 
         try:
-            secrets = _get_settings().secrets
-            client = _get_linear_client()
+            client, project_id, team_id = _get_linear_config()
         except Exception as e:
-            logger.exception("Failed to create Linear client")
+            logger.exception("Failed to initialize Linear client")
             return ErrorResponse(
                 message="Failed to create feature request.",
                 error=str(e),
@@ -358,8 +369,8 @@ class CreateFeatureRequestTool(BaseTool):
                         "input": {
                             "title": title,
                             "description": description,
-                            "teamId": secrets.linear_feature_request_team_id,
-                            "projectId": secrets.linear_feature_request_project_id,
+                            "teamId": team_id,
+                            "projectId": project_id,
                         },
                     },
                 )
