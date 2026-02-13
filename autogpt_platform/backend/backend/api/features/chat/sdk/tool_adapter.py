@@ -9,6 +9,7 @@ via a callback provided by the service layer.  This avoids wasteful SDK polling
 and makes results survive page refreshes.
 """
 
+import itertools
 import json
 import logging
 import os
@@ -216,8 +217,7 @@ async def _read_file_handler(args: dict[str, Any]) -> dict[str, Any]:
 
     try:
         with open(real_path) as f:
-            lines = f.readlines()
-        selected = lines[offset : offset + limit]
+            selected = list(itertools.islice(f, offset, offset + limit))
         content = "".join(selected)
         # Cleanup happens in _cleanup_sdk_tool_results after session ends;
         # don't delete here — the SDK may read in multiple chunks.
