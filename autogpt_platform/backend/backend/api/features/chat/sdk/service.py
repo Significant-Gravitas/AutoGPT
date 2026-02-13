@@ -537,6 +537,7 @@ async def stream_chat_completion_sdk(
                 "system_prompt": system_prompt,
                 "mcp_servers": {"copilot": mcp_server},
                 "allowed_tools": COPILOT_TOOL_NAMES,
+                "disallowed_tools": ["Bash"],
                 "hooks": security_hooks,
                 "cwd": sdk_cwd,
                 "max_buffer_size": config.claude_agent_max_buffer_size,
