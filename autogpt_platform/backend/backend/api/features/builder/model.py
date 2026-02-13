@@ -4,7 +4,7 @@ from pydantic import BaseModel
 
 import backend.api.features.library.model as library_model
 import backend.api.features.store.model as store_model
-from backend.data.block import BlockInfo
+from backend.blocks._base import BlockInfo
 from backend.integrations.providers import ProviderName
 from backend.util.models import Pagination
 
@@ -15,7 +15,7 @@ FilterType = Literal[
     "my_agents",
 ]
 
-BlockType = Literal["all", "input", "action", "output"]
+BlockTypeFilter = Literal["all", "input", "action", "output"]
 
 
 class SearchEntry(BaseModel):

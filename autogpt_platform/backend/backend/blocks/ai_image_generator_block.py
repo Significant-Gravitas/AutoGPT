@@ -5,7 +5,12 @@ from pydantic import SecretStr
 from replicate.client import Client as ReplicateClient
 from replicate.helpers import FileOutput
 
-from backend.data.block import Block, BlockCategory, BlockSchemaInput, BlockSchemaOutput
+from backend.blocks._base import (
+    Block,
+    BlockCategory,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.execution import ExecutionContext
 from backend.data.model import (
     APIKeyCredentials,

@@ -13,8 +13,8 @@ except ImportError:
 
 from pydantic import SecretStr
 
+from backend.blocks import get_block
 from backend.blocks.llm import AIStructuredResponseGeneratorBlock, LlmModel
-from backend.data.block import get_block
 from backend.data.execution import ExecutionStatus, NodeExecutionResult
 from backend.data.model import APIKeyCredentials, GraphExecutionStats
 from backend.util.feature_flag import Flag, is_feature_enabled
