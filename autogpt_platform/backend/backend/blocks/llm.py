@@ -4,6 +4,7 @@ import logging
 import re
 import secrets
 from abc import ABC
+from dataclasses import dataclass
 from enum import Enum
 from json import JSONDecodeError
 from typing import Any, Iterable, List, Literal, Optional
@@ -242,6 +243,124 @@ class LlmModel(str, metaclass=LlmModelMeta):
 DEFAULT_LLM_MODEL = LlmModel.default()
 
 
+class ModelUnavailableError(ValueError):
+    """Raised when a requested LLM model cannot be resolved for use."""
+
+    pass
+
+
+@dataclass
+class ResolvedModel:
+    """Result of resolving a model for an LLM call."""
+
+    slug: str  # The actual model slug to use (may differ from requested if fallback)
+    provider: str
+    context_window: int
+    max_output_tokens: int
+    used_fallback: bool = False
+    original_slug: str | None = None  # Set if fallback was used
+
+
+async def resolve_model_for_call(llm_model: LlmModel) -> ResolvedModel:
+    """
+    Resolve a model for use in an LLM call.
+
+    Handles:
+    - Checking if the model exists in the registry
+    - Falling back to an enabled model from the same provider if disabled
+    - Refreshing the registry cache if model not found (with DB access)
+
+    Args:
+        llm_model: The requested LlmModel
+
+    Returns:
+        ResolvedModel with all necessary metadata for the call
+
+    Raises:
+        ModelUnavailableError: If model cannot be resolved (not found, disabled with no fallback)
+    """
+    from backend.data.llm_registry import (
+        get_fallback_model_for_disabled,
+        get_model_info,
+    )
+
+    model_info = get_model_info(llm_model.value)
+
+    # Case 1: Model found and disabled - try fallback
+    if model_info and not model_info.is_enabled:
+        fallback = get_fallback_model_for_disabled(llm_model.value)
+        if fallback:
+            logger.warning(
+                "Model '%s' is disabled. Using fallback '%s' from same provider (%s).",
+                llm_model.value,
+                fallback.slug,
+                fallback.metadata.provider,
+            )
+            return ResolvedModel(
+                slug=fallback.slug,
+                provider=fallback.metadata.provider,
+                context_window=fallback.metadata.context_window,
+                max_output_tokens=fallback.metadata.max_output_tokens or 2**15,
+                used_fallback=True,
+                original_slug=llm_model.value,
+            )
+        raise ModelUnavailableError(
+            f"Model '{llm_model.value}' is disabled and no fallback from the same "
+            f"provider is available. Enable the model or select a different one."
+        )
+
+    # Case 2: Model found and enabled - use it directly
+    if model_info:
+        return ResolvedModel(
+            slug=llm_model.value,
+            provider=model_info.metadata.provider,
+            context_window=model_info.metadata.context_window,
+            max_output_tokens=model_info.metadata.max_output_tokens or 2**15,
+        )
+
+    # Case 3: Model not in registry - try refresh if DB available
+    logger.warning("Model '%s' not found in registry cache", llm_model.value)
+
+    from backend.data.db import is_connected
+
+    if not is_connected():
+        raise ModelUnavailableError(
+            f"Model '{llm_model.value}' not found in registry. "
+            f"The registry may need to be refreshed via the admin UI."
+        )
+
+    # Try refreshing the registry
+    try:
+        logger.info("Refreshing LLM registry for model '%s'", llm_model.value)
+        await llm_registry.refresh_llm_registry()
+    except Exception as e:
+        raise ModelUnavailableError(
+            f"Model '{llm_model.value}' not found and registry refresh failed: {e}"
+        ) from e
+
+    # Check again after refresh
+    model_info = get_model_info(llm_model.value)
+    if not model_info:
+        raise ModelUnavailableError(
+            f"Model '{llm_model.value}' not found in registry. "
+            f"Add it via the admin UI at /admin/llms."
+        )
+
+    if not model_info.is_enabled:
+        raise ModelUnavailableError(
+            f"Model '{llm_model.value}' exists but is disabled. "
+            f"Enable it via the admin UI at /admin/llms."
+        )
+
+    logger.info("Model '%s' loaded after registry refresh", llm_model.value)
+    return ResolvedModel(
+        slug=llm_model.value,
+        provider=model_info.metadata.provider,
+        context_window=model_info.metadata.context_window,
+        max_output_tokens=model_info.metadata.max_output_tokens or 2**15,
+    )
+
+
 class ToolCall(BaseModel):
     name: str
     arguments: str
@@ -371,86 +490,15 @@ async def llm_call(
             - prompt_tokens: The number of tokens used in the prompt.
             - completion_tokens: The number of tokens used in the completion.
     """
-    # Get model metadata and check if enabled - with fallback support
-    # The model we'll actually use (may differ if original is disabled)
-    model_to_use = llm_model.value
+    # Resolve the model - handles disabled models, fallbacks, and cache misses
+    resolved = await resolve_model_for_call(llm_model)
 
-    # Check if model is in registry and if it's enabled
-    from backend.data.llm_registry import (
-        get_fallback_model_for_disabled,
-        get_model_info,
-    )
-
-    model_info = get_model_info(llm_model.value)
-
-    if model_info and not model_info.is_enabled:
-        # Model is disabled - try to find a fallback from the same provider
-        fallback = get_fallback_model_for_disabled(llm_model.value)
-        if fallback:
-            logger.warning(
-                f"Model '{llm_model.value}' is disabled. Using fallback model '{fallback.slug}' from the same provider ({fallback.metadata.provider})."
-            )
-            model_to_use = fallback.slug
-            # Use fallback model's metadata
-            provider = fallback.metadata.provider
-            context_window = fallback.metadata.context_window
-            model_max_output = fallback.metadata.max_output_tokens or int(2**15)
-        else:
-            # No fallback available - raise error
-            raise ValueError(
-                f"LLM model '{llm_model.value}' is disabled and no fallback model "
-                f"from the same provider is available. Please enable the model or "
-                f"select a different model in the block configuration."
-            )
-    else:
-        # Model is enabled or not in registry (legacy/static model)
-        try:
-            provider = llm_model.metadata.provider
-            context_window = llm_model.context_window
-            model_max_output = llm_model.max_output_tokens or int(2**15)
-        except ValueError:
-            # Model not in cache - try refreshing the registry once if we have DB access
-            logger.warning(f"Model {llm_model.value} not found in registry cache")
-
-            # Try refreshing the registry if we have database access
-            from backend.data.db import is_connected
-
-            if is_connected():
-                try:
-                    logger.info(
-                        f"Refreshing LLM registry and retrying lookup for {llm_model.value}"
-                    )
-                    await llm_registry.refresh_llm_registry()
-                    # Try again after refresh
-                    try:
-                        provider = llm_model.metadata.provider
-                        context_window = llm_model.context_window
-                        model_max_output = llm_model.max_output_tokens or int(2**15)
-                        logger.info(
-                            f"Successfully loaded model {llm_model.value} metadata after registry refresh"
-                        )
-                    except ValueError:
-                        # Still not found after refresh
-                        raise ValueError(
-                            f"LLM model '{llm_model.value}' not found in registry after refresh. "
-                            "Please ensure the model is added and enabled in the LLM registry via the admin UI."
-                        )
-                except Exception as refresh_exc:
-                    logger.error(f"Failed to refresh LLM registry: {refresh_exc}")
-                    raise ValueError(
-                        f"LLM model '{llm_model.value}' not found in registry and failed to refresh. "
-                        "Please ensure the model is added to the LLM registry via the admin UI."
-                    ) from refresh_exc
-            else:
-                # No DB access (e.g., in executor without direct DB connection)
-                # The registry should have been loaded on startup
-                raise ValueError(
-                    f"LLM model '{llm_model.value}' not found in registry cache. "
-                    "The registry may need to be refreshed. Please contact support or try again later."
-                )
+    model_to_use = resolved.slug
+    provider = resolved.provider
+    context_window = resolved.context_window
+    model_max_output = resolved.max_output_tokens
 
     # Create effective model for model-specific parameter resolution (e.g., o-series check)
-    # This uses the resolved model_to_use which may differ from llm_model if fallback occurred
     effective_model = LlmModel(model_to_use)
 
     if compress_prompt_to_fit:
