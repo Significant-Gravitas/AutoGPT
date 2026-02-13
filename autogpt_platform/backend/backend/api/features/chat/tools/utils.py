@@ -15,6 +15,7 @@ from backend.data.model import (
     OAuth2Credentials,
 )
 from backend.integrations.creds_manager import IntegrationCredentialsManager
+from backend.integrations.providers import ProviderName
 from backend.util.exceptions import NotFoundError
 
 logger = logging.getLogger(__name__)
@@ -359,7 +360,7 @@ async def match_user_credentials_to_graph(
         _,
         _,
     ) in aggregated_creds.items():
-        # Find first matching credential by provider, type, and scopes
+        # Find first matching credential by provider, type, scopes, and host/URL
         matching_cred = next(
             (
                 cred
@@ -373,6 +374,10 @@ async def match_user_credentials_to_graph(
                 and (
                     cred.type != "host_scoped"
                     or _credential_is_for_host(cred, credential_requirements)
+                )
+                and (
+                    cred.provider != ProviderName.MCP
+                    or _credential_is_for_mcp_server(cred, credential_requirements)
                 )
             ),
             None,
@@ -442,6 +447,22 @@ def _credential_is_for_host(
     # Check that credential host matches required host.
     # Host-scoped credential inputs are grouped by host, so any item from the set works.
     return credential.matches_url(list(requirements.discriminator_values)[0])
+
+
+def _credential_is_for_mcp_server(
+    credential: Credentials,
+    requirements: CredentialsFieldInfo,
+) -> bool:
+    """Check if an MCP OAuth credential matches the required server URL."""
+    if not requirements.discriminator_values:
+        return True
+
+    server_url = (
+        credential.metadata.get("mcp_server_url")
+        if isinstance(credential, OAuth2Credentials)
+        else None
+    )
+    return server_url in requirements.discriminator_values if server_url else False
 
 
 async def check_user_has_required_credentials(
