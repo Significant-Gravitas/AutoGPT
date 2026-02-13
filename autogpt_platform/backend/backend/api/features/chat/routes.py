@@ -34,6 +34,7 @@ from .tools.models import (
     AgentPreviewResponse,
     AgentSavedResponse,
     AgentsFoundResponse,
+    BlockDetailsResponse,
     BlockListResponse,
     BlockOutputResponse,
     ClarificationNeededResponse,
@@ -1051,6 +1052,7 @@ ToolResponseUnion = (
     | AgentSavedResponse
     | ClarificationNeededResponse
     | BlockListResponse
+    | BlockDetailsResponse
     | BlockOutputResponse
     | DocSearchResultsResponse
     | DocPageResponse

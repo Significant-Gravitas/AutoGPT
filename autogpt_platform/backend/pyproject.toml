@@ -66,7 +66,7 @@ sentry-sdk = {extras = ["anthropic", "fastapi", "launchdarkly", "openai", "sqlal
 sqlalchemy = "^2.0.40"
 strenum = "^0.4.9"
 stripe = "^11.5.0"
-supabase = "2.27.3"
+supabase = "2.28.0"
 tenacity = "^9.1.4"
 todoist-api-python = "^2.1.7"
 tweepy = "^4.16.0"
