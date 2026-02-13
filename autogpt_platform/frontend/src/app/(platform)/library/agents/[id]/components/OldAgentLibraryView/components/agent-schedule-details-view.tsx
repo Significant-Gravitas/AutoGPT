@@ -2,8 +2,8 @@
 import React, { useCallback, useMemo } from "react";
 
 import {
+  Graph,
   GraphExecutionID,
-  GraphMeta,
   Schedule,
   ScheduleID,
 } from "@/lib/autogpt-server-api";
@@ -35,7 +35,7 @@ export function AgentScheduleDetailsView({
   onForcedRun,
   doDeleteSchedule,
 }: {
-  graph: GraphMeta;
+  graph: Graph;
   schedule: Schedule;
   agentActions: ButtonAction[];
   onForcedRun: (runID: GraphExecutionID) => void;

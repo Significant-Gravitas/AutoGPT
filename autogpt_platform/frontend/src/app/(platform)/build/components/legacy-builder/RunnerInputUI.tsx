@@ -4,13 +4,13 @@ import { AgentRunDraftView } from "@/app/(platform)/library/agents/[id]/componen
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import type {
   CredentialsMetaInput,
-  GraphMeta,
+  Graph,
 } from "@/lib/autogpt-server-api/types";
 
 interface RunInputDialogProps {
   isOpen: boolean;
   doClose: () => void;
-  graph: GraphMeta;
+  graph: Graph;
   doRun?: (
     inputs: Record<string, any>,
     credentialsInputs: Record<string, CredentialsMetaInput>,

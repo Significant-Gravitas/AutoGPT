@@ -1,5 +1,5 @@
 import { GraphInputSchema } from "@/lib/autogpt-server-api";
-import { GraphMetaLike, IncompatibilityInfo } from "./types";
+import { GraphLike, IncompatibilityInfo } from "./types";
 
 // Helper type for schema properties - the generated types are too loose
 type SchemaProperties = Record<string, GraphInputSchema["properties"][string]>;
@@ -36,7 +36,7 @@ export function getSchemaRequired(schema: unknown): SchemaRequired {
  */
 export function createUpdatedAgentNodeInputs(
   currentInputs: Record<string, unknown>,
-  latestSubGraphVersion: GraphMetaLike,
+  latestSubGraphVersion: GraphLike,
 ): Record<string, unknown> {
   return {
     ...currentInputs,

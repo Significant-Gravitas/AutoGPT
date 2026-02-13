@@ -7,15 +7,7 @@ from typing import Any, NotRequired, TypedDict
 
 from backend.api.features.library import db as library_db
 from backend.api.features.store import db as store_db
-from backend.data.graph import (
-    Graph,
-    Link,
-    Node,
-    create_graph,
-    get_graph,
-    get_graph_all_versions,
-    get_store_listed_graphs,
-)
+from backend.data.graph import Graph, Link, Node, get_graph, get_store_listed_graphs
 from backend.util.exceptions import DatabaseError, NotFoundError
 
 from .service import (
@@ -27,8 +19,6 @@ from .service import (
 )
 
 logger = logging.getLogger(__name__)
-
-AGENT_EXECUTOR_BLOCK_ID = "e189baac-8c20-45a1-94a7-55177ea42565"
 
 
 class ExecutionSummary(TypedDict):
@@ -669,45 +659,6 @@ def json_to_graph(agent_json: dict[str, Any]) -> Graph:
     )
 
 
-def _reassign_node_ids(graph: Graph) -> None:
-    """Reassign all node and link IDs to new UUIDs.
-
-    This is needed when creating a new version to avoid unique constraint violations.
-    """
-    id_map = {node.id: str(uuid.uuid4()) for node in graph.nodes}
-
-    for node in graph.nodes:
-        node.id = id_map[node.id]
-
-    for link in graph.links:
-        link.id = str(uuid.uuid4())
-        if link.source_id in id_map:
-            link.source_id = id_map[link.source_id]
-        if link.sink_id in id_map:
-            link.sink_id = id_map[link.sink_id]
-
-
-def _populate_agent_executor_user_ids(agent_json: dict[str, Any], user_id: str) -> None:
-    """Populate user_id in AgentExecutorBlock nodes.
-
-    The external agent generator creates AgentExecutorBlock nodes with empty user_id.
-    This function fills in the actual user_id so sub-agents run with correct permissions.
-
-    Args:
-        agent_json: Agent JSON dict (modified in place)
-        user_id: User ID to set
-    """
-    for node in agent_json.get("nodes", []):
-        if node.get("block_id") == AGENT_EXECUTOR_BLOCK_ID:
-            input_default = node.get("input_default") or {}
-            if not input_default.get("user_id"):
-                input_default["user_id"] = user_id
-                node["input_default"] = input_default
-                logger.debug(
-                    f"Set user_id for AgentExecutorBlock node {node.get('id')}"
-                )
-
-
 async def save_agent_to_library(
     agent_json: dict[str, Any], user_id: str, is_update: bool = False
 ) -> tuple[Graph, Any]:
@@ -721,35 +672,10 @@ async def save_agent_to_library(
     Returns:
         Tuple of (created Graph, LibraryAgent)
     """
-    # Populate user_id in AgentExecutorBlock nodes before conversion
-    _populate_agent_executor_user_ids(agent_json, user_id)
-
     graph = json_to_graph(agent_json)
-
     if is_update:
-        if graph.id:
-            existing_versions = await get_graph_all_versions(graph.id, user_id)
-            if existing_versions:
-                latest_version = max(v.version for v in existing_versions)
-                graph.version = latest_version + 1
-                _reassign_node_ids(graph)
-                logger.info(f"Updating agent {graph.id} to version {graph.version}")
-    else:
-        graph.id = str(uuid.uuid4())
-        graph.version = 1
-        _reassign_node_ids(graph)
-        logger.info(f"Creating new agent with ID {graph.id}")
-
-    created_graph = await create_graph(graph, user_id)
-
-    library_agents = await library_db.create_library_agent(
-        graph=created_graph,
-        user_id=user_id,
-        sensitive_action_safe_mode=True,
-        create_library_agents_for_sub_graphs=False,
-    )
-
-    return created_graph, library_agents[0]
+        return await library_db.update_graph_in_library(graph, user_id)
+    return await library_db.create_graph_in_library(graph, user_id)
 
 
 def graph_to_json(graph: Graph) -> dict[str, Any]:

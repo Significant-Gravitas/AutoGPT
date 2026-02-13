@@ -30,6 +30,8 @@ import {
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { GraphMeta } from "@/lib/autogpt-server-api";
 import jaro from "jaro-winkler";
+import { getV1GetSpecificGraph } from "@/app/api/__generated__/endpoints/graphs/graphs";
+import { okData } from "@/app/api/helpers";
 
 type _Block = Omit<Block, "inputSchema" | "outputSchema"> & {
   uiKey?: string;
@@ -107,6 +109,8 @@ export function BlocksControl({
       .filter((b) => b.uiType !== BlockUIType.AGENT)
       .sort((a, b) => a.name.localeCompare(b.name));
 
+    // Agent blocks are created from GraphMeta which doesn't include schemas.
+    // Schemas will be fetched on-demand when the block is actually added.
     const agentBlockList = flows
       .map((flow): _Block => {
         return {
@@ -116,8 +120,9 @@ export function BlocksControl({
             `Ver.${flow.version}` +
             (flow.description ? ` | ${flow.description}` : ""),
           categories: [{ category: "AGENT", description: "" }],
-          inputSchema: flow.input_schema,
-          outputSchema: flow.output_schema,
+          // Empty schemas - will be populated when block is added
+          inputSchema: { type: "object", properties: {} },
+          outputSchema: { type: "object", properties: {} },
           staticOutput: false,
           uiType: BlockUIType.AGENT,
           costs: [],
@@ -125,8 +130,7 @@ export function BlocksControl({
           hardcodedValues: {
             graph_id: flow.id,
             graph_version: flow.version,
-            input_schema: flow.input_schema,
-            output_schema: flow.output_schema,
+            // Schemas will be fetched on-demand when block is added
           },
         };
       })
@@ -181,6 +185,37 @@ export function BlocksControl({
     setSearchQuery("");
     setSelectedCategory(null);
   }, []);
+
+  // Handler to add a block, fetching graph data on-demand for agent blocks
+  const handleAddBlock = useCallback(
+    async (block: _Block & { notAvailable: string | null }) => {
+      if (block.notAvailable) return;
+
+      // For agent blocks, fetch the full graph to get schemas
+      if (block.uiType === BlockUIType.AGENT && block.hardcodedValues) {
+        const graphID = block.hardcodedValues.graph_id as string;
+        const graphVersion = block.hardcodedValues.graph_version as number;
+        const graphData = okData(
+          await getV1GetSpecificGraph(graphID, { version: graphVersion }),
+        );
+
+        if (graphData) {
+          addBlock(block.id, block.name, {
+            ...block.hardcodedValues,
+            input_schema: graphData.input_schema,
+            output_schema: graphData.output_schema,
+          });
+        } else {
+          // Fallback: add without schemas (will be incomplete)
+          console.error("Failed to fetch graph data for agent block");
+          addBlock(block.id, block.name, block.hardcodedValues || {});
+        }
+      } else {
+        addBlock(block.id, block.name, block.hardcodedValues || {});
+      }
+    },
+    [addBlock],
+  );
 
   // Extract unique categories from blocks
   const categories = useMemo(() => {
@@ -303,10 +338,7 @@ export function BlocksControl({
                       }),
                     );
                   }}
-                  onClick={() =>
-                    !block.notAvailable &&
-                    addBlock(block.id, block.name, block?.hardcodedValues || {})
-                  }
+                  onClick={() => handleAddBlock(block)}
                   title={block.notAvailable ?? undefined}
                 >
                   <div

@@ -101,7 +101,7 @@ class HostResolver(abc.AbstractResolver):
     def __init__(self, ssl_hostname: str, ip_addresses: list[str]):
         self.ssl_hostname = ssl_hostname
         self.ip_addresses = ip_addresses
-        self._default = aiohttp.AsyncResolver()
+        self._default = aiohttp.ThreadedResolver()
 
     async def resolve(self, host, port=0, family=socket.AF_INET):
         if host == self.ssl_hostname:
@@ -157,12 +157,7 @@ async def validate_url(
         is_trusted: Boolean indicating if the hostname is in trusted_origins
         ip_addresses: List of IP addresses for the host; empty if the host is trusted
     """
-    # Canonicalize URL
-    url = url.strip("/ ").replace("\\", "/")
-    parsed = urlparse(url)
-    if not parsed.scheme:
-        url = f"http://{url}"
-        parsed = urlparse(url)
+    parsed = parse_url(url)
 
     # Check scheme
     if parsed.scheme not in ALLOWED_SCHEMES:
@@ -218,6 +213,17 @@ async def validate_url(
         is_trusted,
         ip_addresses,
     )
+
+
+def parse_url(url: str) -> URL:
+    """Canonicalizes and parses a URL string."""
+    url = url.strip("/ ").replace("\\", "/")
+
+    # Ensure scheme is present for proper parsing
+    if not re.match(r"[a-z0-9+.\-]+://", url):
+        url = f"http://{url}"
+
+    return urlparse(url)
 
 
 def pin_url(url: URL, ip_addresses: Optional[list[str]] = None) -> URL:
@@ -461,7 +467,7 @@ class Requests:
             resolver = HostResolver(ssl_hostname=hostname, ip_addresses=ip_addresses)
             ssl_context = ssl.create_default_context()
             connector = aiohttp.TCPConnector(resolver=resolver, ssl=ssl_context)
-        session_kwargs = {}
+        session_kwargs: dict = {}
         if connector:
             session_kwargs["connector"] = connector
 

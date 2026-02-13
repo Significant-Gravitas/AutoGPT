@@ -7,7 +7,7 @@
   },
   "scripts": {
     "dev": "pnpm run generate:api:force && next dev --turbo",
-    "build": "next build",
+    "build": "cross-env NODE_OPTIONS=--max-old-space-size=16384 next build",
     "start": "next start",
     "start:standalone": "cd .next/standalone && node server.js",
     "lint": "next lint && prettier --check .",
@@ -30,6 +30,7 @@
     "defaults"
   ],
   "dependencies": {
+    "@ai-sdk/react": "3.0.61",
     "@faker-js/faker": "10.0.0",
     "@hookform/resolvers": "5.2.2",
     "@next/third-parties": "15.4.6",
@@ -60,6 +61,10 @@
     "@rjsf/utils": "6.1.2",
     "@rjsf/validator-ajv8": "6.1.2",
     "@sentry/nextjs": "10.27.0",
+    "@streamdown/cjk": "1.0.1",
+    "@streamdown/code": "1.0.1",
+    "@streamdown/math": "1.0.1",
+    "@streamdown/mermaid": "1.0.1",
     "@supabase/ssr": "0.7.0",
     "@supabase/supabase-js": "2.78.0",
     "@tanstack/react-query": "5.90.6",
@@ -68,6 +73,7 @@
     "@vercel/analytics": "1.5.0",
     "@vercel/speed-insights": "1.2.0",
     "@xyflow/react": "12.9.2",
+    "ai": "6.0.59",
     "boring-avatars": "1.11.2",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
@@ -87,7 +93,6 @@
     "launchdarkly-react-client-sdk": "3.9.0",
     "lodash": "4.17.21",
     "lucide-react": "0.552.0",
-    "moment": "2.30.1",
     "next": "15.4.10",
     "next-themes": "0.4.6",
     "nuqs": "2.7.2",
@@ -102,7 +107,7 @@
     "react-markdown": "9.0.3",
     "react-modal": "3.16.3",
     "react-shepherd": "6.1.9",
-    "react-window": "1.8.11",
+    "react-window": "2.2.0",
     "recharts": "3.3.0",
     "rehype-autolink-headings": "7.1.0",
     "rehype-highlight": "7.0.2",
@@ -112,9 +117,11 @@
     "remark-math": "6.0.0",
     "shepherd.js": "14.5.1",
     "sonner": "2.0.7",
+    "streamdown": "2.1.0",
     "tailwind-merge": "2.6.0",
     "tailwind-scrollbar": "3.1.0",
     "tailwindcss-animate": "1.0.7",
+    "use-stick-to-bottom": "1.1.2",
     "uuid": "11.1.0",
     "vaul": "1.1.2",
     "zod": "3.25.76",
@@ -140,7 +147,7 @@
     "@types/react": "18.3.17",
     "@types/react-dom": "18.3.5",
     "@types/react-modal": "3.16.3",
-    "@types/react-window": "1.8.8",
+    "@types/react-window": "2.0.0",
     "@vitejs/plugin-react": "5.1.2",
     "axe-playwright": "2.2.2",
     "chromatic": "13.3.3",
@@ -172,7 +179,8 @@
   },
   "pnpm": {
     "overrides": {
-      "@opentelemetry/instrumentation": "0.209.0"
+      "@opentelemetry/instrumentation": "0.209.0",
+      "lodash-es": "4.17.23"
     }
   },
   "packageManager": "pnpm@10.20.0+sha512.cf9998222162dd85864d0a8102e7892e7ba4ceadebbf5a31f9c2fce48dfce317a9c53b9f6464d1ef9042cba2e02ae02a9f7c143a2b438cd93c91840f0192b9dd"

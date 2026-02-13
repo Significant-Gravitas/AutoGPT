@@ -24,6 +24,7 @@ from backend.util.timezone_utils import (
 )
 
 from .base import BaseTool
+from .helpers import get_inputs_from_schema
 from .models import (
     AgentDetails,
     AgentDetailsResponse,
@@ -261,7 +262,7 @@ class RunAgentTool(BaseTool):
                         ),
                         requirements={
                             "credentials": requirements_creds_list,
-                            "inputs": self._get_inputs_list(graph.input_schema),
+                            "inputs": get_inputs_from_schema(graph.input_schema),
                             "execution_modes": self._get_execution_modes(graph),
                         },
                     ),
@@ -369,22 +370,6 @@ class RunAgentTool(BaseTool):
                 session_id=session_id,
             )
 
-    def _get_inputs_list(self, input_schema: dict[str, Any]) -> list[dict[str, Any]]:
-        """Extract inputs list from schema."""
-        inputs_list = []
-        if isinstance(input_schema, dict) and "properties" in input_schema:
-            for field_name, field_schema in input_schema["properties"].items():
-                inputs_list.append(
-                    {
-                        "name": field_name,
-                        "title": field_schema.get("title", field_name),
-                        "type": field_schema.get("type", "string"),
-                        "description": field_schema.get("description", ""),
-                        "required": field_name in input_schema.get("required", []),
-                    }
-                )
-        return inputs_list
-
     def _get_execution_modes(self, graph: GraphModel) -> list[str]:
         """Get available execution modes for the graph."""
         trigger_info = graph.trigger_setup_info
@@ -398,7 +383,7 @@ class RunAgentTool(BaseTool):
         suffix: str,
     ) -> str:
         """Build a message describing available inputs for an agent."""
-        inputs_list = self._get_inputs_list(graph.input_schema)
+        inputs_list = get_inputs_from_schema(graph.input_schema)
         required_names = [i["name"] for i in inputs_list if i["required"]]
         optional_names = [i["name"] for i in inputs_list if not i["required"]]
 

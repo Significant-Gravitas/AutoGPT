@@ -18,7 +18,7 @@ interface GraphStore {
     outputSchema: Record<string, any> | null,
   ) => void;
 
-  // Available graphs; used for sub-graph updates
+  // Available graphs; used for sub-graph updated version detection
   availableSubGraphs: GraphMeta[];
   setAvailableSubGraphs: (graphs: GraphMeta[]) => void;
 
