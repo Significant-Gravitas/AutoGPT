@@ -12,12 +12,11 @@ import backend.api.features.store.image_gen as store_image_gen
 import backend.api.features.store.media as store_media
 import backend.data.graph as graph_db
 import backend.data.integrations as integrations_db
-from backend.data.block import BlockInput
 from backend.data.db import transaction
 from backend.data.execution import get_graph_execution
 from backend.data.graph import GraphSettings
 from backend.data.includes import AGENT_PRESET_INCLUDE, library_agent_include
-from backend.data.model import CredentialsMetaInput
+from backend.data.model import CredentialsMetaInput, GraphInput
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.webhooks.graph_lifecycle_hooks import (
     on_graph_activate,
@@ -1197,7 +1196,7 @@ async def create_preset_from_graph_execution(
 async def update_preset(
     user_id: str,
     preset_id: str,
-    inputs: Optional[BlockInput] = None,
+    inputs: Optional[GraphInput] = None,
     credentials: Optional[dict[str, CredentialsMetaInput]] = None,
     name: Optional[str] = None,
     description: Optional[str] = None,

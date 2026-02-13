@@ -45,6 +45,11 @@ AutoGPT Platform is a monorepo containing:
 - Backend/Frontend services use YAML anchors for consistent configuration
 - Supabase services (`db/docker/docker-compose.yml`) follow the same pattern
 
+### Branching Strategy
+
+- **`dev`** is the main development branch. All PRs should target `dev`.
+- **`master`** is the production branch. Only used for production releases.
+
 ### Creating Pull Requests
 
 - Create the PR against the `dev` branch of the repository.

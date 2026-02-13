@@ -5,42 +5,13 @@
 !docs/
 
 # Platform - Libs
-!autogpt_platform/autogpt_libs/autogpt_libs/
-!autogpt_platform/autogpt_libs/pyproject.toml
-!autogpt_platform/autogpt_libs/poetry.lock
-!autogpt_platform/autogpt_libs/README.md
+!autogpt_platform/autogpt_libs/
 
 # Platform - Backend
-!autogpt_platform/backend/backend/
-!autogpt_platform/backend/test/e2e_test_data.py
-!autogpt_platform/backend/migrations/
-!autogpt_platform/backend/schema.prisma
-!autogpt_platform/backend/pyproject.toml
-!autogpt_platform/backend/poetry.lock
-!autogpt_platform/backend/README.md
-!autogpt_platform/backend/.env
-!autogpt_platform/backend/gen_prisma_types_stub.py
-
-# Platform - Market
-!autogpt_platform/market/market/
-!autogpt_platform/market/scripts.py
-!autogpt_platform/market/schema.prisma
-!autogpt_platform/market/pyproject.toml
-!autogpt_platform/market/poetry.lock
-!autogpt_platform/market/README.md
+!autogpt_platform/backend/
 
 # Platform - Frontend
-!autogpt_platform/frontend/src/
-!autogpt_platform/frontend/public/
-!autogpt_platform/frontend/scripts/
-!autogpt_platform/frontend/package.json
-!autogpt_platform/frontend/pnpm-lock.yaml
-!autogpt_platform/frontend/tsconfig.json
-!autogpt_platform/frontend/README.md
-## config
-!autogpt_platform/frontend/*.config.*
-!autogpt_platform/frontend/.env.*
-!autogpt_platform/frontend/.env
+!autogpt_platform/frontend/
 
 # Classic - AutoGPT
 !classic/original_autogpt/autogpt/
@@ -64,6 +35,38 @@
 # Classic - Frontend
 !classic/frontend/build/web/
 
-# Explicitly re-ignore some folders
-.*
-**/__pycache__
+# Explicitly re-ignore unwanted files from whitelisted directories
+# Note: These patterns MUST come after the whitelist rules to take effect
+
+# Hidden files and directories (but keep frontend .env files needed for build)
+**/.*
+!autogpt_platform/frontend/.env
+!autogpt_platform/frontend/.env.default
+!autogpt_platform/frontend/.env.production
+
+# Python artifacts
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/.venv/
+**/.ruff_cache/
+**/.pytest_cache/
+**/.coverage
+**/htmlcov/
+
+# Node artifacts
+**/node_modules/
+**/.next/
+**/storybook-static/
+**/playwright-report/
+**/test-results/
+
+# Build artifacts
+**/dist/
+**/build/
+!autogpt_platform/frontend/src/**/build/
+**/target/
+
+# Logs and temp files
+**/*.log
+**/*.tmp

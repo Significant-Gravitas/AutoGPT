@@ -12,6 +12,7 @@ from .base import BaseTool
 from .create_agent import CreateAgentTool
 from .customize_agent import CustomizeAgentTool
 from .edit_agent import EditAgentTool
+from .feature_requests import CreateFeatureRequestTool, SearchFeatureRequestsTool
 from .find_agent import FindAgentTool
 from .find_block import FindBlockTool
 from .find_library_agent import FindLibraryAgentTool
@@ -45,6 +46,9 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "view_agent_output": AgentOutputTool(),
     "search_docs": SearchDocsTool(),
     "get_doc_page": GetDocPageTool(),
+    # Feature request tools
+    "search_feature_requests": SearchFeatureRequestsTool(),
+    "create_feature_request": CreateFeatureRequestTool(),
     # Workspace tools for CoPilot file operations
     "list_workspace_files": ListWorkspaceFilesTool(),
     "read_workspace_file": ReadWorkspaceFileTool(),

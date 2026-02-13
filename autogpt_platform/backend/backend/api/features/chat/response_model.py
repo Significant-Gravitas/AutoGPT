@@ -10,6 +10,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from backend.util.json import dumps as json_dumps
+
 
 class ResponseType(str, Enum):
     """Types of streaming responses following AI SDK protocol."""
@@ -192,6 +194,18 @@ class StreamError(StreamBaseResponse):
     details: dict[str, Any] | None = Field(
         default=None, description="Additional error details"
     )
+
+    def to_sse(self) -> str:
+        """Convert to SSE format, only emitting fields required by AI SDK protocol.
+
+        The AI SDK uses z.strictObject({type, errorText}) which rejects
+        any extra fields like `code` or `details`.
+        """
+        data = {
+            "type": self.type.value,
+            "errorText": self.errorText,
+        }
+        return f"data: {json_dumps(data)}\n\n"
 
 
 class StreamHeartbeat(StreamBaseResponse):
