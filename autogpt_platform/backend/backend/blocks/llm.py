@@ -17,7 +17,7 @@ from pydantic import BaseModel, GetCoreSchemaHandler, SecretStr
 from pydantic_core import CoreSchema, core_schema
 
 from backend.data import llm_registry
-from backend.data.block import (
+from backend.blocks._base import (
     Block,
     BlockCategory,
     BlockOutput,

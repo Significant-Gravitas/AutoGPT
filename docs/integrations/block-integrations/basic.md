@@ -975,7 +975,7 @@ A travel planning application could use this block to provide users with current
 ## Human In The Loop
 
 ### What it is
-Pause execution and wait for human approval or modification of data
+Pause execution for human review. Data flows through approved_data or rejected_data output based on the reviewer's decision. Outputs contain the actual data, not status strings.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -988,18 +988,18 @@ This enables human oversight at critical points in automated workflows, ensuring
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| data | The data to be reviewed by a human user | Data | Yes |
-| name | A descriptive name for what this data represents | str | Yes |
-| editable | Whether the human reviewer can edit the data | bool | No |
+| data | The data to be reviewed by a human user. This exact data will be passed through to either approved_data or rejected_data output based on the reviewer's decision. | Data | Yes |
+| name | A descriptive name for what this data represents. This helps the reviewer understand what they are reviewing. | str | Yes |
+| editable | Whether the human reviewer can edit the data before approving or rejecting it | bool | No |
 
 ### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
-| approved_data | The data when approved (may be modified by reviewer) | Approved Data |
-| rejected_data | The data when rejected (may be modified by reviewer) | Rejected Data |
-| review_message | Any message provided by the reviewer | str |
+| approved_data | Outputs the input data when the reviewer APPROVES it. The value is the actual data itself (not a status string like 'APPROVED'). If the reviewer edited the data, this contains the modified version. Connect downstream blocks here for the 'approved' workflow path. | Approved Data |
+| rejected_data | Outputs the input data when the reviewer REJECTS it. The value is the actual data itself (not a status string like 'REJECTED'). If the reviewer edited the data, this contains the modified version. Connect downstream blocks here for the 'rejected' workflow path. | Rejected Data |
+| review_message | Optional message provided by the reviewer explaining their decision. Only outputs when the reviewer provides a message; this pin does not fire if no message was given. | str |
 
 ### Possible use case
 <!-- MANUAL: use_case -->

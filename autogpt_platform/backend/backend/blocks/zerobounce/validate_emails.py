@@ -7,19 +7,19 @@ from zerobouncesdk.zb_validate_response import (
     ZBValidateSubStatus,
 )
 
+from backend.blocks._base import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.blocks.zerobounce._api import ZeroBounceClient
 from backend.blocks.zerobounce._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
     ZeroBounceCredentials,
     ZeroBounceCredentialsInput,
-)
-from backend.data.block import (
-    Block,
-    BlockCategory,
-    BlockOutput,
-    BlockSchemaInput,
-    BlockSchemaOutput,
 )
 from backend.data.model import CredentialsField, SchemaField
 

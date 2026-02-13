@@ -169,6 +169,9 @@ T = TypeVar("T")
 logger = logging.getLogger(__name__)
 
 
+GraphInput = dict[str, Any]
+
+
 class BlockSecret:
     def __init__(self, key: Optional[str] = None, value: Optional[str] = None):
         if value is not None:

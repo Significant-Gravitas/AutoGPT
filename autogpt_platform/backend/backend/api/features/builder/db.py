@@ -10,10 +10,15 @@ import backend.api.features.library.db as library_db
 import backend.api.features.library.model as library_model
 import backend.api.features.store.db as store_db
 import backend.api.features.store.model as store_model
-import backend.data.block
 from backend.blocks import load_all_blocks
+from backend.blocks._base import (
+    AnyBlockSchema,
+    BlockCategory,
+    BlockInfo,
+    BlockSchema,
+    BlockType,
+)
 from backend.blocks.llm import LlmModel
-from backend.data.block import AnyBlockSchema, BlockCategory, BlockInfo, BlockSchema
 from backend.data.db import query_raw_with_schema
 from backend.data.llm_registry import get_all_model_slugs_for_validation
 from backend.integrations.providers import ProviderName
@@ -23,7 +28,7 @@ from backend.util.models import Pagination
 from .model import (
     BlockCategoryResponse,
     BlockResponse,
-    BlockType,
+    BlockTypeFilter,
     CountResponse,
     FilterType,
     Provider,
@@ -96,7 +101,7 @@ def get_block_categories(category_blocks: int = 3) -> list[BlockCategoryResponse
 def get_blocks(
     *,
     category: str | None = None,
-    type: BlockType | None = None,
+    type: BlockTypeFilter | None = None,
     provider: ProviderName | None = None,
     page: int = 1,
     page_size: int = 50,
@@ -677,9 +682,9 @@ async def get_suggested_blocks(count: int = 5) -> list[BlockInfo]:
     for block_type in load_all_blocks().values():
         block: AnyBlockSchema = block_type()
         if block.disabled or block.block_type in (
-            backend.data.block.BlockType.INPUT,
-            backend.data.block.BlockType.OUTPUT,
-            backend.data.block.BlockType.AGENT,
+            BlockType.INPUT,
+            BlockType.OUTPUT,
+            BlockType.AGENT,
         ):
             continue
         # Find the execution count for this block

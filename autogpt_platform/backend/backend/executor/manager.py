@@ -16,16 +16,12 @@ from pika.spec import Basic, BasicProperties
 from prometheus_client import Gauge, start_http_server
 from redis.asyncio.lock import Lock as AsyncRedisLock
 
+from backend.blocks import get_block
+from backend.blocks._base import BlockSchema
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.io import AgentOutputBlock
 from backend.data import redis_client as redis
-from backend.data.block import (
-    BlockInput,
-    BlockOutput,
-    BlockOutputEntry,
-    BlockSchema,
-    get_block,
-)
+from backend.data.block import BlockInput, BlockOutput, BlockOutputEntry
 from backend.data.credit import UsageTransactionMetadata
 from backend.data.dynamic_fields import parse_execution_output
 from backend.data.execution import (

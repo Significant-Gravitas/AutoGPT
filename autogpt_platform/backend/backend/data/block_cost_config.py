@@ -3,6 +3,7 @@ from typing import Type
 
 import prisma.models
 
+from backend.blocks._base import Block, BlockCost, BlockCostType
 from backend.blocks.ai_image_customizer import AIImageCustomizerBlock, GeminiImageModel
 from backend.blocks.ai_image_generator_block import AIImageGeneratorBlock, ImageGenModel
 from backend.blocks.ai_music_generator import AIMusicGeneratorBlock
@@ -39,7 +40,6 @@ from backend.blocks.talking_head import CreateTalkingAvatarVideoBlock
 from backend.blocks.text_to_speech_block import UnrealTextToSpeechBlock
 from backend.blocks.video.narration import VideoNarrationBlock
 from backend.data import llm_registry
-from backend.data.block import Block, BlockCost, BlockCostType
 from backend.integrations.credentials_store import (
     aiml_api_credentials,
     anthropic_credentials,
