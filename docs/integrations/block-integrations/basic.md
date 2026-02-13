@@ -637,7 +637,7 @@ This enables extensibility by allowing custom blocks to be added without modifyi
 ## Concatenate Lists
 
 ### What it is
-Concatenates multiple lists into a single list. All elements from all input lists are combined in order.
+Concatenates multiple lists into a single list. All elements from all input lists are combined in order. Supports optional deduplication and None removal.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -651,6 +651,8 @@ The block includes validation to ensure each item is actually a list. If a non-l
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | lists | A list of lists to concatenate together. All lists will be combined in order into a single list. | List[List[Any]] | Yes |
+| deduplicate | If True, remove duplicate elements from the concatenated result while preserving order. | bool | No |
+| remove_none | If True, remove None values from the concatenated result. | bool | No |
 
 ### Outputs
 
@@ -658,6 +660,7 @@ The block includes validation to ensure each item is actually a list. If a non-l
 |--------|-------------|------|
 | error | Error message if concatenation failed due to invalid input types. | str |
 | concatenated_list | The concatenated list containing all elements from all input lists in order. | List[Any] |
+| length | The total number of elements in the concatenated list. | int |
 
 ### Possible use case
 <!-- MANUAL: use_case -->
@@ -816,6 +819,39 @@ This enables conditional logic based on list membership and helps locate items f
 **Status Lookup**: Find if a value is in a list of valid states or allowed values.
 
 **Position Finding**: Locate an item's position for subsequent operations like updates or removals.
+<!-- END MANUAL -->
+
+---
+
+## Flatten List
+
+### What it is
+Flattens a nested list structure into a single flat list. Supports configurable maximum flattening depth.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+_Add technical explanation here._
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| nested_list | A potentially nested list to flatten into a single-level list. | List[Any] | Yes |
+| max_depth | Maximum depth to flatten. -1 means flatten completely. 1 means flatten only one level. | int | No |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if flattening failed. | str |
+| flattened_list | The flattened list with all nested elements extracted. | List[Any] |
+| length | The number of elements in the flattened list. | int |
+| original_depth | The maximum nesting depth of the original input list. | int |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+_Add practical use case examples here._
 <!-- END MANUAL -->
 
 ---
@@ -1012,6 +1048,37 @@ This enables human oversight at critical points in automated workflows, ensuring
 
 ---
 
+## Interleave Lists
+
+### What it is
+Interleaves elements from multiple lists in round-robin fashion, alternating between sources.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+_Add technical explanation here._
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| lists | A list of lists to interleave. Elements will be taken in round-robin order. | List[List[Any]] | Yes |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if interleaving failed. | str |
+| interleaved_list | The interleaved list with elements alternating from each input list. | List[Any] |
+| length | The total number of elements in the interleaved list. | int |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+_Add practical use case examples here._
+<!-- END MANUAL -->
+
+---
+
 ## List Is Empty
 
 ### What it is
@@ -1044,6 +1111,71 @@ This is useful for conditional logic where you need to verify if search results 
 **Batch Processing Guard**: Verify that a list has items before starting a batch operation to avoid empty iterations.
 
 **Conditional Messaging**: Send different notifications based on whether pending items exist or the queue is empty.
+<!-- END MANUAL -->
+
+---
+
+## List Difference
+
+### What it is
+Computes the difference between two lists. Returns elements in the first list not found in the second, or symmetric difference.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+_Add technical explanation here._
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| list_a | The primary list to check elements from. | List[Any] | Yes |
+| list_b | The list to subtract. Elements found here will be removed from list_a. | List[Any] | Yes |
+| symmetric | If True, compute symmetric difference (elements in either list but not both). | bool | No |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if the operation failed. | str |
+| difference | Elements from list_a not found in list_b (or symmetric difference if enabled). | List[Any] |
+| length | The number of elements in the difference result. | int |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+_Add practical use case examples here._
+<!-- END MANUAL -->
+
+---
+
+## List Intersection
+
+### What it is
+Computes the intersection of two lists, returning only elements present in both.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+_Add technical explanation here._
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| list_a | The first list to intersect. | List[Any] | Yes |
+| list_b | The second list to intersect. | List[Any] | Yes |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if the operation failed. | str |
+| intersection | Elements present in both list_a and list_b. | List[Any] |
+| length | The number of elements in the intersection. | int |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+_Add practical use case examples here._
 <!-- END MANUAL -->
 
 ---
@@ -1449,6 +1581,39 @@ This makes XML data accessible using standard dictionary operations, allowing yo
 **Configuration File Reading**: Read XML configuration files and convert them to dictionaries for easy access.
 
 **Data Import**: Transform XML data exports from other systems into a format suitable for your workflow processing.
+<!-- END MANUAL -->
+
+---
+
+## Zip Lists
+
+### What it is
+Zips multiple lists together into a list of grouped elements. Supports padding to longest or truncating to shortest.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+_Add technical explanation here._
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| lists | A list of lists to zip together. Corresponding elements will be grouped. | List[List[Any]] | Yes |
+| pad_to_longest | If True, pad shorter lists with fill_value to match the longest list. If False, truncate to shortest. | bool | No |
+| fill_value | Value to use for padding when pad_to_longest is True. | Fill Value | No |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if zipping failed. | str |
+| zipped_list | The zipped list of grouped elements. | List[List[Any]] |
+| length | The number of groups in the zipped result. | int |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+_Add practical use case examples here._
 <!-- END MANUAL -->
 
 ---
