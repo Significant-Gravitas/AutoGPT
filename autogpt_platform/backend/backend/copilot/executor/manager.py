@@ -83,6 +83,7 @@ class CoPilotExecutor(AppProcess):
         self._run_client = None
 
         self._task_locks: dict[str, ClusterLock] = {}
+        self._active_tasks_lock = threading.Lock()
 
     # ============ Main Entry Points (AppProcess interface) ============ #
 
@@ -419,13 +420,12 @@ class CoPilotExecutor(AppProcess):
     def _cleanup_completed_tasks(self) -> list[str]:
         """Remove completed futures from active_tasks and update metrics."""
         completed_tasks = []
-        for task_id, (future, _) in self.active_tasks.items():
-            if future.done():
-                completed_tasks.append(task_id)
-
-        for task_id in completed_tasks:
-            logger.info(f"Cleaned up completed task {task_id}")
-            self.active_tasks.pop(task_id, None)
+        with self._active_tasks_lock:
+            for task_id, (future, _) in list(self.active_tasks.items()):
+                if future.done():
+                    completed_tasks.append(task_id)
+                    self.active_tasks.pop(task_id, None)
+                    logger.info(f"Cleaned up completed task {task_id}")
 
         self._update_metrics()
         return completed_tasks
