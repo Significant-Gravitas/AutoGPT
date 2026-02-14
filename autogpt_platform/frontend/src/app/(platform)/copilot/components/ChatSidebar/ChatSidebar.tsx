@@ -7,6 +7,8 @@ import {
 import { Button } from "@/components/atoms/Button/Button";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Text } from "@/components/atoms/Text/Text";
+import { toast } from "@/components/molecules/Toast/use-toast";
+// TODO: Replace with modern Dialog component when available
 import DeleteConfirmDialog from "@/components/__legacy__/delete-confirm-dialog";
 import {
   Sidebar,
@@ -52,7 +54,12 @@ export function ChatSidebar() {
           setSessionToDelete(null);
         },
         onError: (error) => {
-          console.error("Failed to delete session:", error);
+          toast({
+            title: "Failed to delete chat",
+            description:
+              error instanceof Error ? error.message : "An error occurred",
+            variant: "destructive",
+          });
           setSessionToDelete(null);
         },
       },
@@ -75,6 +82,7 @@ export function ChatSidebar() {
     title: string | null,
   ) {
     e.stopPropagation(); // Prevent session selection
+    if (isDeleting) return; // Prevent double-click during deletion
     setSessionToDelete({ id, title });
   }
 
@@ -216,7 +224,8 @@ export function ChatSidebar() {
                       onClick={(e) =>
                         handleDeleteClick(e, session.id, session.title)
                       }
-                      className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1.5 text-zinc-400 opacity-0 transition-all group-hover:opacity-100 hover:bg-red-100 hover:text-red-600"
+                      disabled={isDeleting}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1.5 text-zinc-400 opacity-0 transition-all group-hover:opacity-100 hover:bg-red-100 hover:text-red-600 focus-visible:opacity-100 disabled:cursor-not-allowed disabled:opacity-50"
                       aria-label="Delete chat"
                     >
                       <TrashIcon className="h-4 w-4" />
