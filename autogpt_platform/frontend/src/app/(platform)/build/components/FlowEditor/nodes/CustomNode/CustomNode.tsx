@@ -47,7 +47,10 @@ export type CustomNode = XYNode<CustomNodeData, "custom">;
 
 export const CustomNode: React.FC<NodeProps<CustomNode>> = React.memo(
   ({ data, id: nodeId, selected }) => {
-    const { inputSchema, outputSchema } = useCustomNode({ data, nodeId });
+    const { inputSchema, outputSchema, isMCPWithTool } = useCustomNode({
+      data,
+      nodeId,
+    });
 
     const isAgent = data.uiType === BlockUIType.AGENT;
 
@@ -98,6 +101,7 @@ export const CustomNode: React.FC<NodeProps<CustomNode>> = React.memo(
             jsonSchema={preprocessInputSchema(inputSchema)}
             nodeId={nodeId}
             uiType={data.uiType}
+            isMCPWithTool={isMCPWithTool}
             className={cn(
               "bg-white px-4",
               isWebhook && "pointer-events-none opacity-50",

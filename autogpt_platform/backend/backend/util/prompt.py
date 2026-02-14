@@ -364,6 +364,44 @@ def _remove_orphan_tool_responses(
     return result
 
 
+def validate_and_remove_orphan_tool_responses(
+    messages: list[dict],
+    log_warning: bool = True,
+) -> list[dict]:
+    """
+    Validate tool_call/tool_response pairs and remove orphaned responses.
+
+    Scans messages in order, tracking all tool_call IDs. Any tool response
+    referencing an ID not seen in a preceding message is considered orphaned
+    and removed. This prevents API errors like Anthropic's "unexpected tool_use_id".
+
+    Args:
+        messages: List of messages to validate (OpenAI or Anthropic format)
+        log_warning: Whether to log a warning when orphans are found
+
+    Returns:
+        A new list with orphaned tool responses removed
+    """
+    available_ids: set[str] = set()
+    orphan_ids: set[str] = set()
+
+    for msg in messages:
+        available_ids |= _extract_tool_call_ids_from_message(msg)
+        for resp_id in _extract_tool_response_ids_from_message(msg):
+            if resp_id not in available_ids:
+                orphan_ids.add(resp_id)
+
+    if not orphan_ids:
+        return messages
+
+    if log_warning:
+        logger.warning(
+            f"Removing {len(orphan_ids)} orphan tool response(s): {orphan_ids}"
+        )
+
+    return _remove_orphan_tool_responses(messages, orphan_ids)
+
+
 def _ensure_tool_pairs_intact(
     recent_messages: list[dict],
     all_messages: list[dict],
@@ -723,6 +761,13 @@ async def compress_context(
 
     # Filter out any None values that may have been introduced
     final_msgs: list[dict] = [m for m in msgs if m is not None]
+
+    # ---- STEP 6: Final tool-pair validation ---------------------------------
+    # After all compression steps, verify that every tool response has a
+    # matching tool_call in a preceding assistant message. Remove orphans
+    # to prevent API errors (e.g., Anthropic's "unexpected tool_use_id").
+    final_msgs = validate_and_remove_orphan_tool_responses(final_msgs)
+
     final_count = sum(_msg_tokens(m, enc) for m in final_msgs)
     error = None
     if final_count + reserve > target_tokens:

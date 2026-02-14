@@ -38,7 +38,7 @@ from backend.util.retry import func_retry
 from backend.util.settings import Settings
 
 if TYPE_CHECKING:
-    from backend.data.block import Block, BlockCost
+    from backend.blocks._base import Block, BlockCost
 
 settings = Settings()
 stripe.api_key = settings.secrets.stripe_api_key

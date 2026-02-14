@@ -814,6 +814,28 @@ async def get_active_task_for_session(
                 if task_user_id and user_id != task_user_id:
                     continue
 
+                # Auto-expire stale tasks that exceeded stream_timeout
+                created_at_str = meta.get("created_at", "")
+                if created_at_str:
+                    try:
+                        created_at = datetime.fromisoformat(created_at_str)
+                        age_seconds = (
+                            datetime.now(timezone.utc) - created_at
+                        ).total_seconds()
+                        if age_seconds > config.stream_timeout:
+                            logger.warning(
+                                f"[TASK_LOOKUP] Auto-expiring stale task {task_id[:8]}... "
+                                f"(age={age_seconds:.0f}s > timeout={config.stream_timeout}s)"
+                            )
+                            await mark_task_completed(task_id, "failed")
+                            continue
+                    except (ValueError, TypeError):
+                        pass
+
+                logger.info(
+                    f"[TASK_LOOKUP] Found running task {task_id[:8]}... for session {session_id[:8]}..."
+                )
+
                 # Get the last message ID from Redis Stream
                 stream_key = _get_task_stream_key(task_id)
                 last_id = "0-0"
@@ -857,8 +879,10 @@ def _reconstruct_chunk(chunk_data: dict) -> StreamBaseResponse | None:
         ResponseType,
         StreamError,
         StreamFinish,
+        StreamFinishStep,
         StreamHeartbeat,
         StreamStart,
+        StreamStartStep,
         StreamTextDelta,
         StreamTextEnd,
         StreamTextStart,
@@ -872,6 +896,8 @@ def _reconstruct_chunk(chunk_data: dict) -> StreamBaseResponse | None:
     type_to_class: dict[str, type[StreamBaseResponse]] = {
         ResponseType.START.value: StreamStart,
         ResponseType.FINISH.value: StreamFinish,
+        ResponseType.START_STEP.value: StreamStartStep,
+        ResponseType.FINISH_STEP.value: StreamFinishStep,
         ResponseType.TEXT_START.value: StreamTextStart,
         ResponseType.TEXT_DELTA.value: StreamTextDelta,
         ResponseType.TEXT_END.value: StreamTextEnd,

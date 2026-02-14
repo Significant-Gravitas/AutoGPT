@@ -27,12 +27,11 @@ class ChatConfig(BaseSettings):
     session_ttl: int = Field(default=43200, description="Session TTL in seconds")
 
     # Streaming Configuration
-    max_context_messages: int = Field(
-        default=50, ge=1, le=200, description="Maximum context messages"
-    )
-
     stream_timeout: int = Field(default=300, description="Stream timeout in seconds")
-    max_retries: int = Field(default=3, description="Maximum number of retries")
+    max_retries: int = Field(
+        default=3,
+        description="Max retries for fallback path (SDK handles retries internally)",
+    )
     max_agent_runs: int = Field(default=30, description="Maximum number of agent runs")
     max_agent_schedules: int = Field(
         default=30, description="Maximum number of agent schedules"
@@ -93,6 +92,37 @@ class ChatConfig(BaseSettings):
         description="Name of the prompt in Langfuse to fetch",
     )
 
+    # Claude Agent SDK Configuration
+    use_claude_agent_sdk: bool = Field(
+        default=True,
+        description="Use Claude Agent SDK for chat completions",
+    )
+    claude_agent_model: str | None = Field(
+        default=None,
+        description="Model for the Claude Agent SDK path. If None, derives from "
+        "the `model` field by stripping the OpenRouter provider prefix.",
+    )
+    claude_agent_max_buffer_size: int = Field(
+        default=10 * 1024 * 1024,  # 10MB (default SDK is 1MB)
+        description="Max buffer size in bytes for Claude Agent SDK JSON message parsing. "
+        "Increase if tool outputs exceed the limit.",
+    )
+    claude_agent_max_subtasks: int = Field(
+        default=10,
+        description="Max number of sub-agent Tasks the SDK can spawn per session.",
+    )
+    claude_agent_use_resume: bool = Field(
+        default=True,
+        description="Use --resume for multi-turn conversations instead of "
+        "history compression. Falls back to compression when unavailable.",
+    )
+
+    # Extended thinking configuration for Claude models
+    thinking_enabled: bool = Field(
+        default=True,
+        description="Enable adaptive thinking for Claude models via OpenRouter",
+    )
+
     @field_validator("api_key", mode="before")
     @classmethod
     def get_api_key(cls, v):
@@ -131,6 +161,17 @@ class ChatConfig(BaseSettings):
         if v is None:
             v = os.getenv("CHAT_INTERNAL_API_KEY")
         return v
+
+    @field_validator("use_claude_agent_sdk", mode="before")
+    @classmethod
+    def get_use_claude_agent_sdk(cls, v):
+        """Get use_claude_agent_sdk from environment if not provided."""
+        # Check environment variable - default to True if not set
+        env_val = os.getenv("CHAT_USE_CLAUDE_AGENT_SDK", "").lower()
+        if env_val:
+            return env_val in ("true", "1", "yes", "on")
+        # Default to True (SDK enabled by default)
+        return True if v is None else v
 
     # Prompt paths for different contexts
     PROMPT_PATHS: dict[str, str] = {

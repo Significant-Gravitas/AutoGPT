@@ -8,7 +8,7 @@ which provides access to LinkedIn profile data and related information.
 import logging
 from typing import Optional
 
-from backend.data.block import (
+from backend.blocks._base import (
     Block,
     BlockCategory,
     BlockOutput,

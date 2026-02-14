@@ -226,7 +226,7 @@ function renderMarkdown(
           table: ({ children, ...props }) => (
             <div className="my-4 overflow-x-auto">
               <table
-                className="min-w-full divide-y divide-gray-200 rounded-lg border border-gray-200 dark:divide-gray-700 dark:border-gray-700"
+                className="min-w-full divide-y divide-gray-200 border-y border-gray-200 dark:divide-gray-700 dark:border-gray-700"
                 {...props}
               >
                 {children}
@@ -235,7 +235,7 @@ function renderMarkdown(
           ),
           th: ({ children, ...props }) => (
             <th
-              className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-700 dark:bg-gray-800 dark:text-gray-300"
+              className="bg-gray-50 px-4 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-700 dark:bg-gray-800 dark:text-gray-300"
               {...props}
             >
               {children}
@@ -243,7 +243,7 @@ function renderMarkdown(
           ),
           td: ({ children, ...props }) => (
             <td
-              className="border-t border-gray-200 px-4 py-3 text-sm text-gray-600 dark:border-gray-700 dark:text-gray-400"
+              className="border-t border-gray-200 px-4 py-3.5 text-sm text-gray-600 dark:border-gray-700 dark:text-gray-400"
               {...props}
             >
               {children}

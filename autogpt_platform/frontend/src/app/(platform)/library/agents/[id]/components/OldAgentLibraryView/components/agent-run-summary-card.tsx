@@ -1,5 +1,5 @@
 import React from "react";
-import moment from "moment";
+import { formatDistanceToNow, isPast } from "date-fns";
 
 import { cn } from "@/lib/utils";
 
@@ -118,10 +118,10 @@ export function AgentRunSummaryCard({
         {timestamp && (
           <p
             className="mt-1 text-sm font-normal text-neutral-500"
-            title={moment(timestamp).toString()}
+            title={new Date(timestamp).toString()}
           >
-            {moment(timestamp).isBefore() ? "Ran" : "Runs in"}{" "}
-            {moment(timestamp).fromNow()}
+            {isPast(timestamp) ? "Ran" : "Runs in"}{" "}
+            {formatDistanceToNow(timestamp, { addSuffix: true })}
           </p>
         )}
       </CardContent>
