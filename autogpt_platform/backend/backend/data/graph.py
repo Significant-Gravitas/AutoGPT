@@ -875,7 +875,8 @@ class GraphModel(Graph, GraphMeta):
         This removes links that:
         - Reference non-existent source or sink nodes
         - Reference invalid block IDs
-        - Reference invalid pin names
+
+        Note: Pin name validation is handled separately in _validate_graph_structure.
 
         Returns the number of links pruned.
         """
