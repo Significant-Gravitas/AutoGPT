@@ -9,10 +9,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from backend.api.features.chat.tools.agent_generator import core
-from backend.api.features.chat.tools.agent_generator.core import (
-    AgentGeneratorNotConfiguredError,
-)
+from backend.copilot.tools.agent_generator import core
+from backend.copilot.tools.agent_generator.core import AgentGeneratorNotConfiguredError
 
 
 class TestServiceNotConfigured:

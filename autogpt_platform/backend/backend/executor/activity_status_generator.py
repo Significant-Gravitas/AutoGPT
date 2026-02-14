@@ -22,7 +22,7 @@ from backend.util.settings import Settings
 from backend.util.truncate import truncate
 
 if TYPE_CHECKING:
-    from backend.executor import DatabaseManagerAsyncClient
+    from backend.data.db_manager import DatabaseManagerAsyncClient
 
 logger = logging.getLogger(__name__)
 

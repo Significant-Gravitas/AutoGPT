@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
-from backend.api.features.chat.tools.agent_generator import service
+from backend.copilot.tools.agent_generator import service
 
 
 class TestServiceConfiguration:

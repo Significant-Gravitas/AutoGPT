@@ -93,7 +93,10 @@ from .utils import (
 )
 
 if TYPE_CHECKING:
-    from backend.executor import DatabaseManagerAsyncClient, DatabaseManagerClient
+    from backend.data.db_manager import (
+        DatabaseManagerAsyncClient,
+        DatabaseManagerClient,
+    )
 
 
 _logger = logging.getLogger(__name__)
