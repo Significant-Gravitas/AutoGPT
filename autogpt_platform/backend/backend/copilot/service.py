@@ -428,12 +428,16 @@ async def stream_chat_completion(
             f"Session {session_id} not found. Please create a new session first."
         )
 
-    if message:
-        session.messages.append(
-            ChatMessage(
-                role="user" if is_user_message else "assistant", content=message
-            )
+    # Append the new message to the session if it's not already there
+    new_message_role = "user" if is_user_message else "assistant"
+    if message and (
+        len(session.messages) == 0
+        or not (
+            session.messages[-1].role == new_message_role
+            and session.messages[-1].content == message
         )
+    ):
+        session.messages.append(ChatMessage(role=new_message_role, content=message))
         logger.info(
             f"Appended message (role={'user' if is_user_message else 'assistant'}), "
             f"new message_count={len(session.messages)}"
