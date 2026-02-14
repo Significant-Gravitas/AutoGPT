@@ -13,6 +13,7 @@ import { Graph } from "@/app/api/__generated__/models/graph";
 import { useNodeStore } from "../stores/nodeStore";
 import { useEdgeStore } from "../stores/edgeStore";
 import { graphsEquivalent } from "../components/NewControlPanel/NewSaveControl/helpers";
+import { linkToCustomEdge } from "../components/helper";
 import { useGraphStore } from "../stores/graphStore";
 import { useShallow } from "zustand/react/shallow";
 import {
@@ -20,6 +21,18 @@ import {
   clearTempFlowId,
   getTempFlowId,
 } from "@/services/builder-draft/draft-service";
+
+/**
+ * Sync the edge store with the authoritative backend state.
+ * This ensures the frontend matches what the backend accepted after save.
+ */
+function syncEdgesWithBackend(links: GraphModel["links"]) {
+  if (links !== undefined) {
+    // Replace all edges with the authoritative backend state
+    const newEdges = links.map(linkToCustomEdge);
+    useEdgeStore.getState().setEdges(newEdges);
+  }
+}
 
 export type SaveGraphOptions = {
   showToast?: boolean;
@@ -64,6 +77,9 @@ export const useSaveGraph = ({
             flowVersion: data.version,
           });
 
+          // Sync edge store with authoritative backend state
+          syncEdgesWithBackend(data.links);
+
           const tempFlowId = getTempFlowId();
           if (tempFlowId) {
             await draftService.deleteDraft(tempFlowId);
@@ -100,6 +116,9 @@ export const useSaveGraph = ({
             flowID: data.id,
             flowVersion: data.version,
           });
+
+          // Sync edge store with authoritative backend state
+          syncEdgesWithBackend(data.links);
 
           // Clear the draft for this flow after successful save
           if (data.id) {

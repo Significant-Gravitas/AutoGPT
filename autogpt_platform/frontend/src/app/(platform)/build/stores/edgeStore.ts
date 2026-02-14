@@ -120,10 +120,33 @@ export const useEdgeStore = create<EdgeStore>((set, get) => ({
   isOutputConnected: (nodeId, handle) =>
     get().edges.some((e) => e.source === nodeId && e.sourceHandle === handle),
 
-  getBackendLinks: () => get().edges.map(customEdgeToLink),
+  getBackendLinks: () => {
+    // Filter out edges referencing non-existent nodes before converting to links
+    const nodeIds = new Set(useNodeStore.getState().nodes.map((n) => n.id));
+    const validEdges = get().edges.filter((edge) => {
+      const isValid = nodeIds.has(edge.source) && nodeIds.has(edge.target);
+      if (!isValid) {
+        console.warn(
+          `[EdgeStore] Filtering out invalid edge during save: source=${edge.source}, target=${edge.target}`,
+        );
+      }
+      return isValid;
+    });
+    return validEdges.map(customEdgeToLink);
+  },
 
   addLinks: (links) => {
+    // Get current node IDs to validate links
+    const nodeIds = new Set(useNodeStore.getState().nodes.map((n) => n.id));
+
     links.forEach((link) => {
+      // Skip invalid links (orphan edges referencing non-existent nodes)
+      if (!nodeIds.has(link.source_id) || !nodeIds.has(link.sink_id)) {
+        console.warn(
+          `[EdgeStore] Skipping invalid link: source=${link.source_id}, sink=${link.sink_id} - node(s) not found`,
+        );
+        return;
+      }
       get().addEdge(linkToCustomEdge(link));
     });
   },
