@@ -1,7 +1,7 @@
 import enum
 from typing import Any
 
-from backend.data.block import (
+from backend.blocks._base import (
     Block,
     BlockCategory,
     BlockOutput,
@@ -126,6 +126,7 @@ class PrintToConsoleBlock(Block):
             output_schema=PrintToConsoleBlock.Output,
             test_input={"text": "Hello, World!"},
             is_sensitive_action=True,
+            disabled=True,  # Disabled per Nick Tindle's request (OPEN-3000)
             test_output=[
                 ("output", "Hello, World!"),
                 ("status", "printed"),

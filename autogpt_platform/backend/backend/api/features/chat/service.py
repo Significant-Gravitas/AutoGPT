@@ -245,12 +245,16 @@ async def _get_system_prompt_template(context: str) -> str:
     return DEFAULT_SYSTEM_PROMPT.format(users_information=context)
 
 
-async def _build_system_prompt(user_id: str | None) -> tuple[str, Any]:
+async def _build_system_prompt(
+    user_id: str | None, has_conversation_history: bool = False
+) -> tuple[str, Any]:
     """Build the full system prompt including business understanding if available.
 
     Args:
-        user_id: The user ID for fetching business understanding
-                     If "default" and this is the user's first session, will use "onboarding" instead.
+        user_id: The user ID for fetching business understanding.
+        has_conversation_history: Whether there's existing conversation history.
+            If True, we don't tell the model to greet/introduce (since they're
+            already in a conversation).
 
     Returns:
         Tuple of (compiled prompt string, business understanding object)
@@ -266,6 +270,8 @@ async def _build_system_prompt(user_id: str | None) -> tuple[str, Any]:
 
     if understanding:
         context = format_understanding_for_prompt(understanding)
+    elif has_conversation_history:
+        context = "No prior understanding saved yet. Continue the existing conversation naturally."
     else:
         context = "This is the first time you are meeting the user. Greet them and introduce them to the platform"
 
@@ -374,7 +380,6 @@ async def stream_chat_completion(
 
     Raises:
         NotFoundError: If session_id is invalid
-        ValueError: If max_context_messages is exceeded
 
     """
     completion_start = time.monotonic()
@@ -459,8 +464,9 @@ async def stream_chat_completion(
 
     # Generate title for new sessions on first user message (non-blocking)
     # Check: is_user_message, no title yet, and this is the first user message
-    if is_user_message and message and not session.title:
-        user_messages = [m for m in session.messages if m.role == "user"]
+    user_messages = [m for m in session.messages if m.role == "user"]
+    first_user_msg = message or (user_messages[0].content if user_messages else None)
+    if is_user_message and first_user_msg and not session.title:
         if len(user_messages) == 1:
             # First user message - generate title in background
             import asyncio
@@ -468,7 +474,7 @@ async def stream_chat_completion(
             # Capture only the values we need (not the session object) to avoid
             # stale data issues when the main flow modifies the session
             captured_session_id = session_id
-            captured_message = message
+            captured_message = first_user_msg
             captured_user_id = user_id
 
             async def _update_title():
@@ -800,9 +806,13 @@ async def stream_chat_completion(
         # Build the messages list in the correct order
         messages_to_save: list[ChatMessage] = []
 
-        # Add assistant message with tool_calls if any
+        # Add assistant message with tool_calls if any.
+        # Use extend (not assign) to preserve tool_calls already added by
+        # _yield_tool_call for long-running tools.
         if accumulated_tool_calls:
-            assistant_response.tool_calls = accumulated_tool_calls
+            if not assistant_response.tool_calls:
+                assistant_response.tool_calls = []
+            assistant_response.tool_calls.extend(accumulated_tool_calls)
             logger.info(
                 f"Added {len(accumulated_tool_calls)} tool calls to assistant message"
             )
@@ -1233,7 +1243,7 @@ async def _stream_chat_chunks(
 
                 total_time = (time_module.perf_counter() - stream_chunks_start) * 1000
                 logger.info(
-                    f"[TIMING] _stream_chat_chunks COMPLETED in {total_time/1000:.1f}s; "
+                    f"[TIMING] _stream_chat_chunks COMPLETED in {total_time / 1000:.1f}s; "
                     f"session={session.session_id}, user={session.user_id}",
                     extra={"json_fields": {**log_meta, "total_time_ms": total_time}},
                 )
@@ -1241,6 +1251,7 @@ async def _stream_chat_chunks(
                 return
             except Exception as e:
                 last_error = e
+
                 if _is_retryable_error(e) and retry_count < MAX_RETRIES:
                     retry_count += 1
                     # Calculate delay with exponential backoff
@@ -1256,12 +1267,27 @@ async def _stream_chat_chunks(
                     continue  # Retry the stream
                 else:
                     # Non-retryable error or max retries exceeded
-                    logger.error(
-                        f"Error in stream (not retrying): {e!s}",
-                        exc_info=True,
+                    _log_api_error(
+                        error=e,
+                        context="stream (not retrying)",
+                        session_id=session.session_id if session else None,
+                        message_count=len(messages) if messages else None,
+                        model=model,
+                        retry_count=retry_count,
                     )
                     error_code = None
                     error_text = str(e)
+
+                    error_details = _extract_api_error_details(e)
+                    if error_details.get("response_body"):
+                        body = error_details["response_body"]
+                        if isinstance(body, dict):
+                            err = body.get("error")
+                            if isinstance(err, dict) and err.get("message"):
+                                error_text = err["message"]
+                            elif body.get("message"):
+                                error_text = body["message"]
+
                     if _is_region_blocked_error(e):
                         error_code = "MODEL_NOT_AVAILABLE_REGION"
                         error_text = (
@@ -1278,9 +1304,13 @@ async def _stream_chat_chunks(
 
         # If we exit the retry loop without returning, it means we exhausted retries
         if last_error:
-            logger.error(
-                f"Max retries ({MAX_RETRIES}) exceeded. Last error: {last_error!s}",
-                exc_info=True,
+            _log_api_error(
+                error=last_error,
+                context=f"stream (max retries {MAX_RETRIES} exceeded)",
+                session_id=session.session_id if session else None,
+                message_count=len(messages) if messages else None,
+                model=model,
+                retry_count=MAX_RETRIES,
             )
             yield StreamError(errorText=f"Max retries exceeded: {last_error!s}")
             yield StreamFinish()
@@ -1404,13 +1434,9 @@ async def _yield_tool_call(
                 operation_id=operation_id,
             )
 
-            # Save assistant message with tool_call FIRST (required by LLM)
-            assistant_message = ChatMessage(
-                role="assistant",
-                content="",
-                tool_calls=[tool_calls[yield_idx]],
-            )
-            session.messages.append(assistant_message)
+            # Attach the tool_call to the current turn's assistant message
+            # (or create one if this is a tool-only response with no text).
+            session.add_tool_call_to_current_turn(tool_calls[yield_idx])
 
             # Then save pending tool result
             pending_message = ChatMessage(
@@ -1857,6 +1883,7 @@ async def _generate_llm_continuation(
                 break  # Success, exit retry loop
             except Exception as e:
                 last_error = e
+
                 if _is_retryable_error(e) and retry_count < MAX_RETRIES:
                     retry_count += 1
                     delay = min(
@@ -1870,17 +1897,25 @@ async def _generate_llm_continuation(
                     await asyncio.sleep(delay)
                     continue
                 else:
-                    # Non-retryable error - log and exit gracefully
-                    logger.error(
-                        f"Non-retryable error in LLM continuation: {e!s}",
-                        exc_info=True,
+                    # Non-retryable error - log details and exit gracefully
+                    _log_api_error(
+                        error=e,
+                        context="LLM continuation (not retrying)",
+                        session_id=session_id,
+                        message_count=len(messages) if messages else None,
+                        model=config.model,
+                        retry_count=retry_count,
                     )
                     return
 
         if last_error:
-            logger.error(
-                f"Max retries ({MAX_RETRIES}) exceeded for LLM continuation. "
-                f"Last error: {last_error!s}"
+            _log_api_error(
+                error=last_error,
+                context=f"LLM continuation (max retries {MAX_RETRIES} exceeded)",
+                session_id=session_id,
+                message_count=len(messages) if messages else None,
+                model=config.model,
+                retry_count=MAX_RETRIES,
             )
             return
 
@@ -1918,6 +1953,91 @@ async def _generate_llm_continuation(
 
     except Exception as e:
         logger.error(f"Failed to generate LLM continuation: {e}", exc_info=True)
+
+
+def _log_api_error(
+    error: Exception,
+    context: str,
+    session_id: str | None = None,
+    message_count: int | None = None,
+    model: str | None = None,
+    retry_count: int = 0,
+) -> None:
+    """Log detailed API error information for debugging."""
+    details = _extract_api_error_details(error)
+    details["context"] = context
+    details["session_id"] = session_id
+    details["message_count"] = message_count
+    details["model"] = model
+    details["retry_count"] = retry_count
+
+    if isinstance(error, RateLimitError):
+        logger.warning(f"Rate limit error in {context}: {details}", exc_info=error)
+    elif isinstance(error, APIConnectionError):
+        logger.warning(f"API connection error in {context}: {details}", exc_info=error)
+    elif isinstance(error, APIStatusError) and error.status_code >= 500:
+        logger.error(f"API server error (5xx) in {context}: {details}", exc_info=error)
+    else:
+        logger.error(f"API error in {context}: {details}", exc_info=error)
+
+
+def _extract_api_error_details(error: Exception) -> dict[str, Any]:
+    """Extract detailed information from OpenAI/OpenRouter API errors."""
+    error_msg = str(error)
+    details: dict[str, Any] = {
+        "error_type": type(error).__name__,
+        "error_message": error_msg[:500] + "..." if len(error_msg) > 500 else error_msg,
+    }
+
+    if hasattr(error, "code"):
+        details["code"] = getattr(error, "code", None)
+    if hasattr(error, "param"):
+        details["param"] = getattr(error, "param", None)
+
+    if isinstance(error, APIStatusError):
+        details["status_code"] = error.status_code
+        details["request_id"] = getattr(error, "request_id", None)
+
+        if hasattr(error, "body") and error.body:
+            details["response_body"] = _sanitize_error_body(error.body)
+
+        if hasattr(error, "response") and error.response:
+            headers = error.response.headers
+            details["openrouter_provider"] = headers.get("x-openrouter-provider")
+            details["openrouter_model"] = headers.get("x-openrouter-model")
+            details["retry_after"] = headers.get("retry-after")
+            details["rate_limit_remaining"] = headers.get("x-ratelimit-remaining")
+
+    return details
+
+
+def _sanitize_error_body(
+    body: Any, max_length: int = 2000
+) -> dict[str, Any] | str | None:
+    """Extract only safe fields from error response body to avoid logging sensitive data."""
+    if not isinstance(body, dict):
+        # Non-dict bodies (e.g., HTML error pages) - return truncated string
+        if body is not None:
+            body_str = str(body)
+            if len(body_str) > max_length:
+                return body_str[:max_length] + "...[truncated]"
+            return body_str
+        return None
+
+    safe_fields = ("message", "type", "code", "param", "error")
+    sanitized: dict[str, Any] = {}
+
+    for field in safe_fields:
+        if field in body:
+            value = body[field]
+            if field == "error" and isinstance(value, dict):
+                sanitized[field] = _sanitize_error_body(value, max_length)
+            elif isinstance(value, str) and len(value) > max_length:
+                sanitized[field] = value[:max_length] + "...[truncated]"
+            else:
+                sanitized[field] = value
+
+    return sanitized if sanitized else None
 
 
 async def _generate_llm_continuation_with_streaming(

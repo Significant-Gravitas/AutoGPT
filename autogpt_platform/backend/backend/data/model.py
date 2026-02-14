@@ -29,6 +29,7 @@ from pydantic import (
     GetCoreSchemaHandler,
     SecretStr,
     field_serializer,
+    model_validator,
 )
 from pydantic_core import (
     CoreSchema,
@@ -166,6 +167,9 @@ if TYPE_CHECKING:
 
 T = TypeVar("T")
 logger = logging.getLogger(__name__)
+
+
+GraphInput = dict[str, Any]
 
 
 class BlockSecret:
@@ -499,6 +503,25 @@ class CredentialsMetaInput(BaseModel, Generic[CP, CT]):
     provider: CP
     type: CT
 
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_legacy_provider(cls, data: Any) -> Any:
+        """Fix ``ProviderName.X`` format from Python 3.13 ``str(Enum)`` bug.
+
+        Python 3.13 changed ``str(StrEnum)`` to return ``"ClassName.MEMBER"``
+        instead of the plain value.  Old stored credential references may have
+        ``provider: "ProviderName.MCP"`` instead of ``"mcp"``.
+        """
+        if isinstance(data, dict):
+            prov = data.get("provider", "")
+            if isinstance(prov, str) and prov.startswith("ProviderName."):
+                member = prov.removeprefix("ProviderName.")
+                try:
+                    data = {**data, "provider": ProviderName[member].value}
+                except KeyError:
+                    pass
+        return data
+
     @classmethod
     def allowed_providers(cls) -> tuple[ProviderName, ...] | None:
         return get_args(cls.model_fields["provider"].annotation)
@@ -603,11 +626,18 @@ class CredentialsFieldInfo(BaseModel, Generic[CP, CT]):
         ] = defaultdict(list)
 
         for field, key in fields:
-            if field.provider == frozenset([ProviderName.HTTP]):
-                # HTTP host-scoped credentials can have different hosts that reqires different credential sets.
-                # Group by host extracted from the URL
+            if (
+                field.discriminator
+                and not field.discriminator_mapping
+                and field.discriminator_values
+            ):
+                # URL-based discrimination (e.g. HTTP host-scoped, MCP server URL):
+                # Each unique host gets its own credential entry.
+                provider_prefix = next(iter(field.provider))
+                # Use .value for enum types to get the plain string (e.g. "mcp" not "ProviderName.MCP")
+                prefix_str = getattr(provider_prefix, "value", str(provider_prefix))
                 providers = frozenset(
-                    [cast(CP, "http")]
+                    [cast(CP, prefix_str)]
                     + [
                         cast(CP, parse_url(str(value)).netloc)
                         for value in field.discriminator_values
