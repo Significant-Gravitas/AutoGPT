@@ -3,7 +3,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { scrollbarStyles } from "@/components/styles/scrollbars";
 import { cn } from "@/lib/utils";
-import { PlusIcon, SpinnerGapIcon, X } from "@phosphor-icons/react";
+import { PlusIcon, SpinnerGapIcon, TrashIcon, X } from "@phosphor-icons/react";
 import { Drawer } from "vaul";
 
 interface Props {
@@ -11,10 +11,15 @@ interface Props {
   sessions: SessionSummaryResponse[];
   currentSessionId: string | null;
   isLoading: boolean;
+  isDeleting?: boolean;
   onSelectSession: (sessionId: string) => void;
   onNewChat: () => void;
   onClose: () => void;
   onOpenChange: (open: boolean) => void;
+  onDeleteSession?: (
+    sessionId: string,
+    title: string | null | undefined,
+  ) => void;
 }
 
 function formatDate(dateString: string) {
@@ -47,10 +52,12 @@ export function MobileDrawer({
   sessions,
   currentSessionId,
   isLoading,
+  isDeleting,
   onSelectSession,
   onNewChat,
   onClose,
   onOpenChange,
+  onDeleteSession,
 }: Props) {
   return (
     <Drawer.Root open={isOpen} onOpenChange={onOpenChange} direction="left">
@@ -88,35 +95,52 @@ export function MobileDrawer({
               </p>
             ) : (
               sessions.map((session) => (
-                <button
+                <div
                   key={session.id}
-                  onClick={() => onSelectSession(session.id)}
                   className={cn(
-                    "w-full rounded-lg px-3 py-2.5 text-left transition-colors",
+                    "group relative flex w-full items-center rounded-lg transition-colors",
                     session.id === currentSessionId
                       ? "bg-zinc-100"
                       : "hover:bg-zinc-50",
                   )}
                 >
-                  <div className="flex min-w-0 max-w-full flex-col overflow-hidden">
-                    <div className="min-w-0 max-w-full">
-                      <Text
-                        variant="body"
-                        className={cn(
-                          "truncate font-normal",
-                          session.id === currentSessionId
-                            ? "text-zinc-600"
-                            : "text-zinc-800",
-                        )}
-                      >
-                        {session.title || "Untitled chat"}
+                  <button
+                    onClick={() => onSelectSession(session.id)}
+                    className="flex-1 px-3 py-2.5 text-left"
+                  >
+                    <div className="flex min-w-0 max-w-full flex-col overflow-hidden pr-8">
+                      <div className="min-w-0 max-w-full">
+                        <Text
+                          variant="body"
+                          className={cn(
+                            "truncate font-normal",
+                            session.id === currentSessionId
+                              ? "text-zinc-600"
+                              : "text-zinc-800",
+                          )}
+                        >
+                          {session.title || "Untitled chat"}
+                        </Text>
+                      </div>
+                      <Text variant="small" className="text-neutral-400">
+                        {formatDate(session.updated_at)}
                       </Text>
                     </div>
-                    <Text variant="small" className="text-neutral-400">
-                      {formatDate(session.updated_at)}
-                    </Text>
-                  </div>
-                </button>
+                  </button>
+                  {onDeleteSession && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDeleteSession(session.id, session.title);
+                      }}
+                      disabled={isDeleting}
+                      className="absolute right-2 rounded p-1.5 text-zinc-400 transition-all hover:bg-red-100 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50"
+                      aria-label="Delete chat"
+                    >
+                      <TrashIcon className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
               ))
             )}
           </div>

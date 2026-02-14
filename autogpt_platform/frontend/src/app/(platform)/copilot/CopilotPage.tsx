@@ -1,6 +1,8 @@
 "use client";
 
 import { SidebarProvider } from "@/components/ui/sidebar";
+// TODO: Replace with modern Dialog component when available
+import DeleteConfirmDialog from "@/components/__legacy__/delete-confirm-dialog";
 import { ChatContainer } from "./components/ChatContainer/ChatContainer";
 import { ChatSidebar } from "./components/ChatSidebar/ChatSidebar";
 import { MobileDrawer } from "./components/MobileDrawer/MobileDrawer";
@@ -31,6 +33,12 @@ export function CopilotPage() {
     handleDrawerOpenChange,
     handleSelectSession,
     handleNewChat,
+    // Delete functionality
+    sessionToDelete,
+    isDeleting,
+    handleDeleteClick,
+    handleConfirmDelete,
+    handleCancelDelete,
   } = useCopilotPage();
 
   if (isUserLoading || !isLoggedIn) {
@@ -64,16 +72,27 @@ export function CopilotPage() {
         </div>
       </div>
       {isMobile && (
-        <MobileDrawer
-          isOpen={isDrawerOpen}
-          sessions={sessions}
-          currentSessionId={sessionId}
-          isLoading={isLoadingSessions}
-          onSelectSession={handleSelectSession}
-          onNewChat={handleNewChat}
-          onClose={handleCloseDrawer}
-          onOpenChange={handleDrawerOpenChange}
-        />
+        <>
+          <MobileDrawer
+            isOpen={isDrawerOpen}
+            sessions={sessions}
+            currentSessionId={sessionId}
+            isLoading={isLoadingSessions}
+            isDeleting={isDeleting}
+            onSelectSession={handleSelectSession}
+            onNewChat={handleNewChat}
+            onClose={handleCloseDrawer}
+            onOpenChange={handleDrawerOpenChange}
+            onDeleteSession={handleDeleteClick}
+          />
+          <DeleteConfirmDialog
+            entityType="chat"
+            entityName={sessionToDelete?.title || "Untitled chat"}
+            open={!!sessionToDelete}
+            onOpenChange={(open) => !open && handleCancelDelete()}
+            onDoDelete={handleConfirmDelete}
+          />
+        </>
       )}
     </SidebarProvider>
   );
