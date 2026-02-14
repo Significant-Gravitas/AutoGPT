@@ -139,16 +139,45 @@ export const useEdgeStore = create<EdgeStore>((set, get) => ({
     // Get current node IDs to validate links
     const nodeIds = new Set(useNodeStore.getState().nodes.map((n) => n.id));
 
-    links.forEach((link) => {
+    // Convert and filter links in one pass, avoiding individual addEdge calls
+    // which would push to history for each edge (causing history pollution)
+    const newEdges: CustomEdge[] = [];
+    const existingEdges = get().edges;
+
+    for (const link of links) {
       // Skip invalid links (orphan edges referencing non-existent nodes)
       if (!nodeIds.has(link.source_id) || !nodeIds.has(link.sink_id)) {
         console.warn(
           `[EdgeStore] Skipping invalid link: source=${link.source_id}, sink=${link.sink_id} - node(s) not found`,
         );
-        return;
+        continue;
       }
-      get().addEdge(linkToCustomEdge(link));
-    });
+
+      const edge = linkToCustomEdge(link);
+
+      // Skip if edge already exists
+      const exists = existingEdges.some(
+        (e) =>
+          e.source === edge.source &&
+          e.target === edge.target &&
+          e.sourceHandle === edge.sourceHandle &&
+          e.targetHandle === edge.targetHandle,
+      );
+      if (!exists) {
+        newEdges.push(edge);
+      }
+    }
+
+    if (newEdges.length > 0) {
+      // Bulk add all edges at once, pushing to history only once
+      const prevState = {
+        nodes: useNodeStore.getState().nodes,
+        edges: existingEdges,
+      };
+
+      set((state) => ({ edges: [...state.edges, ...newEdges] }));
+      useHistoryStore.getState().pushState(prevState);
+    }
   },
 
   getAllHandleIdsOfANode: (nodeId) =>
