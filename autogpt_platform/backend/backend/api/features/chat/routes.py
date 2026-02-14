@@ -23,6 +23,7 @@ from .model import (
     ChatSession,
     append_and_save_message,
     create_chat_session,
+    delete_chat_session,
     get_chat_session,
     get_user_sessions,
 )
@@ -209,6 +210,42 @@ async def create_session(
         created_at=session.started_at.isoformat(),
         user_id=session.user_id,
     )
+
+
+@router.delete(
+    "/sessions/{session_id}",
+    dependencies=[Security(auth.requires_user)],
+    status_code=204,
+)
+async def delete_session(
+    session_id: str,
+    user_id: Annotated[str, Security(auth.get_user_id)],
+) -> Response:
+    """
+    Delete a chat session.
+
+    Permanently removes a chat session and all its messages.
+    Only the owner can delete their sessions.
+
+    Args:
+        session_id: The session ID to delete.
+        user_id: The authenticated user's ID.
+
+    Returns:
+        204 No Content on success.
+
+    Raises:
+        HTTPException: 404 if session not found or not owned by user.
+    """
+    deleted = await delete_chat_session(session_id, user_id)
+
+    if not deleted:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Session {session_id} not found or access denied",
+        )
+
+    return Response(status_code=204)
 
 
 @router.get(
