@@ -1,5 +1,5 @@
 "use client";
-import moment from "moment";
+import { format, formatDistanceToNow, formatDistanceStrict } from "date-fns";
 import React, { useCallback, useMemo, useEffect } from "react";
 
 import {
@@ -90,13 +90,15 @@ export function AgentRunDetailsView({
       },
       {
         label: "Started",
-        value: `${moment(run.started_at).fromNow()}, ${moment(run.started_at).format("HH:mm")}`,
+        value: run.started_at
+          ? `${formatDistanceToNow(run.started_at, { addSuffix: true })}, ${format(run.started_at, "HH:mm")}`
+          : "—",
       },
       ...(run.stats
         ? [
             {
               label: "Duration",
-              value: moment.duration(run.stats.duration, "seconds").humanize(),
+              value: formatDistanceStrict(0, run.stats.duration * 1000),
             },
             { label: "Steps", value: run.stats.node_exec_count },
             { label: "Cost", value: formatCredits(run.stats.cost) },

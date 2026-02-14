@@ -10,7 +10,7 @@ import Link from "next/link";
 import { Button, buttonVariants } from "@/components/__legacy__/ui/button";
 import { IconSquare } from "@/components/__legacy__/ui/icons";
 import { ExitIcon, Pencil2Icon } from "@radix-ui/react-icons";
-import moment from "moment/moment";
+import { format } from "date-fns";
 import { FlowRunStatusBadge } from "@/app/(platform)/monitoring/components/FlowRunStatusBadge";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import RunnerOutputUI, {
@@ -111,11 +111,15 @@ export const FlowRunInfo: React.FC<
           </div>
           <p>
             <strong>Started:</strong>{" "}
-            {moment(execution.started_at).format("YYYY-MM-DD HH:mm:ss")}
+            {execution.started_at
+              ? format(execution.started_at, "yyyy-MM-dd HH:mm:ss")
+              : "—"}
           </p>
           <p>
             <strong>Finished:</strong>{" "}
-            {moment(execution.ended_at).format("YYYY-MM-DD HH:mm:ss")}
+            {execution.ended_at
+              ? format(execution.ended_at, "yyyy-MM-dd HH:mm:ss")
+              : "—"}
           </p>
           {execution.stats && (
             <p>

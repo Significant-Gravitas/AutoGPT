@@ -7,8 +7,7 @@ from typing import TYPE_CHECKING, Any
 from pydantic import BaseModel
 
 import backend.blocks.llm as llm
-from backend.blocks.agent import AgentExecutorBlock
-from backend.data.block import (
+from backend.blocks._base import (
     Block,
     BlockCategory,
     BlockInput,
@@ -17,6 +16,7 @@ from backend.data.block import (
     BlockSchemaOutput,
     BlockType,
 )
+from backend.blocks.agent import AgentExecutorBlock
 from backend.data.dynamic_fields import (
     extract_base_field_name,
     get_dynamic_field_description,

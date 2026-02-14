@@ -10,7 +10,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import moment from "moment/moment";
+import { differenceInHours, format } from "date-fns";
 import { Card } from "@/components/__legacy__/ui/card";
 import { cn, hashString } from "@/lib/utils";
 import React from "react";
@@ -43,11 +43,11 @@ export const FlowRunsTimeline = ({
         ]}
         allowDataOverflow={true}
         tickFormatter={(unixTime) => {
-          const now = moment();
-          const time = moment(unixTime);
-          return now.diff(time, "hours") < 24
-            ? time.format("HH:mm")
-            : time.format("YYYY-MM-DD HH:mm");
+          const now = new Date();
+          const time = new Date(unixTime);
+          return differenceInHours(now, time) < 24
+            ? format(time, "HH:mm")
+            : format(time, "yyyy-MM-dd HH:mm");
         }}
         name="Time"
         scale="time"
@@ -79,7 +79,9 @@ export const FlowRunsTimeline = ({
                 </div>
                 <p>
                   <strong>Started:</strong>{" "}
-                  {moment(data.started_at).format("YYYY-MM-DD HH:mm:ss")}
+                  {data.started_at
+                    ? format(data.started_at, "yyyy-MM-dd HH:mm:ss")
+                    : "—"}
                 </p>
                 {data.stats && (
                   <p>

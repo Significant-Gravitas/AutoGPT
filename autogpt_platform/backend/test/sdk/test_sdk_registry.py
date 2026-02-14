@@ -377,7 +377,7 @@ class TestProviderBuilder:
 
     def test_provider_builder_with_base_cost(self):
         """Test building a provider with base costs."""
-        from backend.data.block import BlockCostType
+        from backend.blocks._base import BlockCostType
 
         provider = (
             ProviderBuilder("cost_test")
@@ -418,7 +418,7 @@ class TestProviderBuilder:
 
     def test_provider_builder_complete_example(self):
         """Test building a complete provider with all features."""
-        from backend.data.block import BlockCostType
+        from backend.blocks._base import BlockCostType
 
         class TestOAuth(BaseOAuthHandler):
             PROVIDER_NAME = ProviderName.GITHUB

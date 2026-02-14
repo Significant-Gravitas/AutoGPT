@@ -30,7 +30,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/__legacy__/ui/table";
-import moment from "moment/moment";
+import { formatDistanceToNow } from "date-fns";
 import { DialogTitle } from "@/components/__legacy__/ui/dialog";
 import { AgentImportForm } from "./AgentImportForm";
 
@@ -161,8 +161,12 @@ export const AgentFlowList = ({
                     (!lastRun ? (
                       <TableCell />
                     ) : (
-                      <TableCell title={moment(lastRun.started_at).toString()}>
-                        {moment(lastRun.started_at).fromNow()}
+                      <TableCell title={lastRun.started_at?.toString() ?? ""}>
+                        {lastRun.started_at
+                          ? formatDistanceToNow(lastRun.started_at, {
+                              addSuffix: true,
+                            })
+                          : "—"}
                       </TableCell>
                     ))}
                 </TableRow>

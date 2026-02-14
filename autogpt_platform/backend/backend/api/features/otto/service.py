@@ -5,8 +5,8 @@ from typing import Optional
 import aiohttp
 from fastapi import HTTPException
 
+from backend.blocks import get_block
 from backend.data import graph as graph_db
-from backend.data.block import get_block
 from backend.util.settings import Settings
 
 from .models import ApiResponse, ChatRequest, GraphData
