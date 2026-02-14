@@ -56,7 +56,19 @@ export function CopilotPage() {
     >
       {!isMobile && <ChatSidebar />}
       <div className="relative flex h-full w-full flex-col overflow-hidden bg-[#f8f8f9] px-0">
-        {isMobile && <MobileHeader onOpenDrawer={handleOpenDrawer} />}
+        {isMobile && (
+          <MobileHeader
+            onOpenDrawer={handleOpenDrawer}
+            showDelete={!!sessionId}
+            isDeleting={isDeleting}
+            onDelete={() => {
+              const session = sessions.find((s) => s.id === sessionId);
+              if (session) {
+                handleDeleteClick(session.id, session.title);
+              }
+            }}
+          />
+        )}
         <div className="flex-1 overflow-hidden">
           <ChatContainer
             messages={messages}
@@ -72,27 +84,26 @@ export function CopilotPage() {
         </div>
       </div>
       {isMobile && (
-        <>
-          <MobileDrawer
-            isOpen={isDrawerOpen}
-            sessions={sessions}
-            currentSessionId={sessionId}
-            isLoading={isLoadingSessions}
-            isDeleting={isDeleting}
-            onSelectSession={handleSelectSession}
-            onNewChat={handleNewChat}
-            onClose={handleCloseDrawer}
-            onOpenChange={handleDrawerOpenChange}
-            onDeleteSession={handleDeleteClick}
-          />
-          <DeleteConfirmDialog
-            entityType="chat"
-            entityName={sessionToDelete?.title || "Untitled chat"}
-            open={!!sessionToDelete}
-            onOpenChange={(open) => !open && handleCancelDelete()}
-            onDoDelete={handleConfirmDelete}
-          />
-        </>
+        <MobileDrawer
+          isOpen={isDrawerOpen}
+          sessions={sessions}
+          currentSessionId={sessionId}
+          isLoading={isLoadingSessions}
+          onSelectSession={handleSelectSession}
+          onNewChat={handleNewChat}
+          onClose={handleCloseDrawer}
+          onOpenChange={handleDrawerOpenChange}
+        />
+      )}
+      {/* Delete confirmation dialog - rendered at top level for proper z-index on mobile */}
+      {isMobile && (
+        <DeleteConfirmDialog
+          entityType="chat"
+          entityName={sessionToDelete?.title || "Untitled chat"}
+          open={!!sessionToDelete}
+          onOpenChange={(open) => !open && handleCancelDelete()}
+          onDoDelete={handleConfirmDelete}
+        />
       )}
     </SidebarProvider>
   );
