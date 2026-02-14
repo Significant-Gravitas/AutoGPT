@@ -31,7 +31,7 @@ export function ChatSidebar() {
   const [sessionId, setSessionId] = useQueryState("sessionId", parseAsString);
   const [sessionToDelete, setSessionToDelete] = useState<{
     id: string;
-    title: string | null;
+    title: string | null | undefined;
   } | null>(null);
 
   const queryClient = useQueryClient();
@@ -79,7 +79,7 @@ export function ChatSidebar() {
   function handleDeleteClick(
     e: React.MouseEvent,
     id: string,
-    title: string | null,
+    title: string | null | undefined,
   ) {
     e.stopPropagation(); // Prevent session selection
     if (isDeleting) return; // Prevent double-click during deletion

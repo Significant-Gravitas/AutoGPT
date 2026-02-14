@@ -216,6 +216,7 @@ async def create_session(
     "/sessions/{session_id}",
     dependencies=[Security(auth.requires_user)],
     status_code=204,
+    responses={404: {"description": "Session not found or access denied"}},
 )
 async def delete_session(
     session_id: str,
