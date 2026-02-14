@@ -868,8 +868,65 @@ class GraphModel(Graph, GraphMeta):
         return node_errors
 
     @staticmethod
+    def prune_invalid_links(graph: BaseGraph) -> int:
+        """
+        Remove invalid/orphan links from the graph.
+
+        This removes links that:
+        - Reference non-existent source or sink nodes
+        - Reference invalid block IDs
+        - Reference invalid pin names
+
+        Returns the number of links pruned.
+        """
+        node_map = {v.id: v for v in graph.nodes}
+        original_count = len(graph.links)
+        valid_links = []
+
+        for link in graph.links:
+            source_node = node_map.get(link.source_id)
+            sink_node = node_map.get(link.sink_id)
+
+            # Skip if either node doesn't exist
+            if not source_node or not sink_node:
+                logger.warning(
+                    f"Pruning orphan link: source={link.source_id}, sink={link.sink_id} "
+                    f"- node(s) not found"
+                )
+                continue
+
+            # Skip if source block doesn't exist
+            source_block = get_block(source_node.block_id)
+            if not source_block:
+                logger.warning(
+                    f"Pruning link with invalid source block: {source_node.block_id}"
+                )
+                continue
+
+            # Skip if sink block doesn't exist
+            sink_block = get_block(sink_node.block_id)
+            if not sink_block:
+                logger.warning(
+                    f"Pruning link with invalid sink block: {sink_node.block_id}"
+                )
+                continue
+
+            valid_links.append(link)
+
+        graph.links = valid_links
+        pruned_count = original_count - len(valid_links)
+
+        if pruned_count > 0:
+            logger.info(f"Pruned {pruned_count} invalid link(s) from graph {graph.id}")
+
+        return pruned_count
+
+    @staticmethod
     def _validate_graph_structure(graph: BaseGraph):
         """Validate graph structure (links, connections, etc.)"""
+        # First, prune invalid links to clean up orphan edges
+        GraphModel.prune_invalid_links(graph)
+
         node_map = {v.id: v for v in graph.nodes}
 
         def is_static_output_block(nid: str) -> bool:
