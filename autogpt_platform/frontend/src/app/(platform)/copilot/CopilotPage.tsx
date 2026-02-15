@@ -1,6 +1,8 @@
 "use client";
 
 import { SidebarProvider } from "@/components/ui/sidebar";
+// TODO: Replace with modern Dialog component when available
+import DeleteConfirmDialog from "@/components/__legacy__/delete-confirm-dialog";
 import { ChatContainer } from "./components/ChatContainer/ChatContainer";
 import { ChatSidebar } from "./components/ChatSidebar/ChatSidebar";
 import { MobileDrawer } from "./components/MobileDrawer/MobileDrawer";
@@ -31,6 +33,12 @@ export function CopilotPage() {
     handleDrawerOpenChange,
     handleSelectSession,
     handleNewChat,
+    // Delete functionality
+    sessionToDelete,
+    isDeleting,
+    handleDeleteClick,
+    handleConfirmDelete,
+    handleCancelDelete,
   } = useCopilotPage();
 
   if (isUserLoading || !isLoggedIn) {
@@ -48,7 +56,19 @@ export function CopilotPage() {
     >
       {!isMobile && <ChatSidebar />}
       <div className="relative flex h-full w-full flex-col overflow-hidden bg-[#f8f8f9] px-0">
-        {isMobile && <MobileHeader onOpenDrawer={handleOpenDrawer} />}
+        {isMobile && (
+          <MobileHeader
+            onOpenDrawer={handleOpenDrawer}
+            showDelete={!!sessionId}
+            isDeleting={isDeleting}
+            onDelete={() => {
+              const session = sessions.find((s) => s.id === sessionId);
+              if (session) {
+                handleDeleteClick(session.id, session.title);
+              }
+            }}
+          />
+        )}
         <div className="flex-1 overflow-hidden">
           <ChatContainer
             messages={messages}
@@ -73,6 +93,16 @@ export function CopilotPage() {
           onNewChat={handleNewChat}
           onClose={handleCloseDrawer}
           onOpenChange={handleDrawerOpenChange}
+        />
+      )}
+      {/* Delete confirmation dialog - rendered at top level for proper z-index on mobile */}
+      {isMobile && (
+        <DeleteConfirmDialog
+          entityType="chat"
+          entityName={sessionToDelete?.title || "Untitled chat"}
+          open={!!sessionToDelete}
+          onOpenChange={(open) => !open && handleCancelDelete()}
+          onDoDelete={handleConfirmDelete}
         />
       )}
     </SidebarProvider>

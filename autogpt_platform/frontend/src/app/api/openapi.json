@@ -1151,6 +1151,36 @@
       }
     },
     "/api/chat/sessions/{session_id}": {
+      "delete": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Delete Session",
+        "description": "Delete a chat session.\n\nPermanently removes a chat session and all its messages.\nOnly the owner can delete their sessions.\n\nArgs:\n    session_id: The session ID to delete.\n    user_id: The authenticated user's ID.\n\nReturns:\n    204 No Content on success.\n\nRaises:\n    HTTPException: 404 if session not found or not owned by user.",
+        "operationId": "deleteV2DeleteSession",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "responses": {
+          "204": { "description": "Successful Response" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Session not found or access denied" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
       "get": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Get Session",
