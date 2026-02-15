@@ -133,22 +133,21 @@ export const useFlow = () => {
     }
   }, [availableGraphs, setAvailableSubGraphs]);
 
-  // adding nodes
+  // adding nodes and links together to avoid race condition
+  // Links depend on nodes existing, so we must add nodes first
   useEffect(() => {
     if (customNodes.length > 0) {
       useNodeStore.getState().setNodes([]);
       useNodeStore.getState().clearResolutionState();
       addNodes(customNodes);
-    }
-  }, [customNodes, addNodes]);
 
-  // adding links
-  useEffect(() => {
-    if (graph?.links) {
-      useEdgeStore.getState().setEdges([]);
-      addLinks(graph.links);
+      // Only add links after nodes are in the store
+      if (graph?.links) {
+        useEdgeStore.getState().setEdges([]);
+        addLinks(graph.links);
+      }
     }
-  }, [graph?.links, addLinks]);
+  }, [customNodes, graph?.links, addNodes, addLinks]);
 
   useEffect(() => {
     if (customNodes.length > 0 && graph?.links) {
