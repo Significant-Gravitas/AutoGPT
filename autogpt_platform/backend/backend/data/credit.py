@@ -1139,7 +1139,7 @@ class BetaUserCredit(UserCredit):
         self.num_user_credits_refill = num_user_credits_refill
 
     async def get_credits(self, user_id: str) -> int:
-        cur_time = self.time_now().date()
+        cur_time = self.time_now()
         balance, snapshot_time = await self._get_credits(user_id)
         if (snapshot_time.year, snapshot_time.month) == (cur_time.year, cur_time.month):
             return balance
@@ -1149,7 +1149,7 @@ class BetaUserCredit(UserCredit):
                 user_id=user_id,
                 amount=max(self.num_user_credits_refill - balance, 0),
                 transaction_type=CreditTransactionType.GRANT,
-                transaction_key=f"MONTHLY-CREDIT-TOP-UP-{cur_time}",
+                transaction_key=f"MONTHLY-CREDIT-TOP-UP-{cur_time.year}-{cur_time.month}",
                 metadata=SafeJson({"reason": "Monthly credit refill"}),
             )
             return balance
