@@ -310,7 +310,48 @@ def create_copilot_mcp_server():
 # Bash is NOT included — use the sandboxed MCP bash_exec tool instead,
 # which provides kernel-level network isolation via unshare --net.
 # Task allows spawning sub-agents (rate-limited by security hooks).
-_SDK_BUILTIN_TOOLS = ["Read", "Write", "Edit", "Glob", "Grep", "Task"]
+# WebSearch uses Brave Search via Anthropic's API — safe, no SSRF risk.
+_SDK_BUILTIN_TOOLS = ["Read", "Write", "Edit", "Glob", "Grep", "Task", "WebSearch"]
+
+# SDK built-in tools that must be explicitly blocked.
+# Bash: dangerous — agent uses mcp__copilot__bash_exec with kernel-level
+#   network isolation (unshare --net) instead.
+# WebFetch: SSRF risk — can reach internal network (localhost, 10.x, etc.).
+#   Agent uses the SSRF-protected mcp__copilot__web_fetch tool instead.
+SDK_DISALLOWED_TOOLS = ["Bash", "WebFetch"]
+
+# Tools that are blocked entirely in security hooks (defence-in-depth).
+# Includes SDK_DISALLOWED_TOOLS plus common aliases/synonyms.
+BLOCKED_TOOLS = {
+    *SDK_DISALLOWED_TOOLS,
+    "bash",
+    "shell",
+    "exec",
+    "terminal",
+    "command",
+}
+
+# Tools allowed only when their path argument stays within the SDK workspace.
+# The SDK uses these to handle oversized tool results (writes to tool-results/
+# files, then reads them back) and for workspace file operations.
+WORKSPACE_SCOPED_TOOLS = {"Read", "Write", "Edit", "Glob", "Grep"}
+
+# Dangerous patterns in tool inputs
+DANGEROUS_PATTERNS = [
+    r"sudo",
+    r"rm\s+-rf",
+    r"dd\s+if=",
+    r"/etc/passwd",
+    r"/etc/shadow",
+    r"chmod\s+777",
+    r"curl\s+.*\|.*sh",
+    r"wget\s+.*\|.*sh",
+    r"eval\s*\(",
+    r"exec\s*\(",
+    r"__import__",
+    r"os\.system",
+    r"subprocess",
+]
 
 # List of tool names for allowed_tools configuration
 # Include MCP tools, the MCP Read tool for oversized results,
