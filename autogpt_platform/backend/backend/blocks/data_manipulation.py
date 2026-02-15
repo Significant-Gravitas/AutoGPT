@@ -804,19 +804,38 @@ def _filter_none_values(items: List[Any]) -> List[Any]:
 def _compute_nesting_depth(
     items: Any, current: int = 0, max_depth: int = _MAX_FLATTEN_DEPTH
 ) -> int:
-    """Compute the maximum nesting depth of a list structure."""
+    """
+    Compute the maximum nesting depth of a list structure using iteration to avoid RecursionError.
+
+    Uses a stack-based approach to handle deeply nested structures without hitting Python's
+    recursion limit (~1000 levels).
+    """
     if not isinstance(items, list):
         return current
-    if current > max_depth:
-        return current
-    if len(items) == 0:
-        return current + 1
-    max_child_depth = current + 1
-    for item in items:
-        child_depth = _compute_nesting_depth(item, current + 1, max_depth)
-        if child_depth > max_child_depth:
-            max_child_depth = child_depth
-    return max_child_depth
+
+    # Stack contains tuples of (item, depth)
+    stack = [(items, current)]
+    max_observed_depth = current
+
+    while stack:
+        item, depth = stack.pop()
+
+        if depth > max_depth:
+            return depth
+
+        if not isinstance(item, list):
+            max_observed_depth = max(max_observed_depth, depth)
+            continue
+
+        if len(item) == 0:
+            max_observed_depth = max(max_observed_depth, depth + 1)
+            continue
+
+        # Add all children to stack with incremented depth
+        for child in item:
+            stack.append((child, depth + 1))
+
+    return max_observed_depth
 
 
 def _interleave_lists(lists: List[List[Any]]) -> List[Any]:
