@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import Awaitable, Callable
+from typing import Awaitable, Callable, Literal
 
 import aio_pika
 from prisma.enums import NotificationType
@@ -33,7 +33,12 @@ from backend.data.user import (
 from backend.notifications.email import EmailSender
 from backend.util.clients import get_database_manager_async_client
 from backend.util.logging import TruncatedLogger
-from backend.util.metrics import DiscordChannel, discord_send_alert
+from backend.util.metrics import (
+    AllQuietAlert,
+    DiscordChannel,
+    discord_send_alert,
+    send_allquiet_alert,
+)
 from backend.util.retry import continuous_retry
 from backend.util.service import (
     AppService,
@@ -416,6 +421,54 @@ class NotificationManager(AppService):
         self, content: str, channel: DiscordChannel = DiscordChannel.PLATFORM
     ):
         await discord_send_alert(content, channel)
+
+    @expose
+    async def allquiet_system_alert(self, alert: AllQuietAlert):
+        await send_allquiet_alert(alert)
+
+    @expose
+    async def system_alert(
+        self,
+        content: str,
+        channel: DiscordChannel = DiscordChannel.PLATFORM,
+        correlation_id: str | None = None,
+        severity: Literal["warning", "critical", "minor"] = "warning",
+        status: Literal["resolved", "open"] = "open",
+        extra_attributes: dict[str, str] | None = None,
+    ):
+        """Send both Discord and AllQuiet alerts for system events."""
+        # Send Discord alert
+        await discord_send_alert(content, channel)
+
+        # Send AllQuiet alert if correlation_id is provided
+        if correlation_id:
+            # Extract title from content (first line or first sentence)
+            lines = content.split("\n")
+            title = lines[0] if lines else content[:100]
+            # Remove Discord formatting from title
+            title = (
+                title.replace("**", "")
+                .replace("🚨", "")
+                .replace("⚠️", "")
+                .replace("❌", "")
+                .replace("✅", "")
+                .replace("📊", "")
+                .strip()
+            )
+
+            alert = AllQuietAlert(
+                severity=severity,
+                status=status,
+                title=title[:100],  # Limit title length
+                description=content,
+                correlation_id=correlation_id,
+                channel=channel.value,  # Pass channel as first-class field
+                extra_attributes=extra_attributes or {},
+            )
+            try:
+                await send_allquiet_alert(alert)
+            except Exception as e:
+                logger.error(f"Failed to send AllQuiet alert: {e}")
 
     async def _queue_scheduled_notification(self, event: SummaryParamsEventModel):
         """Queue a scheduled notification - exposed method for other services to call"""
@@ -1106,3 +1159,5 @@ class NotificationManagerClient(AppServiceClient):
     )
     queue_weekly_summary = endpoint_to_sync(NotificationManager.queue_weekly_summary)
     discord_system_alert = endpoint_to_sync(NotificationManager.discord_system_alert)
+    allquiet_system_alert = endpoint_to_sync(NotificationManager.allquiet_system_alert)
+    system_alert = endpoint_to_sync(NotificationManager.system_alert)
