@@ -8,6 +8,7 @@ import { useMainMarketplacePage } from "./useMainMarketplacePage";
 import { FeaturedCreators } from "../FeaturedCreators/FeaturedCreators";
 import { MainMarketplacePageLoading } from "../MainMarketplacePageLoading";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { WaitlistSection } from "../WaitlistSection/WaitlistSection";
 
 export const MainMarkeplacePage = () => {
   const { featuredAgents, topAgents, featuredCreators, isLoading, hasError } =
@@ -45,6 +46,10 @@ export const MainMarkeplacePage = () => {
         )}
         {/* 100px margin because our featured sections button are placed 40px below the container */}
         <Separator className="mb-6 mt-24" />
+
+        {/* Waitlist Section - "Help Shape What's Next" */}
+        <WaitlistSection />
+        <Separator className="mb-6 mt-12" />
 
         {topAgents && (
           <AgentsSection sectionTitle="Top Agents" agents={topAgents.agents} />
