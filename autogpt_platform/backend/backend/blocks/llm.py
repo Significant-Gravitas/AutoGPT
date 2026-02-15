@@ -531,12 +531,12 @@ class LLMResponse(BaseModel):
 
 def convert_openai_tool_fmt_to_anthropic(
     openai_tools: list[dict] | None = None,
-) -> Iterable[ToolParam] | anthropic.Omit:
+) -> Iterable[ToolParam] | anthropic.NotGiven:
     """
     Convert OpenAI tool format to Anthropic tool format.
     """
     if not openai_tools or len(openai_tools) == 0:
-        return anthropic.omit
+        return anthropic.NOT_GIVEN
 
     anthropic_tools = []
     for tool in openai_tools:
@@ -596,10 +596,10 @@ def extract_openai_tool_calls(response) -> list[ToolContentBlock] | None:
 
 def get_parallel_tool_calls_param(
     llm_model: LlmModel, parallel_tool_calls: bool | None
-) -> bool | openai.Omit:
+) -> bool | openai.NotGiven:
     """Get the appropriate parallel_tool_calls parameter for OpenAI-compatible APIs."""
     if llm_model.startswith("o") or parallel_tool_calls is None:
-        return openai.omit
+        return openai.NOT_GIVEN
     return parallel_tool_calls
 
 
@@ -676,7 +676,7 @@ async def llm_call(
             response_format=response_format,  # type: ignore
             max_completion_tokens=max_tokens,
             tools=tools_param,  # type: ignore
-            parallel_tool_calls=parallel_tool_calls,
+            parallel_tool_calls=parallel_tool_calls,  # type: ignore
         )
 
         tool_calls = extract_openai_tool_calls(response)
@@ -722,7 +722,7 @@ async def llm_call(
                 system=sysprompt,
                 messages=messages,
                 max_tokens=max_tokens,
-                tools=an_tools,
+                tools=an_tools,  # type: ignore
                 timeout=600,
             )
 
@@ -838,7 +838,7 @@ async def llm_call(
             messages=prompt,  # type: ignore
             max_tokens=max_tokens,
             tools=tools_param,  # type: ignore
-            parallel_tool_calls=parallel_tool_calls_param,
+            parallel_tool_calls=parallel_tool_calls_param,  # type: ignore
         )
 
         # If there's no response, raise an error
@@ -880,7 +880,7 @@ async def llm_call(
             messages=prompt,  # type: ignore
             max_tokens=max_tokens,
             tools=tools_param,  # type: ignore
-            parallel_tool_calls=parallel_tool_calls_param,
+            parallel_tool_calls=parallel_tool_calls_param,  # type: ignore
         )
 
         # If there's no response, raise an error
@@ -951,7 +951,7 @@ async def llm_call(
             response_format=response_format,  # type: ignore
             max_tokens=max_tokens,
             tools=tools_param,  # type: ignore
-            parallel_tool_calls=parallel_tool_calls_param,
+            parallel_tool_calls=parallel_tool_calls_param,  # type: ignore
         )
 
         tool_calls = extract_openai_tool_calls(response)
