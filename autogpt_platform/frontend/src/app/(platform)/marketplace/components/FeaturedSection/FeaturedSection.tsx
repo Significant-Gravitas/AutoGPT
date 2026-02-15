@@ -8,6 +8,7 @@ import {
   CarouselNext,
   CarouselIndicator,
 } from "@/components/__legacy__/ui/carousel";
+import { FadeIn } from "@/components/molecules/FadeIn/FadeIn";
 import Link from "next/link";
 import { useFeaturedSection } from "./useFeaturedSection";
 import { StoreAgent } from "@/app/api/__generated__/models/storeAgent";
@@ -25,40 +26,44 @@ export const FeaturedSection = ({ featuredAgents }: FeaturedSectionProps) => {
 
   return (
     <section className="w-full">
-      <h2 className="mb-8 font-poppins text-2xl font-semibold leading-7 text-neutral-800 dark:text-neutral-200">
-        Featured agents
-      </h2>
+      <FadeIn direction="left" duration={0.5}>
+        <h2 className="mb-8 font-poppins text-2xl font-semibold leading-7 text-neutral-800 dark:text-neutral-200">
+          Featured agents
+        </h2>
+      </FadeIn>
 
-      <Carousel
-        opts={{
-          align: "center",
-          containScroll: "trimSnaps",
-        }}
-      >
-        <CarouselContent>
-          {featuredAgents.map((agent, index) => (
-            <CarouselItem
-              key={index}
-              className="h-[480px] md:basis-1/2 lg:basis-1/3"
-            >
-              <Link
-                href={`/marketplace/agent/${encodeURIComponent(agent.creator)}/${encodeURIComponent(agent.slug)}`}
-                className="block h-full"
+      <FadeIn direction="up" duration={0.6} delay={0.1}>
+        <Carousel
+          opts={{
+            align: "center",
+            containScroll: "trimSnaps",
+          }}
+        >
+          <CarouselContent>
+            {featuredAgents.map((agent, index) => (
+              <CarouselItem
+                key={index}
+                className="h-[480px] md:basis-1/2 lg:basis-1/3"
               >
-                <FeaturedAgentCard
-                  agent={agent}
-                  backgroundColor={getBackgroundColor(index)}
-                />
-              </Link>
-            </CarouselItem>
-          ))}
-        </CarouselContent>
-        <div className="relative mt-4">
-          <CarouselIndicator />
-          <CarouselPrevious afterClick={handlePrevSlide} />
-          <CarouselNext afterClick={handleNextSlide} />
-        </div>
-      </Carousel>
+                <Link
+                  href={`/marketplace/agent/${encodeURIComponent(agent.creator)}/${encodeURIComponent(agent.slug)}`}
+                  className="block h-full"
+                >
+                  <FeaturedAgentCard
+                    agent={agent}
+                    backgroundColor={getBackgroundColor(index)}
+                  />
+                </Link>
+              </CarouselItem>
+            ))}
+          </CarouselContent>
+          <div className="relative mt-4">
+            <CarouselIndicator />
+            <CarouselPrevious afterClick={handlePrevSlide} />
+            <CarouselNext afterClick={handleNextSlide} />
+          </div>
+        </Carousel>
+      </FadeIn>
     </section>
   );
 };

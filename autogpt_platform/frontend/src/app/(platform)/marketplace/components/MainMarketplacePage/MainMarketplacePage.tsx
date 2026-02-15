@@ -1,5 +1,6 @@
 "use client";
-import { Separator } from "@/components/__legacy__/ui/separator";
+import { Separator } from "@/components/atoms/Separator/Separator";
+import { FadeIn } from "@/components/molecules/FadeIn/FadeIn";
 import { FeaturedSection } from "../FeaturedSection/FeaturedSection";
 import { BecomeACreator } from "../BecomeACreator/BecomeACreator";
 import { HeroSection } from "../HeroSection/HeroSection";
@@ -54,11 +55,13 @@ export const MainMarkeplacePage = () => {
           <FeaturedCreators featuredCreators={featuredCreators.creators} />
         )}
         <Separator className="mb-[25px] mt-[60px]" />
-        <BecomeACreator
-          title="Become a Creator"
-          description="Join our ever-growing community of hackers and tinkerers"
-          buttonText="Become a Creator"
-        />
+        <FadeIn direction="up" duration={0.6}>
+          <BecomeACreator
+            title="Become a Creator"
+            description="Join our ever-growing community of hackers and tinkerers"
+            buttonText="Become a Creator"
+          />
+        </FadeIn>
       </main>
     </div>
   );

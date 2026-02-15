@@ -20,9 +20,18 @@ export const CreatorCard = ({
 }: CreatorCardProps) => {
   return (
     <div
-      className={`h-[264px] w-full px-[18px] pb-5 pt-6 ${backgroundColor(index)} inline-flex cursor-pointer flex-col items-start justify-start gap-3.5 rounded-[26px] transition-all duration-200 hover:brightness-95`}
+      className={`h-[264px] w-full px-[18px] pb-5 pt-6 ${backgroundColor(index)} inline-flex cursor-pointer flex-col items-start justify-start gap-3.5 rounded-[26px] transition-[filter] duration-200 hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-950 focus-visible:ring-offset-2 dark:focus-visible:ring-neutral-50`}
       onClick={onClick}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick();
+        }
+      }}
       data-testid="creator-card"
+      role="button"
+      tabIndex={0}
+      aria-label={`View ${creatorName}'s profile - ${agentsUploaded} agents`}
     >
       <div className="relative h-[64px] w-[64px]">
         <div className="absolute inset-0 overflow-hidden rounded-full">

@@ -5,6 +5,8 @@ import {
   CarouselContent,
   CarouselItem,
 } from "@/components/__legacy__/ui/carousel";
+import { FadeIn } from "@/components/molecules/FadeIn/FadeIn";
+import { StaggeredList } from "@/components/molecules/StaggeredList/StaggeredList";
 import { useAgentsSection } from "./useAgentsSection";
 import { StoreAgent } from "@/app/api/__generated__/models/storeAgent";
 import { StoreCard } from "../StoreCard/StoreCard";
@@ -41,12 +43,14 @@ export const AgentsSection = ({
   return (
     <div className="flex flex-col items-center justify-center">
       <div className="w-full max-w-[1360px]">
-        <h2
-          style={{ marginBottom: margin }}
-          className="font-poppins text-lg font-semibold text-[#282828] dark:text-neutral-200"
-        >
-          {sectionTitle}
-        </h2>
+        <FadeIn direction="left" duration={0.5}>
+          <h2
+            style={{ marginBottom: margin }}
+            className="font-poppins text-lg font-semibold text-neutral-800 dark:text-neutral-200"
+          >
+            {sectionTitle}
+          </h2>
+        </FadeIn>
         {!displayedAgents || displayedAgents.length === 0 ? (
           <div className="text-center text-gray-500 dark:text-gray-400">
             No agents found
@@ -54,32 +58,40 @@ export const AgentsSection = ({
         ) : (
           <>
             {/* Mobile Carousel View */}
-            <Carousel
-              className="md:hidden"
-              opts={{
-                loop: true,
-              }}
-            >
-              <CarouselContent>
-                {displayedAgents.map((agent, index) => (
-                  <CarouselItem key={index} className="min-w-64 max-w-71">
-                    <StoreCard
-                      agentName={agent.agent_name}
-                      agentImage={agent.agent_image}
-                      description={agent.description}
-                      runs={agent.runs}
-                      rating={agent.rating}
-                      avatarSrc={agent.creator_avatar}
-                      creatorName={agent.creator}
-                      hideAvatar={hideAvatars}
-                      onClick={() => handleCardClick(agent.creator, agent.slug)}
-                    />
-                  </CarouselItem>
-                ))}
-              </CarouselContent>
-            </Carousel>
+            <FadeIn direction="up" className="md:hidden">
+              <Carousel
+                opts={{
+                  loop: true,
+                }}
+              >
+                <CarouselContent>
+                  {displayedAgents.map((agent, index) => (
+                    <CarouselItem key={index} className="min-w-64 max-w-71">
+                      <StoreCard
+                        agentName={agent.agent_name}
+                        agentImage={agent.agent_image}
+                        description={agent.description}
+                        runs={agent.runs}
+                        rating={agent.rating}
+                        avatarSrc={agent.creator_avatar}
+                        creatorName={agent.creator}
+                        hideAvatar={hideAvatars}
+                        onClick={() =>
+                          handleCardClick(agent.creator, agent.slug)
+                        }
+                      />
+                    </CarouselItem>
+                  ))}
+                </CarouselContent>
+              </Carousel>
+            </FadeIn>
 
-            <div className="hidden grid-cols-1 place-items-center gap-6 md:grid md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+            {/* Desktop Grid View with Staggered Animation */}
+            <StaggeredList
+              direction="up"
+              staggerDelay={0.08}
+              className="hidden grid-cols-1 place-items-center gap-6 md:grid md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4"
+            >
               {displayedAgents.map((agent, index) => (
                 <StoreCard
                   key={index}
@@ -94,7 +106,7 @@ export const AgentsSection = ({
                   onClick={() => handleCardClick(agent.creator, agent.slug)}
                 />
               ))}
-            </div>
+            </StaggeredList>
           </>
         )}
       </div>
