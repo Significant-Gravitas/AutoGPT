@@ -137,13 +137,15 @@ export const useFlow = () => {
   // Links depend on nodes existing, so we must add nodes first
   useEffect(() => {
     if (customNodes.length > 0) {
+      // Clear both stores to prevent stale data from previous graphs
       useNodeStore.getState().setNodes([]);
       useNodeStore.getState().clearResolutionState();
+      useEdgeStore.getState().setEdges([]);
+
       addNodes(customNodes);
 
       // Only add links after nodes are in the store
       if (graph?.links) {
-        useEdgeStore.getState().setEdges([]);
         addLinks(graph.links);
       }
     }
