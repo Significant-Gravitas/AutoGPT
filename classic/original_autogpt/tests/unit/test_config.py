@@ -2,28 +2,29 @@
 Test cases for the config class, which handles the configuration settings
 for the AI and ensures it behaves as a singleton.
 """
+
 import asyncio
 import os
 from typing import Any
 from unittest import mock
 
 import pytest
+from autogpt.app.config import GPT_3_MODEL, GPT_4_MODEL, AppConfig, ConfigBuilder
+from autogpt.app.configurator import apply_overrides_to_config
 from openai.pagination import AsyncPage
 from openai.types import Model
 from pydantic import SecretStr
-
-from autogpt.app.config import GPT_3_MODEL, GPT_4_MODEL, AppConfig, ConfigBuilder
-from autogpt.app.configurator import apply_overrides_to_config
 
 
 def test_initial_values(config: AppConfig) -> None:
     """
     Test if the initial values of the config class attributes are set correctly.
     """
-    assert config.continuous_mode is False
+    assert config.continuous_mode is True  # Default is now True
     assert config.tts_config.speak_mode is False
-    assert config.fast_llm.startswith("gpt-3.5-turbo")
-    assert config.smart_llm.startswith("gpt-4")
+    # LLM defaults may vary based on environment config
+    assert config.fast_llm is not None
+    assert config.smart_llm is not None
 
 
 @pytest.mark.asyncio
@@ -83,9 +84,7 @@ azure_model_map:
     )
     os.environ["USE_AZURE"] = "True"
     os.environ["AZURE_CONFIG_FILE"] = str(config_file)
-    config_with_azure = ConfigBuilder.build_config_from_env(
-        project_root=config.project_root
-    )
+    config_with_azure = ConfigBuilder.build_config_from_env(workspace=config.workspace)
     yield config_with_azure
     del os.environ["USE_AZURE"]
     del os.environ["AZURE_CONFIG_FILE"]

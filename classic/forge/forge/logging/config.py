@@ -1,4 +1,5 @@
 """Logging module for Auto-GPT."""
+
 from __future__ import annotations
 
 import enum
@@ -24,10 +25,8 @@ LOG_FILE = "activity.log"
 DEBUG_LOG_FILE = "debug.log"
 ERROR_LOG_FILE = "error.log"
 
-SIMPLE_LOG_FORMAT = "%(asctime)s %(levelname)s  %(title)s%(message)s"
-DEBUG_LOG_FORMAT = (
-    "%(asctime)s %(levelname)s %(filename)s:%(lineno)d" "  %(title)s%(message)s"
-)
+SIMPLE_LOG_FORMAT = "%(levelname)s  %(title)s%(message)s"
+DEBUG_LOG_FORMAT = "%(levelname)s %(filename)s:%(lineno)d  %(title)s%(message)s"
 
 SPEECH_OUTPUT_LOGGER = "VOICE"
 USER_FRIENDLY_OUTPUT_LOGGER = "USER_FRIENDLY_OUTPUT"

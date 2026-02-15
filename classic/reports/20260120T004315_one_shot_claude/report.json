@@ -1,0 +1,38 @@
+{
+    "command": "direct_benchmark run --config one_shot/claude",
+    "completion_time": "2026-01-20T06:43:37.023065+00:00",
+    "benchmark_start_time": "2026-01-20T06:43:15.998389+00:00",
+    "metrics": {
+        "run_time": "21.02 seconds",
+        "highest_difficulty": "interface",
+        "total_cost": 0.0715326
+    },
+    "config": {
+        "config_name": "one_shot/claude"
+    },
+    "tests": {
+        "ReadFile": {
+            "category": [],
+            "difficulty": null,
+            "data_path": "",
+            "description": "",
+            "task": "",
+            "answer": "",
+            "metrics": {
+                "attempted": true,
+                "is_regression": false,
+                "success_percentage": 100.0
+            },
+            "results": [
+                {
+                    "success": true,
+                    "run_time": "20.995 seconds",
+                    "fail_reason": null,
+                    "reached_cutoff": false,
+                    "n_steps": 2,
+                    "cost": 0.0715326
+                }
+            ]
+        }
+    }
+}

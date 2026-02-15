@@ -1,6 +1,6 @@
 import os
 import typing
-from typing import Any, Callable, Generic, Optional, Type, TypeVar, get_args
+from typing import Any, Callable, Generic, Optional, Type, TypeVar, cast, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from pydantic._internal._model_construction import (  # HACK shouldn't be used
@@ -13,28 +13,53 @@ T = TypeVar("T")
 M = TypeVar("M", bound=BaseModel)
 
 
+def _call_default_factory(factory: Callable[..., Any]) -> Any:
+    """Call a Pydantic default_factory.
+
+    Pydantic's type stubs incorrectly type default_factory, but at runtime
+    it's always Callable[[], T]. This helper provides proper typing.
+    """
+    return cast(Callable[[], Any], factory)()
+
+
 def UserConfigurable(
     default: T | PydanticUndefinedType = PydanticUndefined,
-    *args,
+    *,  # Force keyword-only arguments after default
     default_factory: Optional[Callable[[], T]] = None,
     from_env: Optional[str | Callable[[], T | None]] = None,
     description: str = "",
     exclude: bool = False,
-    **kwargs,
+    **kwargs: Any,
 ) -> T:
-    # TODO: use this to auto-generate docs for the application configuration
-    field_info: FieldInfo = Field(
-        default,
-        *args,
-        default_factory=default_factory,
-        description=description,
-        exclude=exclude,
-        **kwargs,
-    )
+    """Create a user-configurable field with optional environment variable support.
+
+    Args:
+        default: Default value for the field
+        default_factory: Factory function to create default value
+        from_env: Environment variable name or callable to get value from environment
+        description: Field description
+        exclude: Whether to exclude from serialization
+        **kwargs: Additional arguments passed to Pydantic Field()
+    """
+    # Handle Field() overload - it expects either default OR default_factory, not both
+    if default_factory is not None:
+        field_info: FieldInfo = Field(
+            default_factory=default_factory,
+            description=description,
+            exclude=exclude,
+            **kwargs,
+        )
+    else:
+        field_info = Field(
+            default=default,
+            description=description,
+            exclude=exclude,
+            **kwargs,
+        )
     field_info.metadata.append(("user_configurable", True))
     field_info.metadata.append(("from_env", from_env))
 
-    return field_info  # type: ignore
+    return cast(T, field_info)
 
 
 def _get_field_metadata(field: FieldInfo, key: str, default: Any = None) -> Any:
@@ -64,7 +89,7 @@ class SystemConfiguration(BaseModel):
                 field.default
                 if field.default not in (None, PydanticUndefined)
                 else (
-                    field.default_factory()
+                    _call_default_factory(field.default_factory)
                     if field.default_factory
                     else PydanticUndefined
                 )
@@ -141,7 +166,11 @@ def _update_user_config_from_env(instance: BaseModel) -> dict[str, Any]:
         default_value = (
             field.default
             if field.default not in (None, PydanticUndefined)
-            else (field.default_factory() if field.default_factory else None)
+            else (
+                _call_default_factory(field.default_factory)
+                if field.default_factory
+                else None
+            )
         )
         if value == default_value and (
             from_env := _get_field_metadata(field, "from_env")
@@ -330,7 +359,11 @@ def _get_non_default_user_config_values(instance: BaseModel) -> dict[str, Any]:
     """
 
     def get_field_value(field: FieldInfo, value):
-        default = field.default_factory() if field.default_factory else field.default
+        default = (
+            _call_default_factory(field.default_factory)
+            if field.default_factory
+            else field.default
+        )
         if value != default:
             return value
 

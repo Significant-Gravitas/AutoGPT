@@ -1,0 +1,38 @@
+{
+    "command": "direct_benchmark run --config rewoo/claude",
+    "completion_time": "2026-01-20T06:44:46.937190+00:00",
+    "benchmark_start_time": "2026-01-20T06:43:46.908109+00:00",
+    "metrics": {
+        "run_time": "60.03 seconds",
+        "highest_difficulty": "interface",
+        "total_cost": 0.0
+    },
+    "config": {
+        "config_name": "rewoo/claude"
+    },
+    "tests": {
+        "ReadFile": {
+            "category": [],
+            "difficulty": null,
+            "data_path": "",
+            "description": "",
+            "task": "",
+            "answer": "",
+            "metrics": {
+                "attempted": true,
+                "is_regression": false,
+                "success_percentage": 0.0
+            },
+            "results": [
+                {
+                    "success": false,
+                    "run_time": "60.016 seconds",
+                    "fail_reason": "Challenge timed out",
+                    "reached_cutoff": true,
+                    "n_steps": 8,
+                    "cost": 0.0
+                }
+            ]
+        }
+    }
+}

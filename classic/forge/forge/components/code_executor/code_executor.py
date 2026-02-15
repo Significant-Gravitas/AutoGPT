@@ -18,6 +18,7 @@ from forge.command import Command, command
 from forge.file_storage import FileStorage
 from forge.models.json_schema import JSONSchema
 from forge.utils.exceptions import (
+    CodeTimeoutError,
     CommandExecutionError,
     InvalidArgumentError,
     OperationNotAllowedError,
@@ -126,9 +127,26 @@ class CodeExecutorComponent(
                 description="The Python code to run",
                 required=True,
             ),
+            "timeout": JSONSchema(
+                type=JSONSchema.Type.INTEGER,
+                description="Timeout in seconds (1-600, default: 120)",
+                minimum=1,
+                maximum=600,
+                required=False,
+            ),
+            "env_vars": JSONSchema(
+                type=JSONSchema.Type.OBJECT,
+                description="Environment variables to set for the execution",
+                required=False,
+            ),
         },
     )
-    async def execute_python_code(self, code: str) -> str:
+    async def execute_python_code(
+        self,
+        code: str,
+        timeout: int = 120,
+        env_vars: dict[str, str] | None = None,
+    ) -> str:
         """
         Create and execute a Python file in a Docker container
         and return the STDOUT of the executed code.
@@ -138,7 +156,8 @@ class CodeExecutorComponent(
 
         Args:
             code (str): The Python code to run.
-            agent (Agent): The Agent executing the command.
+            timeout (int): Timeout in seconds (default: 120).
+            env_vars (dict): Environment variables to set.
 
         Returns:
             str: The STDOUT captured from the code when it ran.
@@ -152,7 +171,9 @@ class CodeExecutorComponent(
         await self.workspace.write_file(temp_path, code)
 
         try:
-            return self.execute_python_file(temp_path)
+            return self.execute_python_file(
+                temp_path, timeout=timeout, env_vars=env_vars
+            )
         except Exception as e:
             raise CommandExecutionError(*e.args)
         finally:
@@ -174,14 +195,34 @@ class CodeExecutorComponent(
                 required=False,
                 items=JSONSchema(type=JSONSchema.Type.STRING),
             ),
+            "timeout": JSONSchema(
+                type=JSONSchema.Type.INTEGER,
+                description="Timeout in seconds (1-600, default: 120)",
+                minimum=1,
+                maximum=600,
+                required=False,
+            ),
+            "env_vars": JSONSchema(
+                type=JSONSchema.Type.OBJECT,
+                description="Environment variables to set for the execution",
+                required=False,
+            ),
         },
     )
-    def execute_python_file(self, filename: str | Path, args: list[str] = []) -> str:
+    def execute_python_file(
+        self,
+        filename: str | Path,
+        args: list[str] = [],
+        timeout: int = 120,
+        env_vars: dict[str, str] | None = None,
+    ) -> str:
         """Execute a Python file in a Docker container and return the output
 
         Args:
             filename (Path): The name of the file to execute
             args (list, optional): The arguments with which to run the python script
+            timeout (int): Timeout in seconds (default: 120)
+            env_vars (dict): Environment variables to set
 
         Returns:
             str: The output of the file
@@ -200,26 +241,42 @@ class CodeExecutorComponent(
                 f"[Errno 2] No such file or directory"
             )
 
+        # Prepare environment variables
+        exec_env = os.environ.copy()
+        if env_vars:
+            exec_env.update(env_vars)
+
         if we_are_running_in_a_docker_container():
             logger.debug(
                 "App is running in a Docker container; "
                 f"executing {file_path} directly..."
             )
             with self.workspace.mount() as local_path:
-                result = subprocess.run(
-                    ["python", "-B", str(file_path.relative_to(self.workspace.root))]
-                    + args,
-                    capture_output=True,
-                    encoding="utf8",
-                    cwd=str(local_path),
-                )
+                try:
+                    result = subprocess.run(
+                        [
+                            "python",
+                            "-B",
+                            str(file_path.relative_to(self.workspace.root)),
+                        ]
+                        + args,
+                        capture_output=True,
+                        encoding="utf8",
+                        cwd=str(local_path),
+                        timeout=timeout,
+                        env=exec_env,
+                    )
+                except subprocess.TimeoutExpired:
+                    raise CodeTimeoutError(
+                        f"Python execution timed out after {timeout} seconds"
+                    )
                 if result.returncode == 0:
                     return result.stdout
                 else:
                     raise CodeExecutionError(result.stderr)
 
         logger.debug("App is not running in a Docker container")
-        return self._run_python_code_in_docker(file_path, args)
+        return self._run_python_code_in_docker(file_path, args, timeout, env_vars)
 
     def validate_command(self, command_line: str) -> tuple[bool, bool]:
         """Check whether a command is allowed and whether it may be executed in a shell.
@@ -255,14 +312,33 @@ class CodeExecutorComponent(
                 type=JSONSchema.Type.STRING,
                 description="The command line to execute",
                 required=True,
-            )
+            ),
+            "timeout": JSONSchema(
+                type=JSONSchema.Type.INTEGER,
+                description="Timeout in seconds (1-600, default: 120)",
+                minimum=1,
+                maximum=600,
+                required=False,
+            ),
+            "working_dir": JSONSchema(
+                type=JSONSchema.Type.STRING,
+                description="Working directory (default: workspace root)",
+                required=False,
+            ),
         },
     )
-    def execute_shell(self, command_line: str) -> str:
+    def execute_shell(
+        self,
+        command_line: str,
+        timeout: int = 120,
+        working_dir: str | None = None,
+    ) -> str:
         """Execute a shell command and return the output
 
         Args:
             command_line (str): The command line to execute
+            timeout (int): Timeout in seconds (default: 120)
+            working_dir (str): Working directory for command execution
 
         Returns:
             str: The output of the command
@@ -272,25 +348,32 @@ class CodeExecutorComponent(
             logger.info(f"Command '{command_line}' not allowed")
             raise OperationNotAllowedError("This shell command is not allowed.")
 
-        current_dir = Path.cwd()
-        # Change dir into workspace if necessary
-        if not current_dir.is_relative_to(self.workspace.root):
-            os.chdir(self.workspace.root)
+        # Determine working directory
+        if working_dir:
+            exec_dir = self.workspace.get_path(working_dir)
+            if not exec_dir.exists():
+                raise InvalidArgumentError(
+                    f"Working directory '{working_dir}' does not exist."
+                )
+        else:
+            exec_dir = self.workspace.root
 
         logger.info(
-            f"Executing command '{command_line}' in working directory '{os.getcwd()}'"
+            f"Executing command '{command_line}' in working directory '{exec_dir}'"
         )
 
-        result = subprocess.run(
-            command_line if allow_shell else shlex.split(command_line),
-            capture_output=True,
-            shell=allow_shell,
-        )
+        try:
+            result = subprocess.run(
+                command_line if allow_shell else shlex.split(command_line),
+                capture_output=True,
+                shell=allow_shell,
+                cwd=str(exec_dir),
+                timeout=timeout,
+            )
+        except subprocess.TimeoutExpired:
+            raise CodeTimeoutError(f"Shell command timed out after {timeout} seconds")
+
         output = f"STDOUT:\n{result.stdout.decode()}\nSTDERR:\n{result.stderr.decode()}"
-
-        # Change back to whatever the prior working dir was
-        os.chdir(current_dir)
-
         return output
 
     @command(
@@ -341,8 +424,24 @@ class CodeExecutorComponent(
 
         return f"Subprocess started with PID:'{str(process.pid)}'"
 
-    def _run_python_code_in_docker(self, filename: str | Path, args: list[str]) -> str:
-        """Run a Python script in a Docker container"""
+    def _run_python_code_in_docker(
+        self,
+        filename: str | Path,
+        args: list[str],
+        timeout: int = 120,
+        env_vars: dict[str, str] | None = None,
+    ) -> str:
+        """Run a Python script in a Docker container
+
+        Args:
+            filename: Path to the Python file
+            args: Command line arguments for the script
+            timeout: Timeout in seconds
+            env_vars: Environment variables to set
+
+        Returns:
+            str: The output of the script
+        """
         file_path = self.workspace.get_path(filename)
         try:
             client = docker.from_env()
@@ -354,6 +453,14 @@ class CodeExecutorComponent(
                     container: DockerContainer = client.containers.get(
                         container_name
                     )  # type: ignore
+                    # Remove existing container - it may have stale mounts from
+                    # a previous run with a different workspace directory
+                    logger.debug(
+                        f"Removing existing container '{container_name}' "
+                        "to refresh mount bindings"
+                    )
+                    container.remove(force=True)
+                    raise NotFound("Container removed, recreating")
                 except NotFound:
                     try:
                         client.images.get(image_name)
@@ -376,10 +483,12 @@ class CodeExecutorComponent(
                             elif status:
                                 logger.info(status)
 
+                    # Use timeout for container sleep duration
+                    sleep_duration = str(max(timeout, 60))
                     logger.debug(f"Creating new {image_name} container...")
                     container: DockerContainer = client.containers.run(
                         image_name,
-                        ["sleep", "60"],  # Max 60 seconds to prevent permanent hangs
+                        ["sleep", sleep_duration],
                         volumes={
                             str(local_path.resolve()): {
                                 "bind": "/workspace",
@@ -391,6 +500,7 @@ class CodeExecutorComponent(
                         stdout=True,
                         detach=True,
                         name=container_name,
+                        environment=env_vars or {},
                     )  # type: ignore
                     container_is_fresh = True
 
@@ -401,6 +511,9 @@ class CodeExecutorComponent(
 
                 logger.debug(f"Running {file_path} in container {container.name}...")
 
+                # Prepare environment for exec_run
+                exec_env = env_vars or {}
+
                 exec_result = container.exec_run(
                     [
                         "python",
@@ -410,6 +523,7 @@ class CodeExecutorComponent(
                     + args,
                     stderr=True,
                     stdout=True,
+                    environment=exec_env,
                 )
 
                 if exec_result.exit_code != 0:

@@ -1,4 +1,5 @@
 """Base class for all voice classes."""
+
 from __future__ import annotations
 
 import abc
