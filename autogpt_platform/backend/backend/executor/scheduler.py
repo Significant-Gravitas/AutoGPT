@@ -195,9 +195,11 @@ async def _handle_graph_validation_error(args: "GraphExecutionJobArgs") -> None:
             user_id=args.user_id,
         )
     else:
-        logger.error(
-            f"Unable to unschedule graph: {args.graph_id} as this is an old job with no associated schedule_id please remove manually"
+        logger.warning(
+            f"Old scheduled job for graph {args.graph_id} (user {args.user_id}) "
+            f"has no schedule_id, attempting targeted cleanup"
         )
+        await _cleanup_old_schedules_without_id(args.graph_id, args.user_id)
 
 
 async def _handle_graph_not_available(
@@ -237,6 +239,35 @@ async def _cleanup_orphaned_schedules_for_graph(graph_id: str, user_id: str) -> 
         except Exception:
             logger.exception(
                 f"Failed to delete orphaned schedule {schedule.id} for graph {graph_id}"
+            )
+
+
+async def _cleanup_old_schedules_without_id(graph_id: str, user_id: str) -> None:
+    """Remove only schedules that have no schedule_id in their job args.
+
+    Unlike _cleanup_orphaned_schedules_for_graph (which removes ALL schedules
+    for a graph), this only targets legacy jobs created before schedule_id was
+    added to GraphExecutionJobArgs, preserving any valid newer schedules.
+    """
+    scheduler_client = get_scheduler_client()
+    schedules = await scheduler_client.get_execution_schedules(
+        graph_id=graph_id, user_id=user_id
+    )
+
+    for schedule in schedules:
+        if schedule.schedule_id is not None:
+            continue
+        try:
+            await scheduler_client.delete_schedule(
+                schedule_id=schedule.id, user_id=user_id
+            )
+            logger.info(
+                f"Cleaned up old schedule {schedule.id} (no schedule_id) "
+                f"for graph {graph_id}"
+            )
+        except Exception:
+            logger.exception(
+                f"Failed to delete old schedule {schedule.id} for graph {graph_id}"
             )
 
 
