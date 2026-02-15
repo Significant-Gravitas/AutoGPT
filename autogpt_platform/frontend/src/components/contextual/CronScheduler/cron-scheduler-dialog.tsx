@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Input } from "@/components/__legacy__/ui/input";
 import { Button } from "@/components/__legacy__/ui/button";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { CronScheduler } from "@/app/(platform)/library/agents/[id]/components/OldAgentLibraryView/components/cron-scheduler";
+import { CronScheduler } from "@/components/contextual/CronScheduler/cron-scheduler";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { getTimezoneDisplayName } from "@/lib/timezone-utils";
 import { useUserTimezone } from "@/lib/hooks/useUserTimezone";

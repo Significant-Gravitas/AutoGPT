@@ -20,7 +20,7 @@ import {
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
 import { RunAgentInputs } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/modals/RunAgentInputs/RunAgentInputs";
-import { ScheduleTaskDialog } from "@/app/(platform)/library/agents/[id]/components/OldAgentLibraryView/components/cron-scheduler-dialog";
+import { ScheduleTaskDialog } from "@/components/contextual/CronScheduler/cron-scheduler-dialog";
 import ActionButtonGroup from "@/components/__legacy__/action-button-group";
 import type { ButtonAction } from "@/components/__legacy__/types";
 import {
@@ -53,7 +53,10 @@ import { ClockIcon, CopyIcon, InfoIcon } from "@phosphor-icons/react";
 import { CalendarClockIcon, Trash2Icon } from "lucide-react";
 
 import { analytics } from "@/services/analytics";
-import { AgentStatus, AgentStatusChip } from "./agent-status-chip";
+import {
+  AgentStatus,
+  AgentStatusChip,
+} from "@/app/(platform)/build/components/legacy-builder/agent-status-chip";
 
 export function AgentRunDraftView({
   graph,

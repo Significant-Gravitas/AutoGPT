@@ -18,7 +18,7 @@ import {
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { getGetV2ListMySubmissionsQueryKey } from "@/app/api/__generated__/endpoints/store/store";
-import { CronExpressionDialog } from "@/app/(platform)/library/agents/[id]/components/OldAgentLibraryView/components/cron-scheduler-dialog";
+import { CronExpressionDialog } from "@/components/contextual/CronScheduler/cron-scheduler-dialog";
 import { humanizeCronExpression } from "@/lib/cron-expression-utils";
 import { CalendarClockIcon } from "lucide-react";
 
