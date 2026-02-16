@@ -1,6 +1,12 @@
 "use client";
 
-import { createContext, useContext, useState, useCallback, useRef } from "react";
+import {
+  createContext,
+  useContext,
+  useState,
+  useCallback,
+  useRef,
+} from "react";
 import { FlyingHeart } from "../components/FlyingHeart/FlyingHeart";
 
 interface FavoriteAnimationContextType {
@@ -8,7 +14,8 @@ interface FavoriteAnimationContextType {
   registerFavoritesTabRef: (element: HTMLElement | null) => void;
 }
 
-const FavoriteAnimationContext = createContext<FavoriteAnimationContextType | null>(null);
+const FavoriteAnimationContext =
+  createContext<FavoriteAnimationContextType | null>(null);
 
 interface FavoriteAnimationProviderProps {
   children: React.ReactNode;
@@ -44,7 +51,7 @@ export function FavoriteAnimationProvider({
         setAnimationState({ startPosition, targetPosition });
       }
     },
-    []
+    [],
   );
 
   function handleAnimationComplete() {
@@ -70,7 +77,7 @@ export function useFavoriteAnimation() {
   const context = useContext(FavoriteAnimationContext);
   if (!context) {
     throw new Error(
-      "useFavoriteAnimation must be used within FavoriteAnimationProvider"
+      "useFavoriteAnimation must be used within FavoriteAnimationProvider",
     );
   }
   return context;

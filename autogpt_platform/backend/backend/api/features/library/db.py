@@ -7,12 +7,12 @@ import prisma.errors
 import prisma.models
 import prisma.types
 
-from backend.api.features.library.exceptions import FolderValidationError
 import backend.api.features.store.exceptions as store_exceptions
 import backend.api.features.store.image_gen as store_image_gen
 import backend.api.features.store.media as store_media
 import backend.data.graph as graph_db
 import backend.data.integrations as integrations_db
+from backend.api.features.library.exceptions import FolderValidationError
 from backend.data.db import transaction
 from backend.data.execution import get_graph_execution
 from backend.data.graph import GraphSettings
@@ -1528,7 +1528,8 @@ async def delete_folder(
                     "isDeleted": False,
                 },
             )
-            for agent in affected_agents:
+
+            async def _cleanup_agent(agent: prisma.models.LibraryAgent) -> None:
                 try:
                     await _cleanup_schedules_for_graph(
                         graph_id=agent.agentGraphId, user_id=user_id
@@ -1541,6 +1542,8 @@ async def delete_folder(
                         f"Cleanup failed for agent {agent.id} "
                         f"(graph {agent.agentGraphId}): {e}"
                     )
+
+            await asyncio.gather(*[_cleanup_agent(a) for a in affected_agents])
 
         async with transaction() as tx:
             if soft_delete:

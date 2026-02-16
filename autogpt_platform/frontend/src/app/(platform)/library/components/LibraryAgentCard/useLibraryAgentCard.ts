@@ -51,7 +51,7 @@ export function useLibraryAgentCard({ agent, onFavoriteAdd }: Props) {
 
   async function handleToggleFavorite(
     e: React.MouseEvent,
-    position: { x: number; y: number }
+    position: { x: number; y: number },
   ) {
     e.preventDefault();
     e.stopPropagation();

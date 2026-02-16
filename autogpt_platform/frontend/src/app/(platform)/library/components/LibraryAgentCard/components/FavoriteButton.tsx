@@ -8,7 +8,10 @@ import { motion, AnimatePresence } from "framer-motion";
 
 interface FavoriteButtonProps {
   isFavorite: boolean;
-  onClick: (e: MouseEvent<HTMLButtonElement>, position: { x: number; y: number }) => void;
+  onClick: (
+    e: MouseEvent<HTMLButtonElement>,
+    position: { x: number; y: number },
+  ) => void;
   className?: string;
 }
 
@@ -22,7 +25,10 @@ export function FavoriteButton({
   function handleClick(e: MouseEvent<HTMLButtonElement>) {
     const rect = buttonRef.current?.getBoundingClientRect();
     const position = rect
-      ? { x: rect.left + rect.width / 2 - 12, y: rect.top + rect.height / 2 - 12 }
+      ? {
+          x: rect.left + rect.width / 2 - 12,
+          y: rect.top + rect.height / 2 - 12,
+        }
       : { x: 0, y: 0 };
     onClick(e, position);
   }

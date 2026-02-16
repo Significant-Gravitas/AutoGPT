@@ -19,7 +19,13 @@ interface Props {
   setLibrarySort: (value: LibraryAgentSort) => void;
 }
 
-export function FavoritesSection({ searchTerm, tabs, activeTab, onTabChange, setLibrarySort }: Props) {
+export function FavoritesSection({
+  searchTerm,
+  tabs,
+  activeTab,
+  onTabChange,
+  setLibrarySort,
+}: Props) {
   const {
     allAgents: favoriteAgents,
     agentLoading: isLoading,
@@ -31,8 +37,15 @@ export function FavoritesSection({ searchTerm, tabs, activeTab, onTabChange, set
 
   return (
     <>
-      <LibraryActionSubHeader agentCount={agentCount} setLibrarySort={setLibrarySort} />
-      <LibraryTabs tabs={tabs} activeTab={activeTab} onTabChange={onTabChange} />
+      <LibraryActionSubHeader
+        agentCount={agentCount}
+        setLibrarySort={setLibrarySort}
+      />
+      <LibraryTabs
+        tabs={tabs}
+        activeTab={activeTab}
+        onTabChange={onTabChange}
+      />
 
       {isLoading ? (
         <div className="flex h-[200px] items-center justify-center">

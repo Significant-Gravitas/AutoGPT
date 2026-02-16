@@ -217,7 +217,9 @@ export function LibraryAgentList({
                       transition={{
                         ...activeTransition,
                         delay:
-                          ((showFolders ? foldersData?.folders.length ?? 0 : 0) +
+                          ((showFolders
+                            ? (foldersData?.folders.length ?? 0)
+                            : 0) +
                             i) *
                           0.04,
                       }}

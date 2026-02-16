@@ -19,7 +19,7 @@ import {
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useFavoriteAgents } from "../../hooks/useFavoriteAgents";
 import { getQueryClient } from "@/lib/react-query/queryClient";
-import { keepPreviousData, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 
 interface Props {
@@ -86,8 +86,6 @@ export function useLibraryAgentList({
     : [];
   const allAgentsCount = getPaginatedTotalCount(agentsQueryData);
 
-  // --- Favorites ---
-
   const favoriteAgentsData = useFavoriteAgents({ searchTerm });
 
   const {
@@ -108,13 +106,10 @@ export function useLibraryAgentList({
         fetchNextPage: fetchNextPage,
       };
 
-  // --- Folders ---
-
   const { data: rawFoldersData } = useGetV2ListLibraryFolders(undefined, {
     query: { select: okData },
   });
 
-  // When searching, suppress folder data so only agent results show
   const foldersData = searchTerm ? undefined : rawFoldersData;
 
   const { mutate: moveAgentToFolder } = usePostV2BulkMoveAgents({

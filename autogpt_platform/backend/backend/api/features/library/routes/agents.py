@@ -1,3 +1,4 @@
+import logging
 from typing import Literal, Optional
 
 import autogpt_libs.auth as autogpt_auth_lib
@@ -6,9 +7,12 @@ from fastapi.responses import Response
 from prisma.enums import OnboardingStep
 
 from backend.data.onboarding import complete_onboarding_step
+from backend.util.exceptions import DatabaseError, NotFoundError
 
 from .. import db as library_db
 from .. import model as library_model
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/agents",
@@ -194,9 +198,7 @@ async def update_library_agent(
             detail=str(e),
         ) from e
     except DatabaseError as e:
-        logger.error(
-            f"Database error while updating library agent: {e}", exc_info=True
-        )
+        logger.error(f"Database error while updating library agent: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"message": "Internal server error", "hint": "Contact support"},

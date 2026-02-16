@@ -46,7 +46,9 @@ export default function LibraryFolderCreationDialog() {
   const { mutate: createFolder, isPending } = usePostV2CreateFolder({
     mutation: {
       onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: getGetV2ListLibraryFoldersQueryKey() });
+        queryClient.invalidateQueries({
+          queryKey: getGetV2ListLibraryFoldersQueryKey(),
+        });
         setIsOpen(false);
         form.reset();
         toast({
@@ -110,7 +112,7 @@ export default function LibraryFolderCreationDialog() {
         <Form
           form={form}
           onSubmit={(values) => onSubmit(values)}
-          className="flex flex-col justify-center px-1 gap-2"
+          className="flex flex-col justify-center gap-2 px-1"
         >
           <FormField
             control={form.control}
@@ -123,7 +125,7 @@ export default function LibraryFolderCreationDialog() {
                     id={field.name}
                     label="Folder name"
                     placeholder="Enter folder name"
-                    className="w-full !mb-0"
+                    className="!mb-0 w-full"
                     wrapperClassName="!mb-0"
                   />
                 </FormControl>
@@ -189,7 +191,6 @@ export default function LibraryFolderCreationDialog() {
                       </div>
                     </div>
                     <div className="h-[295px] w-full overflow-hidden">
-
                       <EmojiPicker
                         onEmojiSelect={(emoji) => {
                           field.onChange(emoji);
@@ -198,7 +199,10 @@ export default function LibraryFolderCreationDialog() {
                         className="w-full rounded-2xl px-2"
                       >
                         <EmojiPicker.Group>
-                          <EmojiPicker.List hideStickyHeader containerHeight={295} />
+                          <EmojiPicker.List
+                            hideStickyHeader
+                            containerHeight={295}
+                          />
                         </EmojiPicker.Group>
                       </EmojiPicker>
                     </div>

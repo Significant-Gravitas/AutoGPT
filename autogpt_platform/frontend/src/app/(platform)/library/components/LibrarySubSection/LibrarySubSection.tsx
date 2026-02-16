@@ -9,8 +9,12 @@ interface Props {
 
 export function LibrarySubSection({ tabs, activeTab, onTabChange }: Props) {
   return (
-    <div className="flex justify-between items-center gap-4">
-      <LibraryTabs tabs={tabs} activeTab={activeTab} onTabChange={onTabChange} />
+    <div className="flex items-center justify-between gap-4">
+      <LibraryTabs
+        tabs={tabs}
+        activeTab={activeTab}
+        onTabChange={onTabChange}
+      />
       <LibraryFolderCreationDialog />
     </div>
   );
