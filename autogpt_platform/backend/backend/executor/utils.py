@@ -4,7 +4,7 @@ import threading
 import time
 from collections import defaultdict
 from concurrent.futures import Future
-from typing import Mapping, Optional, cast
+from typing import Any, Mapping, Optional, cast
 
 from pydantic import BaseModel, JsonValue, ValidationError
 
@@ -49,6 +49,87 @@ from backend.util.type import convert
 
 config = Config()
 logger = TruncatedLogger(logging.getLogger(__name__), prefix="[GraphExecutorUtil]")
+
+# ============ Auto-Credentials Helpers ============ #
+
+
+class AutoCredentialFieldInfo(BaseModel):
+    """Parsed info from an auto-credential field (e.g., GoogleDriveFileField)."""
+
+    cred_id: str | None
+    """The credential ID to use, or None if not provided."""
+    provider: str
+    """The provider name (e.g., 'google')."""
+    file_name: str
+    """The display name for error messages."""
+    field_name: str
+    """The original field name in the schema."""
+    error: str | None = None
+    """Validation error message, if any."""
+
+
+def parse_auto_credential_field(
+    field_name: str,
+    info: dict,
+    field_data: Any,
+    *,
+    field_present_in_input: bool = True,
+) -> AutoCredentialFieldInfo:
+    """
+    Parse auto-credential field data and extract credential info.
+
+    This is shared logic used by both credential acquisition (manager.py)
+    and credential validation (utils.py).
+
+    Args:
+        field_name: The name of the field in the schema
+        info: The auto_credentials field info from get_auto_credentials_fields()
+        field_data: The actual field data from input
+        field_present_in_input: Whether the field key exists in input_data
+
+    Returns:
+        AutoCredentialFieldInfo with parsed data and any validation errors
+    """
+    provider = info.get("config", {}).get("provider", "external service")
+    file_name = (
+        field_data.get("name", "selected file")
+        if isinstance(field_data, dict)
+        else "selected file"
+    )
+
+    result = AutoCredentialFieldInfo(
+        cred_id=None,
+        provider=provider,
+        file_name=file_name,
+        field_name=field_name,
+    )
+
+    if field_data and isinstance(field_data, dict):
+        if "_credentials_id" not in field_data:
+            # Key removed (e.g., on fork) — needs re-auth
+            result.error = (
+                f"Authentication missing for '{file_name}' in field "
+                f"'{field_name}'. Please re-select the file to authenticate "
+                f"with {provider.capitalize()}."
+            )
+        else:
+            cred_id = field_data.get("_credentials_id")
+            if cred_id:
+                result.cred_id = cred_id
+            # else: _credentials_id is explicitly None, skip (chained data)
+    elif field_data is None and not field_present_in_input:
+        # Field not in input_data at all = connected from upstream block, skip
+        pass
+    elif field_present_in_input:
+        # field_data is None/empty but key IS in input_data = user didn't select
+        result.error = (
+            f"No file selected for '{field_name}'. "
+            f"Please select a file to provide "
+            f"{provider.capitalize()} authentication."
+        )
+
+    return result
+
 
 # ============ Resource Helpers ============ #
 
@@ -353,34 +434,39 @@ async def _validate_node_input_credentials(
                         field_name, field_value
                     )
 
-                if field_value and isinstance(field_value, dict):
-                    if "_credentials_id" not in field_value:
-                        # Key removed (e.g., on fork) — needs re-auth
+                # Use shared helper to parse the field
+                parsed = parse_auto_credential_field(
+                    field_name=field_name,
+                    info=info,
+                    field_data=field_value,
+                    field_present_in_input=True,  # For validation, assume present
+                )
+
+                if parsed.error:
+                    has_missing_credentials = True
+                    credential_errors[node.id][field_name] = parsed.error
+                    continue
+
+                if parsed.cred_id:
+                    # Validate that credentials exist and are accessible
+                    try:
+                        creds_store = get_integration_credentials_store()
+                        creds = await creds_store.get_creds_by_id(
+                            user_id, parsed.cred_id
+                        )
+                    except Exception as e:
+                        has_missing_credentials = True
+                        credential_errors[node.id][
+                            field_name
+                        ] = f"Credentials not available: {e}"
+                        continue
+                    if not creds:
                         has_missing_credentials = True
                         credential_errors[node.id][field_name] = (
-                            "Authentication missing for the selected file. "
-                            "Please re-select the file to authenticate with "
-                            "your own account."
+                            "The saved credentials are not available "
+                            "for your account. Please re-select the file to "
+                            "authenticate with your own account."
                         )
-                        continue
-                    cred_id = field_value.get("_credentials_id")
-                    if cred_id and isinstance(cred_id, str):
-                        try:
-                            creds_store = get_integration_credentials_store()
-                            creds = await creds_store.get_creds_by_id(user_id, cred_id)
-                        except Exception as e:
-                            has_missing_credentials = True
-                            credential_errors[node.id][
-                                field_name
-                            ] = f"Credentials not available: {e}"
-                            continue
-                        if not creds:
-                            has_missing_credentials = True
-                            credential_errors[node.id][field_name] = (
-                                "The saved credentials are not available "
-                                "for your account. Please re-select the file to "
-                                "authenticate with your own account."
-                            )
 
         # If node has optional credentials and any are missing, allow running without.
         # The executor will pass credentials=None to the block's run().

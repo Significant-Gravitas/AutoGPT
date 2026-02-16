@@ -89,6 +89,7 @@ from .utils import (
     block_usage_cost,
     create_execution_queue_config,
     execution_usage_cost,
+    parse_auto_credential_field,
     validate_exec,
 )
 
@@ -193,53 +194,32 @@ async def _acquire_auto_credentials(
         field_name = info["field_name"]
         field_data = input_data.get(field_name)
 
-        if field_data and isinstance(field_data, dict):
-            # Check if _credentials_id key exists in the field data
-            if "_credentials_id" in field_data:
-                cred_id = field_data["_credentials_id"]
-                if cred_id:
-                    # Credential ID provided - acquire credentials
-                    provider = info.get("config", {}).get(
-                        "provider", "external service"
-                    )
-                    file_name = field_data.get("name", "selected file")
-                    try:
-                        credentials, lock = await creds_manager.acquire(
-                            user_id, cred_id
-                        )
-                        locks.append(lock)
-                        extra_exec_kwargs[kwarg_name] = credentials
-                    except ValueError:
-                        raise ValueError(
-                            f"{provider.capitalize()} credentials for "
-                            f"'{file_name}' in field '{field_name}' are not "
-                            f"available in your account. "
-                            f"This can happen if the agent was created by another "
-                            f"user or the credentials were deleted. "
-                            f"Please open the agent in the builder and re-select "
-                            f"the file to authenticate with your own account."
-                        )
-                # else: _credentials_id is explicitly None, skip (chained data)
-            else:
-                # _credentials_id key missing entirely - this is an error
-                provider = info.get("config", {}).get("provider", "external service")
-                file_name = field_data.get("name", "selected file")
+        parsed = parse_auto_credential_field(
+            field_name=field_name,
+            info=info,
+            field_data=field_data,
+            field_present_in_input=field_name in input_data,
+        )
+
+        if parsed.error:
+            raise ValueError(parsed.error)
+
+        if parsed.cred_id:
+            # Credential ID provided - acquire credentials
+            try:
+                credentials, lock = await creds_manager.acquire(user_id, parsed.cred_id)
+                locks.append(lock)
+                extra_exec_kwargs[kwarg_name] = credentials
+            except ValueError:
                 raise ValueError(
-                    f"Authentication missing for '{file_name}' in field "
-                    f"'{field_name}'. Please re-select the file to authenticate "
-                    f"with {provider.capitalize()}."
+                    f"{parsed.provider.capitalize()} credentials for "
+                    f"'{parsed.file_name}' in field '{parsed.field_name}' are not "
+                    f"available in your account. "
+                    f"This can happen if the agent was created by another "
+                    f"user or the credentials were deleted. "
+                    f"Please open the agent in the builder and re-select "
+                    f"the file to authenticate with your own account."
                 )
-        elif field_data is None and field_name not in input_data:
-            # Field not in input_data at all = connected from upstream block, skip
-            pass
-        else:
-            # field_data is None/empty but key IS in input_data = user didn't select
-            provider = info.get("config", {}).get("provider", "external service")
-            raise ValueError(
-                f"No file selected for '{field_name}'. "
-                f"Please select a file to provide "
-                f"{provider.capitalize()} authentication."
-            )
 
     return extra_exec_kwargs, locks
 
