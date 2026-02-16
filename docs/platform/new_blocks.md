@@ -59,7 +59,7 @@ Follow these steps to create and test a new block:
        super().__init__(
            id="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",  # (1)!
            input_schema=WikipediaSummaryBlock.Input,  # (2)!
-           output_schema=WikipediaSummaryBlock.Output,
+           output_schema=WikipediaSummaryBlock.Output,  # (2)!
            test_input={"topic": "Artificial Intelligence"},  # (3)!
            test_output=("summary", "summary content"),  # (4)!
            test_mock={"get_request": lambda url, json: {"extract": "summary content"}},  # (5)!
