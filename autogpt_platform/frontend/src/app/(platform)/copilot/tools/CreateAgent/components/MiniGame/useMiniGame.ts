@@ -247,10 +247,7 @@ function spawnParticles(x: number, y: number): Particle[] {
 
 function startPlayerDeath(s: GameState) {
   s.deathAnim = {
-    particles: spawnParticles(
-      s.charX + CHAR_SIZE / 2,
-      s.charY + CHAR_SIZE / 2,
-    ),
+    particles: spawnParticles(s.charX + CHAR_SIZE / 2, s.charY + CHAR_SIZE / 2),
     type: "player",
     timer: DEATH_ANIM_DURATION,
   };
@@ -431,7 +428,8 @@ function update(s: GameState, canvasWidth: number, keys: KeyState) {
 
       // Spawn yellow attack effect at hit frame
       if (
-        s.boss.attackFrame === ARCHER_ATTACK_HIT_FRAME * ARCHER_ATTACK_ANIM_SPEED
+        s.boss.attackFrame ===
+        ARCHER_ATTACK_HIT_FRAME * ARCHER_ATTACK_ANIM_SPEED
       ) {
         const effectX = s.boss.x - 5;
         const effectY = s.boss.y + BOSS_SIZE / 2;
@@ -535,7 +533,7 @@ function update(s: GameState, canvasWidth: number, keys: KeyState) {
       scored: false,
       treeType: tt,
     });
-    s.nextTreeType = (Math.floor(Math.random() * 3)) as 0 | 1 | 2;
+    s.nextTreeType = Math.floor(Math.random() * 3) as 0 | 1 | 2;
     s.nextSpawn = s.frame + randInt(SPAWN_MIN, SPAWN_MAX);
   }
 
@@ -629,10 +627,7 @@ function drawParticles(ctx: CanvasRenderingContext2D, anim: DeathAnim) {
   ctx.restore();
 }
 
-function drawAttackEffects(
-  ctx: CanvasRenderingContext2D,
-  effects: Particle[],
-) {
+function drawAttackEffects(ctx: CanvasRenderingContext2D, effects: Particle[]) {
   ctx.save();
   for (const p of effects) {
     if (p.life <= 0) continue;

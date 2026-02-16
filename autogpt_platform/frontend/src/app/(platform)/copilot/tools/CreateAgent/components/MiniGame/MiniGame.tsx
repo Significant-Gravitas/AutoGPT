@@ -7,14 +7,8 @@ function Key({ children }: { children: React.ReactNode }) {
 }
 
 export function MiniGame() {
-  const {
-    canvasRef,
-    activeMode,
-    showOverlay,
-    score,
-    highScore,
-    onContinue,
-  } = useMiniGame();
+  const { canvasRef, activeMode, showOverlay, score, highScore, onContinue } =
+    useMiniGame();
 
   const isRunActive =
     activeMode === "run" || activeMode === "idle" || activeMode === "over";

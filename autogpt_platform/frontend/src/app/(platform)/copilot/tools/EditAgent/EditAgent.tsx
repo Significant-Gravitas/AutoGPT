@@ -81,8 +81,7 @@ function getAccordionMeta(output: EditAgentToolOutput): {
   ) {
     return {
       icon: <OrbitLoader size={32} />,
-      title:
-        "Editing agent, this may take a few minutes. Play while you wait.",
+      title: "Editing agent, this may take a few minutes. Play while you wait.",
       expanded: true,
     };
   }
