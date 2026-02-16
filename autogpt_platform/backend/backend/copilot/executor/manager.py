@@ -216,7 +216,7 @@ class CoPilotExecutor(AppProcess):
             on_message_callback=self._handle_cancel_message,
             auto_ack=True,
         )
-        logger.info("Starting cancel message consumer...")
+        logger.info("Starting to consume cancel messages...")
         cancel_channel.start_consuming()
         if not self.stop_consuming.is_set() or self.active_tasks:
             raise RuntimeError("Cancel message consumer stopped unexpectedly")
