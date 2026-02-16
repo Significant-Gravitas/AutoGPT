@@ -195,8 +195,8 @@ async def extract_sandbox_files(
 
             # Check file type (case-insensitive for extensions)
             file_path_lower = file_path.lower()
-            is_text = any(file_path_lower.endswith(ext) for ext in TEXT_EXTENSIONS)
-            is_binary = any(file_path_lower.endswith(ext) for ext in BINARY_EXTENSIONS)
+            is_text = any(file_path_lower.endswith(ext.lower()) for ext in TEXT_EXTENSIONS)
+            is_binary = any(file_path_lower.endswith(ext.lower()) for ext in BINARY_EXTENSIONS)
 
             # Determine if we should extract this file
             if text_only:
