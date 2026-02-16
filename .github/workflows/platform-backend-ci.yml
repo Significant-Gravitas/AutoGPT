@@ -41,10 +41,9 @@ jobs:
         ports:
           - 6379:6379
       rabbitmq:
-        image: rabbitmq:3.12-management
+        image: rabbitmq:4.1.4
         ports:
           - 5672:5672
-          - 15672:15672
         env:
           RABBITMQ_DEFAULT_USER: ${{ env.RABBITMQ_DEFAULT_USER }}
           RABBITMQ_DEFAULT_PASS: ${{ env.RABBITMQ_DEFAULT_PASS }}
