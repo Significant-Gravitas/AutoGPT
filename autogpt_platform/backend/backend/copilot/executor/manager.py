@@ -4,6 +4,7 @@ This module contains the CoPilotExecutor class that consumes chat tasks from
 RabbitMQ and processes them using a thread pool, following the graph executor pattern.
 """
 
+import asyncio
 import logging
 import os
 import threading
@@ -167,6 +168,16 @@ class CoPilotExecutor(AppProcess):
         if self._executor:
             logger.info(f"[cleanup {pid}] Shutting down executor...")
             self._executor.shutdown(wait=False)
+
+        # Close async resources (workspace storage aiohttp session, etc.)
+        try:
+            from backend.util.workspace_storage import shutdown_workspace_storage
+
+            loop = asyncio.new_event_loop()
+            loop.run_until_complete(shutdown_workspace_storage())
+            loop.close()
+        except Exception as e:
+            logger.warning(f"[cleanup {pid}] Error closing workspace storage: {e}")
 
         # Release any remaining locks
         for task_id, lock in list(self._task_locks.items()):
