@@ -931,19 +931,15 @@ class ConcatenateListsBlock(Block):
         )
 
     def _validate_inputs(self, lists: List[Any]) -> str | None:
-        """Validate that all elements in the input are lists."""
         return _validate_all_lists(lists)
 
     def _perform_concatenation(self, lists: List[List[Any]]) -> List[Any]:
-        """Perform the core concatenation logic."""
         return _concatenate_lists_simple(lists)
 
     def _apply_deduplication(self, items: List[Any]) -> List[Any]:
-        """Apply deduplication to the result list."""
         return _deduplicate_list(items)
 
     def _apply_none_removal(self, items: List[Any]) -> List[Any]:
-        """Remove None values from the result list."""
         return _filter_none_values(items)
 
     def _post_process(
@@ -1122,11 +1118,9 @@ class InterleaveListsBlock(Block):
         )
 
     def _validate_inputs(self, lists: List[Any]) -> str | None:
-        """Validate all input items are lists."""
         return _validate_all_lists(lists)
 
     def _interleave(self, lists: List[List[Any]]) -> List[Any]:
-        """Perform the interleaving operation."""
         return _interleave_lists(lists)
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
@@ -1205,7 +1199,6 @@ class ZipListsBlock(Block):
         )
 
     def _validate_inputs(self, lists: List[Any]) -> str | None:
-        """Validate all input items are lists."""
         return _validate_all_lists(lists)
 
     def _zip_truncate(self, lists: List[List[Any]]) -> List[List[Any]]:
