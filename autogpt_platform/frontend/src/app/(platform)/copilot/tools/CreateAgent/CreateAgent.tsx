@@ -4,11 +4,11 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import {
   BookOpenIcon,
-  CheckFatIcon,
   PencilSimpleIcon,
   WarningDiamondIcon,
 } from "@phosphor-icons/react";
 import type { ToolUIPart } from "ai";
+import Image from "next/image";
 import NextLink from "next/link";
 import { useCopilotChatActions } from "../../components/CopilotChatActionsProvider/useCopilotChatActions";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
@@ -24,6 +24,7 @@ import {
   ClarificationQuestionsCard,
   ClarifyingQuestion,
 } from "./components/ClarificationQuestionsCard";
+import sparklesImg from "./components/MiniGame/assets/sparkles.png";
 import { MiniGame } from "./components/MiniGame/MiniGame";
 import {
   AccordionIcon,
@@ -83,7 +84,8 @@ function getAccordionMeta(output: CreateAgentToolOutput) {
   ) {
     return {
       icon,
-      title: "Creating agent, this may take a few minutes. Sit back and relax.",
+      title:
+        "Creating agent, this may take a few minutes. Play while you wait.",
       expanded: true,
     };
   }
@@ -167,16 +169,20 @@ export function CreateAgentTool({ part }: Props) {
           {isAgentSavedOutput(output) && (
             <div className="rounded-xl border border-border/60 bg-card p-4 shadow-sm">
               <div className="flex items-baseline gap-2">
-                <CheckFatIcon
-                  size={18}
-                  weight="regular"
-                  className="relative top-1 text-green-500"
+                <Image
+                  src={sparklesImg}
+                  alt="sparkles"
+                  width={24}
+                  height={24}
+                  className="relative top-1"
                 />
                 <Text
                   variant="body-medium"
-                  className="text-blacks mb-2 text-[16px]"
+                  className="mb-2 text-[16px] text-black"
                 >
-                  {output.message}
+                  Agent{" "}
+                  <span className="text-violet-600">{output.agent_name}</span>{" "}
+                  has been saved to your library!
                 </Text>
               </div>
               <div className="mt-3 flex flex-wrap gap-4">
