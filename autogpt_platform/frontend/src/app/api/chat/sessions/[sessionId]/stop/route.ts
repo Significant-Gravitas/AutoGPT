@@ -37,7 +37,8 @@ export async function POST(
     return new Response(bodyText || null, {
       status: response.status,
       headers: {
-        "Content-Type": response.headers.get("content-type") ?? "application/json",
+        "Content-Type":
+          response.headers.get("content-type") ?? "application/json",
       },
     });
   } catch (error) {
