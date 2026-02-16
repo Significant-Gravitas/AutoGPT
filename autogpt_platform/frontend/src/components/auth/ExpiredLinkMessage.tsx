@@ -19,8 +19,7 @@ export function ExpiredLinkMessage({
         Your reset password link has expired or has already been used
       </Text>
       <Text variant="body-medium" className="text-center text-muted-foreground">
-        Click below to recover your password. A new link will be sent to your
-        email.
+        Enter your email below to request a new password reset link.
       </Text>
       <Button
         variant="primary"
@@ -29,7 +28,7 @@ export function ExpiredLinkMessage({
         disabled={linkSent}
         className="w-full"
       >
-        {linkSent ? "Check Your Email" : "Send Me a New Link"}
+        {linkSent ? "Check Your Email" : "Request a New Link"}
       </Button>
       <div className="flex items-center gap-1">
         <Text variant="body-small" className="text-muted-foreground">

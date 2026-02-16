@@ -32,12 +32,14 @@ function ResetPasswordContent() {
 
     if (error || errorCode) {
       // Check if this is an expired/used link error
+      const descLower = errorDescription?.toLowerCase() || "";
       const isExpiredOrUsed =
         error === "link_expired" ||
         errorCode === "otp_expired" ||
-        error === "access_denied" ||
-        errorDescription?.toLowerCase().includes("expired") ||
-        errorDescription?.toLowerCase().includes("invalid");
+        descLower.includes("expired") ||
+        descLower.includes("invalid") ||
+        // access_denied alone is too broad - only treat as expired when combined with otp indicators
+        (error === "access_denied" && errorCode === "otp_expired");
 
       if (isExpiredOrUsed) {
         setShowExpiredMessage(true);
