@@ -24,6 +24,7 @@ import { FindBlocksTool } from "../../tools/FindBlocks/FindBlocks";
 import { RunAgentTool } from "../../tools/RunAgent/RunAgent";
 import { RunBlockTool } from "../../tools/RunBlock/RunBlock";
 import { SearchDocsTool } from "../../tools/SearchDocs/SearchDocs";
+import { GenericTool } from "../../tools/GenericTool/GenericTool";
 import { ViewAgentOutputTool } from "../../tools/ViewAgentOutput/ViewAgentOutput";
 
 // ---------------------------------------------------------------------------
@@ -273,6 +274,16 @@ export const ChatMessagesContainer = ({
                         />
                       );
                     default:
+                      // Render a generic tool indicator for SDK built-in
+                      // tools (Read, Glob, Grep, etc.) or any unrecognized tool
+                      if (part.type.startsWith("tool-")) {
+                        return (
+                          <GenericTool
+                            key={`${message.id}-${i}`}
+                            part={part as ToolUIPart}
+                          />
+                        );
+                      }
                       return null;
                   }
                 })}
