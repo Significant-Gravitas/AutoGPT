@@ -139,7 +139,7 @@ jobs:
 
       - name: Upload logs to artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: test-logs
           path: classic/original_autogpt/logs/
