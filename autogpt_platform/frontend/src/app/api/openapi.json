@@ -1232,6 +1232,46 @@
         }
       }
     },
+    "/api/chat/sessions/{session_id}/stop": {
+      "post": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Stop Session Stream",
+        "description": "Stop the active stream for a chat session.\n\nCancels the backend task currently streaming for the given session.\nIf no active stream exists, returns ``stopped=False``.\n\nArgs:\n    session_id: The chat session identifier.\n    user_id: Optional authenticated user ID.\n\nReturns:\n    StopSessionStreamResponse indicating whether a task was stopped.",
+        "operationId": "postV2StopSessionStream",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StopSessionStreamResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/chat/sessions/{session_id}/stream": {
       "get": {
         "tags": ["v2", "chat", "chat"],
@@ -11187,6 +11227,19 @@
         "additionalProperties": true,
         "type": "object",
         "title": "Stats"
+      },
+      "StopSessionStreamResponse": {
+        "properties": {
+          "stopped": { "type": "boolean", "title": "Stopped" },
+          "task_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Task Id"
+          }
+        },
+        "type": "object",
+        "required": ["stopped"],
+        "title": "StopSessionStreamResponse",
+        "description": "Response model for stopping an active session stream."
       },
       "StoreAgent": {
         "properties": {
