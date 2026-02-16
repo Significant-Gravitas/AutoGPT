@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
 
   if (!code) {
     return NextResponse.redirect(
-      `${origin}/reset-password?error=Missing verification code`,
+      `${origin}/reset-password?error=${encodeURIComponent("Missing verification code")}`,
     );
   }
 

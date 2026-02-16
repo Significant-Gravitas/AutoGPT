@@ -13,7 +13,7 @@ export function ExpiredLinkMessage({ onRequestNewLink }: Props) {
         Your reset password link has expired or has already been used
       </Text>
       <Text variant="body-medium" className="text-center text-muted-foreground">
-        Enter your email below to request a new password reset link.
+        Click below to request a new password reset link.
       </Text>
       <Button variant="primary" onClick={onRequestNewLink} className="w-full">
         Request a New Link
