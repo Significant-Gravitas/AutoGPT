@@ -24,7 +24,7 @@ When deploying to a new server, these variables **must** be updated from their l
 
 AutoGPT uses multiple `.env` files across different components:
 
-```
+```text
 autogpt_platform/
 ├── .env                    # Supabase/infrastructure config
 ├── backend/
@@ -86,6 +86,9 @@ NEXT_PUBLIC_FRONTEND_BASE_URL=https://your-domain.com:3000
 !!! warning "HTTPS Note"
     For production, use HTTPS URLs and `wss://` for WebSocket. You'll need a reverse proxy (nginx, Caddy) with SSL certificates.
 
+!!! info "Port Numbers"
+    The port numbers shown (`:3000`, `:8000`, `:8001`, `:8006`) are internal Docker service ports. In production with a reverse proxy, your public URLs typically won't include port numbers (e.g., `https://your-domain.com` instead of `https://your-domain.com:3000`). Configure your reverse proxy to route external traffic to the internal service ports.
+
 ---
 
 ## 2. Security Keys (MUST REGENERATE)
@@ -111,7 +114,7 @@ DASHBOARD_PASSWORD=<strong-password>
 
 # Encryption keys
 SECRET_KEY_BASE=<generate-random-string>
-VAULT_ENC_KEY=<generate-32-char-key>
+VAULT_ENC_KEY=<generate-32-char-key>  # Run: openssl rand -hex 16
 ```
 
 ### Backend `.env`
@@ -135,11 +138,14 @@ UNSUBSCRIBE_SECRET_KEY=<generated-fernet-key>
 ### Generating Keys
 
 ```bash
-# Generate Fernet encryption key
+# Generate Fernet encryption key (for ENCRYPTION_KEY, UNSUBSCRIBE_SECRET_KEY)
 python -c "from cryptography.fernet import Fernet;print(Fernet.generate_key().decode())"
 
-# Generate random string (for JWT_SECRET, etc.)
+# Generate random string (for JWT_SECRET, SECRET_KEY_BASE)
 openssl rand -base64 32
+
+# Generate 32-character key (for VAULT_ENC_KEY)
+openssl rand -hex 16
 
 # Generate Supabase keys (requires matching JWT_SECRET)
 # Use: https://supabase.com/docs/guides/self-hosting/docker#generate-api-keys
@@ -165,7 +171,7 @@ DB_USER=postgres
 DB_PASS=<your-password>
 DB_NAME=postgres
 DB_PORT=5432
-DB_HOST=db                    # Docker: 'db', External: hostname/IP
+DB_HOST=localhost             # Default is localhost; use 'db' in Docker
 DB_SCHEMA=platform
 
 # Connection pooling
@@ -174,7 +180,7 @@ DB_CONNECT_TIMEOUT=60
 DB_POOL_TIMEOUT=300
 
 # Full connection URL (auto-constructed from above in .env.default)
-# Only set explicitly if you need custom parameters
+# Variable substitution is handled automatically; only override if you need custom parameters
 DATABASE_URL="postgresql://${DB_USER}:${DB_PASS}@${DB_HOST}:${DB_PORT}/${DB_NAME}?schema=${DB_SCHEMA}"
 ```
 
@@ -223,8 +229,10 @@ RABBITMQ_DEFAULT_PASS=<strong-password>
 
 When configuring OAuth providers, use this callback URL format:
 
-```
-https://your-domain.com:3000/auth/integrations/oauth_callback
+```text
+https://your-domain.com/auth/integrations/oauth_callback
+# Or with explicit port if not using a reverse proxy:
+# https://your-domain.com:3000/auth/integrations/oauth_callback
 ```
 
 ### Supported OAuth Providers
@@ -353,6 +361,7 @@ Use this checklist when deploying to a new environment:
 The docker-compose files automatically set internal hostnames:
 
 ```yaml
+# Internal Docker service names (container-to-container communication)
 # These are set automatically in docker-compose.platform.yml
 DB_HOST: db
 REDIS_HOST: redis
