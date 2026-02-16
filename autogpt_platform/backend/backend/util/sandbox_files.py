@@ -224,7 +224,15 @@ async def extract_sandbox_files(
                         )
                         continue
 
-                    file_size = int(stat_result.stdout.strip())
+                    try:
+                        file_size = int(stat_result.stdout.strip())
+                    except ValueError:
+                        logger.debug(
+                            f"Skipping {file_path}: unexpected stat output "
+                            f"{stat_result.stdout.strip()!r}"
+                        )
+                        continue
+
                     if file_size > MAX_BINARY_FILE_SIZE:
                         logger.info(
                             f"Skipping {file_path}: size {file_size} bytes "
