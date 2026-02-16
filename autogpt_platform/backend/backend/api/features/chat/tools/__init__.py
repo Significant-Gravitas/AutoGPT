@@ -9,6 +9,8 @@ from backend.api.features.chat.tracking import track_tool_called
 from .add_understanding import AddUnderstandingTool
 from .agent_output import AgentOutputTool
 from .base import BaseTool
+from .bash_exec import BashExecTool
+from .check_operation_status import CheckOperationStatusTool
 from .create_agent import CreateAgentTool
 from .customize_agent import CustomizeAgentTool
 from .edit_agent import EditAgentTool
@@ -19,6 +21,7 @@ from .get_doc_page import GetDocPageTool
 from .run_agent import RunAgentTool
 from .run_block import RunBlockTool
 from .search_docs import SearchDocsTool
+from .web_fetch import WebFetchTool
 from .workspace_files import (
     DeleteWorkspaceFileTool,
     ListWorkspaceFilesTool,
@@ -43,8 +46,17 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "run_agent": RunAgentTool(),
     "run_block": RunBlockTool(),
     "view_agent_output": AgentOutputTool(),
+    "check_operation_status": CheckOperationStatusTool(),
     "search_docs": SearchDocsTool(),
     "get_doc_page": GetDocPageTool(),
+    # Web fetch for safe URL retrieval
+    "web_fetch": WebFetchTool(),
+    # Sandboxed code execution (bubblewrap)
+    "bash_exec": BashExecTool(),
+    # Persistent workspace tools (cloud storage, survives across sessions)
+    # Feature request tools
+    "search_feature_requests": SearchFeatureRequestsTool(),
+    "create_feature_request": CreateFeatureRequestTool(),
     # Workspace tools for CoPilot file operations
     "list_workspace_files": ListWorkspaceFilesTool(),
     "read_workspace_file": ReadWorkspaceFileTool(),

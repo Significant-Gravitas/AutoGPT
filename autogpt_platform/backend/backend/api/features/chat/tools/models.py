@@ -41,6 +41,12 @@ class ResponseType(str, Enum):
     OPERATION_IN_PROGRESS = "operation_in_progress"
     # Input validation
     INPUT_VALIDATION_ERROR = "input_validation_error"
+    # Web fetch
+    WEB_FETCH = "web_fetch"
+    # Code execution
+    BASH_EXEC = "bash_exec"
+    # Operation status check
+    OPERATION_STATUS = "operation_status"
     # Feature request types
     FEATURE_REQUEST_SEARCH = "feature_request_search"
     FEATURE_REQUEST_CREATED = "feature_request_created"
@@ -338,6 +344,19 @@ class BlockInfoSummary(BaseModel):
     id: str
     name: str
     description: str
+    categories: list[str]
+    input_schema: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Full JSON schema for block inputs",
+    )
+    output_schema: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Full JSON schema for block outputs",
+    )
+    required_inputs: list[BlockInputFieldInfo] = Field(
+        default_factory=list,
+        description="List of input fields for this block",
+    )
 
 
 class BlockListResponse(ToolResponseBase):
@@ -347,6 +366,10 @@ class BlockListResponse(ToolResponseBase):
     blocks: list[BlockInfoSummary]
     count: int
     query: str
+    usage_hint: str = Field(
+        default="To execute a block, call run_block with block_id set to the block's "
+        "'id' field and input_data containing the fields listed in required_inputs."
+    )
 
 
 class BlockDetails(BaseModel):
@@ -433,6 +456,27 @@ class AsyncProcessingResponse(ToolResponseBase):
     status: str = "accepted"  # Must be "accepted" for detection
     operation_id: str | None = None
     task_id: str | None = None
+
+
+class WebFetchResponse(ToolResponseBase):
+    """Response for web_fetch tool."""
+
+    type: ResponseType = ResponseType.WEB_FETCH
+    url: str
+    status_code: int
+    content_type: str
+    content: str
+    truncated: bool = False
+
+
+class BashExecResponse(ToolResponseBase):
+    """Response for bash_exec tool."""
+
+    type: ResponseType = ResponseType.BASH_EXEC
+    stdout: str
+    stderr: str
+    exit_code: int
+    timed_out: bool = False
 
 
 # Feature request models
