@@ -79,7 +79,7 @@ async def test_block_credit_usage(server: SpinTestServer):
             node_exec_id="test_node_exec",
             block_id=AITextGeneratorBlock().id,
             inputs={
-                "model": "gpt-4-turbo",
+                "model": "gpt-4o",
                 "credentials": {
                     "id": openai_credentials.id,
                     "provider": openai_credentials.provider,
@@ -100,7 +100,7 @@ async def test_block_credit_usage(server: SpinTestServer):
             graph_exec_id="test_graph_exec",
             node_exec_id="test_node_exec",
             block_id=AITextGeneratorBlock().id,
-            inputs={"model": "gpt-4-turbo", "api_key": "owned_api_key"},
+            inputs={"model": "gpt-4o", "api_key": "owned_api_key"},
             execution_context=ExecutionContext(user_timezone="UTC"),
         ),
     )
