@@ -53,6 +53,7 @@ function getAccordionMeta(output: EditAgentToolOutput): {
   title: string;
   titleClassName?: string;
   description?: string;
+  expanded?: boolean;
 } {
   const icon = <AccordionIcon />;
 

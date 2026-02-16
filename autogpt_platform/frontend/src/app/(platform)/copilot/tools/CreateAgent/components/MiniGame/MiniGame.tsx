@@ -12,10 +12,6 @@ export function MiniGame() {
 
   const isRunActive =
     activeMode === "run" || activeMode === "idle" || activeMode === "over";
-  const isBossActive =
-    activeMode === "boss" ||
-    activeMode === "boss-intro" ||
-    activeMode === "boss-defeated";
 
   let overlayText: string | undefined;
   let buttonLabel = "Continue";
@@ -33,14 +29,14 @@ export function MiniGame() {
   return (
     <div className="flex flex-col gap-2">
       <p className="text-sm font-medium text-purple-500">
-        {isBossActive ? (
+        {isRunActive ? (
           <>
-            Duel mode: <Key>←→</Key> to move · <Key>Z</Key> to attack ·{" "}
-            <Key>X</Key> to block · <Key>Space</Key> to jump
+            Run mode: <Key>Space</Key> to jump
           </>
         ) : (
           <>
-            Run mode: <Key>Space</Key> to jump
+            Duel mode: <Key>←→</Key> to move · <Key>Z</Key> to attack ·{" "}
+            <Key>X</Key> to block · <Key>Space</Key> to jump
           </>
         )}
       </p>

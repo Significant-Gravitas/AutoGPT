@@ -55,7 +55,6 @@ const COLOR_CHAR = "#263238";
 const BOSS_SIZE = 36;
 const BOSS_SPRITE_SIZE = 70;
 const BOSS_ENTER_SPEED = 2;
-const BOSS_LEAVE_SPEED = 3;
 const BOSS_HP = 1;
 const MOVE_SPEED = 3;
 const BOSS_CHASE_SPEED = 2.2;
@@ -93,7 +92,7 @@ interface Obstacle {
 }
 
 interface BossState {
-  phase: "inactive" | "entering" | "fighting" | "leaving";
+  phase: "inactive" | "entering" | "fighting";
   x: number;
   y: number;
   vy: number;
@@ -505,17 +504,6 @@ function update(s: GameState, canvasWidth: number, keys: KeyState) {
           s.boss.actionTimer = BOSS_IDLE_TIME;
         }
       }
-    }
-    return;
-  }
-
-  // ---- Boss: leaving ---- //
-  if (s.boss.phase === "leaving") {
-    s.boss.x += BOSS_LEAVE_SPEED;
-    if (s.boss.x > canvasWidth + 50) {
-      s.boss = makeBoss(s.groundY);
-      s.charX = CHAR_X;
-      s.nextSpawn = s.frame + randInt(SPAWN_MIN / 2, SPAWN_MAX / 2);
     }
     return;
   }

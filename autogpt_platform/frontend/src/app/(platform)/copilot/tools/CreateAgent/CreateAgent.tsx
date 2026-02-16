@@ -8,6 +8,7 @@ import {
   WarningDiamondIcon,
 } from "@phosphor-icons/react";
 import type { ToolUIPart } from "ai";
+import Image from "next/image";
 import NextLink from "next/link";
 import { useCopilotChatActions } from "../../components/CopilotChatActionsProvider/useCopilotChatActions";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
@@ -168,8 +169,8 @@ export function CreateAgentTool({ part }: Props) {
           {isAgentSavedOutput(output) && (
             <div className="rounded-xl border border-border/60 bg-card p-4 shadow-sm">
               <div className="flex items-baseline gap-2">
-                <img
-                  src={sparklesImg.src}
+                <Image
+                  src={sparklesImg}
                   alt="sparkles"
                   width={24}
                   height={24}
@@ -177,12 +178,10 @@ export function CreateAgentTool({ part }: Props) {
                 />
                 <Text
                   variant="body-medium"
-                  className="text-blacks mb-2 text-[16px]"
+                  className="text-black mb-2 text-[16px]"
                 >
                   Agent{" "}
-                  <span className="text-[rgb(124,58,237)]">
-                    {output.agent_name}
-                  </span>{" "}
+                  <span className="text-violet-600">{output.agent_name}</span>{" "}
                   has been saved to your library!
                 </Text>
               </div>
