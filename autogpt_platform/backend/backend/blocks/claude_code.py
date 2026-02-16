@@ -187,9 +187,11 @@ class ClaudeCodeBlock(Block):
         )
         files: list[SandboxFileOutput] = SchemaField(
             description=(
-                "List of text files created/modified by Claude Code during this execution. "
+                "List of files created/modified by Claude Code during this execution. "
+                "Includes text files and binary files (images, PDFs, etc.). "
                 "Each file has 'path', 'relative_path', 'name', 'content', and 'workspace_ref' fields. "
-                "workspace_ref contains a workspace:// URI if the file was stored to workspace."
+                "workspace_ref contains a workspace:// URI for workspace storage. "
+                "For binary files, content contains a placeholder; use workspace_ref to access the file."
             )
         )
         conversation_history: str = SchemaField(
@@ -453,12 +455,14 @@ class ClaudeCodeBlock(Block):
                     new_conversation_history = turn_entry
 
             # Extract files created/modified during this run and store to workspace
+            # Include binary files (images, PDFs, etc.) - they'll be stored via
+            # store_media_file which handles virus scanning and workspace storage
             sandbox_files = await extract_and_store_sandbox_files(
                 sandbox=sandbox,
                 working_directory=working_directory,
                 execution_context=execution_context,
                 since_timestamp=start_timestamp,
-                text_only=True,
+                text_only=False,  # Extract both text and binary files
             )
 
             return (
