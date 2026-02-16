@@ -7,11 +7,15 @@ on:
       - ".github/workflows/platform-frontend-ci.yml"
       - "autogpt_platform/frontend/**"
       - "autogpt_platform/backend/Dockerfile"
+      - "autogpt_platform/docker-compose.yml"
+      - "autogpt_platform/docker-compose.platform.yml"
   pull_request:
     paths:
       - ".github/workflows/platform-frontend-ci.yml"
       - "autogpt_platform/frontend/**"
       - "autogpt_platform/backend/Dockerfile"
+      - "autogpt_platform/docker-compose.yml"
+      - "autogpt_platform/docker-compose.platform.yml"
   merge_group:
   workflow_dispatch:
 

@@ -94,7 +94,7 @@ services:
       context: ../
       dockerfile: autogpt_platform/backend/Dockerfile
       target: server
-    command: ["python", "-m", "backend.rest"]
+    command: ["rest"] # points to entry in [tool.poetry.scripts] in pyproject.toml
     develop:
       watch:
         - path: ./
@@ -127,7 +127,7 @@ services:
       context: ../
       dockerfile: autogpt_platform/backend/Dockerfile
       target: server
-    command: ["python", "-m", "backend.exec"]
+    command: ["executor"] # points to entry in [tool.poetry.scripts] in pyproject.toml
     develop:
       watch:
         - path: ./
@@ -162,7 +162,7 @@ services:
       context: ../
       dockerfile: autogpt_platform/backend/Dockerfile
       target: server
-    command: ["python", "-m", "backend.ws"]
+    command: ["ws"] # points to entry in [tool.poetry.scripts] in pyproject.toml
     develop:
       watch:
         - path: ./
@@ -195,7 +195,7 @@ services:
       context: ../
       dockerfile: autogpt_platform/backend/Dockerfile
       target: server
-    command: ["python", "-m", "backend.db"]
+    command: ["db"] # points to entry in [tool.poetry.scripts] in pyproject.toml
     develop:
       watch:
         - path: ./
@@ -224,7 +224,7 @@ services:
       context: ../
       dockerfile: autogpt_platform/backend/Dockerfile
       target: server
-    command: ["python", "-m", "backend.scheduler"]
+    command: ["scheduler"] # points to entry in [tool.poetry.scripts] in pyproject.toml
     develop:
       watch:
         - path: ./
@@ -272,7 +272,7 @@ services:
       context: ../
       dockerfile: autogpt_platform/backend/Dockerfile
       target: server
-    command: ["python", "-m", "backend.notification"]
+    command: ["notification"] # points to entry in [tool.poetry.scripts] in pyproject.toml
     develop:
       watch:
         - path: ./
