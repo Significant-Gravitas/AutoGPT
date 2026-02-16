@@ -178,7 +178,7 @@ export function CreateAgentTool({ part }: Props) {
                 />
                 <Text
                   variant="body-medium"
-                  className="text-black mb-2 text-[16px]"
+                  className="mb-2 text-[16px] text-black"
                 >
                   Agent{" "}
                   <span className="text-violet-600">{output.agent_name}</span>{" "}

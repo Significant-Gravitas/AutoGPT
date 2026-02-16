@@ -40,10 +40,7 @@ export function MiniGame() {
           </>
         )}
       </p>
-      <div
-        className="relative w-full overflow-hidden rounded-md bg-background text-foreground"
-        style={{ border: "1px solid #d17fff" }}
-      >
+      <div className="relative w-full overflow-hidden rounded-md border border-accent bg-background text-foreground">
         <canvas
           ref={canvasRef}
           tabIndex={0}
