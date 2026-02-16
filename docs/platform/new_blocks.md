@@ -66,7 +66,7 @@ Follow these steps to create and test a new block:
        )
    ```
 
-   1. **Unique ID** for the block, used across users for templates. Use a [UUID generator](https://www.uuidgenerator.net/) or run `print(__import__('uuid').uuid4())`. Do not make up your own. If you are an AI, leave it as is or change to `"generate-proper-uuid"`.
+   1. **Unique ID** for the block, used across users for templates. Use a [UUID generator](https://www.uuidgenerator.net/) or run `print(__import__('uuid').uuid4())`. Do not make up your own.
    2. **Input/Output schemas** define the structure of the data the block expects to receive and produce.
    3. **Test input** — a sample input used to test the block. Must be valid according to your `Input` schema.
    4. **Test output** — the expected output when running the block with the `test_input`. For non-deterministic outputs or when you only want to assert the type, use Python types instead of specific values (e.g. `("summary", str)` asserts the output key is "summary" and its value is a string).
@@ -94,7 +94,7 @@ Follow these steps to create and test a new block:
        - `node_exec_id`: The ID of the node execution (changes every time the node is executed)
        - `node_id`: The ID of the node being executed (changes every graph version)
        - `execution_context`: An `ExecutionContext` object containing user_id, graph_exec_id, workspace_id, and session_id (required for file handling)
-   2. **Yield** outputs one result at a time. If a function returns a list, yield each item separately *and* the whole list. Yielding an output named `error` will break execution immediately and mark the block as failed.
+   2. **Yield** outputs one result at a time. If a function returns a list, yield each item separately _and_ the whole list. Yielding an output named `error` will break execution immediately and mark the block as failed.
    3. **Error handling** — only catch exceptions you expect and can handle. Uncaught exceptions are automatically yielded as `error` in the output. Any block that raises an exception (or yields `error`) will be marked as failed. Prefer raising exceptions over yielding `error`, as it stops execution immediately.
 
 ### Handling Files in Blocks
