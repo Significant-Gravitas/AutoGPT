@@ -51,6 +51,21 @@ async def _on_graph_activate(graph: "BaseGraph | GraphModel", user_id: str):
             if (
                 creds_meta := new_node.input_default.get(creds_field_name)
             ) and not await get_credentials(creds_meta["id"]):
+                # If the credential field is optional (has a default in the
+                # schema, or node metadata marks it optional), clear the stale
+                # reference instead of blocking the save.
+                creds_field_optional = (
+                    new_node.credentials_optional
+                    or creds_field_name not in block_input_schema.get_required_fields()
+                )
+                if creds_field_optional:
+                    new_node.input_default[creds_field_name] = {}
+                    logger.warning(
+                        f"Node #{new_node.id}: cleared stale optional "
+                        f"credentials #{creds_meta['id']} for "
+                        f"'{creds_field_name}'"
+                    )
+                    continue
                 raise ValueError(
                     f"Node #{new_node.id} input '{creds_field_name}' updated with "
                     f"non-existent credentials #{creds_meta['id']}"

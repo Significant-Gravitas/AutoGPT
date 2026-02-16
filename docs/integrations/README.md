@@ -56,12 +56,16 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [File Store](block-integrations/basic.md#file-store) | Downloads and stores a file from a URL, data URI, or local path |
 | [Find In Dictionary](block-integrations/basic.md#find-in-dictionary) | A block that looks up a value in a dictionary, list, or object by key or index and returns the corresponding value |
 | [Find In List](block-integrations/basic.md#find-in-list) | Finds the index of the value in the list |
+| [Flatten List](block-integrations/basic.md#flatten-list) | Flattens a nested list structure into a single flat list |
 | [Get All Memories](block-integrations/basic.md#get-all-memories) | Retrieve all memories from Mem0 with optional conversation filtering |
 | [Get Latest Memory](block-integrations/basic.md#get-latest-memory) | Retrieve the latest memory from Mem0 with optional key filtering |
 | [Get List Item](block-integrations/basic.md#get-list-item) | Returns the element at the given index |
 | [Get Store Agent Details](block-integrations/system/store_operations.md#get-store-agent-details) | Get detailed information about an agent from the store |
 | [Get Weather Information](block-integrations/basic.md#get-weather-information) | Retrieves weather information for a specified location using OpenWeatherMap API |
 | [Human In The Loop](block-integrations/basic.md#human-in-the-loop) | Pause execution for human review |
+| [Interleave Lists](block-integrations/basic.md#interleave-lists) | Interleaves elements from multiple lists in round-robin fashion, alternating between sources |
+| [List Difference](block-integrations/basic.md#list-difference) | Computes the difference between two lists |
+| [List Intersection](block-integrations/basic.md#list-intersection) | Computes the intersection of two lists, returning only elements present in both |
 | [List Is Empty](block-integrations/basic.md#list-is-empty) | Checks if a list is empty |
 | [List Library Agents](block-integrations/system/library_operations.md#list-library-agents) | List all agents in your personal library |
 | [Note](block-integrations/basic.md#note) | A visual annotation block that displays a sticky note in the workflow editor for documentation and organization purposes |
@@ -84,6 +88,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Store Value](block-integrations/basic.md#store-value) | A basic block that stores and forwards a value throughout workflows, allowing it to be reused without changes across multiple blocks |
 | [Universal Type Converter](block-integrations/basic.md#universal-type-converter) | This block is used to convert a value to a universal type |
 | [XML Parser](block-integrations/basic.md#xml-parser) | Parses XML using gravitasml to tokenize and coverts it to dict |
+| [Zip Lists](block-integrations/basic.md#zip-lists) | Zips multiple lists together into a list of grouped elements |
 
 ## Data Processing
 
@@ -467,6 +472,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Github Update Comment](block-integrations/github/issues.md#github-update-comment) | A block that updates an existing comment on a GitHub issue or pull request |
 | [Github Update File](block-integrations/github/repo.md#github-update-file) | This block updates an existing file in a GitHub repository |
 | [Instantiate Code Sandbox](block-integrations/misc.md#instantiate-code-sandbox) | Instantiate a sandbox environment with internet access in which you can execute code with the Execute Code Step block |
+| [MCP Tool](block-integrations/mcp/block.md#mcp-tool) | Connect to any MCP server and execute its tools |
 | [Slant3D Order Webhook](block-integrations/slant3d/webhook.md#slant3d-order-webhook) | This block triggers on Slant3D order status updates and outputs the event details, including tracking information when orders are shipped |
 
 ## Media Generation

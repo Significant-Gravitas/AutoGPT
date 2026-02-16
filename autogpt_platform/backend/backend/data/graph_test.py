@@ -788,3 +788,120 @@ def test_credentials_input_schema_excludes_auto_creds():
         # Should include regular credential but NOT auto_credential
         assert "github_credentials" in field_names
         assert "google_credentials" not in field_names
+
+
+# ============================================================================
+# Tests for MCP Credential Deduplication
+# ============================================================================
+
+
+def test_mcp_credential_combine_different_servers():
+    """Two MCP credential fields with different server URLs should produce
+    separate entries when combined (not merged into one)."""
+    from backend.data.model import CredentialsFieldInfo, CredentialsType
+    from backend.integrations.providers import ProviderName
+
+    oauth2_types: frozenset[CredentialsType] = frozenset(["oauth2"])
+
+    field_sentry = CredentialsFieldInfo(
+        credentials_provider=frozenset([ProviderName.MCP]),
+        credentials_types=oauth2_types,
+        credentials_scopes=None,
+        discriminator="server_url",
+        discriminator_values={"https://mcp.sentry.dev/mcp"},
+    )
+    field_linear = CredentialsFieldInfo(
+        credentials_provider=frozenset([ProviderName.MCP]),
+        credentials_types=oauth2_types,
+        credentials_scopes=None,
+        discriminator="server_url",
+        discriminator_values={"https://mcp.linear.app/mcp"},
+    )
+
+    combined = CredentialsFieldInfo.combine(
+        (field_sentry, ("node-sentry", "credentials")),
+        (field_linear, ("node-linear", "credentials")),
+    )
+
+    # Should produce 2 separate credential entries
+    assert len(combined) == 2, (
+        f"Expected 2 credential entries for 2 MCP blocks with different servers, "
+        f"got {len(combined)}: {list(combined.keys())}"
+    )
+
+    # Each entry should contain the server hostname in its key
+    keys = list(combined.keys())
+    assert any(
+        "mcp.sentry.dev" in k for k in keys
+    ), f"Expected 'mcp.sentry.dev' in one key, got {keys}"
+    assert any(
+        "mcp.linear.app" in k for k in keys
+    ), f"Expected 'mcp.linear.app' in one key, got {keys}"
+
+
+def test_mcp_credential_combine_same_server():
+    """Two MCP credential fields with the same server URL should be combined
+    into one credential entry."""
+    from backend.data.model import CredentialsFieldInfo, CredentialsType
+    from backend.integrations.providers import ProviderName
+
+    oauth2_types: frozenset[CredentialsType] = frozenset(["oauth2"])
+
+    field_a = CredentialsFieldInfo(
+        credentials_provider=frozenset([ProviderName.MCP]),
+        credentials_types=oauth2_types,
+        credentials_scopes=None,
+        discriminator="server_url",
+        discriminator_values={"https://mcp.sentry.dev/mcp"},
+    )
+    field_b = CredentialsFieldInfo(
+        credentials_provider=frozenset([ProviderName.MCP]),
+        credentials_types=oauth2_types,
+        credentials_scopes=None,
+        discriminator="server_url",
+        discriminator_values={"https://mcp.sentry.dev/mcp"},
+    )
+
+    combined = CredentialsFieldInfo.combine(
+        (field_a, ("node-a", "credentials")),
+        (field_b, ("node-b", "credentials")),
+    )
+
+    # Should produce 1 credential entry (same server URL)
+    assert len(combined) == 1, (
+        f"Expected 1 credential entry for 2 MCP blocks with same server, "
+        f"got {len(combined)}: {list(combined.keys())}"
+    )
+
+
+def test_mcp_credential_combine_no_discriminator_values():
+    """MCP credential fields without discriminator_values should be merged
+    into a single entry (backwards compat for blocks without server_url set)."""
+    from backend.data.model import CredentialsFieldInfo, CredentialsType
+    from backend.integrations.providers import ProviderName
+
+    oauth2_types: frozenset[CredentialsType] = frozenset(["oauth2"])
+
+    field_a = CredentialsFieldInfo(
+        credentials_provider=frozenset([ProviderName.MCP]),
+        credentials_types=oauth2_types,
+        credentials_scopes=None,
+        discriminator="server_url",
+    )
+    field_b = CredentialsFieldInfo(
+        credentials_provider=frozenset([ProviderName.MCP]),
+        credentials_types=oauth2_types,
+        credentials_scopes=None,
+        discriminator="server_url",
+    )
+
+    combined = CredentialsFieldInfo.combine(
+        (field_a, ("node-a", "credentials")),
+        (field_b, ("node-b", "credentials")),
+    )
+
+    # Should produce 1 entry (no URL differentiation)
+    assert len(combined) == 1, (
+        f"Expected 1 credential entry for MCP blocks without discriminator_values, "
+        f"got {len(combined)}: {list(combined.keys())}"
+    )

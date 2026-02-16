@@ -495,6 +495,7 @@ async def test_validate_node_input_credentials_returns_nodes_to_skip(
     mock_block.input_schema.get_credentials_fields.return_value = {
         "credentials": mock_credentials_field_type
     }
+    mock_block.input_schema.get_required_fields.return_value = {"credentials"}
     mock_node.block = mock_block
 
     # Create mock graph
@@ -508,8 +509,8 @@ async def test_validate_node_input_credentials_returns_nodes_to_skip(
         nodes_input_masks=None,
     )
 
-    # Node should be in nodes_to_skip, not in errors
-    assert mock_node.id in nodes_to_skip
+    # Node should NOT be in nodes_to_skip (runs without credentials) and not in errors
+    assert mock_node.id not in nodes_to_skip
     assert mock_node.id not in errors
 
 
@@ -535,6 +536,7 @@ async def test_validate_node_input_credentials_required_missing_creds_error(
     mock_block.input_schema.get_credentials_fields.return_value = {
         "credentials": mock_credentials_field_type
     }
+    mock_block.input_schema.get_required_fields.return_value = {"credentials"}
     mock_node.block = mock_block
 
     # Create mock graph

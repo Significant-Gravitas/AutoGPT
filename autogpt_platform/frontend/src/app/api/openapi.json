@@ -1053,6 +1053,7 @@
                       "$ref": "#/components/schemas/ClarificationNeededResponse"
                     },
                     { "$ref": "#/components/schemas/BlockListResponse" },
+                    { "$ref": "#/components/schemas/BlockDetailsResponse" },
                     { "$ref": "#/components/schemas/BlockOutputResponse" },
                     { "$ref": "#/components/schemas/DocSearchResultsResponse" },
                     { "$ref": "#/components/schemas/DocPageResponse" },
@@ -4268,6 +4269,128 @@
         }
       }
     },
+    "/api/mcp/discover-tools": {
+      "post": {
+        "tags": ["v2", "mcp", "mcp"],
+        "summary": "Discover available tools on an MCP server",
+        "description": "Connect to an MCP server and return its available tools.\n\nIf the user has a stored MCP credential for this server URL, it will be\nused automatically — no need to pass an explicit auth token.",
+        "operationId": "postV2Discover available tools on an mcp server",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/DiscoverToolsRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscoverToolsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/mcp/oauth/callback": {
+      "post": {
+        "tags": ["v2", "mcp", "mcp"],
+        "summary": "Exchange OAuth code for MCP tokens",
+        "description": "Exchange the authorization code for tokens and store the credential.\n\nThe frontend calls this after receiving the OAuth code from the popup.\nOn success, subsequent ``/discover-tools`` calls for the same server URL\nwill automatically use the stored credential.",
+        "operationId": "postV2Exchange oauth code for mcp tokens",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MCPOAuthCallbackRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CredentialsMetaResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/mcp/oauth/login": {
+      "post": {
+        "tags": ["v2", "mcp", "mcp"],
+        "summary": "Initiate OAuth login for an MCP server",
+        "description": "Discover OAuth metadata from the MCP server and return a login URL.\n\n1. Discovers the protected-resource metadata (RFC 9728)\n2. Fetches the authorization server metadata (RFC 8414)\n3. Performs Dynamic Client Registration (RFC 7591) if available\n4. Returns the authorization URL for the frontend to open in a popup",
+        "operationId": "postV2Initiate oauth login for an mcp server",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/MCPOAuthLoginRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MCPOAuthLoginResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/oauth/app/{client_id}": {
       "get": {
         "tags": ["oauth"],
@@ -6958,6 +7081,58 @@
         "enum": ["run", "byte", "second"],
         "title": "BlockCostType"
       },
+      "BlockDetails": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "name": { "type": "string", "title": "Name" },
+          "description": { "type": "string", "title": "Description" },
+          "inputs": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Inputs",
+            "default": {}
+          },
+          "outputs": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Outputs",
+            "default": {}
+          },
+          "credentials": {
+            "items": { "$ref": "#/components/schemas/CredentialsMetaInput" },
+            "type": "array",
+            "title": "Credentials",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": ["id", "name", "description"],
+        "title": "BlockDetails",
+        "description": "Detailed block information."
+      },
+      "BlockDetailsResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "block_details"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "block": { "$ref": "#/components/schemas/BlockDetails" },
+          "user_authenticated": {
+            "type": "boolean",
+            "title": "User Authenticated",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": ["message", "block"],
+        "title": "BlockDetailsResponse",
+        "description": "Response for block details (first run_block attempt)."
+      },
       "BlockInfo": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -7022,29 +7197,24 @@
           "input_schema": {
             "additionalProperties": true,
             "type": "object",
-            "title": "Input Schema"
+            "title": "Input Schema",
+            "description": "Full JSON schema for block inputs"
           },
           "output_schema": {
             "additionalProperties": true,
             "type": "object",
-            "title": "Output Schema"
+            "title": "Output Schema",
+            "description": "Full JSON schema for block outputs"
           },
           "required_inputs": {
             "items": { "$ref": "#/components/schemas/BlockInputFieldInfo" },
             "type": "array",
             "title": "Required Inputs",
-            "description": "List of required input fields for this block"
+            "description": "List of input fields for this block"
           }
         },
         "type": "object",
-        "required": [
-          "id",
-          "name",
-          "description",
-          "categories",
-          "input_schema",
-          "output_schema"
-        ],
+        "required": ["id", "name", "description", "categories"],
         "title": "BlockInfoSummary",
         "description": "Summary of a block for search results."
       },
@@ -7090,7 +7260,7 @@
           "usage_hint": {
             "type": "string",
             "title": "Usage Hint",
-            "default": "To execute a block, call run_block with block_id set to the block's 'id' field and input_data containing the required fields from input_schema."
+            "default": "To execute a block, call run_block with block_id set to the block's 'id' field and input_data containing the fields listed in required_inputs."
           }
         },
         "type": "object",
@@ -7643,7 +7813,7 @@
           "host": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Host",
-            "description": "Host pattern for host-scoped credentials"
+            "description": "Host pattern for host-scoped or MCP server URL for MCP credentials"
           }
         },
         "type": "object",
@@ -7662,6 +7832,45 @@
         "type": "object",
         "required": ["version_counts"],
         "title": "DeleteGraphResponse"
+      },
+      "DiscoverToolsRequest": {
+        "properties": {
+          "server_url": {
+            "type": "string",
+            "title": "Server Url",
+            "description": "URL of the MCP server"
+          },
+          "auth_token": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Auth Token",
+            "description": "Optional Bearer token for authenticated MCP servers"
+          }
+        },
+        "type": "object",
+        "required": ["server_url"],
+        "title": "DiscoverToolsRequest",
+        "description": "Request to discover tools on an MCP server."
+      },
+      "DiscoverToolsResponse": {
+        "properties": {
+          "tools": {
+            "items": { "$ref": "#/components/schemas/MCPToolResponse" },
+            "type": "array",
+            "title": "Tools"
+          },
+          "server_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Server Name"
+          },
+          "protocol_version": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Protocol Version"
+          }
+        },
+        "type": "object",
+        "required": ["tools"],
+        "title": "DiscoverToolsResponse",
+        "description": "Response containing the list of tools available on an MCP server."
       },
       "DocPageResponse": {
         "properties": {
@@ -9239,6 +9448,62 @@
         "required": ["login_url", "state_token"],
         "title": "LoginResponse"
       },
+      "MCPOAuthCallbackRequest": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code",
+            "description": "Authorization code from OAuth callback"
+          },
+          "state_token": {
+            "type": "string",
+            "title": "State Token",
+            "description": "State token for CSRF verification"
+          }
+        },
+        "type": "object",
+        "required": ["code", "state_token"],
+        "title": "MCPOAuthCallbackRequest",
+        "description": "Request to exchange an OAuth code for tokens."
+      },
+      "MCPOAuthLoginRequest": {
+        "properties": {
+          "server_url": {
+            "type": "string",
+            "title": "Server Url",
+            "description": "URL of the MCP server that requires OAuth"
+          }
+        },
+        "type": "object",
+        "required": ["server_url"],
+        "title": "MCPOAuthLoginRequest",
+        "description": "Request to start an OAuth flow for an MCP server."
+      },
+      "MCPOAuthLoginResponse": {
+        "properties": {
+          "login_url": { "type": "string", "title": "Login Url" },
+          "state_token": { "type": "string", "title": "State Token" }
+        },
+        "type": "object",
+        "required": ["login_url", "state_token"],
+        "title": "MCPOAuthLoginResponse",
+        "description": "Response with the OAuth login URL for the user to authenticate."
+      },
+      "MCPToolResponse": {
+        "properties": {
+          "name": { "type": "string", "title": "Name" },
+          "description": { "type": "string", "title": "Description" },
+          "input_schema": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Input Schema"
+          }
+        },
+        "type": "object",
+        "required": ["name", "description", "input_schema"],
+        "title": "MCPToolResponse",
+        "description": "A single MCP tool returned by discovery."
+      },
       "MarketplaceListing": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -10484,6 +10749,7 @@
           "agent_saved",
           "clarification_needed",
           "block_list",
+          "block_details",
           "block_output",
           "doc_search_results",
           "doc_page",
@@ -10495,7 +10761,12 @@
           "operation_started",
           "operation_pending",
           "operation_in_progress",
-          "input_validation_error"
+          "input_validation_error",
+          "web_fetch",
+          "bash_exec",
+          "operation_status",
+          "feature_request_search",
+          "feature_request_created"
         ],
         "title": "ResponseType",
         "description": "Types of tool responses."

@@ -261,7 +261,13 @@ async def _validate_node_input_credentials(
         # Track if any credential field is missing for this node
         has_missing_credentials = False
 
+        # A credential field is optional if the node metadata says so, or if
+        # the block schema declares a default for the field.
+        required_fields = block.input_schema.get_required_fields()
+        is_creds_optional = node.credentials_optional
+
         for field_name, credentials_meta_type in credentials_fields.items():
+            field_is_optional = is_creds_optional or field_name not in required_fields
             try:
                 # Check nodes_input_masks first, then input_default
                 field_value = None
@@ -274,7 +280,7 @@ async def _validate_node_input_credentials(
                 elif field_name in node.input_default:
                     # For optional credentials, don't use input_default - treat as missing
                     # This prevents stale credential IDs from failing validation
-                    if node.credentials_optional:
+                    if field_is_optional:
                         field_value = None
                     else:
                         field_value = node.input_default[field_name]
@@ -284,8 +290,8 @@ async def _validate_node_input_credentials(
                     isinstance(field_value, dict) and not field_value.get("id")
                 ):
                     has_missing_credentials = True
-                    # If node has credentials_optional flag, mark for skipping instead of error
-                    if node.credentials_optional:
+                    # If credential field is optional, skip instead of error
+                    if field_is_optional:
                         continue  # Don't add error, will be marked for skip after loop
                     else:
                         credential_errors[node.id][
@@ -376,16 +382,16 @@ async def _validate_node_input_credentials(
                                 "authenticate with your own account."
                             )
 
-        # If node has optional credentials and any are missing, mark for skipping
-        # But only if there are no other errors for this node
+        # If node has optional credentials and any are missing, allow running without.
+        # The executor will pass credentials=None to the block's run().
         if (
             has_missing_credentials
-            and node.credentials_optional
+            and is_creds_optional
             and node.id not in credential_errors
         ):
-            nodes_to_skip.add(node.id)
             logger.info(
-                f"Node #{node.id} will be skipped: optional credentials not configured"
+                f"Node #{node.id}: optional credentials not configured, "
+                "running without"
             )
 
     return credential_errors, nodes_to_skip
