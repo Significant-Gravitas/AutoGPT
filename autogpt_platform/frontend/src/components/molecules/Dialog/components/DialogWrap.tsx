@@ -111,9 +111,7 @@ export function DialogWrap({
               {title}
             </RXDialog.Title>
           ) : (
-            <RXDialog.Title className="sr-only">
-              {title || "Dialog"}
-            </RXDialog.Title>
+            <RXDialog.Title className="sr-only">Dialog</RXDialog.Title>
           )}
 
           {isForceOpen && !handleClose ? null : (

@@ -71,9 +71,6 @@ export const InputExpanderModal: FC<InputExpanderModalProps> = ({
     >
       <Dialog.Content>
         <div className="flex flex-col gap-4 px-1">
-          <Text variant="h4" className="text-slate-900">
-            {title || "Edit Text"}
-          </Text>
           <Text variant="body">{description}</Text>
           <Input
             type="textarea"
