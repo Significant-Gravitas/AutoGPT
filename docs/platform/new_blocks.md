@@ -57,61 +57,45 @@ Follow these steps to create and test a new block:
    ```python
    def __init__(self):
        super().__init__(
-           # Unique ID for the block, used across users for templates
-           # If you are an AI leave it as is or change to "generate-proper-uuid"
-           id="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
-           input_schema=WikipediaSummaryBlock.Input,  # Assign input schema
-           output_schema=WikipediaSummaryBlock.Output,  # Assign output schema
-
-               # Provide sample input, output and test mock for testing the block
-
-           test_input={"topic": "Artificial Intelligence"},
-           test_output=("summary", "summary content"),
-           test_mock={"get_request": lambda url, json: {"extract": "summary content"}},
+           id="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",  # (1)!
+           input_schema=WikipediaSummaryBlock.Input,  # (2)!
+           output_schema=WikipediaSummaryBlock.Output,
+           test_input={"topic": "Artificial Intelligence"},  # (3)!
+           test_output=("summary", "summary content"),  # (4)!
+           test_mock={"get_request": lambda url, json: {"extract": "summary content"}},  # (5)!
        )
    ```
 
-   - `id`: A unique identifier for the block.
-
-   - `input_schema` and `output_schema`: Define the structure of the input and output data.
-
-   Let's break down the testing components:
-
-   - `test_input`: This is a sample input that will be used to test the block. It should be a valid input according to your Input schema.
-
-   - `test_output`: This is the expected output when running the block with the `test_input`. It should match your Output schema. For non-deterministic outputs or when you only want to assert the type, you can use Python types instead of specific values. In this example, `("summary", str)` asserts that the output key is "summary" and its value is a string.
-
-   - `test_mock`: This is crucial for blocks that make network calls. It provides a mock function that replaces the actual network call during testing.
-
-   In this case, we're mocking the `get_request` method to always return a dictionary with an 'extract' key, simulating a successful API response. This allows us to test the block's logic without making actual network requests, which could be slow, unreliable, or rate-limited.
+   1. **Unique ID** for the block, used across users for templates. Use a [UUID generator](https://www.uuidgenerator.net/) or run `print(__import__('uuid').uuid4())`. Do not make up your own. If you are an AI, leave it as is or change to `"generate-proper-uuid"`.
+   2. **Input/Output schemas** define the structure of the data the block expects to receive and produce.
+   3. **Test input** — a sample input used to test the block. Must be valid according to your `Input` schema.
+   4. **Test output** — the expected output when running the block with the `test_input`. For non-deterministic outputs or when you only want to assert the type, use Python types instead of specific values (e.g. `("summary", str)` asserts the output key is "summary" and its value is a string).
+   5. **Test mock** — crucial for blocks that make network calls. Provides a mock function that replaces the actual network call during testing. Here we mock `get_request` to return `{"extract": "summary content"}`, simulating a successful API response without making actual network requests.
 
 5. **Implement the `run` method with error handling.** This should contain the main logic of the block:
 
    ```python
-   def run(self, input_data: Input, **kwargs) -> BlockOutput:
+   def run(self, input_data: Input, **kwargs) -> BlockOutput:  # (1)!
        try:
            topic = input_data.topic
            url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{topic}"
 
            response = self.get_request(url, json=True)
-           yield "summary", response['extract']
+           yield "summary", response['extract']  # (2)!
 
-       except requests.exceptions.HTTPError as http_err:
+       except requests.exceptions.HTTPError as http_err:  # (3)!
            raise RuntimeError(f"HTTP error occurred: {http_err}")
    ```
 
-   - **Try block**: Contains the main logic to fetch and process the Wikipedia summary.
-   - **API request**: Send a GET request to the Wikipedia API.
-   - **Error handling**: Handle various exceptions that might occur during the API request and data processing. We don't need to catch all exceptions, only the ones we expect and can handle. The uncaught exceptions will be automatically yielded as `error` in the output. Any block that raises an exception (or yields an `error` output) will be marked as failed. Prefer raising exceptions over yielding `error`, as it will stop the execution immediately.
-   - **Yield**: Use `yield` to output the results. Prefer to output one result object at a time. If you are calling a function that returns a list, you can yield each item in the list separately. You can also yield the whole list as well, but do both rather than yielding the list. For example: If you were writing a block that outputs emails, you'd yield each email as a separate result object, but you could also yield the whole list as an additional single result object. Yielding output named `error` will break the execution right away and mark the block execution as failed.
-   - **kwargs**: The `kwargs` parameter is used to pass additional arguments to the block. It is not used in the example above, but it is available to the block. You can also have args as inline signatures in the run method ala `def run(self, input_data: Input, *, user_id: str, **kwargs) -> BlockOutput:`.
-     Available kwargs are:
-     - `user_id`: The ID of the user running the block.
-     - `graph_id`: The ID of the agent that is executing the block. This is the same for every version of the agent
-     - `graph_exec_id`: The ID of the execution of the agent. This changes every time the agent has a new "run"
-     - `node_exec_id`: The ID of the execution of the node. This changes every time the node is executed
-     - `node_id`: The ID of the node that is being executed. It changes every version of the graph, but not every time the node is executed.
-     - `execution_context`: An `ExecutionContext` object containing user_id, graph_exec_id, workspace_id, and session_id. Required for file handling.
+   1. **`kwargs`** is used to pass additional arguments to the block. You can also use inline signatures like `def run(self, input_data: Input, *, user_id: str, **kwargs) -> BlockOutput:`. Available kwargs:
+       - `user_id`: The ID of the user running the block
+       - `graph_id`: The ID of the agent executing the block (same for every version)
+       - `graph_exec_id`: The ID of the agent execution (changes every "run")
+       - `node_exec_id`: The ID of the node execution (changes every time the node is executed)
+       - `node_id`: The ID of the node being executed (changes every graph version)
+       - `execution_context`: An `ExecutionContext` object containing user_id, graph_exec_id, workspace_id, and session_id (required for file handling)
+   2. **Yield** outputs one result at a time. If a function returns a list, yield each item separately *and* the whole list. Yielding an output named `error` will break execution immediately and mark the block as failed.
+   3. **Error handling** — only catch exceptions you expect and can handle. Uncaught exceptions are automatically yielded as `error` in the output. Any block that raises an exception (or yields `error`) will be marked as failed. Prefer raising exceptions over yielding `error`, as it stops execution immediately.
 
 ### Handling Files in Blocks
 
