@@ -75,7 +75,7 @@ services:
       timeout: 5s
       retries: 5
   rabbitmq:
-    image: rabbitmq:management
+    image: rabbitmq:4.1.4
     container_name: rabbitmq
     healthcheck:
       test: rabbitmq-diagnostics -q ping
@@ -88,7 +88,6 @@ services:
       <<: *backend-env
     ports:
       - "5672:5672"
-      - "15672:15672"
 
   rest_server:
     build:
