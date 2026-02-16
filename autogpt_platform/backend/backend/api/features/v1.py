@@ -126,6 +126,9 @@ v1_router = APIRouter()
 ########################################################
 
 
+_tally_background_tasks: set[asyncio.Task] = set()
+
+
 @v1_router.post(
     "/auth/user",
     summary="Get or create user",
@@ -134,6 +137,19 @@ v1_router = APIRouter()
 )
 async def get_or_create_user_route(user_data: dict = Security(get_jwt_payload)):
     user = await get_or_create_user(user_data)
+
+    # Fire-and-forget: populate business understanding from Tally form
+    try:
+        from backend.data.tally import populate_understanding_from_tally
+
+        task = asyncio.create_task(
+            populate_understanding_from_tally(user.id, user.email)
+        )
+        _tally_background_tasks.add(task)
+        task.add_done_callback(_tally_background_tasks.discard)
+    except Exception:
+        pass  # Never block user creation
+
     return user.model_dump()
 
 
