@@ -286,7 +286,7 @@ async def search_marketplace_agents_for_generation(
             return []
 
         graph_ids = [agent.agent_graph_id for agent in agents_with_graphs]
-        graphs = await graph_db().get_store_listed_graphs(*graph_ids)
+        graphs = await graph_db().get_store_listed_graphs(graph_ids)
 
         results: list[LibraryAgentSummary] = []
         for agent in agents_with_graphs:
