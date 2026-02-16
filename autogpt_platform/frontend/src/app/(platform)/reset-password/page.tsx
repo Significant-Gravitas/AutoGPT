@@ -23,7 +23,6 @@ function ResetPasswordContent() {
   const [isLoading, setIsLoading] = useState(false);
   const [disabled, setDisabled] = useState(false);
   const [showExpiredMessage, setShowExpiredMessage] = useState(false);
-  const [linkSent, setLinkSent] = useState(false);
 
   useEffect(() => {
     const error = searchParams.get("error");
@@ -32,14 +31,14 @@ function ResetPasswordContent() {
 
     if (error || errorCode) {
       // Check if this is an expired/used link error
+      // Avoid broad checks like "invalid" which can match unrelated errors (e.g., PKCE errors)
       const descLower = errorDescription?.toLowerCase() || "";
       const isExpiredOrUsed =
         error === "link_expired" ||
         errorCode === "otp_expired" ||
         descLower.includes("expired") ||
-        descLower.includes("invalid") ||
-        // access_denied alone is too broad - only treat as expired when combined with otp indicators
-        (error === "access_denied" && errorCode === "otp_expired");
+        descLower.includes("already") ||
+        descLower.includes("used");
 
       if (isExpiredOrUsed) {
         setShowExpiredMessage(true);
@@ -98,7 +97,6 @@ function ResetPasswordContent() {
         return;
       }
       setDisabled(true);
-      setLinkSent(true);
       toast({
         title: "Email Sent",
         description:
@@ -109,7 +107,7 @@ function ResetPasswordContent() {
     [sendEmailForm, toast],
   );
 
-  function handleSendNewLink() {
+  function handleShowEmailForm() {
     setShowExpiredMessage(false);
   }
 
@@ -158,11 +156,7 @@ function ResetPasswordContent() {
     return (
       <div className="flex h-full min-h-[85vh] w-full flex-col items-center justify-center">
         <AuthCard title="Reset Password">
-          <ExpiredLinkMessage
-            onSendNewLink={handleSendNewLink}
-            isLoading={isLoading}
-            linkSent={linkSent}
-          />
+          <ExpiredLinkMessage onRequestNewLink={handleShowEmailForm} />
         </AuthCard>
       </div>
     );

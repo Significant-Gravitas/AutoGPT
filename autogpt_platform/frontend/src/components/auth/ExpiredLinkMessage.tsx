@@ -3,16 +3,10 @@ import { Link } from "../atoms/Link/Link";
 import { Text } from "../atoms/Text/Text";
 
 interface Props {
-  onSendNewLink: () => void;
-  isLoading?: boolean;
-  linkSent?: boolean;
+  onRequestNewLink: () => void;
 }
 
-export function ExpiredLinkMessage({
-  onSendNewLink,
-  isLoading = false,
-  linkSent = false,
-}: Props) {
+export function ExpiredLinkMessage({ onRequestNewLink }: Props) {
   return (
     <div className="flex flex-col items-center gap-6">
       <Text variant="h3" className="text-center">
@@ -21,14 +15,8 @@ export function ExpiredLinkMessage({
       <Text variant="body-medium" className="text-center text-muted-foreground">
         Enter your email below to request a new password reset link.
       </Text>
-      <Button
-        variant="primary"
-        onClick={onSendNewLink}
-        loading={isLoading}
-        disabled={linkSent}
-        className="w-full"
-      >
-        {linkSent ? "Check Your Email" : "Request a New Link"}
+      <Button variant="primary" onClick={onRequestNewLink} className="w-full">
+        Request a New Link
       </Button>
       <div className="flex items-center gap-1">
         <Text variant="body-small" className="text-muted-foreground">

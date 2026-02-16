@@ -27,10 +27,10 @@ export async function GET(request: NextRequest) {
 
     if (!result.success) {
       // Check for expired or used link errors
+      // Avoid broad checks like "invalid" which can match unrelated errors (e.g., PKCE errors)
       const errorMessage = result.error?.toLowerCase() || "";
       const isExpiredOrUsed =
         errorMessage.includes("expired") ||
-        errorMessage.includes("invalid") ||
         errorMessage.includes("otp_expired") ||
         errorMessage.includes("already") ||
         errorMessage.includes("used");
@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error("Password reset callback error:", error);
     return NextResponse.redirect(
-      `${origin}/reset-password?error=Password reset failed`,
+      `${origin}/reset-password?error=${encodeURIComponent("Password reset failed")}`,
     );
   }
 }
