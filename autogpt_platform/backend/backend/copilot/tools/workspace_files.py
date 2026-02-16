@@ -167,8 +167,8 @@ class ListWorkspaceFilesTool(BaseTool):
                     file_id=f.id,
                     name=f.name,
                     path=f.path,
-                    mime_type=f.mimeType,
-                    size_bytes=f.sizeBytes,
+                    mime_type=f.mime_type,
+                    size_bytes=f.size_bytes,
                 )
                 for f in files
             ]
@@ -309,8 +309,8 @@ class ReadWorkspaceFileTool(BaseTool):
                 target_file_id = file_info.id
 
             # Decide whether to return inline content or metadata+URL
-            is_small_file = file_info.sizeBytes <= self.MAX_INLINE_SIZE_BYTES
-            is_text_file = self._is_text_mime_type(file_info.mimeType)
+            is_small_file = file_info.size_bytes <= self.MAX_INLINE_SIZE_BYTES
+            is_text_file = self._is_text_mime_type(file_info.mime_type)
 
             # Return inline content for small text files (unless force_download_url)
             if is_small_file and is_text_file and not force_download_url:
@@ -321,7 +321,7 @@ class ReadWorkspaceFileTool(BaseTool):
                     file_id=file_info.id,
                     name=file_info.name,
                     path=file_info.path,
-                    mime_type=file_info.mimeType,
+                    mime_type=file_info.mime_type,
                     content_base64=content_b64,
                     message=f"Successfully read file: {file_info.name}",
                     session_id=session_id,
@@ -350,11 +350,11 @@ class ReadWorkspaceFileTool(BaseTool):
                 file_id=file_info.id,
                 name=file_info.name,
                 path=file_info.path,
-                mime_type=file_info.mimeType,
-                size_bytes=file_info.sizeBytes,
+                mime_type=file_info.mime_type,
+                size_bytes=file_info.size_bytes,
                 download_url=download_url,
                 preview=preview,
-                message=f"File: {file_info.name} ({file_info.sizeBytes} bytes). Use download_url to retrieve content.",
+                message=f"File: {file_info.name} ({file_info.size_bytes} bytes). Use download_url to retrieve content.",
                 session_id=session_id,
             )
 
@@ -500,7 +500,7 @@ class WriteWorkspaceFileTool(BaseTool):
                 file_id=file_record.id,
                 name=file_record.name,
                 path=file_record.path,
-                size_bytes=file_record.sizeBytes,
+                size_bytes=file_record.size_bytes,
                 message=f"Successfully wrote file: {file_record.name}",
                 session_id=session_id,
             )
