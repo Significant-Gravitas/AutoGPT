@@ -19,7 +19,7 @@ export function ExpiredLinkMessage({ onRequestNewLink }: Props) {
         Request a New Link
       </Button>
       <div className="flex items-center gap-1">
-        <Text variant="body-small" className="text-muted-foreground">
+        <Text variant="small" className="text-muted-foreground">
           Already have access?
         </Text>
         <Link href="/login" variant="secondary">
