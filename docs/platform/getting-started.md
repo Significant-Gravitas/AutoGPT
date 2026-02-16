@@ -223,7 +223,7 @@ For more details, refer to [Docker's official documentation](https://docs.docker
 AutoGPT requires **Docker** (Docker Desktop or Docker Engine). **Podman and podman-compose are not supported** and may cause path resolution issues, particularly on Windows.
 
 If you see errors like:
-```
+```text
 Error: the specified Containerfile or Dockerfile does not exist, ..\..\autogpt_platform\backend\Dockerfile
 ```
 
