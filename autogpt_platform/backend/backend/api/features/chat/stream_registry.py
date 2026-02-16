@@ -901,6 +901,96 @@ def _reconstruct_chunk(chunk_data: dict) -> StreamBaseResponse | None:
         return None
 
 
+async def request_task_cancellation(task_id: str) -> bool:
+    """Request cancellation of a running task.
+
+    Sets a Redis cancel flag and, if the task is local, directly cancels the
+    asyncio.Task.
+
+    Args:
+        task_id: Task ID to cancel
+
+    Returns:
+        True if cancellation was requested, False if task not running
+    """
+    redis = await get_redis_async()
+    meta_key = _get_task_meta_key(task_id)
+    status = await redis.hget(meta_key, "status")  # type: ignore[misc]
+
+    if status != "running":
+        logger.info(
+            f"Cannot cancel task {task_id}: status={status}",
+            extra={
+                "json_fields": {
+                    "component": "StreamRegistry",
+                    "task_id": task_id,
+                    "status": status,
+                }
+            },
+        )
+        return False
+
+    # Set Redis cancel flag (TTL 5 minutes) for cross-pod detection
+    cancel_key = f"chat:task:cancel:{task_id}"
+    await redis.set(cancel_key, "1", ex=300)
+
+    logger.info(
+        f"Cancellation requested for task {task_id}",
+        extra={"json_fields": {"component": "StreamRegistry", "task_id": task_id}},
+    )
+
+    # If task is local, directly cancel the asyncio.Task
+    local_task = _local_tasks.get(task_id)
+    if local_task and not local_task.done():
+        local_task.cancel()
+        logger.info(
+            f"Local asyncio.Task cancelled for task {task_id}",
+            extra={"json_fields": {"component": "StreamRegistry", "task_id": task_id}},
+        )
+
+    return True
+
+
+async def is_cancellation_requested(task_id: str) -> bool:
+    """Check if cancellation has been requested for a task.
+
+    Used for cross-pod cancellation detection via Redis flag.
+
+    Args:
+        task_id: Task ID to check
+
+    Returns:
+        True if cancellation was requested
+    """
+    redis = await get_redis_async()
+    cancel_key = f"chat:task:cancel:{task_id}"
+    return await redis.exists(cancel_key) > 0
+
+
+async def cancel_active_task_for_session(
+    session_id: str,
+    user_id: str | None,
+) -> tuple[bool, str | None]:
+    """Cancel the active task for a session.
+
+    Finds the active task via get_active_task_for_session(), then requests
+    cancellation.
+
+    Args:
+        session_id: Session ID
+        user_id: User ID for ownership validation
+
+    Returns:
+        Tuple of (success, task_id or None)
+    """
+    active_task, _ = await get_active_task_for_session(session_id, user_id)
+    if not active_task:
+        return False, None
+
+    success = await request_task_cancellation(active_task.task_id)
+    return success, active_task.task_id
+
+
 async def set_task_asyncio_task(task_id: str, asyncio_task: asyncio.Task) -> None:
     """Track the asyncio.Task for a task (local reference only).
 

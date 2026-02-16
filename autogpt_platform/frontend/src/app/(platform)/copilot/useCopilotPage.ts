@@ -47,7 +47,14 @@ export function useCopilotPage() {
     [sessionId],
   );
 
-  const { messages, sendMessage, stop, status, error, setMessages } = useChat({
+  const {
+    messages,
+    sendMessage,
+    stop: sdkStop,
+    status,
+    error,
+    setMessages,
+  } = useChat({
     id: sessionId ?? undefined,
     transport: transport ?? undefined,
   });
@@ -71,6 +78,17 @@ export function useCopilotPage() {
     setPendingMessage(null);
     sendMessage({ text: msg });
   }, [sessionId, pendingMessage, sendMessage]);
+
+  function handleStop() {
+    sdkStop();
+    if (sessionId) {
+      fetch(`/api/chat/sessions/${sessionId}/stop`, { method: "POST" }).catch(
+        () => {
+          // Best-effort: backend task will eventually complete on its own
+        },
+      );
+    }
+  }
 
   async function onSend(message: string) {
     const trimmed = message.trim();
@@ -121,7 +139,7 @@ export function useCopilotPage() {
     messages,
     status,
     error,
-    stop,
+    stop: handleStop,
     isLoadingSession,
     isCreatingSession,
     isUserLoading,

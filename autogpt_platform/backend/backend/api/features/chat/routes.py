@@ -374,6 +374,15 @@ async def stream_chat_post(
                 # Write to Redis (subscribers will receive via XREAD)
                 await stream_registry.publish_chunk(task_id, chunk)
 
+                # Periodic cross-pod cancel check (every 5 chunks)
+                if chunk_count % 5 == 0:
+                    if await stream_registry.is_cancellation_requested(task_id):
+                        logger.info(
+                            f"[TIMING] Cross-pod cancellation detected for task {task_id}",
+                            extra={"json_fields": log_meta},
+                        )
+                        raise asyncio.CancelledError()
+
             gen_end_time = time_module.perf_counter()
             total_time = (gen_end_time - gen_start_time) * 1000
             logger.info(
@@ -392,6 +401,22 @@ async def stream_chat_post(
                 },
             )
             await stream_registry.mark_task_completed(task_id, "completed")
+        except asyncio.CancelledError:
+            elapsed = time_module.perf_counter() - gen_start_time
+            logger.info(
+                f"[TIMING] run_ai_generation CANCELLED after {elapsed:.2f}s, "
+                f"task={task_id}, n_chunks={chunk_count}",
+                extra={
+                    "json_fields": {
+                        **log_meta,
+                        "elapsed_ms": elapsed * 1000,
+                        "n_chunks": chunk_count,
+                        "reason": "cancelled",
+                    }
+                },
+            )
+            await stream_registry.publish_chunk(task_id, StreamFinish())
+            await stream_registry.mark_task_completed(task_id, "failed")
         except Exception as e:
             elapsed = time_module.perf_counter() - gen_start_time
             logger.error(
@@ -643,6 +668,56 @@ async def resume_session_stream(
             "x-vercel-ai-ui-message-stream": "v1",
         },
     )
+
+
+@router.post(
+    "/sessions/{session_id}/stop",
+    dependencies=[Security(auth.requires_user)],
+)
+async def stop_session(
+    session_id: str,
+    user_id: Annotated[str, Security(auth.get_user_id)],
+) -> dict:
+    """
+    Stop the active AI generation for a session.
+
+    Cancels the background task running AI generation for this session.
+    The partial response is saved with an [interrupted] marker.
+
+    Args:
+        session_id: The chat session identifier.
+        user_id: The authenticated user's ID.
+
+    Returns:
+        dict: Status and task_id of the cancelled task.
+
+    Raises:
+        HTTPException: 404 if no active task found for this session.
+    """
+    await _validate_and_get_session(session_id, user_id)
+
+    success, task_id = await stream_registry.cancel_active_task_for_session(
+        session_id, user_id
+    )
+
+    if not success:
+        raise HTTPException(
+            status_code=404,
+            detail="No active task found for this session",
+        )
+
+    logger.info(
+        f"Stop requested for session {session_id}, task {task_id}",
+        extra={
+            "json_fields": {
+                "component": "ChatStream",
+                "session_id": session_id,
+                "task_id": task_id,
+            }
+        },
+    )
+
+    return {"status": "ok", "task_id": task_id}
 
 
 @router.patch(
