@@ -23,7 +23,7 @@ export async function POST(
       "Content-Type": "application/json",
     };
 
-    if (token) {
+    if (token && token !== "no-token-found") {
       headers["Authorization"] = `Bearer ${token}`;
     }
 
