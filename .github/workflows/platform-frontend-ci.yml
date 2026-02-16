@@ -6,10 +6,12 @@ on:
     paths:
       - ".github/workflows/platform-frontend-ci.yml"
       - "autogpt_platform/frontend/**"
+      - "autogpt_platform/backend/Dockerfile"
   pull_request:
     paths:
       - ".github/workflows/platform-frontend-ci.yml"
       - "autogpt_platform/frontend/**"
+      - "autogpt_platform/backend/Dockerfile"
   merge_group:
   workflow_dispatch:
 
