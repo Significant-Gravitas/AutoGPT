@@ -37,6 +37,7 @@ export function EditScheduleModal({ graphId, schedule }: Props) {
 
   return (
     <Dialog
+      title="Edit Schedule"
       controlled={{ isOpen, set: setIsOpen }}
       styling={{ maxWidth: "22rem" }}
     >

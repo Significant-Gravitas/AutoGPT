@@ -64,6 +64,7 @@ export function ScheduleAgentModal({
 
   return (
     <Dialog
+      title="Schedule Run"
       controlled={{ isOpen, set: handleClose }}
       styling={{ maxWidth: "600px", maxHeight: "90vh" }}
     >

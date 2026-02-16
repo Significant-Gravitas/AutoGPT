@@ -59,6 +59,7 @@ export const InputExpanderModal: FC<InputExpanderModalProps> = ({
 
   return (
     <Dialog
+      title={title || "Edit Text"}
       controlled={{
         isOpen,
         set: async (open) => {

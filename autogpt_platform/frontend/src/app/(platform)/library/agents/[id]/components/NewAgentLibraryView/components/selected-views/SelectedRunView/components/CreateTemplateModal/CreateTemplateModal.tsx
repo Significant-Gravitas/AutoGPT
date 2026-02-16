@@ -41,6 +41,7 @@ export function CreateTemplateModal({ isOpen, onClose, onCreate }: Props) {
 
   return (
     <Dialog
+      title="Create Template"
       controlled={{ isOpen, set: () => onClose() }}
       styling={{ maxWidth: "500px" }}
     >

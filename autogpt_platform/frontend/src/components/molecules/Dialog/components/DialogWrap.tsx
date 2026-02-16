@@ -111,10 +111,9 @@ export function DialogWrap({
               {title}
             </RXDialog.Title>
           ) : (
-            <span className="sr-only">
-              {/* Title is required for a11y compliance even if not displayed so screen readers can announce it */}
-              <RXDialog.Title>{title}</RXDialog.Title>
-            </span>
+            <RXDialog.Title className="sr-only">
+              {title || "Dialog"}
+            </RXDialog.Title>
           )}
 
           {isForceOpen && !handleClose ? null : (
