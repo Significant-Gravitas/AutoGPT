@@ -400,9 +400,7 @@ async def populate_understanding_from_tally(user_id: str, email: str) -> None:
             return
 
         submission, questions = result
-        logger.info(
-            f"Tally: found submission for {masked}, extracting understanding"
-        )
+        logger.info(f"Tally: found submission for {masked}, extracting understanding")
 
         # Format and extract
         formatted = format_submission_for_llm(submission, questions)
@@ -417,6 +415,4 @@ async def populate_understanding_from_tally(user_id: str, email: str) -> None:
         logger.info(f"Tally: successfully populated understanding for user {user_id}")
 
     except Exception:
-        logger.exception(
-            f"Tally: error populating understanding for user {user_id}"
-        )
+        logger.exception(f"Tally: error populating understanding for user {user_id}")
