@@ -126,6 +126,7 @@ class PrintToConsoleBlock(Block):
             output_schema=PrintToConsoleBlock.Output,
             test_input={"text": "Hello, World!"},
             is_sensitive_action=True,
+            disabled=True,  # Disabled per Nick Tindle's request (OPEN-3000)
             test_output=[
                 ("output", "Hello, World!"),
                 ("status", "printed"),

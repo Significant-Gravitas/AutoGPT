@@ -33,6 +33,7 @@ from backend.util import type as type_utils
 from backend.util.exceptions import GraphNotAccessibleError, GraphNotInLibraryError
 from backend.util.json import SafeJson
 from backend.util.models import Pagination
+from backend.util.request import parse_url
 
 from .block import BlockInput
 from .db import BaseDbModel
@@ -449,6 +450,9 @@ class GraphModel(Graph, GraphMeta):
                     continue
                 if ProviderName.HTTP in field.provider:
                     continue
+                # MCP credentials are intentionally split by server URL
+                if ProviderName.MCP in field.provider:
+                    continue
 
                 # If this happens, that means a block implementation probably needs
                 # to be updated.
@@ -505,6 +509,18 @@ class GraphModel(Graph, GraphMeta):
                 "required": ["id", "provider", "type"],
             }
 
+            # Add a descriptive display title when URL-based discriminator values
+            # are present (e.g. "mcp.sentry.dev" instead of just "Mcp")
+            if (
+                field_info.discriminator
+                and not field_info.discriminator_mapping
+                and field_info.discriminator_values
+            ):
+                hostnames = sorted(
+                    parse_url(str(v)).netloc for v in field_info.discriminator_values
+                )
+                field_schema["display_name"] = ", ".join(hostnames)
+
             # Add other (optional) field info items
             field_schema.update(
                 field_info.model_dump(
@@ -549,8 +565,17 @@ class GraphModel(Graph, GraphMeta):
 
         for graph in [self] + self.sub_graphs:
             for node in graph.nodes:
-                # Track if this node requires credentials (credentials_optional=False means required)
-                node_required_map[node.id] = not node.credentials_optional
+                # A node's credentials are optional if either:
+                # 1. The node metadata says so (credentials_optional=True), or
+                # 2. All credential fields on the block have defaults (not required by schema)
+                block_required = node.block.input_schema.get_required_fields()
+                creds_required_by_schema = any(
+                    fname in block_required
+                    for fname in node.block.input_schema.get_credentials_fields()
+                )
+                node_required_map[node.id] = (
+                    not node.credentials_optional and creds_required_by_schema
+                )
 
                 for (
                     field_name,
@@ -775,6 +800,19 @@ class GraphModel(Graph, GraphMeta):
                         f"'{input_key}' is a reserved input name: "
                         "'credentials' and `*_credentials` are reserved"
                     )
+
+            # Check custom block-level validation (e.g., MCP dynamic tool arguments).
+            # Blocks can override get_missing_input to report additional missing fields
+            # beyond the standard top-level required fields.
+            if for_run:
+                credential_fields = InputSchema.get_credentials_fields()
+                custom_missing = InputSchema.get_missing_input(node.input_default)
+                for field_name in custom_missing:
+                    if (
+                        field_name not in provided_inputs
+                        and field_name not in credential_fields
+                    ):
+                        node_errors[node.id][field_name] = "This field is required"
 
             # Get input schema properties and check dependencies
             input_fields = InputSchema.model_fields
