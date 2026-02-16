@@ -64,6 +64,7 @@ class BlockType(Enum):
     AI = "AI"
     AYRSHARE = "Ayrshare"
     HUMAN_IN_THE_LOOP = "Human In The Loop"
+    MCP_TOOL = "MCP Tool"
 
 
 class BlockCategory(Enum):
