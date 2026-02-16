@@ -27,12 +27,9 @@ from openai.types.chat import (
     ChatCompletionToolParam,
 )
 
-from backend.data.db_accessors import chat_db
+from backend.data.db_accessors import chat_db, understanding_db
 from backend.data.redis_client import get_redis_async
-from backend.data.understanding import (
-    format_understanding_for_prompt,
-    get_business_understanding,
-)
+from backend.data.understanding import format_understanding_for_prompt
 from backend.util.exceptions import NotFoundError
 from backend.util.settings import AppEnvironment, Settings
 
@@ -263,7 +260,7 @@ async def _build_system_prompt(
     understanding = None
     if user_id:
         try:
-            understanding = await get_business_understanding(user_id)
+            understanding = await understanding_db().get_business_understanding(user_id)
         except Exception as e:
             logger.warning(f"Failed to fetch business understanding: {e}")
             understanding = None
