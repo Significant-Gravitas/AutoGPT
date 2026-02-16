@@ -53,6 +53,38 @@ COPY autogpt_platform/backend/backend/data/partial_types.py ./backend/data/parti
 COPY autogpt_platform/backend/gen_prisma_types_stub.py ./
 RUN poetry run prisma generate && poetry run gen-prisma-stub
 
+# =============================== DB MIGRATOR =============================== #
+
+# Lightweight migrate stage - only needs Prisma CLI, not full Python environment
+FROM debian:13-slim AS migrate
+
+WORKDIR /app/autogpt_platform/backend
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install only what's needed for prisma migrate: Node.js and minimal Python for prisma-python
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3.13 \
+    python3-pip \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy Node.js from builder (needed for Prisma CLI)
+COPY --from=builder /usr/bin/node /usr/bin/node
+COPY --from=builder /usr/lib/node_modules /usr/lib/node_modules
+COPY --from=builder /usr/bin/npm /usr/bin/npm
+
+# Copy Prisma binaries
+COPY --from=builder /root/.cache/prisma-python/binaries /root/.cache/prisma-python/binaries
+
+# Install prisma-client-py directly (much smaller than copying full venv)
+RUN pip3 install prisma>=0.15.0 --break-system-packages
+
+COPY autogpt_platform/backend/schema.prisma ./
+COPY autogpt_platform/backend/backend/data/partial_types.py ./backend/data/partial_types.py
+COPY autogpt_platform/backend/gen_prisma_types_stub.py ./
+COPY autogpt_platform/backend/migrations ./migrations
+
 # ============================== BACKEND SERVER ============================== #
 
 FROM debian:13-slim AS server
@@ -100,41 +132,11 @@ COPY autogpt_platform/backend/poetry.lock autogpt_platform/backend/pyproject.tom
 # Copy backend code + docs (for Copilot docs search)
 COPY autogpt_platform/backend ./
 COPY docs /app/docs
+# Install the project package to create entry point scripts in .venv/bin/
+# (e.g., rest, executor, ws, db, scheduler, notification - see [tool.poetry.scripts])
 RUN POETRY_VIRTUALENVS_CREATE=true POETRY_VIRTUALENVS_IN_PROJECT=true \
     poetry install --no-ansi --only-root
 
 ENV PORT=8000
 
 CMD ["rest"]
-
-# =============================== DB MIGRATOR =============================== #
-
-# Lightweight migrate stage - only needs Prisma CLI, not full Python environment
-FROM debian:13-slim AS migrate
-
-WORKDIR /app/autogpt_platform/backend
-
-ENV DEBIAN_FRONTEND=noninteractive
-
-# Install only what's needed for prisma migrate: Node.js and minimal Python for prisma-python
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3.13 \
-    python3-pip \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy Node.js from builder (needed for Prisma CLI)
-COPY --from=builder /usr/bin/node /usr/bin/node
-COPY --from=builder /usr/lib/node_modules /usr/lib/node_modules
-COPY --from=builder /usr/bin/npm /usr/bin/npm
-
-# Copy Prisma binaries
-COPY --from=builder /root/.cache/prisma-python/binaries /root/.cache/prisma-python/binaries
-
-# Install prisma-client-py directly (much smaller than copying full venv)
-RUN pip3 install prisma>=0.15.0 --break-system-packages
-
-COPY autogpt_platform/backend/schema.prisma ./
-COPY autogpt_platform/backend/backend/data/partial_types.py ./backend/data/partial_types.py
-COPY autogpt_platform/backend/gen_prisma_types_stub.py ./
-COPY autogpt_platform/backend/migrations ./migrations
