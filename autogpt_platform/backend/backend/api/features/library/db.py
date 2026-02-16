@@ -690,7 +690,20 @@ async def update_library_agent(
         update_fields["settings"] = SafeJson(settings.model_dump())
     if folder_id is not None:
         # Empty string means "move to root" (no folder)
-        update_fields["folderId"] = None if folder_id == "" else folder_id
+        if folder_id == "":
+            update_fields["folderId"] = None
+        else:
+            # Verify folder belongs to user
+            folder = await prisma.models.LibraryFolder.prisma().find_first(
+                where={
+                    "id": folder_id,
+                    "userId": user_id,
+                    "isDeleted": False,
+                }
+            )
+            if not folder:
+                raise NotFoundError(f"Folder #{folder_id} not found")
+            update_fields["folderId"] = folder_id
 
     try:
         # If graph_version is provided, update to that specific version
