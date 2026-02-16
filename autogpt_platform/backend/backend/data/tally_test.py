@@ -7,6 +7,7 @@ import pytest
 from backend.data.tally import (
     _build_email_index,
     _format_answer,
+    _mask_email,
     find_submission_by_email,
     format_submission_for_llm,
     populate_understanding_from_tally,
@@ -303,3 +304,55 @@ async def test_populate_understanding_full_flow():
 
     mock_extract.assert_awaited_once()
     mock_upsert.assert_awaited_once_with("user-1", mock_input)
+
+
+@pytest.mark.asyncio
+async def test_populate_understanding_handles_llm_timeout():
+    """LLM timeout is caught and doesn't raise."""
+    import asyncio
+
+    mock_settings = MagicMock()
+    mock_settings.secrets.tally_api_key = "test-key"
+
+    submission = {
+        "responses": [{"questionId": "q1", "value": "Alice"}],
+    }
+
+    with (
+        patch(
+            "backend.data.tally.get_business_understanding",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch("backend.data.tally.Settings", return_value=mock_settings),
+        patch(
+            "backend.data.tally.find_submission_by_email",
+            new_callable=AsyncMock,
+            return_value=(submission, SAMPLE_QUESTIONS),
+        ),
+        patch(
+            "backend.data.tally.extract_business_understanding",
+            new_callable=AsyncMock,
+            side_effect=asyncio.TimeoutError(),
+        ),
+        patch(
+            "backend.data.tally.upsert_business_understanding",
+            new_callable=AsyncMock,
+        ) as mock_upsert,
+    ):
+        await populate_understanding_from_tally("user-1", "alice@example.com")
+
+    mock_upsert.assert_not_awaited()
+
+
+# ── _mask_email ───────────────────────────────────────────────────────────────
+
+
+def test_mask_email():
+    assert _mask_email("alice@example.com") == "a***e@example.com"
+    assert _mask_email("ab@example.com") == "a***@example.com"
+    assert _mask_email("a@example.com") == "a***@example.com"
+
+
+def test_mask_email_invalid():
+    assert _mask_email("no-at-sign") == "***"

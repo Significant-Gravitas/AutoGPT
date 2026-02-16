@@ -1016,7 +1016,7 @@ async def health_check() -> dict:
 
     # Ensure health check user exists (required for FK constraint)
     health_check_user_id = "health-check-user"
-    await get_or_create_user(
+    await get_or_create_user(  # returns (User, is_new); we only need the side-effect
         {
             "sub": health_check_user_id,
             "email": "health-check@system.local",

@@ -29,7 +29,12 @@ cache_user_lookup = cached(maxsize=1000, ttl_seconds=300)
 
 
 @cache_user_lookup
-async def get_or_create_user(user_data: dict) -> User:
+async def get_or_create_user(user_data: dict) -> tuple[User, bool]:
+    """Get existing user or create a new one.
+
+    Returns:
+        A tuple of (User, is_new) where is_new is True if the user was just created.
+    """
     try:
         user_id = user_data.get("sub")
         if not user_id:
@@ -39,6 +44,7 @@ async def get_or_create_user(user_data: dict) -> User:
         if not user_email:
             raise HTTPException(status_code=401, detail="Email not found in token")
 
+        is_new = False
         user = await prisma.user.find_unique(where={"id": user_id})
         if not user:
             user = await prisma.user.create(
@@ -48,8 +54,9 @@ async def get_or_create_user(user_data: dict) -> User:
                     name=user_data.get("user_metadata", {}).get("name"),
                 )
             )
+            is_new = True
 
-        return User.from_db(user)
+        return User.from_db(user), is_new
     except Exception as e:
         raise DatabaseError(f"Failed to get or create user {user_data}: {e}") from e
 

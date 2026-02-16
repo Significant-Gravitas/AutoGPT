@@ -51,7 +51,7 @@ def test_get_or_create_user_route(
 
     mocker.patch(
         "backend.api.features.v1.get_or_create_user",
-        return_value=mock_user,
+        return_value=(mock_user, False),
     )
 
     response = client.post("/auth/user")

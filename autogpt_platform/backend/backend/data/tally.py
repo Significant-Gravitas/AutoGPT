@@ -1,5 +1,6 @@
 """Tally form integration: cache submissions, match by email, extract business understanding."""
 
+import asyncio
 import json
 import logging
 from datetime import datetime, timezone
@@ -32,6 +33,23 @@ _LAST_FETCH_TTL = 7200  # 2 hours
 
 # Pagination
 _PAGE_LIMIT = 500
+_MAX_PAGES = 100
+
+# LLM extraction timeout (seconds)
+_LLM_TIMEOUT = 30
+
+
+def _mask_email(email: str) -> str:
+    """Mask an email for safe logging: 'alice@example.com' -> 'a***e@example.com'."""
+    try:
+        local, domain = email.rsplit("@", 1)
+        if len(local) <= 2:
+            masked_local = local[0] + "***"
+        else:
+            masked_local = local[0] + "***" + local[-1]
+        return f"{masked_local}@{domain}"
+    except (ValueError, IndexError):
+        return "***"
 
 
 async def _fetch_tally_page(
@@ -63,6 +81,7 @@ async def _fetch_tally_page(
 async def _fetch_all_submissions(
     form_id: str,
     start_date: Optional[str] = None,
+    max_pages: int = _MAX_PAGES,
 ) -> tuple[list[dict], list[dict]]:
     """Paginate through all Tally submissions. Returns (questions, submissions)."""
     questions: list[dict] = []
@@ -80,6 +99,12 @@ async def _fetch_all_submissions(
 
         total_pages = data.get("totalNumberOfPages", 1)
         if page >= total_pages:
+            break
+        if page >= max_pages:
+            logger.warning(
+                f"Tally: hit max page cap ({max_pages}) for form {form_id}, "
+                f"API reports {total_pages} total pages"
+            )
             break
         page += 1
 
@@ -171,26 +196,31 @@ async def _refresh_cache(form_id: str) -> tuple[dict, list]:
     last_fetch = await redis.get(last_fetch_key)
 
     if last_fetch:
-        # Incremental fetch: only get new submissions since last fetch
-        logger.info(f"Tally incremental fetch since {last_fetch}")
-        questions, new_submissions = await _fetch_all_submissions(
-            form_id, start_date=last_fetch
-        )
-
-        # Try to load existing index to merge
+        # Try to load existing index for incremental merge
         raw_existing = await redis.get(index_key)
-        existing_index: dict[str, dict] = {}
-        if raw_existing:
-            existing_index = json.loads(raw_existing)
 
-        if not questions:
-            raw_q = await redis.get(questions_key)
-            if raw_q:
-                questions = json.loads(raw_q)
+        if raw_existing is None:
+            # Index expired but last_fetch still present — fall back to full fetch
+            logger.info("Tally: last_fetch present but index missing, doing full fetch")
+            questions, submissions = await _fetch_all_submissions(form_id)
+            email_index = _build_email_index(submissions, questions)
+        else:
+            # Incremental fetch: only get new submissions since last fetch
+            logger.info(f"Tally incremental fetch since {last_fetch}")
+            questions, new_submissions = await _fetch_all_submissions(
+                form_id, start_date=last_fetch
+            )
 
-        new_index = _build_email_index(new_submissions, questions)
-        existing_index.update(new_index)
-        email_index = existing_index
+            existing_index: dict[str, dict] = json.loads(raw_existing)
+
+            if not questions:
+                raw_q = await redis.get(questions_key)
+                if raw_q:
+                    questions = json.loads(raw_q)
+
+            new_index = _build_email_index(new_submissions, questions)
+            existing_index.update(new_index)
+            email_index = existing_index
     else:
         # Full initial fetch
         logger.info("Tally full initial fetch")
@@ -301,25 +331,41 @@ Return ONLY valid JSON."""
 async def extract_business_understanding(
     formatted_text: str,
 ) -> BusinessUnderstandingInput:
-    """Use an LLM to extract structured business understanding from form text."""
+    """Use an LLM to extract structured business understanding from form text.
+
+    Raises on timeout or unparseable response so the caller can handle it.
+    """
     settings = Settings()
     api_key = settings.secrets.open_router_api_key
     client = AsyncOpenAI(api_key=api_key, base_url="https://openrouter.ai/api/v1")
 
-    response = await client.chat.completions.create(
-        model="openai/gpt-4o-mini",
-        messages=[
-            {
-                "role": "user",
-                "content": _EXTRACTION_PROMPT.format(submission_text=formatted_text),
-            }
-        ],
-        response_format={"type": "json_object"},
-        temperature=0.0,
-    )
+    try:
+        response = await asyncio.wait_for(
+            client.chat.completions.create(
+                model="openai/gpt-4o-mini",
+                messages=[
+                    {
+                        "role": "user",
+                        "content": _EXTRACTION_PROMPT.format(
+                            submission_text=formatted_text
+                        ),
+                    }
+                ],
+                response_format={"type": "json_object"},
+                temperature=0.0,
+            ),
+            timeout=_LLM_TIMEOUT,
+        )
+    except asyncio.TimeoutError:
+        logger.warning("Tally: LLM extraction timed out")
+        raise
 
     raw = response.choices[0].message.content or "{}"
-    data = json.loads(raw)
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        logger.warning("Tally: LLM returned invalid JSON, skipping extraction")
+        raise
 
     # Filter out null values before constructing
     cleaned = {k: v for k, v in data.items() if v is not None}
@@ -347,13 +393,16 @@ async def populate_understanding_from_tally(user_id: str, email: str) -> None:
             return
 
         # Look up submission by email
+        masked = _mask_email(email)
         result = await find_submission_by_email(TALLY_FORM_ID, email)
         if result is None:
-            logger.debug(f"Tally: no submission found for {email}")
+            logger.debug(f"Tally: no submission found for {masked}")
             return
 
         submission, questions = result
-        logger.info(f"Tally: found submission for {email}, extracting understanding")
+        logger.info(
+            f"Tally: found submission for {masked}, extracting understanding"
+        )
 
         # Format and extract
         formatted = format_submission_for_llm(submission, questions)
@@ -368,4 +417,6 @@ async def populate_understanding_from_tally(user_id: str, email: str) -> None:
         logger.info(f"Tally: successfully populated understanding for user {user_id}")
 
     except Exception:
-        logger.exception(f"Tally: error populating understanding for user {user_id}")
+        logger.exception(
+            f"Tally: error populating understanding for user {user_id}"
+        )

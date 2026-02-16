@@ -136,19 +136,20 @@ _tally_background_tasks: set[asyncio.Task] = set()
     dependencies=[Security(requires_user)],
 )
 async def get_or_create_user_route(user_data: dict = Security(get_jwt_payload)):
-    user = await get_or_create_user(user_data)
+    user, is_new = await get_or_create_user(user_data)
 
     # Fire-and-forget: populate business understanding from Tally form
-    try:
-        from backend.data.tally import populate_understanding_from_tally
+    if is_new:
+        try:
+            from backend.data.tally import populate_understanding_from_tally
 
-        task = asyncio.create_task(
-            populate_understanding_from_tally(user.id, user.email)
-        )
-        _tally_background_tasks.add(task)
-        task.add_done_callback(_tally_background_tasks.discard)
-    except Exception:
-        pass  # Never block user creation
+            task = asyncio.create_task(
+                populate_understanding_from_tally(user.id, user.email)
+            )
+            _tally_background_tasks.add(task)
+            task.add_done_callback(_tally_background_tasks.discard)
+        except Exception:
+            pass  # Never block user creation
 
     return user.model_dump()
 
@@ -177,7 +178,7 @@ async def get_user_timezone_route(
     user_data: dict = Security(get_jwt_payload),
 ) -> TimezoneResponse:
     """Get user timezone setting."""
-    user = await get_or_create_user(user_data)
+    user, _ = await get_or_create_user(user_data)
     return TimezoneResponse(timezone=user.timezone)
 
 

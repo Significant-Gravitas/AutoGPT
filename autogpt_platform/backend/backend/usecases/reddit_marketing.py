@@ -146,7 +146,7 @@ async def create_test_user() -> User:
         "email": "testuser@example.com",
         "name": "Test User",
     }
-    user = await get_or_create_user(test_user_data)
+    user, _ = await get_or_create_user(test_user_data)
     return user
 
 
