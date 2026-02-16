@@ -11,44 +11,14 @@ import re
 from collections.abc import Callable
 from typing import Any, cast
 
-from .tool_adapter import MCP_TOOL_PREFIX
+from .tool_adapter import (
+    BLOCKED_TOOLS,
+    DANGEROUS_PATTERNS,
+    MCP_TOOL_PREFIX,
+    WORKSPACE_SCOPED_TOOLS,
+)
 
 logger = logging.getLogger(__name__)
-
-# Tools that are blocked entirely (CLI/system access).
-# "Bash" (capital) is the SDK built-in — it's NOT in allowed_tools but blocked
-# here as defence-in-depth.  The agent uses mcp__copilot__bash_exec instead,
-# which has kernel-level network isolation (unshare --net).
-BLOCKED_TOOLS = {
-    "Bash",
-    "bash",
-    "shell",
-    "exec",
-    "terminal",
-    "command",
-}
-
-# Tools allowed only when their path argument stays within the SDK workspace.
-# The SDK uses these to handle oversized tool results (writes to tool-results/
-# files, then reads them back) and for workspace file operations.
-WORKSPACE_SCOPED_TOOLS = {"Read", "Write", "Edit", "Glob", "Grep"}
-
-# Dangerous patterns in tool inputs
-DANGEROUS_PATTERNS = [
-    r"sudo",
-    r"rm\s+-rf",
-    r"dd\s+if=",
-    r"/etc/passwd",
-    r"/etc/shadow",
-    r"chmod\s+777",
-    r"curl\s+.*\|.*sh",
-    r"wget\s+.*\|.*sh",
-    r"eval\s*\(",
-    r"exec\s*\(",
-    r"__import__",
-    r"os\.system",
-    r"subprocess",
-]
 
 
 def _deny(reason: str) -> dict[str, Any]:

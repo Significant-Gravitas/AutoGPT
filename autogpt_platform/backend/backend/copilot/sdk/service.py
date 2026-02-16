@@ -41,6 +41,7 @@ from .response_adapter import SDKResponseAdapter
 from .security_hooks import create_security_hooks
 from .tool_adapter import (
     COPILOT_TOOL_NAMES,
+    SDK_DISALLOWED_TOOLS,
     LongRunningCallback,
     create_copilot_mcp_server,
     set_execution_context,
@@ -547,7 +548,7 @@ async def stream_chat_completion_sdk(
                 "system_prompt": system_prompt,
                 "mcp_servers": {"copilot": mcp_server},
                 "allowed_tools": COPILOT_TOOL_NAMES,
-                "disallowed_tools": ["Bash"],
+                "disallowed_tools": SDK_DISALLOWED_TOOLS,
                 "hooks": security_hooks,
                 "cwd": sdk_cwd,
                 "max_buffer_size": config.claude_agent_max_buffer_size,
