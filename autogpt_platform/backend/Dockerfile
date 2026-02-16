@@ -59,12 +59,7 @@ FROM debian:13-slim AS server
 
 WORKDIR /app
 
-ENV POETRY_HOME=/opt/poetry \
-    POETRY_NO_INTERACTION=1 \
-    POETRY_VIRTUALENVS_CREATE=true \
-    POETRY_VIRTUALENVS_IN_PROJECT=true \
-    DEBIAN_FRONTEND=noninteractive
-ENV PATH=/opt/poetry/bin:$PATH
+ENV DEBIAN_FRONTEND=noninteractive
 
 # Install Python, FFmpeg, ImageMagick, and CLI tools for agent use.
 # bubblewrap provides OS-level sandbox (whitelist-only FS + no network)
@@ -81,6 +76,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     bubblewrap \
     && rm -rf /var/lib/apt/lists/*
 
+# Copy poetry (build-time only, for `poetry install --only-root` to create entry points)
 COPY --from=builder /usr/local/lib/python3* /usr/local/lib/python3*
 COPY --from=builder /usr/local/bin/poetry /usr/local/bin/poetry
 # Copy Node.js installation for Prisma
@@ -104,11 +100,12 @@ COPY autogpt_platform/backend/poetry.lock autogpt_platform/backend/pyproject.tom
 # Copy backend code + docs (for Copilot docs search)
 COPY autogpt_platform/backend ./
 COPY docs /app/docs
-RUN poetry install --no-ansi --only-root
+RUN POETRY_VIRTUALENVS_CREATE=true POETRY_VIRTUALENVS_IN_PROJECT=true \
+    poetry install --no-ansi --only-root
 
 ENV PORT=8000
 
-CMD ["poetry", "run", "rest"]
+CMD ["rest"]
 
 # =============================== DB MIGRATOR =============================== #
 
