@@ -670,6 +670,12 @@ async def update_library_agent(
 
     # If graph_version is provided, update to that specific version
     if graph_version is not None:
+        # Apply any other field updates first so they aren't lost
+        if update_fields:
+            await prisma.models.LibraryAgent.prisma().update_many(
+                where={"id": library_agent_id, "userId": user_id},
+                data=update_fields,
+            )
         # Get the current agent to find its graph_id
         agent = await get_library_agent(id=library_agent_id, user_id=user_id)
         # Update to the specified version using existing function
