@@ -165,7 +165,10 @@ export const Block: BlockComponent = ({
                 "line-clamp-1 font-sans text-sm font-medium leading-[1.375rem] text-zinc-800 group-disabled:text-zinc-400",
               )}
             >
-              {highlightText(beautifyString(title).replace(/ Block$/, ""), highlightedText)}
+              {highlightText(
+                beautifyString(title).replace(/ Block$/, ""),
+                highlightedText,
+              )}
             </span>
           )}
           {description && (
