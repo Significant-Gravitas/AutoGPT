@@ -566,5 +566,5 @@ class LibraryAgentUpdateRequest(pydantic.BaseModel):
     )
     folder_id: Optional[str] = pydantic.Field(
         default=None,
-        description="Folder ID to move agent to (empty string for root)",
+        description="Folder ID to move agent to (None to move to root)",
     )
