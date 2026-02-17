@@ -103,9 +103,9 @@ export function createSingletonCodePlugin(): CodeHighlighterPlugin {
             await loadPromise;
           }
 
-          const finalLang = highlighter.getLoadedLanguages().includes(lang)
-            ? lang
-            : "text";
+          const finalLang = (
+            highlighter.getLoadedLanguages().includes(lang) ? lang : "text"
+          ) as BundledLanguage;
 
           const shikiResult = highlighter.codeToTokens(code, {
             lang: finalLang,
