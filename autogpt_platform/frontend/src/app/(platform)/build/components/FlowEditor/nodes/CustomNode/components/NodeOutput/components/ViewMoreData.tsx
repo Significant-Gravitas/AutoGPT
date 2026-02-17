@@ -51,7 +51,10 @@ export const ViewMoreData = ({
   };
 
   return (
-    <Dialog title="View Data" styling={{ width: "600px", paddingRight: "16px" }}>
+    <Dialog
+      title="View Data"
+      styling={{ width: "600px", paddingRight: "16px" }}
+    >
       <Dialog.Trigger>
         <Button
           variant="secondary"
