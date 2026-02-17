@@ -164,21 +164,23 @@ async def create_workspace_file(
 
 async def get_workspace_file(
     file_id: str,
-    workspace_id: Optional[str] = None,
+    workspace_id: str,
 ) -> Optional[WorkspaceFile]:
     """
     Get a workspace file by ID.
 
     Args:
         file_id: The file ID
-        workspace_id: Optional workspace ID for validation
+        workspace_id: Workspace ID for scoping (required)
 
     Returns:
         WorkspaceFile instance or None
     """
-    where_clause: dict = {"id": file_id, "isDeleted": False}
-    if workspace_id:
-        where_clause["workspaceId"] = workspace_id
+    where_clause: UserWorkspaceFileWhereInput = {
+        "id": file_id,
+        "isDeleted": False,
+        "workspaceId": workspace_id,
+    }
 
     file = await UserWorkspaceFile.prisma().find_first(where=where_clause)
     return WorkspaceFile.from_db(file) if file else None
@@ -268,7 +270,7 @@ async def count_workspace_files(
     Returns:
         Number of files
     """
-    where_clause: dict = {"workspaceId": workspace_id}
+    where_clause: UserWorkspaceFileWhereInput = {"workspaceId": workspace_id}
     if not include_deleted:
         where_clause["isDeleted"] = False
 
@@ -283,7 +285,7 @@ async def count_workspace_files(
 
 async def soft_delete_workspace_file(
     file_id: str,
-    workspace_id: Optional[str] = None,
+    workspace_id: str,
 ) -> Optional[WorkspaceFile]:
     """
     Soft-delete a workspace file.
@@ -293,7 +295,7 @@ async def soft_delete_workspace_file(
 
     Args:
         file_id: The file ID
-        workspace_id: Optional workspace ID for validation
+        workspace_id: Workspace ID for scoping (required)
 
     Returns:
         Updated WorkspaceFile instance or None if not found

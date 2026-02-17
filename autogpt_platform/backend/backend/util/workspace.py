@@ -12,15 +12,8 @@ from typing import Optional
 
 from prisma.errors import UniqueViolationError
 
-from backend.data.workspace import (
-    WorkspaceFile,
-    count_workspace_files,
-    create_workspace_file,
-    get_workspace_file,
-    get_workspace_file_by_path,
-    list_workspace_files,
-    soft_delete_workspace_file,
-)
+from backend.data.db_accessors import workspace_db
+from backend.data.workspace import WorkspaceFile
 from backend.util.settings import Config
 from backend.util.virus_scanner import scan_content_safe
 from backend.util.workspace_storage import compute_file_checksum, get_workspace_storage
@@ -125,8 +118,9 @@ class WorkspaceManager:
         Raises:
             FileNotFoundError: If file doesn't exist
         """
+        db = workspace_db()
         resolved_path = self._resolve_path(path)
-        file = await get_workspace_file_by_path(self.workspace_id, resolved_path)
+        file = await db.get_workspace_file_by_path(self.workspace_id, resolved_path)
         if file is None:
             raise FileNotFoundError(f"File not found at path: {resolved_path}")
 
@@ -146,7 +140,8 @@ class WorkspaceManager:
         Raises:
             FileNotFoundError: If file doesn't exist
         """
-        file = await get_workspace_file(file_id, self.workspace_id)
+        db = workspace_db()
+        file = await db.get_workspace_file(file_id, self.workspace_id)
         if file is None:
             raise FileNotFoundError(f"File not found: {file_id}")
 
@@ -204,8 +199,10 @@ class WorkspaceManager:
         # For overwrite=True, we let the write proceed and handle via UniqueViolationError
         # This ensures the new file is written to storage BEFORE the old one is deleted,
         # preventing data loss if the new write fails
+        db = workspace_db()
+
         if not overwrite:
-            existing = await get_workspace_file_by_path(self.workspace_id, path)
+            existing = await db.get_workspace_file_by_path(self.workspace_id, path)
             if existing is not None:
                 raise ValueError(f"File already exists at path: {path}")
 
@@ -232,7 +229,7 @@ class WorkspaceManager:
         # Create database record - handle race condition where another request
         # created a file at the same path between our check and create
         try:
-            file = await create_workspace_file(
+            file = await db.create_workspace_file(
                 workspace_id=self.workspace_id,
                 file_id=file_id,
                 name=filename,
@@ -246,12 +243,12 @@ class WorkspaceManager:
             # Race condition: another request created a file at this path
             if overwrite:
                 # Re-fetch and delete the conflicting file, then retry
-                existing = await get_workspace_file_by_path(self.workspace_id, path)
+                existing = await db.get_workspace_file_by_path(self.workspace_id, path)
                 if existing:
                     await self.delete_file(existing.id)
                 # Retry the create - if this also fails, clean up storage file
                 try:
-                    file = await create_workspace_file(
+                    file = await db.create_workspace_file(
                         workspace_id=self.workspace_id,
                         file_id=file_id,
                         name=filename,
@@ -314,8 +311,9 @@ class WorkspaceManager:
             List of WorkspaceFile instances
         """
         effective_path = self._get_effective_path(path, include_all_sessions)
+        db = workspace_db()
 
-        return await list_workspace_files(
+        return await db.list_workspace_files(
             workspace_id=self.workspace_id,
             path_prefix=effective_path,
             limit=limit,
@@ -332,7 +330,8 @@ class WorkspaceManager:
         Returns:
             True if deleted, False if not found
         """
-        file = await get_workspace_file(file_id, self.workspace_id)
+        db = workspace_db()
+        file = await db.get_workspace_file(file_id, self.workspace_id)
         if file is None:
             return False
 
@@ -345,7 +344,7 @@ class WorkspaceManager:
             # Continue with database soft-delete even if storage delete fails
 
         # Soft-delete database record
-        result = await soft_delete_workspace_file(file_id, self.workspace_id)
+        result = await db.soft_delete_workspace_file(file_id, self.workspace_id)
         return result is not None
 
     async def get_download_url(self, file_id: str, expires_in: int = 3600) -> str:
@@ -362,7 +361,8 @@ class WorkspaceManager:
         Raises:
             FileNotFoundError: If file doesn't exist
         """
-        file = await get_workspace_file(file_id, self.workspace_id)
+        db = workspace_db()
+        file = await db.get_workspace_file(file_id, self.workspace_id)
         if file is None:
             raise FileNotFoundError(f"File not found: {file_id}")
 
@@ -379,7 +379,8 @@ class WorkspaceManager:
         Returns:
             WorkspaceFile instance or None
         """
-        return await get_workspace_file(file_id, self.workspace_id)
+        db = workspace_db()
+        return await db.get_workspace_file(file_id, self.workspace_id)
 
     async def get_file_info_by_path(self, path: str) -> Optional[WorkspaceFile]:
         """
@@ -394,8 +395,9 @@ class WorkspaceManager:
         Returns:
             WorkspaceFile instance or None
         """
+        db = workspace_db()
         resolved_path = self._resolve_path(path)
-        return await get_workspace_file_by_path(self.workspace_id, resolved_path)
+        return await db.get_workspace_file_by_path(self.workspace_id, resolved_path)
 
     async def get_file_count(
         self,
@@ -417,7 +419,8 @@ class WorkspaceManager:
             Number of files
         """
         effective_path = self._get_effective_path(path, include_all_sessions)
+        db = workspace_db()
 
-        return await count_workspace_files(
+        return await db.count_workspace_files(
             self.workspace_id, path_prefix=effective_path
         )

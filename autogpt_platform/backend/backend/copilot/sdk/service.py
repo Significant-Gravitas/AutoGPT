@@ -693,7 +693,15 @@ async def stream_chat_completion_sdk(
                     await asyncio.sleep(0.5)
                     raw_transcript = read_transcript_file(captured_transcript.path)
                     if raw_transcript:
-                        await _upload_transcript_bg(user_id, session_id, raw_transcript)
+                        try:
+                            async with asyncio.timeout(30):
+                                await _upload_transcript_bg(
+                                    user_id, session_id, raw_transcript
+                                )
+                        except asyncio.TimeoutError:
+                            logger.warning(
+                                f"[SDK] Transcript upload timed out for {session_id}"
+                            )
                     else:
                         logger.debug("[SDK] Stop hook fired but transcript not usable")
 
