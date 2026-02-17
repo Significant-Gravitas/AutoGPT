@@ -49,7 +49,7 @@ ollama_credentials = APIKeyCredentials(
     id="744fdc56-071a-4761-b5a5-0af0ce10a2b5",
     provider="ollama",
     api_key=SecretStr("ollama-no-key-required"),
-    title="Ollama (local — no API key needed)",
+    title="Use Credits for Ollama (no API key needed)",
     expires_at=None,
 )
 
