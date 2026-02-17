@@ -1,26 +1,20 @@
 """Tool for retrieving agent execution outputs from user's library."""
 
-import asyncio
 import logging
 import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 from backend.api.features.chat.model import ChatSession
 from backend.api.features.library import db as library_db
 from backend.api.features.library.model import LibraryAgent
 from backend.data import execution as execution_db
-from backend.data.execution import (
-    AsyncRedisExecutionEventBus,
-    ExecutionStatus,
-    GraphExecution,
-    GraphExecutionEvent,
-    GraphExecutionMeta,
-)
+from backend.data.execution import ExecutionStatus, GraphExecution, GraphExecutionMeta
 
 from .base import BaseTool
+from .execution_utils import TERMINAL_STATUSES, wait_for_execution
 from .models import (
     AgentOutputResponse,
     ErrorResponse,
@@ -32,15 +26,6 @@ from .utils import fetch_graph_from_store_slug
 
 logger = logging.getLogger(__name__)
 
-# Terminal statuses that indicate execution is complete
-TERMINAL_STATUSES = frozenset(
-    {
-        ExecutionStatus.COMPLETED,
-        ExecutionStatus.FAILED,
-        ExecutionStatus.TERMINATED,
-    }
-)
-
 
 class AgentOutputInput(BaseModel):
     """Input parameters for the agent_output tool."""
@@ -50,7 +35,7 @@ class AgentOutputInput(BaseModel):
     store_slug: str = ""
     execution_id: str = ""
     run_time: str = "latest"
-    wait_if_running: int = 0  # Max seconds to wait if execution is still running
+    wait_if_running: int = Field(default=0, ge=0, le=300)
 
     @field_validator(
         "agent_name",
@@ -64,15 +49,6 @@ class AgentOutputInput(BaseModel):
     def strip_strings(cls, v: Any) -> Any:
         """Strip whitespace from string fields."""
         return v.strip() if isinstance(v, str) else v
-
-    @field_validator("wait_if_running", mode="before")
-    @classmethod
-    def validate_wait(cls, v: Any) -> int:
-        """Ensure wait_if_running is a non-negative integer."""
-        if v is None:
-            return 0
-        val = int(v)
-        return max(0, min(val, 300))  # Cap at 5 minutes
 
 
 def parse_time_expression(
@@ -524,7 +500,7 @@ class AgentOutputTool(BaseTool):
                 f"Execution {execution.id} is {execution.status}, "
                 f"waiting up to {wait_timeout}s for completion"
             )
-            execution = await self._wait_for_execution_completion(
+            execution = await wait_for_execution(
                 user_id=user_id,
                 graph_id=agent.graph_id,
                 execution_id=execution.id,
@@ -532,87 +508,3 @@ class AgentOutputTool(BaseTool):
             )
 
         return self._build_response(agent, execution, available_executions, session_id)
-
-    async def _wait_for_execution_completion(
-        self,
-        user_id: str,
-        graph_id: str,
-        execution_id: str,
-        timeout_seconds: int,
-    ) -> GraphExecution | None:
-        """
-        Wait for an execution to reach a terminal status using Redis pubsub.
-
-        Args:
-            user_id: User ID
-            graph_id: Graph ID
-            execution_id: Execution ID to wait for
-            timeout_seconds: Max seconds to wait
-
-        Returns:
-            The execution with current status, or None on error
-        """
-        # First check current status - maybe it's already done
-        execution = await execution_db.get_graph_execution(
-            user_id=user_id,
-            execution_id=execution_id,
-            include_node_executions=False,
-        )
-        if not execution:
-            return None
-
-        # If already in terminal state, return immediately
-        if execution.status in TERMINAL_STATUSES:
-            logger.debug(
-                f"Execution {execution_id} already in terminal state: {execution.status}"
-            )
-            return execution
-
-        logger.info(
-            f"Waiting up to {timeout_seconds}s for execution {execution_id} "
-            f"(current status: {execution.status})"
-        )
-
-        # Subscribe to execution updates via Redis pubsub
-        event_bus = AsyncRedisExecutionEventBus()
-        channel_key = f"{user_id}/{graph_id}/{execution_id}"
-
-        try:
-            deadline = asyncio.get_event_loop().time() + timeout_seconds
-
-            async for event in event_bus.listen_events(channel_key):
-                # Check if we've exceeded the timeout
-                remaining = deadline - asyncio.get_event_loop().time()
-                if remaining <= 0:
-                    logger.info(f"Timeout waiting for execution {execution_id}")
-                    break
-
-                # Only process GraphExecutionEvents (not NodeExecutionEvents)
-                if isinstance(event, GraphExecutionEvent):
-                    logger.debug(f"Received execution update: {event.status}")
-                    if event.status in TERMINAL_STATUSES:
-                        # Fetch full execution with outputs
-                        return await execution_db.get_graph_execution(
-                            user_id=user_id,
-                            execution_id=execution_id,
-                            include_node_executions=False,
-                        )
-
-        except asyncio.TimeoutError:
-            logger.info(f"Timeout waiting for execution {execution_id}")
-        except Exception as e:
-            logger.error(f"Error waiting for execution: {e}", exc_info=True)
-        finally:
-            # Clean up pubsub connection
-            try:
-                if hasattr(event_bus, "_pubsub") and event_bus._pubsub:
-                    await event_bus._pubsub.close()
-            except Exception:
-                pass
-
-        # Return current state on timeout
-        return await execution_db.get_graph_execution(
-            user_id=user_id,
-            execution_id=execution_id,
-            include_node_executions=False,
-        )
