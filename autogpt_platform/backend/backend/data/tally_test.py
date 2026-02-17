@@ -5,8 +5,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.data.tally import (
+    _EXTRACTION_PROMPT,
+    _EXTRACTION_SUFFIX,
     _build_email_index,
     _format_answer,
+    _make_tally_client,
     _mask_email,
     find_submission_by_email,
     format_submission_for_llm,
@@ -356,3 +359,60 @@ def test_mask_email():
 
 def test_mask_email_invalid():
     assert _mask_email("no-at-sign") == "***"
+
+
+# ── Prompt construction (curly-brace safety) ─────────────────────────────────
+
+
+def test_extraction_prompt_safe_with_curly_braces():
+    """User content with curly braces must not break prompt construction.
+
+    Previously _EXTRACTION_PROMPT.format(submission_text=...) would raise
+    KeyError/ValueError if the user text contained { or }.
+    """
+    text_with_braces = "Q: What tools do you use?\nA: We use {Slack} and {{Jira}}"
+    # This must not raise — the old .format() call would fail here
+    prompt = f"{_EXTRACTION_PROMPT}{text_with_braces}{_EXTRACTION_SUFFIX}"
+    assert text_with_braces in prompt
+    assert prompt.startswith("You are a business analyst.")
+    assert prompt.endswith("Return ONLY valid JSON.")
+
+
+def test_extraction_prompt_no_format_placeholders():
+    """_EXTRACTION_PROMPT must not contain Python format placeholders."""
+    assert "{submission_text}" not in _EXTRACTION_PROMPT
+    # Ensure no stray single-brace placeholders
+    # (double braces {{ are fine — they're literal in format strings)
+    import re
+
+    single_braces = re.findall(r"(?<!\{)\{[^{].*?\}(?!\})", _EXTRACTION_PROMPT)
+    assert single_braces == [], f"Found format placeholders: {single_braces}"
+
+
+# ── _make_tally_client ───────────────────────────────────────────────────────
+
+
+def test_make_tally_client_returns_configured_client():
+    """_make_tally_client should create a Requests client with auth headers."""
+    client = _make_tally_client("test-api-key")
+    assert "Bearer test-api-key" in str(client.extra_headers.get("Authorization", ""))
+
+
+@pytest.mark.asyncio
+async def test_fetch_tally_page_uses_provided_client():
+    """_fetch_tally_page should use the passed client, not create its own."""
+    from backend.data.tally import _fetch_tally_page
+
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"submissions": [], "questions": []}
+
+    mock_client = AsyncMock()
+    mock_client.get.return_value = mock_response
+
+    result = await _fetch_tally_page(mock_client, "form123", page=1)
+
+    mock_client.get.assert_awaited_once()
+    call_url = mock_client.get.call_args[0][0]
+    assert "form123" in call_url
+    assert "page=1" in call_url
+    assert result == {"submissions": [], "questions": []}

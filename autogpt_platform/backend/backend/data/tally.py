@@ -53,20 +53,24 @@ def _mask_email(email: str) -> str:
 
 
 async def _fetch_tally_page(
+    client: Requests,
     form_id: str,
     page: int,
     limit: int = _PAGE_LIMIT,
     start_date: Optional[str] = None,
 ) -> dict:
     """Fetch a single page of submissions from the Tally API."""
-    settings = Settings()
-    api_key = settings.secrets.tally_api_key
-
     url = f"{TALLY_API_BASE}/forms/{form_id}/submissions?page={page}&limit={limit}"
     if start_date:
         url += f"&startDate={start_date}"
 
-    client = Requests(
+    response = await client.get(url)
+    return response.json()
+
+
+def _make_tally_client(api_key: str) -> Requests:
+    """Create a Requests client configured for the Tally API."""
+    return Requests(
         trusted_origins=[TALLY_API_BASE],
         raise_for_status=True,
         extra_headers={
@@ -74,8 +78,6 @@ async def _fetch_tally_page(
             "Accept": "application/json",
         },
     )
-    response = await client.get(url)
-    return response.json()
 
 
 async def _fetch_all_submissions(
@@ -84,12 +86,15 @@ async def _fetch_all_submissions(
     max_pages: int = _MAX_PAGES,
 ) -> tuple[list[dict], list[dict]]:
     """Paginate through all Tally submissions. Returns (questions, submissions)."""
+    settings = Settings()
+    client = _make_tally_client(settings.secrets.tally_api_key)
+
     questions: list[dict] = []
     all_submissions: list[dict] = []
     page = 1
 
     while True:
-        data = await _fetch_tally_page(form_id, page, start_date=start_date)
+        data = await _fetch_tally_page(client, form_id, page, start_date=start_date)
 
         if page == 1:
             questions = data.get("questions", [])
@@ -325,9 +330,9 @@ Fields:
 - additional_notes (string): any additional context
 
 Form data:
-{submission_text}
+"""
 
-Return ONLY valid JSON."""
+_EXTRACTION_SUFFIX = "\n\nReturn ONLY valid JSON."
 
 
 async def extract_business_understanding(
@@ -348,9 +353,7 @@ async def extract_business_understanding(
                 messages=[
                     {
                         "role": "user",
-                        "content": _EXTRACTION_PROMPT.format(
-                            submission_text=formatted_text
-                        ),
+                        "content": f"{_EXTRACTION_PROMPT}{formatted_text}{_EXTRACTION_SUFFIX}",
                     }
                 ],
                 response_format={"type": "json_object"},
