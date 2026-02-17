@@ -9888,7 +9888,7 @@
           "folder_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Folder Id",
-            "description": "Folder ID to move agent to (empty string for root)"
+            "description": "Folder ID to move agent to (None to move to root)"
           }
         },
         "type": "object",
