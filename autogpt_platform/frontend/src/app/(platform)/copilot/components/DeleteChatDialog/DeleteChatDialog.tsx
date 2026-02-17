@@ -1,16 +1,13 @@
 "use client";
 
 import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 
-interface DeleteChatDialogProps {
-  /** The session to delete, or null if dialog should be closed */
+interface Props {
   session: { id: string; title: string | null | undefined } | null;
-  /** Whether deletion is in progress */
   isDeleting: boolean;
-  /** Called when user confirms deletion */
   onConfirm: () => void;
-  /** Called when user cancels (only works when not deleting) */
   onCancel: () => void;
 }
 
@@ -19,10 +16,11 @@ export function DeleteChatDialog({
   isDeleting,
   onConfirm,
   onCancel,
-}: DeleteChatDialogProps) {
+}: Props) {
   return (
     <Dialog
       title="Delete chat"
+      styling={{ maxWidth: "30rem", minWidth: "auto" }}
       controlled={{
         isOpen: !!session,
         set: async (open) => {
@@ -34,28 +32,21 @@ export function DeleteChatDialog({
       onClose={onCancel}
     >
       <Dialog.Content>
-        <p className="text-neutral-600">
+        <Text variant="body">
           Are you sure you want to delete{" "}
-          <span className="font-medium">
+          <Text variant="body-medium" as="span">
             &quot;{session?.title || "Untitled chat"}&quot;
-          </span>
+          </Text>
           ? This action cannot be undone.
-        </p>
+        </Text>
         <Dialog.Footer>
-          <Button
-            variant="ghost"
-            size="small"
-            onClick={onCancel}
-            disabled={isDeleting}
-          >
+          <Button variant="secondary" onClick={onCancel} disabled={isDeleting}>
             Cancel
           </Button>
           <Button
-            variant="primary"
-            size="small"
+            variant="destructive"
             onClick={onConfirm}
             loading={isDeleting}
-            className="bg-red-600 hover:bg-red-700"
           >
             Delete
           </Button>

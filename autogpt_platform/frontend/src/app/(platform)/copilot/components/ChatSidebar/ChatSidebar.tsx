@@ -7,8 +7,13 @@ import {
 import { Button } from "@/components/atoms/Button/Button";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Text } from "@/components/atoms/Text/Text";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/molecules/DropdownMenu/DropdownMenu";
 import { toast } from "@/components/molecules/Toast/use-toast";
-import { DeleteChatDialog } from "../DeleteChatDialog";
 import {
   Sidebar,
   SidebarContent,
@@ -18,11 +23,12 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
-import { PlusCircleIcon, PlusIcon, TrashIcon } from "@phosphor-icons/react";
+import { DotsThree, PlusCircleIcon, PlusIcon } from "@phosphor-icons/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { useState } from "react";
 import { parseAsString, useQueryState } from "nuqs";
+import { useState } from "react";
+import { DeleteChatDialog } from "../DeleteChatDialog";
 
 export function ChatSidebar() {
   const { state } = useSidebar();
@@ -225,16 +231,28 @@ export function ChatSidebar() {
                         </Text>
                       </div>
                     </button>
-                    <button
-                      onClick={(e) =>
-                        handleDeleteClick(e, session.id, session.title)
-                      }
-                      disabled={isDeleting}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1.5 text-zinc-400 opacity-0 transition-all group-hover:opacity-100 hover:bg-red-100 hover:text-red-600 focus-visible:opacity-100 disabled:cursor-not-allowed disabled:opacity-50"
-                      aria-label="Delete chat"
-                    >
-                      <TrashIcon className="h-4 w-4" />
-                    </button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button
+                          onClick={(e) => e.stopPropagation()}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1.5 text-zinc-600 opacity-0 transition-all group-hover:opacity-100 hover:bg-neutral-100 focus-visible:opacity-100"
+                          aria-label="More actions"
+                        >
+                          <DotsThree className="h-4 w-4" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem
+                          onClick={(e) =>
+                            handleDeleteClick(e, session.id, session.title)
+                          }
+                          disabled={isDeleting}
+                          className="text-red-600 focus:bg-red-50 focus:text-red-600"
+                        >
+                          Delete chat
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
                 ))
               )}

@@ -1,10 +1,16 @@
 "use client";
 
-import { Button } from "@/components/atoms/Button/Button";
-import { Dialog } from "@/components/molecules/Dialog/Dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/molecules/DropdownMenu/DropdownMenu";
 import { SidebarProvider } from "@/components/ui/sidebar";
+import { DotsThree } from "@phosphor-icons/react";
 import { ChatContainer } from "./components/ChatContainer/ChatContainer";
 import { ChatSidebar } from "./components/ChatSidebar/ChatSidebar";
+import { DeleteChatDialog } from "./components/DeleteChatDialog/DeleteChatDialog";
 import { MobileDrawer } from "./components/MobileDrawer/MobileDrawer";
 import { MobileHeader } from "./components/MobileHeader/MobileHeader";
 import { ScaleLoader } from "./components/ScaleLoader/ScaleLoader";
@@ -56,19 +62,7 @@ export function CopilotPage() {
     >
       {!isMobile && <ChatSidebar />}
       <div className="relative flex h-full w-full flex-col overflow-hidden bg-[#f8f8f9] px-0">
-        {isMobile && (
-          <MobileHeader
-            onOpenDrawer={handleOpenDrawer}
-            showDelete={!!sessionId}
-            isDeleting={isDeleting}
-            onDelete={() => {
-              const session = sessions.find((s) => s.id === sessionId);
-              if (session) {
-                handleDeleteClick(session.id, session.title);
-              }
-            }}
-          />
-        )}
+        {isMobile && <MobileHeader onOpenDrawer={handleOpenDrawer} />}
         <div className="flex-1 overflow-hidden">
           <ChatContainer
             messages={messages}
@@ -80,6 +74,38 @@ export function CopilotPage() {
             onCreateSession={createSession}
             onSend={onSend}
             onStop={stop}
+            headerSlot={
+              isMobile && sessionId ? (
+                <div className="flex justify-end">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        className="rounded p-1.5 hover:bg-neutral-100"
+                        aria-label="More actions"
+                      >
+                        <DotsThree className="h-5 w-5 text-neutral-600" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem
+                        onClick={() => {
+                          const session = sessions.find(
+                            (s) => s.id === sessionId,
+                          );
+                          if (session) {
+                            handleDeleteClick(session.id, session.title);
+                          }
+                        }}
+                        disabled={isDeleting}
+                        className="text-red-600 focus:bg-red-50 focus:text-red-600"
+                      >
+                        Delete chat
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              ) : undefined
+            }
           />
         </div>
       </div>
@@ -97,47 +123,12 @@ export function CopilotPage() {
       )}
       {/* Delete confirmation dialog - rendered at top level for proper z-index on mobile */}
       {isMobile && (
-        <Dialog
-          title="Delete chat"
-          controlled={{
-            isOpen: !!sessionToDelete,
-            set: async (open) => {
-              if (!open && !isDeleting) {
-                handleCancelDelete();
-              }
-            },
-          }}
-          onClose={handleCancelDelete}
-        >
-          <Dialog.Content>
-            <p className="text-neutral-600">
-              Are you sure you want to delete{" "}
-              <span className="font-medium">
-                &quot;{sessionToDelete?.title || "Untitled chat"}&quot;
-              </span>
-              ? This action cannot be undone.
-            </p>
-            <Dialog.Footer>
-              <Button
-                variant="ghost"
-                size="small"
-                onClick={handleCancelDelete}
-                disabled={isDeleting}
-              >
-                Cancel
-              </Button>
-              <Button
-                variant="primary"
-                size="small"
-                onClick={handleConfirmDelete}
-                loading={isDeleting}
-                className="bg-red-600 hover:bg-red-700"
-              >
-                Delete
-              </Button>
-            </Dialog.Footer>
-          </Dialog.Content>
-        </Dialog>
+        <DeleteChatDialog
+          session={sessionToDelete}
+          isDeleting={isDeleting}
+          onConfirm={handleConfirmDelete}
+          onCancel={handleCancelDelete}
+        />
       )}
     </SidebarProvider>
   );
