@@ -38,13 +38,8 @@ export function CredentialsGroupedView({
   const allProviders = useContext(CredentialsProvidersContext);
 
   const { userCredentialFields, systemCredentialFields } = useMemo(
-    () =>
-      splitCredentialFieldsBySystem(
-        credentialFields,
-        allProviders,
-        inputCredentials,
-      ),
-    [credentialFields, allProviders, inputCredentials],
+    () => splitCredentialFieldsBySystem(credentialFields, allProviders),
+    [credentialFields, allProviders],
   );
 
   const hasSystemCredentials = systemCredentialFields.length > 0;
@@ -86,11 +81,13 @@ export function CredentialsGroupedView({
       const providerNames = schema.credentials_provider || [];
       const credentialTypes = schema.credentials_types || [];
       const requiredScopes = schema.credentials_scopes;
+      const discriminatorValues = schema.discriminator_values;
       const savedCredential = findSavedCredentialByProviderAndType(
         providerNames,
         credentialTypes,
         requiredScopes,
         allProviders,
+        discriminatorValues,
       );
 
       if (savedCredential) {

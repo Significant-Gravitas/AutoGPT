@@ -637,7 +637,7 @@ This enables extensibility by allowing custom blocks to be added without modifyi
 ## Concatenate Lists
 
 ### What it is
-Concatenates multiple lists into a single list. All elements from all input lists are combined in order.
+Concatenates multiple lists into a single list. All elements from all input lists are combined in order. Supports optional deduplication and None removal.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -651,6 +651,8 @@ The block includes validation to ensure each item is actually a list. If a non-l
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | lists | A list of lists to concatenate together. All lists will be combined in order into a single list. | List[List[Any]] | Yes |
+| deduplicate | If True, remove duplicate elements from the concatenated result while preserving order. | bool | No |
+| remove_none | If True, remove None values from the concatenated result. | bool | No |
 
 ### Outputs
 
@@ -658,6 +660,7 @@ The block includes validation to ensure each item is actually a list. If a non-l
 |--------|-------------|------|
 | error | Error message if concatenation failed due to invalid input types. | str |
 | concatenated_list | The concatenated list containing all elements from all input lists in order. | List[Any] |
+| length | The total number of elements in the concatenated list. | int |
 
 ### Possible use case
 <!-- MANUAL: use_case -->
@@ -820,6 +823,45 @@ This enables conditional logic based on list membership and helps locate items f
 
 ---
 
+## Flatten List
+
+### What it is
+Flattens a nested list structure into a single flat list. Supports configurable maximum flattening depth.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+This block recursively traverses a nested list and extracts all leaf elements into a single flat list. You can control how deep the flattening goes with the max_depth parameter: set it to -1 to flatten completely, or to a positive integer to flatten only that many levels.
+
+The block also reports the original nesting depth of the input, which is useful for understanding the structure of data coming from sources with varying levels of nesting.
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| nested_list | A potentially nested list to flatten into a single-level list. | List[Any] | Yes |
+| max_depth | Maximum depth to flatten. -1 means flatten completely. 1 means flatten only one level. | int | No |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if flattening failed. | str |
+| flattened_list | The flattened list with all nested elements extracted. | List[Any] |
+| length | The number of elements in the flattened list. | int |
+| original_depth | The maximum nesting depth of the original input list. | int |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+**Normalizing API Responses**: Flatten nested JSON arrays from different API endpoints into a uniform single-level list for consistent processing.
+
+**Aggregating Nested Results**: Combine results from recursive file searches or nested category trees into a flat list of items for display or export.
+
+**Data Pipeline Cleanup**: Simplify deeply nested data structures from multiple transformation steps into a clean flat list before final output.
+<!-- END MANUAL -->
+
+---
+
 ## Get All Memories
 
 ### What it is
@@ -975,7 +1017,7 @@ A travel planning application could use this block to provide users with current
 ## Human In The Loop
 
 ### What it is
-Pause execution and wait for human approval or modification of data
+Pause execution for human review. Data flows through approved_data or rejected_data output based on the reviewer's decision. Outputs contain the actual data, not status strings.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -988,18 +1030,18 @@ This enables human oversight at critical points in automated workflows, ensuring
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| data | The data to be reviewed by a human user | Data | Yes |
-| name | A descriptive name for what this data represents | str | Yes |
-| editable | Whether the human reviewer can edit the data | bool | No |
+| data | The data to be reviewed by a human user. This exact data will be passed through to either approved_data or rejected_data output based on the reviewer's decision. | Data | Yes |
+| name | A descriptive name for what this data represents. This helps the reviewer understand what they are reviewing. | str | Yes |
+| editable | Whether the human reviewer can edit the data before approving or rejecting it | bool | No |
 
 ### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
-| approved_data | The data when approved (may be modified by reviewer) | Approved Data |
-| rejected_data | The data when rejected (may be modified by reviewer) | Rejected Data |
-| review_message | Any message provided by the reviewer | str |
+| approved_data | Outputs the input data when the reviewer APPROVES it. The value is the actual data itself (not a status string like 'APPROVED'). If the reviewer edited the data, this contains the modified version. Connect downstream blocks here for the 'approved' workflow path. | Approved Data |
+| rejected_data | Outputs the input data when the reviewer REJECTS it. The value is the actual data itself (not a status string like 'REJECTED'). If the reviewer edited the data, this contains the modified version. Connect downstream blocks here for the 'rejected' workflow path. | Rejected Data |
+| review_message | Optional message provided by the reviewer explaining their decision. Only outputs when the reviewer provides a message; this pin does not fire if no message was given. | str |
 
 ### Possible use case
 <!-- MANUAL: use_case -->
@@ -1008,6 +1050,120 @@ This enables human oversight at critical points in automated workflows, ensuring
 **Approval Workflows**: Require manager approval for actions like large purchases, access requests, or configuration changes.
 
 **Quality Assurance**: Let reviewers verify data transformations or calculations before they're committed to production systems.
+<!-- END MANUAL -->
+
+---
+
+## Interleave Lists
+
+### What it is
+Interleaves elements from multiple lists in round-robin fashion, alternating between sources.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+This block takes elements from each input list in round-robin order, picking one element from each list in turn. For example, given `[[1, 2, 3], ['a', 'b', 'c']]`, it produces `[1, 'a', 2, 'b', 3, 'c']`.
+
+When lists have different lengths, shorter lists stop contributing once exhausted, and remaining elements from longer lists continue to be added in order.
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| lists | A list of lists to interleave. Elements will be taken in round-robin order. | List[List[Any]] | Yes |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if interleaving failed. | str |
+| interleaved_list | The interleaved list with elements alternating from each input list. | List[Any] |
+| length | The total number of elements in the interleaved list. | int |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+**Balanced Content Mixing**: Alternate between content from different sources (e.g., mixing promotional and organic posts) for a balanced feed.
+
+**Round-Robin Scheduling**: Distribute tasks evenly across workers or queues by interleaving items from separate task lists.
+
+**Multi-Language Output**: Weave together translated text segments with their original counterparts for side-by-side comparison.
+<!-- END MANUAL -->
+
+---
+
+## List Difference
+
+### What it is
+Computes the difference between two lists. Returns elements in the first list not found in the second, or symmetric difference.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+This block compares two lists and returns elements from list_a that do not appear in list_b. It uses hash-based lookup for efficient comparison. When symmetric mode is enabled, it returns elements that are in either list but not in both.
+
+The order of elements from list_a is preserved in the output, and elements from list_b are appended when using symmetric difference.
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| list_a | The primary list to check elements from. | List[Any] | Yes |
+| list_b | The list to subtract. Elements found here will be removed from list_a. | List[Any] | Yes |
+| symmetric | If True, compute symmetric difference (elements in either list but not both). | bool | No |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if the operation failed. | str |
+| difference | Elements from list_a not found in list_b (or symmetric difference if enabled). | List[Any] |
+| length | The number of elements in the difference result. | int |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+**Change Detection**: Compare a current list of records against a previous snapshot to find newly added or removed items.
+
+**Exclusion Filtering**: Remove items from a list that appear in a blocklist or already-processed list to avoid duplicates.
+
+**Data Sync**: Identify which items exist in one system but not another to determine what needs to be synced.
+<!-- END MANUAL -->
+
+---
+
+## List Intersection
+
+### What it is
+Computes the intersection of two lists, returning only elements present in both.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+This block finds elements that appear in both input lists by hashing elements from list_b for efficient lookup, then checking each element of list_a against that set. The output preserves the order from list_a and removes duplicates.
+
+This is useful for finding common items between two datasets without needing to manually iterate or compare.
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| list_a | The first list to intersect. | List[Any] | Yes |
+| list_b | The second list to intersect. | List[Any] | Yes |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if the operation failed. | str |
+| intersection | Elements present in both list_a and list_b. | List[Any] |
+| length | The number of elements in the intersection. | int |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+**Finding Common Tags**: Identify shared tags or categories between two items for recommendation or grouping purposes.
+
+**Mutual Connections**: Find users or contacts that appear in both of two different lists, such as shared friends or overlapping team members.
+
+**Feature Comparison**: Determine which features or capabilities are supported by both of two systems or products.
 <!-- END MANUAL -->
 
 ---
@@ -1449,6 +1605,45 @@ This makes XML data accessible using standard dictionary operations, allowing yo
 **Configuration File Reading**: Read XML configuration files and convert them to dictionaries for easy access.
 
 **Data Import**: Transform XML data exports from other systems into a format suitable for your workflow processing.
+<!-- END MANUAL -->
+
+---
+
+## Zip Lists
+
+### What it is
+Zips multiple lists together into a list of grouped elements. Supports padding to longest or truncating to shortest.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+This block pairs up corresponding elements from multiple input lists into sub-lists. For example, zipping `[[1, 2, 3], ['a', 'b', 'c']]` produces `[[1, 'a'], [2, 'b'], [3, 'c']]`.
+
+By default, the result is truncated to the length of the shortest input list. Enable pad_to_longest to instead pad shorter lists with a fill_value so no elements from longer lists are lost.
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| lists | A list of lists to zip together. Corresponding elements will be grouped. | List[List[Any]] | Yes |
+| pad_to_longest | If True, pad shorter lists with fill_value to match the longest list. If False, truncate to shortest. | bool | No |
+| fill_value | Value to use for padding when pad_to_longest is True. | Fill Value | No |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if zipping failed. | str |
+| zipped_list | The zipped list of grouped elements. | List[List[Any]] |
+| length | The number of groups in the zipped result. | int |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+**Creating Key-Value Pairs**: Combine a list of field names with a list of values to build structured records or dictionaries.
+
+**Parallel Data Alignment**: Pair up corresponding items from separate data sources (e.g., names and email addresses) for processing together.
+
+**Table Row Construction**: Group column data into rows by zipping each column's values together for CSV export or display.
 <!-- END MANUAL -->
 
 ---

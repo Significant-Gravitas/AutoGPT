@@ -1,25 +1,31 @@
 "use client";
 
-import { WarningDiamondIcon } from "@phosphor-icons/react";
+import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
+import {
+  BookOpenIcon,
+  PencilSimpleIcon,
+  WarningDiamondIcon,
+} from "@phosphor-icons/react";
 import type { ToolUIPart } from "ai";
+import Image from "next/image";
+import NextLink from "next/link";
 import { useCopilotChatActions } from "../../components/CopilotChatActionsProvider/useCopilotChatActions";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
-import { OrbitLoader } from "../../components/OrbitLoader/OrbitLoader";
-import { ProgressBar } from "../../components/ProgressBar/ProgressBar";
 import {
   ContentCardDescription,
   ContentCodeBlock,
   ContentGrid,
   ContentHint,
-  ContentLink,
   ContentMessage,
 } from "../../components/ToolAccordion/AccordionContent";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
-import { useAsymptoticProgress } from "../../hooks/useAsymptoticProgress";
 import {
   ClarificationQuestionsCard,
   ClarifyingQuestion,
 } from "./components/ClarificationQuestionsCard";
+import sparklesImg from "./components/MiniGame/assets/sparkles.png";
+import { MiniGame } from "./components/MiniGame/MiniGame";
 import {
   AccordionIcon,
   formatMaybeJson,
@@ -53,7 +59,7 @@ function getAccordionMeta(output: CreateAgentToolOutput) {
   const icon = <AccordionIcon />;
 
   if (isAgentSavedOutput(output)) {
-    return { icon, title: output.agent_name };
+    return { icon, title: output.agent_name, expanded: true };
   }
   if (isAgentPreviewOutput(output)) {
     return {
@@ -77,8 +83,10 @@ function getAccordionMeta(output: CreateAgentToolOutput) {
     isOperationInProgressOutput(output)
   ) {
     return {
-      icon: <OrbitLoader size={32} />,
-      title: "Creating agent, this may take a few minutes. Sit back and relax.",
+      icon,
+      title:
+        "Creating agent, this may take a few minutes. Play while you wait.",
+      expanded: true,
     };
   }
   return {
@@ -107,8 +115,6 @@ export function CreateAgentTool({ part }: Props) {
     (isOperationStartedOutput(output) ||
       isOperationPendingOutput(output) ||
       isOperationInProgressOutput(output));
-
-  const progress = useAsymptoticProgress(isOperating);
 
   const hasExpandableContent =
     part.state === "output-available" &&
@@ -153,31 +159,57 @@ export function CreateAgentTool({ part }: Props) {
         <ToolAccordion {...getAccordionMeta(output)}>
           {isOperating && (
             <ContentGrid>
-              <ProgressBar value={progress} className="max-w-[280px]" />
+              <MiniGame />
               <ContentHint>
-                This could take a few minutes, grab a coffee ☕
+                This could take a few minutes — play while you wait!
               </ContentHint>
             </ContentGrid>
           )}
 
           {isAgentSavedOutput(output) && (
-            <ContentGrid>
-              <ContentMessage>{output.message}</ContentMessage>
-              <div className="flex flex-wrap gap-2">
-                <ContentLink href={output.library_agent_link}>
-                  Open in library
-                </ContentLink>
-                <ContentLink href={output.agent_page_link}>
-                  Open in builder
-                </ContentLink>
+            <div className="rounded-xl border border-border/60 bg-card p-4 shadow-sm">
+              <div className="flex items-baseline gap-2">
+                <Image
+                  src={sparklesImg}
+                  alt="sparkles"
+                  width={24}
+                  height={24}
+                  className="relative top-1"
+                />
+                <Text
+                  variant="body-medium"
+                  className="mb-2 text-[16px] text-black"
+                >
+                  Agent{" "}
+                  <span className="text-violet-600">{output.agent_name}</span>{" "}
+                  has been saved to your library!
+                </Text>
               </div>
-              <ContentCodeBlock>
-                {truncateText(
-                  formatMaybeJson({ agent_id: output.agent_id }),
-                  800,
-                )}
-              </ContentCodeBlock>
-            </ContentGrid>
+              <div className="mt-3 flex flex-wrap gap-4">
+                <Button variant="outline" size="small">
+                  <NextLink
+                    href={output.library_agent_link}
+                    className="inline-flex items-center gap-1.5"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <BookOpenIcon size={14} weight="regular" />
+                    Open in library
+                  </NextLink>
+                </Button>
+                <Button variant="outline" size="small">
+                  <NextLink
+                    href={output.agent_page_link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5"
+                  >
+                    <PencilSimpleIcon size={14} weight="regular" />
+                    Open in builder
+                  </NextLink>
+                </Button>
+              </div>
+            </div>
           )}
 
           {isAgentPreviewOutput(output) && (

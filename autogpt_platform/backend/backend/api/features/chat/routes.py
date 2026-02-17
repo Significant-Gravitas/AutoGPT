@@ -1,5 +1,6 @@
 """Chat API routes for chat session management and streaming via SSE."""
 
+import asyncio
 import logging
 import uuid as uuid_module
 from collections.abc import AsyncGenerator
@@ -11,19 +12,30 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from backend.util.exceptions import NotFoundError
+from backend.util.feature_flag import Flag, is_feature_enabled
 
 from . import service as chat_service
 from . import stream_registry
 from .completion_handler import process_operation_failure, process_operation_success
 from .config import ChatConfig
-from .model import ChatSession, create_chat_session, get_chat_session, get_user_sessions
-from .response_model import StreamFinish, StreamHeartbeat
+from .model import (
+    ChatMessage,
+    ChatSession,
+    append_and_save_message,
+    create_chat_session,
+    delete_chat_session,
+    get_chat_session,
+    get_user_sessions,
+)
+from .response_model import StreamError, StreamFinish, StreamHeartbeat, StreamStart
+from .sdk import service as sdk_service
 from .tools.models import (
     AgentDetailsResponse,
     AgentOutputResponse,
     AgentPreviewResponse,
     AgentSavedResponse,
     AgentsFoundResponse,
+    BlockDetailsResponse,
     BlockListResponse,
     BlockOutputResponse,
     ClarificationNeededResponse,
@@ -40,6 +52,7 @@ from .tools.models import (
     SetupRequirementsResponse,
     UnderstandingUpdatedResponse,
 )
+from .tracking import track_user_message
 
 config = ChatConfig()
 
@@ -199,6 +212,43 @@ async def create_session(
     )
 
 
+@router.delete(
+    "/sessions/{session_id}",
+    dependencies=[Security(auth.requires_user)],
+    status_code=204,
+    responses={404: {"description": "Session not found or access denied"}},
+)
+async def delete_session(
+    session_id: str,
+    user_id: Annotated[str, Security(auth.get_user_id)],
+) -> Response:
+    """
+    Delete a chat session.
+
+    Permanently removes a chat session and all its messages.
+    Only the owner can delete their sessions.
+
+    Args:
+        session_id: The session ID to delete.
+        user_id: The authenticated user's ID.
+
+    Returns:
+        204 No Content on success.
+
+    Raises:
+        HTTPException: 404 if session not found or not owned by user.
+    """
+    deleted = await delete_chat_session(session_id, user_id)
+
+    if not deleted:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Session {session_id} not found or access denied",
+        )
+
+    return Response(status_code=204)
+
+
 @router.get(
     "/sessions/{session_id}",
 )
@@ -230,6 +280,10 @@ async def get_session(
     active_stream_info = None
     active_task, last_message_id = await stream_registry.get_active_task_for_session(
         session_id, user_id
+    )
+    logger.info(
+        f"[GET_SESSION] session={session_id}, active_task={active_task is not None}, "
+        f"msg_count={len(messages)}, last_role={messages[-1].get('role') if messages else 'none'}"
     )
     if active_task:
         # Filter out the in-progress assistant message from the session response.
@@ -300,10 +354,9 @@ async def stream_chat_post(
         f"user={user_id}, message_len={len(request.message)}",
         extra={"json_fields": log_meta},
     )
-
     session = await _validate_and_get_session(session_id, user_id)
     logger.info(
-        f"[TIMING] session validated in {(time.perf_counter() - stream_start_time)*1000:.1f}ms",
+        f"[TIMING] session validated in {(time.perf_counter() - stream_start_time) * 1000:.1f}ms",
         extra={
             "json_fields": {
                 **log_meta,
@@ -311,6 +364,25 @@ async def stream_chat_post(
             }
         },
     )
+
+    # Atomically append user message to session BEFORE creating task to avoid
+    # race condition where GET_SESSION sees task as "running" but message isn't
+    # saved yet.  append_and_save_message re-fetches inside a lock to prevent
+    # message loss from concurrent requests.
+    if request.message:
+        message = ChatMessage(
+            role="user" if request.is_user_message else "assistant",
+            content=request.message,
+        )
+        if request.is_user_message:
+            track_user_message(
+                user_id=user_id,
+                session_id=session_id,
+                message_length=len(request.message),
+            )
+        logger.info(f"[STREAM] Saving user message to session {session_id}")
+        session = await append_and_save_message(session_id, message)
+        logger.info(f"[STREAM] User message saved for session {session_id}")
 
     # Create a task in the stream registry for reconnection support
     task_id = str(uuid_module.uuid4())
@@ -327,7 +399,7 @@ async def stream_chat_post(
         operation_id=operation_id,
     )
     logger.info(
-        f"[TIMING] create_task completed in {(time.perf_counter() - task_create_start)*1000:.1f}ms",
+        f"[TIMING] create_task completed in {(time.perf_counter() - task_create_start) * 1000:.1f}ms",
         extra={
             "json_fields": {
                 **log_meta,
@@ -348,15 +420,47 @@ async def stream_chat_post(
         first_chunk_time, ttfc = None, None
         chunk_count = 0
         try:
-            async for chunk in chat_service.stream_chat_completion(
+            # Emit a start event with task_id for reconnection
+            start_chunk = StreamStart(messageId=task_id, taskId=task_id)
+            await stream_registry.publish_chunk(task_id, start_chunk)
+            logger.info(
+                f"[TIMING] StreamStart published at {(time_module.perf_counter() - gen_start_time) * 1000:.1f}ms",
+                extra={
+                    "json_fields": {
+                        **log_meta,
+                        "elapsed_ms": (time_module.perf_counter() - gen_start_time)
+                        * 1000,
+                    }
+                },
+            )
+
+            # Choose service based on LaunchDarkly flag (falls back to config default)
+            use_sdk = await is_feature_enabled(
+                Flag.COPILOT_SDK,
+                user_id or "anonymous",
+                default=config.use_claude_agent_sdk,
+            )
+            stream_fn = (
+                sdk_service.stream_chat_completion_sdk
+                if use_sdk
+                else chat_service.stream_chat_completion
+            )
+            logger.info(
+                f"[TIMING] Calling {'sdk' if use_sdk else 'standard'} stream_chat_completion",
+                extra={"json_fields": log_meta},
+            )
+            # Pass message=None since we already added it to the session above
+            async for chunk in stream_fn(
                 session_id,
-                request.message,
+                None,  # Message already in session
                 is_user_message=request.is_user_message,
                 user_id=user_id,
-                session=session,  # Pass pre-fetched session to avoid double-fetch
+                session=session,  # Pass session with message already added
                 context=request.context,
-                _task_id=task_id,  # Pass task_id so service emits start with taskId for reconnection
             ):
+                # Skip duplicate StreamStart — we already published one above
+                if isinstance(chunk, StreamStart):
+                    continue
                 chunk_count += 1
                 if first_chunk_time is None:
                     first_chunk_time = time_module.perf_counter()
@@ -377,7 +481,7 @@ async def stream_chat_post(
             gen_end_time = time_module.perf_counter()
             total_time = (gen_end_time - gen_start_time) * 1000
             logger.info(
-                f"[TIMING] run_ai_generation FINISHED in {total_time/1000:.1f}s; "
+                f"[TIMING] run_ai_generation FINISHED in {total_time / 1000:.1f}s; "
                 f"task={task_id}, session={session_id}, "
                 f"ttfc={ttfc or -1:.2f}s, n_chunks={chunk_count}",
                 extra={
@@ -404,6 +508,17 @@ async def stream_chat_post(
                     }
                 },
             )
+            # Publish a StreamError so the frontend can display an error message
+            try:
+                await stream_registry.publish_chunk(
+                    task_id,
+                    StreamError(
+                        errorText="An error occurred. Please try again.",
+                        code="stream_error",
+                    ),
+                )
+            except Exception:
+                pass  # Best-effort; mark_task_completed will publish StreamFinish
             await stream_registry.mark_task_completed(task_id, "failed")
 
     # Start the AI generation in a background task
@@ -506,8 +621,14 @@ async def stream_chat_post(
                     "json_fields": {**log_meta, "elapsed_ms": elapsed, "error": str(e)}
                 },
             )
+            # Surface error to frontend so it doesn't appear stuck
+            yield StreamError(
+                errorText="An error occurred. Please try again.",
+                code="stream_error",
+            ).to_sse()
+            yield StreamFinish().to_sse()
         finally:
-            # Unsubscribe when client disconnects or stream ends to prevent resource leak
+            # Unsubscribe when client disconnects or stream ends
             if subscriber_queue is not None:
                 try:
                     await stream_registry.unsubscribe_from_task(
@@ -751,8 +872,6 @@ async def stream_task(
         )
 
     async def event_generator() -> AsyncGenerator[str, None]:
-        import asyncio
-
         heartbeat_interval = 15.0  # Send heartbeat every 15 seconds
         try:
             while True:
@@ -971,6 +1090,7 @@ ToolResponseUnion = (
     | AgentSavedResponse
     | ClarificationNeededResponse
     | BlockListResponse
+    | BlockDetailsResponse
     | BlockOutputResponse
     | DocSearchResultsResponse
     | DocPageResponse

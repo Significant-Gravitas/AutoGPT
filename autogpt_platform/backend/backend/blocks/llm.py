@@ -15,7 +15,7 @@ from anthropic.types import ToolParam
 from groq import AsyncGroq
 from pydantic import BaseModel, SecretStr
 
-from backend.data.block import (
+from backend.blocks._base import (
     Block,
     BlockCategory,
     BlockOutput,
