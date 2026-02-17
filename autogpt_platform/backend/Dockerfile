@@ -53,63 +53,6 @@ COPY autogpt_platform/backend/backend/data/partial_types.py ./backend/data/parti
 COPY autogpt_platform/backend/gen_prisma_types_stub.py ./
 RUN poetry run prisma generate && poetry run gen-prisma-stub
 
-# ============================== BACKEND SERVER ============================== #
-
-FROM debian:13-slim AS server
-
-WORKDIR /app
-
-ENV POETRY_HOME=/opt/poetry \
-    POETRY_NO_INTERACTION=1 \
-    POETRY_VIRTUALENVS_CREATE=true \
-    POETRY_VIRTUALENVS_IN_PROJECT=true \
-    DEBIAN_FRONTEND=noninteractive
-ENV PATH=/opt/poetry/bin:$PATH
-
-# Install Python, FFmpeg, ImageMagick, and CLI tools for agent use.
-# bubblewrap provides OS-level sandbox (whitelist-only FS + no network)
-# for the bash_exec MCP tool.
-# Using --no-install-recommends saves ~650MB by skipping unnecessary deps like llvm, mesa, etc.
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3.13 \
-    python3-pip \
-    ffmpeg \
-    imagemagick \
-    jq \
-    ripgrep \
-    tree \
-    bubblewrap \
-    && rm -rf /var/lib/apt/lists/*
-
-COPY --from=builder /usr/local/lib/python3* /usr/local/lib/python3*
-COPY --from=builder /usr/local/bin/poetry /usr/local/bin/poetry
-# Copy Node.js installation for Prisma
-COPY --from=builder /usr/bin/node /usr/bin/node
-COPY --from=builder /usr/lib/node_modules /usr/lib/node_modules
-COPY --from=builder /usr/bin/npm /usr/bin/npm
-COPY --from=builder /usr/bin/npx /usr/bin/npx
-COPY --from=builder /root/.cache/prisma-python/binaries /root/.cache/prisma-python/binaries
-
-WORKDIR /app/autogpt_platform/backend
-
-# Copy only the .venv from builder (not the entire /app directory)
-# The .venv includes the generated Prisma client
-COPY --from=builder /app/autogpt_platform/backend/.venv ./.venv
-ENV PATH="/app/autogpt_platform/backend/.venv/bin:$PATH"
-
-# Copy dependency files + autogpt_libs (path dependency)
-COPY autogpt_platform/autogpt_libs /app/autogpt_platform/autogpt_libs
-COPY autogpt_platform/backend/poetry.lock autogpt_platform/backend/pyproject.toml ./
-
-# Copy backend code + docs (for Copilot docs search)
-COPY autogpt_platform/backend ./
-COPY docs /app/docs
-RUN poetry install --no-ansi --only-root
-
-ENV PORT=8000
-
-CMD ["poetry", "run", "rest"]
-
 # =============================== DB MIGRATOR =============================== #
 
 # Lightweight migrate stage - only needs Prisma CLI, not full Python environment
@@ -141,3 +84,59 @@ COPY autogpt_platform/backend/schema.prisma ./
 COPY autogpt_platform/backend/backend/data/partial_types.py ./backend/data/partial_types.py
 COPY autogpt_platform/backend/gen_prisma_types_stub.py ./
 COPY autogpt_platform/backend/migrations ./migrations
+
+# ============================== BACKEND SERVER ============================== #
+
+FROM debian:13-slim AS server
+
+WORKDIR /app
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install Python, FFmpeg, ImageMagick, and CLI tools for agent use.
+# bubblewrap provides OS-level sandbox (whitelist-only FS + no network)
+# for the bash_exec MCP tool.
+# Using --no-install-recommends saves ~650MB by skipping unnecessary deps like llvm, mesa, etc.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3.13 \
+    python3-pip \
+    ffmpeg \
+    imagemagick \
+    jq \
+    ripgrep \
+    tree \
+    bubblewrap \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy poetry (build-time only, for `poetry install --only-root` to create entry points)
+COPY --from=builder /usr/local/lib/python3* /usr/local/lib/python3*
+COPY --from=builder /usr/local/bin/poetry /usr/local/bin/poetry
+# Copy Node.js installation for Prisma
+COPY --from=builder /usr/bin/node /usr/bin/node
+COPY --from=builder /usr/lib/node_modules /usr/lib/node_modules
+COPY --from=builder /usr/bin/npm /usr/bin/npm
+COPY --from=builder /usr/bin/npx /usr/bin/npx
+COPY --from=builder /root/.cache/prisma-python/binaries /root/.cache/prisma-python/binaries
+
+WORKDIR /app/autogpt_platform/backend
+
+# Copy only the .venv from builder (not the entire /app directory)
+# The .venv includes the generated Prisma client
+COPY --from=builder /app/autogpt_platform/backend/.venv ./.venv
+ENV PATH="/app/autogpt_platform/backend/.venv/bin:$PATH"
+
+# Copy dependency files + autogpt_libs (path dependency)
+COPY autogpt_platform/autogpt_libs /app/autogpt_platform/autogpt_libs
+COPY autogpt_platform/backend/poetry.lock autogpt_platform/backend/pyproject.toml ./
+
+# Copy backend code + docs (for Copilot docs search)
+COPY autogpt_platform/backend ./
+COPY docs /app/docs
+# Install the project package to create entry point scripts in .venv/bin/
+# (e.g., rest, executor, ws, db, scheduler, notification - see [tool.poetry.scripts])
+RUN POETRY_VIRTUALENVS_CREATE=true POETRY_VIRTUALENVS_IN_PROJECT=true \
+    poetry install --no-ansi --only-root
+
+ENV PORT=8000
+
+CMD ["rest"]
