@@ -109,6 +109,7 @@ async def _get_library_agent_by_id(user_id: str, agent_id: str) -> AgentInfo | N
     return None
 
 
+
 async def search_agents(
     query: str,
     source: SearchSource,
@@ -128,6 +129,11 @@ async def search_agents(
     Returns:
         AgentsFoundResponse, NoResultsResponse, or ErrorResponse
     """
+    # For library searches, treat special keywords as "list all" (empty query)
+    list_all = source == "library" and _is_list_all_query(query)
+    if list_all:
+        query = ""
+
     # For marketplace, we always need a search term
     if source == "marketplace" and not query:
         return ErrorResponse(
@@ -139,9 +145,6 @@ async def search_agents(
             message="User authentication required to search library",
             session_id=session_id,
         )
-
-    # For library searches, treat special keywords as "list all"
-    list_all = source == "library" and _is_list_all_query(query)
 
     agents: list[AgentInfo] = []
     try:
@@ -172,7 +175,7 @@ async def search_agents(
                     logger.info(f"Found agent by direct ID lookup: {agent.name}")
 
             if not agents:
-                search_term = None if list_all else query
+                search_term = query or None  # None means list all
                 logger.info(
                     f"{'Listing all agents in' if list_all else 'Searching'} "
                     f"user library{'' if list_all else f' for: {query}'}"
@@ -268,3 +271,82 @@ async def search_agents(
         count=len(agents),
         session_id=session_id,
     )
+
+
+def _is_uuid(text: str) -> bool:
+    """Check if text is a valid UUID v4."""
+    return bool(_UUID_PATTERN.match(text.strip()))
+
+
+def _is_list_all_query(query: str) -> bool:
+    """Check if query should list all agents rather than search."""
+    return query.lower().strip() in _LIST_ALL_KEYWORDS
+
+
+async def _get_library_agent_by_id(user_id: str, agent_id: str) -> AgentInfo | None:
+    """Fetch a library agent by ID (library agent ID or graph_id).
+
+    Tries multiple lookup strategies:
+    1. First by graph_id (AgentGraph primary key)
+    2. Then by library agent ID (LibraryAgent primary key)
+
+    Args:
+        user_id: The user ID
+        agent_id: The ID to look up (can be graph_id or library agent ID)
+
+    Returns:
+        AgentInfo if found, None otherwise
+    """
+    try:
+        agent = await library_db.get_library_agent_by_graph_id(user_id, agent_id)
+        if agent:
+            logger.debug(f"Found library agent by graph_id: {agent.name}")
+            return AgentInfo(
+                id=agent.id,
+                name=agent.name,
+                description=agent.description or "",
+                source="library",
+                in_library=True,
+                creator=agent.creator_name,
+                status=agent.status.value,
+                can_access_graph=agent.can_access_graph,
+                has_external_trigger=agent.has_external_trigger,
+                new_output=agent.new_output,
+                graph_id=agent.graph_id,
+            )
+    except DatabaseError:
+        raise
+    except Exception as e:
+        logger.warning(
+            f"Could not fetch library agent by graph_id {agent_id}: {e}",
+            exc_info=True,
+        )
+
+    try:
+        agent = await library_db.get_library_agent(agent_id, user_id)
+        if agent:
+            logger.debug(f"Found library agent by library_id: {agent.name}")
+            return AgentInfo(
+                id=agent.id,
+                name=agent.name,
+                description=agent.description or "",
+                source="library",
+                in_library=True,
+                creator=agent.creator_name,
+                status=agent.status.value,
+                can_access_graph=agent.can_access_graph,
+                has_external_trigger=agent.has_external_trigger,
+                new_output=agent.new_output,
+                graph_id=agent.graph_id,
+            )
+    except NotFoundError:
+        logger.debug(f"Library agent not found by library_id: {agent_id}")
+    except DatabaseError:
+        raise
+    except Exception as e:
+        logger.warning(
+            f"Could not fetch library agent by library_id {agent_id}: {e}",
+            exc_info=True,
+        )
+
+    return None
