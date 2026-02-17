@@ -9,7 +9,6 @@ from pydantic import BaseModel
 from backend.api.features.chat.model import ChatSession
 from backend.data.workspace import get_or_create_workspace
 from backend.util.settings import Config
-from backend.util.virus_scanner import scan_content_safe
 from backend.util.workspace import WorkspaceManager
 
 from .base import BaseTool
@@ -481,9 +480,6 @@ class WriteWorkspaceFileTool(BaseTool):
             )
 
         try:
-            # Virus scan
-            await scan_content_safe(content, filename=filename)
-
             workspace = await get_or_create_workspace(user_id)
             # Pass session_id for session-scoped file access
             manager = WorkspaceManager(user_id, workspace.id, session_id)

@@ -188,7 +188,6 @@ class WorkspaceManager:
                 f"{Config().max_file_size_mb}MB limit"
             )
 
-        # Virus scan content before persisting (defense in depth)
         await scan_content_safe(content, filename=filename)
 
         # Determine path with session scoping

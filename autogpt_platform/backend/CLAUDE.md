@@ -157,6 +157,16 @@ yield "image_url", result_url
 3. Write tests alongside the route file
 4. Run `poetry run test` to verify
 
+## Workspace & Media Files
+
+**Read [Workspace & Media Architecture](../../docs/platform/workspace-media-architecture.md) when:**
+- Working on CoPilot file upload/download features
+- Building blocks that handle `MediaFileType` inputs/outputs
+- Modifying `WorkspaceManager` or `store_media_file()`
+- Debugging file persistence or virus scanning issues
+
+Covers: `WorkspaceManager` (persistent storage with session scoping), `store_media_file()` (media normalization pipeline), and responsibility boundaries for virus scanning and persistence.
+
 ## Security Implementation
 
 ### Cache Protection Middleware
