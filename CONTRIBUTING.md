@@ -36,3 +36,7 @@ hop on our Discord. See you there! :-)
 ❤️ & 🔆
 The team @ AutoGPT
 https://discord.gg/autogpt
+
+## Additional Setup Tip for Contributors
+
+Before contributing, ensure that your Python environment meets the required version specified in the installation instructions. Using an incompatible Python version may result in dependency or runtime errors. Always install dependencies before attempting to run or modify the project.
