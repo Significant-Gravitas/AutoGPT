@@ -395,7 +395,8 @@ def test_extraction_prompt_no_format_placeholders():
 def test_make_tally_client_returns_configured_client():
     """_make_tally_client should create a Requests client with auth headers."""
     client = _make_tally_client("test-api-key")
-    assert "Bearer test-api-key" in str(client.extra_headers.get("Authorization", ""))
+    assert client.extra_headers is not None
+    assert client.extra_headers.get("Authorization") == "Bearer test-api-key"
 
 
 @pytest.mark.asyncio
