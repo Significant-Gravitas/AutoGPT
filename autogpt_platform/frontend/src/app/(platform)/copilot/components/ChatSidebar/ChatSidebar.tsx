@@ -28,7 +28,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { parseAsString, useQueryState } from "nuqs";
 import { useState } from "react";
-import { DeleteChatDialog } from "../DeleteChatDialog";
+import { DeleteChatDialog } from "../DeleteChatDialog/DeleteChatDialog";
 
 export function ChatSidebar() {
   const { state } = useSidebar();

@@ -1,1 +1,0 @@
-export { DeleteChatDialog } from "./DeleteChatDialog";

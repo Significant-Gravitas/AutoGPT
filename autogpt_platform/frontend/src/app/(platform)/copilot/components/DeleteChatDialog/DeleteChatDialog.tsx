@@ -29,7 +29,7 @@ export function DeleteChatDialog({
           }
         },
       }}
-      onClose={onCancel}
+      onClose={isDeleting ? undefined : onCancel}
     >
       <Dialog.Content>
         <Text variant="body">
