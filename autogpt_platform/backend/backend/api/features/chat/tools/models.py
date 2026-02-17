@@ -192,6 +192,7 @@ class ExecutionStartedResponse(ToolResponseBase):
     library_agent_id: str | None = None
     library_agent_link: str | None = None
     status: str = "QUEUED"
+    outputs: dict[str, Any] | None = None  # Populated when wait_for_result is used
 
 
 # Auth/error models
