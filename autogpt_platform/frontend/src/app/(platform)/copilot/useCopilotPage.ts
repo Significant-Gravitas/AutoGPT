@@ -192,8 +192,10 @@ export function useCopilotPage() {
   }, [sessionToDelete, deleteSessionMutation]);
 
   const handleCancelDelete = useCallback(() => {
-    setSessionToDelete(null);
-  }, []);
+    if (!isDeleting) {
+      setSessionToDelete(null);
+    }
+  }, [isDeleting]);
 
   return {
     sessionId,
