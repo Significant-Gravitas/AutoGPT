@@ -435,8 +435,6 @@ model LibraryFolder {
   LibraryAgents LibraryAgent[]
 
   @@unique([userId, parentId, name]) // Name unique per parent per user
-  @@index([userId, isDeleted])
-  @@index([parentId])
 }
 
 ////////////////////////////////////////////////////////////

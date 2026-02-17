@@ -1,17 +1,5 @@
-/*
-  Warnings:
-
-  - You are about to drop the column `search` on the `StoreListingVersion` table. All the data in the column will be lost.
-
-*/
--- DropIndex
-DROP INDEX "UnifiedContentEmbedding_search_idx";
-
 -- AlterTable
 ALTER TABLE "LibraryAgent" ADD COLUMN     "folderId" TEXT;
-
--- AlterTable
-ALTER TABLE "StoreListingVersion" DROP COLUMN "search";
 
 -- CreateTable
 CREATE TABLE "LibraryFolder" (
@@ -28,11 +16,6 @@ CREATE TABLE "LibraryFolder" (
     CONSTRAINT "LibraryFolder_pkey" PRIMARY KEY ("id")
 );
 
--- CreateIndex
-CREATE INDEX "LibraryFolder_userId_isDeleted_idx" ON "LibraryFolder"("userId", "isDeleted");
-
--- CreateIndex
-CREATE INDEX "LibraryFolder_parentId_idx" ON "LibraryFolder"("parentId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "LibraryFolder_userId_parentId_name_key" ON "LibraryFolder"("userId", "parentId", "name");
