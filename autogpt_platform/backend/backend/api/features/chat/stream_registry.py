@@ -63,7 +63,7 @@ class ActiveTask:
     tool_call_id: str
     tool_name: str
     operation_id: str
-    status: Literal["running", "completed", "failed"] = "running"
+    status: Literal["running", "completed", "failed", "cancelled"] = "running"
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     asyncio_task: asyncio.Task | None = None
 
@@ -636,7 +636,7 @@ async def _stream_listener(
 
 async def mark_task_completed(
     task_id: str,
-    status: Literal["completed", "failed"] = "completed",
+    status: Literal["completed", "failed", "cancelled"] = "completed",
 ) -> bool:
     """Mark a task as completed and publish finish event.
 
@@ -933,6 +933,46 @@ async def set_task_asyncio_task(task_id: str, asyncio_task: asyncio.Task) -> Non
         asyncio_task: The asyncio Task to track
     """
     _local_tasks[task_id] = asyncio_task
+
+
+async def cancel_task(task_id: str, user_id: str | None = None) -> bool:
+    """Cancel a running task.
+
+    Attempts to cancel the local asyncio task (if present on this pod), then
+    marks the task as completed with ``cancelled`` status and publishes finish
+    so subscribers close cleanly.
+
+    Args:
+        task_id: Task ID to cancel
+        user_id: Optional user ID for ownership validation
+
+    Returns:
+        True if a running task was cancelled, False if task is missing or not running
+    """
+    task = await get_task(task_id)
+    if task is None:
+        return False
+
+    # Validate ownership - if task has an owner, requester must match
+    if task.user_id and user_id != task.user_id:
+        return False
+
+    if task.status != "running":
+        return False
+
+    local_task = _local_tasks.get(task_id)
+    if local_task and not local_task.done():
+        local_task.cancel()
+        try:
+            await asyncio.wait_for(local_task, timeout=5.0)
+        except asyncio.CancelledError:
+            pass
+        except asyncio.TimeoutError:
+            logger.warning(f"Timeout waiting for task cancellation for task {task_id}")
+        except Exception as e:
+            logger.error(f"Error during task cancellation for task {task_id}: {e}")
+
+    return await mark_task_completed(task_id, status="cancelled")
 
 
 async def unsubscribe_from_task(

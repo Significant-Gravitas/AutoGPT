@@ -138,6 +138,13 @@ class OperationCompleteRequest(BaseModel):
     error: str | None = None
 
 
+class StopSessionStreamResponse(BaseModel):
+    """Response model for stopping an active session stream."""
+
+    stopped: bool
+    task_id: str | None = None
+
+
 # ========== Routes ==========
 
 
@@ -763,6 +770,40 @@ async def resume_session_stream(
             "X-Accel-Buffering": "no",
             "x-vercel-ai-ui-message-stream": "v1",
         },
+    )
+
+
+@router.post(
+    "/sessions/{session_id}/stop",
+)
+async def stop_session_stream(
+    session_id: str,
+    user_id: str | None = Depends(auth.get_user_id),
+) -> StopSessionStreamResponse:
+    """Stop the active stream for a chat session.
+
+    Cancels the backend task currently streaming for the given session.
+    If no active stream exists, returns ``stopped=False``.
+
+    Args:
+        session_id: The chat session identifier.
+        user_id: Optional authenticated user ID.
+
+    Returns:
+        StopSessionStreamResponse indicating whether a task was stopped.
+    """
+    await _validate_and_get_session(session_id, user_id)
+
+    active_task, _last_id = await stream_registry.get_active_task_for_session(
+        session_id, user_id
+    )
+    if not active_task:
+        return StopSessionStreamResponse(stopped=False, task_id=None)
+
+    was_stopped = await stream_registry.cancel_task(active_task.task_id, user_id)
+    return StopSessionStreamResponse(
+        stopped=was_stopped,
+        task_id=active_task.task_id if was_stopped else None,
     )
 
 

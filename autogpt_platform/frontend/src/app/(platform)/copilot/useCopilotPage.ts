@@ -108,6 +108,19 @@ export function useCopilotPage() {
     return () => clearTimeout(timer);
   }, [status]);
 
+  async function stopStreaming() {
+    // Always stop client-side stream immediately for responsiveness.
+    stop();
+
+    if (!sessionId) return;
+
+    try {
+      await fetch(`/api/chat/sessions/${sessionId}/stop`, { method: "POST" });
+    } catch {
+      // Best-effort server cancellation; client stream is already stopped above.
+    }
+  }
+
   useEffect(() => {
     if (!hydratedMessages || hydratedMessages.length === 0) return;
     setMessages((prev) => {
@@ -202,7 +215,7 @@ export function useCopilotPage() {
     messages,
     status,
     error,
-    stop,
+    stop: stopStreaming,
     isLoadingSession,
     isCreatingSession,
     isUserLoading,
