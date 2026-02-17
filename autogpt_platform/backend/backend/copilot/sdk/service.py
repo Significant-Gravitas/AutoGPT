@@ -693,11 +693,7 @@ async def stream_chat_completion_sdk(
                     await asyncio.sleep(0.5)
                     raw_transcript = read_transcript_file(captured_transcript.path)
                     if raw_transcript:
-                        task = asyncio.create_task(
-                            _upload_transcript_bg(user_id, session_id, raw_transcript)
-                        )
-                        _background_tasks.add(task)
-                        task.add_done_callback(_background_tasks.discard)
+                        await _upload_transcript_bg(user_id, session_id, raw_transcript)
                     else:
                         logger.debug("[SDK] Stop hook fired but transcript not usable")
 
