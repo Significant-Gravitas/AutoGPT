@@ -110,9 +110,7 @@ async def call_telegram_api_with_file(
     return result.get("result", {})
 
 
-async def get_file_info(
-    credentials: APIKeyCredentials, file_id: str
-) -> dict[str, Any]:
+async def get_file_info(credentials: APIKeyCredentials, file_id: str) -> dict[str, Any]:
     """
     Get file information from Telegram.
 

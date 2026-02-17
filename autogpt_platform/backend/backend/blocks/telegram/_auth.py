@@ -8,11 +8,7 @@ from typing import Literal
 
 from pydantic import SecretStr
 
-from backend.data.model import (
-    APIKeyCredentials,
-    CredentialsField,
-    CredentialsMetaInput,
-)
+from backend.data.model import APIKeyCredentials, CredentialsField, CredentialsMetaInput
 from backend.integrations.providers import ProviderName
 
 # Bot token credentials (API key style)

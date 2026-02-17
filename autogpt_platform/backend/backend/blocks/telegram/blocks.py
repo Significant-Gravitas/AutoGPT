@@ -140,9 +140,7 @@ class SendTelegramPhotoBlock(Block):
 
     class Input(BlockSchemaInput):
         credentials: TelegramCredentialsInput = TelegramCredentialsField()
-        chat_id: int = SchemaField(
-            description="The chat ID to send the photo to"
-        )
+        chat_id: int = SchemaField(description="The chat ID to send the photo to")
         photo: MediaFileType = SchemaField(
             description="Photo to send (URL, data URI, or workspace:// reference). "
             "URLs are preferred as Telegram will fetch them directly."
@@ -184,9 +182,7 @@ class SendTelegramPhotoBlock(Block):
                 ("message_id", 123),
                 ("status", "Photo sent"),
             ],
-            test_mock={
-                "_send_photo_url": lambda *args, **kwargs: {"message_id": 123}
-            },
+            test_mock={"_send_photo_url": lambda *args, **kwargs: {"message_id": 123}},
         )
 
     async def _send_photo_url(
@@ -341,9 +337,7 @@ class SendTelegramVoiceBlock(Block):
                 ("message_id", 123),
                 ("status", "Voice sent"),
             ],
-            test_mock={
-                "_send_voice_url": lambda *args, **kwargs: {"message_id": 123}
-            },
+            test_mock={"_send_voice_url": lambda *args, **kwargs: {"message_id": 123}},
         )
 
     async def _send_voice_url(
@@ -453,12 +447,8 @@ class ReplyToTelegramMessageBlock(Block):
 
     class Input(BlockSchemaInput):
         credentials: TelegramCredentialsInput = TelegramCredentialsField()
-        chat_id: int = SchemaField(
-            description="The chat ID where the message is"
-        )
-        reply_to_message_id: int = SchemaField(
-            description="The message ID to reply to"
-        )
+        chat_id: int = SchemaField(description="The chat ID where the message is")
+        reply_to_message_id: int = SchemaField(description="The message ID to reply to")
         text: str = SchemaField(description="The reply text")
         parse_mode: ParseMode = SchemaField(
             description="Message formatting mode",
@@ -488,9 +478,7 @@ class ReplyToTelegramMessageBlock(Block):
                 ("message_id", 123),
                 ("status", "Reply sent"),
             ],
-            test_mock={
-                "_send_reply": lambda *args, **kwargs: {"message_id": 123}
-            },
+            test_mock={"_send_reply": lambda *args, **kwargs: {"message_id": 123}},
         )
 
     async def _send_reply(
@@ -561,9 +549,7 @@ class GetTelegramFileBlock(Block):
                 ("file", "data:application/octet-stream;base64,dGVzdA=="),
                 ("status", "File downloaded"),
             ],
-            test_mock={
-                "_download_file": lambda *args, **kwargs: b"test"
-            },
+            test_mock={"_download_file": lambda *args, **kwargs: b"test"},
         )
 
     async def _download_file(
@@ -591,8 +577,7 @@ class GetTelegramFileBlock(Block):
             # Convert to data URI and wrap as MediaFileType
             mime_type = "application/octet-stream"
             data_uri = MediaFileType(
-                f"data:{mime_type};base64,"
-                f"{base64.b64encode(file_content).decode()}"
+                f"data:{mime_type};base64," f"{base64.b64encode(file_content).decode()}"
             )
 
             # Store and get appropriate output format
@@ -613,12 +598,8 @@ class DeleteTelegramMessageBlock(Block):
 
     class Input(BlockSchemaInput):
         credentials: TelegramCredentialsInput = TelegramCredentialsField()
-        chat_id: int = SchemaField(
-            description="The chat ID containing the message"
-        )
-        message_id: int = SchemaField(
-            description="The ID of the message to delete"
-        )
+        chat_id: int = SchemaField(description="The chat ID containing the message")
+        message_id: int = SchemaField(description="The ID of the message to delete")
 
     class Output(BlockSchemaOutput):
         status: str = SchemaField(description="Status of the operation")
@@ -641,9 +622,7 @@ class DeleteTelegramMessageBlock(Block):
             test_output=[
                 ("status", "Message deleted"),
             ],
-            test_mock={
-                "_delete_message": lambda *args, **kwargs: True
-            },
+            test_mock={"_delete_message": lambda *args, **kwargs: True},
         )
 
     async def _delete_message(
@@ -678,12 +657,8 @@ class EditTelegramMessageBlock(Block):
 
     class Input(BlockSchemaInput):
         credentials: TelegramCredentialsInput = TelegramCredentialsField()
-        chat_id: int = SchemaField(
-            description="The chat ID containing the message"
-        )
-        message_id: int = SchemaField(
-            description="The ID of the message to edit"
-        )
+        chat_id: int = SchemaField(description="The chat ID containing the message")
+        message_id: int = SchemaField(description="The ID of the message to edit")
         text: str = SchemaField(
             description="New text for the message (max 4096 characters)"
         )
@@ -715,9 +690,7 @@ class EditTelegramMessageBlock(Block):
                 ("message_id", 42),
                 ("status", "Message edited"),
             ],
-            test_mock={
-                "_edit_message": lambda *args, **kwargs: {"message_id": 42}
-            },
+            test_mock={"_edit_message": lambda *args, **kwargs: {"message_id": 42}},
         )
 
     async def _edit_message(
@@ -760,9 +733,7 @@ class SendTelegramAudioBlock(Block):
 
     class Input(BlockSchemaInput):
         credentials: TelegramCredentialsInput = TelegramCredentialsField()
-        chat_id: int = SchemaField(
-            description="The chat ID to send the audio to"
-        )
+        chat_id: int = SchemaField(description="The chat ID to send the audio to")
         audio: MediaFileType = SchemaField(
             description="Audio file to send (MP3 or M4A format). "
             "Can be URL, data URI, or workspace:// reference."
@@ -816,9 +787,7 @@ class SendTelegramAudioBlock(Block):
                 ("message_id", 123),
                 ("status", "Audio sent"),
             ],
-            test_mock={
-                "_send_audio_url": lambda *args, **kwargs: {"message_id": 123}
-            },
+            test_mock={"_send_audio_url": lambda *args, **kwargs: {"message_id": 123}},
         )
 
     async def _send_audio_url(
@@ -941,9 +910,7 @@ class SendTelegramDocumentBlock(Block):
 
     class Input(BlockSchemaInput):
         credentials: TelegramCredentialsInput = TelegramCredentialsField()
-        chat_id: int = SchemaField(
-            description="The chat ID to send the document to"
-        )
+        chat_id: int = SchemaField(description="The chat ID to send the document to")
         document: MediaFileType = SchemaField(
             description="Document to send (any file type). "
             "Can be URL, data URI, or workspace:// reference."
@@ -1102,9 +1069,7 @@ class SendTelegramVideoBlock(Block):
 
     class Input(BlockSchemaInput):
         credentials: TelegramCredentialsInput = TelegramCredentialsField()
-        chat_id: int = SchemaField(
-            description="The chat ID to send the video to"
-        )
+        chat_id: int = SchemaField(description="The chat ID to send the video to")
         video: MediaFileType = SchemaField(
             description="Video to send (MP4 format). "
             "Can be URL, data URI, or workspace:// reference."
@@ -1151,9 +1116,7 @@ class SendTelegramVideoBlock(Block):
                 ("message_id", 123),
                 ("status", "Video sent"),
             ],
-            test_mock={
-                "_send_video_url": lambda *args, **kwargs: {"message_id": 123}
-            },
+            test_mock={"_send_video_url": lambda *args, **kwargs: {"message_id": 123}},
         )
 
     async def _send_video_url(

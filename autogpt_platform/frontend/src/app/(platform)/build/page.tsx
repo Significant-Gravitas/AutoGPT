@@ -54,8 +54,7 @@ export default function BuilderPage() {
     );
   }
 
-  // return isNewFlowEditorEnabled ? (
-  return true ? (
+  return isNewFlowEditorEnabled ? (
     <ReactFlowProvider>
       <Flow />
     </ReactFlowProvider>

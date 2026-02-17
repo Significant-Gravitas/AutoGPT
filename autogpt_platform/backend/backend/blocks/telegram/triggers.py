@@ -95,9 +95,7 @@ class TelegramMessageTriggerBlock(TelegramTriggerBase, Block):
         )
         message_id: int = SchemaField(description="The unique message ID")
         user_id: int = SchemaField(description="The user ID who sent the message")
-        username: str = SchemaField(
-            description="Username of the sender (may be empty)"
-        )
+        username: str = SchemaField(description="Username of the sender (may be empty)")
         first_name: str = SchemaField(description="First name of the sender")
         event: str = SchemaField(
             description="The message type (text, photo, voice, audio, etc.)"
@@ -296,15 +294,9 @@ class TelegramMessageReactionTriggerBlock(TelegramTriggerBase, Block):
         chat_id: int = SchemaField(
             description="The chat ID where the reaction occurred"
         )
-        message_id: int = SchemaField(
-            description="The message ID that was reacted to"
-        )
-        user_id: int = SchemaField(
-            description="The user ID who changed the reaction"
-        )
-        username: str = SchemaField(
-            description="Username of the user (may be empty)"
-        )
+        message_id: int = SchemaField(description="The message ID that was reacted to")
+        user_id: int = SchemaField(description="The user ID who changed the reaction")
+        username: str = SchemaField(description="Username of the user (may be empty)")
         new_reactions: list = SchemaField(
             description="List of new reactions on the message"
         )
