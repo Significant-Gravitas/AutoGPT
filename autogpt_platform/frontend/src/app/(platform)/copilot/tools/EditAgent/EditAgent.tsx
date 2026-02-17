@@ -5,7 +5,6 @@ import type { ToolUIPart } from "ai";
 import { useCopilotChatActions } from "../../components/CopilotChatActionsProvider/useCopilotChatActions";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
 import { OrbitLoader } from "../../components/OrbitLoader/OrbitLoader";
-import { ProgressBar } from "../../components/ProgressBar/ProgressBar";
 import {
   ContentCardDescription,
   ContentCodeBlock,
@@ -15,7 +14,7 @@ import {
   ContentMessage,
 } from "../../components/ToolAccordion/AccordionContent";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
-import { useAsymptoticProgress } from "../../hooks/useAsymptoticProgress";
+import { MiniGame } from "../CreateAgent/components/MiniGame/MiniGame";
 import {
   ClarificationQuestionsCard,
   ClarifyingQuestion,
@@ -54,6 +53,7 @@ function getAccordionMeta(output: EditAgentToolOutput): {
   title: string;
   titleClassName?: string;
   description?: string;
+  expanded?: boolean;
 } {
   const icon = <AccordionIcon />;
 
@@ -80,7 +80,11 @@ function getAccordionMeta(output: EditAgentToolOutput): {
     isOperationPendingOutput(output) ||
     isOperationInProgressOutput(output)
   ) {
-    return { icon: <OrbitLoader size={32} />, title: "Editing agent" };
+    return {
+      icon: <OrbitLoader size={32} />,
+      title: "Editing agent, this may take a few minutes. Play while you wait.",
+      expanded: true,
+    };
   }
   return {
     icon: (
@@ -105,7 +109,6 @@ export function EditAgentTool({ part }: Props) {
     (isOperationStartedOutput(output) ||
       isOperationPendingOutput(output) ||
       isOperationInProgressOutput(output));
-  const progress = useAsymptoticProgress(isOperating);
   const hasExpandableContent =
     part.state === "output-available" &&
     !!output &&
@@ -149,9 +152,9 @@ export function EditAgentTool({ part }: Props) {
         <ToolAccordion {...getAccordionMeta(output)}>
           {isOperating && (
             <ContentGrid>
-              <ProgressBar value={progress} className="max-w-[280px]" />
+              <MiniGame />
               <ContentHint>
-                This could take a few minutes, grab a coffee ☕
+                This could take a few minutes — play while you wait!
               </ContentHint>
             </ContentGrid>
           )}

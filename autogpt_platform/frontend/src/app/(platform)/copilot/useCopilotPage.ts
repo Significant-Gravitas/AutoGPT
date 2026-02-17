@@ -1,10 +1,15 @@
-import { useGetV2ListSessions } from "@/app/api/__generated__/endpoints/chat/chat";
+import {
+  getGetV2ListSessionsQueryKey,
+  useDeleteV2DeleteSession,
+  useGetV2ListSessions,
+} from "@/app/api/__generated__/endpoints/chat/chat";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { useBreakpoint } from "@/lib/hooks/useBreakpoint";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { useChat } from "@ai-sdk/react";
+import { useQueryClient } from "@tanstack/react-query";
 import { DefaultChatTransport } from "ai";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useChatSession } from "./useChatSession";
 import { useLongRunningToolPolling } from "./hooks/useLongRunningToolPolling";
 
@@ -14,6 +19,11 @@ export function useCopilotPage() {
   const { isUserLoading, isLoggedIn } = useSupabase();
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [pendingMessage, setPendingMessage] = useState<string | null>(null);
+  const [sessionToDelete, setSessionToDelete] = useState<{
+    id: string;
+    title: string | null | undefined;
+  } | null>(null);
+  const queryClient = useQueryClient();
 
   const {
     sessionId,
@@ -23,6 +33,30 @@ export function useCopilotPage() {
     createSession,
     isCreatingSession,
   } = useChatSession();
+
+  const { mutate: deleteSessionMutation, isPending: isDeleting } =
+    useDeleteV2DeleteSession({
+      mutation: {
+        onSuccess: () => {
+          queryClient.invalidateQueries({
+            queryKey: getGetV2ListSessionsQueryKey(),
+          });
+          if (sessionToDelete?.id === sessionId) {
+            setSessionId(null);
+          }
+          setSessionToDelete(null);
+        },
+        onError: (error) => {
+          toast({
+            title: "Failed to delete chat",
+            description:
+              error instanceof Error ? error.message : "An error occurred",
+            variant: "destructive",
+          });
+          setSessionToDelete(null);
+        },
+      },
+    });
 
   const breakpoint = useBreakpoint();
   const isMobile =
@@ -143,6 +177,26 @@ export function useCopilotPage() {
     if (isMobile) setIsDrawerOpen(false);
   }
 
+  const handleDeleteClick = useCallback(
+    (id: string, title: string | null | undefined) => {
+      if (isDeleting) return;
+      setSessionToDelete({ id, title });
+    },
+    [isDeleting],
+  );
+
+  const handleConfirmDelete = useCallback(() => {
+    if (sessionToDelete) {
+      deleteSessionMutation({ sessionId: sessionToDelete.id });
+    }
+  }, [sessionToDelete, deleteSessionMutation]);
+
+  const handleCancelDelete = useCallback(() => {
+    if (!isDeleting) {
+      setSessionToDelete(null);
+    }
+  }, [isDeleting]);
+
   return {
     sessionId,
     messages,
@@ -165,5 +219,11 @@ export function useCopilotPage() {
     handleDrawerOpenChange,
     handleSelectSession,
     handleNewChat,
+    // Delete functionality
+    sessionToDelete,
+    isDeleting,
+    handleDeleteClick,
+    handleConfirmDelete,
+    handleCancelDelete,
   };
 }
