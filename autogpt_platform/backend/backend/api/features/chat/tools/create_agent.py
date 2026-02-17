@@ -22,6 +22,7 @@ from .models import (
     ClarificationNeededResponse,
     ClarifyingQuestion,
     ErrorResponse,
+    SuggestedGoalResponse,
     ToolResponseBase,
 )
 
@@ -186,26 +187,25 @@ class CreateAgentTool(BaseTool):
         if decomposition_result.get("type") == "unachievable_goal":
             suggested = decomposition_result.get("suggested_goal", "")
             reason = decomposition_result.get("reason", "")
-            return ErrorResponse(
+            return SuggestedGoalResponse(
                 message=(
-                    f"This goal cannot be accomplished with the available blocks. "
-                    f"{reason} "
-                    f"Suggestion: {suggested}"
+                    f"This goal cannot be accomplished with the available blocks. {reason}"
                 ),
-                error="unachievable_goal",
-                details={"suggested_goal": suggested, "reason": reason},
+                suggested_goal=suggested,
+                reason=reason,
+                original_goal=description,
+                goal_type="unachievable",
                 session_id=session_id,
             )
 
         if decomposition_result.get("type") == "vague_goal":
             suggested = decomposition_result.get("suggested_goal", "")
-            return ErrorResponse(
-                message=(
-                    f"The goal is too vague to create a specific workflow. "
-                    f"Suggestion: {suggested}"
-                ),
-                error="vague_goal",
-                details={"suggested_goal": suggested},
+            return SuggestedGoalResponse(
+                message="The goal is too vague to create a specific workflow.",
+                suggested_goal=suggested,
+                reason="The goal needs more specific details",
+                original_goal=description,
+                goal_type="vague",
                 session_id=session_id,
             )
 

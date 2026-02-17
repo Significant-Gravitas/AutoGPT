@@ -25,6 +25,7 @@ import {
   ClarifyingQuestion,
 } from "./components/ClarificationQuestionsCard";
 import { MiniGame } from "./components/MiniGame/MiniGame";
+import { SuggestedGoalCard } from "./components/SuggestedGoalCard";
 import {
   AccordionIcon,
   formatMaybeJson,
@@ -37,6 +38,7 @@ import {
   isOperationInProgressOutput,
   isOperationPendingOutput,
   isOperationStartedOutput,
+  isSuggestedGoalOutput,
   ToolIcon,
   truncateText,
   type CreateAgentToolOutput,
@@ -73,6 +75,13 @@ function getAccordionMeta(output: CreateAgentToolOutput) {
       icon,
       title: "Needs clarification",
       description: `${questions.length} question${questions.length === 1 ? "" : "s"}`,
+      expanded: true,
+    };
+  }
+  if (isSuggestedGoalOutput(output)) {
+    return {
+      icon,
+      title: "Goal needs refinement",
       expanded: true,
     };
   }
@@ -123,7 +132,12 @@ export function CreateAgentTool({ part }: Props) {
       isAgentPreviewOutput(output) ||
       isAgentSavedOutput(output) ||
       isClarificationNeededOutput(output) ||
+      isSuggestedGoalOutput(output) ||
       isErrorOutput(output));
+
+  function handleUseSuggestedGoal(goal: string) {
+    onSend(`Please create an agent with this goal: ${goal}`);
+  }
 
   function handleClarificationAnswers(answers: Record<string, string>) {
     const questions =
@@ -239,6 +253,15 @@ export function CreateAgentTool({ part }: Props) {
             />
           )}
 
+          {isSuggestedGoalOutput(output) && (
+            <SuggestedGoalCard
+              message={output.message}
+              suggestedGoal={output.suggested_goal}
+              goalType={output.goal_type ?? "vague"}
+              onUseSuggestedGoal={handleUseSuggestedGoal}
+            />
+          )}
+
           {isErrorOutput(output) && (
             <ContentGrid>
               <ContentMessage>{output.message}</ContentMessage>
@@ -252,6 +275,22 @@ export function CreateAgentTool({ part }: Props) {
                   {formatMaybeJson(output.details)}
                 </ContentCodeBlock>
               )}
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="small"
+                  onClick={() => onSend("Please try creating the agent again.")}
+                >
+                  Try again
+                </Button>
+                <Button
+                  variant="outline"
+                  size="small"
+                  onClick={() => onSend("Can you help me simplify this goal?")}
+                >
+                  Simplify goal
+                </Button>
+              </div>
             </ContentGrid>
           )}
         </ToolAccordion>
