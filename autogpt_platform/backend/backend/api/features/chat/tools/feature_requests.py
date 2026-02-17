@@ -104,8 +104,8 @@ def _get_linear_config() -> tuple[LinearClient, str, str]:
     Raises RuntimeError if any required setting is missing.
     """
     secrets = _get_settings().secrets
-    if not secrets.linear_api_key:
-        raise RuntimeError("LINEAR_API_KEY is not configured")
+    if not secrets.copilot_linear_api_key:
+        raise RuntimeError("COPILOT_LINEAR_API_KEY is not configured")
     if not secrets.linear_feature_request_project_id:
         raise RuntimeError("LINEAR_FEATURE_REQUEST_PROJECT_ID is not configured")
     if not secrets.linear_feature_request_team_id:
@@ -114,7 +114,7 @@ def _get_linear_config() -> tuple[LinearClient, str, str]:
     credentials = APIKeyCredentials(
         id="system-linear",
         provider="linear",
-        api_key=SecretStr(secrets.linear_api_key),
+        api_key=SecretStr(secrets.copilot_linear_api_key),
         title="System Linear API Key",
     )
     client = LinearClient(credentials=credentials)
