@@ -4323,9 +4323,7 @@
               }
             }
           },
-          "400": {
-            "description": "Validation error (circular reference, depth exceeded)"
-          },
+          "400": { "description": "Validation error (circular reference)" },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
