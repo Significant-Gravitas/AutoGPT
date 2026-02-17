@@ -7,8 +7,8 @@ import {
 import { Button } from "@/components/atoms/Button/Button";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Text } from "@/components/atoms/Text/Text";
-import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { toast } from "@/components/molecules/Toast/use-toast";
+import { DeleteChatDialog } from "../DeleteChatDialog";
 import {
   Sidebar,
   SidebarContent,
@@ -262,47 +262,12 @@ export function ChatSidebar() {
         )}
       </Sidebar>
 
-      <Dialog
-        title="Delete chat"
-        controlled={{
-          isOpen: !!sessionToDelete,
-          set: async (open) => {
-            if (!open && !isDeleting) {
-              setSessionToDelete(null);
-            }
-          },
-        }}
-        onClose={handleCancelDelete}
-      >
-        <Dialog.Content>
-          <p className="text-neutral-600">
-            Are you sure you want to delete{" "}
-            <span className="font-medium">
-              &quot;{sessionToDelete?.title || "Untitled chat"}&quot;
-            </span>
-            ? This action cannot be undone.
-          </p>
-          <Dialog.Footer>
-            <Button
-              variant="ghost"
-              size="small"
-              onClick={handleCancelDelete}
-              disabled={isDeleting}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="primary"
-              size="small"
-              onClick={handleConfirmDelete}
-              loading={isDeleting}
-              className="bg-red-600 hover:bg-red-700"
-            >
-              Delete
-            </Button>
-          </Dialog.Footer>
-        </Dialog.Content>
-      </Dialog>
+      <DeleteChatDialog
+        session={sessionToDelete}
+        isDeleting={isDeleting}
+        onConfirm={handleConfirmDelete}
+        onCancel={handleCancelDelete}
+      />
     </>
   );
 }
