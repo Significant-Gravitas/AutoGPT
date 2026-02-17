@@ -687,7 +687,13 @@ async def update_library_agent(
             )
         update_fields["isDeleted"] = is_deleted
     if settings is not None:
-        update_fields["settings"] = SafeJson(settings.model_dump())
+        existing_agent = await get_library_agent(id=library_agent_id, user_id=user_id)
+        current_settings_dict = (
+            existing_agent.settings.model_dump() if existing_agent.settings else {}
+        )
+        new_settings = settings.model_dump(exclude_unset=True)
+        merged_settings = {**current_settings_dict, **new_settings}
+        update_fields["settings"] = SafeJson(merged_settings)
     if folder_id is not None:
         # Empty string means "move to root" (no folder)
         if folder_id == "":
@@ -946,9 +952,6 @@ async def add_store_agent_to_library(
 ############ Folder DB Functions #############
 ##############################################
 
-MAX_FOLDER_DEPTH = 5
-
-
 async def list_folders(
     user_id: str,
     parent_id: Optional[str] = None,
@@ -1112,39 +1115,6 @@ async def get_folder(
         raise DatabaseError("Failed to get folder") from e
 
 
-async def get_folder_depth(folder_id: str, user_id: str) -> int:
-    """
-    Calculate the depth of a folder in the hierarchy (root=0).
-
-    Args:
-        folder_id: The ID of the folder.
-        user_id: The ID of the user.
-
-    Returns:
-        The depth of the folder (0 for root-level folders).
-    """
-    depth = 0
-    current_id: str | None = folder_id
-
-    while current_id:
-        folder = await prisma.models.LibraryFolder.prisma().find_first(
-            where={
-                "id": current_id,
-                "userId": user_id,
-                "isDeleted": False,
-            }
-        )
-        if not folder:
-            break
-        if folder.parentId:
-            depth += 1
-            current_id = folder.parentId
-        else:
-            break
-
-    return depth
-
-
 async def is_descendant_of(
     folder_id: str,
     potential_ancestor_id: str,
@@ -1185,7 +1155,6 @@ async def validate_folder_operation(
     folder_id: Optional[str],
     target_parent_id: Optional[str],
     user_id: str,
-    max_depth: int = MAX_FOLDER_DEPTH,
 ) -> None:
     """
     Validate that a folder move/create operation is valid.
@@ -1194,7 +1163,6 @@ async def validate_folder_operation(
         folder_id: The ID of the folder being moved (None for create).
         target_parent_id: The target parent ID (None for root).
         user_id: The ID of the user.
-        max_depth: Maximum allowed nesting depth.
 
     Raises:
         FolderValidationError: If the operation is invalid.
@@ -1207,14 +1175,6 @@ async def validate_folder_operation(
     if folder_id and target_parent_id:
         if await is_descendant_of(target_parent_id, folder_id, user_id):
             raise FolderValidationError("Cannot move folder into its own descendant")
-
-    # Check depth limit
-    if target_parent_id:
-        parent_depth = await get_folder_depth(target_parent_id, user_id)
-        if parent_depth + 1 >= max_depth:
-            raise FolderValidationError(
-                f"Maximum folder nesting depth of {max_depth} exceeded"
-            )
 
 
 async def create_folder(
