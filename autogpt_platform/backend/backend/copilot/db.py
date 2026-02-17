@@ -17,7 +17,7 @@ from prisma.types import (
 from backend.data import db
 from backend.util.json import SafeJson
 
-from .model import ChatMessage, ChatSession
+from .model import ChatMessage, ChatSession, ChatSessionInfo
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +34,7 @@ async def get_chat_session(session_id: str) -> ChatSession | None:
 async def create_chat_session(
     session_id: str,
     user_id: str,
-) -> ChatSession:
+) -> ChatSessionInfo:
     """Create a new chat session in the database."""
     data = ChatSessionCreateInput(
         id=session_id,
@@ -44,7 +44,7 @@ async def create_chat_session(
         successfulAgentSchedules=SafeJson({}),
     )
     prisma_session = await PrismaChatSession.prisma().create(data=data)
-    return ChatSession.from_db(prisma_session)
+    return ChatSessionInfo.from_db(prisma_session)
 
 
 async def update_chat_session(
@@ -190,7 +190,7 @@ async def get_user_chat_sessions(
     user_id: str,
     limit: int = 50,
     offset: int = 0,
-) -> list[ChatSession]:
+) -> list[ChatSessionInfo]:
     """Get chat sessions for a user, ordered by most recent."""
     prisma_sessions = await PrismaChatSession.prisma().find_many(
         where={"userId": user_id},
@@ -198,7 +198,7 @@ async def get_user_chat_sessions(
         take=limit,
         skip=offset,
     )
-    return [ChatSession.from_db(s) for s in prisma_sessions]
+    return [ChatSessionInfo.from_db(s) for s in prisma_sessions]
 
 
 async def get_user_session_count(user_id: str) -> int:

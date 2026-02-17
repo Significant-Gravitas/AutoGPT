@@ -2,7 +2,7 @@ import asyncio
 import logging
 import uuid
 from datetime import UTC, datetime
-from typing import Any, cast
+from typing import Any, Self, cast
 from weakref import WeakValueDictionary
 
 from openai.types.chat import (
@@ -75,11 +75,10 @@ class Usage(BaseModel):
     total_tokens: int
 
 
-class ChatSession(BaseModel):
+class ChatSessionInfo(BaseModel):
     session_id: str
     user_id: str
     title: str | None = None
-    messages: list[ChatMessage]
     usage: list[Usage]
     credentials: dict[str, dict] = {}  # Map of provider -> credential metadata
     started_at: datetime
@@ -87,41 +86,8 @@ class ChatSession(BaseModel):
     successful_agent_runs: dict[str, int] = {}
     successful_agent_schedules: dict[str, int] = {}
 
-    def add_tool_call_to_current_turn(self, tool_call: dict) -> None:
-        """Attach a tool_call to the current turn's assistant message.
-
-        Searches backwards for the most recent assistant message (stopping at
-        any user message boundary). If found, appends the tool_call to it.
-        Otherwise creates a new assistant message with the tool_call.
-        """
-        for msg in reversed(self.messages):
-            if msg.role == "user":
-                break
-            if msg.role == "assistant":
-                if not msg.tool_calls:
-                    msg.tool_calls = []
-                msg.tool_calls.append(tool_call)
-                return
-
-        self.messages.append(
-            ChatMessage(role="assistant", content="", tool_calls=[tool_call])
-        )
-
-    @staticmethod
-    def new(user_id: str) -> "ChatSession":
-        return ChatSession(
-            session_id=str(uuid.uuid4()),
-            user_id=user_id,
-            title=None,
-            messages=[],
-            usage=[],
-            credentials={},
-            started_at=datetime.now(UTC),
-            updated_at=datetime.now(UTC),
-        )
-
-    @staticmethod
-    def from_db(prisma_session: PrismaChatSession) -> "ChatSession":
+    @classmethod
+    def from_db(cls, prisma_session: PrismaChatSession) -> Self:
         """Convert Prisma ChatSession to Pydantic ChatSession."""
         # Parse JSON fields from Prisma
         credentials = _parse_json_field(prisma_session.credentials, default={})
@@ -144,15 +110,10 @@ class ChatSession(BaseModel):
                 )
             )
 
-        return ChatSession(
+        return cls(
             session_id=prisma_session.id,
             user_id=prisma_session.userId,
             title=prisma_session.title,
-            messages=(
-                [ChatMessage.from_db(m) for m in prisma_session.Messages]
-                if prisma_session.Messages
-                else []
-            ),
             usage=usage,
             credentials=credentials,
             started_at=prisma_session.createdAt,
@@ -161,46 +122,55 @@ class ChatSession(BaseModel):
             successful_agent_schedules=successful_agent_schedules,
         )
 
-    @staticmethod
-    def _merge_consecutive_assistant_messages(
-        messages: list[ChatCompletionMessageParam],
-    ) -> list[ChatCompletionMessageParam]:
-        """Merge consecutive assistant messages into single messages.
 
-        Long-running tool flows can create split assistant messages: one with
-        text content and another with tool_calls. Anthropic's API requires
-        tool_result blocks to reference a tool_use in the immediately preceding
-        assistant message, so these splits cause 400 errors via OpenRouter.
+class ChatSession(ChatSessionInfo):
+    messages: list[ChatMessage]
+
+    @classmethod
+    def new(cls, user_id: str) -> Self:
+        return cls(
+            session_id=str(uuid.uuid4()),
+            user_id=user_id,
+            title=None,
+            messages=[],
+            usage=[],
+            credentials={},
+            started_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+        )
+
+    @classmethod
+    def from_db(cls, prisma_session: PrismaChatSession) -> Self:
+        """Convert Prisma ChatSession to Pydantic ChatSession."""
+        if prisma_session.Messages is None:
+            raise ValueError(
+                f"Prisma session {prisma_session.id} is missing Messages relation"
+            )
+
+        return cls(
+            **ChatSessionInfo.from_db(prisma_session).model_dump(),
+            messages=[ChatMessage.from_db(m) for m in prisma_session.Messages],
+        )
+
+    def add_tool_call_to_current_turn(self, tool_call: dict) -> None:
+        """Attach a tool_call to the current turn's assistant message.
+
+        Searches backwards for the most recent assistant message (stopping at
+        any user message boundary). If found, appends the tool_call to it.
+        Otherwise creates a new assistant message with the tool_call.
         """
-        if len(messages) < 2:
-            return messages
+        for msg in reversed(self.messages):
+            if msg.role == "user":
+                break
+            if msg.role == "assistant":
+                if not msg.tool_calls:
+                    msg.tool_calls = []
+                msg.tool_calls.append(tool_call)
+                return
 
-        result: list[ChatCompletionMessageParam] = [messages[0]]
-        for msg in messages[1:]:
-            prev = result[-1]
-            if prev.get("role") != "assistant" or msg.get("role") != "assistant":
-                result.append(msg)
-                continue
-
-            prev = cast(ChatCompletionAssistantMessageParam, prev)
-            curr = cast(ChatCompletionAssistantMessageParam, msg)
-
-            curr_content = curr.get("content") or ""
-            if curr_content:
-                prev_content = prev.get("content") or ""
-                prev["content"] = (
-                    f"{prev_content}\n{curr_content}" if prev_content else curr_content
-                )
-
-            curr_tool_calls = curr.get("tool_calls")
-            if curr_tool_calls:
-                prev_tool_calls = prev.get("tool_calls")
-                prev["tool_calls"] = (
-                    list(prev_tool_calls) + list(curr_tool_calls)
-                    if prev_tool_calls
-                    else list(curr_tool_calls)
-                )
-        return result
+        self.messages.append(
+            ChatMessage(role="assistant", content="", tool_calls=[tool_call])
+        )
 
     def to_openai_messages(self) -> list[ChatCompletionMessageParam]:
         messages = []
@@ -289,6 +259,47 @@ class ChatSession(BaseModel):
                     )
                 )
         return self._merge_consecutive_assistant_messages(messages)
+
+    @staticmethod
+    def _merge_consecutive_assistant_messages(
+        messages: list[ChatCompletionMessageParam],
+    ) -> list[ChatCompletionMessageParam]:
+        """Merge consecutive assistant messages into single messages.
+
+        Long-running tool flows can create split assistant messages: one with
+        text content and another with tool_calls. Anthropic's API requires
+        tool_result blocks to reference a tool_use in the immediately preceding
+        assistant message, so these splits cause 400 errors via OpenRouter.
+        """
+        if len(messages) < 2:
+            return messages
+
+        result: list[ChatCompletionMessageParam] = [messages[0]]
+        for msg in messages[1:]:
+            prev = result[-1]
+            if prev.get("role") != "assistant" or msg.get("role") != "assistant":
+                result.append(msg)
+                continue
+
+            prev = cast(ChatCompletionAssistantMessageParam, prev)
+            curr = cast(ChatCompletionAssistantMessageParam, msg)
+
+            curr_content = curr.get("content") or ""
+            if curr_content:
+                prev_content = prev.get("content") or ""
+                prev["content"] = (
+                    f"{prev_content}\n{curr_content}" if prev_content else curr_content
+                )
+
+            curr_tool_calls = curr.get("tool_calls")
+            if curr_tool_calls:
+                prev_tool_calls = prev.get("tool_calls")
+                prev["tool_calls"] = (
+                    list(prev_tool_calls) + list(curr_tool_calls)
+                    if prev_tool_calls
+                    else list(curr_tool_calls)
+                )
+        return result
 
 
 def _parse_json_field(value: str | dict | list | None, default: Any = None) -> Any:
@@ -421,9 +432,7 @@ async def _get_session_from_db(session_id: str) -> ChatSession | None:
     return session
 
 
-async def upsert_chat_session(
-    session: ChatSession,
-) -> ChatSession:
+async def upsert_chat_session(session: ChatSession) -> ChatSession:
     """Update a chat session in both cache and database.
 
     Uses session-level locking to prevent race conditions when concurrent
@@ -607,7 +616,7 @@ async def get_user_sessions(
     user_id: str,
     limit: int = 50,
     offset: int = 0,
-) -> tuple[list[ChatSession], int]:
+) -> tuple[list[ChatSessionInfo], int]:
     """Get chat sessions for a user from the database with total count.
 
     Returns:

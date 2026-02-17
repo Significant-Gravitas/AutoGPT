@@ -38,6 +38,7 @@ from .config import ChatConfig
 from .model import (
     ChatMessage,
     ChatSession,
+    ChatSessionInfo,
     Usage,
     cache_chat_session,
     get_chat_session,
@@ -336,7 +337,7 @@ async def _generate_session_title(
 async def assign_user_to_session(
     session_id: str,
     user_id: str,
-) -> ChatSession:
+) -> ChatSessionInfo:
     """
     Assign a user to a chat session.
     """
