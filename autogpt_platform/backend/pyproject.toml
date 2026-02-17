@@ -16,6 +16,7 @@ anthropic = "^0.79.0"
 apscheduler = "^3.11.1"
 autogpt-libs = { path = "../autogpt_libs", develop = true }
 bleach = { extras = ["css"], version = "^6.2.0" }
+claude-agent-sdk = "^0.1.0"
 click = "^8.2.0"
 cryptography = "^46.0"
 discord-py = "^2.5.2"
@@ -65,7 +66,7 @@ sentry-sdk = {extras = ["anthropic", "fastapi", "launchdarkly", "openai", "sqlal
 sqlalchemy = "^2.0.40"
 strenum = "^0.4.9"
 stripe = "^11.5.0"
-supabase = "2.27.3"
+supabase = "2.28.0"
 tenacity = "^9.1.4"
 todoist-api-python = "^2.1.7"
 tweepy = "^4.16.0"

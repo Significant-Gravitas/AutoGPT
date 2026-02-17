@@ -3,8 +3,7 @@ from typing import Any
 
 from prisma.enums import ReviewStatus
 
-from backend.blocks.helpers.review import HITLReviewHelper
-from backend.data.block import (
+from backend.blocks._base import (
     Block,
     BlockCategory,
     BlockOutput,
@@ -12,6 +11,7 @@ from backend.data.block import (
     BlockSchemaOutput,
     BlockType,
 )
+from backend.blocks.helpers.review import HITLReviewHelper
 from backend.data.execution import ExecutionContext
 from backend.data.human_review import ReviewResult
 from backend.data.model import SchemaField

@@ -1,3 +1,5 @@
+# ============================ DEPENDENCY BUILDER ============================ #
+
 FROM debian:13-slim AS builder
 
 # Set environment variables
@@ -51,27 +53,62 @@ COPY autogpt_platform/backend/backend/data/partial_types.py ./backend/data/parti
 COPY autogpt_platform/backend/gen_prisma_types_stub.py ./
 RUN poetry run prisma generate && poetry run gen-prisma-stub
 
-FROM debian:13-slim AS server_dependencies
+# =============================== DB MIGRATOR =============================== #
+
+# Lightweight migrate stage - only needs Prisma CLI, not full Python environment
+FROM debian:13-slim AS migrate
+
+WORKDIR /app/autogpt_platform/backend
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install only what's needed for prisma migrate: Node.js and minimal Python for prisma-python
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3.13 \
+    python3-pip \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy Node.js from builder (needed for Prisma CLI)
+COPY --from=builder /usr/bin/node /usr/bin/node
+COPY --from=builder /usr/lib/node_modules /usr/lib/node_modules
+COPY --from=builder /usr/bin/npm /usr/bin/npm
+
+# Copy Prisma binaries
+COPY --from=builder /root/.cache/prisma-python/binaries /root/.cache/prisma-python/binaries
+
+# Install prisma-client-py directly (much smaller than copying full venv)
+RUN pip3 install prisma>=0.15.0 --break-system-packages
+
+COPY autogpt_platform/backend/schema.prisma ./
+COPY autogpt_platform/backend/backend/data/partial_types.py ./backend/data/partial_types.py
+COPY autogpt_platform/backend/gen_prisma_types_stub.py ./
+COPY autogpt_platform/backend/migrations ./migrations
+
+# ============================== BACKEND SERVER ============================== #
+
+FROM debian:13-slim AS server
 
 WORKDIR /app
 
-ENV POETRY_HOME=/opt/poetry \
-    POETRY_NO_INTERACTION=1 \
-    POETRY_VIRTUALENVS_CREATE=true \
-    POETRY_VIRTUALENVS_IN_PROJECT=true \
-    DEBIAN_FRONTEND=noninteractive
-ENV PATH=/opt/poetry/bin:$PATH
+ENV DEBIAN_FRONTEND=noninteractive
 
-# Install Python, FFmpeg, and ImageMagick (required for video processing blocks)
-RUN apt-get update && apt-get install -y \
+# Install Python, FFmpeg, ImageMagick, and CLI tools for agent use.
+# bubblewrap provides OS-level sandbox (whitelist-only FS + no network)
+# for the bash_exec MCP tool.
+# Using --no-install-recommends saves ~650MB by skipping unnecessary deps like llvm, mesa, etc.
+RUN apt-get update && apt-get install -y --no-install-recommends \
     python3.13 \
     python3-pip \
     ffmpeg \
     imagemagick \
+    jq \
+    ripgrep \
+    tree \
+    bubblewrap \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy only necessary files from builder
-COPY --from=builder /app /app
+# Copy poetry (build-time only, for `poetry install --only-root` to create entry points)
 COPY --from=builder /usr/local/lib/python3* /usr/local/lib/python3*
 COPY --from=builder /usr/local/bin/poetry /usr/local/bin/poetry
 # Copy Node.js installation for Prisma
@@ -81,30 +118,25 @@ COPY --from=builder /usr/bin/npm /usr/bin/npm
 COPY --from=builder /usr/bin/npx /usr/bin/npx
 COPY --from=builder /root/.cache/prisma-python/binaries /root/.cache/prisma-python/binaries
 
-ENV PATH="/app/autogpt_platform/backend/.venv/bin:$PATH"
-
-RUN mkdir -p /app/autogpt_platform/autogpt_libs
-RUN mkdir -p /app/autogpt_platform/backend
-
-COPY autogpt_platform/autogpt_libs /app/autogpt_platform/autogpt_libs
-
-COPY autogpt_platform/backend/poetry.lock autogpt_platform/backend/pyproject.toml /app/autogpt_platform/backend/
-
 WORKDIR /app/autogpt_platform/backend
 
-FROM server_dependencies AS migrate
+# Copy only the .venv from builder (not the entire /app directory)
+# The .venv includes the generated Prisma client
+COPY --from=builder /app/autogpt_platform/backend/.venv ./.venv
+ENV PATH="/app/autogpt_platform/backend/.venv/bin:$PATH"
 
-# Migration stage only needs schema and migrations - much lighter than full backend
-COPY autogpt_platform/backend/schema.prisma /app/autogpt_platform/backend/
-COPY autogpt_platform/backend/backend/data/partial_types.py /app/autogpt_platform/backend/backend/data/partial_types.py
-COPY autogpt_platform/backend/migrations /app/autogpt_platform/backend/migrations
+# Copy dependency files + autogpt_libs (path dependency)
+COPY autogpt_platform/autogpt_libs /app/autogpt_platform/autogpt_libs
+COPY autogpt_platform/backend/poetry.lock autogpt_platform/backend/pyproject.toml ./
 
-FROM server_dependencies AS server
-
-COPY autogpt_platform/backend /app/autogpt_platform/backend
+# Copy backend code + docs (for Copilot docs search)
+COPY autogpt_platform/backend ./
 COPY docs /app/docs
-RUN poetry install --no-ansi --only-root
+# Install the project package to create entry point scripts in .venv/bin/
+# (e.g., rest, executor, ws, db, scheduler, notification - see [tool.poetry.scripts])
+RUN POETRY_VIRTUALENVS_CREATE=true POETRY_VIRTUALENVS_IN_PROJECT=true \
+    poetry install --no-ansi --only-root
 
 ENV PORT=8000
 
-CMD ["poetry", "run", "rest"]
+CMD ["rest"]

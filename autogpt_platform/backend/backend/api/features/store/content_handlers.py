@@ -152,7 +152,7 @@ class BlockHandler(ContentHandler):
 
     async def get_missing_items(self, batch_size: int) -> list[ContentItem]:
         """Fetch blocks without embeddings."""
-        from backend.data.block import get_blocks
+        from backend.blocks import get_blocks
 
         # Get all available blocks
         all_blocks = get_blocks()
@@ -259,7 +259,7 @@ class BlockHandler(ContentHandler):
 
     async def get_stats(self) -> dict[str, int]:
         """Get statistics about block embedding coverage."""
-        from backend.data.block import get_blocks
+        from backend.blocks import get_blocks
 
         all_blocks = get_blocks()
 

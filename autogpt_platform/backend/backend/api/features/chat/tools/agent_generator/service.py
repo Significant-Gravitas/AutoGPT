@@ -12,7 +12,18 @@ import httpx
 
 from backend.util.settings import Settings
 
+from .dummy import (
+    customize_template_dummy,
+    decompose_goal_dummy,
+    generate_agent_dummy,
+    generate_agent_patch_dummy,
+    get_blocks_dummy,
+    health_check_dummy,
+)
+
 logger = logging.getLogger(__name__)
+
+_dummy_mode_warned = False
 
 
 def _create_error_response(
@@ -90,10 +101,26 @@ def _get_settings() -> Settings:
     return _settings
 
 
-def is_external_service_configured() -> bool:
-    """Check if external Agent Generator service is configured."""
+def _is_dummy_mode() -> bool:
+    """Check if dummy mode is enabled for testing."""
+    global _dummy_mode_warned
     settings = _get_settings()
-    return bool(settings.config.agentgenerator_host)
+    is_dummy = bool(settings.config.agentgenerator_use_dummy)
+    if is_dummy and not _dummy_mode_warned:
+        logger.warning(
+            "Agent Generator running in DUMMY MODE - returning mock responses. "
+            "Do not use in production!"
+        )
+        _dummy_mode_warned = True
+    return is_dummy
+
+
+def is_external_service_configured() -> bool:
+    """Check if external Agent Generator service is configured (or dummy mode)."""
+    settings = _get_settings()
+    return bool(settings.config.agentgenerator_host) or bool(
+        settings.config.agentgenerator_use_dummy
+    )
 
 
 def _get_base_url() -> str:
@@ -137,6 +164,9 @@ async def decompose_goal_external(
         - {"type": "error", "error": "...", "error_type": "..."} on error
         Or None on unexpected error
     """
+    if _is_dummy_mode():
+        return await decompose_goal_dummy(description, context, library_agents)
+
     client = _get_client()
 
     if context:
@@ -226,6 +256,11 @@ async def generate_agent_external(
     Returns:
         Agent JSON dict, {"status": "accepted"} for async, or error dict {"type": "error", ...} on error
     """
+    if _is_dummy_mode():
+        return await generate_agent_dummy(
+            instructions, library_agents, operation_id, task_id
+        )
+
     client = _get_client()
 
     # Build request payload
@@ -297,6 +332,11 @@ async def generate_agent_patch_external(
     Returns:
         Updated agent JSON, clarifying questions dict, {"status": "accepted"} for async, or error dict on error
     """
+    if _is_dummy_mode():
+        return await generate_agent_patch_dummy(
+            update_request, current_agent, library_agents, operation_id, task_id
+        )
+
     client = _get_client()
 
     # Build request payload
@@ -383,6 +423,11 @@ async def customize_template_external(
     Returns:
         Customized agent JSON, clarifying questions dict, or error dict on error
     """
+    if _is_dummy_mode():
+        return await customize_template_dummy(
+            template_agent, modification_request, context
+        )
+
     client = _get_client()
 
     request = modification_request
@@ -445,6 +490,9 @@ async def get_blocks_external() -> list[dict[str, Any]] | None:
     Returns:
         List of block info dicts or None on error
     """
+    if _is_dummy_mode():
+        return await get_blocks_dummy()
+
     client = _get_client()
 
     try:
@@ -477,6 +525,9 @@ async def health_check() -> bool:
     """
     if not is_external_service_configured():
         return False
+
+    if _is_dummy_mode():
+        return await health_check_dummy()
 
     client = _get_client()
 

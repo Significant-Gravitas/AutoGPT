@@ -85,7 +85,7 @@ async def get_block_categories(
 )
 async def get_blocks(
     category: Annotated[str | None, fastapi.Query()] = None,
-    type: Annotated[builder_model.BlockType | None, fastapi.Query()] = None,
+    type: Annotated[builder_model.BlockTypeFilter | None, fastapi.Query()] = None,
     provider: Annotated[ProviderName | None, fastapi.Query()] = None,
     page: Annotated[int, fastapi.Query()] = 1,
     page_size: Annotated[int, fastapi.Query()] = 50,

@@ -3,6 +3,34 @@ import { CustomNodeData } from "./CustomNode";
 import { BlockUIType } from "../../../types";
 import { useMemo } from "react";
 import { mergeSchemaForResolution } from "./helpers";
+/**
+ * Build a dynamic input schema for MCP blocks.
+ *
+ * When a tool has been selected (tool_input_schema is populated), the block
+ * renders the selected tool's input parameters *plus* the credentials field
+ * so users can select/change the OAuth credential used for execution.
+ *
+ * Static fields like server_url, selected_tool, available_tools, and
+ * tool_arguments are hidden because they're pre-configured from the dialog.
+ */
+function buildMCPInputSchema(
+  toolInputSchema: Record<string, any>,
+  blockInputSchema: Record<string, any>,
+): Record<string, any> {
+  // Extract the credentials field from the block's original input schema
+  const credentialsSchema =
+    blockInputSchema?.properties?.credentials ?? undefined;
+
+  return {
+    type: "object",
+    properties: {
+      // Credentials field first so the dropdown appears at the top
+      ...(credentialsSchema ? { credentials: credentialsSchema } : {}),
+      ...(toolInputSchema.properties ?? {}),
+    },
+    required: [...(toolInputSchema.required ?? [])],
+  };
+}
 
 export const useCustomNode = ({
   data,
@@ -19,10 +47,18 @@ export const useCustomNode = ({
   );
 
   const isAgent = data.uiType === BlockUIType.AGENT;
+  const isMCPWithTool =
+    data.uiType === BlockUIType.MCP_TOOL &&
+    !!data.hardcodedValues?.tool_input_schema?.properties;
 
   const currentInputSchema = isAgent
     ? (data.hardcodedValues.input_schema ?? {})
-    : data.inputSchema;
+    : isMCPWithTool
+      ? buildMCPInputSchema(
+          data.hardcodedValues.tool_input_schema,
+          data.inputSchema,
+        )
+      : data.inputSchema;
   const currentOutputSchema = isAgent
     ? (data.hardcodedValues.output_schema ?? {})
     : data.outputSchema;
@@ -54,5 +90,6 @@ export const useCustomNode = ({
   return {
     inputSchema,
     outputSchema,
+    isMCPWithTool,
   };
 };
