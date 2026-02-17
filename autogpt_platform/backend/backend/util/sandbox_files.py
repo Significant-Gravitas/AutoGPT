@@ -210,32 +210,29 @@ async def extract_sandbox_files(
                 continue
 
             try:
-                # For binary files, check size before reading to prevent OOM
-                if is_binary:
-                    stat_result = await sandbox.commands.run(
-                        f"stat -c %s {shlex.quote(file_path)} 2>/dev/null"
+                # Check file size before reading to prevent OOM
+                stat_result = await sandbox.commands.run(
+                    f"stat -c %s {shlex.quote(file_path)} 2>/dev/null"
+                )
+                if stat_result.exit_code != 0 or not stat_result.stdout:
+                    logger.debug(f"Skipping {file_path}: could not determine file size")
+                    continue
+
+                try:
+                    file_size = int(stat_result.stdout.strip())
+                except ValueError:
+                    logger.debug(
+                        f"Skipping {file_path}: unexpected stat output "
+                        f"{stat_result.stdout.strip()!r}"
                     )
-                    if stat_result.exit_code != 0 or not stat_result.stdout:
-                        logger.debug(
-                            f"Skipping {file_path}: could not determine file size"
-                        )
-                        continue
+                    continue
 
-                    try:
-                        file_size = int(stat_result.stdout.strip())
-                    except ValueError:
-                        logger.debug(
-                            f"Skipping {file_path}: unexpected stat output "
-                            f"{stat_result.stdout.strip()!r}"
-                        )
-                        continue
-
-                    if file_size > MAX_BINARY_FILE_SIZE:
-                        logger.info(
-                            f"Skipping {file_path}: size {file_size} bytes "
-                            f"exceeds limit {MAX_BINARY_FILE_SIZE}"
-                        )
-                        continue
+                if file_size > MAX_BINARY_FILE_SIZE:
+                    logger.info(
+                        f"Skipping {file_path}: size {file_size} bytes "
+                        f"exceeds limit {MAX_BINARY_FILE_SIZE}"
+                    )
+                    continue
 
                 content = await sandbox.files.read(file_path, format="bytes")
                 if isinstance(content, str):
