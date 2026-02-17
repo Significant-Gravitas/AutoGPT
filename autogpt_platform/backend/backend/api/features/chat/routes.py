@@ -49,6 +49,7 @@ from .tools.models import (
     OperationPendingResponse,
     OperationStartedResponse,
     SetupRequirementsResponse,
+    SuggestedGoalResponse,
     UnderstandingUpdatedResponse,
 )
 from .tracking import track_user_message
@@ -1051,6 +1052,7 @@ ToolResponseUnion = (
     | AgentPreviewResponse
     | AgentSavedResponse
     | ClarificationNeededResponse
+    | SuggestedGoalResponse
     | BlockListResponse
     | BlockDetailsResponse
     | BlockOutputResponse
