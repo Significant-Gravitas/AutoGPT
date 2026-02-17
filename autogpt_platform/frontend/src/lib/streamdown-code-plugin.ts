@@ -139,7 +139,7 @@ export function createSingletonCodePlugin(): CodeHighlighterPlugin {
           console.error("[Shiki] Failed to highlight code:", error);
 
           const fallback: HighlightResult = {
-            tokens: [[{ content: code }]],
+            tokens: code.split("\n").map((line) => [{ content: line }]),
           };
 
           const callbacks = pendingCallbacks.get(cacheKey);
