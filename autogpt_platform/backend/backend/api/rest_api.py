@@ -51,6 +51,7 @@ from backend.integrations.providers import ProviderName
 from backend.monitoring.instrumentation import instrument_fastapi
 from backend.util import json
 from backend.util.cloud_storage import shutdown_cloud_storage_handler
+from backend.api.features.library.exceptions import FolderValidationError
 from backend.util.exceptions import (
     MissingConfigError,
     NotAuthorizedError,
@@ -277,6 +278,7 @@ async def validation_error_handler(
 
 
 app.add_exception_handler(PrismaError, handle_internal_http_error(500))
+app.add_exception_handler(FolderValidationError, handle_internal_http_error(400, False))
 app.add_exception_handler(NotFoundError, handle_internal_http_error(404, False))
 app.add_exception_handler(NotAuthorizedError, handle_internal_http_error(403, False))
 app.add_exception_handler(RequestValidationError, validation_error_handler)

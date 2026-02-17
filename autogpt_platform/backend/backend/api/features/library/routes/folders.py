@@ -1,16 +1,11 @@
-import logging
 from typing import Optional
 
 import autogpt_libs.auth as autogpt_auth_lib
-from fastapi import APIRouter, HTTPException, Query, Security, status
+from fastapi import APIRouter, Query, Security, status
 from fastapi.responses import Response
-
-from backend.util.exceptions import DatabaseError, NotFoundError
 
 from .. import db as library_db
 from .. import model as library_model
-
-logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/folders",
@@ -50,27 +45,20 @@ async def list_folders(
     Returns:
         A FolderListResponse containing folders.
     """
-    try:
-        folders = await library_db.list_folders(
-            user_id=user_id,
-            parent_id=parent_id,
-            include_counts=include_counts,
-        )
-        return library_model.FolderListResponse(
-            folders=folders,
-            pagination=library_model.Pagination(
-                total_items=len(folders),
-                total_pages=1,
-                current_page=1,
-                page_size=len(folders),
-            ),
-        )
-    except Exception as e:
-        logger.error(f"Could not list folders for user #{user_id}: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error",
-        ) from e
+    folders = await library_db.list_folders(
+        user_id=user_id,
+        parent_id=parent_id,
+        include_counts=include_counts,
+    )
+    return library_model.FolderListResponse(
+        folders=folders,
+        pagination=library_model.Pagination(
+            total_items=len(folders),
+            total_pages=1,
+            current_page=1,
+            page_size=len(folders),
+        ),
+    )
 
 
 @router.get(
@@ -94,15 +82,8 @@ async def get_folder_tree(
     Returns:
         A FolderTreeResponse containing the nested folder structure.
     """
-    try:
-        tree = await library_db.get_folder_tree(user_id=user_id)
-        return library_model.FolderTreeResponse(tree=tree)
-    except Exception as e:
-        logger.error(f"Could not get folder tree for user #{user_id}: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error",
-        ) from e
+    tree = await library_db.get_folder_tree(user_id=user_id)
+    return library_model.FolderTreeResponse(tree=tree)
 
 
 @router.get(
@@ -129,19 +110,7 @@ async def get_folder(
     Returns:
         The requested LibraryFolder.
     """
-    try:
-        return await library_db.get_folder(folder_id=folder_id, user_id=user_id)
-    except NotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(e),
-        ) from e
-    except Exception as e:
-        logger.error(f"Could not get folder #{folder_id}: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error",
-        ) from e
+    return await library_db.get_folder(folder_id=folder_id, user_id=user_id)
 
 
 @router.post(
@@ -171,35 +140,13 @@ async def create_folder(
     Returns:
         The created LibraryFolder.
     """
-    try:
-        return await library_db.create_folder(
-            user_id=user_id,
-            name=payload.name,
-            parent_id=payload.parent_id,
-            icon=payload.icon,
-            color=payload.color,
-        )
-    except library_db.FolderValidationError as e:
-        if "already exists" in str(e):
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=str(e),
-            ) from e
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e),
-        ) from e
-    except NotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(e),
-        ) from e
-    except DatabaseError as e:
-        logger.error(f"Database error creating folder: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error",
-        ) from e
+    return await library_db.create_folder(
+        user_id=user_id,
+        name=payload.name,
+        parent_id=payload.parent_id,
+        icon=payload.icon,
+        color=payload.color,
+    )
 
 
 @router.patch(
@@ -230,35 +177,13 @@ async def update_folder(
     Returns:
         The updated LibraryFolder.
     """
-    try:
-        return await library_db.update_folder(
-            folder_id=folder_id,
-            user_id=user_id,
-            name=payload.name,
-            icon=payload.icon,
-            color=payload.color,
-        )
-    except library_db.FolderValidationError as e:
-        if "already exists" in str(e):
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=str(e),
-            ) from e
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e),
-        ) from e
-    except NotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(e),
-        ) from e
-    except DatabaseError as e:
-        logger.error(f"Database error updating folder #{folder_id}: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error",
-        ) from e
+    return await library_db.update_folder(
+        folder_id=folder_id,
+        user_id=user_id,
+        name=payload.name,
+        icon=payload.icon,
+        color=payload.color,
+    )
 
 
 @router.post(
@@ -267,7 +192,7 @@ async def update_folder(
     response_model=library_model.LibraryFolder,
     responses={
         200: {"description": "Folder moved successfully"},
-        400: {"description": "Validation error (circular reference, depth exceeded)"},
+        400: {"description": "Validation error (circular reference)"},
         404: {"description": "Folder or target parent not found"},
         409: {"description": "Folder name conflict in target location"},
         500: {"description": "Server error"},
@@ -289,33 +214,11 @@ async def move_folder(
     Returns:
         The moved LibraryFolder.
     """
-    try:
-        return await library_db.move_folder(
-            folder_id=folder_id,
-            user_id=user_id,
-            target_parent_id=payload.target_parent_id,
-        )
-    except library_db.FolderValidationError as e:
-        if "already exists" in str(e):
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=str(e),
-            ) from e
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e),
-        ) from e
-    except NotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(e),
-        ) from e
-    except DatabaseError as e:
-        logger.error(f"Database error moving folder #{folder_id}: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error",
-        ) from e
+    return await library_db.move_folder(
+        folder_id=folder_id,
+        user_id=user_id,
+        target_parent_id=payload.target_parent_id,
+    )
 
 
 @router.delete(
@@ -342,24 +245,12 @@ async def delete_folder(
     Returns:
         204 No Content if successful.
     """
-    try:
-        await library_db.delete_folder(
-            folder_id=folder_id,
-            user_id=user_id,
-            soft_delete=True,
-        )
-        return Response(status_code=status.HTTP_204_NO_CONTENT)
-    except NotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(e),
-        ) from e
-    except DatabaseError as e:
-        logger.error(f"Database error deleting folder #{folder_id}: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error",
-        ) from e
+    await library_db.delete_folder(
+        folder_id=folder_id,
+        user_id=user_id,
+        soft_delete=True,
+    )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 # === Bulk Agent Operations ===
@@ -389,20 +280,8 @@ async def bulk_move_agents(
     Returns:
         The updated LibraryAgents.
     """
-    try:
-        return await library_db.bulk_move_agents_to_folder(
-            agent_ids=payload.agent_ids,
-            folder_id=payload.folder_id,
-            user_id=user_id,
-        )
-    except NotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(e),
-        ) from e
-    except DatabaseError as e:
-        logger.error(f"Database error bulk moving agents: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error",
-        ) from e
+    return await library_db.bulk_move_agents_to_folder(
+        agent_ids=payload.agent_ids,
+        folder_id=payload.folder_id,
+        user_id=user_id,
+    )

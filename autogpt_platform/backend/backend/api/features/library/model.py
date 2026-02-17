@@ -320,10 +320,6 @@ class LibraryAgent(pydantic.BaseModel):
                 creator=creator_data,
             )
 
-        # Folder information
-        folder_id = agent.folderId
-        folder_name = agent.Folder.name if agent.Folder else None
-
         return LibraryAgent(
             id=agent.id,
             graph_id=agent.agentGraphId,
@@ -355,8 +351,8 @@ class LibraryAgent(pydantic.BaseModel):
             can_access_graph=can_access_graph,
             is_latest_version=is_latest_version,
             is_favorite=agent.isFavorite,
-            folder_id=folder_id,
-            folder_name=folder_name,
+            folder_id=agent.folderId,
+            folder_name=agent.Folder.name if agent.Folder else None,
             recommended_schedule_cron=agent.AgentGraph.recommendedScheduleCron,
             settings=_parse_settings(agent.settings),
             marketplace_listing=marketplace_listing_data,

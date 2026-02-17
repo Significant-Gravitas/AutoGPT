@@ -1,4 +1,3 @@
-import logging
 from typing import Literal, Optional
 
 import autogpt_libs.auth as autogpt_auth_lib
@@ -7,12 +6,9 @@ from fastapi.responses import Response
 from prisma.enums import OnboardingStep
 
 from backend.data.onboarding import complete_onboarding_step
-from backend.util.exceptions import DatabaseError, NotFoundError
 
 from .. import db as library_db
 from .. import model as library_model
-
-logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/agents",
@@ -57,22 +53,15 @@ async def list_library_agents(
     """
     Get all agents in the user's library (both created and saved).
     """
-    try:
-        return await library_db.list_library_agents(
-            user_id=user_id,
-            search_term=search_term,
-            sort_by=sort_by,
-            page=page,
-            page_size=page_size,
-            folder_id=folder_id,
-            include_root_only=include_root_only,
-        )
-    except Exception as e:
-        logger.error(f"Could not list library agents for user #{user_id}: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e),
-        ) from e
+    return await library_db.list_library_agents(
+        user_id=user_id,
+        search_term=search_term,
+        sort_by=sort_by,
+        page=page,
+        page_size=page_size,
+        folder_id=folder_id,
+        include_root_only=include_root_only,
+    )
 
 
 @router.get(
@@ -181,36 +170,16 @@ async def update_library_agent(
     """
     Update the library agent with the given fields.
     """
-    try:
-        return await library_db.update_library_agent(
-            library_agent_id=library_agent_id,
-            user_id=user_id,
-            auto_update_version=payload.auto_update_version,
-            graph_version=payload.graph_version,
-            is_favorite=payload.is_favorite,
-            is_archived=payload.is_archived,
-            settings=payload.settings,
-            folder_id=payload.folder_id,
-        )
-    except NotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(e),
-        ) from e
-    except DatabaseError as e:
-        logger.error(f"Database error while updating library agent: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={"message": "Internal server error", "hint": "Contact support"},
-        ) from e
-    except Exception as e:
-        logger.error(
-            f"Unexpected error while updating library agent: {e}", exc_info=True
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={"message": "Internal server error", "hint": "Contact support"},
-        ) from e
+    return await library_db.update_library_agent(
+        library_agent_id=library_agent_id,
+        user_id=user_id,
+        auto_update_version=payload.auto_update_version,
+        graph_version=payload.graph_version,
+        is_favorite=payload.is_favorite,
+        is_archived=payload.is_archived,
+        settings=payload.settings,
+        folder_id=payload.folder_id,
+    )
 
 
 @router.delete(
