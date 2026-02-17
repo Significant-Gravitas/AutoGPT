@@ -281,7 +281,9 @@ async def validation_error_handler(
 
 
 app.add_exception_handler(PrismaError, handle_internal_http_error(500))
-app.add_exception_handler(FolderAlreadyExistsError, handle_internal_http_error(409, False))
+app.add_exception_handler(
+    FolderAlreadyExistsError, handle_internal_http_error(409, False)
+)
 app.add_exception_handler(FolderValidationError, handle_internal_http_error(400, False))
 app.add_exception_handler(NotFoundError, handle_internal_http_error(404, False))
 app.add_exception_handler(NotAuthorizedError, handle_internal_http_error(403, False))
