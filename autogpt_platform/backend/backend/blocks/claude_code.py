@@ -454,15 +454,15 @@ class ClaudeCodeBlock(Block):
                 else:
                     new_conversation_history = turn_entry
 
-            # Extract files created/modified during this run and store to workspace
-            # Include binary files (images, PDFs, etc.) - they'll be stored via
-            # store_media_file which handles virus scanning and workspace storage
+            # Extract files created/modified during this run and store to workspace.
+            # Binary files (images, PDFs, etc.) are stored via store_media_file
+            # which handles virus scanning and workspace storage.
             sandbox_files = await extract_and_store_sandbox_files(
                 sandbox=sandbox,
                 working_directory=working_directory,
                 execution_context=execution_context,
                 since_timestamp=start_timestamp,
-                text_only=False,  # Extract both text and binary files
+                text_only=False,
             )
 
             return (

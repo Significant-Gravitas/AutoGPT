@@ -78,7 +78,6 @@ TEXT_EXTENSIONS = {
 }
 
 # Binary file extensions we explicitly support extracting
-# These are common output formats that users expect to retrieve
 BINARY_EXTENSIONS = {
     # Images
     ".png",
@@ -202,15 +201,13 @@ async def extract_sandbox_files(
                 file_path_lower.endswith(ext.lower()) for ext in BINARY_EXTENSIONS
             )
 
-            # Determine if we should extract this file
-            if text_only:
-                # Only extract text files
-                if not is_text:
-                    continue
-            else:
-                # Extract text files and supported binary files
-                if not is_text and not is_binary:
-                    continue
+            # Skip files with unrecognized extensions
+            if not is_text and not is_binary:
+                continue
+
+            # In text_only mode, skip binary files
+            if text_only and not is_text:
+                continue
 
             try:
                 # For binary files, check size before reading to prevent OOM
@@ -240,7 +237,6 @@ async def extract_sandbox_files(
                         )
                         continue
 
-                # Read file content as bytes
                 content = await sandbox.files.read(file_path, format="bytes")
                 if isinstance(content, str):
                     content = content.encode("utf-8")
