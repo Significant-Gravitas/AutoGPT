@@ -5,6 +5,7 @@ Provides utilities for making authenticated requests to the Telegram Bot API.
 """
 
 import logging
+from io import BytesIO
 from typing import Any, Optional
 
 from backend.data.model import APIKeyCredentials
@@ -56,6 +57,49 @@ async def call_telegram_api(
     url = get_bot_api_url(token, method)
 
     response = await Requests().post(url, json=data or {})
+    result = response.json()
+
+    if not result.get("ok"):
+        error_code = result.get("error_code", 0)
+        description = result.get("description", "Unknown error")
+        raise TelegramAPIException(description, error_code)
+
+    return result.get("result", {})
+
+
+async def call_telegram_api_with_file(
+    credentials: APIKeyCredentials,
+    method: str,
+    file_field: str,
+    file_data: bytes,
+    filename: str,
+    content_type: str,
+    data: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
+    """
+    Make a multipart/form-data request to the Telegram Bot API with a file upload.
+
+    Args:
+        credentials: Bot token credentials
+        method: API method name (e.g., "sendPhoto", "sendVoice")
+        file_field: Form field name for the file (e.g., "photo", "voice")
+        file_data: Raw file bytes
+        filename: Filename for the upload
+        content_type: MIME type of the file
+        data: Additional form parameters
+
+    Returns:
+        API response result
+
+    Raises:
+        TelegramAPIException: If the API returns an error
+    """
+    token = credentials.api_key.get_secret_value()
+    url = get_bot_api_url(token, method)
+
+    files = [(file_field, (filename, BytesIO(file_data), content_type))]
+
+    response = await Requests().post(url, files=files, data=data or {})
     result = response.json()
 
     if not result.get("ok"):

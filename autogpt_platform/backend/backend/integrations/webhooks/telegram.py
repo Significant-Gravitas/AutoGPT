@@ -83,6 +83,8 @@ class TelegramWebhooksManager(BaseWebhooksManager[TelegramWebhookType]):
                 event_type = "message.other"
         elif "edited_message" in payload:
             event_type = "edited_message"
+        elif "message_reaction" in payload:
+            event_type = "message_reaction"
         elif "callback_query" in payload:
             event_type = "callback_query"
         else:
@@ -123,7 +125,7 @@ class TelegramWebhooksManager(BaseWebhooksManager[TelegramWebhookType]):
         webhook_data = {
             "url": ingress_url,
             "secret_token": secret,
-            "allowed_updates": ["message", "edited_message"],
+            "allowed_updates": ["message", "edited_message", "message_reaction"],
         }
 
         response = await Requests().post(url, json=webhook_data)

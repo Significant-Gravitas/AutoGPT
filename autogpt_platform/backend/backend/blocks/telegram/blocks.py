@@ -1,5 +1,5 @@
 """
-Telegram action blocks for sending messages, photos, and voice messages.
+Telegram action blocks for sending messages, media, and managing chat content.
 """
 
 import base64
@@ -16,10 +16,10 @@ from backend.data.block import (
 )
 from backend.data.execution import ExecutionContext
 from backend.data.model import APIKeyCredentials, SchemaField
-from backend.util.file import store_media_file
+from backend.util.file import get_exec_file_path, store_media_file
 from backend.util.type import MediaFileType
 
-from ._api import call_telegram_api, download_telegram_file
+from ._api import call_telegram_api, call_telegram_api_with_file, download_telegram_file
 from ._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 class ParseMode(str, Enum):
     """Telegram message parse modes."""
 
-    NONE = ""
+    NONE = "none"
     MARKDOWN = "Markdown"
     MARKDOWNV2 = "MarkdownV2"
     HTML = "HTML"
@@ -73,7 +73,7 @@ class SendTelegramMessageBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="b2c3d4e5-f6a7-8901-bcde-f23456789012",
+            id="787678ad-1f47-4efc-89df-643f9908621a",
             description="Send a text message to a Telegram chat.",
             categories={BlockCategory.SOCIAL},
             input_schema=SendTelegramMessageBlock.Input,
@@ -108,7 +108,7 @@ class SendTelegramMessageBlock(Block):
             "chat_id": chat_id,
             "text": text,
         }
-        if parse_mode:
+        if parse_mode and parse_mode != "none":
             data["parse_mode"] = parse_mode
         if reply_to_message_id:
             data["reply_to_message_id"] = reply_to_message_id
@@ -169,7 +169,7 @@ class SendTelegramPhotoBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="c3d4e5f6-a7b8-9012-cdef-345678901234",
+            id="ceb9fd95-fd95-49ff-b57b-278957255716",
             description="Send a photo to a Telegram chat.",
             categories={BlockCategory.SOCIAL},
             input_schema=SendTelegramPhotoBlock.Input,
@@ -185,31 +185,62 @@ class SendTelegramPhotoBlock(Block):
                 ("status", "Photo sent"),
             ],
             test_mock={
-                "_send_photo": lambda *args, **kwargs: {"message_id": 123}
+                "_send_photo_url": lambda *args, **kwargs: {"message_id": 123}
             },
         )
 
-    async def _send_photo(
+    async def _send_photo_url(
         self,
         credentials: APIKeyCredentials,
         chat_id: int,
-        photo_data: str,
+        photo_url: str,
         caption: str,
         parse_mode: str,
         reply_to_message_id: Optional[int],
     ) -> dict:
         data: dict = {
             "chat_id": chat_id,
-            "photo": photo_data,
+            "photo": photo_url,
         }
         if caption:
             data["caption"] = caption
-        if parse_mode:
+        if parse_mode and parse_mode != "none":
             data["parse_mode"] = parse_mode
         if reply_to_message_id:
             data["reply_to_message_id"] = reply_to_message_id
 
         return await call_telegram_api(credentials, "sendPhoto", data)
+
+    async def _send_photo_file(
+        self,
+        credentials: APIKeyCredentials,
+        chat_id: int,
+        file_path: str,
+        caption: str,
+        parse_mode: str,
+        reply_to_message_id: Optional[int],
+    ) -> dict:
+        from pathlib import Path
+
+        path = Path(file_path)
+        file_bytes = path.read_bytes()
+        data: dict = {"chat_id": str(chat_id)}
+        if caption:
+            data["caption"] = caption
+        if parse_mode and parse_mode != "none":
+            data["parse_mode"] = parse_mode
+        if reply_to_message_id:
+            data["reply_to_message_id"] = str(reply_to_message_id)
+
+        return await call_telegram_api_with_file(
+            credentials,
+            "sendPhoto",
+            file_field="photo",
+            file_data=file_bytes,
+            filename=path.name,
+            content_type="image/jpeg",
+            data=data,
+        )
 
     async def run(
         self,
@@ -224,23 +255,36 @@ class SendTelegramPhotoBlock(Block):
 
             # If it's a URL, pass it directly to Telegram (it will fetch it)
             if photo_input.startswith(("http://", "https://")):
-                photo_data = photo_input
+                result = await self._send_photo_url(
+                    credentials=credentials,
+                    chat_id=input_data.chat_id,
+                    photo_url=photo_input,
+                    caption=input_data.caption,
+                    parse_mode=input_data.parse_mode.value,
+                    reply_to_message_id=input_data.reply_to_message_id,
+                )
             else:
-                # For data URIs or workspace:// references, use store_media_file
-                photo_data = await store_media_file(
-                    file=photo_input,
+                # For data URIs or workspace:// references, resolve to local
+                # file and upload via multipart/form-data
+                relative_path = await store_media_file(
+                    file=input_data.photo,
                     execution_context=execution_context,
-                    return_format="for_external_api",
+                    return_format="for_local_processing",
+                )
+                if not execution_context.graph_exec_id:
+                    raise ValueError("graph_exec_id is required")
+                abs_path = get_exec_file_path(
+                    execution_context.graph_exec_id, relative_path
+                )
+                result = await self._send_photo_file(
+                    credentials=credentials,
+                    chat_id=input_data.chat_id,
+                    file_path=abs_path,
+                    caption=input_data.caption,
+                    parse_mode=input_data.parse_mode.value,
+                    reply_to_message_id=input_data.reply_to_message_id,
                 )
 
-            result = await self._send_photo(
-                credentials=credentials,
-                chat_id=input_data.chat_id,
-                photo_data=photo_data,
-                caption=input_data.caption,
-                parse_mode=input_data.parse_mode.value,
-                reply_to_message_id=input_data.reply_to_message_id,
-            )
             yield "message_id", result.get("message_id", 0)
             yield "status", "Photo sent"
         except Exception as e:
@@ -281,7 +325,7 @@ class SendTelegramVoiceBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="d4e5f6a7-b8c9-0123-def0-456789012345",
+            id="7a0ef660-1a5b-4951-8642-c13a0c8d6d93",
             description="Send a voice message to a Telegram chat. "
             "Voice must be OGG format with OPUS codec.",
             categories={BlockCategory.SOCIAL},
@@ -298,22 +342,22 @@ class SendTelegramVoiceBlock(Block):
                 ("status", "Voice sent"),
             ],
             test_mock={
-                "_send_voice": lambda *args, **kwargs: {"message_id": 123}
+                "_send_voice_url": lambda *args, **kwargs: {"message_id": 123}
             },
         )
 
-    async def _send_voice(
+    async def _send_voice_url(
         self,
         credentials: APIKeyCredentials,
         chat_id: int,
-        voice_data: str,
+        voice_url: str,
         caption: str,
         duration: Optional[int],
         reply_to_message_id: Optional[int],
     ) -> dict:
         data: dict = {
             "chat_id": chat_id,
-            "voice": voice_data,
+            "voice": voice_url,
         }
         if caption:
             data["caption"] = caption
@@ -323,6 +367,37 @@ class SendTelegramVoiceBlock(Block):
             data["reply_to_message_id"] = reply_to_message_id
 
         return await call_telegram_api(credentials, "sendVoice", data)
+
+    async def _send_voice_file(
+        self,
+        credentials: APIKeyCredentials,
+        chat_id: int,
+        file_path: str,
+        caption: str,
+        duration: Optional[int],
+        reply_to_message_id: Optional[int],
+    ) -> dict:
+        from pathlib import Path
+
+        path = Path(file_path)
+        file_bytes = path.read_bytes()
+        data: dict = {"chat_id": str(chat_id)}
+        if caption:
+            data["caption"] = caption
+        if duration:
+            data["duration"] = str(duration)
+        if reply_to_message_id:
+            data["reply_to_message_id"] = str(reply_to_message_id)
+
+        return await call_telegram_api_with_file(
+            credentials,
+            "sendVoice",
+            file_field="voice",
+            file_data=file_bytes,
+            filename=path.name,
+            content_type="audio/ogg",
+            data=data,
+        )
 
     async def run(
         self,
@@ -337,22 +412,36 @@ class SendTelegramVoiceBlock(Block):
 
             # If it's a URL, pass it directly to Telegram
             if voice_input.startswith(("http://", "https://")):
-                voice_data = voice_input
+                result = await self._send_voice_url(
+                    credentials=credentials,
+                    chat_id=input_data.chat_id,
+                    voice_url=voice_input,
+                    caption=input_data.caption,
+                    duration=input_data.duration,
+                    reply_to_message_id=input_data.reply_to_message_id,
+                )
             else:
-                voice_data = await store_media_file(
-                    file=voice_input,
+                # For data URIs or workspace:// references, resolve to local
+                # file and upload via multipart/form-data
+                relative_path = await store_media_file(
+                    file=input_data.voice,
                     execution_context=execution_context,
-                    return_format="for_external_api",
+                    return_format="for_local_processing",
+                )
+                if not execution_context.graph_exec_id:
+                    raise ValueError("graph_exec_id is required")
+                abs_path = get_exec_file_path(
+                    execution_context.graph_exec_id, relative_path
+                )
+                result = await self._send_voice_file(
+                    credentials=credentials,
+                    chat_id=input_data.chat_id,
+                    file_path=abs_path,
+                    caption=input_data.caption,
+                    duration=input_data.duration,
+                    reply_to_message_id=input_data.reply_to_message_id,
                 )
 
-            result = await self._send_voice(
-                credentials=credentials,
-                chat_id=input_data.chat_id,
-                voice_data=voice_data,
-                caption=input_data.caption,
-                duration=input_data.duration,
-                reply_to_message_id=input_data.reply_to_message_id,
-            )
             yield "message_id", result.get("message_id", 0)
             yield "status", "Voice sent"
         except Exception as e:
@@ -383,7 +472,7 @@ class ReplyToTelegramMessageBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="e5f6a7b8-c9d0-1234-ef01-567890123456",
+            id="c2b1c976-844f-4b6c-ab21-4973d2ceab15",
             description="Reply to a specific message in a Telegram chat.",
             categories={BlockCategory.SOCIAL},
             input_schema=ReplyToTelegramMessageBlock.Input,
@@ -417,7 +506,7 @@ class ReplyToTelegramMessageBlock(Block):
             "text": text,
             "reply_to_message_id": reply_to_message_id,
         }
-        if parse_mode:
+        if parse_mode and parse_mode != "none":
             data["parse_mode"] = parse_mode
 
         return await call_telegram_api(credentials, "sendMessage", data)
@@ -457,7 +546,7 @@ class GetTelegramFileBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="f6a7b8c9-d0e1-2345-f012-678901234567",
+            id="b600aaf2-6272-40c6-b973-c3984747c5bd",
             description="Download a file from Telegram using its file_id. "
             "Use this to process photos, voice messages, or documents received.",
             categories={BlockCategory.SOCIAL},
@@ -499,9 +588,9 @@ class GetTelegramFileBlock(Block):
                 file_id=input_data.file_id,
             )
 
-            # Convert to data URI
+            # Convert to data URI and wrap as MediaFileType
             mime_type = "application/octet-stream"
-            data_uri = (
+            data_uri = MediaFileType(
                 f"data:{mime_type};base64,"
                 f"{base64.b64encode(file_content).decode()}"
             )
@@ -517,3 +606,658 @@ class GetTelegramFileBlock(Block):
             yield "status", "File downloaded"
         except Exception as e:
             raise ValueError(f"Failed to download file: {e}")
+
+
+class DeleteTelegramMessageBlock(Block):
+    """Delete a message from a Telegram chat."""
+
+    class Input(BlockSchemaInput):
+        credentials: TelegramCredentialsInput = TelegramCredentialsField()
+        chat_id: int = SchemaField(
+            description="The chat ID containing the message"
+        )
+        message_id: int = SchemaField(
+            description="The ID of the message to delete"
+        )
+
+    class Output(BlockSchemaOutput):
+        status: str = SchemaField(description="Status of the operation")
+
+    def __init__(self):
+        super().__init__(
+            id="bb4fd91a-883e-4d29-9879-b06c4bb79d30",
+            description="Delete a message from a Telegram chat. "
+            "Bots can delete their own messages and incoming messages "
+            "in private chats at any time.",
+            categories={BlockCategory.SOCIAL},
+            input_schema=DeleteTelegramMessageBlock.Input,
+            output_schema=DeleteTelegramMessageBlock.Output,
+            test_input={
+                "chat_id": 12345678,
+                "message_id": 42,
+                "credentials": TEST_CREDENTIALS_INPUT,
+            },
+            test_credentials=TEST_CREDENTIALS,
+            test_output=[
+                ("status", "Message deleted"),
+            ],
+            test_mock={
+                "_delete_message": lambda *args, **kwargs: True
+            },
+        )
+
+    async def _delete_message(
+        self,
+        credentials: APIKeyCredentials,
+        chat_id: int,
+        message_id: int,
+    ) -> bool:
+        await call_telegram_api(
+            credentials,
+            "deleteMessage",
+            {"chat_id": chat_id, "message_id": message_id},
+        )
+        return True
+
+    async def run(
+        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+    ) -> BlockOutput:
+        try:
+            await self._delete_message(
+                credentials=credentials,
+                chat_id=input_data.chat_id,
+                message_id=input_data.message_id,
+            )
+            yield "status", "Message deleted"
+        except Exception as e:
+            raise ValueError(f"Failed to delete message: {e}")
+
+
+class EditTelegramMessageBlock(Block):
+    """Edit the text of an existing message."""
+
+    class Input(BlockSchemaInput):
+        credentials: TelegramCredentialsInput = TelegramCredentialsField()
+        chat_id: int = SchemaField(
+            description="The chat ID containing the message"
+        )
+        message_id: int = SchemaField(
+            description="The ID of the message to edit"
+        )
+        text: str = SchemaField(
+            description="New text for the message (max 4096 characters)"
+        )
+        parse_mode: ParseMode = SchemaField(
+            description="Message formatting mode",
+            default=ParseMode.NONE,
+            advanced=True,
+        )
+
+    class Output(BlockSchemaOutput):
+        message_id: int = SchemaField(description="The ID of the edited message")
+        status: str = SchemaField(description="Status of the operation")
+
+    def __init__(self):
+        super().__init__(
+            id="c55816a2-37af-4901-ba19-36edcf2acfc1",
+            description="Edit the text of an existing message sent by the bot.",
+            categories={BlockCategory.SOCIAL},
+            input_schema=EditTelegramMessageBlock.Input,
+            output_schema=EditTelegramMessageBlock.Output,
+            test_input={
+                "chat_id": 12345678,
+                "message_id": 42,
+                "text": "Updated text!",
+                "credentials": TEST_CREDENTIALS_INPUT,
+            },
+            test_credentials=TEST_CREDENTIALS,
+            test_output=[
+                ("message_id", 42),
+                ("status", "Message edited"),
+            ],
+            test_mock={
+                "_edit_message": lambda *args, **kwargs: {"message_id": 42}
+            },
+        )
+
+    async def _edit_message(
+        self,
+        credentials: APIKeyCredentials,
+        chat_id: int,
+        message_id: int,
+        text: str,
+        parse_mode: str,
+    ) -> dict:
+        data: dict = {
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "text": text,
+        }
+        if parse_mode and parse_mode != "none":
+            data["parse_mode"] = parse_mode
+
+        return await call_telegram_api(credentials, "editMessageText", data)
+
+    async def run(
+        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+    ) -> BlockOutput:
+        try:
+            result = await self._edit_message(
+                credentials=credentials,
+                chat_id=input_data.chat_id,
+                message_id=input_data.message_id,
+                text=input_data.text,
+                parse_mode=input_data.parse_mode.value,
+            )
+            yield "message_id", result.get("message_id", 0)
+            yield "status", "Message edited"
+        except Exception as e:
+            raise ValueError(f"Failed to edit message: {e}")
+
+
+class SendTelegramAudioBlock(Block):
+    """Send an audio file to a Telegram chat, displayed in the music player."""
+
+    class Input(BlockSchemaInput):
+        credentials: TelegramCredentialsInput = TelegramCredentialsField()
+        chat_id: int = SchemaField(
+            description="The chat ID to send the audio to"
+        )
+        audio: MediaFileType = SchemaField(
+            description="Audio file to send (MP3 or M4A format). "
+            "Can be URL, data URI, or workspace:// reference."
+        )
+        caption: str = SchemaField(
+            description="Caption for the audio file",
+            default="",
+            advanced=True,
+        )
+        title: str = SchemaField(
+            description="Track title",
+            default="",
+            advanced=True,
+        )
+        performer: str = SchemaField(
+            description="Track performer/artist",
+            default="",
+            advanced=True,
+        )
+        duration: Optional[int] = SchemaField(
+            description="Duration in seconds",
+            default=None,
+            advanced=True,
+        )
+        reply_to_message_id: Optional[int] = SchemaField(
+            description="Message ID to reply to",
+            default=None,
+            advanced=True,
+        )
+
+    class Output(BlockSchemaOutput):
+        message_id: int = SchemaField(description="The ID of the sent message")
+        status: str = SchemaField(description="Status of the operation")
+
+    def __init__(self):
+        super().__init__(
+            id="9044829a-7915-4ab4-a50f-89922ba3679f",
+            description="Send an audio file to a Telegram chat. "
+            "The file is displayed in the music player. "
+            "For voice messages, use the Send Voice block instead.",
+            categories={BlockCategory.SOCIAL},
+            input_schema=SendTelegramAudioBlock.Input,
+            output_schema=SendTelegramAudioBlock.Output,
+            test_input={
+                "chat_id": 12345678,
+                "audio": "https://example.com/track.mp3",
+                "credentials": TEST_CREDENTIALS_INPUT,
+            },
+            test_credentials=TEST_CREDENTIALS,
+            test_output=[
+                ("message_id", 123),
+                ("status", "Audio sent"),
+            ],
+            test_mock={
+                "_send_audio_url": lambda *args, **kwargs: {"message_id": 123}
+            },
+        )
+
+    async def _send_audio_url(
+        self,
+        credentials: APIKeyCredentials,
+        chat_id: int,
+        audio_url: str,
+        caption: str,
+        title: str,
+        performer: str,
+        duration: Optional[int],
+        reply_to_message_id: Optional[int],
+    ) -> dict:
+        data: dict = {
+            "chat_id": chat_id,
+            "audio": audio_url,
+        }
+        if caption:
+            data["caption"] = caption
+        if title:
+            data["title"] = title
+        if performer:
+            data["performer"] = performer
+        if duration:
+            data["duration"] = duration
+        if reply_to_message_id:
+            data["reply_to_message_id"] = reply_to_message_id
+
+        return await call_telegram_api(credentials, "sendAudio", data)
+
+    async def _send_audio_file(
+        self,
+        credentials: APIKeyCredentials,
+        chat_id: int,
+        file_path: str,
+        caption: str,
+        title: str,
+        performer: str,
+        duration: Optional[int],
+        reply_to_message_id: Optional[int],
+    ) -> dict:
+        from pathlib import Path
+
+        path = Path(file_path)
+        file_bytes = path.read_bytes()
+        data: dict = {"chat_id": str(chat_id)}
+        if caption:
+            data["caption"] = caption
+        if title:
+            data["title"] = title
+        if performer:
+            data["performer"] = performer
+        if duration:
+            data["duration"] = str(duration)
+        if reply_to_message_id:
+            data["reply_to_message_id"] = str(reply_to_message_id)
+
+        return await call_telegram_api_with_file(
+            credentials,
+            "sendAudio",
+            file_field="audio",
+            file_data=file_bytes,
+            filename=path.name,
+            content_type="audio/mpeg",
+            data=data,
+        )
+
+    async def run(
+        self,
+        input_data: Input,
+        *,
+        credentials: APIKeyCredentials,
+        execution_context: ExecutionContext,
+        **kwargs,
+    ) -> BlockOutput:
+        try:
+            audio_input = input_data.audio
+
+            if audio_input.startswith(("http://", "https://")):
+                result = await self._send_audio_url(
+                    credentials=credentials,
+                    chat_id=input_data.chat_id,
+                    audio_url=audio_input,
+                    caption=input_data.caption,
+                    title=input_data.title,
+                    performer=input_data.performer,
+                    duration=input_data.duration,
+                    reply_to_message_id=input_data.reply_to_message_id,
+                )
+            else:
+                relative_path = await store_media_file(
+                    file=input_data.audio,
+                    execution_context=execution_context,
+                    return_format="for_local_processing",
+                )
+                if not execution_context.graph_exec_id:
+                    raise ValueError("graph_exec_id is required")
+                abs_path = get_exec_file_path(
+                    execution_context.graph_exec_id, relative_path
+                )
+                result = await self._send_audio_file(
+                    credentials=credentials,
+                    chat_id=input_data.chat_id,
+                    file_path=abs_path,
+                    caption=input_data.caption,
+                    title=input_data.title,
+                    performer=input_data.performer,
+                    duration=input_data.duration,
+                    reply_to_message_id=input_data.reply_to_message_id,
+                )
+
+            yield "message_id", result.get("message_id", 0)
+            yield "status", "Audio sent"
+        except Exception as e:
+            raise ValueError(f"Failed to send audio: {e}")
+
+
+class SendTelegramDocumentBlock(Block):
+    """Send a document to a Telegram chat."""
+
+    class Input(BlockSchemaInput):
+        credentials: TelegramCredentialsInput = TelegramCredentialsField()
+        chat_id: int = SchemaField(
+            description="The chat ID to send the document to"
+        )
+        document: MediaFileType = SchemaField(
+            description="Document to send (any file type). "
+            "Can be URL, data URI, or workspace:// reference."
+        )
+        filename: str = SchemaField(
+            description="Filename shown to the recipient. "
+            "If empty, the original filename is used (may be a random ID "
+            "for uploaded files).",
+            default="",
+        )
+        caption: str = SchemaField(
+            description="Caption for the document",
+            default="",
+            advanced=True,
+        )
+        parse_mode: ParseMode = SchemaField(
+            description="Caption formatting mode",
+            default=ParseMode.NONE,
+            advanced=True,
+        )
+        reply_to_message_id: Optional[int] = SchemaField(
+            description="Message ID to reply to",
+            default=None,
+            advanced=True,
+        )
+
+    class Output(BlockSchemaOutput):
+        message_id: int = SchemaField(description="The ID of the sent message")
+        status: str = SchemaField(description="Status of the operation")
+
+    def __init__(self):
+        super().__init__(
+            id="554f4bad-4c99-48ba-9d1c-75840b71c5ad",
+            description="Send a document (any file type) to a Telegram chat.",
+            categories={BlockCategory.SOCIAL},
+            input_schema=SendTelegramDocumentBlock.Input,
+            output_schema=SendTelegramDocumentBlock.Output,
+            test_input={
+                "chat_id": 12345678,
+                "document": "https://example.com/file.pdf",
+                "credentials": TEST_CREDENTIALS_INPUT,
+            },
+            test_credentials=TEST_CREDENTIALS,
+            test_output=[
+                ("message_id", 123),
+                ("status", "Document sent"),
+            ],
+            test_mock={
+                "_send_document_url": lambda *args, **kwargs: {"message_id": 123}
+            },
+        )
+
+    async def _send_document_url(
+        self,
+        credentials: APIKeyCredentials,
+        chat_id: int,
+        document_url: str,
+        caption: str,
+        parse_mode: str,
+        reply_to_message_id: Optional[int],
+    ) -> dict:
+        data: dict = {
+            "chat_id": chat_id,
+            "document": document_url,
+        }
+        if caption:
+            data["caption"] = caption
+        if parse_mode and parse_mode != "none":
+            data["parse_mode"] = parse_mode
+        if reply_to_message_id:
+            data["reply_to_message_id"] = reply_to_message_id
+
+        return await call_telegram_api(credentials, "sendDocument", data)
+
+    async def _send_document_file(
+        self,
+        credentials: APIKeyCredentials,
+        chat_id: int,
+        file_path: str,
+        display_filename: str,
+        caption: str,
+        parse_mode: str,
+        reply_to_message_id: Optional[int],
+    ) -> dict:
+        from pathlib import Path
+
+        path = Path(file_path)
+        file_bytes = path.read_bytes()
+        data: dict = {"chat_id": str(chat_id)}
+        if caption:
+            data["caption"] = caption
+        if parse_mode and parse_mode != "none":
+            data["parse_mode"] = parse_mode
+        if reply_to_message_id:
+            data["reply_to_message_id"] = str(reply_to_message_id)
+
+        return await call_telegram_api_with_file(
+            credentials,
+            "sendDocument",
+            file_field="document",
+            file_data=file_bytes,
+            filename=display_filename or path.name,
+            content_type="application/octet-stream",
+            data=data,
+        )
+
+    async def run(
+        self,
+        input_data: Input,
+        *,
+        credentials: APIKeyCredentials,
+        execution_context: ExecutionContext,
+        **kwargs,
+    ) -> BlockOutput:
+        try:
+            doc_input = input_data.document
+
+            if doc_input.startswith(("http://", "https://")):
+                result = await self._send_document_url(
+                    credentials=credentials,
+                    chat_id=input_data.chat_id,
+                    document_url=doc_input,
+                    caption=input_data.caption,
+                    parse_mode=input_data.parse_mode.value,
+                    reply_to_message_id=input_data.reply_to_message_id,
+                )
+            else:
+                relative_path = await store_media_file(
+                    file=input_data.document,
+                    execution_context=execution_context,
+                    return_format="for_local_processing",
+                )
+                if not execution_context.graph_exec_id:
+                    raise ValueError("graph_exec_id is required")
+                abs_path = get_exec_file_path(
+                    execution_context.graph_exec_id, relative_path
+                )
+                result = await self._send_document_file(
+                    credentials=credentials,
+                    chat_id=input_data.chat_id,
+                    file_path=abs_path,
+                    display_filename=input_data.filename,
+                    caption=input_data.caption,
+                    parse_mode=input_data.parse_mode.value,
+                    reply_to_message_id=input_data.reply_to_message_id,
+                )
+
+            yield "message_id", result.get("message_id", 0)
+            yield "status", "Document sent"
+        except Exception as e:
+            raise ValueError(f"Failed to send document: {e}")
+
+
+class SendTelegramVideoBlock(Block):
+    """Send a video to a Telegram chat."""
+
+    class Input(BlockSchemaInput):
+        credentials: TelegramCredentialsInput = TelegramCredentialsField()
+        chat_id: int = SchemaField(
+            description="The chat ID to send the video to"
+        )
+        video: MediaFileType = SchemaField(
+            description="Video to send (MP4 format). "
+            "Can be URL, data URI, or workspace:// reference."
+        )
+        caption: str = SchemaField(
+            description="Caption for the video",
+            default="",
+            advanced=True,
+        )
+        parse_mode: ParseMode = SchemaField(
+            description="Caption formatting mode",
+            default=ParseMode.NONE,
+            advanced=True,
+        )
+        duration: Optional[int] = SchemaField(
+            description="Duration in seconds",
+            default=None,
+            advanced=True,
+        )
+        reply_to_message_id: Optional[int] = SchemaField(
+            description="Message ID to reply to",
+            default=None,
+            advanced=True,
+        )
+
+    class Output(BlockSchemaOutput):
+        message_id: int = SchemaField(description="The ID of the sent message")
+        status: str = SchemaField(description="Status of the operation")
+
+    def __init__(self):
+        super().__init__(
+            id="cda075af-3f31-47b0-baa9-0050b3bd78bd",
+            description="Send a video to a Telegram chat.",
+            categories={BlockCategory.SOCIAL},
+            input_schema=SendTelegramVideoBlock.Input,
+            output_schema=SendTelegramVideoBlock.Output,
+            test_input={
+                "chat_id": 12345678,
+                "video": "https://example.com/video.mp4",
+                "credentials": TEST_CREDENTIALS_INPUT,
+            },
+            test_credentials=TEST_CREDENTIALS,
+            test_output=[
+                ("message_id", 123),
+                ("status", "Video sent"),
+            ],
+            test_mock={
+                "_send_video_url": lambda *args, **kwargs: {"message_id": 123}
+            },
+        )
+
+    async def _send_video_url(
+        self,
+        credentials: APIKeyCredentials,
+        chat_id: int,
+        video_url: str,
+        caption: str,
+        parse_mode: str,
+        duration: Optional[int],
+        reply_to_message_id: Optional[int],
+    ) -> dict:
+        data: dict = {
+            "chat_id": chat_id,
+            "video": video_url,
+        }
+        if caption:
+            data["caption"] = caption
+        if parse_mode and parse_mode != "none":
+            data["parse_mode"] = parse_mode
+        if duration:
+            data["duration"] = duration
+        if reply_to_message_id:
+            data["reply_to_message_id"] = reply_to_message_id
+
+        return await call_telegram_api(credentials, "sendVideo", data)
+
+    async def _send_video_file(
+        self,
+        credentials: APIKeyCredentials,
+        chat_id: int,
+        file_path: str,
+        caption: str,
+        parse_mode: str,
+        duration: Optional[int],
+        reply_to_message_id: Optional[int],
+    ) -> dict:
+        from pathlib import Path
+
+        path = Path(file_path)
+        file_bytes = path.read_bytes()
+        data: dict = {"chat_id": str(chat_id)}
+        if caption:
+            data["caption"] = caption
+        if parse_mode and parse_mode != "none":
+            data["parse_mode"] = parse_mode
+        if duration:
+            data["duration"] = str(duration)
+        if reply_to_message_id:
+            data["reply_to_message_id"] = str(reply_to_message_id)
+
+        return await call_telegram_api_with_file(
+            credentials,
+            "sendVideo",
+            file_field="video",
+            file_data=file_bytes,
+            filename=path.name,
+            content_type="video/mp4",
+            data=data,
+        )
+
+    async def run(
+        self,
+        input_data: Input,
+        *,
+        credentials: APIKeyCredentials,
+        execution_context: ExecutionContext,
+        **kwargs,
+    ) -> BlockOutput:
+        try:
+            video_input = input_data.video
+
+            if video_input.startswith(("http://", "https://")):
+                result = await self._send_video_url(
+                    credentials=credentials,
+                    chat_id=input_data.chat_id,
+                    video_url=video_input,
+                    caption=input_data.caption,
+                    parse_mode=input_data.parse_mode.value,
+                    duration=input_data.duration,
+                    reply_to_message_id=input_data.reply_to_message_id,
+                )
+            else:
+                relative_path = await store_media_file(
+                    file=input_data.video,
+                    execution_context=execution_context,
+                    return_format="for_local_processing",
+                )
+                if not execution_context.graph_exec_id:
+                    raise ValueError("graph_exec_id is required")
+                abs_path = get_exec_file_path(
+                    execution_context.graph_exec_id, relative_path
+                )
+                result = await self._send_video_file(
+                    credentials=credentials,
+                    chat_id=input_data.chat_id,
+                    file_path=abs_path,
+                    caption=input_data.caption,
+                    parse_mode=input_data.parse_mode.value,
+                    duration=input_data.duration,
+                    reply_to_message_id=input_data.reply_to_message_id,
+                )
+
+            yield "message_id", result.get("message_id", 0)
+            yield "status", "Video sent"
+        except Exception as e:
+            raise ValueError(f"Failed to send video: {e}")
