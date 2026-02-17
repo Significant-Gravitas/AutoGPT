@@ -862,14 +862,17 @@ const NodeKeyValueInput: FC<{
                   type="text"
                   placeholder="Key"
                   value={key ?? ""}
-                  onChange={(e) =>
-                    updateKeyValuePairs(
-                      keyValuePairs.toSpliced(index, 1, {
-                        key: e.target.value,
-                        value: value,
-                      }),
-                    )
-                  }
+                  onBlur={(e) => {
+                    const newKey = e.target.value;
+                    if (newKey !== key) {
+                      updateKeyValuePairs(
+                        keyValuePairs.toSpliced(index, 1, {
+                          key: newKey,
+                          value: value,
+                        }),
+                      );
+                    }
+                  }}
                 />
                 <NodeGenericInputField
                   className="w-full"
