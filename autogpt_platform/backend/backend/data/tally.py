@@ -97,13 +97,15 @@ async def _fetch_all_submissions(
         submissions = data.get("submissions", [])
         all_submissions.extend(submissions)
 
-        total_pages = data.get("totalNumberOfPages", 1)
-        if page >= total_pages:
+        # Tally API uses `hasMore` for pagination
+        has_more = data.get("hasMore", False)
+        if not has_more:
             break
         if page >= max_pages:
+            total = data.get("totalNumberOfSubmissionsPerFilter", {}).get("all", "?")
             logger.warning(
                 f"Tally: hit max page cap ({max_pages}) for form {form_id}, "
-                f"API reports {total_pages} total pages"
+                f"fetched {len(all_submissions)} of {total} total submissions"
             )
             break
         page += 1
