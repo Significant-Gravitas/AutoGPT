@@ -1124,6 +1124,9 @@ async def is_descendant_of(
     """
     Check if folder_id is a descendant of potential_ancestor_id.
 
+    Fetches all user folders in a single query and walks the parent chain
+    in memory to avoid N database round-trips.
+
     Args:
         folder_id: The ID of the folder to check.
         potential_ancestor_id: The ID of the potential ancestor.
@@ -1132,22 +1135,16 @@ async def is_descendant_of(
     Returns:
         True if folder_id is a descendant of potential_ancestor_id.
     """
-    current_id: str | None = folder_id
+    all_folders = await prisma.models.LibraryFolder.prisma().find_many(
+        where={"userId": user_id, "isDeleted": False},
+    )
+    parent_map = {f.id: f.parentId for f in all_folders}
 
+    current_id: str | None = folder_id
     while current_id:
         if current_id == potential_ancestor_id:
             return True
-
-        folder = await prisma.models.LibraryFolder.prisma().find_first(
-            where={
-                "id": current_id,
-                "userId": user_id,
-                "isDeleted": False,
-            }
-        )
-        if not folder or not folder.parentId:
-            break
-        current_id = folder.parentId
+        current_id = parent_map.get(current_id)
 
     return False
 
