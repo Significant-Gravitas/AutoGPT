@@ -5,7 +5,7 @@ import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 from backend.api.features.library.model import LibraryAgent
 from backend.copilot.model import ChatSession
@@ -13,6 +13,7 @@ from backend.data.db_accessors import execution_db, library_db
 from backend.data.execution import ExecutionStatus, GraphExecution, GraphExecutionMeta
 
 from .base import BaseTool
+from .execution_utils import TERMINAL_STATUSES, wait_for_execution
 from .models import (
     AgentOutputResponse,
     ErrorResponse,
@@ -33,6 +34,7 @@ class AgentOutputInput(BaseModel):
     store_slug: str = ""
     execution_id: str = ""
     run_time: str = "latest"
+    wait_if_running: int = Field(default=0, ge=0, le=300)
 
     @field_validator(
         "agent_name",
@@ -116,6 +118,11 @@ class AgentOutputTool(BaseTool):
         Select which run to retrieve using:
         - execution_id: Specific execution ID
         - run_time: 'latest' (default), 'yesterday', 'last week', or ISO date 'YYYY-MM-DD'
+
+        Wait for completion (optional):
+        - wait_if_running: Max seconds to wait if execution is still running (0-300).
+          If the execution is running/queued, waits up to this many seconds for completion.
+          Returns current status on timeout. If already finished, returns immediately.
         """
 
     @property
@@ -143,6 +150,13 @@ class AgentOutputTool(BaseTool):
                     "type": "string",
                     "description": (
                         "Time filter: 'latest', 'yesterday', 'last week', or 'YYYY-MM-DD'"
+                    ),
+                },
+                "wait_if_running": {
+                    "type": "integer",
+                    "description": (
+                        "Max seconds to wait if execution is still running (0-300). "
+                        "If running, waits for completion. Returns current state on timeout."
                     ),
                 },
             },
@@ -224,10 +238,14 @@ class AgentOutputTool(BaseTool):
         execution_id: str | None,
         time_start: datetime | None,
         time_end: datetime | None,
+        include_running: bool = False,
     ) -> tuple[GraphExecution | None, list[GraphExecutionMeta], str | None]:
         """
         Fetch execution(s) based on filters.
         Returns (single_execution, available_executions_meta, error_message).
+
+        Args:
+            include_running: If True, also look for running/queued executions (for waiting)
         """
         exec_db = execution_db()
 
@@ -242,11 +260,22 @@ class AgentOutputTool(BaseTool):
                 return None, [], f"Execution '{execution_id}' not found"
             return execution, [], None
 
-        # Get completed executions with time filters
+        # Determine which statuses to query
+        statuses = [ExecutionStatus.COMPLETED]
+        if include_running:
+            statuses.extend(
+                [
+                    ExecutionStatus.RUNNING,
+                    ExecutionStatus.QUEUED,
+                    ExecutionStatus.INCOMPLETE,
+                ]
+            )
+
+        # Get executions with time filters
         executions = await exec_db.get_graph_executions(
             graph_id=graph_id,
             user_id=user_id,
-            statuses=[ExecutionStatus.COMPLETED],
+            statuses=statuses,
             created_time_gte=time_start,
             created_time_lte=time_end,
             limit=10,
@@ -313,10 +342,28 @@ class AgentOutputTool(BaseTool):
                 for e in available_executions[:5]
             ]
 
-        message = f"Found execution outputs for agent '{agent.name}'"
+        # Build appropriate message based on execution status
+        if execution.status == ExecutionStatus.COMPLETED:
+            message = f"Found execution outputs for agent '{agent.name}'"
+        elif execution.status == ExecutionStatus.FAILED:
+            message = f"Execution for agent '{agent.name}' failed"
+        elif execution.status == ExecutionStatus.TERMINATED:
+            message = f"Execution for agent '{agent.name}' was terminated"
+        elif execution.status in (
+            ExecutionStatus.RUNNING,
+            ExecutionStatus.QUEUED,
+            ExecutionStatus.INCOMPLETE,
+        ):
+            message = (
+                f"Execution for agent '{agent.name}' is still {execution.status.value}. "
+                "Results may be incomplete. Use wait_if_running to wait for completion."
+            )
+        else:
+            message = f"Found execution for agent '{agent.name}' (status: {execution.status.value})"
+
         if len(available_executions) > 1:
             message += (
-                f". Showing latest of {len(available_executions)} matching executions."
+                f" Showing latest of {len(available_executions)} matching executions."
             )
 
         return AgentOutputResponse(
@@ -431,19 +478,36 @@ class AgentOutputTool(BaseTool):
         # Parse time expression
         time_start, time_end = parse_time_expression(input_data.run_time)
 
-        # Fetch execution(s)
+        # Check if we should wait for running executions
+        wait_timeout = input_data.wait_if_running
+
+        # Fetch execution(s) - include running if we're going to wait
         execution, available_executions, exec_error = await self._get_execution(
             user_id=user_id,
             graph_id=agent.graph_id,
             execution_id=input_data.execution_id or None,
             time_start=time_start,
             time_end=time_end,
+            include_running=wait_timeout > 0,
         )
 
         if exec_error:
             return ErrorResponse(
                 message=exec_error,
                 session_id=session_id,
+            )
+
+        # If we have an execution that's still running and we should wait
+        if execution and wait_timeout > 0 and execution.status not in TERMINAL_STATUSES:
+            logger.info(
+                f"Execution {execution.id} is {execution.status}, "
+                f"waiting up to {wait_timeout}s for completion"
+            )
+            execution = await wait_for_execution(
+                user_id=user_id,
+                graph_id=agent.graph_id,
+                execution_id=execution.id,
+                timeout_seconds=wait_timeout,
             )
 
         return self._build_response(agent, execution, available_executions, session_id)

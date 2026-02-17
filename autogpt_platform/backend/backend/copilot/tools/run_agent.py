@@ -9,6 +9,7 @@ from backend.copilot.config import ChatConfig
 from backend.copilot.model import ChatSession
 from backend.copilot.tracking import track_agent_run_success, track_agent_scheduled
 from backend.data.db_accessors import graph_db, library_db, user_db
+from backend.data.execution import ExecutionStatus
 from backend.data.graph import GraphModel
 from backend.data.model import CredentialsMetaInput
 from backend.executor import utils as execution_utils
@@ -24,6 +25,7 @@ from .helpers import get_inputs_from_schema
 from .models import (
     AgentDetails,
     AgentDetailsResponse,
+    AgentOutputResponse,
     ErrorResponse,
     ExecutionOptions,
     ExecutionStartedResponse,
@@ -33,6 +35,7 @@ from .models import (
     ToolResponseBase,
     UserReadiness,
 )
+from .execution_utils import get_execution_outputs, wait_for_execution
 from .utils import (
     build_missing_credentials_from_graph,
     extract_credentials_from_schema,
@@ -66,6 +69,7 @@ class RunAgentInput(BaseModel):
     schedule_name: str = ""
     cron: str = ""
     timezone: str = "UTC"
+    wait_for_result: int = Field(default=0, ge=0, le=300)
 
     @field_validator(
         "username_agent_slug",
@@ -146,6 +150,14 @@ class RunAgentTool(BaseTool):
                 "timezone": {
                     "type": "string",
                     "description": "IANA timezone for schedule (default: UTC)",
+                },
+                "wait_for_result": {
+                    "type": "integer",
+                    "description": (
+                        "Max seconds to wait for execution to complete (0-300). "
+                        "If >0, blocks until the execution finishes or times out. "
+                        "Returns execution outputs when complete."
+                    ),
                 },
             },
             "required": [],
@@ -341,6 +353,7 @@ class RunAgentTool(BaseTool):
                     graph=graph,
                     graph_credentials=graph_credentials,
                     inputs=params.inputs,
+                    wait_for_result=params.wait_for_result,
                 )
 
         except NotFoundError as e:
@@ -424,8 +437,9 @@ class RunAgentTool(BaseTool):
         graph: GraphModel,
         graph_credentials: dict[str, CredentialsMetaInput],
         inputs: dict[str, Any],
+        wait_for_result: int = 0,
     ) -> ToolResponseBase:
-        """Execute an agent immediately."""
+        """Execute an agent immediately, optionally waiting for completion."""
         session_id = session.session_id
 
         # Check rate limits
@@ -462,6 +476,56 @@ class RunAgentTool(BaseTool):
         )
 
         library_agent_link = f"/library/agents/{library_agent.id}"
+
+        # If wait_for_result is requested, wait for execution to complete
+        if wait_for_result > 0:
+            logger.info(
+                f"Waiting up to {wait_for_result}s for execution {execution.id}"
+            )
+            completed = await wait_for_execution(
+                user_id=user_id,
+                graph_id=library_agent.graph_id,
+                execution_id=execution.id,
+                timeout_seconds=wait_for_result,
+            )
+
+            if completed and completed.status == ExecutionStatus.COMPLETED:
+                outputs = get_execution_outputs(completed)
+                return AgentOutputResponse(
+                    message=(
+                        f"Agent '{library_agent.name}' completed successfully. "
+                        f"View at {library_agent_link}."
+                    ),
+                    session_id=session_id,
+                    execution_id=execution.id,
+                    graph_id=library_agent.graph_id,
+                    graph_name=library_agent.name,
+                    outputs=outputs or {},
+                )
+            elif completed and completed.status == ExecutionStatus.FAILED:
+                return ErrorResponse(
+                    message=(
+                        f"Agent '{library_agent.name}' execution failed. "
+                        f"View details at {library_agent_link}."
+                    ),
+                    session_id=session_id,
+                )
+            else:
+                status = completed.status.value if completed else "unknown"
+                return ExecutionStartedResponse(
+                    message=(
+                        f"Agent '{library_agent.name}' is still {status} after "
+                        f"{wait_for_result}s. Check results later at {library_agent_link}. "
+                        f"Use view_agent_output with wait_if_running to check again."
+                    ),
+                    session_id=session_id,
+                    execution_id=execution.id,
+                    graph_id=library_agent.graph_id,
+                    graph_name=library_agent.name,
+                    library_agent_id=library_agent.id,
+                    library_agent_link=library_agent_link,
+                )
+
         return ExecutionStartedResponse(
             message=(
                 f"Agent '{library_agent.name}' execution started successfully. "
