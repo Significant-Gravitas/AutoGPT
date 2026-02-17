@@ -11,9 +11,9 @@ import uuid
 from typing import Optional
 
 from prisma.errors import UniqueViolationError
-from prisma.models import UserWorkspaceFile
 
 from backend.data.workspace import (
+    WorkspaceFile,
     count_workspace_files,
     create_workspace_file,
     get_workspace_file,
@@ -131,7 +131,7 @@ class WorkspaceManager:
             raise FileNotFoundError(f"File not found at path: {resolved_path}")
 
         storage = await get_workspace_storage()
-        return await storage.retrieve(file.storagePath)
+        return await storage.retrieve(file.storage_path)
 
     async def read_file_by_id(self, file_id: str) -> bytes:
         """
@@ -151,7 +151,7 @@ class WorkspaceManager:
             raise FileNotFoundError(f"File not found: {file_id}")
 
         storage = await get_workspace_storage()
-        return await storage.retrieve(file.storagePath)
+        return await storage.retrieve(file.storage_path)
 
     async def write_file(
         self,
@@ -160,7 +160,7 @@ class WorkspaceManager:
         path: Optional[str] = None,
         mime_type: Optional[str] = None,
         overwrite: bool = False,
-    ) -> UserWorkspaceFile:
+    ) -> WorkspaceFile:
         """
         Write file to workspace.
 
@@ -175,7 +175,7 @@ class WorkspaceManager:
             overwrite: Whether to overwrite existing file at path
 
         Returns:
-            Created UserWorkspaceFile instance
+            Created WorkspaceFile instance
 
         Raises:
             ValueError: If file exceeds size limit or path already exists
@@ -296,7 +296,7 @@ class WorkspaceManager:
         limit: Optional[int] = None,
         offset: int = 0,
         include_all_sessions: bool = False,
-    ) -> list[UserWorkspaceFile]:
+    ) -> list[WorkspaceFile]:
         """
         List files in workspace.
 
@@ -311,7 +311,7 @@ class WorkspaceManager:
                                   If False (default), only list current session's files.
 
         Returns:
-            List of UserWorkspaceFile instances
+            List of WorkspaceFile instances
         """
         effective_path = self._get_effective_path(path, include_all_sessions)
 
@@ -339,7 +339,7 @@ class WorkspaceManager:
         # Delete from storage
         storage = await get_workspace_storage()
         try:
-            await storage.delete(file.storagePath)
+            await storage.delete(file.storage_path)
         except Exception as e:
             logger.warning(f"Failed to delete file from storage: {e}")
             # Continue with database soft-delete even if storage delete fails
@@ -367,9 +367,9 @@ class WorkspaceManager:
             raise FileNotFoundError(f"File not found: {file_id}")
 
         storage = await get_workspace_storage()
-        return await storage.get_download_url(file.storagePath, expires_in)
+        return await storage.get_download_url(file.storage_path, expires_in)
 
-    async def get_file_info(self, file_id: str) -> Optional[UserWorkspaceFile]:
+    async def get_file_info(self, file_id: str) -> Optional[WorkspaceFile]:
         """
         Get file metadata.
 
@@ -377,11 +377,11 @@ class WorkspaceManager:
             file_id: The file's ID
 
         Returns:
-            UserWorkspaceFile instance or None
+            WorkspaceFile instance or None
         """
         return await get_workspace_file(file_id, self.workspace_id)
 
-    async def get_file_info_by_path(self, path: str) -> Optional[UserWorkspaceFile]:
+    async def get_file_info_by_path(self, path: str) -> Optional[WorkspaceFile]:
         """
         Get file metadata by path.
 
@@ -392,7 +392,7 @@ class WorkspaceManager:
             path: Virtual path
 
         Returns:
-            UserWorkspaceFile instance or None
+            WorkspaceFile instance or None
         """
         resolved_path = self._resolve_path(path)
         return await get_workspace_file_by_path(self.workspace_id, resolved_path)
