@@ -24,10 +24,18 @@ _UUID_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+# Keywords that should be treated as "list all" rather than a literal search
+_LIST_ALL_KEYWORDS = frozenset({"all", "*", "everything", "any", ""})
+
 
 def _is_uuid(text: str) -> bool:
     """Check if text is a valid UUID v4."""
     return bool(_UUID_PATTERN.match(text.strip()))
+
+
+def _is_list_all_query(query: str) -> bool:
+    """Check if query should list all agents rather than search."""
+    return query.lower().strip() in _LIST_ALL_KEYWORDS
 
 
 async def _get_library_agent_by_id(user_id: str, agent_id: str) -> AgentInfo | None:
@@ -111,7 +119,8 @@ async def search_agents(
     Search for agents in marketplace or user library.
 
     Args:
-        query: Search query string
+        query: Search query string. For library searches, empty or special keywords
+               like "all" will list all agents without filtering.
         source: "marketplace" or "library"
         session_id: Chat session ID
         user_id: User ID (required for library search)
@@ -119,7 +128,8 @@ async def search_agents(
     Returns:
         AgentsFoundResponse, NoResultsResponse, or ErrorResponse
     """
-    if not query:
+    # For marketplace, we always need a search term
+    if source == "marketplace" and not query:
         return ErrorResponse(
             message="Please provide a search query", session_id=session_id
         )
@@ -129,6 +139,9 @@ async def search_agents(
             message="User authentication required to search library",
             session_id=session_id,
         )
+
+    # For library searches, treat special keywords as "list all"
+    list_all = source == "library" and _is_list_all_query(query)
 
     agents: list[AgentInfo] = []
     try:
@@ -159,10 +172,14 @@ async def search_agents(
                     logger.info(f"Found agent by direct ID lookup: {agent.name}")
 
             if not agents:
-                logger.info(f"Searching user library for: {query}")
+                search_term = None if list_all else query
+                logger.info(
+                    f"{'Listing all agents in' if list_all else 'Searching'} "
+                    f"user library{'' if list_all else f' for: {query}'}"
+                )
                 results = await library_db().list_library_agents(
                     user_id=user_id,  # type: ignore[arg-type]
-                    search_term=query,
+                    search_term=search_term,
                     page_size=10,
                 )
                 for agent in results.agents:
@@ -206,21 +223,34 @@ async def search_agents(
                 "Check your library at /library",
             ]
         )
-        no_results_msg = (
-            f"No agents found matching '{query}'. Let the user know they can try different keywords or browse the marketplace. Also let them know you can create a custom agent for them based on their needs."
-            if source == "marketplace"
-            else f"No agents matching '{query}' found in your library. Let the user know you can create a custom agent for them based on their needs."
-        )
+        if source == "marketplace":
+            no_results_msg = (
+                f"No agents found matching '{query}'. Let the user know they can "
+                "try different keywords or browse the marketplace. Also let them "
+                "know you can create a custom agent for them based on their needs."
+            )
+        elif list_all:
+            no_results_msg = (
+                "The user's library is empty. Let them know they can browse the "
+                "marketplace to find agents, or you can create a custom agent "
+                "for them based on their needs."
+            )
+        else:
+            no_results_msg = (
+                f"No agents matching '{query}' found in your library. Let the user "
+                "know you can create a custom agent for them based on their needs."
+            )
         return NoResultsResponse(
             message=no_results_msg, session_id=session_id, suggestions=suggestions
         )
 
-    title = f"Found {len(agents)} agent{'s' if len(agents) != 1 else ''} "
-    title += (
-        f"for '{query}'"
-        if source == "marketplace"
-        else f"in your library for '{query}'"
-    )
+    agent_count_str = f"{len(agents)} agent{'s' if len(agents) != 1 else ''}"
+    if source == "marketplace":
+        title = f"Found {agent_count_str} for '{query}'"
+    elif list_all:
+        title = f"Found {agent_count_str} in your library"
+    else:
+        title = f"Found {agent_count_str} in your library for '{query}'"
 
     message = (
         "Now you have found some options for the user to choose from. "

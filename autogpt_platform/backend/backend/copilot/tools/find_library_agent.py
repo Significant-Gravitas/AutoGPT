@@ -21,7 +21,8 @@ class FindLibraryAgentTool(BaseTool):
         return (
             "Search for agents in the user's library. Use this to find agents "
             "the user has already added to their library, including agents they "
-            "created or added from the marketplace."
+            "created or added from the marketplace. "
+            "Omit the query parameter or leave it empty to list all agents."
         )
 
     @property
@@ -31,10 +32,13 @@ class FindLibraryAgentTool(BaseTool):
             "properties": {
                 "query": {
                     "type": "string",
-                    "description": "Search query to find agents by name or description.",
+                    "description": (
+                        "Optional search query to filter agents by name or description. "
+                        "Leave empty or omit to list all agents in the library."
+                    ),
                 },
             },
-            "required": ["query"],
+            "required": [],
         }
 
     @property
