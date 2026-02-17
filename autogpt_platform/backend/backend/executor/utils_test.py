@@ -909,3 +909,335 @@ async def test_stop_graph_execution_cascades_to_child_with_reviews(
 
     # Verify both parent and child status updates
     assert mock_execution_db.update_graph_execution_stats.call_count >= 1
+
+
+# ============================================================================
+# Tests for auto_credentials validation in _validate_node_input_credentials
+# (Fix 3: SECRT-1772 + Fix 4: Path 4)
+# ============================================================================
+
+
+@pytest.mark.asyncio
+async def test_validate_node_input_credentials_auto_creds_valid(
+    mocker: MockerFixture,
+):
+    """
+    [SECRT-1772] When a node has auto_credentials with a valid _credentials_id
+    that exists in the store, validation should pass without errors.
+    """
+    from backend.executor.utils import _validate_node_input_credentials
+
+    mock_node = mocker.MagicMock()
+    mock_node.id = "node-with-auto-creds"
+    mock_node.credentials_optional = False
+    mock_node.input_default = {
+        "spreadsheet": {
+            "_credentials_id": "valid-cred-id",
+            "id": "file-123",
+            "name": "test.xlsx",
+        }
+    }
+
+    mock_block = mocker.MagicMock()
+    # No regular credentials fields
+    mock_block.input_schema.get_credentials_fields.return_value = {}
+    # Has auto_credentials fields
+    mock_block.input_schema.get_auto_credentials_fields.return_value = {
+        "credentials": {
+            "field_name": "spreadsheet",
+            "config": {"provider": "google", "type": "oauth2"},
+        }
+    }
+    mock_node.block = mock_block
+
+    mock_graph = mocker.MagicMock()
+    mock_graph.nodes = [mock_node]
+
+    # Mock the credentials store to return valid credentials
+    mock_store = mocker.MagicMock()
+    mock_creds = mocker.MagicMock()
+    mock_creds.id = "valid-cred-id"
+    mock_store.get_creds_by_id = mocker.AsyncMock(return_value=mock_creds)
+    mocker.patch(
+        "backend.executor.utils.get_integration_credentials_store",
+        return_value=mock_store,
+    )
+
+    errors, nodes_to_skip = await _validate_node_input_credentials(
+        graph=mock_graph,
+        user_id="test-user",
+        nodes_input_masks=None,
+    )
+
+    assert mock_node.id not in errors
+    assert mock_node.id not in nodes_to_skip
+
+
+@pytest.mark.asyncio
+async def test_validate_node_input_credentials_auto_creds_missing(
+    mocker: MockerFixture,
+):
+    """
+    [SECRT-1772] When a node has auto_credentials with a _credentials_id
+    that doesn't exist for the current user, validation should report an error.
+    """
+    from backend.executor.utils import _validate_node_input_credentials
+
+    mock_node = mocker.MagicMock()
+    mock_node.id = "node-with-bad-auto-creds"
+    mock_node.credentials_optional = False
+    mock_node.input_default = {
+        "spreadsheet": {
+            "_credentials_id": "other-users-cred-id",
+            "id": "file-123",
+            "name": "test.xlsx",
+        }
+    }
+
+    mock_block = mocker.MagicMock()
+    mock_block.input_schema.get_credentials_fields.return_value = {}
+    mock_block.input_schema.get_auto_credentials_fields.return_value = {
+        "credentials": {
+            "field_name": "spreadsheet",
+            "config": {"provider": "google", "type": "oauth2"},
+        }
+    }
+    mock_node.block = mock_block
+
+    mock_graph = mocker.MagicMock()
+    mock_graph.nodes = [mock_node]
+
+    # Mock the credentials store to return None (cred not found for this user)
+    mock_store = mocker.MagicMock()
+    mock_store.get_creds_by_id = mocker.AsyncMock(return_value=None)
+    mocker.patch(
+        "backend.executor.utils.get_integration_credentials_store",
+        return_value=mock_store,
+    )
+
+    errors, nodes_to_skip = await _validate_node_input_credentials(
+        graph=mock_graph,
+        user_id="different-user",
+        nodes_input_masks=None,
+    )
+
+    assert mock_node.id in errors
+    assert "spreadsheet" in errors[mock_node.id]
+    assert "not available" in errors[mock_node.id]["spreadsheet"].lower()
+
+
+@pytest.mark.asyncio
+async def test_validate_node_input_credentials_both_regular_and_auto(
+    mocker: MockerFixture,
+):
+    """
+    [SECRT-1772] A node that has BOTH regular credentials AND auto_credentials
+    should have both validated.
+    """
+    from backend.executor.utils import _validate_node_input_credentials
+
+    mock_node = mocker.MagicMock()
+    mock_node.id = "node-with-both-creds"
+    mock_node.credentials_optional = False
+    mock_node.input_default = {
+        "credentials": {
+            "id": "regular-cred-id",
+            "provider": "github",
+            "type": "api_key",
+        },
+        "spreadsheet": {
+            "_credentials_id": "auto-cred-id",
+            "id": "file-123",
+            "name": "test.xlsx",
+        },
+    }
+
+    mock_credentials_field_type = mocker.MagicMock()
+    mock_credentials_meta = mocker.MagicMock()
+    mock_credentials_meta.id = "regular-cred-id"
+    mock_credentials_meta.provider = "github"
+    mock_credentials_meta.type = "api_key"
+    mock_credentials_field_type.model_validate.return_value = mock_credentials_meta
+
+    mock_block = mocker.MagicMock()
+    # Regular credentials field
+    mock_block.input_schema.get_credentials_fields.return_value = {
+        "credentials": mock_credentials_field_type,
+    }
+    # Auto-credentials field
+    mock_block.input_schema.get_auto_credentials_fields.return_value = {
+        "auto_credentials": {
+            "field_name": "spreadsheet",
+            "config": {"provider": "google", "type": "oauth2"},
+        }
+    }
+    mock_node.block = mock_block
+
+    mock_graph = mocker.MagicMock()
+    mock_graph.nodes = [mock_node]
+
+    # Mock the credentials store to return valid credentials for both
+    mock_store = mocker.MagicMock()
+    mock_regular_creds = mocker.MagicMock()
+    mock_regular_creds.id = "regular-cred-id"
+    mock_regular_creds.provider = "github"
+    mock_regular_creds.type = "api_key"
+
+    mock_auto_creds = mocker.MagicMock()
+    mock_auto_creds.id = "auto-cred-id"
+
+    def get_creds_side_effect(user_id, cred_id):
+        if cred_id == "regular-cred-id":
+            return mock_regular_creds
+        elif cred_id == "auto-cred-id":
+            return mock_auto_creds
+        return None
+
+    mock_store.get_creds_by_id = mocker.AsyncMock(side_effect=get_creds_side_effect)
+    mocker.patch(
+        "backend.executor.utils.get_integration_credentials_store",
+        return_value=mock_store,
+    )
+
+    errors, nodes_to_skip = await _validate_node_input_credentials(
+        graph=mock_graph,
+        user_id="test-user",
+        nodes_input_masks=None,
+    )
+
+    # Both should validate successfully - no errors
+    assert mock_node.id not in errors
+    assert mock_node.id not in nodes_to_skip
+
+
+@pytest.mark.asyncio
+async def test_validate_node_input_credentials_auto_creds_skipped_when_none(
+    mocker: MockerFixture,
+):
+    """
+    When a node has auto_credentials but the field value has _credentials_id=None
+    (e.g., from upstream connection), validation should skip it without error.
+    """
+    from backend.executor.utils import _validate_node_input_credentials
+
+    mock_node = mocker.MagicMock()
+    mock_node.id = "node-with-chained-auto-creds"
+    mock_node.credentials_optional = False
+    mock_node.input_default = {
+        "spreadsheet": {
+            "_credentials_id": None,
+            "id": "file-123",
+            "name": "test.xlsx",
+        }
+    }
+
+    mock_block = mocker.MagicMock()
+    mock_block.input_schema.get_credentials_fields.return_value = {}
+    mock_block.input_schema.get_auto_credentials_fields.return_value = {
+        "credentials": {
+            "field_name": "spreadsheet",
+            "config": {"provider": "google", "type": "oauth2"},
+        }
+    }
+    mock_node.block = mock_block
+
+    mock_graph = mocker.MagicMock()
+    mock_graph.nodes = [mock_node]
+
+    errors, nodes_to_skip = await _validate_node_input_credentials(
+        graph=mock_graph,
+        user_id="test-user",
+        nodes_input_masks=None,
+    )
+
+    # No error - chained data with None cred_id is valid
+    assert mock_node.id not in errors
+
+
+# ============================================================================
+# Tests for CredentialsFieldInfo auto_credential tag (Fix 4: Path 4)
+# ============================================================================
+
+
+def test_credentials_field_info_auto_credential_tag():
+    """
+    [Path 4] CredentialsFieldInfo should support is_auto_credential and
+    input_field_name fields for distinguishing auto from regular credentials.
+    """
+    from backend.data.model import CredentialsFieldInfo
+
+    # Regular credential should have is_auto_credential=False by default
+    regular = CredentialsFieldInfo.model_validate(
+        {
+            "credentials_provider": ["github"],
+            "credentials_types": ["api_key"],
+        },
+        by_alias=True,
+    )
+    assert regular.is_auto_credential is False
+    assert regular.input_field_name is None
+
+    # Auto credential should have is_auto_credential=True
+    auto = CredentialsFieldInfo.model_validate(
+        {
+            "credentials_provider": ["google"],
+            "credentials_types": ["oauth2"],
+            "is_auto_credential": True,
+            "input_field_name": "spreadsheet",
+        },
+        by_alias=True,
+    )
+    assert auto.is_auto_credential is True
+    assert auto.input_field_name == "spreadsheet"
+
+
+def test_make_node_credentials_input_map_excludes_auto_creds(
+    mocker: MockerFixture,
+):
+    """
+    [Path 4] make_node_credentials_input_map should only include regular credentials,
+    not auto_credentials (which are resolved at execution time).
+    """
+    from backend.data.model import CredentialsFieldInfo, CredentialsMetaInput
+    from backend.executor.utils import make_node_credentials_input_map
+    from backend.integrations.providers import ProviderName
+
+    # Create a mock graph with aggregate_credentials_inputs that returns
+    # both regular and auto credentials
+    mock_graph = mocker.MagicMock()
+
+    regular_field_info = CredentialsFieldInfo.model_validate(
+        {
+            "credentials_provider": ["github"],
+            "credentials_types": ["api_key"],
+            "is_auto_credential": False,
+        },
+        by_alias=True,
+    )
+
+    # Mock regular_credentials_inputs property (auto_credentials are excluded)
+    mock_graph.regular_credentials_inputs = {
+        "github_creds": (regular_field_info, {("node-1", "credentials")}, True),
+    }
+
+    graph_credentials_input = {
+        "github_creds": CredentialsMetaInput(
+            id="cred-123",
+            provider=ProviderName("github"),
+            type="api_key",
+        ),
+    }
+
+    result = make_node_credentials_input_map(mock_graph, graph_credentials_input)
+
+    # Regular credentials should be mapped
+    assert "node-1" in result
+    assert "credentials" in result["node-1"]
+
+    # Auto credentials should NOT appear in the result
+    # (they would have been mapped to the kwarg_name "credentials" not "spreadsheet")
+    for node_id, fields in result.items():
+        for field_name, value in fields.items():
+            # Verify no auto-credential phantom entries
+            if isinstance(value, dict):
+                assert "_credentials_id" not in value

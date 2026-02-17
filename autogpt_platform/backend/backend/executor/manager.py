@@ -169,6 +169,81 @@ def execute_graph(
 T = TypeVar("T")
 
 
+async def _acquire_auto_credentials(
+    input_model: type[BlockSchema],
+    input_data: dict[str, Any],
+    creds_manager: "IntegrationCredentialsManager",
+    user_id: str,
+) -> tuple[dict[str, Any], list[AsyncRedisLock]]:
+    """
+    Resolve auto_credentials from GoogleDriveFileField-style inputs.
+
+    Returns:
+        (extra_exec_kwargs, locks): kwargs to inject into block execution, and
+        credential locks to release after execution completes.
+    """
+    extra_exec_kwargs: dict[str, Any] = {}
+    locks: list[AsyncRedisLock] = []
+
+    # NOTE: If a block ever has multiple auto-credential fields, a ValueError
+    # on a later field will strand locks acquired for earlier fields. They'll
+    # auto-expire via Redis TTL, but add a try/except to release partial locks
+    # if that becomes a real scenario.
+    for kwarg_name, info in input_model.get_auto_credentials_fields().items():
+        field_name = info["field_name"]
+        field_data = input_data.get(field_name)
+
+        if field_data and isinstance(field_data, dict):
+            # Check if _credentials_id key exists in the field data
+            if "_credentials_id" in field_data:
+                cred_id = field_data["_credentials_id"]
+                if cred_id:
+                    # Credential ID provided - acquire credentials
+                    provider = info.get("config", {}).get(
+                        "provider", "external service"
+                    )
+                    file_name = field_data.get("name", "selected file")
+                    try:
+                        credentials, lock = await creds_manager.acquire(
+                            user_id, cred_id
+                        )
+                        locks.append(lock)
+                        extra_exec_kwargs[kwarg_name] = credentials
+                    except ValueError:
+                        raise ValueError(
+                            f"{provider.capitalize()} credentials for "
+                            f"'{file_name}' in field '{field_name}' are not "
+                            f"available in your account. "
+                            f"This can happen if the agent was created by another "
+                            f"user or the credentials were deleted. "
+                            f"Please open the agent in the builder and re-select "
+                            f"the file to authenticate with your own account."
+                        )
+                # else: _credentials_id is explicitly None, skip (chained data)
+            else:
+                # _credentials_id key missing entirely - this is an error
+                provider = info.get("config", {}).get("provider", "external service")
+                file_name = field_data.get("name", "selected file")
+                raise ValueError(
+                    f"Authentication missing for '{file_name}' in field "
+                    f"'{field_name}'. Please re-select the file to authenticate "
+                    f"with {provider.capitalize()}."
+                )
+        elif field_data is None and field_name not in input_data:
+            # Field not in input_data at all = connected from upstream block, skip
+            pass
+        else:
+            # field_data is None/empty but key IS in input_data = user didn't select
+            provider = info.get("config", {}).get("provider", "external service")
+            raise ValueError(
+                f"No file selected for '{field_name}'. "
+                f"Please select a file to provide "
+                f"{provider.capitalize()} authentication."
+            )
+
+    return extra_exec_kwargs, locks
+
+
 async def execute_node(
     node: Node,
     data: NodeExecutionEntry,
@@ -309,41 +384,14 @@ async def execute_node(
         extra_exec_kwargs[field_name] = credentials
 
     # Handle auto-generated credentials (e.g., from GoogleDriveFileInput)
-    for kwarg_name, info in input_model.get_auto_credentials_fields().items():
-        field_name = info["field_name"]
-        field_data = input_data.get(field_name)
-        if field_data and isinstance(field_data, dict):
-            # Check if _credentials_id key exists in the field data
-            if "_credentials_id" in field_data:
-                cred_id = field_data["_credentials_id"]
-                if cred_id:
-                    # Credential ID provided - acquire credentials
-                    provider = info.get("config", {}).get(
-                        "provider", "external service"
-                    )
-                    file_name = field_data.get("name", "selected file")
-                    try:
-                        credentials, lock = await creds_manager.acquire(
-                            user_id, cred_id
-                        )
-                        creds_locks.append(lock)
-                        extra_exec_kwargs[kwarg_name] = credentials
-                    except ValueError:
-                        # Credential was deleted or doesn't exist
-                        raise ValueError(
-                            f"Authentication expired for '{file_name}' in field '{field_name}'. "
-                            f"The saved {provider.capitalize()} credentials no longer exist. "
-                            f"Please re-select the file to re-authenticate."
-                        )
-                # else: _credentials_id is explicitly None, skip credentials (for chained data)
-            else:
-                # _credentials_id key missing entirely - this is an error
-                provider = info.get("config", {}).get("provider", "external service")
-                file_name = field_data.get("name", "selected file")
-                raise ValueError(
-                    f"Authentication missing for '{file_name}' in field '{field_name}'. "
-                    f"Please re-select the file to authenticate with {provider.capitalize()}."
-                )
+    auto_extra_kwargs, auto_locks = await _acquire_auto_credentials(
+        input_model=input_model,
+        input_data=input_data,
+        creds_manager=creds_manager,
+        user_id=user_id,
+    )
+    extra_exec_kwargs.update(auto_extra_kwargs)
+    creds_locks.extend(auto_locks)
 
     output_size = 0
 

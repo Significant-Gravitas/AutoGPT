@@ -119,7 +119,7 @@ def build_missing_credentials_from_graph(
     preserving all supported credential types for each field.
     """
     matched_keys = set(matched_credentials.keys()) if matched_credentials else set()
-    aggregated_fields = graph.aggregate_credentials_inputs()
+    aggregated_fields = graph.regular_credentials_inputs
 
     return {
         field_key: _serialize_missing_credential(field_key, field_info)
@@ -339,7 +339,7 @@ async def match_user_credentials_to_graph(
     missing_creds: list[str] = []
 
     # Get aggregated credentials requirements from the graph
-    aggregated_creds = graph.aggregate_credentials_inputs()
+    aggregated_creds = graph.regular_credentials_inputs
     logger.debug(
         f"Matching credentials for graph {graph.id}: {len(aggregated_creds)} required"
     )

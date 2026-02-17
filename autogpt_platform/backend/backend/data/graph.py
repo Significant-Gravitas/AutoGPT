@@ -435,8 +435,7 @@ class GraphModel(Graph, GraphMeta):
     @computed_field
     @property
     def credentials_input_schema(self) -> dict[str, Any]:
-        graph_credentials_inputs = self.aggregate_credentials_inputs()
-
+        graph_credentials_inputs = self.regular_credentials_inputs
         logger.debug(
             f"Combined credentials input fields for graph #{self.id} ({self.name}): "
             f"{graph_credentials_inputs}"
@@ -616,6 +615,28 @@ class GraphModel(Graph, GraphMeta):
             for key, (field_info, node_field_pairs) in combined.items()
         }
 
+    @property
+    def regular_credentials_inputs(
+        self,
+    ) -> dict[str, tuple[CredentialsFieldInfo, set[tuple[str, str]], bool]]:
+        """Credentials that need explicit user mapping (CredentialsMetaInput fields)."""
+        return {
+            k: v
+            for k, v in self.aggregate_credentials_inputs().items()
+            if not v[0].is_auto_credential
+        }
+
+    @property
+    def auto_credentials_inputs(
+        self,
+    ) -> dict[str, tuple[CredentialsFieldInfo, set[tuple[str, str]], bool]]:
+        """Credentials embedded in file fields (_credentials_id), resolved at execution time."""
+        return {
+            k: v
+            for k, v in self.aggregate_credentials_inputs().items()
+            if v[0].is_auto_credential
+        }
+
     def reassign_ids(self, user_id: str, reassign_graph_id: bool = False):
         """
         Reassigns all IDs in the graph to new UUIDs.
@@ -665,6 +686,16 @@ class GraphModel(Graph, GraphMeta):
                 graph_id := node.input_default.get("graph_id")
             ) and graph_id in graph_id_map:
                 node.input_default["graph_id"] = graph_id_map[graph_id]
+
+        # Clear auto-credentials references (e.g., _credentials_id in
+        # GoogleDriveFile fields) so the new user must re-authenticate
+        # with their own account
+        for node in graph.nodes:
+            if not node.input_default:
+                continue
+            for key, value in node.input_default.items():
+                if isinstance(value, dict) and "_credentials_id" in value:
+                    del value["_credentials_id"]
 
     def validate_graph(
         self,

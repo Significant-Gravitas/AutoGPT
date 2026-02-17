@@ -465,6 +465,332 @@ def test_node_credentials_optional_with_other_metadata():
 
 
 # ============================================================================
+# Tests for CredentialsFieldInfo.combine() field propagation
+def test_combine_preserves_is_auto_credential_flag():
+    """
+    CredentialsFieldInfo.combine() must propagate is_auto_credential and
+    input_field_name to the combined result. Regression test for reviewer
+    finding that combine() dropped these fields.
+    """
+    from backend.data.model import CredentialsFieldInfo
+
+    auto_field = CredentialsFieldInfo.model_validate(
+        {
+            "credentials_provider": ["google"],
+            "credentials_types": ["oauth2"],
+            "credentials_scopes": ["drive.readonly"],
+            "is_auto_credential": True,
+            "input_field_name": "spreadsheet",
+        },
+        by_alias=True,
+    )
+
+    # combine() takes *args of (field_info, key) tuples
+    combined = CredentialsFieldInfo.combine(
+        (auto_field, ("node-1", "credentials")),
+        (auto_field, ("node-2", "credentials")),
+    )
+
+    assert len(combined) == 1
+    group_key = next(iter(combined))
+    combined_info, combined_keys = combined[group_key]
+
+    assert combined_info.is_auto_credential is True
+    assert combined_info.input_field_name == "spreadsheet"
+    assert combined_keys == {("node-1", "credentials"), ("node-2", "credentials")}
+
+
+def test_combine_preserves_regular_credential_defaults():
+    """Regular credentials should have is_auto_credential=False after combine()."""
+    from backend.data.model import CredentialsFieldInfo
+
+    regular_field = CredentialsFieldInfo.model_validate(
+        {
+            "credentials_provider": ["github"],
+            "credentials_types": ["api_key"],
+            "is_auto_credential": False,
+        },
+        by_alias=True,
+    )
+
+    combined = CredentialsFieldInfo.combine(
+        (regular_field, ("node-1", "credentials")),
+    )
+
+    group_key = next(iter(combined))
+    combined_info, _ = combined[group_key]
+
+    assert combined_info.is_auto_credential is False
+    assert combined_info.input_field_name is None
+
+
+# ============================================================================
+# Tests for _reassign_ids credential clearing (Fix 3: SECRT-1772)
+
+
+def test_reassign_ids_clears_credentials_id():
+    """
+    [SECRT-1772] _reassign_ids should clear _credentials_id from
+    GoogleDriveFile-style input_default fields so forked agents
+    don't retain the original creator's credential references.
+    """
+    from backend.data.graph import GraphModel
+
+    node = Node(
+        id="node-1",
+        block_id=StoreValueBlock().id,
+        input_default={
+            "spreadsheet": {
+                "_credentials_id": "original-cred-id",
+                "id": "file-123",
+                "name": "test.xlsx",
+                "mimeType": "application/vnd.google-apps.spreadsheet",
+                "url": "https://docs.google.com/spreadsheets/d/file-123",
+            },
+        },
+    )
+
+    graph = Graph(
+        id="test-graph",
+        name="Test",
+        description="Test",
+        nodes=[node],
+        links=[],
+    )
+
+    GraphModel._reassign_ids(graph, user_id="new-user", graph_id_map={})
+
+    # _credentials_id key should be removed (not set to None) so that
+    # _acquire_auto_credentials correctly errors instead of treating it as chained data
+    assert "_credentials_id" not in graph.nodes[0].input_default["spreadsheet"]
+
+
+def test_reassign_ids_preserves_non_credential_fields():
+    """
+    Regression guard: _reassign_ids should NOT modify non-credential fields
+    like name, mimeType, id, url.
+    """
+    from backend.data.graph import GraphModel
+
+    node = Node(
+        id="node-1",
+        block_id=StoreValueBlock().id,
+        input_default={
+            "spreadsheet": {
+                "_credentials_id": "cred-abc",
+                "id": "file-123",
+                "name": "test.xlsx",
+                "mimeType": "application/vnd.google-apps.spreadsheet",
+                "url": "https://docs.google.com/spreadsheets/d/file-123",
+            },
+        },
+    )
+
+    graph = Graph(
+        id="test-graph",
+        name="Test",
+        description="Test",
+        nodes=[node],
+        links=[],
+    )
+
+    GraphModel._reassign_ids(graph, user_id="new-user", graph_id_map={})
+
+    field = graph.nodes[0].input_default["spreadsheet"]
+    assert field["id"] == "file-123"
+    assert field["name"] == "test.xlsx"
+    assert field["mimeType"] == "application/vnd.google-apps.spreadsheet"
+    assert field["url"] == "https://docs.google.com/spreadsheets/d/file-123"
+
+
+def test_reassign_ids_handles_no_credentials():
+    """
+    Regression guard: _reassign_ids should not error when input_default
+    has no dict fields with _credentials_id.
+    """
+    from backend.data.graph import GraphModel
+
+    node = Node(
+        id="node-1",
+        block_id=StoreValueBlock().id,
+        input_default={
+            "input": "some value",
+            "another_input": 42,
+        },
+    )
+
+    graph = Graph(
+        id="test-graph",
+        name="Test",
+        description="Test",
+        nodes=[node],
+        links=[],
+    )
+
+    GraphModel._reassign_ids(graph, user_id="new-user", graph_id_map={})
+
+    # Should not error, fields unchanged
+    assert graph.nodes[0].input_default["input"] == "some value"
+    assert graph.nodes[0].input_default["another_input"] == 42
+
+
+def test_reassign_ids_handles_multiple_credential_fields():
+    """
+    [SECRT-1772] When a node has multiple dict fields with _credentials_id,
+    ALL of them should be cleared.
+    """
+    from backend.data.graph import GraphModel
+
+    node = Node(
+        id="node-1",
+        block_id=StoreValueBlock().id,
+        input_default={
+            "spreadsheet": {
+                "_credentials_id": "cred-1",
+                "id": "file-1",
+                "name": "file1.xlsx",
+            },
+            "doc_file": {
+                "_credentials_id": "cred-2",
+                "id": "file-2",
+                "name": "file2.docx",
+            },
+            "plain_input": "not a dict",
+        },
+    )
+
+    graph = Graph(
+        id="test-graph",
+        name="Test",
+        description="Test",
+        nodes=[node],
+        links=[],
+    )
+
+    GraphModel._reassign_ids(graph, user_id="new-user", graph_id_map={})
+
+    assert "_credentials_id" not in graph.nodes[0].input_default["spreadsheet"]
+    assert "_credentials_id" not in graph.nodes[0].input_default["doc_file"]
+    assert graph.nodes[0].input_default["plain_input"] == "not a dict"
+
+
+# ============================================================================
+# Tests for discriminate() field propagation
+def test_discriminate_preserves_is_auto_credential_flag():
+    """
+    CredentialsFieldInfo.discriminate() must propagate is_auto_credential and
+    input_field_name to the discriminated result. Regression test for
+    discriminate() dropping these fields (same class of bug as combine()).
+    """
+    from backend.data.model import CredentialsFieldInfo
+
+    auto_field = CredentialsFieldInfo.model_validate(
+        {
+            "credentials_provider": ["google", "openai"],
+            "credentials_types": ["oauth2"],
+            "credentials_scopes": ["drive.readonly"],
+            "is_auto_credential": True,
+            "input_field_name": "spreadsheet",
+            "discriminator": "model",
+            "discriminator_mapping": {"gpt-4": "openai", "gemini": "google"},
+        },
+        by_alias=True,
+    )
+
+    discriminated = auto_field.discriminate("gemini")
+
+    assert discriminated.is_auto_credential is True
+    assert discriminated.input_field_name == "spreadsheet"
+    assert discriminated.provider == frozenset(["google"])
+
+
+def test_discriminate_preserves_regular_credential_defaults():
+    """Regular credentials should have is_auto_credential=False after discriminate()."""
+    from backend.data.model import CredentialsFieldInfo
+
+    regular_field = CredentialsFieldInfo.model_validate(
+        {
+            "credentials_provider": ["google", "openai"],
+            "credentials_types": ["api_key"],
+            "is_auto_credential": False,
+            "discriminator": "model",
+            "discriminator_mapping": {"gpt-4": "openai", "gemini": "google"},
+        },
+        by_alias=True,
+    )
+
+    discriminated = regular_field.discriminate("gpt-4")
+
+    assert discriminated.is_auto_credential is False
+    assert discriminated.input_field_name is None
+    assert discriminated.provider == frozenset(["openai"])
+
+
+# ============================================================================
+# Tests for credentials_input_schema excluding auto_credentials
+def test_credentials_input_schema_excludes_auto_creds():
+    """
+    GraphModel.credentials_input_schema should exclude auto_credentials
+    (is_auto_credential=True) from the schema. Auto_credentials are
+    transparently resolved at execution time via file picker data.
+    """
+    from datetime import datetime, timezone
+    from unittest.mock import PropertyMock, patch
+
+    from backend.data.graph import GraphModel, NodeModel
+    from backend.data.model import CredentialsFieldInfo
+
+    regular_field_info = CredentialsFieldInfo.model_validate(
+        {
+            "credentials_provider": ["github"],
+            "credentials_types": ["api_key"],
+            "is_auto_credential": False,
+        },
+        by_alias=True,
+    )
+
+    graph = GraphModel(
+        id="test-graph",
+        version=1,
+        name="Test",
+        description="Test",
+        user_id="test-user",
+        created_at=datetime.now(timezone.utc),
+        nodes=[
+            NodeModel(
+                id="node-1",
+                block_id=StoreValueBlock().id,
+                input_default={},
+                graph_id="test-graph",
+                graph_version=1,
+            ),
+        ],
+        links=[],
+    )
+
+    # Mock regular_credentials_inputs to return only the non-auto field (3-tuple)
+    regular_only = {
+        "github_credentials": (
+            regular_field_info,
+            {("node-1", "credentials")},
+            True,
+        ),
+    }
+
+    with patch.object(
+        type(graph),
+        "regular_credentials_inputs",
+        new_callable=PropertyMock,
+        return_value=regular_only,
+    ):
+        schema = graph.credentials_input_schema
+        field_names = set(schema.get("properties", {}).keys())
+        # Should include regular credential but NOT auto_credential
+        assert "github_credentials" in field_names
+        assert "google_credentials" not in field_names
+
+
+# ============================================================================
 # Tests for MCP Credential Deduplication
 # ============================================================================
 

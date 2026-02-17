@@ -310,6 +310,8 @@ class BlockSchema(BaseModel):
                 "credentials_provider": [config.get("provider", "google")],
                 "credentials_types": [config.get("type", "oauth2")],
                 "credentials_scopes": config.get("scopes"),
+                "is_auto_credential": True,
+                "input_field_name": info["field_name"],
             }
             result[kwarg_name] = CredentialsFieldInfo.model_validate(
                 auto_schema, by_alias=True
