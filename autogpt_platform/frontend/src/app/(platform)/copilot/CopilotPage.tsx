@@ -1,8 +1,8 @@
 "use client";
 
+import { Button } from "@/components/atoms/Button/Button";
+import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { SidebarProvider } from "@/components/ui/sidebar";
-// TODO: Replace with modern Dialog component when available
-import DeleteConfirmDialog from "@/components/__legacy__/delete-confirm-dialog";
 import { ChatContainer } from "./components/ChatContainer/ChatContainer";
 import { ChatSidebar } from "./components/ChatSidebar/ChatSidebar";
 import { MobileDrawer } from "./components/MobileDrawer/MobileDrawer";
@@ -97,13 +97,47 @@ export function CopilotPage() {
       )}
       {/* Delete confirmation dialog - rendered at top level for proper z-index on mobile */}
       {isMobile && (
-        <DeleteConfirmDialog
-          entityType="chat"
-          entityName={sessionToDelete?.title || "Untitled chat"}
-          open={!!sessionToDelete}
-          onOpenChange={(open) => !open && handleCancelDelete()}
-          onDoDelete={handleConfirmDelete}
-        />
+        <Dialog
+          title="Delete chat"
+          controlled={{
+            isOpen: !!sessionToDelete,
+            set: async (open) => {
+              if (!open && !isDeleting) {
+                handleCancelDelete();
+              }
+            },
+          }}
+          onClose={handleCancelDelete}
+        >
+          <Dialog.Content>
+            <p className="text-neutral-600">
+              Are you sure you want to delete{" "}
+              <span className="font-medium">
+                &quot;{sessionToDelete?.title || "Untitled chat"}&quot;
+              </span>
+              ? This action cannot be undone.
+            </p>
+            <Dialog.Footer>
+              <Button
+                variant="ghost"
+                size="small"
+                onClick={handleCancelDelete}
+                disabled={isDeleting}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                size="small"
+                onClick={handleConfirmDelete}
+                loading={isDeleting}
+                className="bg-red-600 hover:bg-red-700"
+              >
+                Delete
+              </Button>
+            </Dialog.Footer>
+          </Dialog.Content>
+        </Dialog>
       )}
     </SidebarProvider>
   );

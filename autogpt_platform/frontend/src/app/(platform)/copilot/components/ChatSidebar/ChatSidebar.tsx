@@ -7,9 +7,8 @@ import {
 import { Button } from "@/components/atoms/Button/Button";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Text } from "@/components/atoms/Text/Text";
+import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { toast } from "@/components/molecules/Toast/use-toast";
-// TODO: Replace with modern Dialog component when available
-import DeleteConfirmDialog from "@/components/__legacy__/delete-confirm-dialog";
 import {
   Sidebar,
   SidebarContent,
@@ -89,6 +88,12 @@ export function ChatSidebar() {
   function handleConfirmDelete() {
     if (sessionToDelete) {
       deleteSession({ sessionId: sessionToDelete.id });
+    }
+  }
+
+  function handleCancelDelete() {
+    if (!isDeleting) {
+      setSessionToDelete(null);
     }
   }
 
@@ -257,13 +262,47 @@ export function ChatSidebar() {
         )}
       </Sidebar>
 
-      <DeleteConfirmDialog
-        entityType="chat"
-        entityName={sessionToDelete?.title || "Untitled chat"}
-        open={!!sessionToDelete}
-        onOpenChange={(open) => !open && setSessionToDelete(null)}
-        onDoDelete={handleConfirmDelete}
-      />
+      <Dialog
+        title="Delete chat"
+        controlled={{
+          isOpen: !!sessionToDelete,
+          set: async (open) => {
+            if (!open && !isDeleting) {
+              setSessionToDelete(null);
+            }
+          },
+        }}
+        onClose={handleCancelDelete}
+      >
+        <Dialog.Content>
+          <p className="text-neutral-600">
+            Are you sure you want to delete{" "}
+            <span className="font-medium">
+              &quot;{sessionToDelete?.title || "Untitled chat"}&quot;
+            </span>
+            ? This action cannot be undone.
+          </p>
+          <Dialog.Footer>
+            <Button
+              variant="ghost"
+              size="small"
+              onClick={handleCancelDelete}
+              disabled={isDeleting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              size="small"
+              onClick={handleConfirmDelete}
+              loading={isDeleting}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              Delete
+            </Button>
+          </Dialog.Footer>
+        </Dialog.Content>
+      </Dialog>
     </>
   );
 }
