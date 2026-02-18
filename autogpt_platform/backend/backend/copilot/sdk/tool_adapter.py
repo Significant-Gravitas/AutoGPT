@@ -103,6 +103,31 @@ def pop_pending_tool_output(tool_name: str) -> str | None:
     return pending.pop(tool_name, None)
 
 
+def stash_pending_tool_output(tool_name: str, output: Any) -> None:
+    """Stash tool output for later retrieval by the response adapter.
+
+    Used by the PostToolUse hook to capture SDK built-in tool outputs
+    (WebSearch, Read, etc.) that aren't available through the MCP stash
+    mechanism in ``_execute_tool_sync``.
+
+    Does NOT overwrite an existing stash entry — MCP tools stash in
+    ``_execute_tool_sync`` first with the guaranteed-full output.
+    """
+    pending = _pending_tool_outputs.get(None)
+    if pending is None:
+        return
+    # Don't overwrite MCP tool stash (which has the guaranteed-full output)
+    if tool_name in pending:
+        return
+    if isinstance(output, str):
+        pending[tool_name] = output
+    else:
+        try:
+            pending[tool_name] = json.dumps(output)
+        except (TypeError, ValueError):
+            pending[tool_name] = str(output)
+
+
 async def _execute_tool_sync(
     base_tool: BaseTool,
     user_id: str | None,
@@ -127,10 +152,52 @@ async def _execute_tool_sync(
     if pending is not None:
         pending[base_tool.name] = text
 
+    content_blocks: list[dict[str, str]] = [{"type": "text", "text": text}]
+
+    # If the tool result contains inline image data, add an MCP image block
+    # so Claude can "see" the image (e.g. read_workspace_file on a small PNG).
+    image_block = _extract_image_block(text)
+    if image_block:
+        content_blocks.append(image_block)
+
     return {
-        "content": [{"type": "text", "text": text}],
+        "content": content_blocks,
         "isError": not result.success,
     }
+
+
+# MIME types that Claude can process as image content blocks.
+_SUPPORTED_IMAGE_TYPES = frozenset(
+    {"image/png", "image/jpeg", "image/gif", "image/webp"}
+)
+
+
+def _extract_image_block(text: str) -> dict[str, str] | None:
+    """Extract an MCP image content block from a tool result JSON string.
+
+    Detects workspace file responses with ``content_base64`` and an image
+    MIME type, returning an MCP-format image block that allows Claude to
+    "see" the image.  Returns ``None`` if the result is not an inline image.
+    """
+    try:
+        data = json.loads(text)
+    except (json.JSONDecodeError, TypeError):
+        return None
+
+    if not isinstance(data, dict):
+        return None
+
+    mime_type = data.get("mime_type", "")
+    base64_content = data.get("content_base64", "")
+
+    if mime_type in _SUPPORTED_IMAGE_TYPES and base64_content:
+        return {
+            "type": "image",
+            "data": base64_content,
+            "mimeType": mime_type,
+        }
+
+    return None
 
 
 def _mcp_error(message: str) -> dict[str, Any]:
@@ -311,7 +378,17 @@ def create_copilot_mcp_server():
 # which provides kernel-level network isolation via unshare --net.
 # Task allows spawning sub-agents (rate-limited by security hooks).
 # WebSearch uses Brave Search via Anthropic's API — safe, no SSRF risk.
-_SDK_BUILTIN_TOOLS = ["Read", "Write", "Edit", "Glob", "Grep", "Task", "WebSearch"]
+# TodoWrite manages the task checklist shown in the UI — no security concern.
+_SDK_BUILTIN_TOOLS = [
+    "Read",
+    "Write",
+    "Edit",
+    "Glob",
+    "Grep",
+    "Task",
+    "WebSearch",
+    "TodoWrite",
+]
 
 # SDK built-in tools that must be explicitly blocked.
 # Bash: dangerous — agent uses mcp__copilot__bash_exec with kernel-level

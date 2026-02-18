@@ -117,7 +117,7 @@ async def create_task(
     if user_id:
         log_meta["user_id"] = user_id
 
-    logger.info(
+    logger.debug(
         f"[TIMING] create_task STARTED, task={task_id}, session={session_id}, user={user_id}",
         extra={"json_fields": log_meta},
     )
@@ -135,7 +135,7 @@ async def create_task(
     redis_start = time.perf_counter()
     redis = await get_redis_async()
     redis_time = (time.perf_counter() - redis_start) * 1000
-    logger.info(
+    logger.debug(
         f"[TIMING] get_redis_async took {redis_time:.1f}ms",
         extra={"json_fields": {**log_meta, "duration_ms": redis_time}},
     )
@@ -158,7 +158,7 @@ async def create_task(
         },
     )
     hset_time = (time.perf_counter() - hset_start) * 1000
-    logger.info(
+    logger.debug(
         f"[TIMING] redis.hset took {hset_time:.1f}ms",
         extra={"json_fields": {**log_meta, "duration_ms": hset_time}},
     )
@@ -169,7 +169,7 @@ async def create_task(
     await redis.set(op_key, task_id, ex=config.stream_ttl)
 
     total_time = (time.perf_counter() - start_time) * 1000
-    logger.info(
+    logger.debug(
         f"[TIMING] create_task COMPLETED in {total_time:.1f}ms; task={task_id}, session={session_id}",
         extra={"json_fields": {**log_meta, "total_time_ms": total_time}},
     )
@@ -230,7 +230,7 @@ async def publish_chunk(
             in ("StreamStart", "StreamFinish", "StreamTextStart", "StreamTextEnd")
             or total_time > 50
         ):
-            logger.info(
+            logger.debug(
                 f"[TIMING] publish_chunk {chunk_type} in {total_time:.1f}ms (xadd={xadd_time:.1f}ms)",
                 extra={
                     "json_fields": {
@@ -279,7 +279,7 @@ async def subscribe_to_task(
     if user_id:
         log_meta["user_id"] = user_id
 
-    logger.info(
+    logger.debug(
         f"[TIMING] subscribe_to_task STARTED, task={task_id}, user={user_id}, last_msg={last_message_id}",
         extra={"json_fields": {**log_meta, "last_message_id": last_message_id}},
     )
@@ -289,14 +289,14 @@ async def subscribe_to_task(
     meta_key = _get_task_meta_key(task_id)
     meta: dict[Any, Any] = await redis.hgetall(meta_key)  # type: ignore[misc]
     hgetall_time = (time.perf_counter() - redis_start) * 1000
-    logger.info(
+    logger.debug(
         f"[TIMING] Redis hgetall took {hgetall_time:.1f}ms",
         extra={"json_fields": {**log_meta, "duration_ms": hgetall_time}},
     )
 
     if not meta:
         elapsed = (time.perf_counter() - start_time) * 1000
-        logger.info(
+        logger.debug(
             f"[TIMING] Task not found in Redis after {elapsed:.1f}ms",
             extra={
                 "json_fields": {
@@ -335,7 +335,7 @@ async def subscribe_to_task(
     xread_start = time.perf_counter()
     messages = await redis.xread({stream_key: last_message_id}, block=0, count=1000)
     xread_time = (time.perf_counter() - xread_start) * 1000
-    logger.info(
+    logger.debug(
         f"[TIMING] Redis xread (replay) took {xread_time:.1f}ms, status={task_status}",
         extra={
             "json_fields": {
@@ -363,7 +363,7 @@ async def subscribe_to_task(
                     except Exception as e:
                         logger.warning(f"Failed to replay message: {e}")
 
-    logger.info(
+    logger.debug(
         f"[TIMING] Replayed {replayed_count} messages, last_id={replay_last_id}",
         extra={
             "json_fields": {
@@ -376,7 +376,7 @@ async def subscribe_to_task(
 
     # Step 2: If task is still running, start stream listener for live updates
     if task_status == "running":
-        logger.info(
+        logger.debug(
             "[TIMING] Task still running, starting _stream_listener",
             extra={"json_fields": {**log_meta, "task_status": task_status}},
         )
@@ -387,14 +387,14 @@ async def subscribe_to_task(
         _listener_tasks[id(subscriber_queue)] = (task_id, listener_task)
     else:
         # Task is completed/failed - add finish marker
-        logger.info(
+        logger.debug(
             f"[TIMING] Task already {task_status}, adding StreamFinish",
             extra={"json_fields": {**log_meta, "task_status": task_status}},
         )
         await subscriber_queue.put(StreamFinish())
 
     total_time = (time.perf_counter() - start_time) * 1000
-    logger.info(
+    logger.debug(
         f"[TIMING] subscribe_to_task COMPLETED in {total_time:.1f}ms; task={task_id}, "
         f"n_messages_replayed={replayed_count}",
         extra={
@@ -433,7 +433,7 @@ async def _stream_listener(
     if log_meta is None:
         log_meta = {"component": "StreamRegistry", "task_id": task_id}
 
-    logger.info(
+    logger.debug(
         f"[TIMING] _stream_listener STARTED, task={task_id}, last_id={last_replayed_id}",
         extra={"json_fields": {**log_meta, "last_replayed_id": last_replayed_id}},
     )
@@ -462,7 +462,7 @@ async def _stream_listener(
 
             if messages:
                 msg_count = sum(len(msgs) for _, msgs in messages)
-                logger.info(
+                logger.debug(
                     f"[TIMING] xread #{xread_count} returned {msg_count} messages in {xread_time:.1f}ms",
                     extra={
                         "json_fields": {
@@ -475,7 +475,7 @@ async def _stream_listener(
                 )
             elif xread_time > 1000:
                 # Only log timeouts (30s blocking)
-                logger.info(
+                logger.debug(
                     f"[TIMING] xread #{xread_count} timeout after {xread_time:.1f}ms",
                     extra={
                         "json_fields": {
@@ -526,7 +526,7 @@ async def _stream_listener(
                                 if first_message_time is None:
                                     first_message_time = time.perf_counter()
                                     elapsed = (first_message_time - start_time) * 1000
-                                    logger.info(
+                                    logger.debug(
                                         f"[TIMING] FIRST live message at {elapsed:.1f}ms, type={type(chunk).__name__}",
                                         extra={
                                             "json_fields": {
@@ -568,7 +568,7 @@ async def _stream_listener(
                             # Stop listening on finish
                             if isinstance(chunk, StreamFinish):
                                 total_time = (time.perf_counter() - start_time) * 1000
-                                logger.info(
+                                logger.debug(
                                     f"[TIMING] StreamFinish received in {total_time/1000:.1f}s; delivered={messages_delivered}",
                                     extra={
                                         "json_fields": {
@@ -587,7 +587,7 @@ async def _stream_listener(
 
     except asyncio.CancelledError:
         elapsed = (time.perf_counter() - start_time) * 1000
-        logger.info(
+        logger.debug(
             f"[TIMING] _stream_listener CANCELLED after {elapsed:.1f}ms, delivered={messages_delivered}",
             extra={
                 "json_fields": {
@@ -619,7 +619,7 @@ async def _stream_listener(
     finally:
         # Clean up listener task mapping on exit
         total_time = (time.perf_counter() - start_time) * 1000
-        logger.info(
+        logger.debug(
             f"[TIMING] _stream_listener FINISHED in {total_time/1000:.1f}s; task={task_id}, "
             f"delivered={messages_delivered}, xread_count={xread_count}",
             extra={
@@ -829,10 +829,13 @@ async def get_active_task_for_session(
                             )
                             await mark_task_completed(task_id, "failed")
                             continue
-                    except (ValueError, TypeError):
-                        pass
+                    except (ValueError, TypeError) as exc:
+                        logger.warning(
+                            f"[TASK_LOOKUP] Failed to parse created_at "
+                            f"for task {task_id[:8]}...: {exc}"
+                        )
 
-                logger.info(
+                logger.debug(
                     f"[TASK_LOOKUP] Found running task {task_id[:8]}... for session {session_id[:8]}..."
                 )
 

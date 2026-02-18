@@ -47,6 +47,7 @@ from .tool_adapter import (
     set_execution_context,
 )
 from .transcript import (
+    cleanup_cli_project_dir,
     download_transcript,
     read_transcript_file,
     upload_transcript,
@@ -86,9 +87,12 @@ _SDK_TOOL_SUPPLEMENT = """
   for shell commands — it runs in a network-isolated sandbox.
 - **Shared workspace**: The SDK Read/Write tools and `bash_exec` share the
   same working directory. Files created by one are readable by the other.
-  These files are **ephemeral** — they exist only for the current session.
-- **Persistent storage**: Use `write_workspace_file` / `read_workspace_file`
-  for files that should persist across sessions (stored in cloud storage).
+- **IMPORTANT — File persistence**: Your working directory is **ephemeral** —
+  files are lost between turns. When you create or modify important files
+  (code, configs, outputs), you MUST save them using `write_workspace_file`
+  so they persist. Use `read_workspace_file` and `list_workspace_files` to
+  access files saved in previous turns. If a "Files from previous turns"
+  section is present above, those files are available via `read_workspace_file`.
 - Long-running tools (create_agent, edit_agent, etc.) are handled
   asynchronously.  You will receive an immediate response; the actual result
   is delivered to the user via a background stream.
@@ -268,48 +272,28 @@ def _make_sdk_cwd(session_id: str) -> str:
 
 
 def _cleanup_sdk_tool_results(cwd: str) -> None:
-    """Remove SDK tool-result files for a specific session working directory.
+    """Remove SDK session artifacts for a specific working directory.
 
-    The SDK creates tool-result files under ~/.claude/projects/<encoded-cwd>/tool-results/.
-    We clean only the specific cwd's results to avoid race conditions between
-    concurrent sessions.
+    Cleans up:
+    - ``~/.claude/projects/<encoded-cwd>/`` — CLI session transcripts and
+      tool-result files.  Each SDK turn uses a unique cwd, so this directory
+      is safe to remove entirely.
+    - ``/tmp/copilot-<session>/`` — the ephemeral working directory.
 
-    Security: cwd MUST be created by _make_sdk_cwd() which sanitizes session_id.
+    Security: *cwd* MUST be created by ``_make_sdk_cwd()`` which sanitizes
+    the session_id.
     """
     import shutil
 
-    # Validate cwd is under the expected prefix
     normalized = os.path.normpath(cwd)
     if not normalized.startswith(_SDK_CWD_PREFIX):
         logger.warning(f"[SDK] Rejecting cleanup for path outside workspace: {cwd}")
         return
 
-    # SDK encodes the cwd path by replacing '/' with '-'
-    encoded_cwd = normalized.replace("/", "-")
+    # Clean the CLI's project directory (transcripts + tool-results).
+    cleanup_cli_project_dir(cwd)
 
-    # Construct the project directory path (known-safe home expansion)
-    claude_projects = os.path.expanduser("~/.claude/projects")
-    project_dir = os.path.join(claude_projects, encoded_cwd)
-
-    # Security check 3: Validate project_dir is under ~/.claude/projects
-    project_dir = os.path.normpath(project_dir)
-    if not project_dir.startswith(claude_projects):
-        logger.warning(
-            f"[SDK] Rejecting cleanup for escaped project path: {project_dir}"
-        )
-        return
-
-    results_dir = os.path.join(project_dir, "tool-results")
-    if os.path.isdir(results_dir):
-        for filename in os.listdir(results_dir):
-            file_path = os.path.join(results_dir, filename)
-            try:
-                if os.path.isfile(file_path):
-                    os.remove(file_path)
-            except OSError:
-                pass
-
-    # Also clean up the temp cwd directory itself
+    # Clean up the temp cwd directory itself.
     try:
         shutil.rmtree(normalized, ignore_errors=True)
     except OSError:
@@ -519,6 +503,7 @@ async def stream_chat_completion_sdk(
             def _on_stop(transcript_path: str, sdk_session_id: str) -> None:
                 captured_transcript.path = transcript_path
                 captured_transcript.sdk_session_id = sdk_session_id
+                logger.debug(f"[SDK] Stop hook: path={transcript_path!r}")
 
             security_hooks = create_security_hooks(
                 user_id,
@@ -539,9 +524,8 @@ async def stream_chat_completion_sdk(
                     )
                     if resume_file:
                         use_resume = True
-                        logger.info(
-                            f"[SDK] Using --resume with transcript "
-                            f"({len(transcript_content)} bytes)"
+                        logger.debug(
+                            f"[SDK] Using --resume ({len(transcript_content)}B)"
                         )
 
             sdk_options_kwargs: dict[str, Any] = {
@@ -597,10 +581,10 @@ async def stream_chat_completion_sdk(
                             f"Now, the user says:\n{current_message}"
                         )
 
-                logger.info(
-                    f"[SDK] Sending query ({len(session.messages)} msgs in session)"
+                logger.debug(
+                    f"[SDK] Sending query ({len(session.messages)} msgs, "
+                    f"resume={use_resume})"
                 )
-                logger.debug(f"[SDK] Query preview: {current_message[:80]!r}")
                 await client.query(query_message, session_id=session_id)
 
                 assistant_response = ChatMessage(role="assistant", content="")
@@ -681,29 +665,22 @@ async def stream_chat_completion_sdk(
                 ) and not has_appended_assistant:
                     session.messages.append(assistant_response)
 
-                # --- Capture transcript while CLI is still alive ---
-                # Must happen INSIDE async with: close() sends SIGTERM
-                # which kills the CLI before it can flush the JSONL.
-                if (
-                    config.claude_agent_use_resume
-                    and user_id
-                    and captured_transcript.available
-                ):
-                    # Give CLI time to flush JSONL writes before we read
-                    await asyncio.sleep(0.5)
+            # --- Upload transcript for next-turn --resume ---
+            # After async with the SDK task group has exited, so the Stop
+            # hook has already fired and the CLI has been SIGTERMed.  The
+            # CLI uses appendFileSync, so all writes are safely on disk.
+            if config.claude_agent_use_resume and user_id:
+                # With --resume the CLI appends to the resume file (most
+                # complete).  Otherwise use the Stop hook path.
+                if use_resume and resume_file:
+                    raw_transcript = read_transcript_file(resume_file)
+                elif captured_transcript.path:
                     raw_transcript = read_transcript_file(captured_transcript.path)
-                    if raw_transcript:
-                        try:
-                            async with asyncio.timeout(30):
-                                await _upload_transcript_bg(
-                                    user_id, session_id, raw_transcript
-                                )
-                        except asyncio.TimeoutError:
-                            logger.warning(
-                                f"[SDK] Transcript upload timed out for {session_id}"
-                            )
-                    else:
-                        logger.debug("[SDK] Stop hook fired but transcript not usable")
+                else:
+                    raw_transcript = None
+
+                if raw_transcript:
+                    await _try_upload_transcript(user_id, session_id, raw_transcript)
 
         except ImportError:
             raise RuntimeError(
@@ -735,14 +712,26 @@ async def stream_chat_completion_sdk(
             _cleanup_sdk_tool_results(sdk_cwd)
 
 
-async def _upload_transcript_bg(
+async def _try_upload_transcript(
     user_id: str, session_id: str, raw_content: str
-) -> None:
-    """Background task to strip progress entries and upload transcript."""
+) -> bool:
+    """Strip progress entries and upload transcript (with timeout).
+
+    Returns True if the upload completed without error.
+    """
     try:
-        await upload_transcript(user_id, session_id, raw_content)
+        async with asyncio.timeout(30):
+            await upload_transcript(user_id, session_id, raw_content)
+        return True
+    except asyncio.TimeoutError:
+        logger.warning(f"[SDK] Transcript upload timed out for {session_id}")
+        return False
     except Exception as e:
-        logger.error(f"[SDK] Failed to upload transcript for {session_id}: {e}")
+        logger.error(
+            f"[SDK] Failed to upload transcript for {session_id}: {e}",
+            exc_info=True,
+        )
+        return False
 
 
 async def _update_title_async(

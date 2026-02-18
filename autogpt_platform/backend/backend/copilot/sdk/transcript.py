@@ -119,23 +119,19 @@ def read_transcript_file(transcript_path: str) -> str | None:
             content = f.read()
 
         if not content.strip():
-            logger.debug(f"[Transcript] Empty file: {transcript_path}")
             return None
 
         lines = content.strip().split("\n")
         if len(lines) < 3:
             # Raw files with ≤2 lines are metadata-only
             # (queue-operation + file-history-snapshot, no conversation).
-            logger.debug(
-                f"[Transcript] Too few lines ({len(lines)}): {transcript_path}"
-            )
             return None
 
         # Quick structural validation — parse first and last lines.
         json.loads(lines[0])
         json.loads(lines[-1])
 
-        logger.info(
+        logger.debug(
             f"[Transcript] Read {len(lines)} lines, "
             f"{len(content)} bytes from {transcript_path}"
         )
@@ -158,6 +154,39 @@ def _sanitize_id(raw_id: str, max_len: int = 36) -> str:
 
 
 _SAFE_CWD_PREFIX = os.path.realpath("/tmp/copilot-")
+
+
+def _encode_cwd_for_cli(cwd: str) -> str:
+    """Encode a working directory path the same way the Claude CLI does.
+
+    The CLI replaces all non-alphanumeric characters with ``-``.
+    """
+    return re.sub(r"[^a-zA-Z0-9]", "-", os.path.realpath(cwd))
+
+
+def cleanup_cli_project_dir(sdk_cwd: str) -> None:
+    """Remove the CLI's project directory for a specific working directory.
+
+    The CLI stores session data under ``~/.claude/projects/<encoded_cwd>/``.
+    Each SDK turn uses a unique ``sdk_cwd``, so the project directory is
+    safe to remove entirely after the transcript has been uploaded.
+    """
+    import shutil
+
+    cwd_encoded = _encode_cwd_for_cli(sdk_cwd)
+    config_dir = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude")
+    projects_base = os.path.realpath(os.path.join(config_dir, "projects"))
+    project_dir = os.path.realpath(os.path.join(projects_base, cwd_encoded))
+
+    if not project_dir.startswith(projects_base + os.sep):
+        logger.warning(
+            f"[Transcript] Cleanup path escaped projects base: {project_dir}"
+        )
+        return
+
+    if os.path.isdir(project_dir):
+        shutil.rmtree(project_dir, ignore_errors=True)
+        logger.debug(f"[Transcript] Cleaned up CLI project dir: {project_dir}")
 
 
 def write_transcript_to_tempfile(
@@ -191,7 +220,7 @@ def write_transcript_to_tempfile(
         with open(jsonl_path, "w") as f:
             f.write(transcript_content)
 
-        logger.info(f"[Transcript] Wrote resume file: {jsonl_path}")
+        logger.debug(f"[Transcript] Wrote resume file: {jsonl_path}")
         return jsonl_path
 
     except OSError as e:
@@ -281,8 +310,8 @@ async def upload_transcript(user_id: str, session_id: str, content: str) -> None
     stripped = strip_progress_entries(content)
     if not validate_transcript(stripped):
         logger.warning(
-            f"[Transcript] Skipping upload — stripped content is not a valid "
-            f"transcript for session {session_id}"
+            f"[Transcript] Skipping upload — stripped content not valid "
+            f"for session {session_id}"
         )
         return
 
@@ -296,10 +325,9 @@ async def upload_transcript(user_id: str, session_id: str, content: str) -> None
     try:
         existing = await storage.retrieve(path)
         if len(existing) >= new_size:
-            logger.info(
-                f"[Transcript] Skipping upload — existing transcript "
-                f"({len(existing)}B) >= new ({new_size}B) for session "
-                f"{session_id}"
+            logger.debug(
+                f"[Transcript] Skipping upload — existing ({len(existing)}B) "
+                f">= new ({new_size}B) for session {session_id}"
             )
             return
     except (FileNotFoundError, Exception):
@@ -312,8 +340,8 @@ async def upload_transcript(user_id: str, session_id: str, content: str) -> None
         content=encoded,
     )
     logger.info(
-        f"[Transcript] Uploaded {new_size} bytes "
-        f"(stripped from {len(content)}) for session {session_id}"
+        f"[Transcript] Uploaded {new_size}B "
+        f"(stripped from {len(content)}B) for session {session_id}"
     )
 
 
@@ -330,8 +358,8 @@ async def download_transcript(user_id: str, session_id: str) -> str | None:
     try:
         data = await storage.retrieve(path)
         content = data.decode("utf-8")
-        logger.info(
-            f"[Transcript] Downloaded {len(content)} bytes for session {session_id}"
+        logger.debug(
+            f"[Transcript] Downloaded {len(content)}B for session {session_id}"
         )
         return content
     except FileNotFoundError:
