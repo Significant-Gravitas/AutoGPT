@@ -9,7 +9,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Optional
 
-from backend.data.block import (
+from backend.blocks._base import (
     Block,
     BlockCategory,
     BlockOutput,
