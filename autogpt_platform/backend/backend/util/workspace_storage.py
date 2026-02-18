@@ -93,22 +93,35 @@ class WorkspaceStorageBackend(ABC):
 
 
 class GCSWorkspaceStorage(WorkspaceStorageBackend):
-    """Google Cloud Storage implementation for workspace storage."""
+    """Google Cloud Storage implementation for workspace storage.
+
+    Event-loop-aware: each event loop gets its own aiohttp session and GCS
+    client.  This is required because aiohttp.ClientSession (and the
+    asyncio.timeout() calls it makes internally) are bound to the loop they
+    were created on.  In the copilot executor every worker thread runs its
+    own event loop, so a single shared session would fail with
+    "Timeout context manager should be used inside a task".
+    """
 
     def __init__(self, bucket_name: str):
         self.bucket_name = bucket_name
-        self._async_client: Optional[async_gcs_storage.Storage] = None
+        # Keyed by id(event_loop) → per-loop client/session
+        self._async_clients: dict[int, async_gcs_storage.Storage] = {}
+        self._sessions: dict[int, aiohttp.ClientSession] = {}
         self._sync_client: Optional[gcs_storage.Client] = None
-        self._session: Optional[aiohttp.ClientSession] = None
 
     async def _get_async_client(self) -> async_gcs_storage.Storage:
-        """Get or create async GCS client."""
-        if self._async_client is None:
-            self._session = aiohttp.ClientSession(
+        """Get or create an async GCS client for the current event loop."""
+        import asyncio
+
+        loop_id = id(asyncio.get_running_loop())
+        if loop_id not in self._async_clients:
+            session = aiohttp.ClientSession(
                 connector=aiohttp.TCPConnector(limit=100, force_close=False)
             )
-            self._async_client = async_gcs_storage.Storage(session=self._session)
-        return self._async_client
+            self._sessions[loop_id] = session
+            self._async_clients[loop_id] = async_gcs_storage.Storage(session=session)
+        return self._async_clients[loop_id]
 
     def _get_sync_client(self) -> gcs_storage.Client:
         """Get or create sync GCS client (for signed URLs)."""
@@ -118,19 +131,19 @@ class GCSWorkspaceStorage(WorkspaceStorageBackend):
 
     async def close(self) -> None:
         """Close all client connections."""
-        if self._async_client is not None:
+        for loop_id, client in list(self._async_clients.items()):
             try:
-                await self._async_client.close()
+                await client.close()
             except Exception as e:
-                logger.warning(f"Error closing GCS client: {e}")
-            self._async_client = None
+                logger.warning(f"Error closing GCS client for loop {loop_id}: {e}")
+        self._async_clients.clear()
 
-        if self._session is not None:
+        for loop_id, session in list(self._sessions.items()):
             try:
-                await self._session.close()
+                await session.close()
             except Exception as e:
-                logger.warning(f"Error closing session: {e}")
-            self._session = None
+                logger.warning(f"Error closing session for loop {loop_id}: {e}")
+        self._sessions.clear()
 
     def _build_blob_name(self, workspace_id: str, file_id: str, filename: str) -> str:
         """Build the blob path for workspace files."""
