@@ -202,8 +202,11 @@ class RunBlockTool(BaseTool):
 
             return SetupRequirementsResponse(
                 message=(
-                    f"Block '{block.name}' requires credentials that are not configured. "
-                    "Please set up the required credentials before running this block."
+                    f"Block '{block.name}' requires credentials that the user has not yet connected. "
+                    "A sign-in button has appeared in the chat for the user to connect their account. "
+                    "STOP HERE and tell the user to click the sign-in button shown above in the chat. "
+                    "Do NOT send further messages, suggest workarounds, or direct them to settings. "
+                    "Wait for the user to complete sign-in before continuing."
                 ),
                 session_id=session_id,
                 setup_info=SetupInfo(
