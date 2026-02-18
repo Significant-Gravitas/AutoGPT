@@ -4,8 +4,10 @@ Telegram action blocks for sending messages, media, and managing chat content.
 
 import base64
 import logging
+import mimetypes
 from enum import Enum
-from typing import Optional
+from pathlib import Path
+from typing import Any, Optional
 
 from backend.data.block import (
     Block,
@@ -104,7 +106,7 @@ class SendTelegramMessageBlock(Block):
         reply_to_message_id: Optional[int],
         disable_notification: bool,
     ) -> dict:
-        data: dict = {
+        data: dict[str, Any] = {
             "chat_id": chat_id,
             "text": text,
         }
@@ -132,7 +134,7 @@ class SendTelegramMessageBlock(Block):
             yield "message_id", result.get("message_id", 0)
             yield "status", "Message sent"
         except Exception as e:
-            raise ValueError(f"Failed to send message: {e}")
+            raise ValueError(f"Failed to send message: {e}") from e
 
 
 class SendTelegramPhotoBlock(Block):
@@ -194,7 +196,7 @@ class SendTelegramPhotoBlock(Block):
         parse_mode: str,
         reply_to_message_id: Optional[int],
     ) -> dict:
-        data: dict = {
+        data: dict[str, Any] = {
             "chat_id": chat_id,
             "photo": photo_url,
         }
@@ -216,11 +218,9 @@ class SendTelegramPhotoBlock(Block):
         parse_mode: str,
         reply_to_message_id: Optional[int],
     ) -> dict:
-        from pathlib import Path
-
         path = Path(file_path)
         file_bytes = path.read_bytes()
-        data: dict = {"chat_id": str(chat_id)}
+        data: dict[str, Any] = {"chat_id": str(chat_id)}
         if caption:
             data["caption"] = caption
         if parse_mode and parse_mode != "none":
@@ -228,13 +228,14 @@ class SendTelegramPhotoBlock(Block):
         if reply_to_message_id:
             data["reply_to_message_id"] = str(reply_to_message_id)
 
+        mime_type = mimetypes.guess_type(path.name)[0] or "image/jpeg"
         return await call_telegram_api_with_file(
             credentials,
             "sendPhoto",
             file_field="photo",
             file_data=file_bytes,
             filename=path.name,
-            content_type="image/jpeg",
+            content_type=mime_type,
             data=data,
         )
 
@@ -284,7 +285,7 @@ class SendTelegramPhotoBlock(Block):
             yield "message_id", result.get("message_id", 0)
             yield "status", "Photo sent"
         except Exception as e:
-            raise ValueError(f"Failed to send photo: {e}")
+            raise ValueError(f"Failed to send photo: {e}") from e
 
 
 class SendTelegramVoiceBlock(Block):
@@ -349,7 +350,7 @@ class SendTelegramVoiceBlock(Block):
         duration: Optional[int],
         reply_to_message_id: Optional[int],
     ) -> dict:
-        data: dict = {
+        data: dict[str, Any] = {
             "chat_id": chat_id,
             "voice": voice_url,
         }
@@ -371,11 +372,9 @@ class SendTelegramVoiceBlock(Block):
         duration: Optional[int],
         reply_to_message_id: Optional[int],
     ) -> dict:
-        from pathlib import Path
-
         path = Path(file_path)
         file_bytes = path.read_bytes()
-        data: dict = {"chat_id": str(chat_id)}
+        data: dict[str, Any] = {"chat_id": str(chat_id)}
         if caption:
             data["caption"] = caption
         if duration:
@@ -383,13 +382,14 @@ class SendTelegramVoiceBlock(Block):
         if reply_to_message_id:
             data["reply_to_message_id"] = str(reply_to_message_id)
 
+        mime_type = mimetypes.guess_type(path.name)[0] or "audio/ogg"
         return await call_telegram_api_with_file(
             credentials,
             "sendVoice",
             file_field="voice",
             file_data=file_bytes,
             filename=path.name,
-            content_type="audio/ogg",
+            content_type=mime_type,
             data=data,
         )
 
@@ -439,7 +439,7 @@ class SendTelegramVoiceBlock(Block):
             yield "message_id", result.get("message_id", 0)
             yield "status", "Voice sent"
         except Exception as e:
-            raise ValueError(f"Failed to send voice: {e}")
+            raise ValueError(f"Failed to send voice: {e}") from e
 
 
 class ReplyToTelegramMessageBlock(Block):
@@ -489,7 +489,7 @@ class ReplyToTelegramMessageBlock(Block):
         text: str,
         parse_mode: str,
     ) -> dict:
-        data: dict = {
+        data: dict[str, Any] = {
             "chat_id": chat_id,
             "text": text,
             "reply_to_message_id": reply_to_message_id,
@@ -513,7 +513,7 @@ class ReplyToTelegramMessageBlock(Block):
             yield "message_id", result.get("message_id", 0)
             yield "status", "Reply sent"
         except Exception as e:
-            raise ValueError(f"Failed to send reply: {e}")
+            raise ValueError(f"Failed to send reply: {e}") from e
 
 
 class GetTelegramFileBlock(Block):
@@ -590,7 +590,7 @@ class GetTelegramFileBlock(Block):
             yield "file", file_result
             yield "status", "File downloaded"
         except Exception as e:
-            raise ValueError(f"Failed to download file: {e}")
+            raise ValueError(f"Failed to download file: {e}") from e
 
 
 class DeleteTelegramMessageBlock(Block):
@@ -649,7 +649,7 @@ class DeleteTelegramMessageBlock(Block):
             )
             yield "status", "Message deleted"
         except Exception as e:
-            raise ValueError(f"Failed to delete message: {e}")
+            raise ValueError(f"Failed to delete message: {e}") from e
 
 
 class EditTelegramMessageBlock(Block):
@@ -701,7 +701,7 @@ class EditTelegramMessageBlock(Block):
         text: str,
         parse_mode: str,
     ) -> dict:
-        data: dict = {
+        data: dict[str, Any] = {
             "chat_id": chat_id,
             "message_id": message_id,
             "text": text,
@@ -725,7 +725,7 @@ class EditTelegramMessageBlock(Block):
             yield "message_id", result.get("message_id", 0)
             yield "status", "Message edited"
         except Exception as e:
-            raise ValueError(f"Failed to edit message: {e}")
+            raise ValueError(f"Failed to edit message: {e}") from e
 
 
 class SendTelegramAudioBlock(Block):
@@ -801,7 +801,7 @@ class SendTelegramAudioBlock(Block):
         duration: Optional[int],
         reply_to_message_id: Optional[int],
     ) -> dict:
-        data: dict = {
+        data: dict[str, Any] = {
             "chat_id": chat_id,
             "audio": audio_url,
         }
@@ -829,11 +829,9 @@ class SendTelegramAudioBlock(Block):
         duration: Optional[int],
         reply_to_message_id: Optional[int],
     ) -> dict:
-        from pathlib import Path
-
         path = Path(file_path)
         file_bytes = path.read_bytes()
-        data: dict = {"chat_id": str(chat_id)}
+        data: dict[str, Any] = {"chat_id": str(chat_id)}
         if caption:
             data["caption"] = caption
         if title:
@@ -845,13 +843,14 @@ class SendTelegramAudioBlock(Block):
         if reply_to_message_id:
             data["reply_to_message_id"] = str(reply_to_message_id)
 
+        mime_type = mimetypes.guess_type(path.name)[0] or "audio/mpeg"
         return await call_telegram_api_with_file(
             credentials,
             "sendAudio",
             file_field="audio",
             file_data=file_bytes,
             filename=path.name,
-            content_type="audio/mpeg",
+            content_type=mime_type,
             data=data,
         )
 
@@ -902,7 +901,7 @@ class SendTelegramAudioBlock(Block):
             yield "message_id", result.get("message_id", 0)
             yield "status", "Audio sent"
         except Exception as e:
-            raise ValueError(f"Failed to send audio: {e}")
+            raise ValueError(f"Failed to send audio: {e}") from e
 
 
 class SendTelegramDocumentBlock(Block):
@@ -972,7 +971,7 @@ class SendTelegramDocumentBlock(Block):
         parse_mode: str,
         reply_to_message_id: Optional[int],
     ) -> dict:
-        data: dict = {
+        data: dict[str, Any] = {
             "chat_id": chat_id,
             "document": document_url,
         }
@@ -995,11 +994,9 @@ class SendTelegramDocumentBlock(Block):
         parse_mode: str,
         reply_to_message_id: Optional[int],
     ) -> dict:
-        from pathlib import Path
-
         path = Path(file_path)
         file_bytes = path.read_bytes()
-        data: dict = {"chat_id": str(chat_id)}
+        data: dict[str, Any] = {"chat_id": str(chat_id)}
         if caption:
             data["caption"] = caption
         if parse_mode and parse_mode != "none":
@@ -1007,13 +1004,14 @@ class SendTelegramDocumentBlock(Block):
         if reply_to_message_id:
             data["reply_to_message_id"] = str(reply_to_message_id)
 
+        mime_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
         return await call_telegram_api_with_file(
             credentials,
             "sendDocument",
             file_field="document",
             file_data=file_bytes,
             filename=display_filename or path.name,
-            content_type="application/octet-stream",
+            content_type=mime_type,
             data=data,
         )
 
@@ -1061,7 +1059,7 @@ class SendTelegramDocumentBlock(Block):
             yield "message_id", result.get("message_id", 0)
             yield "status", "Document sent"
         except Exception as e:
-            raise ValueError(f"Failed to send document: {e}")
+            raise ValueError(f"Failed to send document: {e}") from e
 
 
 class SendTelegramVideoBlock(Block):
@@ -1129,7 +1127,7 @@ class SendTelegramVideoBlock(Block):
         duration: Optional[int],
         reply_to_message_id: Optional[int],
     ) -> dict:
-        data: dict = {
+        data: dict[str, Any] = {
             "chat_id": chat_id,
             "video": video_url,
         }
@@ -1154,11 +1152,9 @@ class SendTelegramVideoBlock(Block):
         duration: Optional[int],
         reply_to_message_id: Optional[int],
     ) -> dict:
-        from pathlib import Path
-
         path = Path(file_path)
         file_bytes = path.read_bytes()
-        data: dict = {"chat_id": str(chat_id)}
+        data: dict[str, Any] = {"chat_id": str(chat_id)}
         if caption:
             data["caption"] = caption
         if parse_mode and parse_mode != "none":
@@ -1168,13 +1164,14 @@ class SendTelegramVideoBlock(Block):
         if reply_to_message_id:
             data["reply_to_message_id"] = str(reply_to_message_id)
 
+        mime_type = mimetypes.guess_type(path.name)[0] or "video/mp4"
         return await call_telegram_api_with_file(
             credentials,
             "sendVideo",
             file_field="video",
             file_data=file_bytes,
             filename=path.name,
-            content_type="video/mp4",
+            content_type=mime_type,
             data=data,
         )
 
@@ -1223,4 +1220,4 @@ class SendTelegramVideoBlock(Block):
             yield "message_id", result.get("message_id", 0)
             yield "status", "Video sent"
         except Exception as e:
-            raise ValueError(f"Failed to send video: {e}")
+            raise ValueError(f"Failed to send video: {e}") from e

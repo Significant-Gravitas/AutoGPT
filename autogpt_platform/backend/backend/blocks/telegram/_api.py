@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 TELEGRAM_API_BASE = "https://api.telegram.org"
 
 
-class TelegramAPIException(Exception):
+class TelegramAPIException(ValueError):
     """Exception raised for Telegram API errors."""
 
     def __init__(self, message: str, error_code: int = 0):

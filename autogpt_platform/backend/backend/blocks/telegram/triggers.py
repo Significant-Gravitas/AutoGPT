@@ -191,7 +191,7 @@ class TelegramMessageTriggerBlock(TelegramTriggerBase, Block):
         elif "photo" in message:
             # Get the largest photo (last in array)
             photos = message.get("photo", [])
-            photo_fid = photos[-1]["file_id"] if photos else ""
+            photo_fid = photos[-1].get("file_id", "") if photos else ""
             yield "event", "photo"
             yield "text", ""
             yield "photo_file_id", photo_fid

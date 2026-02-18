@@ -4,6 +4,7 @@ Telegram Bot API Webhooks Manager.
 Handles webhook registration and validation for Telegram bots.
 """
 
+import hmac
 import logging
 
 from fastapi import HTTPException, Request
@@ -23,7 +24,7 @@ class TelegramWebhookType(StrEnum):
     BOT = "bot"
 
 
-class TelegramWebhooksManager(BaseWebhooksManager[TelegramWebhookType]):
+class TelegramWebhooksManager(BaseWebhooksManager):
     """
     Manages Telegram bot webhooks.
 
@@ -54,7 +55,7 @@ class TelegramWebhooksManager(BaseWebhooksManager[TelegramWebhookType]):
         """
         # Verify secret token header
         secret_header = request.headers.get("X-Telegram-Bot-Api-Secret-Token")
-        if not secret_header or secret_header != webhook.secret:
+        if not secret_header or not hmac.compare_digest(secret_header, webhook.secret):
             raise HTTPException(
                 status_code=403,
                 detail="Invalid or missing X-Telegram-Bot-Api-Secret-Token",
