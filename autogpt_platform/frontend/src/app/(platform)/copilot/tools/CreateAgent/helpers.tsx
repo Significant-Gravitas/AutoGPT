@@ -148,7 +148,7 @@ export function getAnimationText(part: {
       if (isOperationPendingOutput(output)) return "Agent creation in progress";
       if (isOperationInProgressOutput(output))
         return "Agent creation already in progress";
-      if (isAgentSavedOutput(output)) return `Saved "${output.agent_name}"`;
+      if (isAgentSavedOutput(output)) return `Saved ${output.agent_name}`;
       if (isAgentPreviewOutput(output)) return `Preview "${output.agent_name}"`;
       if (isClarificationNeededOutput(output)) return "Needs clarification";
       if (isSuggestedGoalOutput(output)) return "Goal needs refinement";

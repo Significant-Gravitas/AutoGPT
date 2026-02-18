@@ -211,14 +211,21 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The port for execution manager daemon to run on",
     )
 
+    num_copilot_workers: int = Field(
+        default=5,
+        ge=1,
+        le=100,
+        description="Number of concurrent CoPilot executor workers",
+    )
+
+    copilot_executor_port: int = Field(
+        default=8008,
+        description="The port for CoPilot executor daemon to run on",
+    )
+
     execution_scheduler_port: int = Field(
         default=8003,
         description="The port for execution scheduler daemon to run on",
-    )
-
-    agent_server_port: int = Field(
-        default=8004,
-        description="The port for agent server daemon to run on",
     )
 
     database_api_port: int = Field(
@@ -662,7 +669,7 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     mem0_api_key: str = Field(default="", description="Mem0 API key")
     elevenlabs_api_key: str = Field(default="", description="ElevenLabs API key")
 
-    linear_api_key: str = Field(
+    copilot_linear_api_key: str = Field(
         default="", description="Linear API key for system-level operations"
     )
     linear_feature_request_project_id: str = Field(
