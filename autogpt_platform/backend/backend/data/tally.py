@@ -81,13 +81,12 @@ def _make_tally_client(api_key: str) -> Requests:
 
 
 async def _fetch_all_submissions(
+    client: Requests,
     form_id: str,
     start_date: Optional[str] = None,
     max_pages: int = _MAX_PAGES,
 ) -> tuple[list[dict], list[dict]]:
     """Paginate through all Tally submissions. Returns (questions, submissions)."""
-    settings = Settings()
-    client = _make_tally_client(settings.secrets.tally_api_key)
 
     questions: list[dict] = []
     all_submissions: list[dict] = []
@@ -195,6 +194,9 @@ async def _refresh_cache(form_id: str) -> tuple[dict, list]:
 
     Returns (email_index, questions).
     """
+    settings = Settings()
+    client = _make_tally_client(settings.secrets.tally_api_key)
+
     redis = await get_redis_async()
     last_fetch_key = _LAST_FETCH_KEY.format(form_id=form_id)
     index_key = _EMAIL_INDEX_KEY.format(form_id=form_id)
@@ -209,13 +211,13 @@ async def _refresh_cache(form_id: str) -> tuple[dict, list]:
         if raw_existing is None:
             # Index expired but last_fetch still present — fall back to full fetch
             logger.info("Tally: last_fetch present but index missing, doing full fetch")
-            questions, submissions = await _fetch_all_submissions(form_id)
+            questions, submissions = await _fetch_all_submissions(client, form_id)
             email_index = _build_email_index(submissions, questions)
         else:
             # Incremental fetch: only get new submissions since last fetch
             logger.info(f"Tally incremental fetch since {last_fetch}")
             questions, new_submissions = await _fetch_all_submissions(
-                form_id, start_date=last_fetch
+                client, form_id, start_date=last_fetch
             )
 
             existing_index: dict[str, dict] = json.loads(raw_existing)
@@ -231,7 +233,7 @@ async def _refresh_cache(form_id: str) -> tuple[dict, list]:
     else:
         # Full initial fetch
         logger.info("Tally full initial fetch")
-        questions, submissions = await _fetch_all_submissions(form_id)
+        questions, submissions = await _fetch_all_submissions(client, form_id)
         email_index = _build_email_index(submissions, questions)
 
     # Store in Redis

@@ -45,7 +45,7 @@ async def setup_test_data():
         "sub": f"test-user-{uuid.uuid4()}",
         "email": f"test-{uuid.uuid4()}@example.com",
     }
-    user, _ = await get_or_create_user(user_data)
+    user = await get_or_create_user(user_data)
 
     # 1b. Create a profile with username for the user (required for store agent lookup)
     username = user.email.split("@")[0]
@@ -168,7 +168,7 @@ async def setup_llm_test_data():
         "sub": f"test-user-{uuid.uuid4()}",
         "email": f"test-{uuid.uuid4()}@example.com",
     }
-    user, _ = await get_or_create_user(user_data)
+    user = await get_or_create_user(user_data)
 
     # 1b. Create a profile with username for the user (required for store agent lookup)
     username = user.email.split("@")[0]
@@ -328,7 +328,7 @@ async def setup_firecrawl_test_data():
         "sub": f"test-user-{uuid.uuid4()}",
         "email": f"test-{uuid.uuid4()}@example.com",
     }
-    user, _ = await get_or_create_user(user_data)
+    user = await get_or_create_user(user_data)
 
     # 1b. Create a profile with username for the user (required for store agent lookup)
     username = user.email.split("@")[0]

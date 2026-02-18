@@ -151,7 +151,7 @@ class TestDataCreator:
                 }
 
                 # Use the API function to create user in local database
-                user, _ = await get_or_create_user(user_data)
+                user = await get_or_create_user(user_data)
                 users.append(user.model_dump())
 
             except Exception as e:
