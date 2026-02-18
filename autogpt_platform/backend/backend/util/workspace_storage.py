@@ -113,8 +113,6 @@ class GCSWorkspaceStorage(WorkspaceStorageBackend):
 
     async def _get_async_client(self) -> async_gcs_storage.Storage:
         """Get or create an async GCS client for the current event loop."""
-        import asyncio
-
         loop_id = id(asyncio.get_running_loop())
         if loop_id not in self._async_clients:
             session = aiohttp.ClientSession(
@@ -131,8 +129,20 @@ class GCSWorkspaceStorage(WorkspaceStorageBackend):
         return self._sync_client
 
     async def close(self) -> None:
-        """Close all client connections."""
+        """Close all client connections.
+
+        Sessions are event-loop-bound.  During normal shutdown the executor
+        manager may call this from a *temporary* event loop that doesn't match
+        any worker loop.  We can only ``await`` sessions that belong to the
+        current loop; for the rest we log a debug message and discard them —
+        they will be garbage-collected when the process exits.
+        """
+        current_loop_id = id(asyncio.get_running_loop())
+
         for loop_id, client in list(self._async_clients.items()):
+            if loop_id != current_loop_id:
+                logger.debug("Skipping GCS client close for foreign loop %s", loop_id)
+                continue
             try:
                 await client.close()
             except Exception as e:
@@ -140,6 +150,9 @@ class GCSWorkspaceStorage(WorkspaceStorageBackend):
         self._async_clients.clear()
 
         for loop_id, session in list(self._sessions.items()):
+            if loop_id != current_loop_id:
+                logger.debug("Skipping session close for foreign loop %s", loop_id)
+                continue
             try:
                 await session.close()
             except Exception as e:
