@@ -37,7 +37,7 @@ services:
       context: ../
       dockerfile: autogpt_platform/backend/Dockerfile
       target: migrate
-    command: ["sh", "-c", "poetry run prisma generate && poetry run gen-prisma-stub && poetry run prisma migrate deploy"]
+    command: ["sh", "-c", "prisma generate && python3 gen_prisma_types_stub.py && prisma migrate deploy"]
     develop:
       watch:
         - path: ./
@@ -56,7 +56,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "poetry run prisma migrate status | grep -q 'No pending migrations' || exit 1",
+          "prisma migrate status | grep -q 'No pending migrations' || exit 1",
         ]
       interval: 30s
       timeout: 10s
@@ -75,7 +75,7 @@ services:
       timeout: 5s
       retries: 5
   rabbitmq:
-    image: rabbitmq:management
+    image: rabbitmq:4.1.4
     container_name: rabbitmq
     healthcheck:
       test: rabbitmq-diagnostics -q ping
@@ -88,14 +88,13 @@ services:
       <<: *backend-env
     ports:
       - "5672:5672"
-      - "15672:15672"
 
   rest_server:
     build:
       context: ../
       dockerfile: autogpt_platform/backend/Dockerfile
       target: server
-    command: ["python", "-m", "backend.rest"]
+    command: ["rest"] # points to entry in [tool.poetry.scripts] in pyproject.toml
     develop:
       watch:
         - path: ./
@@ -128,7 +127,7 @@ services:
       context: ../
       dockerfile: autogpt_platform/backend/Dockerfile
       target: server
-    command: ["python", "-m", "backend.exec"]
+    command: ["executor"] # points to entry in [tool.poetry.scripts] in pyproject.toml
     develop:
       watch:
         - path: ./
@@ -158,12 +157,47 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  copilot_executor:
+    build:
+      context: ../
+      dockerfile: autogpt_platform/backend/Dockerfile
+      target: server
+    command: ["python", "-m", "backend.copilot.executor"]
+    develop:
+      watch:
+        - path: ./
+          target: autogpt_platform/backend/
+          action: rebuild
+    depends_on:
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      database_manager:
+        condition: service_started
+    <<: *backend-env-files
+    environment:
+      <<: *backend-env
+    ports:
+      - "8008:8008"
+    networks:
+      - app-network
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   websocket_server:
     build:
       context: ../
       dockerfile: autogpt_platform/backend/Dockerfile
       target: server
-    command: ["python", "-m", "backend.ws"]
+    command: ["ws"] # points to entry in [tool.poetry.scripts] in pyproject.toml
     develop:
       watch:
         - path: ./
@@ -196,7 +230,7 @@ services:
       context: ../
       dockerfile: autogpt_platform/backend/Dockerfile
       target: server
-    command: ["python", "-m", "backend.db"]
+    command: ["db"] # points to entry in [tool.poetry.scripts] in pyproject.toml
     develop:
       watch:
         - path: ./
@@ -225,7 +259,7 @@ services:
       context: ../
       dockerfile: autogpt_platform/backend/Dockerfile
       target: server
-    command: ["python", "-m", "backend.scheduler"]
+    command: ["scheduler"] # points to entry in [tool.poetry.scripts] in pyproject.toml
     develop:
       watch:
         - path: ./
@@ -273,7 +307,7 @@ services:
       context: ../
       dockerfile: autogpt_platform/backend/Dockerfile
       target: server
-    command: ["python", "-m", "backend.notification"]
+    command: ["notification"] # points to entry in [tool.poetry.scripts] in pyproject.toml
     develop:
       watch:
         - path: ./

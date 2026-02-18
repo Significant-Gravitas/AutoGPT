@@ -8,6 +8,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
+import pydantic
 from prisma.models import UserWorkspace, UserWorkspaceFile
 from prisma.types import UserWorkspaceFileWhereInput
 
@@ -16,7 +17,61 @@ from backend.util.json import SafeJson
 logger = logging.getLogger(__name__)
 
 
-async def get_or_create_workspace(user_id: str) -> UserWorkspace:
+class Workspace(pydantic.BaseModel):
+    """Pydantic model for UserWorkspace, safe for RPC transport."""
+
+    id: str
+    user_id: str
+    created_at: datetime
+    updated_at: datetime
+
+    @staticmethod
+    def from_db(workspace: "UserWorkspace") -> "Workspace":
+        return Workspace(
+            id=workspace.id,
+            user_id=workspace.userId,
+            created_at=workspace.createdAt,
+            updated_at=workspace.updatedAt,
+        )
+
+
+class WorkspaceFile(pydantic.BaseModel):
+    """Pydantic model for UserWorkspaceFile, safe for RPC transport."""
+
+    id: str
+    workspace_id: str
+    created_at: datetime
+    updated_at: datetime
+    name: str
+    path: str
+    storage_path: str
+    mime_type: str
+    size_bytes: int
+    checksum: Optional[str] = None
+    is_deleted: bool = False
+    deleted_at: Optional[datetime] = None
+    metadata: dict = pydantic.Field(default_factory=dict)
+
+    @staticmethod
+    def from_db(file: "UserWorkspaceFile") -> "WorkspaceFile":
+        return WorkspaceFile(
+            id=file.id,
+            workspace_id=file.workspaceId,
+            created_at=file.createdAt,
+            updated_at=file.updatedAt,
+            name=file.name,
+            path=file.path,
+            storage_path=file.storagePath,
+            mime_type=file.mimeType,
+            size_bytes=file.sizeBytes,
+            checksum=file.checksum,
+            is_deleted=file.isDeleted,
+            deleted_at=file.deletedAt,
+            metadata=file.metadata if isinstance(file.metadata, dict) else {},
+        )
+
+
+async def get_or_create_workspace(user_id: str) -> Workspace:
     """
     Get user's workspace, creating one if it doesn't exist.
 
@@ -27,7 +82,7 @@ async def get_or_create_workspace(user_id: str) -> UserWorkspace:
         user_id: The user's ID
 
     Returns:
-        UserWorkspace instance
+        Workspace instance
     """
     workspace = await UserWorkspace.prisma().upsert(
         where={"userId": user_id},
@@ -37,10 +92,10 @@ async def get_or_create_workspace(user_id: str) -> UserWorkspace:
         },
     )
 
-    return workspace
+    return Workspace.from_db(workspace)
 
 
-async def get_workspace(user_id: str) -> Optional[UserWorkspace]:
+async def get_workspace(user_id: str) -> Optional[Workspace]:
     """
     Get user's workspace if it exists.
 
@@ -48,9 +103,10 @@ async def get_workspace(user_id: str) -> Optional[UserWorkspace]:
         user_id: The user's ID
 
     Returns:
-        UserWorkspace instance or None
+        Workspace instance or None
     """
-    return await UserWorkspace.prisma().find_unique(where={"userId": user_id})
+    workspace = await UserWorkspace.prisma().find_unique(where={"userId": user_id})
+    return Workspace.from_db(workspace) if workspace else None
 
 
 async def create_workspace_file(
@@ -63,7 +119,7 @@ async def create_workspace_file(
     size_bytes: int,
     checksum: Optional[str] = None,
     metadata: Optional[dict] = None,
-) -> UserWorkspaceFile:
+) -> WorkspaceFile:
     """
     Create a new workspace file record.
 
@@ -79,7 +135,7 @@ async def create_workspace_file(
         metadata: Optional additional metadata
 
     Returns:
-        Created UserWorkspaceFile instance
+        Created WorkspaceFile instance
     """
     # Normalize path to start with /
     if not path.startswith("/"):
@@ -103,34 +159,37 @@ async def create_workspace_file(
         f"Created workspace file {file.id} at path {path} "
         f"in workspace {workspace_id}"
     )
-    return file
+    return WorkspaceFile.from_db(file)
 
 
 async def get_workspace_file(
     file_id: str,
-    workspace_id: Optional[str] = None,
-) -> Optional[UserWorkspaceFile]:
+    workspace_id: str,
+) -> Optional[WorkspaceFile]:
     """
     Get a workspace file by ID.
 
     Args:
         file_id: The file ID
-        workspace_id: Optional workspace ID for validation
+        workspace_id: Workspace ID for scoping (required)
 
     Returns:
-        UserWorkspaceFile instance or None
+        WorkspaceFile instance or None
     """
-    where_clause: dict = {"id": file_id, "isDeleted": False}
-    if workspace_id:
-        where_clause["workspaceId"] = workspace_id
+    where_clause: UserWorkspaceFileWhereInput = {
+        "id": file_id,
+        "isDeleted": False,
+        "workspaceId": workspace_id,
+    }
 
-    return await UserWorkspaceFile.prisma().find_first(where=where_clause)
+    file = await UserWorkspaceFile.prisma().find_first(where=where_clause)
+    return WorkspaceFile.from_db(file) if file else None
 
 
 async def get_workspace_file_by_path(
     workspace_id: str,
     path: str,
-) -> Optional[UserWorkspaceFile]:
+) -> Optional[WorkspaceFile]:
     """
     Get a workspace file by its virtual path.
 
@@ -139,19 +198,20 @@ async def get_workspace_file_by_path(
         path: Virtual path
 
     Returns:
-        UserWorkspaceFile instance or None
+        WorkspaceFile instance or None
     """
     # Normalize path
     if not path.startswith("/"):
         path = f"/{path}"
 
-    return await UserWorkspaceFile.prisma().find_first(
+    file = await UserWorkspaceFile.prisma().find_first(
         where={
             "workspaceId": workspace_id,
             "path": path,
             "isDeleted": False,
         }
     )
+    return WorkspaceFile.from_db(file) if file else None
 
 
 async def list_workspace_files(
@@ -160,7 +220,7 @@ async def list_workspace_files(
     include_deleted: bool = False,
     limit: Optional[int] = None,
     offset: int = 0,
-) -> list[UserWorkspaceFile]:
+) -> list[WorkspaceFile]:
     """
     List files in a workspace.
 
@@ -172,7 +232,7 @@ async def list_workspace_files(
         offset: Number of files to skip
 
     Returns:
-        List of UserWorkspaceFile instances
+        List of WorkspaceFile instances
     """
     where_clause: UserWorkspaceFileWhereInput = {"workspaceId": workspace_id}
 
@@ -185,12 +245,13 @@ async def list_workspace_files(
             path_prefix = f"/{path_prefix}"
         where_clause["path"] = {"startswith": path_prefix}
 
-    return await UserWorkspaceFile.prisma().find_many(
+    files = await UserWorkspaceFile.prisma().find_many(
         where=where_clause,
         order={"createdAt": "desc"},
         take=limit,
         skip=offset,
     )
+    return [WorkspaceFile.from_db(f) for f in files]
 
 
 async def count_workspace_files(
@@ -209,7 +270,7 @@ async def count_workspace_files(
     Returns:
         Number of files
     """
-    where_clause: dict = {"workspaceId": workspace_id}
+    where_clause: UserWorkspaceFileWhereInput = {"workspaceId": workspace_id}
     if not include_deleted:
         where_clause["isDeleted"] = False
 
@@ -224,8 +285,8 @@ async def count_workspace_files(
 
 async def soft_delete_workspace_file(
     file_id: str,
-    workspace_id: Optional[str] = None,
-) -> Optional[UserWorkspaceFile]:
+    workspace_id: str,
+) -> Optional[WorkspaceFile]:
     """
     Soft-delete a workspace file.
 
@@ -234,10 +295,10 @@ async def soft_delete_workspace_file(
 
     Args:
         file_id: The file ID
-        workspace_id: Optional workspace ID for validation
+        workspace_id: Workspace ID for scoping (required)
 
     Returns:
-        Updated UserWorkspaceFile instance or None if not found
+        Updated WorkspaceFile instance or None if not found
     """
     # First verify the file exists and belongs to workspace
     file = await get_workspace_file(file_id, workspace_id)
@@ -259,7 +320,7 @@ async def soft_delete_workspace_file(
     )
 
     logger.info(f"Soft-deleted workspace file {file_id}")
-    return updated
+    return WorkspaceFile.from_db(updated) if updated else None
 
 
 async def get_workspace_total_size(workspace_id: str) -> int:
@@ -273,4 +334,4 @@ async def get_workspace_total_size(workspace_id: str) -> int:
         Total size in bytes
     """
     files = await list_workspace_files(workspace_id)
-    return sum(file.sizeBytes for file in files)
+    return sum(file.size_bytes for file in files)
