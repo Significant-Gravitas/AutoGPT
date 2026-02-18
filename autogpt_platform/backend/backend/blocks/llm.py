@@ -116,6 +116,7 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     CLAUDE_4_5_SONNET = "claude-sonnet-4-5-20250929"
     CLAUDE_4_5_HAIKU = "claude-haiku-4-5-20251001"
     CLAUDE_4_6_OPUS = "claude-opus-4-6"
+    CLAUDE_4_6_SONNET = "claude-sonnet-4-6"
     CLAUDE_3_HAIKU = "claude-3-haiku-20240307"
     # AI/ML API models
     AIML_API_QWEN2_5_72B = "Qwen/Qwen2.5-72B-Instruct-Turbo"
@@ -274,6 +275,9 @@ MODEL_METADATA = {
     LlmModel.CLAUDE_4_6_OPUS: ModelMetadata(
         "anthropic", 200000, 128000, "Claude Opus 4.6", "Anthropic", "Anthropic", 3
     ),  # claude-opus-4-6
+    LlmModel.CLAUDE_4_6_SONNET: ModelMetadata(
+        "anthropic", 200000, 64000, "Claude Sonnet 4.6", "Anthropic", "Anthropic", 3
+    ),  # claude-sonnet-4-6
     LlmModel.CLAUDE_4_5_OPUS: ModelMetadata(
         "anthropic", 200000, 64000, "Claude Opus 4.5", "Anthropic", "Anthropic", 3
     ),  # claude-opus-4-5-20251101
@@ -1371,15 +1375,13 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
             else "Please provide a"
         ) + f" valid JSON {outer_output_type} that matches the expected format."
 
-        return trim_prompt(
-            f"""
+        return trim_prompt(f"""
             |{complaint}
             |
             |{indented_parse_error}
             |
             |{instruction}
-        """
-        )
+        """)
 
     def get_json_from_response(
         self, response_text: str, *, pure_json_mode: bool, output_tag_start: str
@@ -2016,8 +2018,7 @@ class AIListGeneratorBlock(AIBlockBase):
         for item in parsed_list:
             yield "list_item", item
 
-    SYSTEM_PROMPT = trim_prompt(
-        """
+    SYSTEM_PROMPT = trim_prompt("""
         |You are a JSON array generator. Your task is to generate a JSON array of string values based on the user's prompt.
         |
         |The 'list' field should contain a JSON array with the generated string values.
@@ -2027,5 +2028,4 @@ class AIListGeneratorBlock(AIBlockBase):
         |• ["string1", "string2", "string3"]
         |
         |Ensure you provide a proper JSON array with only string values in the 'list' field.
-        """
-    )
+        """)
