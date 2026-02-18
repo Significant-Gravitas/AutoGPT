@@ -515,17 +515,20 @@ async def stream_chat_completion_sdk(
             # --- Resume strategy: download transcript from bucket ---
             resume_file: str | None = None
             use_resume = False
+            transcript_msg_count = 0  # watermark: session.messages length at upload
 
             if config.claude_agent_use_resume and user_id and len(session.messages) > 1:
-                transcript_content = await download_transcript(user_id, session_id)
-                if transcript_content and validate_transcript(transcript_content):
+                dl = await download_transcript(user_id, session_id)
+                if dl and validate_transcript(dl.content):
                     resume_file = write_transcript_to_tempfile(
-                        transcript_content, session_id, sdk_cwd
+                        dl.content, session_id, sdk_cwd
                     )
                     if resume_file:
                         use_resume = True
+                        transcript_msg_count = dl.message_count
                         logger.debug(
-                            f"[SDK] Using --resume ({len(transcript_content)}B)"
+                            f"[SDK] Using --resume ({len(dl.content)}B, "
+                            f"msg_count={transcript_msg_count})"
                         )
 
             sdk_options_kwargs: dict[str, Any] = {
@@ -566,11 +569,35 @@ async def stream_chat_completion_sdk(
                 # Build query: with --resume the CLI already has full
                 # context, so we only send the new message.  Without
                 # resume, compress history into a context prefix.
+                #
+                # Hybrid mode: if the transcript is stale (upload missed
+                # some turns), compress only the gap and prepend it so
+                # the agent has transcript context + missed turns.
                 query_message = current_message
-                if not use_resume and len(session.messages) > 1:
+                current_msg_count = len(session.messages)
+
+                if use_resume and transcript_msg_count > 0:
+                    # Transcript covers messages[0..M-1].  Current session
+                    # has N messages (last one is the new user msg).
+                    # Gap = messages[M .. N-2] (everything between upload
+                    # and the current turn).
+                    if transcript_msg_count < current_msg_count - 1:
+                        gap = session.messages[transcript_msg_count:-1]
+                        gap_context = _format_conversation_context(gap)
+                        if gap_context:
+                            logger.info(
+                                f"[SDK] Transcript stale: covers {transcript_msg_count} "
+                                f"of {current_msg_count} messages, compressing "
+                                f"{len(gap)} missed messages"
+                            )
+                            query_message = (
+                                f"{gap_context}\n\n"
+                                f"Now, the user says:\n{current_message}"
+                            )
+                elif not use_resume and current_msg_count > 1:
                     logger.warning(
                         f"[SDK] Using compression fallback for session "
-                        f"{session_id} ({len(session.messages)} messages) — "
+                        f"{session_id} ({current_msg_count} messages) — "
                         f"no transcript available for --resume"
                     )
                     compressed = await _compress_conversation_history(session)
@@ -680,7 +707,12 @@ async def stream_chat_completion_sdk(
                     raw_transcript = None
 
                 if raw_transcript:
-                    await _try_upload_transcript(user_id, session_id, raw_transcript)
+                    await _try_upload_transcript(
+                        user_id,
+                        session_id,
+                        raw_transcript,
+                        message_count=len(session.messages),
+                    )
 
         except ImportError:
             raise RuntimeError(
@@ -713,7 +745,10 @@ async def stream_chat_completion_sdk(
 
 
 async def _try_upload_transcript(
-    user_id: str, session_id: str, raw_content: str
+    user_id: str,
+    session_id: str,
+    raw_content: str,
+    message_count: int = 0,
 ) -> bool:
     """Strip progress entries and upload transcript (with timeout).
 
@@ -721,7 +756,9 @@ async def _try_upload_transcript(
     """
     try:
         async with asyncio.timeout(30):
-            await upload_transcript(user_id, session_id, raw_content)
+            await upload_transcript(
+                user_id, session_id, raw_content, message_count=message_count
+            )
         return True
     except asyncio.TimeoutError:
         logger.warning(f"[SDK] Transcript upload timed out for {session_id}")

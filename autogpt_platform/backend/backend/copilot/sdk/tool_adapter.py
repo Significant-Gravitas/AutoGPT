@@ -395,7 +395,12 @@ _SDK_BUILTIN_TOOLS = [
 #   network isolation (unshare --net) instead.
 # WebFetch: SSRF risk — can reach internal network (localhost, 10.x, etc.).
 #   Agent uses the SSRF-protected mcp__copilot__web_fetch tool instead.
-SDK_DISALLOWED_TOOLS = ["Bash", "WebFetch"]
+# AskUserQuestion: interactive CLI tool — no terminal in copilot context.
+SDK_DISALLOWED_TOOLS = [
+    "Bash",
+    "WebFetch",
+    "AskUserQuestion",
+]
 
 # Tools that are blocked entirely in security hooks (defence-in-depth).
 # Includes SDK_DISALLOWED_TOOLS plus common aliases/synonyms.

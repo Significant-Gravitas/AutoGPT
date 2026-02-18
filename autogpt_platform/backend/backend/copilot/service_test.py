@@ -143,7 +143,7 @@ async def test_sdk_resume_multi_turn(setup_test_user, test_user_id):
         "Transcript was not uploaded to bucket after turn 1 — "
         "Stop hook may not have fired or transcript was too small"
     )
-    logger.info(f"Turn 1 transcript uploaded: {len(transcript)} bytes")
+    logger.info(f"Turn 1 transcript uploaded: {len(transcript.content)} bytes")
 
     # Reload session for turn 2
     session = await get_chat_session(session.session_id, test_user_id)

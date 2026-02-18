@@ -80,6 +80,12 @@ export function useCopilotPage() {
                 },
               };
             },
+            // Resume: GET goes to the same URL as POST (backend uses
+            // method to distinguish).  Override the default formula which
+            // would append /{chatId}/stream to the existing path.
+            prepareReconnectToStreamRequest: () => ({
+              api: `/api/chat/sessions/${sessionId}/stream`,
+            }),
           })
         : null,
     [sessionId],
@@ -88,6 +94,7 @@ export function useCopilotPage() {
   const { messages, sendMessage, stop, status, error, setMessages } = useChat({
     id: sessionId ?? undefined,
     transport: transport ?? undefined,
+    resume: true,
   });
 
   // Abort the stream if the backend doesn't start sending data within 12s.

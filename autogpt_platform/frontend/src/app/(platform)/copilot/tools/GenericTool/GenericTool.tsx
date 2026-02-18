@@ -342,6 +342,20 @@ function parseOutput(output: unknown): Record<string, unknown> | null {
   return null;
 }
 
+/**
+ * Extract text from MCP-style content blocks.
+ * SDK built-in tools (WebSearch, etc.) may return `{content: [{type:"text", text:"..."}]}`.
+ */
+function extractMcpText(output: Record<string, unknown>): string | null {
+  if (Array.isArray(output.content)) {
+    const texts = (output.content as Array<Record<string, unknown>>)
+      .filter((b) => b.type === "text" && typeof b.text === "string")
+      .map((b) => b.text as string);
+    if (texts.length > 0) return texts.join("\n");
+  }
+  return null;
+}
+
 function getExitCode(output: unknown): number | null {
   const parsed = parseOutput(output);
   if (!parsed) return null;
@@ -429,7 +443,20 @@ function getWebAccordionData(
   const url =
     getStringField(inp as Record<string, unknown>, "url", "query") ??
     "Web content";
-  const content = getStringField(output, "content", "text", "_raw");
+
+  // Try direct string fields first, then MCP content blocks, then raw JSON
+  let content = getStringField(output, "content", "text", "_raw");
+  if (!content) content = extractMcpText(output);
+  if (!content) {
+    // Fallback: render the raw JSON so the accordion isn't empty
+    try {
+      const raw = JSON.stringify(output, null, 2);
+      if (raw !== "{}") content = raw;
+    } catch {
+      /* empty */
+    }
+  }
+
   const statusCode =
     typeof output.status_code === "number" ? output.status_code : null;
   const message = getStringField(output, "message");
@@ -495,7 +522,14 @@ function getTodoAccordionData(input: unknown): AccordionData {
     string,
     unknown
   >;
-  const todos: TodoItem[] = Array.isArray(inp.todos) ? inp.todos : [];
+  const todos: TodoItem[] = Array.isArray(inp.todos)
+    ? inp.todos.filter(
+        (t: unknown): t is TodoItem =>
+          typeof t === "object" &&
+          t !== null &&
+          typeof (t as TodoItem).content === "string",
+      )
+    : [];
 
   const completed = todos.filter((t) => t.status === "completed").length;
   const total = todos.length;
@@ -551,10 +585,13 @@ function getDefaultAccordionData(
 ): AccordionData {
   const message = getStringField(output, "message");
   const raw = output._raw;
+  const mcpText = extractMcpText(output);
 
   let displayContent: string;
   if (typeof raw === "string") {
     displayContent = raw;
+  } else if (mcpText) {
+    displayContent = mcpText;
   } else if (message) {
     displayContent = message;
   } else {
