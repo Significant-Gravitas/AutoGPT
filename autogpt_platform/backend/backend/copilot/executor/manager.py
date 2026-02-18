@@ -164,20 +164,22 @@ class CoPilotExecutor(AppProcess):
                 self._cancel_thread, self.cancel_client, "[cleanup][cancel]"
             )
 
-        # Shutdown executor
+        # Clean up worker threads (closes per-loop workspace storage sessions)
         if self._executor:
+            from .processor import cleanup_worker
+
+            logger.info(f"[cleanup {pid}] Cleaning up workers...")
+            futures = []
+            for _ in range(self._executor._max_workers):
+                futures.append(self._executor.submit(cleanup_worker))
+            for f in futures:
+                try:
+                    f.result(timeout=10)
+                except Exception as e:
+                    logger.warning(f"[cleanup {pid}] Worker cleanup error: {e}")
+
             logger.info(f"[cleanup {pid}] Shutting down executor...")
             self._executor.shutdown(wait=False)
-
-        # Close async resources (workspace storage aiohttp session, etc.)
-        try:
-            from backend.util.workspace_storage import shutdown_workspace_storage
-
-            loop = asyncio.new_event_loop()
-            loop.run_until_complete(shutdown_workspace_storage())
-            loop.close()
-        except Exception as e:
-            logger.warning(f"[cleanup {pid}] Error closing workspace storage: {e}")
 
         # Release any remaining locks
         for task_id, lock in list(self._task_locks.items()):
