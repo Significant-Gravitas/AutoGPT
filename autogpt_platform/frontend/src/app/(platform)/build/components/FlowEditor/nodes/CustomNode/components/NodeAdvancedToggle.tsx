@@ -1,6 +1,7 @@
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
-import { Switch } from "@/components/atoms/Switch/Switch";
+import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
+import { CaretDownIcon } from "@phosphor-icons/react";
 
 export const NodeAdvancedToggle = ({ nodeId }: { nodeId: string }) => {
   const showAdvanced = useNodeStore(
@@ -8,14 +9,24 @@ export const NodeAdvancedToggle = ({ nodeId }: { nodeId: string }) => {
   );
   const setShowAdvanced = useNodeStore((state) => state.setShowAdvanced);
   return (
-    <div className="flex items-center justify-between gap-2 rounded-b-xlarge border-t border-zinc-200 bg-white px-5 py-3.5">
-      <Text variant="body" className="font-medium text-slate-700">
-        Advanced
-      </Text>
-      <Switch
-        onCheckedChange={(checked) => setShowAdvanced(nodeId, checked)}
-        checked={showAdvanced}
-      />
+    <div className="flex items-center justify-start gap-2 bg-white px-5 pb-3.5">
+      <Button
+        variant="ghost"
+        className="h-fit min-w-0 p-0 hover:border-transparent hover:bg-transparent"
+        onClick={() => setShowAdvanced(nodeId, !showAdvanced)}
+      >
+        <Text
+          variant="body"
+          className="flex items-center gap-2 !font-semibold text-slate-700"
+        >
+          Advanced{" "}
+          <CaretDownIcon
+            size={16}
+            weight="bold"
+            className={`transition-transform ${showAdvanced ? "rotate-180" : ""}`}
+          />
+        </Text>
+      </Button>
     </div>
   );
 };
