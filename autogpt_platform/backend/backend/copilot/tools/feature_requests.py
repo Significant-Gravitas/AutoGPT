@@ -33,7 +33,6 @@ query SearchFeatureRequests($term: String!, $filter: IssueFilter, $first: Int) {
       id
       identifier
       title
-      description
     }
   }
 }
@@ -205,7 +204,6 @@ class SearchFeatureRequestsTool(BaseTool):
                     id=node["id"],
                     identifier=node["identifier"],
                     title=node["title"],
-                    description=node.get("description"),
                 )
                 for node in nodes
             ]
@@ -239,7 +237,11 @@ class CreateFeatureRequestTool(BaseTool):
             "Create a new feature request or add a customer need to an existing one. "
             "Always search first with search_feature_requests to avoid duplicates. "
             "If a matching request exists, pass its ID as existing_issue_id to add "
-            "the user's need to it instead of creating a duplicate."
+            "the user's need to it instead of creating a duplicate. "
+            "IMPORTANT: Never include personally identifiable information (PII) in "
+            "the title or description — no names, emails, phone numbers, company "
+            "names, or other identifying details. Write titles and descriptions in "
+            "generic, feature-focused language."
         )
 
     @property
@@ -249,11 +251,20 @@ class CreateFeatureRequestTool(BaseTool):
             "properties": {
                 "title": {
                     "type": "string",
-                    "description": "Title for the feature request.",
+                    "description": (
+                        "Title for the feature request. Must be generic and "
+                        "feature-focused — do not include any user names, emails, "
+                        "company names, or other PII."
+                    ),
                 },
                 "description": {
                     "type": "string",
-                    "description": "Detailed description of what the user wants and why.",
+                    "description": (
+                        "Detailed description of what the user wants and why. "
+                        "Must not contain any personally identifiable information "
+                        "(PII) — describe the feature need generically without "
+                        "referencing specific users, companies, or contact details."
+                    ),
                 },
                 "existing_issue_id": {
                     "type": "string",

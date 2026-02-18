@@ -486,7 +486,6 @@ class FeatureRequestInfo(BaseModel):
     id: str
     identifier: str
     title: str
-    description: str | None = None
 
 
 class FeatureRequestSearchResponse(ToolResponseBase):
