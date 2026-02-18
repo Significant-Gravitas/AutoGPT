@@ -95,32 +95,27 @@ class WorkspaceStorageBackend(ABC):
 class GCSWorkspaceStorage(WorkspaceStorageBackend):
     """Google Cloud Storage implementation for workspace storage.
 
-    ## Event-loop-aware
-    Each event loop gets its own `aiohttp` session and GCS
-    client. This is required because `aiohttp.ClientSession` (and the
-    `asyncio.timeout()` calls it makes internally) are bound to the loop they
-    were created on. In the copilot executor every worker thread runs its
-    own event loop, so a single shared session would fail with
-    "Timeout context manager should be used inside a task".
+    Each instance owns a single ``aiohttp.ClientSession`` and GCS async
+    client.  Because ``ClientSession`` is bound to the event loop on which it
+    was created, callers that run on separate loops (e.g. copilot executor
+    worker threads) **must** obtain their own ``GCSWorkspaceStorage`` instance
+    via :func:`get_workspace_storage` which is event-loop-aware.
     """
 
     def __init__(self, bucket_name: str):
         self.bucket_name = bucket_name
-        # Keyed by id(event_loop) → per-loop client/session
-        self._async_clients: dict[int, async_gcs_storage.Storage] = {}
-        self._sessions: dict[int, aiohttp.ClientSession] = {}
+        self._async_client: Optional[async_gcs_storage.Storage] = None
         self._sync_client: Optional[gcs_storage.Client] = None
+        self._session: Optional[aiohttp.ClientSession] = None
 
     async def _get_async_client(self) -> async_gcs_storage.Storage:
-        """Get or create an async GCS client for the current event loop."""
-        loop_id = id(asyncio.get_running_loop())
-        if loop_id not in self._async_clients:
-            session = aiohttp.ClientSession(
+        """Get or create async GCS client."""
+        if self._async_client is None:
+            self._session = aiohttp.ClientSession(
                 connector=aiohttp.TCPConnector(limit=100, force_close=False)
             )
-            self._sessions[loop_id] = session
-            self._async_clients[loop_id] = async_gcs_storage.Storage(session=session)
-        return self._async_clients[loop_id]
+            self._async_client = async_gcs_storage.Storage(session=self._session)
+        return self._async_client
 
     def _get_sync_client(self) -> gcs_storage.Client:
         """Get or create sync GCS client (for signed URLs)."""
@@ -129,35 +124,20 @@ class GCSWorkspaceStorage(WorkspaceStorageBackend):
         return self._sync_client
 
     async def close(self) -> None:
-        """Close all client connections.
-
-        Sessions are event-loop-bound.  During normal shutdown the executor
-        manager may call this from a *temporary* event loop that doesn't match
-        any worker loop.  We can only ``await`` sessions that belong to the
-        current loop; for the rest we log a debug message and discard them —
-        they will be garbage-collected when the process exits.
-        """
-        current_loop_id = id(asyncio.get_running_loop())
-
-        for loop_id, client in list(self._async_clients.items()):
-            if loop_id != current_loop_id:
-                logger.debug("Skipping GCS client close for foreign loop %s", loop_id)
-                continue
+        """Close all client connections."""
+        if self._async_client is not None:
             try:
-                await client.close()
+                await self._async_client.close()
             except Exception as e:
-                logger.warning(f"Error closing GCS client for loop {loop_id}: {e}")
-        self._async_clients.clear()
+                logger.warning(f"Error closing GCS client: {e}")
+            self._async_client = None
 
-        for loop_id, session in list(self._sessions.items()):
-            if loop_id != current_loop_id:
-                logger.debug("Skipping session close for foreign loop %s", loop_id)
-                continue
+        if self._session is not None:
             try:
-                await session.close()
+                await self._session.close()
             except Exception as e:
-                logger.warning(f"Error closing session for loop {loop_id}: {e}")
-        self._sessions.clear()
+                logger.warning(f"Error closing session: {e}")
+            self._session = None
 
     def _build_blob_name(self, workspace_id: str, file_id: str, filename: str) -> str:
         """Build the blob path for workspace files."""
@@ -364,60 +344,73 @@ class LocalWorkspaceStorage(WorkspaceStorageBackend):
             raise ValueError(f"Invalid storage path format: {storage_path}")
 
 
-# Global storage backend instance
-_workspace_storage: Optional[WorkspaceStorageBackend] = None
+# ---------------------------------------------------------------------------
+# Storage instance management
+# ---------------------------------------------------------------------------
+# ``aiohttp.ClientSession`` is bound to the event loop where it is created.
+# The copilot executor runs each worker in its own thread with a dedicated
+# event loop, so a single global ``GCSWorkspaceStorage`` instance would break.
+#
+# For **local storage** a single shared instance is fine (no async I/O).
+# For **GCS storage** we keep one instance *per event loop* so every loop
+# gets its own ``ClientSession``.
+# ---------------------------------------------------------------------------
+
+_local_storage: Optional[LocalWorkspaceStorage] = None
+_gcs_storages: dict[int, GCSWorkspaceStorage] = {}
 _storage_lock = asyncio.Lock()
 
 
 async def get_workspace_storage() -> WorkspaceStorageBackend:
+    """Return a workspace storage backend for the **current** event loop.
+
+    * Local storage → single shared instance (no event-loop affinity).
+    * GCS storage   → one instance per event loop to avoid cross-loop
+      ``aiohttp`` errors.
     """
-    Get the workspace storage backend instance.
+    global _local_storage
 
-    Uses GCS if media_gcs_bucket_name is configured, otherwise uses local storage.
-    """
-    global _workspace_storage
+    config = Config()
 
-    if _workspace_storage is None:
-        async with _storage_lock:
-            if _workspace_storage is None:
-                config = Config()
+    # --- Local storage (shared) ---
+    if not config.media_gcs_bucket_name:
+        if _local_storage is None:
+            storage_dir = (
+                config.workspace_storage_dir if config.workspace_storage_dir else None
+            )
+            logger.info(f"Using local workspace storage: {storage_dir or 'default'}")
+            _local_storage = LocalWorkspaceStorage(storage_dir)
+        return _local_storage
 
-                if config.media_gcs_bucket_name:
-                    logger.info(
-                        f"Using GCS workspace storage: {config.media_gcs_bucket_name}"
-                    )
-                    _workspace_storage = GCSWorkspaceStorage(
-                        config.media_gcs_bucket_name
-                    )
-                else:
-                    storage_dir = (
-                        config.workspace_storage_dir
-                        if config.workspace_storage_dir
-                        else None
-                    )
-                    logger.info(
-                        f"Using local workspace storage: {storage_dir or 'default'}"
-                    )
-                    _workspace_storage = LocalWorkspaceStorage(storage_dir)
-
-    return _workspace_storage
+    # --- GCS storage (per event loop) ---
+    loop_id = id(asyncio.get_running_loop())
+    if loop_id not in _gcs_storages:
+        logger.info(
+            f"Creating GCS workspace storage for loop {loop_id}: "
+            f"{config.media_gcs_bucket_name}"
+        )
+        _gcs_storages[loop_id] = GCSWorkspaceStorage(config.media_gcs_bucket_name)
+    return _gcs_storages[loop_id]
 
 
 async def shutdown_workspace_storage() -> None:
-    """
-    Properly shutdown the global workspace storage backend.
+    """Shut down workspace storage for the **current** event loop.
 
-    Closes aiohttp sessions and other resources for GCS backend.
-    Should be called during application shutdown.
+    Closes the ``aiohttp`` session owned by the current loop's GCS instance.
+    Each worker thread should call this on its own loop before the loop is
+    destroyed.  The REST API lifespan hook calls it for the main server loop.
     """
-    global _workspace_storage
+    global _local_storage
 
-    if _workspace_storage is not None:
-        async with _storage_lock:
-            if _workspace_storage is not None:
-                if isinstance(_workspace_storage, GCSWorkspaceStorage):
-                    await _workspace_storage.close()
-                _workspace_storage = None
+    loop_id = id(asyncio.get_running_loop())
+    storage = _gcs_storages.pop(loop_id, None)
+    if storage is not None:
+        await storage.close()
+
+    # Clear local storage only when the last GCS instance is gone
+    # (i.e. full shutdown, not just a single worker stopping).
+    if not _gcs_storages:
+        _local_storage = None
 
 
 def compute_file_checksum(content: bytes) -> str:
