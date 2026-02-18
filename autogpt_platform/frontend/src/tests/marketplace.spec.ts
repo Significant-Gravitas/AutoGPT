@@ -115,13 +115,11 @@ test.describe("Marketplace – Basic Functionality", () => {
     const searchTerm = page.getByText("DummyInput").first();
     await isVisible(searchTerm);
 
-    await page
-      .locator('[data-testid="store-card"]')
-      .first()
-      .waitFor({ state: "visible", timeout: 15000 });
-
-    const results = await marketplacePage.getSearchResultsCount(page);
-    expect(results).toBeGreaterThan(0);
+    await expect
+      .poll(() => marketplacePage.getSearchResultsCount(page), {
+        timeout: 15000,
+      })
+      .toBeGreaterThan(0);
 
     console.log("Complete search flow works correctly test passed ✅");
   });
