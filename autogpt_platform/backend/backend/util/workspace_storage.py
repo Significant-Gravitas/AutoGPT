@@ -95,10 +95,11 @@ class WorkspaceStorageBackend(ABC):
 class GCSWorkspaceStorage(WorkspaceStorageBackend):
     """Google Cloud Storage implementation for workspace storage.
 
-    Event-loop-aware: each event loop gets its own aiohttp session and GCS
-    client.  This is required because aiohttp.ClientSession (and the
-    asyncio.timeout() calls it makes internally) are bound to the loop they
-    were created on.  In the copilot executor every worker thread runs its
+    ## Event-loop-aware
+    Each event loop gets its own `aiohttp` session and GCS
+    client. This is required because `aiohttp.ClientSession` (and the
+    `asyncio.timeout()` calls it makes internally) are bound to the loop they
+    were created on. In the copilot executor every worker thread runs its
     own event loop, so a single shared session would fail with
     "Timeout context manager should be used inside a task".
     """
