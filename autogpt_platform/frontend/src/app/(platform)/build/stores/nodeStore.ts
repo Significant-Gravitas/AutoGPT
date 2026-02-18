@@ -33,6 +33,7 @@ type NodeStore = {
   nodeCounter: number;
   setNodeCounter: (nodeCounter: number) => void;
   nodeAdvancedStates: Record<string, boolean>;
+  nodeOutputCollapsedStates: Record<string, Record<string, boolean>>;
 
   latestNodeInputData: Record<string, NodeExecutionResultInputData | undefined>;
   latestNodeOutputData: Record<
@@ -55,6 +56,13 @@ type NodeStore = {
   toggleAdvanced: (nodeId: string) => void;
   setShowAdvanced: (nodeId: string, show: boolean) => void;
   getShowAdvanced: (nodeId: string) => boolean;
+  setOutputCollapsed: (
+    nodeId: string,
+    outputHandleId: string,
+    collapsed: boolean,
+  ) => void;
+  toggleOutputCollapsed: (nodeId: string, outputHandleId: string) => void;
+  getOutputCollapsed: (nodeId: string, outputHandleId: string) => boolean;
   addNodes: (nodes: CustomNode[]) => void;
   getHardCodedValues: (nodeId: string) => Record<string, any>;
   convertCustomNodeToBackendNode: (node: CustomNode) => Node;
@@ -126,6 +134,7 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
   nodeCounter: 0,
   setNodeCounter: (nodeCounter) => set({ nodeCounter }),
   nodeAdvancedStates: {},
+  nodeOutputCollapsedStates: {},
   latestNodeInputData: {},
   latestNodeOutputData: {},
   accumulatedNodeInputData: {},
@@ -283,6 +292,33 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
     })),
   getShowAdvanced: (nodeId: string) =>
     get().nodeAdvancedStates[nodeId] || false,
+  setOutputCollapsed: (nodeId, outputHandleId, collapsed) =>
+    set((state) => ({
+      nodeOutputCollapsedStates: {
+        ...state.nodeOutputCollapsedStates,
+        [nodeId]: {
+          ...state.nodeOutputCollapsedStates[nodeId],
+          [outputHandleId]: collapsed,
+        },
+      },
+    })),
+  toggleOutputCollapsed: (nodeId, outputHandleId) =>
+    set((state) => {
+      const nodeCollapsedStates = state.nodeOutputCollapsedStates[nodeId] || {};
+      const currentValue = nodeCollapsedStates[outputHandleId] ?? true;
+
+      return {
+        nodeOutputCollapsedStates: {
+          ...state.nodeOutputCollapsedStates,
+          [nodeId]: {
+            ...nodeCollapsedStates,
+            [outputHandleId]: !currentValue,
+          },
+        },
+      };
+    }),
+  getOutputCollapsed: (nodeId, outputHandleId) =>
+    get().nodeOutputCollapsedStates[nodeId]?.[outputHandleId] ?? true,
   addNodes: (nodes: CustomNode[]) => {
     nodes.forEach((node) => {
       get().addNode(node);
