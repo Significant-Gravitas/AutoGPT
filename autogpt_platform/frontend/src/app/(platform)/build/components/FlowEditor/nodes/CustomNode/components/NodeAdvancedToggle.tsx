@@ -3,7 +3,11 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { CaretDownIcon } from "@phosphor-icons/react";
 
-export const NodeAdvancedToggle = ({ nodeId }: { nodeId: string }) => {
+type Props = {
+  nodeId: string;
+};
+
+export function NodeAdvancedToggle({ nodeId }: Props) {
   const showAdvanced = useNodeStore(
     (state) => state.nodeAdvancedStates[nodeId] || false,
   );
@@ -14,9 +18,11 @@ export const NodeAdvancedToggle = ({ nodeId }: { nodeId: string }) => {
         variant="ghost"
         className="h-fit min-w-0 p-0 hover:border-transparent hover:bg-transparent"
         onClick={() => setShowAdvanced(nodeId, !showAdvanced)}
+        aria-expanded={showAdvanced}
       >
         <Text
           variant="body"
+          as="span"
           className="flex items-center gap-2 !font-semibold text-slate-700"
         >
           Advanced{" "}
@@ -24,9 +30,10 @@ export const NodeAdvancedToggle = ({ nodeId }: { nodeId: string }) => {
             size={16}
             weight="bold"
             className={`transition-transform ${showAdvanced ? "rotate-180" : ""}`}
+            aria-hidden
           />
         </Text>
       </Button>
     </div>
   );
-};
+}
