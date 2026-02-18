@@ -137,7 +137,7 @@ class StagehandObserveBlock(Block):
         model: StagehandRecommendedLlmModel = SchemaField(
             title="LLM Model",
             description="LLM to use for Stagehand (provider is inferred)",
-            default=StagehandRecommendedLlmModel.CLAUDE_4_5_SONNET,
+            default=StagehandRecommendedLlmModel.CLAUDE_4_6_SONNET,
             advanced=False,
         )
         model_credentials: AICredentials = AICredentialsField()
@@ -227,7 +227,7 @@ class StagehandActBlock(Block):
         model: StagehandRecommendedLlmModel = SchemaField(
             title="LLM Model",
             description="LLM to use for Stagehand (provider is inferred)",
-            default=StagehandRecommendedLlmModel.CLAUDE_4_5_SONNET,
+            default=StagehandRecommendedLlmModel.CLAUDE_4_6_SONNET,
             advanced=False,
         )
         model_credentials: AICredentials = AICredentialsField()
@@ -324,7 +324,7 @@ class StagehandExtractBlock(Block):
         model: StagehandRecommendedLlmModel = SchemaField(
             title="LLM Model",
             description="LLM to use for Stagehand (provider is inferred)",
-            default=StagehandRecommendedLlmModel.CLAUDE_4_5_SONNET,
+            default=StagehandRecommendedLlmModel.CLAUDE_4_6_SONNET,
             advanced=False,
         )
         model_credentials: AICredentials = AICredentialsField()
