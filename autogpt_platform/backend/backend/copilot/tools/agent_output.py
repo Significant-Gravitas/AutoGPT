@@ -268,6 +268,7 @@ class AgentOutputTool(BaseTool):
                     ExecutionStatus.RUNNING,
                     ExecutionStatus.QUEUED,
                     ExecutionStatus.INCOMPLETE,
+                    ExecutionStatus.REVIEW,
                 ]
             )
 
@@ -349,6 +350,11 @@ class AgentOutputTool(BaseTool):
             message = f"Execution for agent '{agent.name}' failed"
         elif execution.status == ExecutionStatus.TERMINATED:
             message = f"Execution for agent '{agent.name}' was terminated"
+        elif execution.status == ExecutionStatus.REVIEW:
+            message = (
+                f"Execution for agent '{agent.name}' is awaiting human review. "
+                "The user needs to approve it before it can continue."
+            )
         elif execution.status in (
             ExecutionStatus.RUNNING,
             ExecutionStatus.QUEUED,

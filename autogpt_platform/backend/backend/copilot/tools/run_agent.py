@@ -510,12 +510,34 @@ class RunAgentTool(BaseTool):
                     ),
                     session_id=session_id,
                 )
+            elif completed and completed.status == ExecutionStatus.TERMINATED:
+                return ErrorResponse(
+                    message=(
+                        f"Agent '{library_agent.name}' execution was terminated. "
+                        f"View details at {library_agent_link}."
+                    ),
+                    session_id=session_id,
+                )
+            elif completed and completed.status == ExecutionStatus.REVIEW:
+                return ExecutionStartedResponse(
+                    message=(
+                        f"Agent '{library_agent.name}' is awaiting human review. "
+                        f"Check at {library_agent_link}."
+                    ),
+                    session_id=session_id,
+                    execution_id=execution.id,
+                    graph_id=library_agent.graph_id,
+                    graph_name=library_agent.name,
+                    library_agent_id=library_agent.id,
+                    library_agent_link=library_agent_link,
+                )
             else:
                 status = completed.status.value if completed else "unknown"
                 return ExecutionStartedResponse(
                     message=(
                         f"Agent '{library_agent.name}' is still {status} after "
-                        f"{wait_for_result}s. Check results later at {library_agent_link}. "
+                        f"{wait_for_result}s. Check results later at "
+                        f"{library_agent_link}. "
                         f"Use view_agent_output with wait_if_running to check again."
                     ),
                     session_id=session_id,
