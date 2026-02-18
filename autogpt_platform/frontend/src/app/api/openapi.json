@@ -11709,6 +11709,7 @@
           },
           "goal_type": {
             "type": "string",
+            "enum": ["vague", "unachievable"],
             "title": "Goal Type",
             "description": "Type: 'vague' or 'unachievable'",
             "default": "vague"

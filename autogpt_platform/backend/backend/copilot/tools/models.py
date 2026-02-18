@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -309,7 +309,7 @@ class SuggestedGoalResponse(ToolResponseBase):
     original_goal: str = Field(
         default="", description="The user's original goal for context"
     )
-    goal_type: str = Field(
+    goal_type: Literal["vague", "unachievable"] = Field(
         default="vague", description="Type: 'vague' or 'unachievable'"
     )
 

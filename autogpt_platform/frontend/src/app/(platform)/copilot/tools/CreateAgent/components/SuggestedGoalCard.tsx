@@ -7,6 +7,7 @@ import { ArrowRightIcon, LightbulbIcon } from "@phosphor-icons/react";
 interface Props {
   message: string;
   suggestedGoal: string;
+  reason?: string;
   goalType: string;
   onUseSuggestedGoal: (goal: string) => void;
 }
@@ -14,6 +15,7 @@ interface Props {
 export function SuggestedGoalCard({
   message,
   suggestedGoal,
+  reason,
   goalType,
   onUseSuggestedGoal,
 }: Props) {
@@ -33,7 +35,7 @@ export function SuggestedGoalCard({
                 : "Goal needs more detail"}
             </Text>
             <Text variant="small" className="text-slate-600">
-              {message}
+              {reason || message}
             </Text>
           </div>
 

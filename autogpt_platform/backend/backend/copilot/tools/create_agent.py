@@ -200,10 +200,13 @@ class CreateAgentTool(BaseTool):
 
         if decomposition_result.get("type") == "vague_goal":
             suggested = decomposition_result.get("suggested_goal", "")
+            reason = decomposition_result.get(
+                "reason", "The goal needs more specific details"
+            )
             return SuggestedGoalResponse(
                 message="The goal is too vague to create a specific workflow.",
                 suggested_goal=suggested,
-                reason="The goal needs more specific details",
+                reason=reason,
                 original_goal=description,
                 goal_type="vague",
                 session_id=session_id,

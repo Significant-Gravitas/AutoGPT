@@ -263,6 +263,7 @@ export function CreateAgentTool({ part }: Props) {
             <SuggestedGoalCard
               message={output.message}
               suggestedGoal={output.suggested_goal}
+              reason={output.reason}
               goalType={output.goal_type ?? "vague"}
               onUseSuggestedGoal={handleUseSuggestedGoal}
             />
