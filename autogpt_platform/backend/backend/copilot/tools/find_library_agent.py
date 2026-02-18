@@ -19,9 +19,10 @@ class FindLibraryAgentTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Search for or list agents in the user's library. Use this to find agents "
-            "the user has already added to their library, including agents they "
-            "created or added from the marketplace."
+            "Search for or list agents in the user's library. Use this to find "
+            "agents the user has already added to their library, including agents "
+            "they created or added from the marketplace. "
+            "Omit the query to list all agents."
         )
 
     @property
@@ -32,8 +33,8 @@ class FindLibraryAgentTool(BaseTool):
                 "query": {
                     "type": "string",
                     "description": (
-                        "Optional search query to filter agents by name or description. "
-                        "Leave empty or omit to list all agents in the library."
+                        "Search query to find agents by name or description. "
+                        "Omit to list all agents in the library."
                     ),
                 },
             },
