@@ -20,15 +20,21 @@ export enum Flag {
 }
 
 const isPwMockEnabled = process.env.NEXT_PUBLIC_PW_TEST === "true";
+const isNewFlowEditorEnvEnabled =
+  process.env.NEXT_PUBLIC_NEW_FLOW_EDITOR === "true";
+const isBuilderViewSwitchEnvEnabled =
+  process.env.NEXT_PUBLIC_BUILDER_VIEW_SWITCH === "true";
 
+// Local dev override: these env vars can force-enable FlowEditor flags when
+// LaunchDarkly is unavailable. Defaults remain false when env vars are unset.
 const defaultFlags = {
   [Flag.BETA_BLOCKS]: [],
   [Flag.NEW_BLOCK_MENU]: false,
   [Flag.NEW_AGENT_RUNS]: false,
   [Flag.GRAPH_SEARCH]: false,
   [Flag.ENABLE_ENHANCED_OUTPUT_HANDLING]: false,
-  [Flag.NEW_FLOW_EDITOR]: false,
-  [Flag.BUILDER_VIEW_SWITCH]: false,
+  [Flag.NEW_FLOW_EDITOR]: isNewFlowEditorEnvEnabled,
+  [Flag.BUILDER_VIEW_SWITCH]: isBuilderViewSwitchEnvEnabled,
   [Flag.SHARE_EXECUTION_RESULTS]: false,
   [Flag.AGENT_FAVORITING]: false,
   [Flag.MARKETPLACE_SEARCH_TERMS]: DEFAULT_SEARCH_TERMS,
