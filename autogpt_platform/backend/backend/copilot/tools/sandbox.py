@@ -264,6 +264,11 @@ async def run_sandboxed(
                 os.killpg(proc.pid, signal.SIGKILL)
             except ProcessLookupError:
                 pass  # Already exited
+            except OSError as kill_err:
+                logger.warning(
+                    "Failed to kill process group %d: %s", proc.pid, kill_err
+                )
+            # Always reap the subprocess regardless of killpg outcome.
             await proc.communicate()
             return "", f"Execution timed out after {timeout}s", -1, True
 
