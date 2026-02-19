@@ -430,11 +430,8 @@ def _format_conversation_context(messages: list[ChatMessage]) -> str | None:
                     tool_args = func.get("arguments", "")
                     lines.append(f"You called tool: {tool_name}({tool_args})")
         elif msg.role == "tool":
-            # Include tool error/denial outcomes so the agent doesn't
-            # hallucinate that blocked or failed operations succeeded.
-            content = msg.content
-            if _is_tool_error_or_denial(content):
-                lines.append(f"Tool result: {content}")
+            content = msg.content or ""
+            lines.append(f"Tool result: {content}")
 
     if not lines:
         return None
