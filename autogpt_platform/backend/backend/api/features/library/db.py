@@ -1083,27 +1083,6 @@ async def _is_descendant_of(
     return False
 
 
-async def _check_circular_reference(
-    folder_id: Optional[str],
-    target_parent_id: Optional[str],
-    user_id: str,
-) -> None:
-    """
-    Check that moving folder_id under target_parent_id won't create a cycle.
-
-    Args:
-        folder_id: The ID of the folder being moved (None for create).
-        target_parent_id: The target parent ID (None for root).
-        user_id: The ID of the user.
-
-    Raises:
-        FolderValidationError: If the move would create a circular reference.
-    """
-    if folder_id and target_parent_id:
-        if await _is_descendant_of(target_parent_id, folder_id, user_id):
-            raise FolderValidationError("Cannot move folder into its own descendant")
-
-
 async def create_folder(
     user_id: str,
     name: str,
@@ -1296,11 +1275,9 @@ async def move_folder(
     logger.debug(f"Moving folder #{folder_id} to parent #{target_parent_id}")
 
     # Validate no circular reference
-    await _check_circular_reference(
-        folder_id=folder_id,
-        target_parent_id=target_parent_id,
-        user_id=user_id,
-    )
+    if target_parent_id:
+        if await _is_descendant_of(target_parent_id, folder_id, user_id):
+            raise FolderValidationError("Cannot move folder into its own descendant")
 
     # Verify folder exists
     existing = await prisma.models.LibraryFolder.prisma().find_first(
