@@ -116,6 +116,11 @@ class ChatConfig(BaseSettings):
         description="Use --resume for multi-turn conversations instead of "
         "history compression. Falls back to compression when unavailable.",
     )
+    claude_agent_inactivity_timeout: int = Field(
+        default=300,
+        description="Seconds of inactivity (no SDK messages) before the agent "
+        "is considered hung and killed. Resets on every message. 0 to disable.",
+    )
 
     # Extended thinking configuration for Claude models
     thinking_enabled: bool = Field(
