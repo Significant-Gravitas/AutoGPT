@@ -38,7 +38,7 @@ After making **any** code changes in the frontend, you MUST run the following co
 2. `pnpm lint` — check for lint errors; fix any that appear
 3. `pnpm types` — check for type errors; fix any that appear
 
-Do NOT skip these steps. If any command reports errors, fix them and re-run until clean. Only then may you consider the task complete.
+Do NOT skip these steps. If any command reports errors, fix them and re-run until clean. Only then may you consider the task complete. If typing keeps failing, stop and ask the user.
 
 ### Code Style
 
@@ -84,3 +84,4 @@ See @CONTRIBUTING.md for complete patterns. Quick reference:
    - Do not use `useCallback` or `useMemo` unless asked to optimise a given function
    - Do not type hook returns, let Typescript infer as much as possible
    - Never type with `any` unless a variable/attribute can ACTUALLY be of any type
+   - avoid index and barrel files
