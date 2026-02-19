@@ -829,8 +829,11 @@ async def get_active_task_for_session(
                             )
                             await mark_task_completed(task_id, "failed")
                             continue
-                    except (ValueError, TypeError):
-                        pass
+                    except (ValueError, TypeError) as exc:
+                        logger.warning(
+                            f"[TASK_LOOKUP] Failed to parse created_at "
+                            f"for task {task_id[:8]}...: {exc}"
+                        )
 
                 logger.info(
                     f"[TASK_LOOKUP] Found running task {task_id[:8]}... for session {session_id[:8]}..."

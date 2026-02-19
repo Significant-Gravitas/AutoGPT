@@ -60,6 +60,18 @@ def init_worker():
     _tls.processor.on_executor_start()
 
 
+def cleanup_worker():
+    """Clean up the processor for the current worker thread.
+
+    Should be called before the worker thread's event loop is destroyed so
+    that event-loop-bound resources (e.g. ``aiohttp.ClientSession``) are
+    closed on the correct loop.
+    """
+    processor: CoPilotProcessor | None = getattr(_tls, "processor", None)
+    if processor is not None:
+        processor.cleanup()
+
+
 # ============ Processor Class ============ #
 
 
@@ -97,6 +109,28 @@ class CoPilotProcessor:
         self.execution_thread.start()
 
         logger.info(f"[CoPilotExecutor] Worker {self.tid} started")
+
+    def cleanup(self):
+        """Clean up event-loop-bound resources before the loop is destroyed.
+
+        Shuts down the workspace storage instance that belongs to this
+        worker's event loop, ensuring ``aiohttp.ClientSession.close()``
+        runs on the same loop that created the session.
+        """
+        from backend.util.workspace_storage import shutdown_workspace_storage
+
+        try:
+            future = asyncio.run_coroutine_threadsafe(
+                shutdown_workspace_storage(), self.execution_loop
+            )
+            future.result(timeout=5)
+        except Exception as e:
+            logger.warning(f"[CoPilotExecutor] Worker {self.tid} cleanup error: {e}")
+
+        # Stop the event loop
+        self.execution_loop.call_soon_threadsafe(self.execution_loop.stop)
+        self.execution_thread.join(timeout=5)
+        logger.info(f"[CoPilotExecutor] Worker {self.tid} cleaned up")
 
     @error_logged(swallow=False)
     def execute(
