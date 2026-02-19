@@ -38,7 +38,9 @@ def main(**kwargs):
 
     from backend.api.rest_api import AgentServer
     from backend.api.ws_api import WebsocketServer
-    from backend.executor import DatabaseManager, ExecutionManager, Scheduler
+    from backend.copilot.executor.manager import CoPilotExecutor
+    from backend.data.db_manager import DatabaseManager
+    from backend.executor import ExecutionManager, Scheduler
     from backend.notifications import NotificationManager
 
     run_processes(
@@ -48,6 +50,7 @@ def main(**kwargs):
         WebsocketServer(),
         AgentServer(),
         ExecutionManager(),
+        CoPilotExecutor(),
         **kwargs,
     )
 
