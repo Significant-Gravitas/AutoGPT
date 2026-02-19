@@ -112,7 +112,7 @@ export function useCopilotPage() {
   // Wrap AI SDK's stop() to also cancel the backend executor task.
   // sdkStop() aborts the SSE fetch instantly (UI feedback), then we fire
   // the cancel API to actually stop the executor and wait for confirmation.
-  const stop = useCallback(async () => {
+  async function stop() {
     sdkStop();
 
     // Mark any in-progress tool parts as errored so spinners stop.
@@ -138,7 +138,7 @@ export function useCopilotPage() {
         variant: "destructive",
       });
     }
-  }, [sdkStop, sessionId, setMessages]);
+  }
 
   // Abort the stream if the backend doesn't start sending data within 12s.
   const stopRef = useRef(stop);
