@@ -374,14 +374,20 @@ async def upload_transcript(
 
     # Store metadata alongside the transcript so the next turn can detect
     # staleness and only compress the gap instead of the full history.
-    meta = {"message_count": message_count, "uploaded_at": time.time()}
-    mwid, mfid, mfname = _meta_storage_path_parts(user_id, session_id)
-    await storage.store(
-        workspace_id=mwid,
-        file_id=mfid,
-        filename=mfname,
-        content=json.dumps(meta).encode("utf-8"),
-    )
+    # Wrapped in try/except so a metadata write failure doesn't orphan
+    # the already-uploaded transcript — the next turn will just fall back
+    # to full gap fill (msg_count=0).
+    try:
+        meta = {"message_count": message_count, "uploaded_at": time.time()}
+        mwid, mfid, mfname = _meta_storage_path_parts(user_id, session_id)
+        await storage.store(
+            workspace_id=mwid,
+            file_id=mfid,
+            filename=mfname,
+            content=json.dumps(meta).encode("utf-8"),
+        )
+    except Exception as e:
+        logger.warning(f"[Transcript] Failed to write metadata for {session_id}: {e}")
 
     logger.info(
         f"[Transcript] Uploaded {new_size}B "

@@ -105,7 +105,7 @@ function ToolIcon({
     );
   }
   if (isStreaming) {
-    return <OrbitLoader size={20} />;
+    return <OrbitLoader size={14} />;
   }
 
   const iconClass = "text-neutral-400";
@@ -494,7 +494,9 @@ function getFileAccordionData(
   const content = getStringField(output, "content", "text", "_raw");
   const message = getStringField(output, "message");
   // For Glob/list results, try to show file list
-  const files = Array.isArray(output.files) ? (output.files as string[]) : null;
+  const files = Array.isArray(output.files)
+    ? output.files.filter((f: unknown): f is string => typeof f === "string")
+    : null;
 
   return {
     title: message ?? "File output",
