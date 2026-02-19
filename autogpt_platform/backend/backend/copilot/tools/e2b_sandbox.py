@@ -147,8 +147,10 @@ class CoPilotSandboxManager:
 
     async def _idle_cleanup_loop(self) -> None:
         """Periodically check for idle sandboxes and dispose them."""
-        while self._sandboxes:
+        while True:
             await asyncio.sleep(60)
+            if not self._sandboxes:
+                continue
             now = time.monotonic()
             to_dispose: list[str] = []
             for sid, last in list(self._last_activity.items()):
@@ -180,7 +182,9 @@ async def _store_sandbox_id_in_redis(session_id: str, sandbox_id: str) -> None:
 
         redis = redis_client.get_redis()
         key = f"{_REDIS_KEY_PREFIX}{session_id}"
-        await redis.set(key, sandbox_id, ex=3600)  # 1 hour TTL
+        config = Config()
+        ttl = max(config.copilot_sandbox_timeout * 2, 3600)  # At least 1h, 2x timeout
+        await redis.set(key, sandbox_id, ex=ttl)
     except Exception as e:
         logger.warning(f"[E2B] Failed to store sandbox_id in Redis: {e}")
 

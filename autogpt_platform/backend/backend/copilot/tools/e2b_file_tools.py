@@ -164,7 +164,7 @@ class E2BWriteTool(BaseTool):
 
         try:
             # Ensure parent directory exists
-            parent = "/".join(resolved.rsplit("/", 1)[:-1])
+            parent = posixpath.dirname(resolved)
             if parent and parent != _SANDBOX_HOME:
                 await sandbox.commands.run(f"mkdir -p {parent}", timeout=5)
             await sandbox.files.write(resolved, content)
@@ -247,10 +247,20 @@ class E2BEditTool(BaseTool):
 
         try:
             content = await sandbox.files.read(resolved)
-            if old_text not in content:
+            occurrences = content.count(old_text)
+            if occurrences == 0:
                 return ErrorResponse(
                     message=f"old_text not found in {resolved}",
                     error="text_not_found",
+                    session_id=session.session_id,
+                )
+            if occurrences > 1:
+                return ErrorResponse(
+                    message=(
+                        f"old_text found {occurrences} times in {resolved}. "
+                        "Please provide more context to make the match unique."
+                    ),
+                    error="ambiguous_match",
                     session_id=session.session_id,
                 )
             new_content = content.replace(old_text, new_text, 1)
@@ -606,7 +616,7 @@ class LoadFromWorkspaceTool(BaseTool):
                 return _path_error(target, session)
 
             # Ensure parent directory exists
-            parent = "/".join(resolved.rsplit("/", 1)[:-1])
+            parent = posixpath.dirname(resolved)
             if parent and parent != _SANDBOX_HOME:
                 await sandbox.commands.run(f"mkdir -p {parent}", timeout=5)
             await sandbox.files.write(resolved, content)
