@@ -8,7 +8,7 @@ from typing import Any, Optional
 from pydantic import BaseModel
 
 from backend.copilot.model import ChatSession
-from backend.copilot.tools.sandbox import WORKSPACE_PREFIX
+from backend.copilot.tools.sandbox import WORKSPACE_PREFIX, make_session_path
 from backend.data.db_accessors import workspace_db
 from backend.util.settings import Config
 from backend.util.virus_scanner import scan_content_safe
@@ -45,7 +45,7 @@ def _resolve_write_content(
             session_id=session_id,
         )
 
-    if source_path:
+    if source_path is not None:
         validated = _validate_ephemeral_path(
             source_path, param_name="source_path", session_id=session_id
         )
@@ -65,7 +65,7 @@ def _resolve_write_content(
                 session_id=session_id,
             )
 
-    if content_b64:
+    if content_b64 is not None:
         try:
             return base64.b64decode(content_b64)
         except Exception:
@@ -81,13 +81,17 @@ def _resolve_write_content(
 def _validate_ephemeral_path(
     path: str, *, param_name: str, session_id: str
 ) -> ErrorResponse | str:
-    """Validate that *path* is inside the ephemeral working directory.
+    """Validate that *path* is inside the session's ephemeral directory.
+
+    Uses the session-specific directory (``make_session_path(session_id)``)
+    rather than the bare prefix, so ``/tmp/copilot-evil/...`` is rejected.
 
     Returns the resolved real path on success, or an ``ErrorResponse`` when the
-    path escapes ``WORKSPACE_PREFIX``.
+    path escapes the session directory.
     """
+    session_dir = os.path.normpath(make_session_path(session_id)) + os.sep
     real = os.path.realpath(path)
-    if not real.startswith(WORKSPACE_PREFIX):
+    if not real.startswith(session_dir):
         return ErrorResponse(
             message=(
                 f"{param_name} must be within the ephemeral working "
@@ -96,6 +100,56 @@ def _validate_ephemeral_path(
             session_id=session_id,
         )
     return real
+
+
+_TEXT_MIME_PREFIXES = (
+    "text/",
+    "application/json",
+    "application/xml",
+    "application/javascript",
+    "application/x-python",
+    "application/x-sh",
+)
+
+_IMAGE_MIME_TYPES = {"image/png", "image/jpeg", "image/gif", "image/webp"}
+
+
+def _is_text_mime(mime_type: str) -> bool:
+    return any(mime_type.startswith(t) for t in _TEXT_MIME_PREFIXES)
+
+
+async def _get_manager(user_id: str, session_id: str) -> WorkspaceManager:
+    """Create a session-scoped WorkspaceManager."""
+    workspace = await workspace_db().get_or_create_workspace(user_id)
+    return WorkspaceManager(user_id, workspace.id, session_id)
+
+
+async def _resolve_file(
+    manager: WorkspaceManager,
+    file_id: str | None,
+    path: str | None,
+    session_id: str,
+) -> tuple[str, Any] | ErrorResponse:
+    """Resolve a file by file_id or path.
+
+    Returns ``(target_file_id, file_info)`` on success, or an
+    ``ErrorResponse`` if the file was not found.
+    """
+    if file_id:
+        file_info = await manager.get_file_info(file_id)
+        if file_info is None:
+            return ErrorResponse(
+                message=f"File not found: {file_id}", session_id=session_id
+            )
+        return file_id, file_info
+
+    assert path is not None
+    file_info = await manager.get_file_info_by_path(path)
+    if file_info is None:
+        return ErrorResponse(
+            message=f"File not found at path: {path}", session_id=session_id
+        )
+    return file_info.id, file_info
 
 
 class WorkspaceFileInfoData(BaseModel):
@@ -216,11 +270,9 @@ class ListWorkspaceFilesTool(BaseTool):
         **kwargs,
     ) -> ToolResponseBase:
         session_id = session.session_id
-
         if not user_id:
             return ErrorResponse(
-                message="Authentication required",
-                session_id=session_id,
+                message="Authentication required", session_id=session_id
             )
 
         path_prefix: Optional[str] = kwargs.get("path_prefix")
@@ -228,20 +280,13 @@ class ListWorkspaceFilesTool(BaseTool):
         include_all_sessions: bool = kwargs.get("include_all_sessions", False)
 
         try:
-            workspace = await workspace_db().get_or_create_workspace(user_id)
-            # Pass session_id for session-scoped file access
-            manager = WorkspaceManager(user_id, workspace.id, session_id)
-
+            manager = await _get_manager(user_id, session_id)
             files = await manager.list_files(
-                path=path_prefix,
-                limit=limit,
-                include_all_sessions=include_all_sessions,
+                path=path_prefix, limit=limit, include_all_sessions=include_all_sessions
             )
             total = await manager.get_file_count(
-                path=path_prefix,
-                include_all_sessions=include_all_sessions,
+                path=path_prefix, include_all_sessions=include_all_sessions
             )
-
             file_infos = [
                 WorkspaceFileInfoData(
                     file_id=f.id,
@@ -252,19 +297,17 @@ class ListWorkspaceFilesTool(BaseTool):
                 )
                 for f in files
             ]
-
-            scope_msg = "all sessions" if include_all_sessions else "current session"
+            scope = "all sessions" if include_all_sessions else "current session"
             return WorkspaceFileListResponse(
                 files=file_infos,
                 total_count=total,
-                message=f"Found {len(files)} files in workspace ({scope_msg})",
+                message=f"Found {len(files)} files in workspace ({scope})",
                 session_id=session_id,
             )
-
         except Exception as e:
             logger.error(f"Error listing workspace files: {e}", exc_info=True)
             return ErrorResponse(
-                message=f"Failed to list workspace files: {str(e)}",
+                message=f"Failed to list workspace files: {e}",
                 error=str(e),
                 session_id=session_id,
             )
@@ -273,10 +316,7 @@ class ListWorkspaceFilesTool(BaseTool):
 class ReadWorkspaceFileTool(BaseTool):
     """Tool for reading file content from workspace."""
 
-    # Size threshold for returning full content vs metadata+URL
-    # Files larger than this return metadata with download URL to prevent context bloat
     MAX_INLINE_SIZE_BYTES = 32 * 1024  # 32KB
-    # Preview size for text files
     PREVIEW_SIZE = 500
 
     @property
@@ -338,18 +378,6 @@ class ReadWorkspaceFileTool(BaseTool):
     def requires_auth(self) -> bool:
         return True
 
-    def _is_text_mime_type(self, mime_type: str) -> bool:
-        """Check if the MIME type is a text-based type."""
-        text_types = [
-            "text/",
-            "application/json",
-            "application/xml",
-            "application/javascript",
-            "application/x-python",
-            "application/x-sh",
-        ]
-        return any(mime_type.startswith(t) for t in text_types)
-
     async def _execute(
         self,
         user_id: str | None,
@@ -357,11 +385,9 @@ class ReadWorkspaceFileTool(BaseTool):
         **kwargs,
     ) -> ToolResponseBase:
         session_id = session.session_id
-
         if not user_id:
             return ErrorResponse(
-                message="Authentication required",
-                session_id=session_id,
+                message="Authentication required", session_id=session_id
             )
 
         file_id: Optional[str] = kwargs.get("file_id")
@@ -371,46 +397,26 @@ class ReadWorkspaceFileTool(BaseTool):
 
         if not file_id and not path:
             return ErrorResponse(
-                message="Please provide either file_id or path",
-                session_id=session_id,
+                message="Please provide either file_id or path", session_id=session_id
             )
 
-        # Validate save_to_path is within ephemeral workspace
+        # Validate and resolve save_to_path (use sanitized real path).
         if save_to_path:
-            result = _validate_ephemeral_path(
+            validated_save = _validate_ephemeral_path(
                 save_to_path, param_name="save_to_path", session_id=session_id
             )
-            if isinstance(result, ErrorResponse):
-                return result
+            if isinstance(validated_save, ErrorResponse):
+                return validated_save
+            save_to_path = validated_save
 
         try:
-            workspace = await workspace_db().get_or_create_workspace(user_id)
-            # Pass session_id for session-scoped file access
-            manager = WorkspaceManager(user_id, workspace.id, session_id)
+            manager = await _get_manager(user_id, session_id)
+            resolved = await _resolve_file(manager, file_id, path, session_id)
+            if isinstance(resolved, ErrorResponse):
+                return resolved
+            target_file_id, file_info = resolved
 
-            # Get file info
-            if file_id:
-                file_info = await manager.get_file_info(file_id)
-                if file_info is None:
-                    return ErrorResponse(
-                        message=f"File not found: {file_id}",
-                        session_id=session_id,
-                    )
-                target_file_id = file_id
-            else:
-                # path is guaranteed to be non-None here due to the check above
-                assert path is not None
-                file_info = await manager.get_file_info_by_path(path)
-                if file_info is None:
-                    return ErrorResponse(
-                        message=f"File not found at path: {path}",
-                        session_id=session_id,
-                    )
-                target_file_id = file_info.id
-
-            # If save_to_path requested, always read and save the file.
-            # Keep the bytes around so we can reuse them for inline content
-            # instead of fetching from storage a second time.
+            # If save_to_path, read + save; cache bytes for possible inline reuse.
             cached_content: bytes | None = None
             if save_to_path:
                 cached_content = await manager.read_file_by_id(target_file_id)
@@ -420,27 +426,15 @@ class ReadWorkspaceFileTool(BaseTool):
                 with open(save_to_path, "wb") as f:
                     f.write(cached_content)
 
-            # Decide whether to return inline content or metadata+URL
-            is_small_file = file_info.size_bytes <= self.MAX_INLINE_SIZE_BYTES
-            is_text_file = self._is_text_mime_type(file_info.mime_type)
+            is_small = file_info.size_bytes <= self.MAX_INLINE_SIZE_BYTES
+            is_text = _is_text_mime(file_info.mime_type)
+            is_image = file_info.mime_type in _IMAGE_MIME_TYPES
 
-            # Return inline content for small text/image files (unless force_download_url)
-            is_image_file = file_info.mime_type in {
-                "image/png",
-                "image/jpeg",
-                "image/gif",
-                "image/webp",
-            }
-            if (
-                is_small_file
-                and (is_text_file or is_image_file)
-                and not force_download_url
-            ):
+            # Inline content for small text/image files
+            if is_small and (is_text or is_image) and not force_download_url:
                 content = cached_content or await manager.read_file_by_id(
                     target_file_id
                 )
-                content_b64 = base64.b64encode(content).decode("utf-8")
-
                 msg = f"Successfully read file: {file_info.name}"
                 if save_to_path:
                     msg += f" (also saved to {save_to_path})"
@@ -449,56 +443,47 @@ class ReadWorkspaceFileTool(BaseTool):
                     name=file_info.name,
                     path=file_info.path,
                     mime_type=file_info.mime_type,
-                    content_base64=content_b64,
+                    content_base64=base64.b64encode(content).decode("utf-8"),
                     message=msg,
                     session_id=session_id,
                 )
 
-            # Return metadata + workspace:// reference for large or binary files
-            # This prevents context bloat (100KB file = ~133KB as base64)
-            # Use workspace:// format so frontend urlTransform can add proxy prefix
-            download_url = f"workspace://{target_file_id}"
-
-            # Generate preview for text files
+            # Metadata + download URL for large/binary files
             preview: str | None = None
-            if is_text_file:
+            if is_text:
                 try:
-                    content = await manager.read_file_by_id(target_file_id)
-                    preview_text = content[: self.PREVIEW_SIZE].decode(
-                        "utf-8", errors="replace"
+                    raw = cached_content or await manager.read_file_by_id(
+                        target_file_id
                     )
-                    if len(content) > self.PREVIEW_SIZE:
-                        preview_text += "..."
-                    preview = preview_text
+                    preview = raw[: self.PREVIEW_SIZE].decode("utf-8", errors="replace")
+                    if len(raw) > self.PREVIEW_SIZE:
+                        preview += "..."
                 except Exception:
-                    pass  # Preview is optional
+                    pass
 
             msg = f"File: {file_info.name} ({file_info.size_bytes} bytes)."
-            if save_to_path:
-                msg += f" Saved to {save_to_path}."
-            else:
-                msg += " Use download_url to retrieve content."
+            msg += (
+                f" Saved to {save_to_path}."
+                if save_to_path
+                else " Use download_url to retrieve content."
+            )
             return WorkspaceFileMetadataResponse(
                 file_id=file_info.id,
                 name=file_info.name,
                 path=file_info.path,
                 mime_type=file_info.mime_type,
                 size_bytes=file_info.size_bytes,
-                download_url=download_url,
+                download_url=f"workspace://{target_file_id}",
                 preview=preview,
                 message=msg,
                 session_id=session_id,
             )
-
         except FileNotFoundError as e:
-            return ErrorResponse(
-                message=str(e),
-                session_id=session_id,
-            )
+            return ErrorResponse(message=str(e), session_id=session_id)
         except Exception as e:
             logger.error(f"Error reading workspace file: {e}", exc_info=True)
             return ErrorResponse(
-                message=f"Failed to read workspace file: {str(e)}",
+                message=f"Failed to read workspace file: {e}",
                 error=str(e),
                 session_id=session_id,
             )
@@ -593,77 +578,58 @@ class WriteWorkspaceFileTool(BaseTool):
         **kwargs,
     ) -> ToolResponseBase:
         session_id = session.session_id
-
         if not user_id:
             return ErrorResponse(
-                message="Authentication required",
-                session_id=session_id,
+                message="Authentication required", session_id=session_id
             )
 
         filename: str = kwargs.get("filename", "")
-        content_text: Optional[str] = kwargs.get("content")
-        content_b64: Optional[str] = kwargs.get("content_base64")
-        source_path: Optional[str] = kwargs.get("source_path")
-        path: Optional[str] = kwargs.get("path")
-        mime_type: Optional[str] = kwargs.get("mime_type")
-        overwrite: bool = kwargs.get("overwrite", False)
-
         if not filename:
             return ErrorResponse(
-                message="Please provide a filename",
-                session_id=session_id,
+                message="Please provide a filename", session_id=session_id
             )
 
-        # Resolve content from exactly one of three sources
         resolved = _resolve_write_content(
-            content_text, content_b64, source_path, session_id
+            kwargs.get("content"),
+            kwargs.get("content_base64"),
+            kwargs.get("source_path"),
+            session_id,
         )
         if isinstance(resolved, ErrorResponse):
             return resolved
         content: bytes = resolved
 
-        # Check size
-        max_file_size = Config().max_file_size_mb * 1024 * 1024
-        if len(content) > max_file_size:
+        max_size = Config().max_file_size_mb * 1024 * 1024
+        if len(content) > max_size:
             return ErrorResponse(
                 message=f"File too large. Maximum size is {Config().max_file_size_mb}MB",
                 session_id=session_id,
             )
 
         try:
-            # Virus scan
             await scan_content_safe(content, filename=filename)
-
-            workspace = await workspace_db().get_or_create_workspace(user_id)
-            # Pass session_id for session-scoped file access
-            manager = WorkspaceManager(user_id, workspace.id, session_id)
-
-            file_record = await manager.write_file(
+            manager = await _get_manager(user_id, session_id)
+            rec = await manager.write_file(
                 content=content,
                 filename=filename,
-                path=path,
-                mime_type=mime_type,
-                overwrite=overwrite,
+                path=kwargs.get("path"),
+                mime_type=kwargs.get("mime_type"),
+                overwrite=kwargs.get("overwrite", False),
             )
-
             return WorkspaceWriteResponse(
-                file_id=file_record.id,
-                name=file_record.name,
-                path=file_record.path,
-                size_bytes=file_record.size_bytes,
-                message=f"Successfully wrote file: {file_record.name}",
+                file_id=rec.id,
+                name=rec.name,
+                path=rec.path,
+                size_bytes=rec.size_bytes,
+                message=f"Successfully wrote file: {rec.name}",
                 session_id=session_id,
             )
-
         except ValueError as e:
-            return ErrorResponse(
-                message=str(e),
-                session_id=session_id,
-            )
+            return ErrorResponse(message=str(e), session_id=session_id)
         except Exception as e:
             logger.error(f"Error writing workspace file: {e}", exc_info=True)
             return ErrorResponse(
-                message=f"Failed to write workspace file: {str(e)}",
+                message=f"Failed to write workspace file: {e}",
                 error=str(e),
                 session_id=session_id,
             )
@@ -716,61 +682,39 @@ class DeleteWorkspaceFileTool(BaseTool):
         **kwargs,
     ) -> ToolResponseBase:
         session_id = session.session_id
-
         if not user_id:
             return ErrorResponse(
-                message="Authentication required",
-                session_id=session_id,
+                message="Authentication required", session_id=session_id
             )
 
         file_id: Optional[str] = kwargs.get("file_id")
         path: Optional[str] = kwargs.get("path")
-
         if not file_id and not path:
             return ErrorResponse(
-                message="Please provide either file_id or path",
-                session_id=session_id,
+                message="Please provide either file_id or path", session_id=session_id
             )
 
         try:
-            workspace = await workspace_db().get_or_create_workspace(user_id)
-            # Pass session_id for session-scoped file access
-            manager = WorkspaceManager(user_id, workspace.id, session_id)
+            manager = await _get_manager(user_id, session_id)
+            resolved = await _resolve_file(manager, file_id, path, session_id)
+            if isinstance(resolved, ErrorResponse):
+                return resolved
+            target_file_id, _ = resolved
 
-            # Determine the file_id to delete
-            target_file_id: str
-            if file_id:
-                target_file_id = file_id
-            else:
-                # path is guaranteed to be non-None here due to the check above
-                assert path is not None
-                file_info = await manager.get_file_info_by_path(path)
-                if file_info is None:
-                    return ErrorResponse(
-                        message=f"File not found at path: {path}",
-                        session_id=session_id,
-                    )
-                target_file_id = file_info.id
-
-            success = await manager.delete_file(target_file_id)
-
-            if not success:
+            if not await manager.delete_file(target_file_id):
                 return ErrorResponse(
-                    message=f"File not found: {target_file_id}",
-                    session_id=session_id,
+                    message=f"File not found: {target_file_id}", session_id=session_id
                 )
-
             return WorkspaceDeleteResponse(
                 file_id=target_file_id,
                 success=True,
                 message="File deleted successfully",
                 session_id=session_id,
             )
-
         except Exception as e:
             logger.error(f"Error deleting workspace file: {e}", exc_info=True)
             return ErrorResponse(
-                message=f"Failed to delete workspace file: {str(e)}",
+                message=f"Failed to delete workspace file: {e}",
                 error=str(e),
                 session_id=session_id,
             )
