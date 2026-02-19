@@ -1565,7 +1565,7 @@ async def _yield_tool_call(
     tool_task = asyncio.create_task(
         execute_tool(
             tool_name=tool_name,
-            parameters={**arguments, "_session_lock": session_lock},
+            parameters=arguments,
             tool_call_id=tool_call_id,
             user_id=session.user_id,
             session=session,

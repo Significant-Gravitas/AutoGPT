@@ -90,8 +90,6 @@ class BaseTool:
             )
 
         try:
-            # Strip internal parallel-execution metadata before passing to tool
-            kwargs.pop("_session_lock", None)
             result = await self._execute(user_id, session, **kwargs)
             return StreamToolOutputAvailable(
                 toolCallId=tool_call_id,
