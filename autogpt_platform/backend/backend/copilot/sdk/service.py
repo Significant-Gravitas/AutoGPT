@@ -576,11 +576,14 @@ async def stream_chat_completion_sdk(
                 query_message = current_message
                 current_msg_count = len(session.messages)
 
-                if use_resume and transcript_msg_count >= 0:
+                if use_resume and transcript_msg_count > 0:
                     # Transcript covers messages[0..M-1].  Current session
                     # has N messages (last one is the new user msg).
                     # Gap = messages[M .. N-2] (everything between upload
                     # and the current turn).
+                    # When transcript_msg_count == 0 (no metadata), we trust
+                    # the transcript is up-to-date and skip gap detection to
+                    # avoid duplicating the full history.
                     if transcript_msg_count < current_msg_count - 1:
                         gap = session.messages[transcript_msg_count:-1]
                         gap_context = _format_conversation_context(gap)
