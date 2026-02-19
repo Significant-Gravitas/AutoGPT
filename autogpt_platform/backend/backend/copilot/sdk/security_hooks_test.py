@@ -10,6 +10,7 @@ import os
 import pytest
 
 from .security_hooks import _validate_tool_access, _validate_user_isolation
+from .service import _is_tool_error_or_denial
 
 SDK_CWD = "/tmp/copilot-abc123"
 
@@ -260,3 +261,74 @@ async def test_task_limit_enforced(_hooks):
     )
     assert _is_denied(result)
     assert "Maximum" in _reason(result)
+
+
+# -- _is_tool_error_or_denial ------------------------------------------------
+
+
+class TestIsToolErrorOrDenial:
+    def test_none_content(self):
+        assert _is_tool_error_or_denial(None) is False
+
+    def test_empty_content(self):
+        assert _is_tool_error_or_denial("") is False
+
+    def test_benign_output(self):
+        assert _is_tool_error_or_denial("All good, no issues.") is False
+
+    def test_security_marker(self):
+        assert _is_tool_error_or_denial("[SECURITY] Tool access blocked") is True
+
+    def test_cannot_be_bypassed(self):
+        assert _is_tool_error_or_denial("This restriction cannot be bypassed.") is True
+
+    def test_not_allowed(self):
+        assert _is_tool_error_or_denial("Operation not allowed in sandbox") is True
+
+    def test_background_task_denial(self):
+        assert (
+            _is_tool_error_or_denial(
+                "Background task execution is not supported. "
+                "Run tasks in the foreground instead."
+            )
+            is True
+        )
+
+    def test_subtask_limit_denial(self):
+        assert (
+            _is_tool_error_or_denial(
+                "Maximum 2 sub-tasks per session. Please continue in the main conversation."
+            )
+            is True
+        )
+
+    def test_denied_marker(self):
+        assert (
+            _is_tool_error_or_denial("Access denied: insufficient privileges") is True
+        )
+
+    def test_blocked_marker(self):
+        assert _is_tool_error_or_denial("Request blocked by security policy") is True
+
+    def test_failed_marker(self):
+        assert _is_tool_error_or_denial("Failed to execute tool: timeout") is True
+
+    def test_mcp_iserror(self):
+        assert _is_tool_error_or_denial('{"isError": true, "content": []}') is True
+
+    def test_benign_error_in_value(self):
+        """Content like '0 errors found' should not trigger — 'error' was removed."""
+        assert _is_tool_error_or_denial("0 errors found") is False
+
+    def test_benign_permission_field(self):
+        """Schema descriptions mentioning 'permission' should not trigger."""
+        assert (
+            _is_tool_error_or_denial(
+                '{"fields": [{"name": "permission_level", "type": "int"}]}'
+            )
+            is False
+        )
+
+    def test_benign_not_found_in_listing(self):
+        """File listing containing 'not found' in filenames should not trigger."""
+        assert _is_tool_error_or_denial("readme.md\nfile-not-found-handler.py") is False
