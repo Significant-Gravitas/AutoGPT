@@ -1052,6 +1052,7 @@
                     {
                       "$ref": "#/components/schemas/ClarificationNeededResponse"
                     },
+                    { "$ref": "#/components/schemas/SuggestedGoalResponse" },
                     { "$ref": "#/components/schemas/BlockListResponse" },
                     { "$ref": "#/components/schemas/BlockDetailsResponse" },
                     { "$ref": "#/components/schemas/BlockOutputResponse" },
@@ -10796,7 +10797,8 @@
           "bash_exec",
           "operation_status",
           "feature_request_search",
-          "feature_request_created"
+          "feature_request_created",
+          "suggested_goal"
         ],
         "title": "ResponseType",
         "description": "Types of tool responses."
@@ -11676,6 +11678,47 @@
         "type": "string",
         "enum": ["DRAFT", "PENDING", "APPROVED", "REJECTED"],
         "title": "SubmissionStatus"
+      },
+      "SuggestedGoalResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "suggested_goal"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "suggested_goal": {
+            "type": "string",
+            "title": "Suggested Goal",
+            "description": "The suggested alternative goal"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "Why the original goal needs refinement",
+            "default": ""
+          },
+          "original_goal": {
+            "type": "string",
+            "title": "Original Goal",
+            "description": "The user's original goal for context",
+            "default": ""
+          },
+          "goal_type": {
+            "type": "string",
+            "enum": ["vague", "unachievable"],
+            "title": "Goal Type",
+            "description": "Type: 'vague' or 'unachievable'",
+            "default": "vague"
+          }
+        },
+        "type": "object",
+        "required": ["message", "suggested_goal"],
+        "title": "SuggestedGoalResponse",
+        "description": "Response when the goal needs refinement with a suggested alternative."
       },
       "SuggestionsResponse": {
         "properties": {

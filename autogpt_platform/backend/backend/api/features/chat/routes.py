@@ -50,6 +50,7 @@ from backend.copilot.tools.models import (
     OperationPendingResponse,
     OperationStartedResponse,
     SetupRequirementsResponse,
+    SuggestedGoalResponse,
     UnderstandingUpdatedResponse,
 )
 from backend.copilot.tracking import track_user_message
@@ -984,6 +985,7 @@ ToolResponseUnion = (
     | AgentPreviewResponse
     | AgentSavedResponse
     | ClarificationNeededResponse
+    | SuggestedGoalResponse
     | BlockListResponse
     | BlockDetailsResponse
     | BlockOutputResponse
