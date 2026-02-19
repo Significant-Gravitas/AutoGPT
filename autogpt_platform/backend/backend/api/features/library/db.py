@@ -670,6 +670,9 @@ async def update_library_agent(
         merged_settings = {**current_settings_dict, **new_settings}
         update_fields["settings"] = SafeJson(merged_settings)
     if folder_id is not None:
+        # Authorization: FK only checks existence, not ownership.
+        # Verify the folder belongs to this user to prevent cross-user nesting.
+        await get_folder(folder_id, user_id)
         update_fields["folderId"] = folder_id
 
     # If graph_version is provided, update to that specific version
@@ -1437,8 +1440,9 @@ async def move_agent_to_folder(
     """
     logger.debug(f"Moving agent #{library_agent_id} to folder #{folder_id}")
 
-    # No explicit agent check — get_library_agent at the end will raise
-    # NotFoundError if the agent doesn't exist or doesn't belong to the user.
+    # Authorization: verify agent belongs to user before updating.
+    # update() uses where={"id": ...} without userId, so check ownership first.
+    await get_library_agent(library_agent_id, user_id)
 
     # Authorization: folderId is set directly, FK only checks existence
     # not ownership, so verify the folder belongs to the user.
