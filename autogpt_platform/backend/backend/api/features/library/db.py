@@ -1303,9 +1303,8 @@ async def delete_folder(
     # Authorization: verify folder exists and belongs to user.
     await get_folder(folder_id, user_id)
 
-    # Collect all folder IDs (target + descendants) before the transaction
-    async with transaction() as tx:
-        descendant_ids = await _get_descendant_folder_ids(folder_id, user_id, tx)
+    # Collect all folder IDs (target + descendants) — single query, in-memory walk
+    descendant_ids = await _get_descendant_folder_ids(folder_id, user_id)
     all_folder_ids = [folder_id] + descendant_ids
 
     if soft_delete:
@@ -1372,32 +1371,39 @@ async def delete_folder(
 async def _get_descendant_folder_ids(
     folder_id: str,
     user_id: str,
-    tx: Optional[prisma.Prisma] = None,
 ) -> list[str]:
     """
-    Recursively get all descendant folder IDs.
+    Get all descendant folder IDs in a single query + in-memory walk,
+    same approach as _is_descendant_of to avoid N recursive DB round-trips.
 
     Args:
         folder_id: The ID of the parent folder.
         user_id: The ID of the user.
-        tx: Optional transaction.
 
     Returns:
         A list of descendant folder IDs.
     """
-    prisma_client = prisma.models.LibraryFolder.prisma(tx)
-    children = await prisma_client.find_many(
-        where={
-            "parentId": folder_id,
-            "userId": user_id,
-            "isDeleted": False,
-        }
+    all_folders = await prisma.models.LibraryFolder.prisma().find_many(
+        where={"userId": user_id, "isDeleted": False},
     )
 
+    # Build children map: parent_id -> [child_ids]
+    children_map: dict[str, list[str]] = {}
+    for f in all_folders:
+        if f.parentId:
+            children_map.setdefault(f.parentId, []).append(f.id)
+
+    # Walk the tree in memory
     result: list[str] = []
-    for child in children:
-        result.append(child.id)
-        result.extend(await _get_descendant_folder_ids(child.id, user_id, tx))
+    visited: set[str] = set()
+    stack = list(children_map.get(folder_id, []))
+    while stack:
+        current = stack.pop()
+        if current in visited:
+            continue  # cycle guard
+        visited.add(current)
+        result.append(current)
+        stack.extend(children_map.get(current, []))
 
     return result
 
