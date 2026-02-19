@@ -29,6 +29,7 @@ export function useCopilotPage() {
     sessionId,
     setSessionId,
     hydratedMessages,
+    hasActiveStream,
     isLoadingSession,
     createSession,
     isCreatingSession,
@@ -80,14 +81,31 @@ export function useCopilotPage() {
                 },
               };
             },
+            // Resume: GET goes to the same URL as POST (backend uses
+            // method to distinguish).  Override the default formula which
+            // would append /{chatId}/stream to the existing path.
+            prepareReconnectToStreamRequest: () => ({
+              api: `/api/chat/sessions/${sessionId}/stream`,
+            }),
           })
         : null,
     [sessionId],
   );
 
-  const { messages, sendMessage, stop, status, error, setMessages } = useChat({
+  const {
+    messages,
+    sendMessage,
+    stop,
+    status,
+    error,
+    setMessages,
+    resumeStream,
+  } = useChat({
     id: sessionId ?? undefined,
     transport: transport ?? undefined,
+    // Don't use resume: true — it fires before hydration completes, causing
+    // the hydrated messages to overwrite the resumed stream.  Instead we
+    // call resumeStream() manually after hydration + active_stream detection.
   });
 
   // Abort the stream if the backend doesn't start sending data within 12s.
@@ -108,13 +126,31 @@ export function useCopilotPage() {
     return () => clearTimeout(timer);
   }, [status]);
 
+  // Hydrate messages from the REST session endpoint.
+  // Skip hydration while streaming to avoid overwriting the live stream.
   useEffect(() => {
     if (!hydratedMessages || hydratedMessages.length === 0) return;
+    if (status === "streaming" || status === "submitted") return;
     setMessages((prev) => {
       if (prev.length >= hydratedMessages.length) return prev;
       return hydratedMessages;
     });
-  }, [hydratedMessages, setMessages]);
+  }, [hydratedMessages, setMessages, status]);
+
+  // Resume an active stream AFTER hydration completes.
+  // The backend returns active_stream info when a task is still running.
+  // We wait for hydration so the AI SDK has the conversation history
+  // before the resumed stream appends the in-progress assistant message.
+  const hasResumedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!hasActiveStream || !sessionId) return;
+    if (!hydratedMessages || hydratedMessages.length === 0) return;
+    if (status === "streaming" || status === "submitted") return;
+    // Only resume once per session to avoid re-triggering after stream ends
+    if (hasResumedRef.current === sessionId) return;
+    hasResumedRef.current = sessionId;
+    resumeStream();
+  }, [hasActiveStream, sessionId, hydratedMessages, status, resumeStream]);
 
   // Poll session endpoint when a long-running tool (create_agent, edit_agent)
   // is in progress. When the backend completes, the session data will contain
@@ -197,12 +233,18 @@ export function useCopilotPage() {
     }
   }, [isDeleting]);
 
+  // True while we know the backend has an active stream but haven't
+  // reconnected yet.  Used to disable the send button and show stop UI.
+  const isReconnecting =
+    hasActiveStream && status !== "streaming" && status !== "submitted";
+
   return {
     sessionId,
     messages,
     status,
     error,
     stop,
+    isReconnecting,
     isLoadingSession,
     isCreatingSession,
     isUserLoading,
