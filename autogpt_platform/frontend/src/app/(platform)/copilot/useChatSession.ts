@@ -50,6 +50,14 @@ export function useChatSession() {
     );
   }, [sessionQuery.data, sessionId]);
 
+  // Expose active_stream info so the caller can trigger manual resume
+  // after hydration completes (rather than relying on AI SDK's built-in
+  // resume which fires before hydration).
+  const hasActiveStream = useMemo(() => {
+    if (sessionQuery.data?.status !== 200) return false;
+    return !!sessionQuery.data.data.active_stream;
+  }, [sessionQuery.data]);
+
   const { mutateAsync: createSessionMutation, isPending: isCreatingSession } =
     usePostV2CreateSession({
       mutation: {
@@ -102,6 +110,7 @@ export function useChatSession() {
     sessionId,
     setSessionId,
     hydratedMessages,
+    hasActiveStream,
     isLoadingSession: sessionQuery.isLoading,
     createSession,
     isCreatingSession,

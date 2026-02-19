@@ -1052,6 +1052,7 @@
                     {
                       "$ref": "#/components/schemas/ClarificationNeededResponse"
                     },
+                    { "$ref": "#/components/schemas/SuggestedGoalResponse" },
                     { "$ref": "#/components/schemas/BlockListResponse" },
                     { "$ref": "#/components/schemas/BlockDetailsResponse" },
                     { "$ref": "#/components/schemas/BlockOutputResponse" },
@@ -1151,6 +1152,36 @@
       }
     },
     "/api/chat/sessions/{session_id}": {
+      "delete": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Delete Session",
+        "description": "Delete a chat session.\n\nPermanently removes a chat session and all its messages.\nOnly the owner can delete their sessions.\n\nArgs:\n    session_id: The session ID to delete.\n    user_id: The authenticated user's ID.\n\nReturns:\n    204 No Content on success.\n\nRaises:\n    HTTPException: 404 if session not found or not owned by user.",
+        "operationId": "deleteV2DeleteSession",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "responses": {
+          "204": { "description": "Successful Response" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Session not found or access denied" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
       "get": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Get Session",
@@ -10766,7 +10797,8 @@
           "bash_exec",
           "operation_status",
           "feature_request_search",
-          "feature_request_created"
+          "feature_request_created",
+          "suggested_goal"
         ],
         "title": "ResponseType",
         "description": "Types of tool responses."
@@ -11646,6 +11678,47 @@
         "type": "string",
         "enum": ["DRAFT", "PENDING", "APPROVED", "REJECTED"],
         "title": "SubmissionStatus"
+      },
+      "SuggestedGoalResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "suggested_goal"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "suggested_goal": {
+            "type": "string",
+            "title": "Suggested Goal",
+            "description": "The suggested alternative goal"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "Why the original goal needs refinement",
+            "default": ""
+          },
+          "original_goal": {
+            "type": "string",
+            "title": "Original Goal",
+            "description": "The user's original goal for context",
+            "default": ""
+          },
+          "goal_type": {
+            "type": "string",
+            "enum": ["vague", "unachievable"],
+            "title": "Goal Type",
+            "description": "Type: 'vague' or 'unachievable'",
+            "default": "vague"
+          }
+        },
+        "type": "object",
+        "required": ["message", "suggested_goal"],
+        "title": "SuggestedGoalResponse",
+        "description": "Response when the goal needs refinement with a suggested alternative."
       },
       "SuggestionsResponse": {
         "properties": {

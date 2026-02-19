@@ -125,16 +125,8 @@ export class BuildPage extends BasePage {
       `[data-id="block-card-${blockCardId}"]`,
     );
 
-    try {
-      // Wait for the block card to be visible with a reasonable timeout
-      await blockCard.waitFor({ state: "visible", timeout: 10000 });
-      await blockCard.click();
-    } catch (error) {
-      console.log(
-        `Block ${block.name} (display: ${displayName}) returned from the API but not found in block list`,
-      );
-      console.log(`Error: ${error}`);
-    }
+    await blockCard.waitFor({ state: "visible", timeout: 10000 });
+    await blockCard.click();
   }
 
   async hasBlock(_block: Block) {
