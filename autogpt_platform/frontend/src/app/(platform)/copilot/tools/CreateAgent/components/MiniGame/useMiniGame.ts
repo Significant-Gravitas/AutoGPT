@@ -369,10 +369,22 @@ export function useMiniGame() {
         canvas.width = entry.contentRect.width;
         canvas.height = CANVAS_HEIGHT;
         if (stateRef.current) {
+          const s = stateRef.current;
           const newCols = Math.floor(canvas.width / CELL_SIZE);
           const newRows = Math.floor(CANVAS_HEIGHT / CELL_SIZE);
-          stateRef.current.cols = newCols;
-          stateRef.current.rows = newRows;
+          s.cols = newCols;
+          s.rows = newRows;
+
+          // Wrap snake segments that are now outside the smaller grid
+          for (const seg of s.snake) {
+            seg.x = ((seg.x % newCols) + newCols) % newCols;
+            seg.y = ((seg.y % newRows) + newRows) % newRows;
+          }
+
+          // Respawn food if it landed outside the new bounds
+          if (s.food.x >= newCols || s.food.y >= newRows) {
+            s.food = spawnFood(newCols, newRows, s.snake);
+          }
         }
       }
     });
