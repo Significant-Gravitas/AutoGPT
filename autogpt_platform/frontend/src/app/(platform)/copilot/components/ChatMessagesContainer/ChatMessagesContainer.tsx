@@ -118,6 +118,7 @@ interface ChatMessagesContainerProps {
   status: string;
   error: Error | undefined;
   isLoading: boolean;
+  headerSlot?: React.ReactNode;
 }
 
 export const ChatMessagesContainer = ({
@@ -125,6 +126,7 @@ export const ChatMessagesContainer = ({
   status,
   error,
   isLoading,
+  headerSlot,
 }: ChatMessagesContainerProps) => {
   const [thinkingPhrase, setThinkingPhrase] = useState(getRandomPhrase);
   const lastToastTimeRef = useRef(0);
@@ -165,8 +167,12 @@ export const ChatMessagesContainer = ({
   return (
     <Conversation className="min-h-0 flex-1">
       <ConversationContent className="flex flex-1 flex-col gap-6 px-3 py-6">
+        {headerSlot}
         {isLoading && messages.length === 0 && (
-          <div className="flex min-h-full flex-1 items-center justify-center">
+          <div
+            className="flex flex-1 items-center justify-center"
+            style={{ minHeight: "calc(100vh - 12rem)" }}
+          >
             <LoadingSpinner className="text-neutral-600" />
           </div>
         )}
