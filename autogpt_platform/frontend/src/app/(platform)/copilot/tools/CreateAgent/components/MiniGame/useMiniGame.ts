@@ -59,7 +59,7 @@ function writeHighScore(score: number) {
   }
 }
 
-function spawnFood(cols: number, rows: number, snake: Point[]): Point {
+function spawnFood(cols: number, rows: number, snake: Point[]): Point | null {
   const occupied = new Set(snake.map((p) => `${p.x},${p.y}`));
   const free: Point[] = [];
   for (let x = 0; x < cols; x++) {
@@ -67,7 +67,7 @@ function spawnFood(cols: number, rows: number, snake: Point[]): Point {
       if (!occupied.has(`${x},${y}`)) free.push({ x, y });
     }
   }
-  if (free.length === 0) return { x: 0, y: 0 };
+  if (free.length === 0) return null;
   return free[Math.floor(Math.random() * free.length)];
 }
 
@@ -80,7 +80,7 @@ function makeState(cols: number, rows: number): GameState {
   }
   return {
     snake,
-    food: spawnFood(cols, rows, snake),
+    food: spawnFood(cols, rows, snake)!,
     dir: "right",
     nextDir: "right",
     score: 0,
@@ -150,7 +150,18 @@ function tick(s: GameState) {
   // Eat food
   if (nx === s.food.x && ny === s.food.y) {
     s.score++;
-    s.food = spawnFood(s.cols, s.rows, s.snake);
+    const newFood = spawnFood(s.cols, s.rows, s.snake);
+    if (newFood) {
+      s.food = newFood;
+    } else {
+      // Grid full — player wins
+      s.over = true;
+      s.running = false;
+      if (s.score > s.highScore) {
+        s.highScore = s.score;
+        writeHighScore(s.score);
+      }
+    }
   } else {
     s.snake.pop();
   }
@@ -191,12 +202,7 @@ function draw(
   // Border
   ctx.strokeStyle = "rgba(0,0,0,0.15)";
   ctx.lineWidth = 1;
-  ctx.strokeRect(
-    offsetX,
-    offsetY,
-    s.cols * CELL_SIZE,
-    s.rows * CELL_SIZE,
-  );
+  ctx.strokeRect(offsetX, offsetY, s.cols * CELL_SIZE, s.rows * CELL_SIZE);
 
   // Snake body
   for (let i = 1; i < s.snake.length; i++) {
@@ -376,14 +382,26 @@ export function useMiniGame() {
           s.rows = newRows;
 
           // Wrap snake segments that are now outside the smaller grid
+          // and deduplicate so overlapping segments don't corrupt state
+          const seen = new Set<string>();
+          const deduped: Point[] = [];
           for (const seg of s.snake) {
             seg.x = ((seg.x % newCols) + newCols) % newCols;
             seg.y = ((seg.y % newRows) + newRows) % newRows;
+            const key = `${seg.x},${seg.y}`;
+            if (!seen.has(key)) {
+              seen.add(key);
+              deduped.push(seg);
+            }
           }
+          s.snake = deduped;
 
           // Respawn food if it landed outside the new bounds
           if (s.food.x >= newCols || s.food.y >= newRows) {
-            s.food = spawnFood(newCols, newRows, s.snake);
+            s.food = spawnFood(newCols, newRows, s.snake) ?? {
+              x: s.food.x % newCols,
+              y: s.food.y % newRows,
+            };
           }
         }
       }
