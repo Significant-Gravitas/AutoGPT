@@ -582,21 +582,12 @@ async def stream_chat_completion_sdk(
 
             if config.claude_agent_use_resume and user_id and len(session.messages) > 1:
                 dl = await download_transcript(user_id, session_id)
-                if dl and validate_transcript(dl.content):
+                is_valid = bool(dl and validate_transcript(dl.content))
+                if dl and is_valid:
                     logger.info(
                         f"[SDK] Transcript available for session {session_id}: "
                         f"{len(dl.content)}B, msg_count={dl.message_count}"
                     )
-                elif dl:
-                    logger.warning(
-                        f"[SDK] Transcript downloaded but invalid for {session_id}"
-                    )
-                else:
-                    logger.warning(
-                        f"[SDK] No transcript available for {session_id} "
-                        f"({len(session.messages)} messages in session)"
-                    )
-                if dl and validate_transcript(dl.content):
                     resume_file = write_transcript_to_tempfile(
                         dl.content, session_id, sdk_cwd
                     )
@@ -607,6 +598,15 @@ async def stream_chat_completion_sdk(
                             f"[SDK] Using --resume ({len(dl.content)}B, "
                             f"msg_count={transcript_msg_count})"
                         )
+                elif dl:
+                    logger.warning(
+                        f"[SDK] Transcript downloaded but invalid for {session_id}"
+                    )
+                else:
+                    logger.warning(
+                        f"[SDK] No transcript available for {session_id} "
+                        f"({len(session.messages)} messages in session)"
+                    )
 
             sdk_options_kwargs: dict[str, Any] = {
                 "system_prompt": system_prompt,
@@ -852,14 +852,21 @@ async def stream_chat_completion_sdk(
             yield StreamFinish()
 
     except Exception as e:
-        logger.error(f"[SDK] Error: {e}", exc_info=True)
+        is_timeout = isinstance(e, TimeoutError)
+        logger.error(
+            f"[SDK] {'Timeout' if is_timeout else 'Error'}: {e}", exc_info=True
+        )
         try:
             await asyncio.shield(upsert_chat_session(session))
         except Exception as save_err:
             logger.error(f"[SDK] Failed to save session on error: {save_err}")
         yield StreamError(
-            errorText="An error occurred. Please try again.",
-            code="sdk_error",
+            errorText=(
+                "The agent stopped responding. Please try again."
+                if is_timeout
+                else "An error occurred. Please try again."
+            ),
+            code="sdk_timeout" if is_timeout else "sdk_error",
         )
         yield StreamFinish()
     finally:
@@ -870,10 +877,14 @@ async def stream_chat_completion_sdk(
         # is safely on disk and still useful for the next turn.
         if config.claude_agent_use_resume and user_id:
             try:
-                if use_resume and resume_file:
-                    raw_transcript = read_transcript_file(resume_file)
-                elif captured_transcript.path:
+                if captured_transcript.path:
+                    # Prefer the fresh transcript from the stop hook
                     raw_transcript = read_transcript_file(captured_transcript.path)
+                elif use_resume and resume_file:
+                    # Fallback: stop hook didn't fire (e.g. error before
+                    # completion); upload the prior transcript so it isn't
+                    # lost entirely.
+                    raw_transcript = read_transcript_file(resume_file)
                 else:
                     raw_transcript = None
 

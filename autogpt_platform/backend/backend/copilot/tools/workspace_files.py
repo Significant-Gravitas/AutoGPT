@@ -20,6 +20,84 @@ from .models import ErrorResponse, ResponseType, ToolResponseBase
 logger = logging.getLogger(__name__)
 
 
+def _resolve_write_content(
+    content_text: str | None,
+    content_b64: str | None,
+    source_path: str | None,
+    session_id: str,
+) -> bytes | ErrorResponse:
+    """Resolve file content from exactly one of three input sources.
+
+    Returns the raw bytes on success, or an ``ErrorResponse`` on validation
+    failure (wrong number of sources, invalid path, file not found, etc.).
+    """
+    sources_provided = sum(
+        x is not None for x in [content_text, content_b64, source_path]
+    )
+    if sources_provided == 0:
+        return ErrorResponse(
+            message="Please provide one of: content, content_base64, or source_path",
+            session_id=session_id,
+        )
+    if sources_provided > 1:
+        return ErrorResponse(
+            message="Provide only one of: content, content_base64, or source_path",
+            session_id=session_id,
+        )
+
+    if source_path:
+        validated = _validate_ephemeral_path(
+            source_path, param_name="source_path", session_id=session_id
+        )
+        if isinstance(validated, ErrorResponse):
+            return validated
+        try:
+            with open(validated, "rb") as f:
+                return f.read()
+        except FileNotFoundError:
+            return ErrorResponse(
+                message=f"Source file not found: {source_path}",
+                session_id=session_id,
+            )
+        except Exception as e:
+            return ErrorResponse(
+                message=f"Failed to read source file: {e}",
+                session_id=session_id,
+            )
+
+    if content_b64:
+        try:
+            return base64.b64decode(content_b64)
+        except Exception:
+            logger.warning(
+                "[workspace] content_base64 is not valid base64, treating as plain text"
+            )
+            return content_b64.encode("utf-8")
+
+    assert content_text is not None
+    return content_text.encode("utf-8")
+
+
+def _validate_ephemeral_path(
+    path: str, *, param_name: str, session_id: str
+) -> ErrorResponse | str:
+    """Validate that *path* is inside the ephemeral working directory.
+
+    Returns the resolved real path on success, or an ``ErrorResponse`` when the
+    path escapes ``WORKSPACE_PREFIX``.
+    """
+    real = os.path.realpath(path)
+    if not real.startswith(WORKSPACE_PREFIX):
+        return ErrorResponse(
+            message=(
+                f"{param_name} must be within the ephemeral working "
+                f"directory ({WORKSPACE_PREFIX})"
+            ),
+            session_id=session_id,
+        )
+    return real
+
+
 class WorkspaceFileInfoData(BaseModel):
     """Data model for workspace file information (not a response itself)."""
 
@@ -299,15 +377,11 @@ class ReadWorkspaceFileTool(BaseTool):
 
         # Validate save_to_path is within ephemeral workspace
         if save_to_path:
-            real_save = os.path.realpath(save_to_path)
-            if not real_save.startswith(WORKSPACE_PREFIX):
-                return ErrorResponse(
-                    message=(
-                        f"save_to_path must be within the ephemeral working "
-                        f"directory ({WORKSPACE_PREFIX})"
-                    ),
-                    session_id=session_id,
-                )
+            result = _validate_ephemeral_path(
+                save_to_path, param_name="save_to_path", session_id=session_id
+            )
+            if isinstance(result, ErrorResponse):
+                return result
 
         try:
             workspace = await workspace_db().get_or_create_workspace(user_id)
@@ -334,12 +408,17 @@ class ReadWorkspaceFileTool(BaseTool):
                     )
                 target_file_id = file_info.id
 
-            # If save_to_path requested, always read and save the file
+            # If save_to_path requested, always read and save the file.
+            # Keep the bytes around so we can reuse them for inline content
+            # instead of fetching from storage a second time.
+            cached_content: bytes | None = None
             if save_to_path:
-                file_content = await manager.read_file_by_id(target_file_id)
-                os.makedirs(os.path.dirname(save_to_path), exist_ok=True)
+                cached_content = await manager.read_file_by_id(target_file_id)
+                dir_path = os.path.dirname(save_to_path)
+                if dir_path:
+                    os.makedirs(dir_path, exist_ok=True)
                 with open(save_to_path, "wb") as f:
-                    f.write(file_content)
+                    f.write(cached_content)
 
             # Decide whether to return inline content or metadata+URL
             is_small_file = file_info.size_bytes <= self.MAX_INLINE_SIZE_BYTES
@@ -357,7 +436,9 @@ class ReadWorkspaceFileTool(BaseTool):
                 and (is_text_file or is_image_file)
                 and not force_download_url
             ):
-                content = await manager.read_file_by_id(target_file_id)
+                content = cached_content or await manager.read_file_by_id(
+                    target_file_id
+                )
                 content_b64 = base64.b64encode(content).decode("utf-8")
 
                 msg = f"Successfully read file: {file_info.name}"
@@ -533,62 +614,13 @@ class WriteWorkspaceFileTool(BaseTool):
                 session_id=session_id,
             )
 
-        # Resolve content from one of three sources
-        sources_provided = sum(
-            bool(x) for x in [content_text, content_b64, source_path]
+        # Resolve content from exactly one of three sources
+        resolved = _resolve_write_content(
+            content_text, content_b64, source_path, session_id
         )
-        if sources_provided == 0:
-            return ErrorResponse(
-                message="Please provide one of: content, content_base64, or source_path",
-                session_id=session_id,
-            )
-        if sources_provided > 1:
-            return ErrorResponse(
-                message="Provide only one of: content, content_base64, or source_path",
-                session_id=session_id,
-            )
-
-        content: bytes
-        if source_path:
-            # Read from ephemeral working directory
-            real_path = os.path.realpath(source_path)
-            if not real_path.startswith(WORKSPACE_PREFIX):
-                return ErrorResponse(
-                    message=(
-                        f"source_path must be within the ephemeral working "
-                        f"directory ({WORKSPACE_PREFIX})"
-                    ),
-                    session_id=session_id,
-                )
-            try:
-                with open(real_path, "rb") as f:
-                    content = f.read()
-            except FileNotFoundError:
-                return ErrorResponse(
-                    message=f"Source file not found: {source_path}",
-                    session_id=session_id,
-                )
-            except Exception as e:
-                return ErrorResponse(
-                    message=f"Failed to read source file: {e}",
-                    session_id=session_id,
-                )
-        elif content_b64:
-            # Decode base64 content
-            try:
-                content = base64.b64decode(content_b64)
-            except Exception:
-                # Fallback: treat as plain text if base64 decode fails
-                # (LLMs sometimes send plain text in the content_base64 field)
-                logger.warning(
-                    "[workspace] content_base64 is not valid base64, "
-                    "treating as plain text"
-                )
-                content = content_b64.encode("utf-8")
-        else:
-            # Plain text content
-            assert content_text is not None
-            content = content_text.encode("utf-8")
+        if isinstance(resolved, ErrorResponse):
+            return resolved
+        content: bytes = resolved
 
         # Check size
         max_file_size = Config().max_file_size_mb * 1024 * 1024
