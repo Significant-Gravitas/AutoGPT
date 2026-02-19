@@ -18,7 +18,7 @@ const meta: Meta<typeof ToolAccordion> = {
   },
   decorators: [
     (Story) => (
-      <div style={{ maxWidth: 480 }}>
+      <div className="max-w-[480px]">
         <Story />
       </div>
     ),

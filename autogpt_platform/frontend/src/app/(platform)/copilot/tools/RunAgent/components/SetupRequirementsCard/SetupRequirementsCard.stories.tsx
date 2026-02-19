@@ -19,7 +19,7 @@ const meta: Meta<typeof SetupRequirementsCard> = {
   decorators: [
     withCopilotChatActions,
     (Story) => (
-      <div style={{ maxWidth: 480 }}>
+      <div className="max-w-[480px]">
         <Story />
       </div>
     ),
@@ -36,15 +36,14 @@ export const WithCredentials: Story = {
         agent_id: "agent-1",
         agent_name: "WeatherReporter",
         user_readiness: {
-          missing_credentials: [
-            {
-              id: "openweather_key",
+          missing_credentials: {
+            openweather_key: {
               title: "OpenWeather API Key",
               provider: "openweather",
               type: "api_key",
               required: true,
             },
-          ],
+          },
         },
       },
     } as SetupRequirementsResponse,

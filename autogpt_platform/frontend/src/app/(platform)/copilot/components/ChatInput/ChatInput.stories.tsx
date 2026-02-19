@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/nextjs";
+import { fn } from "@storybook/test";
 import { ChatInput } from "./ChatInput";
 
 const meta: Meta<typeof ChatInput> = {
@@ -16,13 +17,13 @@ const meta: Meta<typeof ChatInput> = {
   },
   decorators: [
     (Story) => (
-      <div style={{ maxWidth: 600 }}>
+      <div className="max-w-[600px]">
         <Story />
       </div>
     ),
   ],
   args: {
-    onSend: (msg: string) => console.log("[Storybook] onSend:", msg),
+    onSend: fn(),
   },
 };
 export default meta;
@@ -37,7 +38,7 @@ export const Disabled: Story = {
 export const Streaming: Story = {
   args: {
     isStreaming: true,
-    onStop: () => console.log("[Storybook] onStop"),
+    onStop: fn(),
   },
 };
 

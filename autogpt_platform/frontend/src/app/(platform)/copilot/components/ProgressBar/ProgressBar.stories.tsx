@@ -16,7 +16,7 @@ const meta: Meta<typeof ProgressBar> = {
   },
   decorators: [
     (Story) => (
-      <div style={{ width: 320 }}>
+      <div className="w-80">
         <Story />
       </div>
     ),
@@ -39,4 +39,8 @@ export const Full: Story = {
 
 export const CustomLabel: Story = {
   args: { value: 65, label: "Uploading files..." },
+};
+
+export const OverBounds: Story = {
+  args: { value: 150 },
 };

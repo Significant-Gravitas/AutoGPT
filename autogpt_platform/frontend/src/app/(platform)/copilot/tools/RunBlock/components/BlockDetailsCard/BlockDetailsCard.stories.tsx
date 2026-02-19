@@ -4,7 +4,7 @@ import type { BlockDetailsResponse } from "../../helpers";
 import { BlockDetailsCard } from "./BlockDetailsCard";
 
 const meta: Meta<typeof BlockDetailsCard> = {
-  title: "Copilot/RunBlock/BlockDetailsCard",
+  title: "CoPilot/Tools/RunBlock/BlockDetailsCard",
   component: BlockDetailsCard,
   parameters: {
     layout: "centered",
@@ -12,7 +12,7 @@ const meta: Meta<typeof BlockDetailsCard> = {
   tags: ["autodocs"],
   decorators: [
     (Story) => (
-      <div style={{ maxWidth: 480 }}>
+      <div className="max-w-[480px]">
         <Story />
       </div>
     ),

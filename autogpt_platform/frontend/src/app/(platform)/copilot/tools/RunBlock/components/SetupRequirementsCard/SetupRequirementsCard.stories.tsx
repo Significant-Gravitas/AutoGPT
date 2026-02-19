@@ -19,7 +19,7 @@ const meta: Meta<typeof SetupRequirementsCard> = {
   decorators: [
     withCopilotChatActions,
     (Story) => (
-      <div style={{ maxWidth: 480 }}>
+      <div className="max-w-[480px]">
         <Story />
       </div>
     ),
@@ -67,15 +67,14 @@ export const WithCredentials: Story = {
         agent_id: "block-2",
         agent_name: "SendEmail",
         user_readiness: {
-          missing_credentials: [
-            {
-              id: "smtp_cred",
+          missing_credentials: {
+            smtp_cred: {
               title: "SMTP Credentials",
               provider: "smtp",
               type: "api_key",
               required: true,
             },
-          ],
+          },
         },
       },
     } as SetupRequirementsResponse,

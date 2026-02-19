@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/nextjs";
+import { fn } from "@storybook/test";
 import { ClarificationQuestionsCard } from "./ClarificationQuestionsCard";
 
 const meta: Meta<typeof ClarificationQuestionsCard> = {
@@ -16,14 +17,13 @@ const meta: Meta<typeof ClarificationQuestionsCard> = {
   },
   decorators: [
     (Story) => (
-      <div style={{ maxWidth: 600 }}>
+      <div className="max-w-[600px]">
         <Story />
       </div>
     ),
   ],
   args: {
-    onSubmitAnswers: (answers) =>
-      console.log("[Storybook] onSubmitAnswers:", answers),
+    onSubmitAnswers: fn(),
   },
 };
 export default meta;
@@ -76,5 +76,12 @@ export const Answered: Story = {
       },
     ],
     isAnswered: true,
+  },
+};
+
+export const EmptyQuestions: Story = {
+  args: {
+    message: "No clarification needed — proceeding with defaults.",
+    questions: [],
   },
 };

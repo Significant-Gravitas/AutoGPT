@@ -17,7 +17,7 @@ const meta: Meta<typeof ErrorCard> = {
   },
   decorators: [
     (Story) => (
-      <div style={{ maxWidth: 480 }}>
+      <div className="max-w-[480px]">
         <Story />
       </div>
     ),
@@ -39,11 +39,7 @@ export const WithDetails: Story = {
     output: {
       message: "Agent execution failed.",
       error: "RuntimeError: Graph execution timed out.",
-      details: JSON.stringify(
-        { graph_id: "graph-xyz", timeout_ms: 30000 },
-        null,
-        2,
-      ),
+      details: { graph_id: "graph-xyz", timeout_ms: 30000 },
     } as ErrorResponse,
   },
 };

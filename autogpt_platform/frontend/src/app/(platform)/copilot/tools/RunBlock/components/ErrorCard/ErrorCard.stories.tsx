@@ -17,7 +17,7 @@ const meta: Meta<typeof ErrorCard> = {
   },
   decorators: [
     (Story) => (
-      <div style={{ maxWidth: 480 }}>
+      <div className="max-w-[480px]">
         <Story />
       </div>
     ),
@@ -38,11 +38,11 @@ export const WithDetails: Story = {
   args: {
     output: {
       message: "Block execution failed.",
-      details: JSON.stringify(
-        { block_id: "abc-123", retry_count: 3, last_attempt: "2026-02-19" },
-        null,
-        2,
-      ),
+      details: {
+        block_id: "abc-123",
+        retry_count: 3,
+        last_attempt: "2026-02-19",
+      },
     } as ErrorResponse,
   },
 };
@@ -52,11 +52,7 @@ export const WithErrorAndDetails: Story = {
     output: {
       message: "Authentication failed for GetWeather block.",
       error: "InvalidCredentialsError: API key is expired or invalid.",
-      details: JSON.stringify(
-        { provider: "openweather", status_code: 401 },
-        null,
-        2,
-      ),
+      details: { provider: "openweather", status_code: 401 },
     } as ErrorResponse,
   },
 };

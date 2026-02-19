@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/nextjs";
+import { fn } from "@storybook/test";
 import { MobileHeader } from "./MobileHeader";
 
 const meta: Meta<typeof MobileHeader> = {
@@ -15,7 +16,7 @@ const meta: Meta<typeof MobileHeader> = {
     },
   },
   args: {
-    onOpenDrawer: () => console.log("[Storybook] onOpenDrawer"),
+    onOpenDrawer: fn(),
   },
 };
 export default meta;
