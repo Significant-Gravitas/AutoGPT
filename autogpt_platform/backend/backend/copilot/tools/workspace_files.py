@@ -313,10 +313,20 @@ class ListWorkspaceFilesTool(BaseTool):
                 for f in files
             ]
             scope = "all sessions" if include_all_sessions else "current session"
+            total_size = sum(f.size_bytes for f in file_infos)
+
+            # Build a human-readable summary so the agent can relay details.
+            lines = [f"Found {len(files)} file(s) in workspace ({scope}):"]
+            for f in file_infos:
+                lines.append(f"  - {f.path} ({f.size_bytes:,} bytes, {f.mime_type})")
+            if total > len(files):
+                lines.append(f"  ... and {total - len(files)} more")
+            lines.append(f"Total size: {total_size:,} bytes")
+
             return WorkspaceFileListResponse(
                 files=file_infos,
                 total_count=total,
-                message=f"Found {len(files)} files in workspace ({scope})",
+                message="\n".join(lines),
                 session_id=session_id,
             )
         except Exception as e:
@@ -450,9 +460,12 @@ class ReadWorkspaceFileTool(BaseTool):
                 content = cached_content or await manager.read_file_by_id(
                     target_file_id
                 )
-                msg = f"Successfully read file: {file_info.name}"
+                msg = (
+                    f"Read {file_info.name} from workspace:{file_info.path} "
+                    f"({file_info.size_bytes:,} bytes, {file_info.mime_type})"
+                )
                 if save_to_path:
-                    msg += f" (also saved to {save_to_path})"
+                    msg += f" — also saved to {save_to_path}"
                 return WorkspaceFileContentResponse(
                     file_id=file_info.id,
                     name=file_info.name,
@@ -476,12 +489,16 @@ class ReadWorkspaceFileTool(BaseTool):
                 except Exception:
                     pass
 
-            msg = f"File: {file_info.name} ({file_info.size_bytes} bytes)."
-            msg += (
-                f" Saved to {save_to_path}."
-                if save_to_path
-                else " Use read_workspace_file with this file_id to retrieve content."
+            msg = (
+                f"File: {file_info.name} at workspace:{file_info.path} "
+                f"({file_info.size_bytes:,} bytes, {file_info.mime_type})"
             )
+            if save_to_path:
+                msg += f" — saved to {save_to_path}"
+            else:
+                msg += (
+                    " — use read_workspace_file with this file_id to retrieve content"
+                )
             return WorkspaceFileMetadataResponse(
                 file_id=file_info.id,
                 name=file_info.name,
@@ -748,7 +765,7 @@ class DeleteWorkspaceFileTool(BaseTool):
             resolved = await _resolve_file(manager, file_id, path, session_id)
             if isinstance(resolved, ErrorResponse):
                 return resolved
-            target_file_id, _ = resolved
+            target_file_id, file_info = resolved
 
             if not await manager.delete_file(target_file_id):
                 return ErrorResponse(
@@ -757,7 +774,10 @@ class DeleteWorkspaceFileTool(BaseTool):
             return WorkspaceDeleteResponse(
                 file_id=target_file_id,
                 success=True,
-                message="File deleted successfully",
+                message=(
+                    f"Deleted {file_info.name} from workspace:{file_info.path} "
+                    f"({file_info.size_bytes:,} bytes)"
+                ),
                 session_id=session_id,
             )
         except Exception as e:
