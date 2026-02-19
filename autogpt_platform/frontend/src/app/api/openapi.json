@@ -4013,7 +4013,7 @@
       "get": {
         "tags": ["v2", "library", "folders", "private"],
         "summary": "List Library Folders",
-        "description": "List folders for the authenticated user.\n\nArgs:\n    user_id: ID of the authenticated user.\n    parent_id: Optional parent folder ID to filter by.\n    include_counts: Whether to include agent and subfolder counts.\n\nReturns:\n    A FolderListResponse containing folders.",
+        "description": "List folders for the authenticated user.\n\nArgs:\n    user_id: ID of the authenticated user.\n    parent_id: Optional parent folder ID to filter by.\n    include_relations: Whether to include agent and subfolder relations for counts.\n\nReturns:\n    A FolderListResponse containing folders.",
         "operationId": "getV2List library folders",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -4029,16 +4029,16 @@
             "description": "Filter by parent folder ID. If not provided, returns root-level folders."
           },
           {
-            "name": "include_counts",
+            "name": "include_relations",
             "in": "query",
             "required": false,
             "schema": {
               "type": "boolean",
-              "description": "Include agent and subfolder counts",
+              "description": "Include agent and subfolder relations (for counts)",
               "default": true,
-              "title": "Include Counts"
+              "title": "Include Relations"
             },
-            "description": "Include agent and subfolder counts"
+            "description": "Include agent and subfolder relations (for counts)"
           }
         ],
         "responses": {
