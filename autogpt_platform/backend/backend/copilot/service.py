@@ -1341,12 +1341,32 @@ async def _execute_tool_calls_parallel(
 
     async def _run_tool(idx: int) -> None:
         tool_name = tool_calls[idx].get("function", {}).get("name", "unknown")
+        tool_call_id = tool_calls[idx].get("id", f"unknown_{idx}")
         try:
             async for event in _yield_tool_call(tool_calls, idx, session, session_lock):
                 await queue.put(event)
         except (orjson.JSONDecodeError, KeyError, TypeError) as e:
-            logger.error(f"Failed to parse tool call {idx} ({tool_name}): {e}")
+            logger.error(
+                f"Failed to parse tool call {idx} ({tool_name}): {e}",
+                exc_info=True,
+            )
             retryable_errors.append(e)
+        except Exception as e:
+            # Infrastructure / setup errors — emit an error output so the
+            # client always sees a terminal event and doesn't hang.
+            logger.error(f"Tool call {idx} ({tool_name}) failed: {e}", exc_info=True)
+            await queue.put(
+                StreamToolOutputAvailable(
+                    toolCallId=tool_call_id,
+                    toolName=tool_name,
+                    output=ErrorResponse(
+                        message=f"Tool execution failed: {e!s}",
+                        error=type(e).__name__,
+                        session_id=session.session_id,
+                    ).model_dump_json(),
+                    success=False,
+                )
+            )
         finally:
             await queue.put(None)  # sentinel
 
