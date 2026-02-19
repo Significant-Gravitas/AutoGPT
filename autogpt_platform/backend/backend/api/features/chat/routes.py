@@ -132,6 +132,14 @@ class ListSessionsResponse(BaseModel):
     total: int
 
 
+class CancelTaskResponse(BaseModel):
+    """Response model for the cancel task endpoint."""
+
+    cancelled: bool
+    task_id: str | None = None
+    reason: str | None = None
+
+
 class OperationCompleteRequest(BaseModel):
     """Request model for external completion webhook."""
 
@@ -321,7 +329,7 @@ async def get_session(
 async def cancel_session_task(
     session_id: str,
     user_id: Annotated[str | None, Depends(auth.get_user_id)],
-):
+) -> CancelTaskResponse:
     """Cancel the active streaming task for a session.
 
     Publishes a cancel event to the executor via RabbitMQ FANOUT, then
@@ -332,11 +340,14 @@ async def cancel_session_task(
         session_id, user_id
     )
     if not active_task:
-        return {"cancelled": False, "reason": "no_active_task"}
+        return CancelTaskResponse(cancelled=False, reason="no_active_task")
 
     task_id = active_task.task_id
     await enqueue_cancel_task(task_id)
-    logger.info(f"[CANCEL] Published cancel for task {task_id} session {session_id}")
+    logger.info(
+        f"[CANCEL] Published cancel for task ...{task_id[-8:]} "
+        f"session ...{session_id[-8:]}"
+    )
 
     # Poll until the executor confirms the task is no longer running.
     poll_interval = 0.5
@@ -348,13 +359,15 @@ async def cancel_session_task(
         task = await stream_registry.get_task(task_id)
         if task is None or task.status != "running":
             logger.info(
-                f"[CANCEL] Task {task_id} confirmed stopped "
+                f"[CANCEL] Task ...{task_id[-8:]} confirmed stopped "
                 f"(status={task.status if task else 'gone'}) after {waited:.1f}s"
             )
-            return {"cancelled": True, "task_id": task_id}
+            return CancelTaskResponse(cancelled=True, task_id=task_id)
 
-    logger.warning(f"[CANCEL] Task {task_id} still running after {max_wait}s")
-    return {"cancelled": False, "task_id": task_id, "reason": "timeout"}
+    logger.warning(
+        f"[CANCEL] Task ...{task_id[-8:]} still running after {max_wait}s"
+    )
+    return CancelTaskResponse(cancelled=False, task_id=task_id, reason="timeout")
 
 
 @router.post(

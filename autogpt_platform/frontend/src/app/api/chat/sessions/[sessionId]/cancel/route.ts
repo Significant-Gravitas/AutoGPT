@@ -19,7 +19,7 @@ export async function POST(
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
     };
-    if (token) {
+    if (token && token !== "no-token-found") {
       headers["Authorization"] = `Bearer ${token}`;
     }
 
@@ -28,11 +28,22 @@ export async function POST(
       headers,
     });
 
-    const data = await response.json();
-    return new Response(JSON.stringify(data), {
-      status: response.status,
-      headers: { "Content-Type": "application/json" },
-    });
+    const text = await response.text();
+    try {
+      const data = JSON.parse(text);
+      return new Response(JSON.stringify(data), {
+        status: response.status,
+        headers: { "Content-Type": "application/json" },
+      });
+    } catch {
+      return new Response(
+        JSON.stringify({
+          cancelled: false,
+          reason: "invalid_backend_response",
+        }),
+        { status: 502, headers: { "Content-Type": "application/json" } },
+      );
+    }
   } catch (error) {
     console.error("Cancel proxy error:", error);
     return new Response(
