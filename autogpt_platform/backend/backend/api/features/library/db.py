@@ -843,8 +843,14 @@ async def add_store_agent_to_library(
             f"Graph #{graph.id} v{graph.version} not found or accessible"
         )
 
-    # Check if user already has this agent
-    existing_library_agent = await prisma.models.LibraryAgent.prisma().find_unique(
+    # Check if user already has this agent (non-deleted)
+    if existing := await get_library_agent_by_graph_id(
+        user_id, graph.id, graph.version
+    ):
+        return existing
+
+    # Check for soft-deleted version and restore it
+    deleted_agent = await prisma.models.LibraryAgent.prisma().find_unique(
         where={
             "userId_agentGraphId_agentGraphVersion": {
                 "userId": user_id,
@@ -852,20 +858,9 @@ async def add_store_agent_to_library(
                 "agentGraphVersion": graph.version,
             }
         },
-        include={"AgentGraph": True},
     )
-    if existing_library_agent:
-        if existing_library_agent.isDeleted:
-            # Even if agent exists it needs to be marked as not deleted
-            await update_library_agent(
-                existing_library_agent.id, user_id, is_deleted=False
-            )
-        else:
-            logger.debug(
-                f"User #{user_id} already has graph #{graph.id} "
-                f"v{graph.version} in their library"
-            )
-        return library_model.LibraryAgent.from_db(existing_library_agent)
+    if deleted_agent and deleted_agent.isDeleted:
+        return await update_library_agent(deleted_agent.id, user_id, is_deleted=False)
 
     # Create LibraryAgent entry
     added_agent = await prisma.models.LibraryAgent.prisma().create(
