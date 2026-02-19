@@ -1197,13 +1197,13 @@ async def _stream_chat_chunks(
                                     tool_calls[idx]["id"] = tc_chunk.id
                                 if tc_chunk.function:
                                     if tc_chunk.function.name:
-                                        tool_calls[idx]["function"]["name"] = (
-                                            tc_chunk.function.name
-                                        )
+                                        tool_calls[idx]["function"][
+                                            "name"
+                                        ] = tc_chunk.function.name
                                     if tc_chunk.function.arguments:
-                                        tool_calls[idx]["function"]["arguments"] += (
-                                            tc_chunk.function.arguments
-                                        )
+                                        tool_calls[idx]["function"][
+                                            "arguments"
+                                        ] += tc_chunk.function.arguments
 
                                 # Emit StreamToolInputStart only after we have the tool call ID
                                 if (

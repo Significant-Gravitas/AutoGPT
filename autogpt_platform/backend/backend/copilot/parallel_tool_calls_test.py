@@ -6,6 +6,7 @@ which requires Prisma, DB connections, etc.
 
 import asyncio
 import time
+from typing import Any, cast
 
 import pytest
 
@@ -61,7 +62,9 @@ async def test_parallel_tool_calls_run_concurrently():
     try:
         start = time.monotonic()
         events = []
-        async for event in _execute_tool_calls_parallel(tool_calls, FakeSession()):
+        async for event in _execute_tool_calls_parallel(
+            tool_calls, cast(Any, FakeSession())
+        ):
             events.append(event)
         elapsed = time.monotonic() - start
     finally:
@@ -69,9 +72,9 @@ async def test_parallel_tool_calls_run_concurrently():
 
     assert len(events) == n_tools * 2
     # Parallel: should take ~delay, not ~n*delay
-    assert elapsed < delay_per_tool * (n_tools - 0.5), (
-        f"Took {elapsed:.2f}s, expected parallel (~{delay_per_tool}s)"
-    )
+    assert elapsed < delay_per_tool * (
+        n_tools - 0.5
+    ), f"Took {elapsed:.2f}s, expected parallel (~{delay_per_tool}s)"
 
 
 @pytest.mark.asyncio
@@ -84,7 +87,11 @@ async def test_single_tool_call_works():
     from backend.copilot.service import _execute_tool_calls_parallel
 
     tool_calls = [
-        {"id": "call_0", "type": "function", "function": {"name": "t", "arguments": "{}"}}
+        {
+            "id": "call_0",
+            "type": "function",
+            "function": {"name": "t", "arguments": "{}"},
+        }
     ]
 
     class FakeSession:
@@ -103,7 +110,12 @@ async def test_single_tool_call_works():
     orig = svc._yield_tool_call
     svc._yield_tool_call = fake_yield
     try:
-        events = [e async for e in _execute_tool_calls_parallel(tool_calls, FakeSession())]
+        events = [
+            e
+            async for e in _execute_tool_calls_parallel(
+                tool_calls, cast(Any, FakeSession())
+            )
+        ]
     finally:
         svc._yield_tool_call = orig
 
@@ -117,7 +129,11 @@ async def test_retryable_error_propagates():
     from backend.copilot.service import _execute_tool_calls_parallel
 
     tool_calls = [
-        {"id": f"call_{i}", "type": "function", "function": {"name": f"t_{i}", "arguments": "{}"}}
+        {
+            "id": f"call_{i}",
+            "type": "function",
+            "function": {"name": f"t_{i}", "arguments": "{}"},
+        }
         for i in range(2)
     ]
 
@@ -133,9 +149,13 @@ async def test_retryable_error_propagates():
             raise KeyError("bad")
         from backend.copilot.response_model import StreamToolInputAvailable
 
-        yield StreamToolInputAvailable(toolCallId=tc_list[idx]["id"], toolName="t_0", input={})
+        yield StreamToolInputAvailable(
+            toolCallId=tc_list[idx]["id"], toolName="t_0", input={}
+        )
         await asyncio.sleep(0.05)
-        yield StreamToolOutputAvailable(toolCallId=tc_list[idx]["id"], toolName="t_0", output="{}")
+        yield StreamToolOutputAvailable(
+            toolCallId=tc_list[idx]["id"], toolName="t_0", output="{}"
+        )
 
     import backend.copilot.service as svc
 
@@ -144,7 +164,9 @@ async def test_retryable_error_propagates():
     try:
         events = []
         with pytest.raises(KeyError):
-            async for event in _execute_tool_calls_parallel(tool_calls, FakeSession()):
+            async for event in _execute_tool_calls_parallel(
+                tool_calls, cast(Any, FakeSession())
+            ):
                 events.append(event)
         # First tool's events should still be yielded
         assert any(isinstance(e, StreamToolOutputAvailable) for e in events)
@@ -162,7 +184,11 @@ async def test_session_lock_shared():
     from backend.copilot.service import _execute_tool_calls_parallel
 
     tool_calls = [
-        {"id": f"call_{i}", "type": "function", "function": {"name": f"t_{i}", "arguments": "{}"}}
+        {
+            "id": f"call_{i}",
+            "type": "function",
+            "function": {"name": f"t_{i}", "arguments": "{}"},
+        }
         for i in range(3)
     ]
 
@@ -177,15 +203,21 @@ async def test_session_lock_shared():
 
     async def fake_yield(tc_list, idx, sess, lock=None):
         observed_locks.append(lock)
-        yield StreamToolInputAvailable(toolCallId=tc_list[idx]["id"], toolName=f"t_{idx}", input={})
-        yield StreamToolOutputAvailable(toolCallId=tc_list[idx]["id"], toolName=f"t_{idx}", output="{}")
+        yield StreamToolInputAvailable(
+            toolCallId=tc_list[idx]["id"], toolName=f"t_{idx}", input={}
+        )
+        yield StreamToolOutputAvailable(
+            toolCallId=tc_list[idx]["id"], toolName=f"t_{idx}", output="{}"
+        )
 
     import backend.copilot.service as svc
 
     orig = svc._yield_tool_call
     svc._yield_tool_call = fake_yield
     try:
-        async for _ in _execute_tool_calls_parallel(tool_calls, FakeSession()):
+        async for _ in _execute_tool_calls_parallel(
+            tool_calls, cast(Any, FakeSession())
+        ):
             pass
     finally:
         svc._yield_tool_call = orig
@@ -202,7 +234,11 @@ async def test_cancellation_cleans_up():
     from backend.copilot.service import _execute_tool_calls_parallel
 
     tool_calls = [
-        {"id": f"call_{i}", "type": "function", "function": {"name": f"t_{i}", "arguments": "{}"}}
+        {
+            "id": f"call_{i}",
+            "type": "function",
+            "function": {"name": f"t_{i}", "arguments": "{}"},
+        }
         for i in range(2)
     ]
 
@@ -216,7 +252,9 @@ async def test_cancellation_cleans_up():
     started = asyncio.Event()
 
     async def fake_yield(tc_list, idx, sess, lock=None):
-        yield StreamToolInputAvailable(toolCallId=tc_list[idx]["id"], toolName=f"t_{idx}", input={})
+        yield StreamToolInputAvailable(
+            toolCallId=tc_list[idx]["id"], toolName=f"t_{idx}", input={}
+        )
         started.set()
         await asyncio.sleep(10)  # simulate long-running
 
@@ -225,7 +263,7 @@ async def test_cancellation_cleans_up():
     orig = svc._yield_tool_call
     svc._yield_tool_call = fake_yield
     try:
-        gen = _execute_tool_calls_parallel(tool_calls, FakeSession())
+        gen = _execute_tool_calls_parallel(tool_calls, cast(Any, FakeSession()))
         await gen.__anext__()  # get first event
         await started.wait()
         await gen.aclose()  # close generator
