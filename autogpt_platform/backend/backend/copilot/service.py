@@ -1380,6 +1380,11 @@ async def _execute_tool_calls_parallel(
             else:
                 yield event
         if retryable_errors:
+            if len(retryable_errors) > 1:
+                logger.warning(
+                    f"{len(retryable_errors)} tool calls had retryable errors; "
+                    f"re-raising first to trigger retry"
+                )
             raise retryable_errors[0]
     finally:
         for t in tasks:
@@ -1490,8 +1495,7 @@ async def _yield_tool_call(
                 "check back in a few minutes."
             )
 
-        # Track appended messages for rollback on failure
-        assistant_message: ChatMessage | None = None
+        # Track appended message for rollback on failure
         pending_message: ChatMessage | None = None
 
         # Wrap session save and task creation in try-except to release lock on failure
@@ -1547,11 +1551,11 @@ async def _yield_tool_call(
             # Associate the asyncio task with the stream registry task
             await stream_registry.set_task_asyncio_task(task_id, bg_task)
         except Exception as e:
-            # Roll back appended messages to prevent data corruption.
+            # Roll back appended messages — use identity-based removal so
+            # it works even when other parallel tools have appended after us.
             async def _rollback() -> None:
-                for msg in (pending_message, assistant_message):
-                    if msg and session.messages and session.messages[-1] == msg:
-                        session.messages.pop()
+                if pending_message and pending_message in session.messages:
+                    session.messages.remove(pending_message)
 
             await _with_optional_lock(session_lock, _rollback)
 
