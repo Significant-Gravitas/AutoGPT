@@ -13,6 +13,7 @@ import logging
 import os
 import platform
 import shutil
+import signal
 
 logger = logging.getLogger(__name__)
 
@@ -245,6 +246,7 @@ async def run_sandboxed(
             stderr=asyncio.subprocess.PIPE,
             cwd=cwd,
             env=safe_env,
+            start_new_session=True,  # Own process group for clean kill
         )
 
         try:
@@ -255,7 +257,13 @@ async def run_sandboxed(
             stderr = stderr_bytes.decode("utf-8", errors="replace")
             return stdout, stderr, proc.returncode or 0, False
         except asyncio.TimeoutError:
-            proc.kill()
+            # Kill entire process group (bwrap + all children).
+            # proc.kill() alone only kills the bwrap parent, leaving
+            # children running until they finish naturally.
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass  # Already exited
             await proc.communicate()
             return "", f"Execution timed out after {timeout}s", -1, True
 

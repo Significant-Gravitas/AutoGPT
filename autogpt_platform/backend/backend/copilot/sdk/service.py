@@ -100,6 +100,8 @@ _SDK_TOOL_SUPPLEMENT = """
 - Long-running tools (create_agent, edit_agent, etc.) are handled
   asynchronously.  You will receive an immediate response; the actual result
   is delivered to the user via a background stream.
+- When using the Task tool, NEVER set `run_in_background` to true.
+  All tasks must run in the foreground.
 """
 
 
@@ -679,6 +681,17 @@ async def stream_chat_completion_sdk(
                     for response in adapter.convert_message(sdk_msg):
                         if isinstance(response, StreamStart):
                             continue
+
+                        # Log tool events for debugging visibility issues
+                        if isinstance(
+                            response,
+                            (StreamToolInputAvailable, StreamToolOutputAvailable),
+                        ):
+                            logger.info(
+                                "[SDK] Tool event: %s, tool=%s",
+                                type(response).__name__,
+                                getattr(response, "toolName", "N/A"),
+                            )
 
                         yield response
 

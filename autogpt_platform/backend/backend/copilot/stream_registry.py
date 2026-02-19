@@ -227,7 +227,14 @@ async def publish_chunk(
         # Only log timing for significant chunks or slow operations
         if (
             chunk_type
-            in ("StreamStart", "StreamFinish", "StreamTextStart", "StreamTextEnd")
+            in (
+                "StreamStart",
+                "StreamFinish",
+                "StreamTextStart",
+                "StreamTextEnd",
+                "StreamToolInputAvailable",
+                "StreamToolOutputAvailable",
+            )
             or total_time > 50
         ):
             logger.info(
