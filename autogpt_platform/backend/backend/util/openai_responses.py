@@ -1,40 +1,32 @@
-"""Helpers for OpenAI Responses API migration.
+"""Helpers for OpenAI Responses API.
 
-This module provides utilities for conditionally using OpenAI's Responses API
-instead of Chat Completions for reasoning models (o1, o3, etc.) that require it.
+This module provides utilities for using OpenAI's Responses API, which is the
+default for all modern OpenAI models. Legacy models (gpt-3.5-turbo) that do not
+support the Responses API fall back to Chat Completions.
 """
 
 from typing import Any
 
-# Exact model identifiers that require the Responses API.
-# Use exact matching to avoid false positives on future models.
-# NOTE: Update this set when OpenAI releases new reasoning models.
-REASONING_MODELS = frozenset(
+# Legacy models that do NOT support the Responses API.
+# These must use chat.completions.create instead of responses.create.
+CHAT_COMPLETIONS_ONLY_MODELS = frozenset(
     {
-        # O1 family
-        "o1",
-        "o1-mini",
-        "o1-preview",
-        "o1-2024-12-17",
-        # O3 family
-        "o3",
-        "o3-mini",
-        "o3-2025-04-16",
-        "o3-mini-2025-01-31",
+        "gpt-3.5-turbo",
+        "gpt-3.5-turbo-0125",
     }
 )
 
 
-def requires_responses_api(model: str) -> bool:
-    """Check if model requires the Responses API (exact match).
+def requires_chat_completions(model: str) -> bool:
+    """Check if model requires the legacy Chat Completions API (exact match).
 
     Args:
-        model: The model identifier string (e.g., "o3-mini", "gpt-4o")
+        model: The model identifier string (e.g., "gpt-3.5-turbo", "gpt-4o")
 
     Returns:
-        True if the model requires responses.create, False otherwise
+        True if the model requires chat.completions.create, False otherwise
     """
-    return model in REASONING_MODELS
+    return model in CHAT_COMPLETIONS_ONLY_MODELS
 
 
 def convert_tools_to_responses_format(tools: list[dict] | None) -> list[dict]:
@@ -105,35 +97,24 @@ def extract_responses_tool_calls(response: Any) -> list[dict] | None:
     return tool_calls if tool_calls else None
 
 
-def extract_usage(response: Any, is_responses_api: bool) -> tuple[int, int]:
-    """Extract token usage from either API response.
+def extract_responses_usage(response: Any) -> tuple[int, int]:
+    """Extract token usage from Responses API response.
 
-    The Responses API uses different field names for token counts:
-    - Chat Completions: prompt_tokens, completion_tokens
-    - Responses API: input_tokens, output_tokens
+    The Responses API uses input_tokens/output_tokens (not prompt_tokens/completion_tokens).
 
     Args:
-        response: The API response object
-        is_responses_api: True if response is from Responses API
+        response: The Responses API response object
 
     Returns:
-        Tuple of (prompt_tokens, completion_tokens)
+        Tuple of (input_tokens, output_tokens)
     """
     if not response.usage:
         return 0, 0
 
-    if is_responses_api:
-        # Responses API uses different field names
-        return (
-            getattr(response.usage, "input_tokens", 0),
-            getattr(response.usage, "output_tokens", 0),
-        )
-    else:
-        # Chat Completions API
-        return (
-            getattr(response.usage, "prompt_tokens", 0),
-            getattr(response.usage, "completion_tokens", 0),
-        )
+    return (
+        getattr(response.usage, "input_tokens", 0),
+        getattr(response.usage, "output_tokens", 0),
+    )
 
 
 def extract_responses_content(response: Any) -> str:

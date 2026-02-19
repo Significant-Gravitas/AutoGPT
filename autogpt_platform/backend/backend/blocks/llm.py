@@ -37,8 +37,8 @@ from backend.util.openai_responses import (
     extract_responses_content,
     extract_responses_reasoning,
     extract_responses_tool_calls,
-    extract_usage,
-    requires_responses_api,
+    extract_responses_usage,
+    requires_chat_completions,
 )
 from backend.util.prompt import compress_context, estimate_token_count
 from backend.util.text import TextFormatter
@@ -669,37 +669,8 @@ async def llm_call(
     if provider == "openai":
         oai_client = openai.AsyncOpenAI(api_key=credentials.api_key.get_secret_value())
 
-        # Check if this model requires the Responses API (reasoning models: o1, o3, etc.)
-        if requires_responses_api(llm_model.value):
-            # Use responses.create for reasoning models
-            tools_converted = (
-                convert_tools_to_responses_format(tools) if tools else None
-            )
-
-            response = await oai_client.responses.create(
-                model=llm_model.value,
-                input=prompt,  # type: ignore
-                tools=tools_converted,  # type: ignore
-                max_output_tokens=max_tokens,
-                store=False,  # Don't persist conversations
-            )
-
-            tool_calls = extract_responses_tool_calls(response)
-            reasoning = extract_responses_reasoning(response)
-            content = extract_responses_content(response)
-            prompt_tokens, completion_tokens = extract_usage(response, True)
-
-            return LLMResponse(
-                raw_response=response,
-                prompt=prompt,
-                response=content,
-                tool_calls=tool_calls,
-                prompt_tokens=prompt_tokens,
-                completion_tokens=completion_tokens,
-                reasoning=reasoning,
-            )
-        else:
-            # Use chat.completions.create for standard models
+        if requires_chat_completions(llm_model.value):
+            # Legacy fallback: gpt-3.5-turbo only (not supported by Responses API)
             tools_param = tools if tools else openai.NOT_GIVEN
             response_format = None
 
@@ -731,6 +702,42 @@ async def llm_call(
                 completion_tokens=(
                     response.usage.completion_tokens if response.usage else 0
                 ),
+                reasoning=reasoning,
+            )
+        else:
+            # Default: All modern OpenAI models use the Responses API
+            tools_param = (
+                convert_tools_to_responses_format(tools) if tools else openai.omit
+            )
+
+            text_config = openai.omit
+            if force_json_output:
+                text_config = {"format": {"type": "json_object"}}  # type: ignore
+
+            response = await oai_client.responses.create(
+                model=llm_model.value,
+                input=prompt,  # type: ignore
+                tools=tools_param,  # type: ignore
+                max_output_tokens=max_tokens,
+                parallel_tool_calls=get_parallel_tool_calls_param(
+                    llm_model, parallel_tool_calls
+                ),
+                text=text_config,  # type: ignore
+                store=False,
+            )
+
+            tool_calls = extract_responses_tool_calls(response)
+            reasoning = extract_responses_reasoning(response)
+            content = extract_responses_content(response)
+            prompt_tokens, completion_tokens = extract_responses_usage(response)
+
+            return LLMResponse(
+                raw_response=response,
+                prompt=prompt,
+                response=content,
+                tool_calls=tool_calls,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
                 reasoning=reasoning,
             )
     elif provider == "anthropic":
