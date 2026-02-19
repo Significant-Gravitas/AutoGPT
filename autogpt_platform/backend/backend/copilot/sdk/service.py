@@ -576,7 +576,7 @@ async def stream_chat_completion_sdk(
                 query_message = current_message
                 current_msg_count = len(session.messages)
 
-                if use_resume and transcript_msg_count > 0:
+                if use_resume and transcript_msg_count >= 0:
                     # Transcript covers messages[0..M-1].  Current session
                     # has N messages (last one is the new user msg).
                     # Gap = messages[M .. N-2] (everything between upload
@@ -707,11 +707,17 @@ async def stream_chat_completion_sdk(
                     raw_transcript = None
 
                 if raw_transcript:
-                    await _try_upload_transcript(
-                        user_id,
-                        session_id,
-                        raw_transcript,
-                        message_count=len(session.messages),
+                    # Shield the upload from generator cancellation so a
+                    # client disconnect / page refresh doesn't lose the
+                    # transcript.  The upload must finish even if the SSE
+                    # connection is torn down.
+                    await asyncio.shield(
+                        _try_upload_transcript(
+                            user_id,
+                            session_id,
+                            raw_transcript,
+                            message_count=len(session.messages),
+                        )
                     )
 
         except ImportError:
@@ -721,7 +727,7 @@ async def stream_chat_completion_sdk(
                 "to use the OpenAI-compatible fallback."
             )
 
-        await upsert_chat_session(session)
+        await asyncio.shield(upsert_chat_session(session))
         logger.debug(
             f"[SDK] Session {session_id} saved with {len(session.messages)} messages"
         )
@@ -731,7 +737,7 @@ async def stream_chat_completion_sdk(
     except Exception as e:
         logger.error(f"[SDK] Error: {e}", exc_info=True)
         try:
-            await upsert_chat_session(session)
+            await asyncio.shield(upsert_chat_session(session))
         except Exception as save_err:
             logger.error(f"[SDK] Failed to save session on error: {save_err}")
         yield StreamError(

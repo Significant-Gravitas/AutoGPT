@@ -190,7 +190,14 @@ def _extract_image_block(text: str) -> dict[str, str] | None:
     mime_type = data.get("mime_type", "")
     base64_content = data.get("content_base64", "")
 
-    if mime_type in _SUPPORTED_IMAGE_TYPES and base64_content:
+    # Only inline small images — large ones would exceed Claude's limits.
+    # 32 KB raw ≈ ~43 KB base64.
+    _MAX_IMAGE_BASE64_BYTES = 43_000
+    if (
+        mime_type in _SUPPORTED_IMAGE_TYPES
+        and base64_content
+        and len(base64_content) <= _MAX_IMAGE_BASE64_BYTES
+    ):
         return {
             "type": "image",
             "data": base64_content,
