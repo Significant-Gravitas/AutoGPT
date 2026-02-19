@@ -8,7 +8,7 @@ from typing import Any, Optional
 from pydantic import BaseModel
 
 from backend.copilot.model import ChatSession
-from backend.copilot.tools.sandbox import WORKSPACE_PREFIX, make_session_path
+from backend.copilot.tools.sandbox import make_session_path
 from backend.data.db_accessors import workspace_db
 from backend.util.settings import Config
 from backend.util.virus_scanner import scan_content_safe
@@ -108,7 +108,7 @@ def _validate_ephemeral_path(
         return ErrorResponse(
             message=(
                 f"{param_name} must be within the ephemeral working "
-                f"directory ({WORKSPACE_PREFIX})"
+                f"directory ({make_session_path(session_id)})"
             ),
             session_id=session_id,
         )
