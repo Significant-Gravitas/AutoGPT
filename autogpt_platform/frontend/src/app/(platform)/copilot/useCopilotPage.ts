@@ -1,5 +1,6 @@
 import {
   getGetV2ListSessionsQueryKey,
+  postV2CancelSessionTask,
   useDeleteV2DeleteSession,
   useGetV2ListSessions,
 } from "@/app/api/__generated__/endpoints/chat/chat";
@@ -115,11 +116,20 @@ export function useCopilotPage() {
     sdkStop();
     if (!sessionId) return;
     try {
-      await fetch(`/api/chat/sessions/${sessionId}/cancel`, {
-        method: "POST",
-      });
+      const res = await postV2CancelSessionTask(sessionId);
+      if (res.status === 200 && !res.data.cancelled) {
+        toast({
+          title: "Could not stop the task",
+          description: "The task may still be running in the background.",
+          variant: "destructive",
+        });
+      }
     } catch {
-      // Best-effort — SSE already aborted for instant UI feedback
+      toast({
+        title: "Could not stop the task",
+        description: "The task may still be running in the background.",
+        variant: "destructive",
+      });
     }
   }, [sdkStop, sessionId]);
 
