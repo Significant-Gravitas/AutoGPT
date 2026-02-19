@@ -29,9 +29,9 @@ async def list_folders(
         None,
         description="Filter by parent folder ID. If not provided, returns root-level folders.",
     ),
-    include_counts: bool = Query(
+    include_relations: bool = Query(
         True,
-        description="Include agent and subfolder counts",
+        description="Include agent and subfolder relations (for counts)",
     ),
 ) -> library_model.FolderListResponse:
     """
@@ -40,7 +40,7 @@ async def list_folders(
     Args:
         user_id: ID of the authenticated user.
         parent_id: Optional parent folder ID to filter by.
-        include_counts: Whether to include agent and subfolder counts.
+        include_relations: Whether to include agent and subfolder relations for counts.
 
     Returns:
         A FolderListResponse containing folders.
@@ -48,7 +48,7 @@ async def list_folders(
     folders = await library_db.list_folders(
         user_id=user_id,
         parent_id=parent_id,
-        include_counts=include_counts,
+        include_relations=include_relations,
     )
     return library_model.FolderListResponse(
         folders=folders,

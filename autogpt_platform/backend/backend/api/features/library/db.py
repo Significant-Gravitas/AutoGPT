@@ -895,7 +895,7 @@ async def add_store_agent_to_library(
 async def _fetch_user_folders(
     user_id: str,
     extra_where: Optional[prisma.types.LibraryFolderWhereInput] = None,
-    include_counts: bool = True,
+    include_relations: bool = True,
 ) -> list[prisma.models.LibraryFolder]:
     """
     Shared helper to fetch folders for a user with consistent query params.
@@ -903,7 +903,8 @@ async def _fetch_user_folders(
     Args:
         user_id: The ID of the user.
         extra_where: Additional where-clause filters to merge in.
-        include_counts: Whether to include agent and subfolder relations.
+        include_relations: Whether to include LibraryAgents and Children relations
+            (used to derive counts via len(); Prisma Python has no _count include).
 
     Returns:
         A list of raw Prisma LibraryFolder records.
@@ -923,7 +924,7 @@ async def _fetch_user_folders(
                 "LibraryAgents": {"where": {"isDeleted": False}},
                 "Children": {"where": {"isDeleted": False}},
             }
-            if include_counts
+            if include_relations
             else None
         ),
     )
@@ -932,7 +933,7 @@ async def _fetch_user_folders(
 async def list_folders(
     user_id: str,
     parent_id: Optional[str] = None,
-    include_counts: bool = True,
+    include_relations: bool = True,
 ) -> list[library_model.LibraryFolder]:
     """
     Lists folders for a user, optionally filtered by parent.
@@ -941,7 +942,7 @@ async def list_folders(
         user_id: The ID of the user.
         parent_id: If provided, only returns folders with this parent.
                    If None, returns root-level folders.
-        include_counts: Whether to include agent and subfolder counts.
+        include_relations: Whether to include agent and subfolder relations for counts.
 
     Returns:
         A list of LibraryFolder objects.
@@ -951,7 +952,7 @@ async def list_folders(
     folders = await _fetch_user_folders(
         user_id,
         extra_where={"parentId": parent_id},
-        include_counts=include_counts,
+        include_relations=include_relations,
     )
 
     return [
