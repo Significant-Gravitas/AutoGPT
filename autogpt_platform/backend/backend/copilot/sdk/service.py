@@ -764,10 +764,23 @@ async def stream_chat_completion_sdk(
                 # complete).  Otherwise use the Stop hook path.
                 if use_resume and resume_file:
                     raw_transcript = read_transcript_file(resume_file)
+                    logger.debug("[SDK] Transcript source: resume file")
                 elif captured_transcript.path:
                     raw_transcript = read_transcript_file(captured_transcript.path)
+                    logger.debug(
+                        "[SDK] Transcript source: stop hook (%s), " "read result: %s",
+                        captured_transcript.path,
+                        f"{len(raw_transcript)}B" if raw_transcript else "None",
+                    )
                 else:
                     raw_transcript = None
+
+                if not raw_transcript:
+                    logger.debug(
+                        "[SDK] No usable transcript — CLI file had no "
+                        "conversation entries (expected for first turn "
+                        "without --resume)"
+                    )
 
                 if raw_transcript:
                     # Shield the upload from generator cancellation so a
