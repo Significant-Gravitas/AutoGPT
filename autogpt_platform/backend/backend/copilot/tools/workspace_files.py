@@ -77,10 +77,15 @@ def _resolve_write_content(
         try:
             return base64.b64decode(content_b64)
         except Exception:
-            logger.warning(
-                "[workspace] content_base64 is not valid base64, treating as plain text"
+            return ErrorResponse(
+                message=(
+                    "Invalid base64 encoding in content_base64. "
+                    "Please encode the file content with standard base64, "
+                    "or use the 'content' parameter for plain text, "
+                    "or 'source_path' to copy from the working directory."
+                ),
+                session_id=session_id,
             )
-            return content_b64.encode("utf-8")
 
     assert content_text is not None
     return content_text.encode("utf-8")

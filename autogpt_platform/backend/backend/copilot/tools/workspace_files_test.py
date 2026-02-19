@@ -114,9 +114,12 @@ class TestResolveWriteContent:
         result = _resolve_write_content(None, b64, None, "s1")
         assert result == raw
 
-    def test_invalid_base64_falls_back_to_text(self):
+    def test_invalid_base64_returns_error(self):
+        from backend.copilot.tools.models import ErrorResponse
+
         result = _resolve_write_content(None, "not-valid-b64!!!", None, "s1")
-        assert result == b"not-valid-b64!!!"
+        assert isinstance(result, ErrorResponse)
+        assert "base64" in result.message.lower()
 
     def test_source_path(self, ephemeral_dir):
         target = ephemeral_dir / "input.txt"
