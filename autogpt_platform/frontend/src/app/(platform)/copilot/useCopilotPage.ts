@@ -114,16 +114,23 @@ export function useCopilotPage() {
   // the cancel API to actually stop the executor and wait for confirmation.
   const stop = useCallback(async () => {
     sdkStop();
+
+    // Mark any in-progress tool parts as errored so spinners stop.
+    setMessages((prev) =>
+      prev.map((msg) => ({
+        ...msg,
+        parts: msg.parts.map((part) =>
+          "state" in part &&
+          (part.state === "input-streaming" || part.state === "input-available")
+            ? { ...part, state: "output-error" as const, errorText: "Cancelled" }
+            : part,
+        ),
+      })),
+    );
+
     if (!sessionId) return;
     try {
-      const res = await postV2CancelSessionTask(sessionId);
-      if (res.status === 200 && !res.data.cancelled) {
-        toast({
-          title: "Could not stop the task",
-          description: "The task may still be running in the background.",
-          variant: "destructive",
-        });
-      }
+      await postV2CancelSessionTask(sessionId);
     } catch {
       toast({
         title: "Could not stop the task",
@@ -131,7 +138,7 @@ export function useCopilotPage() {
         variant: "destructive",
       });
     }
-  }, [sdkStop, sessionId]);
+  }, [sdkStop, sessionId, setMessages]);
 
   // Abort the stream if the backend doesn't start sending data within 12s.
   const stopRef = useRef(stop);

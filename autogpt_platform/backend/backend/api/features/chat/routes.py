@@ -334,8 +334,10 @@ async def cancel_session_task(
 
     Publishes a cancel event to the executor via RabbitMQ FANOUT, then
     polls Redis until the task status flips from ``running`` or a timeout
-    (10 s) is reached.  Returns only after the cancellation is confirmed.
+    (5 s) is reached.  Returns only after the cancellation is confirmed.
     """
+    await _validate_and_get_session(session_id, user_id)
+
     active_task, _ = await stream_registry.get_active_task_for_session(
         session_id, user_id
     )
@@ -350,8 +352,9 @@ async def cancel_session_task(
     )
 
     # Poll until the executor confirms the task is no longer running.
+    # Keep max_wait below typical reverse-proxy read timeouts.
     poll_interval = 0.5
-    max_wait = 10.0
+    max_wait = 5.0
     waited = 0.0
     while waited < max_wait:
         await asyncio.sleep(poll_interval)
@@ -365,9 +368,11 @@ async def cancel_session_task(
             return CancelTaskResponse(cancelled=True, task_id=task_id)
 
     logger.warning(
-        f"[CANCEL] Task ...{task_id[-8:]} still running after {max_wait}s"
+        f"[CANCEL] Task ...{task_id[-8:]} not confirmed after {max_wait}s"
     )
-    return CancelTaskResponse(cancelled=False, task_id=task_id, reason="timeout")
+    return CancelTaskResponse(
+        cancelled=True, task_id=task_id, reason="cancel_published_not_confirmed"
+    )
 
 
 @router.post(
