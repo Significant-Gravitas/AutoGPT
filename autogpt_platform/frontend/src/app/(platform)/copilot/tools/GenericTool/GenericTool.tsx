@@ -505,7 +505,9 @@ function getFileAccordionData(
           <ContentCodeBlock>{truncate(content, 2000)}</ContentCodeBlock>
         )}
         {files && files.length > 0 && (
-          <ContentCodeBlock>{truncate(files.join("\n"), 2000)}</ContentCodeBlock>
+          <ContentCodeBlock>
+            {truncate(files.join("\n"), 2000)}
+          </ContentCodeBlock>
         )}
         {!content && !files && message && (
           <ContentMessage>{message}</ContentMessage>
