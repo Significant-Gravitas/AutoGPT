@@ -24,6 +24,7 @@ from ..response_model import (
     StreamBaseResponse,
     StreamError,
     StreamFinish,
+    StreamHeartbeat,
     StreamStart,
     StreamTextDelta,
     StreamToolInputAvailable,
@@ -76,6 +77,9 @@ class CapturedTranscript:
 
 _SDK_CWD_PREFIX = WORKSPACE_PREFIX
 
+# Heartbeat interval — keep SSE alive through proxies/LBs during tool execution.
+_HEARTBEAT_INTERVAL = 15.0  # seconds
+
 # Appended to the system prompt to inform the agent about available tools.
 # The SDK built-in Bash is NOT available — use mcp__copilot__bash_exec instead,
 # which has kernel-level network isolation (unshare --net).
@@ -96,6 +100,8 @@ _SDK_TOOL_SUPPLEMENT = """
 - Long-running tools (create_agent, edit_agent, etc.) are handled
   asynchronously.  You will receive an immediate response; the actual result
   is delivered to the user via a background stream.
+- When using the Task tool, NEVER set `run_in_background` to true.
+  All tasks must run in the foreground.
 """
 
 
@@ -393,12 +399,42 @@ def _format_conversation_context(messages: list[ChatMessage]) -> str | None:
             lines.append(f"User: {msg.content}")
         elif msg.role == "assistant":
             lines.append(f"You responded: {msg.content}")
-        # Skip tool messages — they're internal details
+        elif msg.role == "tool":
+            # Include tool error/denial outcomes so the agent doesn't
+            # hallucinate that blocked or failed operations succeeded.
+            content = msg.content
+            if _is_tool_error_or_denial(content):
+                lines.append(f"Tool result: {content}")
 
     if not lines:
         return None
 
     return "<conversation_history>\n" + "\n".join(lines) + "\n</conversation_history>"
+
+
+def _is_tool_error_or_denial(content: str | None) -> bool:
+    """Check if a tool message content indicates an error or denial.
+
+    We include these in conversation context so the agent doesn't
+    hallucinate success for operations that actually failed.
+    """
+    if not content:
+        return False
+    lower = content.lower()
+    return any(
+        marker in lower
+        for marker in (
+            "[security]",
+            "cannot be bypassed",
+            "not allowed",
+            "not supported",  # background-task denial
+            "maximum",  # subtask-limit denial
+            "denied",
+            "blocked",
+            "failed",  # internal tool execution failures
+            '"iserror": true',  # MCP protocol error flag
+        )
+    )
 
 
 async def stream_chat_completion_sdk(
@@ -622,7 +658,23 @@ async def stream_chat_completion_sdk(
                 has_appended_assistant = False
                 has_tool_results = False
 
-                async for sdk_msg in client.receive_messages():
+                # Use an explicit async iterator with timeout to send
+                # heartbeats when the CLI is idle (e.g. executing tools).
+                # This prevents proxies/LBs from closing the SSE connection.
+                # asyncio.timeout() is preferred over asyncio.wait_for()
+                # because wait_for wraps in a separate Task whose cancellation
+                # can leave the async generator in a broken state.
+                msg_iter = client.receive_messages().__aiter__()
+                while not stream_completed:
+                    try:
+                        async with asyncio.timeout(_HEARTBEAT_INTERVAL):
+                            sdk_msg = await msg_iter.__anext__()
+                    except TimeoutError:
+                        yield StreamHeartbeat()
+                        continue
+                    except StopAsyncIteration:
+                        break
+
                     logger.debug(
                         f"[SDK] Received: {type(sdk_msg).__name__} "
                         f"{getattr(sdk_msg, 'subtype', '')}"
@@ -630,6 +682,17 @@ async def stream_chat_completion_sdk(
                     for response in adapter.convert_message(sdk_msg):
                         if isinstance(response, StreamStart):
                             continue
+
+                        # Log tool events for debugging visibility issues
+                        if isinstance(
+                            response,
+                            (StreamToolInputAvailable, StreamToolOutputAvailable),
+                        ):
+                            logger.info(
+                                "[SDK] Tool event: %s, tool=%s",
+                                type(response).__name__,
+                                getattr(response, "toolName", "N/A"),
+                            )
 
                         yield response
 
@@ -687,9 +750,6 @@ async def stream_chat_completion_sdk(
                         elif isinstance(response, StreamFinish):
                             stream_completed = True
 
-                    if stream_completed:
-                        break
-
                 if (
                     assistant_response.content or assistant_response.tool_calls
                 ) and not has_appended_assistant:
@@ -704,10 +764,23 @@ async def stream_chat_completion_sdk(
                 # complete).  Otherwise use the Stop hook path.
                 if use_resume and resume_file:
                     raw_transcript = read_transcript_file(resume_file)
+                    logger.debug("[SDK] Transcript source: resume file")
                 elif captured_transcript.path:
                     raw_transcript = read_transcript_file(captured_transcript.path)
+                    logger.debug(
+                        "[SDK] Transcript source: stop hook (%s), " "read result: %s",
+                        captured_transcript.path,
+                        f"{len(raw_transcript)}B" if raw_transcript else "None",
+                    )
                 else:
                     raw_transcript = None
+
+                if not raw_transcript:
+                    logger.debug(
+                        "[SDK] No usable transcript — CLI file had no "
+                        "conversation entries (expected for first turn "
+                        "without --resume)"
+                    )
 
                 if raw_transcript:
                     # Shield the upload from generator cancellation so a
