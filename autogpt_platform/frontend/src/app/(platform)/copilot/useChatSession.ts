@@ -106,14 +106,6 @@ export function useChatSession() {
     }
   }
 
-  function invalidateSession() {
-    if (sessionId) {
-      queryClient.invalidateQueries({
-        queryKey: getGetV2GetSessionQueryKey(sessionId),
-      });
-    }
-  }
-
   return {
     sessionId,
     setSessionId,
@@ -122,6 +114,5 @@ export function useChatSession() {
     isLoadingSession: sessionQuery.isLoading,
     createSession,
     isCreatingSession,
-    invalidateSession,
   };
 }

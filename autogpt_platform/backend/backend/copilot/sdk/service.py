@@ -123,29 +123,6 @@ is delivered to the user via a background stream.
 """
 
 
-def _long_running_messages(tool_name: str, args: dict[str, Any]) -> tuple[str, str]:
-    """Return (pending_msg, started_msg) for a long-running tool."""
-    _TOOL_MSG = {
-        "create_agent": ("description", "Creating your agent", "Agent creation"),
-        "edit_agent": ("changes", "Editing agent", "Agent edit"),
-    }
-    if tool_name in _TOOL_MSG:
-        arg_key, verb, noun = _TOOL_MSG[tool_name]
-        detail = args.get(arg_key, "")
-        preview = (detail[:100] + "...") if len(detail) > 100 else detail
-        pending = (
-            f"{verb}: {preview}"
-            if preview
-            else f"{verb}... This may take a few minutes."
-        )
-        started = f"{noun} started. You can close this tab - check your library in a few minutes."
-        return pending, started
-    return (
-        f"Running {tool_name}... This may take a few minutes.",
-        f"{tool_name} started. You can close this tab - check back in a few minutes.",
-    )
-
-
 def _build_long_running_callback(user_id: str | None) -> LongRunningCallback:
     """Build a callback that delegates long-running tools to the non-SDK infrastructure.
 
@@ -168,7 +145,36 @@ def _build_long_running_callback(user_id: str | None) -> LongRunningCallback:
         session_id = session.session_id
 
         # --- Build user-friendly messages (matches non-SDK service) ---
-        pending_msg, started_msg = _long_running_messages(tool_name, args)
+        if tool_name == "create_agent":
+            desc = args.get("description", "")
+            desc_preview = (desc[:100] + "...") if len(desc) > 100 else desc
+            pending_msg = (
+                f"Creating your agent: {desc_preview}"
+                if desc_preview
+                else "Creating agent... This may take a few minutes."
+            )
+            started_msg = (
+                "Agent creation started. You can close this tab - "
+                "check your library in a few minutes."
+            )
+        elif tool_name == "edit_agent":
+            changes = args.get("changes", "")
+            changes_preview = (changes[:100] + "...") if len(changes) > 100 else changes
+            pending_msg = (
+                f"Editing agent: {changes_preview}"
+                if changes_preview
+                else "Editing agent... This may take a few minutes."
+            )
+            started_msg = (
+                "Agent edit started. You can close this tab - "
+                "check your library in a few minutes."
+            )
+        else:
+            pending_msg = f"Running {tool_name}... This may take a few minutes."
+            started_msg = (
+                f"{tool_name} started. You can close this tab - "
+                "check back in a few minutes."
+            )
 
         # --- Register task in Redis for SSE reconnection ---
         await stream_registry.create_task(
@@ -672,29 +678,7 @@ async def stream_chat_completion_sdk(
                 has_appended_assistant = False
                 has_tool_results = False
 
-                inactivity_timeout = config.claude_agent_inactivity_timeout
-                msg_iter = client.receive_messages().__aiter__()
-                while True:
-                    try:
-                        if inactivity_timeout > 0:
-                            sdk_msg = await asyncio.wait_for(
-                                msg_iter.__anext__(),
-                                timeout=inactivity_timeout,
-                            )
-                        else:
-                            sdk_msg = await msg_iter.__anext__()
-                    except StopAsyncIteration:
-                        break
-                    except asyncio.TimeoutError:
-                        logger.error(
-                            f"[SDK] Agent inactivity timeout "
-                            f"({inactivity_timeout}s) for session "
-                            f"{session_id}"
-                        )
-                        raise TimeoutError(
-                            f"Agent was inactive for {inactivity_timeout}s"
-                        )
-
+                async for sdk_msg in client.receive_messages():
                     logger.debug(
                         f"[SDK] Received: {type(sdk_msg).__name__} "
                         f"{getattr(sdk_msg, 'subtype', '')}"
@@ -782,21 +766,14 @@ async def stream_chat_completion_sdk(
             yield StreamFinish()
 
     except Exception as e:
-        is_timeout = isinstance(e, TimeoutError)
-        logger.error(
-            f"[SDK] {'Timeout' if is_timeout else 'Error'}: {e}", exc_info=True
-        )
+        logger.error(f"[SDK] Error: {e}", exc_info=True)
         try:
             await asyncio.shield(upsert_chat_session(session))
         except Exception as save_err:
             logger.error(f"[SDK] Failed to save session on error: {save_err}")
         yield StreamError(
-            errorText=(
-                "The agent stopped responding. Please try again."
-                if is_timeout
-                else "An error occurred. Please try again."
-            ),
-            code="sdk_timeout" if is_timeout else "sdk_error",
+            errorText="An error occurred. Please try again.",
+            code="sdk_error",
         )
         yield StreamFinish()
     finally:

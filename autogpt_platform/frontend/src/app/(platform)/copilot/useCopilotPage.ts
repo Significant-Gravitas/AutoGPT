@@ -33,7 +33,6 @@ export function useCopilotPage() {
     isLoadingSession,
     createSession,
     isCreatingSession,
-    invalidateSession,
   } = useChatSession();
 
   const { mutate: deleteSessionMutation, isPending: isDeleting } =
@@ -152,19 +151,6 @@ export function useCopilotPage() {
     hasResumedRef.current = sessionId;
     resumeStream();
   }, [hasActiveStream, sessionId, hydratedMessages, status, resumeStream]);
-
-  // When a stream finishes (status leaves "streaming"), invalidate the session
-  // query so hasActiveStream refreshes from the backend.  Without this the
-  // session query (staleTime: Infinity) keeps returning the old active_stream
-  // value, causing isReconnecting to stay true and the stop button to stick.
-  const prevStatusRef = useRef(status);
-  useEffect(() => {
-    const prev = prevStatusRef.current;
-    prevStatusRef.current = status;
-    if (prev === "streaming" && status !== "streaming") {
-      invalidateSession();
-    }
-  }, [status, invalidateSession]);
 
   // Poll session endpoint when a long-running tool (create_agent, edit_agent)
   // is in progress. When the backend completes, the session data will contain
