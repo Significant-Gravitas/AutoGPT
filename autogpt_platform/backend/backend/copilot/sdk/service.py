@@ -77,6 +77,9 @@ class CapturedTranscript:
 
 _SDK_CWD_PREFIX = WORKSPACE_PREFIX
 
+# Heartbeat interval — keep SSE alive through proxies/LBs during tool execution.
+_HEARTBEAT_INTERVAL = 15.0  # seconds
+
 # Appended to the system prompt to inform the agent about available tools.
 # The SDK built-in Bash is NOT available — use mcp__copilot__bash_exec instead,
 # which has kernel-level network isolation (unshare --net).
@@ -407,7 +410,7 @@ def _format_conversation_context(messages: list[ChatMessage]) -> str | None:
     return "<conversation_history>\n" + "\n".join(lines) + "\n</conversation_history>"
 
 
-def _is_tool_error_or_denial(content: str) -> bool:
+def _is_tool_error_or_denial(content: str | None) -> bool:
     """Check if a tool message content indicates an error or denial.
 
     We include these in conversation context so the agent doesn't
@@ -420,14 +423,13 @@ def _is_tool_error_or_denial(content: str) -> bool:
         marker in lower
         for marker in (
             "[security]",
-            "error",
-            "failed",
+            "cannot be bypassed",
+            "not allowed",
+            "not supported",  # background-task denial
+            "maximum",  # subtask-limit denial
             "denied",
             "blocked",
-            "not found",
-            "not allowed",
-            "permission",
-            "cannot be bypassed",
+            '"iserror": true',  # MCP protocol error flag
         )
     )
 
@@ -656,15 +658,15 @@ async def stream_chat_completion_sdk(
                 # Use an explicit async iterator with timeout to send
                 # heartbeats when the CLI is idle (e.g. executing tools).
                 # This prevents proxies/LBs from closing the SSE connection.
-                _HEARTBEAT_INTERVAL = 15.0  # seconds
+                # asyncio.timeout() is preferred over asyncio.wait_for()
+                # because wait_for wraps in a separate Task whose cancellation
+                # can leave the async generator in a broken state.
                 msg_iter = client.receive_messages().__aiter__()
                 while not stream_completed:
                     try:
-                        sdk_msg = await asyncio.wait_for(
-                            msg_iter.__anext__(),
-                            timeout=_HEARTBEAT_INTERVAL,
-                        )
-                    except asyncio.TimeoutError:
+                        async with asyncio.timeout(_HEARTBEAT_INTERVAL):
+                            sdk_msg = await msg_iter.__anext__()
+                    except TimeoutError:
                         yield StreamHeartbeat()
                         continue
                     except StopAsyncIteration:

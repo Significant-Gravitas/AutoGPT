@@ -188,6 +188,18 @@ def create_security_hooks(
 
             # Rate-limit Task (sub-agent) spawns per session
             if tool_name == "Task":
+                # Block background task execution first — denied calls
+                # should not consume a subtask slot.
+                if tool_input.get("run_in_background"):
+                    logger.info(f"[SDK] Blocked background Task, user={user_id}")
+                    return cast(
+                        SyncHookJSONOutput,
+                        _deny(
+                            "Background task execution is not supported. "
+                            "Run tasks in the foreground instead "
+                            "(remove the run_in_background parameter)."
+                        ),
+                    )
                 task_spawn_count += 1
                 if task_spawn_count > max_subtasks:
                     logger.warning(
@@ -198,19 +210,6 @@ def create_security_hooks(
                         _deny(
                             f"Maximum {max_subtasks} sub-tasks per session. "
                             "Please continue in the main conversation."
-                        ),
-                    )
-                # Block background task execution — background agents stall
-                # the SSE stream (no messages flow while they run) and get
-                # killed when the main agent's turn ends.
-                if tool_input.get("run_in_background"):
-                    logger.info(f"[SDK] Blocked background Task, user={user_id}")
-                    return cast(
-                        SyncHookJSONOutput,
-                        _deny(
-                            "Background task execution is not supported. "
-                            "Run tasks in the foreground instead "
-                            "(remove the run_in_background parameter)."
                         ),
                     )
 
