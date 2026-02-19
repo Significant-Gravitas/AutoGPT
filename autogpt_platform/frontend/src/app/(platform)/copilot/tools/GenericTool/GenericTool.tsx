@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import { ToolUIPart } from "ai";
 import {
   CheckCircleIcon,
@@ -333,7 +334,12 @@ function parseOutput(output: unknown): Record<string, unknown> | null {
     if (!trimmed) return null;
     try {
       const parsed = JSON.parse(trimmed);
-      if (typeof parsed === "object" && parsed !== null) return parsed;
+      if (
+        typeof parsed === "object" &&
+        parsed !== null &&
+        !Array.isArray(parsed)
+      )
+        return parsed;
     } catch {
       // Return as a message wrapper for plain text output
       return { _raw: trimmed };
@@ -462,7 +468,11 @@ function getWebAccordionData(
   const message = getStringField(output, "message");
 
   return {
-    title: statusCode ? `Response (${statusCode})` : "Search results",
+    title: statusCode
+      ? `Response (${statusCode})`
+      : url
+        ? "Web fetch"
+        : "Search results",
     description: truncate(url, 80),
     content: content ? (
       <ContentCodeBlock>{truncate(content, 2000)}</ContentCodeBlock>
