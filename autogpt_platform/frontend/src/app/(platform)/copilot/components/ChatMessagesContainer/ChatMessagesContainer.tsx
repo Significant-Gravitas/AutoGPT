@@ -27,12 +27,15 @@ import { ViewAgentOutputTool } from "../../tools/ViewAgentOutput/ViewAgentOutput
 
 /**
  * Resolve workspace:// URLs in markdown text to proxy download URLs.
- * Detects MIME type from the hash fragment (e.g. workspace://id#video/mp4)
- * and prefixes the alt text with "video:" so the custom img component can
- * render a <video> element instead.
+ *
+ * Handles both image syntax  `![alt](workspace://id#mime)` and regular link
+ * syntax `[text](workspace://id)`.  For images the MIME type hash fragment is
+ * inspected so that videos can be rendered with a `<video>` element via the
+ * custom img component.
  */
 function resolveWorkspaceUrls(text: string): string {
-  return text.replace(
+  // Handle image links: ![alt](workspace://id#mime)
+  let resolved = text.replace(
     /!\[([^\]]*)\]\(workspace:\/\/([^)#\s]+)(?:#([^)\s]*))?\)/g,
     (_match, alt: string, fileId: string, mimeHint?: string) => {
       const apiPath = getGetWorkspaceDownloadFileByIdUrl(fileId);
@@ -43,6 +46,21 @@ function resolveWorkspaceUrls(text: string): string {
       return `![${alt || "Image"}](${url})`;
     },
   );
+
+  // Handle regular links: [text](workspace://id) — without the leading "!"
+  // These are blocked by Streamdown's rehype-harden sanitizer because
+  // "workspace://" is not in the allowed URL-scheme whitelist, which causes
+  // "[blocked]" to appear next to the link text.
+  resolved = resolved.replace(
+    /(?<!!)\[([^\]]*)\]\(workspace:\/\/([^)#\s]+)(?:#([^)\s]*))?\)/g,
+    (_match, linkText: string, fileId: string) => {
+      const apiPath = getGetWorkspaceDownloadFileByIdUrl(fileId);
+      const url = `/api/proxy${apiPath}`;
+      return `[${linkText || "Download file"}](${url})`;
+    },
+  );
+
+  return resolved;
 }
 
 /**
