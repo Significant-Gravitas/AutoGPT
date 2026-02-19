@@ -80,6 +80,7 @@ export const AgentInfo = ({
   const allVersions = storeData?.versions
     ? storeData.versions
         .map((versionStr: string) => parseInt(versionStr, 10))
+        .filter((versionNum: number) => !isNaN(versionNum))
         .sort((a: number, b: number) => b - a)
         .map((versionNum: number) => ({
           version: versionNum,

@@ -1,14 +1,25 @@
 import { BackendAPIProvider } from "@/lib/autogpt-server-api/context";
-import OnboardingProvider from "@/providers/onboarding/onboarding-provider";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, RenderOptions } from "@testing-library/react";
 import { ReactElement, ReactNode } from "react";
+import {
+  MockOnboardingProvider,
+  useOnboarding as mockUseOnboarding,
+} from "./helpers/mock-onboarding-provider";
+
+vi.mock("@/providers/onboarding/onboarding-provider", () => ({
+  useOnboarding: mockUseOnboarding,
+  default: vi.fn(),
+}));
 
 function createTestQueryClient() {
   return new QueryClient({
     defaultOptions: {
       queries: {
         retry: false,
+        refetchOnWindowFocus: false,
+        refetchOnMount: false,
+        refetchOnReconnect: false,
       },
     },
   });
@@ -19,7 +30,7 @@ function TestProviders({ children }: { children: ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
       <BackendAPIProvider>
-        <OnboardingProvider>{children}</OnboardingProvider>
+        <MockOnboardingProvider>{children}</MockOnboardingProvider>
       </BackendAPIProvider>
     </QueryClientProvider>
   );
