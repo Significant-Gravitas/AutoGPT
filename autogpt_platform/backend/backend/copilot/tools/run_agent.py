@@ -1,5 +1,6 @@
 """Unified tool for agent operations with automatic state detection."""
 
+import asyncio
 import logging
 from typing import Any
 
@@ -163,6 +164,9 @@ class RunAgentTool(BaseTool):
         **kwargs,
     ) -> ToolResponseBase:
         """Execute the tool with automatic state detection."""
+        from .base import get_session_lock
+
+        session_lock = get_session_lock()
         params = RunAgentInput(**kwargs)
         session_id = session.session_id
 
@@ -333,6 +337,7 @@ class RunAgentTool(BaseTool):
                     schedule_name=params.schedule_name,
                     cron=params.cron,
                     timezone=params.timezone,
+                    session_lock=session_lock,
                 )
             else:
                 return await self._run_agent(
@@ -341,6 +346,7 @@ class RunAgentTool(BaseTool):
                     graph=graph,
                     graph_credentials=graph_credentials,
                     inputs=params.inputs,
+                    session_lock=session_lock,
                 )
 
         except NotFoundError as e:
@@ -424,16 +430,20 @@ class RunAgentTool(BaseTool):
         graph: GraphModel,
         graph_credentials: dict[str, CredentialsMetaInput],
         inputs: dict[str, Any],
+        session_lock: asyncio.Lock | None = None,
     ) -> ToolResponseBase:
         """Execute an agent immediately."""
+
         session_id = session.session_id
 
-        # Check rate limits
-        if session.successful_agent_runs.get(graph.id, 0) >= config.max_agent_runs:
-            return ErrorResponse(
-                message="Maximum agent runs reached for this session. Please try again later.",
-                session_id=session_id,
-            )
+        # Check rate limits (lock protects read-check-increment when parallel)
+        _lock = session_lock or asyncio.Lock()
+        async with _lock:
+            if session.successful_agent_runs.get(graph.id, 0) >= config.max_agent_runs:
+                return ErrorResponse(
+                    message="Maximum agent runs reached for this session. Please try again later.",
+                    session_id=session_id,
+                )
 
         # Get or create library agent
         library_agent = await get_or_create_library_agent(graph, user_id)
@@ -446,10 +456,11 @@ class RunAgentTool(BaseTool):
             graph_credentials_inputs=graph_credentials,
         )
 
-        # Track successful run
-        session.successful_agent_runs[library_agent.graph_id] = (
-            session.successful_agent_runs.get(library_agent.graph_id, 0) + 1
-        )
+        # Track successful run (lock protects counter mutation)
+        async with _lock:
+            session.successful_agent_runs[library_agent.graph_id] = (
+                session.successful_agent_runs.get(library_agent.graph_id, 0) + 1
+            )
 
         # Track in PostHog
         track_agent_run_success(
@@ -486,8 +497,10 @@ class RunAgentTool(BaseTool):
         schedule_name: str,
         cron: str,
         timezone: str,
+        session_lock: asyncio.Lock | None = None,
     ) -> ToolResponseBase:
         """Set up scheduled execution for an agent."""
+
         session_id = session.session_id
 
         # Validate schedule params
@@ -502,15 +515,17 @@ class RunAgentTool(BaseTool):
                 session_id=session_id,
             )
 
-        # Check rate limits
-        if (
-            session.successful_agent_schedules.get(graph.id, 0)
-            >= config.max_agent_schedules
-        ):
-            return ErrorResponse(
-                message="Maximum agent schedules reached for this session.",
-                session_id=session_id,
-            )
+        # Check rate limits (lock protects read-check-increment when parallel)
+        _lock = session_lock or asyncio.Lock()
+        async with _lock:
+            if (
+                session.successful_agent_schedules.get(graph.id, 0)
+                >= config.max_agent_schedules
+            ):
+                return ErrorResponse(
+                    message="Maximum agent schedules reached for this session.",
+                    session_id=session_id,
+                )
 
         # Get or create library agent
         library_agent = await get_or_create_library_agent(graph, user_id)
@@ -537,10 +552,11 @@ class RunAgentTool(BaseTool):
                 result.next_run_time, user_timezone
             )
 
-        # Track successful schedule
-        session.successful_agent_schedules[library_agent.graph_id] = (
-            session.successful_agent_schedules.get(library_agent.graph_id, 0) + 1
-        )
+        # Track successful schedule (lock protects counter mutation)
+        async with _lock:
+            session.successful_agent_schedules[library_agent.graph_id] = (
+                session.successful_agent_schedules.get(library_agent.graph_id, 0) + 1
+            )
 
         # Track in PostHog
         track_agent_scheduled(

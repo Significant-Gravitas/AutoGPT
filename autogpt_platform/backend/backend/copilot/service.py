@@ -1225,23 +1225,10 @@ async def _stream_chat_chunks(
                     },
                 )
 
-                # Yield all accumulated tool calls after the stream is complete
-                # This ensures all tool call arguments have been fully received
-                for idx, tool_call in enumerate(tool_calls):
-                    try:
-                        async for tc in _yield_tool_call(tool_calls, idx, session):
-                            yield tc
-                    except (orjson.JSONDecodeError, KeyError, TypeError) as e:
-                        logger.error(
-                            f"Failed to parse tool call {idx}: {e}",
-                            exc_info=True,
-                            extra={"tool_call": tool_call},
-                        )
-                        yield StreamError(
-                            errorText=f"Invalid tool call arguments for tool {tool_call.get('function', {}).get('name', 'unknown')}: {e}",
-                        )
-                        # Re-raise to trigger retry logic in the parent function
-                        raise
+                # Execute all accumulated tool calls in parallel
+                # Events are yielded as they arrive from each concurrent tool
+                async for event in _execute_tool_calls_parallel(tool_calls, session):
+                    yield event
 
                 total_time = (time_module.perf_counter() - stream_chunks_start) * 1000
                 logger.info(
@@ -1319,10 +1306,76 @@ async def _stream_chat_chunks(
             return
 
 
+async def _execute_tool_calls_parallel(
+    tool_calls: list[dict[str, Any]],
+    session: ChatSession,
+) -> AsyncGenerator[StreamBaseResponse, None]:
+    """Execute all tool calls concurrently, yielding stream events as they arrive.
+
+    Spawns each tool call as a bare asyncio task. Events are collected via a
+    shared ``asyncio.Queue`` and yielded to the caller as they arrive.
+    Session mutations (long-running tools, run_agent counters) are serialized
+    via a shared ``asyncio.Lock``.
+
+    When multiple tools fail with retryable errors (JSON parse, KeyError,
+    TypeError), only one error is raised (non-deterministic which one).
+    """
+    queue: asyncio.Queue[StreamBaseResponse | None] = asyncio.Queue()
+    session_lock = asyncio.Lock()
+    n_tools = len(tool_calls)
+    retryable_error: Exception | None = None
+
+    async def _run_tool(idx: int) -> None:
+        nonlocal retryable_error
+        try:
+            async for event in _yield_tool_call(tool_calls, idx, session, session_lock):
+                await queue.put(event)
+        except (orjson.JSONDecodeError, KeyError, TypeError) as e:
+            logger.error(
+                f"Failed to parse tool call {idx}: {e}",
+                exc_info=True,
+                extra={"tool_call": tool_calls[idx]},
+            )
+            await queue.put(
+                StreamError(
+                    errorText=(
+                        f"Invalid tool call arguments for tool "
+                        f"{tool_calls[idx].get('function', {}).get('name', 'unknown')}: {e}"
+                    ),
+                )
+            )
+            retryable_error = e
+        finally:
+            await queue.put(None)  # Sentinel: this worker is done
+
+    # Spawn all tool workers as bare tasks
+    tasks = [asyncio.create_task(_run_tool(idx)) for idx in range(n_tools)]
+
+    try:
+        finished_count = 0
+        while finished_count < n_tools:
+            event = await queue.get()
+            if event is None:
+                finished_count += 1
+            else:
+                yield event
+
+        # All workers done — re-raise retryable error for retry logic in caller
+        if retryable_error is not None:
+            raise retryable_error
+    finally:
+        # Clean up any still-running tasks on early exit (e.g. CancelledError)
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+
 async def _yield_tool_call(
     tool_calls: list[dict[str, Any]],
     yield_idx: int,
     session: ChatSession,
+    session_lock: asyncio.Lock | None = None,
 ) -> AsyncGenerator[StreamBaseResponse, None]:
     """
     Yield a tool call and its execution result.
@@ -1438,20 +1491,22 @@ async def _yield_tool_call(
 
             # Attach the tool_call to the current turn's assistant message
             # (or create one if this is a tool-only response with no text).
-            session.add_tool_call_to_current_turn(tool_calls[yield_idx])
+            # Lock protects session mutations when running in parallel.
+            async with session_lock or asyncio.Lock():
+                session.add_tool_call_to_current_turn(tool_calls[yield_idx])
 
-            # Then save pending tool result
-            pending_message = ChatMessage(
-                role="tool",
-                content=OperationPendingResponse(
-                    message=pending_msg,
-                    operation_id=operation_id,
-                    tool_name=tool_name,
-                ).model_dump_json(),
-                tool_call_id=tool_call_id,
-            )
-            session.messages.append(pending_message)
-            await upsert_chat_session(session)
+                # Then save pending tool result
+                pending_message = ChatMessage(
+                    role="tool",
+                    content=OperationPendingResponse(
+                        message=pending_msg,
+                        operation_id=operation_id,
+                        tool_name=tool_name,
+                    ).model_dump_json(),
+                    tool_call_id=tool_call_id,
+                )
+                session.messages.append(pending_message)
+                await upsert_chat_session(session)
             logger.info(
                 f"Saved pending operation {operation_id} (task_id={task_id}) "
                 f"for tool {tool_name} in session {session.session_id}"
@@ -1476,18 +1531,20 @@ async def _yield_tool_call(
             await stream_registry.set_task_asyncio_task(task_id, bg_task)
         except Exception as e:
             # Roll back appended messages to prevent data corruption on subsequent saves
-            if (
-                pending_message
-                and session.messages
-                and session.messages[-1] == pending_message
-            ):
-                session.messages.pop()
-            if (
-                assistant_message
-                and session.messages
-                and session.messages[-1] == assistant_message
-            ):
-                session.messages.pop()
+            # Lock protects session mutations when running in parallel.
+            async with session_lock or asyncio.Lock():
+                if (
+                    pending_message
+                    and session.messages
+                    and session.messages[-1] == pending_message
+                ):
+                    session.messages.pop()
+                if (
+                    assistant_message
+                    and session.messages
+                    and session.messages[-1] == assistant_message
+                ):
+                    session.messages.pop()
 
             # Release the Redis lock since the background task won't be spawned
             await _mark_operation_completed(tool_call_id)
@@ -1519,7 +1576,7 @@ async def _yield_tool_call(
     tool_task = asyncio.create_task(
         execute_tool(
             tool_name=tool_name,
-            parameters=arguments,
+            parameters={**arguments, "_session_lock": session_lock},
             tool_call_id=tool_call_id,
             user_id=session.user_id,
             session=session,
