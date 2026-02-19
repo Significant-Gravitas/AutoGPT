@@ -215,6 +215,8 @@ class WorkspaceWriteResponse(ToolResponseBase):
     name: str
     path: str
     size_bytes: int
+    source: str | None = None  # "content", "base64", or "copied from <path>"
+    content_preview: str | None = None  # First 200 chars for text files
 
 
 class WorkspaceDeleteResponse(ToolResponseBase):
@@ -602,10 +604,14 @@ class WriteWorkspaceFileTool(BaseTool):
                 message="Please provide a filename", session_id=session_id
             )
 
+        source_path_arg: str | None = kwargs.get("source_path")
+        content_text: str | None = kwargs.get("content")
+        content_b64: str | None = kwargs.get("content_base64")
+
         resolved = _resolve_write_content(
-            kwargs.get("content"),
-            kwargs.get("content_base64"),
-            kwargs.get("source_path"),
+            content_text,
+            content_b64,
+            source_path_arg,
             session_id,
         )
         if isinstance(resolved, ErrorResponse):
@@ -629,12 +635,42 @@ class WriteWorkspaceFileTool(BaseTool):
                 mime_type=kwargs.get("mime_type"),
                 overwrite=kwargs.get("overwrite", False),
             )
+
+            # Build informative source label and message.
+            if source_path_arg:
+                source = f"copied from {source_path_arg}"
+                msg = (
+                    f"Copied {source_path_arg} → workspace:{rec.path} "
+                    f"({rec.size_bytes:,} bytes)"
+                )
+            elif content_b64:
+                source = "base64"
+                msg = (
+                    f"Wrote {rec.name} to workspace ({rec.size_bytes:,} bytes, "
+                    f"decoded from base64)"
+                )
+            else:
+                source = "content"
+                msg = f"Wrote {rec.name} to workspace ({rec.size_bytes:,} bytes)"
+
+            # Include a short preview for text content.
+            preview: str | None = None
+            if _is_text_mime(rec.mime_type):
+                try:
+                    preview = content[:200].decode("utf-8", errors="replace")
+                    if len(content) > 200:
+                        preview += "..."
+                except Exception:
+                    pass
+
             return WorkspaceWriteResponse(
                 file_id=rec.id,
                 name=rec.name,
                 path=rec.path,
                 size_bytes=rec.size_bytes,
-                message=f"Successfully wrote file: {rec.name}",
+                source=source,
+                content_preview=preview,
+                message=msg,
                 session_id=session_id,
             )
         except ValueError as e:
