@@ -1494,8 +1494,8 @@ async def _yield_tool_call(
             # Mark stream registry task as failed if it was created
             try:
                 await stream_registry.mark_task_completed(task_id, status="failed")
-            except Exception:
-                pass
+            except Exception as mark_err:
+                logger.warning(f"Failed to mark task {task_id} as failed: {mark_err}")
             logger.error(
                 f"Failed to setup long-running tool {tool_name}: {e}", exc_info=True
             )

@@ -4,7 +4,6 @@ This module contains the CoPilotExecutor class that consumes chat tasks from
 RabbitMQ and processes them using a thread pool, following the graph executor pattern.
 """
 
-import asyncio
 import logging
 import os
 import threading

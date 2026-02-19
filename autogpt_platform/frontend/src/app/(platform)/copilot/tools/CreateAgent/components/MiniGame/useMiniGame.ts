@@ -1,172 +1,47 @@
 import { useEffect, useRef, useState } from "react";
-import runSheet from "./assets/run.png";
-import idleSheet from "./assets/idle.png";
-import attackSheet from "./assets/attack.png";
-import tree1Sheet from "./assets/tree-1.png";
-import tree2Sheet from "./assets/tree-2.png";
-import tree3Sheet from "./assets/tree-3.png";
-import archerIdleSheet from "./assets/archer-idle.png";
-import archerAttackSheet from "./assets/archer-attack.png";
-import guardSheet from "./assets/guard.png";
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                         */
 /* ------------------------------------------------------------------ */
 
 const CANVAS_HEIGHT = 150;
-const GRAVITY = 0.55;
-const JUMP_FORCE = -9.5;
-const BASE_SPEED = 3;
-const SPEED_INCREMENT = 0.0008;
-const SPAWN_MIN = 70;
-const SPAWN_MAX = 130;
-const CHAR_SIZE = 18;
-const CHAR_SPRITE_SIZE = 67;
-const CHAR_X = 50;
-const GROUND_PAD = 20;
+const CELL_SIZE = 10;
+const TICK_MS = 120;
 const STORAGE_KEY = "copilot-minigame-highscore";
 
-// Character sprite sheets (each frame is 192x192)
-const SPRITE_FRAME_SIZE = 192;
-const RUN_FRAMES = 6;
-const IDLE_FRAMES = 8;
-const ATTACK_FRAMES = 4;
-const ANIM_SPEED = 8;
-const ATTACK_ANIM_SPEED = 6;
-const ATTACK_RANGE = 40;
-const ATTACK_HIT_FRAME = 2;
-const GUARD_FRAMES = 6;
-const GUARD_ANIM_SPEED = 8;
-
-// Tree sprite sheets: 8 frames each, 192px wide per frame
-const TREE_FRAMES = 8;
-const TREE_ANIM_SPEED = 10;
-const TREE_CONFIGS = [
-  { frameW: 192, frameH: 256, renderW: 40, renderH: 61, hitW: 16, hitH: 50 },
-  { frameW: 192, frameH: 192, renderW: 38, renderH: 52, hitW: 16, hitH: 40 },
-  { frameW: 192, frameH: 192, renderW: 32, renderH: 40, hitW: 14, hitH: 30 },
-] as const;
-
-// Colors
 const COLOR_BG = "#E8EAF6";
-const COLOR_CHAR = "#263238";
-
-// Boss
-const BOSS_SIZE = 36;
-const BOSS_SPRITE_SIZE = 70;
-const BOSS_ENTER_SPEED = 2;
-const BOSS_HP = 1;
-const MOVE_SPEED = 3;
-const BOSS_CHASE_SPEED = 2.2;
-const BOSS_RETREAT_SPEED = 2;
-const BOSS_ATTACK_RANGE = 50;
-const BOSS_IDLE_TIME = 166;
-const BOSS_RETREAT_TIME = 166;
-
-// Archer sprite sheets
-const ARCHER_IDLE_FRAMES = 6;
-const ARCHER_ATTACK_FRAMES = 4;
-const ARCHER_FRAME_SIZE = 192;
-const ARCHER_ANIM_SPEED = 8;
-const ARCHER_ATTACK_ANIM_SPEED = 6;
-const ARCHER_ATTACK_HIT_FRAME = 2;
-
-// Death animation
-const DEATH_PARTICLE_COUNT = 15;
-const DEATH_ANIM_DURATION = 40;
-
-// Attack effect
-const ATTACK_EFFECT_COUNT = 8;
-const ATTACK_EFFECT_DURATION = 15;
+const COLOR_SNAKE = "#263238";
+const COLOR_SNAKE_HEAD = "#1a1a2e";
+const COLOR_FOOD = "#a855f7";
+const COLOR_GRID = "rgba(0,0,0,0.04)";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                             */
 /* ------------------------------------------------------------------ */
 
-interface Obstacle {
-  x: number;
-  width: number;
-  height: number;
-  scored: boolean;
-  treeType: 0 | 1 | 2;
-}
-
-interface BossState {
-  phase: "inactive" | "entering" | "fighting";
+interface Point {
   x: number;
   y: number;
-  vy: number;
-  targetX: number;
-  hp: number;
-  action: "idle" | "chase" | "retreat" | "attack";
-  actionTimer: number;
-  attackFrame: number;
-  attackHit: boolean;
 }
 
-interface Particle {
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  life: number;
-}
-
-interface DeathAnim {
-  particles: Particle[];
-  type: "boss" | "player";
-  timer: number;
-}
+type Direction = "up" | "down" | "left" | "right";
 
 interface GameState {
-  charX: number;
-  charY: number;
-  vy: number;
-  obstacles: Obstacle[];
+  snake: Point[];
+  food: Point;
+  dir: Direction;
+  nextDir: Direction;
   score: number;
   highScore: number;
-  speed: number;
-  frame: number;
-  nextSpawn: number;
   running: boolean;
   over: boolean;
-  groundY: number;
-  boss: BossState;
-  bossThreshold: number;
-  bossesDefeated: number;
-  paused: boolean;
-  nextTreeType: 0 | 1 | 2;
-  attacking: boolean;
-  attackFrame: number;
-  attackHit: boolean;
-  guarding: boolean;
-  guardFrame: number;
-  deathAnim: DeathAnim | null;
-  attackEffects: Particle[];
-}
-
-interface KeyState {
-  left: boolean;
-  right: boolean;
-}
-
-interface Sprites {
-  run: HTMLImageElement;
-  idle: HTMLImageElement;
-  attack: HTMLImageElement;
-  guard: HTMLImageElement;
-  trees: HTMLImageElement[];
-  archerIdle: HTMLImageElement;
-  archerAttack: HTMLImageElement;
+  cols: number;
+  rows: number;
 }
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                           */
 /* ------------------------------------------------------------------ */
-
-function randInt(min: number, max: number) {
-  return Math.floor(Math.random() * (max - min + 1)) + min;
-}
 
 function readHighScore(): number {
   try {
@@ -184,367 +59,111 @@ function writeHighScore(score: number) {
   }
 }
 
-function makeBoss(groundY: number): BossState {
-  return {
-    phase: "inactive",
-    x: 0,
-    y: groundY - BOSS_SIZE,
-    vy: 0,
-    targetX: 0,
-    hp: BOSS_HP,
-    action: "idle",
-    actionTimer: BOSS_IDLE_TIME,
-    attackFrame: 0,
-    attackHit: false,
-  };
+function spawnFood(cols: number, rows: number, snake: Point[]): Point | null {
+  const occupied = new Set(snake.map((p) => `${p.x},${p.y}`));
+  const free: Point[] = [];
+  for (let x = 0; x < cols; x++) {
+    for (let y = 0; y < rows; y++) {
+      if (!occupied.has(`${x},${y}`)) free.push({ x, y });
+    }
+  }
+  if (free.length === 0) return null;
+  return free[Math.floor(Math.random() * free.length)];
 }
 
-function makeState(groundY: number): GameState {
+function makeState(cols: number, rows: number): GameState {
+  const cx = Math.floor(cols / 2);
+  const cy = Math.floor(rows / 2);
+  const snake: Point[] = [];
+  for (let i = 0; i < 40; i++) {
+    snake.push({ x: cx - i, y: cy });
+  }
   return {
-    charX: CHAR_X,
-    charY: groundY - CHAR_SIZE,
-    vy: 0,
-    obstacles: [],
+    snake,
+    food: spawnFood(cols, rows, snake)!,
+    dir: "right",
+    nextDir: "right",
     score: 0,
     highScore: readHighScore(),
-    speed: BASE_SPEED,
-    frame: 0,
-    nextSpawn: randInt(SPAWN_MIN, SPAWN_MAX),
     running: false,
     over: false,
-    groundY,
-    boss: makeBoss(groundY),
-    bossThreshold: 10,
-    bossesDefeated: 0,
-    paused: false,
-    nextTreeType: 0,
-    attacking: false,
-    attackFrame: 0,
-    attackHit: false,
-    guarding: false,
-    guardFrame: 0,
-    deathAnim: null,
-    attackEffects: [],
+    cols,
+    rows,
   };
 }
 
-function spawnParticles(x: number, y: number): Particle[] {
-  const particles: Particle[] = [];
-  for (let i = 0; i < DEATH_PARTICLE_COUNT; i++) {
-    const angle = Math.random() * Math.PI * 2;
-    const speed = 1 + Math.random() * 3;
-    particles.push({
-      x,
-      y,
-      vx: Math.cos(angle) * speed,
-      vy: Math.sin(angle) * speed - 2,
-      life: DEATH_ANIM_DURATION,
-    });
+const OPPOSITE: Record<Direction, Direction> = {
+  up: "down",
+  down: "up",
+  left: "right",
+  right: "left",
+};
+
+function tick(s: GameState) {
+  if (!s.running || s.over) return;
+
+  // Apply queued direction (prevent 180-degree turns)
+  if (s.nextDir !== OPPOSITE[s.dir]) {
+    s.dir = s.nextDir;
   }
-  return particles;
-}
 
-function startPlayerDeath(s: GameState) {
-  s.deathAnim = {
-    particles: spawnParticles(s.charX + CHAR_SIZE / 2, s.charY + CHAR_SIZE / 2),
-    type: "player",
-    timer: DEATH_ANIM_DURATION,
-  };
-}
+  const head = s.snake[0];
+  let nx = head.x;
+  let ny = head.y;
 
-function startBossDeath(s: GameState) {
-  s.deathAnim = {
-    particles: spawnParticles(
-      s.boss.x + BOSS_SIZE / 2,
-      s.boss.y + BOSS_SIZE / 2,
-    ),
-    type: "boss",
-    timer: DEATH_ANIM_DURATION,
-  };
-}
-
-/* ------------------------------------------------------------------ */
-/*  Update                                                            */
-/* ------------------------------------------------------------------ */
-
-function update(s: GameState, canvasWidth: number, keys: KeyState) {
-  if (!s.running || s.paused) return;
-
-  s.frame++;
-
-  // ---- Attack effects ---- //
-  for (const p of s.attackEffects) {
-    p.x += p.vx;
-    p.y += p.vy;
-    p.vy += 0.08;
-    p.life--;
+  switch (s.dir) {
+    case "up":
+      ny--;
+      break;
+    case "down":
+      ny++;
+      break;
+    case "left":
+      nx--;
+      break;
+    case "right":
+      nx++;
+      break;
   }
-  s.attackEffects = s.attackEffects.filter((p) => p.life > 0);
 
-  // ---- Death animation ---- //
-  if (s.deathAnim) {
-    s.deathAnim.timer--;
-    for (const p of s.deathAnim.particles) {
-      p.x += p.vx;
-      p.y += p.vy;
-      p.vy += 0.1;
-      p.life--;
-    }
-    if (s.deathAnim.timer <= 0) {
-      if (s.deathAnim.type === "player") {
-        s.deathAnim = null;
-        s.running = false;
-        s.over = true;
-        if (s.score > s.highScore) {
-          s.highScore = s.score;
-          writeHighScore(s.score);
-        }
-      } else {
-        s.deathAnim = null;
-        s.score += 10;
-        s.bossesDefeated++;
-        if (s.bossesDefeated === 1) {
-          s.bossThreshold = s.score + 15;
-        } else {
-          s.bossThreshold = s.score + 20;
-        }
-        s.paused = true;
+  // Wrap around walls (Nokia style)
+  if (nx < 0) nx = s.cols - 1;
+  if (nx >= s.cols) nx = 0;
+  if (ny < 0) ny = s.rows - 1;
+  if (ny >= s.rows) ny = 0;
+
+  // Self-collision
+  for (const seg of s.snake) {
+    if (seg.x === nx && seg.y === ny) {
+      s.over = true;
+      s.running = false;
+      if (s.score > s.highScore) {
+        s.highScore = s.score;
+        writeHighScore(s.score);
       }
-    }
-    return;
-  }
-
-  // Speed only ramps during regular play
-  if (s.boss.phase === "inactive") {
-    s.speed = BASE_SPEED + s.frame * SPEED_INCREMENT;
-  }
-
-  // ---- Character physics (always active) ---- //
-  s.vy += GRAVITY;
-  s.charY += s.vy;
-  if (s.charY + CHAR_SIZE >= s.groundY) {
-    s.charY = s.groundY - CHAR_SIZE;
-    s.vy = 0;
-  }
-
-  // ---- Attack animation ---- //
-  if (s.attacking) {
-    s.attackFrame++;
-
-    if (
-      !s.attackHit &&
-      Math.floor(s.attackFrame / ATTACK_ANIM_SPEED) === ATTACK_HIT_FRAME &&
-      s.boss.phase === "fighting" &&
-      s.charX + CHAR_SIZE + ATTACK_RANGE >= s.boss.x
-    ) {
-      s.boss.hp--;
-      s.attackHit = true;
-    }
-
-    if (s.attackFrame >= ATTACK_FRAMES * ATTACK_ANIM_SPEED) {
-      s.attacking = false;
-      s.attackFrame = 0;
-      s.attackHit = false;
+      return;
     }
   }
 
-  // ---- Guard animation ---- //
-  if (s.guarding) {
-    s.guardFrame++;
-    if (s.guardFrame >= GUARD_FRAMES * GUARD_ANIM_SPEED) {
-      s.guardFrame = GUARD_FRAMES * GUARD_ANIM_SPEED - 1;
-    }
-  }
+  s.snake.unshift({ x: nx, y: ny });
 
-  // ---- Horizontal movement during boss fight ---- //
-  if (s.boss.phase !== "inactive") {
-    if (keys.left) {
-      s.charX = Math.max(10, s.charX - MOVE_SPEED);
-    }
-    if (keys.right) {
-      s.charX = Math.min(canvasWidth - CHAR_SIZE - 10, s.charX + MOVE_SPEED);
+  // Eat food
+  if (nx === s.food.x && ny === s.food.y) {
+    s.score++;
+    const newFood = spawnFood(s.cols, s.rows, s.snake);
+    if (newFood) {
+      s.food = newFood;
+    } else {
+      // Grid full — player wins
+      s.over = true;
+      s.running = false;
+      if (s.score > s.highScore) {
+        s.highScore = s.score;
+        writeHighScore(s.score);
+      }
     }
   } else {
-    s.charX = CHAR_X;
-  }
-
-  // ---- Trigger boss ---- //
-  const isOnGround = s.charY + CHAR_SIZE >= s.groundY;
-  if (
-    s.boss.phase === "inactive" &&
-    s.score >= s.bossThreshold &&
-    s.obstacles.length === 0 &&
-    isOnGround
-  ) {
-    s.boss.phase = "entering";
-    s.boss.x = canvasWidth + 10;
-    s.boss.y = s.groundY - BOSS_SIZE;
-    s.boss.vy = 0;
-    s.boss.targetX = canvasWidth - BOSS_SIZE - 40;
-    s.boss.hp = BOSS_HP;
-    s.boss.action = "idle";
-    s.boss.actionTimer = BOSS_IDLE_TIME;
-    s.boss.attackFrame = 0;
-    s.boss.attackHit = false;
-
-    if (s.bossesDefeated === 0) {
-      s.paused = true;
-    }
-  }
-
-  // ---- Boss: entering ---- //
-  if (s.boss.phase === "entering") {
-    s.boss.x -= BOSS_ENTER_SPEED;
-    if (s.boss.x <= s.boss.targetX) {
-      s.boss.x = s.boss.targetX;
-      s.boss.phase = "fighting";
-    }
-    return;
-  }
-
-  // ---- Boss: fighting ---- //
-  if (s.boss.phase === "fighting") {
-    // Boss physics
-    s.boss.vy += GRAVITY;
-    s.boss.y += s.boss.vy;
-    if (s.boss.y + BOSS_SIZE >= s.groundY) {
-      s.boss.y = s.groundY - BOSS_SIZE;
-      s.boss.vy = 0;
-    }
-
-    // Boss defeated?
-    if (s.boss.hp <= 0) {
-      startBossDeath(s);
-      return;
-    }
-
-    // Boss AI
-    if (s.boss.action === "attack") {
-      s.boss.attackFrame++;
-      const hitFrame = Math.floor(
-        s.boss.attackFrame / ARCHER_ATTACK_ANIM_SPEED,
-      );
-
-      // Spawn yellow attack effect at hit frame
-      if (
-        s.boss.attackFrame ===
-        ARCHER_ATTACK_HIT_FRAME * ARCHER_ATTACK_ANIM_SPEED
-      ) {
-        const effectX = s.boss.x - 5;
-        const effectY = s.boss.y + BOSS_SIZE / 2;
-        for (let i = 0; i < ATTACK_EFFECT_COUNT; i++) {
-          const angle = Math.PI + (Math.random() - 0.5) * 1.2;
-          const speed = 2 + Math.random() * 3;
-          s.attackEffects.push({
-            x: effectX,
-            y: effectY,
-            vx: Math.cos(angle) * speed,
-            vy: Math.sin(angle) * speed - 1,
-            life: ATTACK_EFFECT_DURATION,
-          });
-        }
-      }
-
-      if (!s.boss.attackHit && hitFrame === ARCHER_ATTACK_HIT_FRAME) {
-        const dist = s.boss.x - (s.charX + CHAR_SIZE);
-        if (dist < BOSS_ATTACK_RANGE && dist > -BOSS_SIZE) {
-          s.boss.attackHit = true;
-          if (!s.guarding) {
-            startPlayerDeath(s);
-            return;
-          }
-        }
-      }
-
-      if (
-        s.boss.attackFrame >=
-        ARCHER_ATTACK_FRAMES * ARCHER_ATTACK_ANIM_SPEED
-      ) {
-        s.boss.action = "retreat";
-        s.boss.actionTimer = BOSS_RETREAT_TIME;
-        s.boss.attackFrame = 0;
-        s.boss.attackHit = false;
-      }
-    } else {
-      s.boss.actionTimer--;
-
-      if (s.boss.action === "chase") {
-        if (s.boss.x > s.charX + CHAR_SIZE) {
-          s.boss.x -= BOSS_CHASE_SPEED;
-        } else {
-          s.boss.x += BOSS_CHASE_SPEED;
-        }
-
-        // Occasional jump
-        if (s.boss.y + BOSS_SIZE >= s.groundY && Math.random() < 0.008) {
-          s.boss.vy = JUMP_FORCE * 0.7;
-        }
-
-        // Close enough to attack
-        const dist = Math.abs(s.boss.x - (s.charX + CHAR_SIZE));
-        if (dist < BOSS_ATTACK_RANGE) {
-          s.boss.action = "attack";
-          s.boss.attackFrame = 0;
-          s.boss.attackHit = false;
-        }
-      } else if (s.boss.action === "retreat") {
-        s.boss.x += BOSS_RETREAT_SPEED;
-        if (s.boss.x > canvasWidth - BOSS_SIZE - 10) {
-          s.boss.x = canvasWidth - BOSS_SIZE - 10;
-        }
-      }
-
-      // Timer expired → next action
-      if (s.boss.actionTimer <= 0) {
-        if (s.boss.action === "idle" || s.boss.action === "retreat") {
-          s.boss.action = "chase";
-          s.boss.actionTimer = 999;
-        } else {
-          s.boss.action = "idle";
-          s.boss.actionTimer = BOSS_IDLE_TIME;
-        }
-      }
-    }
-    return;
-  }
-
-  // ---- Regular obstacle play ---- //
-  // Stop spawning trees if enough are queued to reach boss threshold
-  const unscoredCount = s.obstacles.filter((o) => !o.scored).length;
-  if (s.score + unscoredCount < s.bossThreshold && s.frame >= s.nextSpawn) {
-    const tt = s.nextTreeType;
-    const cfg = TREE_CONFIGS[tt];
-    s.obstacles.push({
-      x: canvasWidth + 10,
-      width: cfg.hitW,
-      height: cfg.hitH,
-      scored: false,
-      treeType: tt,
-    });
-    s.nextTreeType = Math.floor(Math.random() * 3) as 0 | 1 | 2;
-    s.nextSpawn = s.frame + randInt(SPAWN_MIN, SPAWN_MAX);
-  }
-
-  for (const o of s.obstacles) {
-    o.x -= s.speed;
-    if (!o.scored && o.x + o.width < s.charX) {
-      o.scored = true;
-      s.score++;
-    }
-  }
-
-  s.obstacles = s.obstacles.filter((o) => o.x + o.width > -20);
-
-  for (const o of s.obstacles) {
-    const oY = s.groundY - o.height;
-    if (
-      s.charX + CHAR_SIZE > o.x &&
-      s.charX < o.x + o.width &&
-      s.charY + CHAR_SIZE > oY
-    ) {
-      startPlayerDeath(s);
-      return;
-    }
+    s.snake.pop();
   }
 }
 
@@ -552,214 +171,85 @@ function update(s: GameState, canvasWidth: number, keys: KeyState) {
 /*  Drawing                                                           */
 /* ------------------------------------------------------------------ */
 
-function drawBoss(
-  ctx: CanvasRenderingContext2D,
-  s: GameState,
-  sprites: Sprites,
-) {
-  const boss = s.boss;
-  const isAttacking = boss.action === "attack";
-  const sheet = isAttacking ? sprites.archerAttack : sprites.archerIdle;
-  const totalFrames = isAttacking ? ARCHER_ATTACK_FRAMES : ARCHER_IDLE_FRAMES;
-  const animSpeed = isAttacking ? ARCHER_ATTACK_ANIM_SPEED : ARCHER_ANIM_SPEED;
-
-  let frameIndex: number;
-  if (isAttacking) {
-    frameIndex = Math.min(
-      Math.floor(boss.attackFrame / animSpeed),
-      totalFrames - 1,
-    );
-  } else {
-    frameIndex = Math.floor(s.frame / animSpeed) % totalFrames;
-  }
-
-  const srcX = frameIndex * ARCHER_FRAME_SIZE;
-  const spriteDrawX = boss.x + (BOSS_SIZE - BOSS_SPRITE_SIZE) / 2;
-  const spriteDrawY = boss.y + BOSS_SIZE - BOSS_SPRITE_SIZE + 12;
-
-  if (sheet.complete && sheet.naturalWidth > 0) {
-    ctx.drawImage(
-      sheet,
-      srcX,
-      0,
-      ARCHER_FRAME_SIZE,
-      ARCHER_FRAME_SIZE,
-      spriteDrawX,
-      spriteDrawY,
-      BOSS_SPRITE_SIZE,
-      BOSS_SPRITE_SIZE,
-    );
-  } else {
-    ctx.save();
-    ctx.fillStyle = "#F50057";
-    ctx.globalAlpha = 0.9;
-    ctx.beginPath();
-    ctx.roundRect(boss.x, boss.y, BOSS_SIZE, BOSS_SIZE, 4);
-    ctx.fill();
-    ctx.restore();
-  }
-}
-
-function drawParticles(ctx: CanvasRenderingContext2D, anim: DeathAnim) {
-  ctx.save();
-  for (const p of anim.particles) {
-    if (p.life <= 0) continue;
-    const alpha = p.life / DEATH_ANIM_DURATION;
-    const size = 2 + alpha * 3;
-    ctx.globalAlpha = alpha;
-    ctx.fillStyle = "#a855f7";
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, size, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  ctx.restore();
-}
-
-function drawAttackEffects(ctx: CanvasRenderingContext2D, effects: Particle[]) {
-  ctx.save();
-  for (const p of effects) {
-    if (p.life <= 0) continue;
-    const alpha = p.life / ATTACK_EFFECT_DURATION;
-    const size = 1.5 + alpha * 2.5;
-    ctx.globalAlpha = alpha;
-    ctx.fillStyle = "#facc15";
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, size, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  ctx.restore();
-}
-
 function draw(
   ctx: CanvasRenderingContext2D,
   s: GameState,
   w: number,
   h: number,
-  fg: string,
-  sprites: Sprites,
 ) {
   ctx.fillStyle = COLOR_BG;
   ctx.fillRect(0, 0, w, h);
 
-  // Ground
-  ctx.save();
-  ctx.strokeStyle = fg;
-  ctx.globalAlpha = 0.15;
-  ctx.setLineDash([4, 4]);
+  const offsetX = Math.floor((w - s.cols * CELL_SIZE) / 2);
+  const offsetY = Math.floor((h - s.rows * CELL_SIZE) / 2);
+
+  // Grid
+  ctx.strokeStyle = COLOR_GRID;
+  ctx.lineWidth = 0.5;
+  for (let x = 0; x <= s.cols; x++) {
+    ctx.beginPath();
+    ctx.moveTo(offsetX + x * CELL_SIZE, offsetY);
+    ctx.lineTo(offsetX + x * CELL_SIZE, offsetY + s.rows * CELL_SIZE);
+    ctx.stroke();
+  }
+  for (let y = 0; y <= s.rows; y++) {
+    ctx.beginPath();
+    ctx.moveTo(offsetX, offsetY + y * CELL_SIZE);
+    ctx.lineTo(offsetX + s.cols * CELL_SIZE, offsetY + y * CELL_SIZE);
+    ctx.stroke();
+  }
+
+  // Border
+  ctx.strokeStyle = "rgba(0,0,0,0.15)";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(offsetX, offsetY, s.cols * CELL_SIZE, s.rows * CELL_SIZE);
+
+  // Snake body
+  for (let i = 1; i < s.snake.length; i++) {
+    const seg = s.snake[i];
+    const alpha = 0.9 - (i / s.snake.length) * 0.4;
+    ctx.fillStyle = COLOR_SNAKE;
+    ctx.globalAlpha = alpha;
+    ctx.beginPath();
+    ctx.roundRect(
+      offsetX + seg.x * CELL_SIZE + 1,
+      offsetY + seg.y * CELL_SIZE + 1,
+      CELL_SIZE - 2,
+      CELL_SIZE - 2,
+      2,
+    );
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  // Snake head
+  const head = s.snake[0];
+  ctx.fillStyle = COLOR_SNAKE_HEAD;
   ctx.beginPath();
-  ctx.moveTo(0, s.groundY);
-  ctx.lineTo(w, s.groundY);
-  ctx.stroke();
-  ctx.restore();
+  ctx.roundRect(
+    offsetX + head.x * CELL_SIZE + 0.5,
+    offsetY + head.y * CELL_SIZE + 0.5,
+    CELL_SIZE - 1,
+    CELL_SIZE - 1,
+    2,
+  );
+  ctx.fill();
 
-  // Character sprite (hidden during player death)
-  if (!s.deathAnim || s.deathAnim.type !== "player") {
-    const isJumping = s.charY + CHAR_SIZE < s.groundY;
-    let sheet: HTMLImageElement;
-    let totalFrames: number;
-    let frameIndex: number;
-
-    if (s.guarding) {
-      sheet = sprites.guard;
-      totalFrames = GUARD_FRAMES;
-      frameIndex = Math.min(
-        Math.floor(s.guardFrame / GUARD_ANIM_SPEED),
-        totalFrames - 1,
-      );
-    } else if (s.attacking) {
-      sheet = sprites.attack;
-      totalFrames = ATTACK_FRAMES;
-      frameIndex = Math.min(
-        Math.floor(s.attackFrame / ATTACK_ANIM_SPEED),
-        totalFrames - 1,
-      );
-    } else if (isJumping) {
-      sheet = sprites.idle;
-      totalFrames = IDLE_FRAMES;
-      frameIndex = Math.floor(s.frame / ANIM_SPEED) % totalFrames;
-    } else {
-      sheet = sprites.run;
-      totalFrames = RUN_FRAMES;
-      frameIndex = Math.floor(s.frame / ANIM_SPEED) % totalFrames;
-    }
-
-    const srcX = frameIndex * SPRITE_FRAME_SIZE;
-    const drawX = s.charX + (CHAR_SIZE - CHAR_SPRITE_SIZE) / 2;
-    const drawY = s.charY + CHAR_SIZE - CHAR_SPRITE_SIZE + 15;
-
-    if (sheet.complete && sheet.naturalWidth > 0) {
-      ctx.drawImage(
-        sheet,
-        srcX,
-        0,
-        SPRITE_FRAME_SIZE,
-        SPRITE_FRAME_SIZE,
-        drawX,
-        drawY,
-        CHAR_SPRITE_SIZE,
-        CHAR_SPRITE_SIZE,
-      );
-    } else {
-      ctx.save();
-      ctx.fillStyle = COLOR_CHAR;
-      ctx.globalAlpha = 0.85;
-      ctx.beginPath();
-      ctx.roundRect(s.charX, s.charY, CHAR_SIZE, CHAR_SIZE, 3);
-      ctx.fill();
-      ctx.restore();
-    }
-  }
-
-  // Tree obstacles
-  const treeFrame = Math.floor(s.frame / TREE_ANIM_SPEED) % TREE_FRAMES;
-  for (const o of s.obstacles) {
-    const cfg = TREE_CONFIGS[o.treeType];
-    const treeImg = sprites.trees[o.treeType];
-    if (treeImg.complete && treeImg.naturalWidth > 0) {
-      const treeSrcX = treeFrame * cfg.frameW;
-      const treeDrawX = o.x + (o.width - cfg.renderW) / 2;
-      const treeDrawY = s.groundY - cfg.renderH;
-      ctx.drawImage(
-        treeImg,
-        treeSrcX,
-        0,
-        cfg.frameW,
-        cfg.frameH,
-        treeDrawX,
-        treeDrawY,
-        cfg.renderW,
-        cfg.renderH,
-      );
-    } else {
-      ctx.save();
-      ctx.fillStyle = fg;
-      ctx.globalAlpha = 0.55;
-      ctx.fillRect(o.x, s.groundY - o.height, o.width, o.height);
-      ctx.restore();
-    }
-  }
-
-  // Boss (hidden during boss death)
-  if (
-    s.boss.phase !== "inactive" &&
-    (!s.deathAnim || s.deathAnim.type !== "boss")
-  ) {
-    drawBoss(ctx, s, sprites);
-  }
-
-  // Attack effects
-  if (s.attackEffects.length > 0) {
-    drawAttackEffects(ctx, s.attackEffects);
-  }
-
-  // Death particles
-  if (s.deathAnim) {
-    drawParticles(ctx, s.deathAnim);
-  }
+  // Food
+  ctx.fillStyle = COLOR_FOOD;
+  ctx.beginPath();
+  ctx.arc(
+    offsetX + s.food.x * CELL_SIZE + CELL_SIZE / 2,
+    offsetY + s.food.y * CELL_SIZE + CELL_SIZE / 2,
+    CELL_SIZE / 2 - 1,
+    0,
+    Math.PI * 2,
+  );
+  ctx.fill();
 
   // Score HUD
   ctx.save();
-  ctx.fillStyle = fg;
+  ctx.fillStyle = COLOR_SNAKE;
   ctx.globalAlpha = 0.5;
   ctx.font = "bold 11px monospace";
   ctx.textAlign = "right";
@@ -776,11 +266,9 @@ export function useMiniGame() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const stateRef = useRef<GameState | null>(null);
   const rafRef = useRef(0);
+  const tickTimerRef = useRef(0);
   const startedRef = useRef(false);
-  const keysRef = useRef<KeyState>({ left: false, right: false });
-  const [activeMode, setActiveMode] = useState<
-    "idle" | "run" | "boss" | "over" | "boss-intro" | "boss-defeated"
-  >("idle");
+  const [activeMode, setActiveMode] = useState<"idle" | "run" | "over">("idle");
   const [showOverlay, setShowOverlay] = useState(true);
   const [score, setScore] = useState(0);
   const [highScore, setHighScore] = useState(0);
@@ -795,123 +283,63 @@ export function useMiniGame() {
       canvas.height = CANVAS_HEIGHT;
     }
 
-    const groundY = canvas.height - GROUND_PAD;
-    stateRef.current = makeState(groundY);
-
-    const style = getComputedStyle(canvas);
-    let fg = style.color || "#71717a";
-
-    // Load sprite sheets
-    const sprites: Sprites = {
-      run: new Image(),
-      idle: new Image(),
-      attack: new Image(),
-      guard: new Image(),
-      trees: [new Image(), new Image(), new Image()],
-      archerIdle: new Image(),
-      archerAttack: new Image(),
-    };
-    sprites.run.src = runSheet.src;
-    sprites.idle.src = idleSheet.src;
-    sprites.attack.src = attackSheet.src;
-    sprites.guard.src = guardSheet.src;
-    sprites.trees[0].src = tree1Sheet.src;
-    sprites.trees[1].src = tree2Sheet.src;
-    sprites.trees[2].src = tree3Sheet.src;
-    sprites.archerIdle.src = archerIdleSheet.src;
-    sprites.archerAttack.src = archerAttackSheet.src;
+    const cols = Math.floor(canvas.width / CELL_SIZE);
+    const rows = Math.floor(CANVAS_HEIGHT / CELL_SIZE);
+    stateRef.current = makeState(cols, rows);
 
     let prevPhase = "";
 
-    // -------------------------------------------------------------- //
-    //  Input                                                          //
-    // -------------------------------------------------------------- //
-    function jump() {
-      const s = stateRef.current;
-      if (!s || !s.running || s.paused || s.over || s.deathAnim) return;
-
-      if (s.charY + CHAR_SIZE >= s.groundY) {
-        s.vy = JUMP_FORCE;
-      }
-    }
-
-    function attack() {
-      const s = stateRef.current;
-      if (!s || !s.running || s.attacking || s.guarding || s.deathAnim) return;
-      s.attacking = true;
-      s.attackFrame = 0;
-      s.attackHit = false;
-    }
-
-    function guardStart() {
-      const s = stateRef.current;
-      if (!s || !s.running || s.attacking || s.deathAnim) return;
-      if (!s.guarding) {
-        s.guarding = true;
-        s.guardFrame = 0;
-      }
-    }
-
-    function guardEnd() {
-      const s = stateRef.current;
-      if (!s) return;
-      s.guarding = false;
-      s.guardFrame = 0;
-    }
-
     function onKeyDown(e: KeyboardEvent) {
-      if (e.code === "Space" || e.key === " ") {
-        e.preventDefault();
-        jump();
-      }
-      if (e.code === "KeyZ") {
-        e.preventDefault();
-        attack();
-      }
-      if (e.code === "KeyX") {
-        e.preventDefault();
-        guardStart();
-      }
-      if (e.code === "ArrowLeft") {
-        e.preventDefault();
-        keysRef.current.left = true;
-      }
-      if (e.code === "ArrowRight") {
-        e.preventDefault();
-        keysRef.current.right = true;
-      }
-    }
+      const s = stateRef.current;
+      if (!s || s.over) return;
 
-    function onKeyUp(e: KeyboardEvent) {
-      if (e.code === "ArrowLeft") keysRef.current.left = false;
-      if (e.code === "ArrowRight") keysRef.current.right = false;
-      if (e.code === "KeyX") guardEnd();
+      let handled = true;
+      switch (e.code) {
+        case "KeyW":
+        case "ArrowUp":
+          s.nextDir = "up";
+          break;
+        case "KeyS":
+        case "ArrowDown":
+          s.nextDir = "down";
+          break;
+        case "KeyA":
+        case "ArrowLeft":
+          s.nextDir = "left";
+          break;
+        case "KeyD":
+        case "ArrowRight":
+          s.nextDir = "right";
+          break;
+        default:
+          handled = false;
+      }
+      if (handled) e.preventDefault();
     }
 
     function onClick() {
       canvas?.focus();
-      jump();
     }
 
-    // -------------------------------------------------------------- //
-    //  Loop                                                           //
-    // -------------------------------------------------------------- //
+    // Game tick (fixed interval)
+    tickTimerRef.current = window.setInterval(() => {
+      const s = stateRef.current;
+      if (!s) return;
+      tick(s);
+    }, TICK_MS);
+
+    // Render loop
     function loop() {
       const s = stateRef.current;
       if (!canvas || !s) return;
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
 
-      update(s, canvas.width, keysRef.current);
-      draw(ctx, s, canvas.width, canvas.height, fg, sprites);
+      draw(ctx, s, canvas.width, canvas.height);
 
-      // Update active mode on phase change
       let phase: string;
       if (s.over) phase = "over";
       else if (!startedRef.current) phase = "idle";
-      else if (s.paused && s.boss.hp <= 0) phase = "boss-defeated";
-      else if (s.paused) phase = "boss-intro";
-      else if (s.boss.phase !== "inactive") phase = "boss";
       else phase = "running";
 
       if (phase !== prevPhase) {
@@ -924,18 +352,6 @@ export function useMiniGame() {
           case "running":
             setActiveMode("run");
             setShowOverlay(false);
-            break;
-          case "boss-intro":
-            setActiveMode("boss-intro");
-            setShowOverlay(true);
-            break;
-          case "boss":
-            setActiveMode("boss");
-            setShowOverlay(false);
-            break;
-          case "boss-defeated":
-            setActiveMode("boss-defeated");
-            setShowOverlay(true);
             break;
           case "over":
             setActiveMode("over");
@@ -953,59 +369,74 @@ export function useMiniGame() {
 
     canvas.addEventListener("click", onClick);
     canvas.addEventListener("keydown", onKeyDown);
-    canvas.addEventListener("keyup", onKeyUp);
 
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
         canvas.width = entry.contentRect.width;
         canvas.height = CANVAS_HEIGHT;
         if (stateRef.current) {
-          stateRef.current.groundY = canvas.height - GROUND_PAD;
+          const s = stateRef.current;
+          const newCols = Math.floor(canvas.width / CELL_SIZE);
+          const newRows = Math.floor(CANVAS_HEIGHT / CELL_SIZE);
+          s.cols = newCols;
+          s.rows = newRows;
+
+          // Wrap snake segments that are now outside the smaller grid
+          // and deduplicate so overlapping segments don't corrupt state
+          const seen = new Set<string>();
+          const deduped: Point[] = [];
+          for (const seg of s.snake) {
+            seg.x = ((seg.x % newCols) + newCols) % newCols;
+            seg.y = ((seg.y % newRows) + newRows) % newRows;
+            const key = `${seg.x},${seg.y}`;
+            if (!seen.has(key)) {
+              seen.add(key);
+              deduped.push(seg);
+            }
+          }
+          s.snake = deduped;
+
+          // Respawn food if it landed outside the new bounds
+          if (s.food.x >= newCols || s.food.y >= newRows) {
+            s.food = spawnFood(newCols, newRows, s.snake) ?? {
+              x: s.food.x % newCols,
+              y: s.food.y % newRows,
+            };
+          }
         }
-        const cs = getComputedStyle(canvas);
-        fg = cs.color || fg;
       }
     });
     if (container) observer.observe(container);
 
     return () => {
       cancelAnimationFrame(rafRef.current);
+      clearInterval(tickTimerRef.current);
       canvas.removeEventListener("click", onClick);
       canvas.removeEventListener("keydown", onKeyDown);
-      canvas.removeEventListener("keyup", onKeyUp);
       observer.disconnect();
     };
   }, []);
 
   function onContinue() {
     const s = stateRef.current;
-    if (!s) return;
+    const canvas = canvasRef.current;
+    if (!s || !canvas) return;
 
     if (s.over) {
-      // Restart after game over
       const hs = s.highScore;
-      const gy = s.groundY;
-      stateRef.current = makeState(gy);
+      const cols = Math.floor(canvas.width / CELL_SIZE);
+      const rows = Math.floor(CANVAS_HEIGHT / CELL_SIZE);
+      stateRef.current = makeState(cols, rows);
       stateRef.current.highScore = hs;
       stateRef.current.running = true;
       startedRef.current = true;
     } else if (!s.running) {
-      // Start game from idle
       s.running = true;
       startedRef.current = true;
-    } else if (s.boss.hp <= 0) {
-      // Boss defeated — reset boss, resume running
-      s.boss = makeBoss(s.groundY);
-      s.charX = CHAR_X;
-      s.nextSpawn = s.frame + randInt(SPAWN_MIN / 2, SPAWN_MAX / 2);
-      s.paused = false;
-    } else {
-      // Boss intro — unpause
-      s.paused = false;
     }
 
     setShowOverlay(false);
-    canvasRef.current?.focus();
+    canvas.focus();
   }
 
   return { canvasRef, activeMode, showOverlay, score, highScore, onContinue };
