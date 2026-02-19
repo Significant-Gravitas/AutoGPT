@@ -157,6 +157,41 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  copilot_executor:
+    build:
+      context: ../
+      dockerfile: autogpt_platform/backend/Dockerfile
+      target: server
+    command: ["python", "-m", "backend.copilot.executor"]
+    develop:
+      watch:
+        - path: ./
+          target: autogpt_platform/backend/
+          action: rebuild
+    depends_on:
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      database_manager:
+        condition: service_started
+    <<: *backend-env-files
+    environment:
+      <<: *backend-env
+    ports:
+      - "8008:8008"
+    networks:
+      - app-network
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   websocket_server:
     build:
       context: ../

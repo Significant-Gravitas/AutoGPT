@@ -15,9 +15,9 @@ from prisma.enums import APIKeyPermission
 from pydantic import BaseModel, Field
 
 from backend.api.external.middleware import require_permission
-from backend.api.features.chat.model import ChatSession
-from backend.api.features.chat.tools import find_agent_tool, run_agent_tool
-from backend.api.features.chat.tools.models import ToolResponseBase
+from backend.copilot.model import ChatSession
+from backend.copilot.tools import find_agent_tool, run_agent_tool
+from backend.copilot.tools.models import ToolResponseBase
 from backend.data.auth.base import APIAuthorizationInfo
 
 logger = logging.getLogger(__name__)

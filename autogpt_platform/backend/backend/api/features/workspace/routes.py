@@ -11,7 +11,7 @@ import fastapi
 from autogpt_libs.auth.dependencies import get_user_id, requires_user
 from fastapi.responses import Response
 
-from backend.data.workspace import get_workspace, get_workspace_file
+from backend.data.workspace import WorkspaceFile, get_workspace, get_workspace_file
 from backend.util.workspace_storage import get_workspace_storage
 
 
@@ -44,11 +44,11 @@ router = fastapi.APIRouter(
 )
 
 
-def _create_streaming_response(content: bytes, file) -> Response:
+def _create_streaming_response(content: bytes, file: WorkspaceFile) -> Response:
     """Create a streaming response for file content."""
     return Response(
         content=content,
-        media_type=file.mimeType,
+        media_type=file.mime_type,
         headers={
             "Content-Disposition": _sanitize_filename_for_header(file.name),
             "Content-Length": str(len(content)),
@@ -56,7 +56,7 @@ def _create_streaming_response(content: bytes, file) -> Response:
     )
 
 
-async def _create_file_download_response(file) -> Response:
+async def _create_file_download_response(file: WorkspaceFile) -> Response:
     """
     Create a download response for a workspace file.
 
@@ -66,33 +66,33 @@ async def _create_file_download_response(file) -> Response:
     storage = await get_workspace_storage()
 
     # For local storage, stream the file directly
-    if file.storagePath.startswith("local://"):
-        content = await storage.retrieve(file.storagePath)
+    if file.storage_path.startswith("local://"):
+        content = await storage.retrieve(file.storage_path)
         return _create_streaming_response(content, file)
 
     # For GCS, try to redirect to signed URL, fall back to streaming
     try:
-        url = await storage.get_download_url(file.storagePath, expires_in=300)
+        url = await storage.get_download_url(file.storage_path, expires_in=300)
         # If we got back an API path (fallback), stream directly instead
         if url.startswith("/api/"):
-            content = await storage.retrieve(file.storagePath)
+            content = await storage.retrieve(file.storage_path)
             return _create_streaming_response(content, file)
         return fastapi.responses.RedirectResponse(url=url, status_code=302)
     except Exception as e:
         # Log the signed URL failure with context
         logger.error(
             f"Failed to get signed URL for file {file.id} "
-            f"(storagePath={file.storagePath}): {e}",
+            f"(storagePath={file.storage_path}): {e}",
             exc_info=True,
         )
         # Fall back to streaming directly from GCS
         try:
-            content = await storage.retrieve(file.storagePath)
+            content = await storage.retrieve(file.storage_path)
             return _create_streaming_response(content, file)
         except Exception as fallback_error:
             logger.error(
                 f"Fallback streaming also failed for file {file.id} "
-                f"(storagePath={file.storagePath}): {fallback_error}",
+                f"(storagePath={file.storage_path}): {fallback_error}",
                 exc_info=True,
             )
             raise
