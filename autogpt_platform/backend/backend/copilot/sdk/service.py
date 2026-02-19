@@ -83,19 +83,42 @@ _SDK_TOOL_SUPPLEMENT = """
 
 ## Tool notes
 
+### Shell commands
 - The SDK built-in Bash tool is NOT available.  Use the `bash_exec` MCP tool
   for shell commands — it runs in a network-isolated sandbox.
-- **Shared workspace**: The SDK Read/Write tools and `bash_exec` share the
-  same working directory. Files created by one are readable by the other.
-- **IMPORTANT — File persistence**: Your working directory is **ephemeral** —
-  files are lost between turns. When you create or modify important files
-  (code, configs, outputs), you MUST save them using `write_workspace_file`
-  so they persist. Use `read_workspace_file` and `list_workspace_files` to
-  access files saved in previous turns. If a "Files from previous turns"
-  section is present above, those files are available via `read_workspace_file`.
-- Long-running tools (create_agent, edit_agent, etc.) are handled
-  asynchronously.  You will receive an immediate response; the actual result
-  is delivered to the user via a background stream.
+
+### Two storage systems — CRITICAL to understand
+
+1. **Ephemeral working directory** (`/tmp/copilot-<session>/`):
+   - Shared by SDK Read/Write/Edit/Glob/Grep tools AND `bash_exec`
+   - Files here are **lost between turns** — do NOT rely on them persisting
+   - Use for temporary work: running scripts, processing data, etc.
+
+2. **Persistent workspace** (cloud storage):
+   - Files here **survive across turns and sessions**
+   - Use `write_workspace_file` to save important files (code, outputs, configs)
+   - Use `read_workspace_file` to retrieve previously saved files
+   - Use `list_workspace_files` to see what files you've saved before
+   - Call `list_workspace_files(include_all_sessions=True)` to see files from
+     all sessions
+
+### Moving files between ephemeral and persistent storage
+- **Ephemeral → Persistent**: Use `write_workspace_file` with either:
+  - `content` param (plain text) — for text files
+  - `source_path` param — to copy any file directly from the ephemeral dir
+- **Persistent → Ephemeral**: Use `read_workspace_file` with `save_to_path`
+  param to download a workspace file to the ephemeral dir for processing
+
+### File persistence workflow
+When you create or modify important files (code, configs, outputs), you MUST:
+1. Save them using `write_workspace_file` so they persist
+2. At the start of a new turn, call `list_workspace_files` to see what files
+   are available from previous turns
+
+### Long-running tools
+Long-running tools (create_agent, edit_agent, etc.) are handled
+asynchronously.  You will receive an immediate response; the actual result
+is delivered to the user via a background stream.
 """
 
 
@@ -374,11 +397,9 @@ async def _compress_conversation_history(
 def _format_conversation_context(messages: list[ChatMessage]) -> str | None:
     """Format conversation messages into a context prefix for the user message.
 
-    Returns a string like:
-        <conversation_history>
-        User: hello
-        You responded: Hi! How can I help?
-        </conversation_history>
+    Includes user messages, assistant text, tool call summaries, and
+    tool result summaries so the agent retains full context about what
+    tools were invoked and their outcomes.
 
     Returns None if there are no messages to format.
     """
@@ -387,13 +408,28 @@ def _format_conversation_context(messages: list[ChatMessage]) -> str | None:
 
     lines: list[str] = []
     for msg in messages:
-        if not msg.content:
-            continue
         if msg.role == "user":
-            lines.append(f"User: {msg.content}")
+            if msg.content:
+                lines.append(f"User: {msg.content}")
         elif msg.role == "assistant":
-            lines.append(f"You responded: {msg.content}")
-        # Skip tool messages — they're internal details
+            if msg.content:
+                lines.append(f"You responded: {msg.content}")
+            # Include tool call summaries
+            if msg.tool_calls:
+                for tc in msg.tool_calls:
+                    func = tc.get("function", {})
+                    tool_name = func.get("name", "unknown")
+                    tool_args = func.get("arguments", "")
+                    # Truncate long arguments
+                    if len(tool_args) > 200:
+                        tool_args = tool_args[:200] + "..."
+                    lines.append(f"You called tool: {tool_name}({tool_args})")
+        elif msg.role == "tool":
+            # Include tool results (truncated to avoid context bloat)
+            content = msg.content or ""
+            if len(content) > 300:
+                content = content[:300] + "..."
+            lines.append(f"Tool result: {content}")
 
     if not lines:
         return None
@@ -519,6 +555,20 @@ async def stream_chat_completion_sdk(
 
             if config.claude_agent_use_resume and user_id and len(session.messages) > 1:
                 dl = await download_transcript(user_id, session_id)
+                if dl and validate_transcript(dl.content):
+                    logger.info(
+                        f"[SDK] Transcript available for session {session_id}: "
+                        f"{len(dl.content)}B, msg_count={dl.message_count}"
+                    )
+                elif dl:
+                    logger.warning(
+                        f"[SDK] Transcript downloaded but invalid for {session_id}"
+                    )
+                else:
+                    logger.warning(
+                        f"[SDK] No transcript available for {session_id} "
+                        f"({len(session.messages)} messages in session)"
+                    )
                 if dl and validate_transcript(dl.content):
                     resume_file = write_transcript_to_tempfile(
                         dl.content, session_id, sdk_cwd
