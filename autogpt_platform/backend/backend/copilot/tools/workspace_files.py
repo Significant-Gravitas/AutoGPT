@@ -2,11 +2,13 @@
 
 import base64
 import logging
+import os
 from typing import Any, Optional
 
 from pydantic import BaseModel
 
 from backend.copilot.model import ChatSession
+from backend.copilot.tools.sandbox import WORKSPACE_PREFIX
 from backend.data.db_accessors import workspace_db
 from backend.util.settings import Config
 from backend.util.virus_scanner import scan_content_safe
@@ -212,6 +214,8 @@ class ReadWorkspaceFileTool(BaseTool):
             "Specify either file_id or path to identify the file. "
             "For small text files, returns content directly. "
             "For large or binary files, returns metadata and a download URL. "
+            "Optionally use 'save_to_path' to copy the file to the ephemeral "
+            "working directory for processing with bash_exec or SDK tools. "
             "Paths are scoped to the current session by default. "
             "Use /sessions/<session_id>/... for cross-session access."
         )
@@ -230,6 +234,15 @@ class ReadWorkspaceFileTool(BaseTool):
                     "description": (
                         "The virtual file path (e.g., '/documents/report.pdf'). "
                         "Scoped to current session by default."
+                    ),
+                },
+                "save_to_path": {
+                    "type": "string",
+                    "description": (
+                        "If provided, save the file to this path in the ephemeral "
+                        "working directory (e.g., '/tmp/copilot-.../data.csv') "
+                        "so it can be processed with bash_exec or SDK tools. "
+                        "The file content is still returned in the response."
                     ),
                 },
                 "force_download_url": {
@@ -275,6 +288,7 @@ class ReadWorkspaceFileTool(BaseTool):
 
         file_id: Optional[str] = kwargs.get("file_id")
         path: Optional[str] = kwargs.get("path")
+        save_to_path: Optional[str] = kwargs.get("save_to_path")
         force_download_url: bool = kwargs.get("force_download_url", False)
 
         if not file_id and not path:
@@ -282,6 +296,18 @@ class ReadWorkspaceFileTool(BaseTool):
                 message="Please provide either file_id or path",
                 session_id=session_id,
             )
+
+        # Validate save_to_path is within ephemeral workspace
+        if save_to_path:
+            real_save = os.path.realpath(save_to_path)
+            if not real_save.startswith(WORKSPACE_PREFIX):
+                return ErrorResponse(
+                    message=(
+                        f"save_to_path must be within the ephemeral working "
+                        f"directory ({WORKSPACE_PREFIX})"
+                    ),
+                    session_id=session_id,
+                )
 
         try:
             workspace = await workspace_db().get_or_create_workspace(user_id)
@@ -308,6 +334,13 @@ class ReadWorkspaceFileTool(BaseTool):
                     )
                 target_file_id = file_info.id
 
+            # If save_to_path requested, always read and save the file
+            if save_to_path:
+                file_content = await manager.read_file_by_id(target_file_id)
+                os.makedirs(os.path.dirname(save_to_path), exist_ok=True)
+                with open(save_to_path, "wb") as f:
+                    f.write(file_content)
+
             # Decide whether to return inline content or metadata+URL
             is_small_file = file_info.size_bytes <= self.MAX_INLINE_SIZE_BYTES
             is_text_file = self._is_text_mime_type(file_info.mime_type)
@@ -327,13 +360,16 @@ class ReadWorkspaceFileTool(BaseTool):
                 content = await manager.read_file_by_id(target_file_id)
                 content_b64 = base64.b64encode(content).decode("utf-8")
 
+                msg = f"Successfully read file: {file_info.name}"
+                if save_to_path:
+                    msg += f" (also saved to {save_to_path})"
                 return WorkspaceFileContentResponse(
                     file_id=file_info.id,
                     name=file_info.name,
                     path=file_info.path,
                     mime_type=file_info.mime_type,
                     content_base64=content_b64,
-                    message=f"Successfully read file: {file_info.name}",
+                    message=msg,
                     session_id=session_id,
                 )
 
@@ -356,6 +392,11 @@ class ReadWorkspaceFileTool(BaseTool):
                 except Exception:
                     pass  # Preview is optional
 
+            msg = f"File: {file_info.name} ({file_info.size_bytes} bytes)."
+            if save_to_path:
+                msg += f" Saved to {save_to_path}."
+            else:
+                msg += " Use download_url to retrieve content."
             return WorkspaceFileMetadataResponse(
                 file_id=file_info.id,
                 name=file_info.name,
@@ -364,7 +405,7 @@ class ReadWorkspaceFileTool(BaseTool):
                 size_bytes=file_info.size_bytes,
                 download_url=download_url,
                 preview=preview,
-                message=f"File: {file_info.name} ({file_info.size_bytes} bytes). Use download_url to retrieve content.",
+                message=msg,
                 session_id=session_id,
             )
 
@@ -395,7 +436,9 @@ class WriteWorkspaceFileTool(BaseTool):
             "Write or create a file in the user's persistent workspace (cloud storage). "
             "These files survive across sessions. "
             "For ephemeral session files, use the SDK Write tool instead. "
-            "Provide the content as a base64-encoded string. "
+            "Provide content as plain text via 'content', OR base64-encoded via "
+            "'content_base64', OR copy a file from the ephemeral working directory "
+            "via 'source_path'. Exactly one of these three is required. "
             f"Maximum file size is {Config().max_file_size_mb}MB. "
             "Files are saved to the current session's folder by default. "
             "Use /sessions/<session_id>/... for cross-session access."
@@ -410,9 +453,30 @@ class WriteWorkspaceFileTool(BaseTool):
                     "type": "string",
                     "description": "Name for the file (e.g., 'report.pdf')",
                 },
+                "content": {
+                    "type": "string",
+                    "description": (
+                        "Plain text content to write. Use this for text files "
+                        "(code, configs, documents, etc.). "
+                        "Mutually exclusive with content_base64 and source_path."
+                    ),
+                },
                 "content_base64": {
                     "type": "string",
-                    "description": "Base64-encoded file content",
+                    "description": (
+                        "Base64-encoded file content. Use this for binary files "
+                        "(images, PDFs, etc.). "
+                        "Mutually exclusive with content and source_path."
+                    ),
+                },
+                "source_path": {
+                    "type": "string",
+                    "description": (
+                        "Path to a file in the ephemeral working directory to "
+                        "copy to workspace (e.g., '/tmp/copilot-.../output.csv'). "
+                        "Use this to persist files created by bash_exec or SDK Write. "
+                        "Mutually exclusive with content and content_base64."
+                    ),
                 },
                 "path": {
                     "type": "string",
@@ -434,7 +498,7 @@ class WriteWorkspaceFileTool(BaseTool):
                     "description": "Whether to overwrite if file exists at path (default: false)",
                 },
             },
-            "required": ["filename", "content_base64"],
+            "required": ["filename"],
         }
 
     @property
@@ -456,7 +520,9 @@ class WriteWorkspaceFileTool(BaseTool):
             )
 
         filename: str = kwargs.get("filename", "")
-        content_b64: str = kwargs.get("content_base64", "")
+        content_text: Optional[str] = kwargs.get("content")
+        content_b64: Optional[str] = kwargs.get("content_base64")
+        source_path: Optional[str] = kwargs.get("source_path")
         path: Optional[str] = kwargs.get("path")
         mime_type: Optional[str] = kwargs.get("mime_type")
         overwrite: bool = kwargs.get("overwrite", False)
@@ -467,20 +533,62 @@ class WriteWorkspaceFileTool(BaseTool):
                 session_id=session_id,
             )
 
-        if not content_b64:
+        # Resolve content from one of three sources
+        sources_provided = sum(
+            bool(x) for x in [content_text, content_b64, source_path]
+        )
+        if sources_provided == 0:
             return ErrorResponse(
-                message="Please provide content_base64",
+                message="Please provide one of: content, content_base64, or source_path",
+                session_id=session_id,
+            )
+        if sources_provided > 1:
+            return ErrorResponse(
+                message="Provide only one of: content, content_base64, or source_path",
                 session_id=session_id,
             )
 
-        # Decode content
-        try:
-            content = base64.b64decode(content_b64)
-        except Exception:
-            return ErrorResponse(
-                message="Invalid base64-encoded content",
-                session_id=session_id,
-            )
+        content: bytes
+        if source_path:
+            # Read from ephemeral working directory
+            real_path = os.path.realpath(source_path)
+            if not real_path.startswith(WORKSPACE_PREFIX):
+                return ErrorResponse(
+                    message=(
+                        f"source_path must be within the ephemeral working "
+                        f"directory ({WORKSPACE_PREFIX})"
+                    ),
+                    session_id=session_id,
+                )
+            try:
+                with open(real_path, "rb") as f:
+                    content = f.read()
+            except FileNotFoundError:
+                return ErrorResponse(
+                    message=f"Source file not found: {source_path}",
+                    session_id=session_id,
+                )
+            except Exception as e:
+                return ErrorResponse(
+                    message=f"Failed to read source file: {e}",
+                    session_id=session_id,
+                )
+        elif content_b64:
+            # Decode base64 content
+            try:
+                content = base64.b64decode(content_b64)
+            except Exception:
+                # Fallback: treat as plain text if base64 decode fails
+                # (LLMs sometimes send plain text in the content_base64 field)
+                logger.warning(
+                    "[workspace] content_base64 is not valid base64, "
+                    "treating as plain text"
+                )
+                content = content_b64.encode("utf-8")
+        else:
+            # Plain text content
+            assert content_text is not None
+            content = content_text.encode("utf-8")
 
         # Check size
         max_file_size = Config().max_file_size_mb * 1024 * 1024

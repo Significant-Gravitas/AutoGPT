@@ -83,19 +83,42 @@ _SDK_TOOL_SUPPLEMENT = """
 
 ## Tool notes
 
+### Shell commands
 - The SDK built-in Bash tool is NOT available.  Use the `bash_exec` MCP tool
   for shell commands — it runs in a network-isolated sandbox.
-- **Shared workspace**: The SDK Read/Write tools and `bash_exec` share the
-  same working directory. Files created by one are readable by the other.
-- **IMPORTANT — File persistence**: Your working directory is **ephemeral** —
-  files are lost between turns. When you create or modify important files
-  (code, configs, outputs), you MUST save them using `write_workspace_file`
-  so they persist. Use `read_workspace_file` and `list_workspace_files` to
-  access files saved in previous turns. If a "Files from previous turns"
-  section is present above, those files are available via `read_workspace_file`.
-- Long-running tools (create_agent, edit_agent, etc.) are handled
-  asynchronously.  You will receive an immediate response; the actual result
-  is delivered to the user via a background stream.
+
+### Two storage systems — CRITICAL to understand
+
+1. **Ephemeral working directory** (`/tmp/copilot-<session>/`):
+   - Shared by SDK Read/Write/Edit/Glob/Grep tools AND `bash_exec`
+   - Files here are **lost between turns** — do NOT rely on them persisting
+   - Use for temporary work: running scripts, processing data, etc.
+
+2. **Persistent workspace** (cloud storage):
+   - Files here **survive across turns and sessions**
+   - Use `write_workspace_file` to save important files (code, outputs, configs)
+   - Use `read_workspace_file` to retrieve previously saved files
+   - Use `list_workspace_files` to see what files you've saved before
+   - Call `list_workspace_files(include_all_sessions=True)` to see files from
+     all sessions
+
+### Moving files between ephemeral and persistent storage
+- **Ephemeral → Persistent**: Use `write_workspace_file` with either:
+  - `content` param (plain text) — for text files
+  - `source_path` param — to copy any file directly from the ephemeral dir
+- **Persistent → Ephemeral**: Use `read_workspace_file` with `save_to_path`
+  param to download a workspace file to the ephemeral dir for processing
+
+### File persistence workflow
+When you create or modify important files (code, configs, outputs), you MUST:
+1. Save them using `write_workspace_file` so they persist
+2. At the start of a new turn, call `list_workspace_files` to see what files
+   are available from previous turns
+
+### Long-running tools
+Long-running tools (create_agent, edit_agent, etc.) are handled
+asynchronously.  You will receive an immediate response; the actual result
+is delivered to the user via a background stream.
 """
 
 
@@ -374,11 +397,9 @@ async def _compress_conversation_history(
 def _format_conversation_context(messages: list[ChatMessage]) -> str | None:
     """Format conversation messages into a context prefix for the user message.
 
-    Returns a string like:
-        <conversation_history>
-        User: hello
-        You responded: Hi! How can I help?
-        </conversation_history>
+    Includes user messages, assistant text, tool call summaries, and
+    tool result summaries so the agent retains full context about what
+    tools were invoked and their outcomes.
 
     Returns None if there are no messages to format.
     """
@@ -387,13 +408,21 @@ def _format_conversation_context(messages: list[ChatMessage]) -> str | None:
 
     lines: list[str] = []
     for msg in messages:
-        if not msg.content:
-            continue
         if msg.role == "user":
-            lines.append(f"User: {msg.content}")
+            if msg.content:
+                lines.append(f"User: {msg.content}")
         elif msg.role == "assistant":
-            lines.append(f"You responded: {msg.content}")
-        # Skip tool messages — they're internal details
+            if msg.content:
+                lines.append(f"You responded: {msg.content}")
+            if msg.tool_calls:
+                for tc in msg.tool_calls:
+                    func = tc.get("function", {})
+                    tool_name = func.get("name", "unknown")
+                    tool_args = func.get("arguments", "")
+                    lines.append(f"You called tool: {tool_name}({tool_args})")
+        elif msg.role == "tool":
+            content = msg.content or ""
+            lines.append(f"Tool result: {content}")
 
     if not lines:
         return None
@@ -465,10 +494,12 @@ async def stream_chat_completion_sdk(
     yield StreamStart(messageId=message_id, taskId=task_id)
 
     stream_completed = False
-    # Initialise sdk_cwd before the try so the finally can reference it
-    # even if _make_sdk_cwd raises (in that case it stays as "").
+    # Initialise variables before the try so the finally block can
+    # always attempt transcript upload regardless of errors.
     sdk_cwd = ""
     use_resume = False
+    resume_file: str | None = None
+    captured_transcript = CapturedTranscript()
 
     try:
         # Use a session-specific temp dir to avoid cleanup race conditions
@@ -498,8 +529,6 @@ async def stream_chat_completion_sdk(
             sdk_model = _resolve_sdk_model()
 
             # --- Transcript capture via Stop hook ---
-            captured_transcript = CapturedTranscript()
-
             def _on_stop(transcript_path: str, sdk_session_id: str) -> None:
                 captured_transcript.path = transcript_path
                 captured_transcript.sdk_session_id = sdk_session_id
@@ -513,12 +542,24 @@ async def stream_chat_completion_sdk(
             )
 
             # --- Resume strategy: download transcript from bucket ---
-            resume_file: str | None = None
-            use_resume = False
             transcript_msg_count = 0  # watermark: session.messages length at upload
 
             if config.claude_agent_use_resume and user_id and len(session.messages) > 1:
                 dl = await download_transcript(user_id, session_id)
+                if dl and validate_transcript(dl.content):
+                    logger.info(
+                        f"[SDK] Transcript available for session {session_id}: "
+                        f"{len(dl.content)}B, msg_count={dl.message_count}"
+                    )
+                elif dl:
+                    logger.warning(
+                        f"[SDK] Transcript downloaded but invalid for {session_id}"
+                    )
+                else:
+                    logger.warning(
+                        f"[SDK] No transcript available for {session_id} "
+                        f"({len(session.messages)} messages in session)"
+                    )
                 if dl and validate_transcript(dl.content):
                     resume_file = write_transcript_to_tempfile(
                         dl.content, session_id, sdk_cwd
@@ -695,34 +736,6 @@ async def stream_chat_completion_sdk(
                 ) and not has_appended_assistant:
                     session.messages.append(assistant_response)
 
-            # --- Upload transcript for next-turn --resume ---
-            # After async with the SDK task group has exited, so the Stop
-            # hook has already fired and the CLI has been SIGTERMed.  The
-            # CLI uses appendFileSync, so all writes are safely on disk.
-            if config.claude_agent_use_resume and user_id:
-                # With --resume the CLI appends to the resume file (most
-                # complete).  Otherwise use the Stop hook path.
-                if use_resume and resume_file:
-                    raw_transcript = read_transcript_file(resume_file)
-                elif captured_transcript.path:
-                    raw_transcript = read_transcript_file(captured_transcript.path)
-                else:
-                    raw_transcript = None
-
-                if raw_transcript:
-                    # Shield the upload from generator cancellation so a
-                    # client disconnect / page refresh doesn't lose the
-                    # transcript.  The upload must finish even if the SSE
-                    # connection is torn down.
-                    await asyncio.shield(
-                        _try_upload_transcript(
-                            user_id,
-                            session_id,
-                            raw_transcript,
-                            message_count=len(session.messages),
-                        )
-                    )
-
         except ImportError:
             raise RuntimeError(
                 "claude-agent-sdk is not installed. "
@@ -749,6 +762,35 @@ async def stream_chat_completion_sdk(
         )
         yield StreamFinish()
     finally:
+        # --- Upload transcript for next-turn --resume ---
+        # This MUST run in finally so the transcript is uploaded even when
+        # the streaming loop raises an exception.  The CLI uses
+        # appendFileSync, so whatever was written before the error/SIGTERM
+        # is safely on disk and still useful for the next turn.
+        if config.claude_agent_use_resume and user_id:
+            try:
+                if use_resume and resume_file:
+                    raw_transcript = read_transcript_file(resume_file)
+                elif captured_transcript.path:
+                    raw_transcript = read_transcript_file(captured_transcript.path)
+                else:
+                    raw_transcript = None
+
+                if raw_transcript:
+                    await asyncio.shield(
+                        _try_upload_transcript(
+                            user_id,
+                            session_id,
+                            raw_transcript,
+                            message_count=len(session.messages),
+                        )
+                    )
+            except Exception as upload_err:
+                logger.error(
+                    f"[SDK] Transcript upload failed in finally: {upload_err}",
+                    exc_info=True,
+                )
+
         if sdk_cwd:
             _cleanup_sdk_tool_results(sdk_cwd)
 
