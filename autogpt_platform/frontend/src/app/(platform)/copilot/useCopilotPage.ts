@@ -122,7 +122,11 @@ export function useCopilotPage() {
         parts: msg.parts.map((part) =>
           "state" in part &&
           (part.state === "input-streaming" || part.state === "input-available")
-            ? { ...part, state: "output-error" as const, errorText: "Cancelled" }
+            ? {
+                ...part,
+                state: "output-error" as const,
+                errorText: "Cancelled",
+              }
             : part,
         ),
       })),
@@ -130,7 +134,18 @@ export function useCopilotPage() {
 
     if (!sessionId) return;
     try {
-      await postV2CancelSessionTask(sessionId);
+      const res = await postV2CancelSessionTask(sessionId);
+      if (
+        res.status === 200 &&
+        "reason" in res.data &&
+        res.data.reason === "cancel_published_not_confirmed"
+      ) {
+        toast({
+          title: "Stop may take a moment",
+          description:
+            "The cancel was sent but not yet confirmed. The task should stop shortly.",
+        });
+      }
     } catch {
       toast({
         title: "Could not stop the task",
