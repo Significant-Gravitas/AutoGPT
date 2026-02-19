@@ -1190,13 +1190,13 @@ async def _stream_chat_chunks(
                                     tool_calls[idx]["id"] = tc_chunk.id
                                 if tc_chunk.function:
                                     if tc_chunk.function.name:
-                                        tool_calls[idx]["function"][
-                                            "name"
-                                        ] = tc_chunk.function.name
+                                        tool_calls[idx]["function"]["name"] = (
+                                            tc_chunk.function.name
+                                        )
                                     if tc_chunk.function.arguments:
-                                        tool_calls[idx]["function"][
-                                            "arguments"
-                                        ] += tc_chunk.function.arguments
+                                        tool_calls[idx]["function"]["arguments"] += (
+                                            tc_chunk.function.arguments
+                                        )
 
                                 # Emit StreamToolInputStart only after we have the tool call ID
                                 if (
@@ -1323,10 +1323,9 @@ async def _execute_tool_calls_parallel(
     queue: asyncio.Queue[StreamBaseResponse | None] = asyncio.Queue()
     session_lock = asyncio.Lock()
     n_tools = len(tool_calls)
-    retryable_error: Exception | None = None
+    retryable_errors: list[Exception] = []
 
     async def _run_tool(idx: int) -> None:
-        nonlocal retryable_error
         try:
             async for event in _yield_tool_call(tool_calls, idx, session, session_lock):
                 await queue.put(event)
@@ -1344,7 +1343,7 @@ async def _execute_tool_calls_parallel(
                     ),
                 )
             )
-            retryable_error = e
+            retryable_errors.append(e)
         finally:
             await queue.put(None)  # Sentinel: this worker is done
 
@@ -1360,9 +1359,9 @@ async def _execute_tool_calls_parallel(
             else:
                 yield event
 
-        # All workers done — re-raise retryable error for retry logic in caller
-        if retryable_error is not None:
-            raise retryable_error
+        # All workers done — re-raise first retryable error for retry logic
+        if retryable_errors:
+            raise retryable_errors[0]
     finally:
         # Clean up any still-running tasks on early exit (e.g. CancelledError)
         for task in tasks:
@@ -1492,10 +1491,9 @@ async def _yield_tool_call(
             # Attach the tool_call to the current turn's assistant message
             # (or create one if this is a tool-only response with no text).
             # Lock protects session mutations when running in parallel.
-            async with session_lock or asyncio.Lock():
+            async def _save_pending() -> None:
                 session.add_tool_call_to_current_turn(tool_calls[yield_idx])
-
-                # Then save pending tool result
+                nonlocal pending_message
                 pending_message = ChatMessage(
                     role="tool",
                     content=OperationPendingResponse(
@@ -1507,6 +1505,12 @@ async def _yield_tool_call(
                 )
                 session.messages.append(pending_message)
                 await upsert_chat_session(session)
+
+            if session_lock:
+                async with session_lock:
+                    await _save_pending()
+            else:
+                await _save_pending()
             logger.info(
                 f"Saved pending operation {operation_id} (task_id={task_id}) "
                 f"for tool {tool_name} in session {session.session_id}"
@@ -1532,7 +1536,7 @@ async def _yield_tool_call(
         except Exception as e:
             # Roll back appended messages to prevent data corruption on subsequent saves
             # Lock protects session mutations when running in parallel.
-            async with session_lock or asyncio.Lock():
+            async def _rollback_messages() -> None:
                 if (
                     pending_message
                     and session.messages
@@ -1545,6 +1549,12 @@ async def _yield_tool_call(
                     and session.messages[-1] == assistant_message
                 ):
                     session.messages.pop()
+
+            if session_lock:
+                async with session_lock:
+                    await _rollback_messages()
+            else:
+                await _rollback_messages()
 
             # Release the Redis lock since the background task won't be spawned
             await _mark_operation_completed(tool_call_id)

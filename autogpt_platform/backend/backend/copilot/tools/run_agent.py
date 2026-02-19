@@ -436,14 +436,23 @@ class RunAgentTool(BaseTool):
 
         session_id = session.session_id
 
-        # Check rate limits (lock protects read-check-increment when parallel)
-        _lock = session_lock or asyncio.Lock()
-        async with _lock:
+        # Check rate limits + increment atomically to prevent TOCTOU race.
+        # When session_lock is None (no parallel execution), skip locking.
+        async def _check_limit() -> ErrorResponse | None:
             if session.successful_agent_runs.get(graph.id, 0) >= config.max_agent_runs:
                 return ErrorResponse(
                     message="Maximum agent runs reached for this session. Please try again later.",
                     session_id=session_id,
                 )
+            return None
+
+        if session_lock:
+            async with session_lock:
+                limit_err = await _check_limit()
+        else:
+            limit_err = await _check_limit()
+        if limit_err:
+            return limit_err
 
         # Get or create library agent
         library_agent = await get_or_create_library_agent(graph, user_id)
@@ -457,7 +466,12 @@ class RunAgentTool(BaseTool):
         )
 
         # Track successful run (lock protects counter mutation)
-        async with _lock:
+        if session_lock:
+            async with session_lock:
+                session.successful_agent_runs[library_agent.graph_id] = (
+                    session.successful_agent_runs.get(library_agent.graph_id, 0) + 1
+                )
+        else:
             session.successful_agent_runs[library_agent.graph_id] = (
                 session.successful_agent_runs.get(library_agent.graph_id, 0) + 1
             )
@@ -515,9 +529,8 @@ class RunAgentTool(BaseTool):
                 session_id=session_id,
             )
 
-        # Check rate limits (lock protects read-check-increment when parallel)
-        _lock = session_lock or asyncio.Lock()
-        async with _lock:
+        # Check rate limits — conditional lock to prevent TOCTOU race
+        async def _check_schedule_limit() -> ErrorResponse | None:
             if (
                 session.successful_agent_schedules.get(graph.id, 0)
                 >= config.max_agent_schedules
@@ -526,6 +539,15 @@ class RunAgentTool(BaseTool):
                     message="Maximum agent schedules reached for this session.",
                     session_id=session_id,
                 )
+            return None
+
+        if session_lock:
+            async with session_lock:
+                limit_err = await _check_schedule_limit()
+        else:
+            limit_err = await _check_schedule_limit()
+        if limit_err:
+            return limit_err
 
         # Get or create library agent
         library_agent = await get_or_create_library_agent(graph, user_id)
@@ -553,7 +575,13 @@ class RunAgentTool(BaseTool):
             )
 
         # Track successful schedule (lock protects counter mutation)
-        async with _lock:
+        if session_lock:
+            async with session_lock:
+                session.successful_agent_schedules[library_agent.graph_id] = (
+                    session.successful_agent_schedules.get(library_agent.graph_id, 0)
+                    + 1
+                )
+        else:
             session.successful_agent_schedules[library_agent.graph_id] = (
                 session.successful_agent_schedules.get(library_agent.graph_id, 0) + 1
             )
