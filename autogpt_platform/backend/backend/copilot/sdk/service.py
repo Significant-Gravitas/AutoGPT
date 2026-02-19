@@ -663,7 +663,29 @@ async def stream_chat_completion_sdk(
                 has_appended_assistant = False
                 has_tool_results = False
 
-                async for sdk_msg in client.receive_messages():
+                inactivity_timeout = config.claude_agent_inactivity_timeout
+                msg_iter = client.receive_messages().__aiter__()
+                while True:
+                    try:
+                        if inactivity_timeout > 0:
+                            sdk_msg = await asyncio.wait_for(
+                                msg_iter.__anext__(),
+                                timeout=inactivity_timeout,
+                            )
+                        else:
+                            sdk_msg = await msg_iter.__anext__()
+                    except StopAsyncIteration:
+                        break
+                    except asyncio.TimeoutError:
+                        logger.error(
+                            f"[SDK] Agent inactivity timeout "
+                            f"({inactivity_timeout}s) for session "
+                            f"{session_id}"
+                        )
+                        raise TimeoutError(
+                            f"Agent was inactive for {inactivity_timeout}s"
+                        )
+
                     logger.debug(
                         f"[SDK] Received: {type(sdk_msg).__name__} "
                         f"{getattr(sdk_msg, 'subtype', '')}"
@@ -750,6 +772,17 @@ async def stream_chat_completion_sdk(
         if not stream_completed:
             yield StreamFinish()
 
+    except TimeoutError as e:
+        logger.error(f"[SDK] Timeout: {e}", exc_info=True)
+        try:
+            await asyncio.shield(upsert_chat_session(session))
+        except Exception as save_err:
+            logger.error(f"[SDK] Failed to save session on error: {save_err}")
+        yield StreamError(
+            errorText="The agent stopped responding. Please try again.",
+            code="sdk_timeout",
+        )
+        yield StreamFinish()
     except Exception as e:
         logger.error(f"[SDK] Error: {e}", exc_info=True)
         try:
