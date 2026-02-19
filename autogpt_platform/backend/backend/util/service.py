@@ -28,7 +28,7 @@ from typing import (
 import httpx
 import uvicorn
 from fastapi import FastAPI, Request, responses
-from prisma.errors import DataError
+from prisma.errors import DataError, UniqueViolationError
 from pydantic import BaseModel, TypeAdapter, create_model
 
 import backend.util.exceptions as exceptions
@@ -201,6 +201,7 @@ EXCEPTION_MAPPING = {
         UnhealthyServiceError,
         HTTPClientError,
         HTTPServerError,
+        UniqueViolationError,
         *[
             ErrorType
             for _, ErrorType in inspect.getmembers(exceptions)
@@ -417,6 +418,9 @@ class AppService(BaseAppService, ABC):
             DataError, self._handle_internal_http_error(400)
         )
         self.fastapi_app.add_exception_handler(
+            UniqueViolationError, self._handle_internal_http_error(400)
+        )
+        self.fastapi_app.add_exception_handler(
             Exception, self._handle_internal_http_error(500)
         )
 
@@ -478,6 +482,7 @@ def get_service_client(
                 # Don't retry these specific exceptions that won't be fixed by retrying
                 ValueError,  # Invalid input/parameters
                 DataError,  # Prisma data integrity errors (foreign key, unique constraints)
+                UniqueViolationError,  # Unique constraint violations
                 KeyError,  # Missing required data
                 TypeError,  # Wrong data types
                 AttributeError,  # Missing attributes
@@ -594,6 +599,15 @@ def get_service_client(
                 if error_response and error_response.type in EXCEPTION_MAPPING:
                     exception_class = EXCEPTION_MAPPING[error_response.type]
                     args = error_response.args or [str(e)]
+
+                    # Prisma DataError subclasses expect a dict `data` arg,
+                    # but RPC serialization only preserves the string message
+                    # from exc.args.  Wrap it in the expected structure so
+                    # the constructor doesn't crash on `.get()`.
+                    if issubclass(exception_class, DataError):
+                        msg = str(args[0]) if args else str(e)
+                        raise exception_class({"user_facing_error": {"message": msg}})
+
                     raise exception_class(*args)
 
                 # Otherwise categorize by HTTP status code

@@ -6,6 +6,7 @@ import type { OperationInProgressResponse } from "@/app/api/__generated__/models
 import type { OperationPendingResponse } from "@/app/api/__generated__/models/operationPendingResponse";
 import type { OperationStartedResponse } from "@/app/api/__generated__/models/operationStartedResponse";
 import { ResponseType } from "@/app/api/__generated__/models/responseType";
+import type { SuggestedGoalResponse } from "@/app/api/__generated__/models/suggestedGoalResponse";
 import {
   PlusCircleIcon,
   PlusIcon,
@@ -21,6 +22,7 @@ export type CreateAgentToolOutput =
   | AgentPreviewResponse
   | AgentSavedResponse
   | ClarificationNeededResponse
+  | SuggestedGoalResponse
   | ErrorResponse;
 
 function parseOutput(output: unknown): CreateAgentToolOutput | null {
@@ -43,6 +45,7 @@ function parseOutput(output: unknown): CreateAgentToolOutput | null {
       type === ResponseType.agent_preview ||
       type === ResponseType.agent_saved ||
       type === ResponseType.clarification_needed ||
+      type === ResponseType.suggested_goal ||
       type === ResponseType.error
     ) {
       return output as CreateAgentToolOutput;
@@ -55,6 +58,7 @@ function parseOutput(output: unknown): CreateAgentToolOutput | null {
     if ("agent_id" in output && "library_agent_id" in output)
       return output as AgentSavedResponse;
     if ("questions" in output) return output as ClarificationNeededResponse;
+    if ("suggested_goal" in output) return output as SuggestedGoalResponse;
     if ("error" in output || "details" in output)
       return output as ErrorResponse;
   }
@@ -114,6 +118,14 @@ export function isClarificationNeededOutput(
   );
 }
 
+export function isSuggestedGoalOutput(
+  output: CreateAgentToolOutput,
+): output is SuggestedGoalResponse {
+  return (
+    output.type === ResponseType.suggested_goal || "suggested_goal" in output
+  );
+}
+
 export function isErrorOutput(
   output: CreateAgentToolOutput,
 ): output is ErrorResponse {
@@ -139,6 +151,7 @@ export function getAnimationText(part: {
       if (isAgentSavedOutput(output)) return `Saved ${output.agent_name}`;
       if (isAgentPreviewOutput(output)) return `Preview "${output.agent_name}"`;
       if (isClarificationNeededOutput(output)) return "Needs clarification";
+      if (isSuggestedGoalOutput(output)) return "Goal needs refinement";
       return "Error creating agent";
     }
     case "output-error":

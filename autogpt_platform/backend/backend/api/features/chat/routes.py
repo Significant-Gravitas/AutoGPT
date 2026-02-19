@@ -11,14 +11,15 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, 
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from backend.util.exceptions import NotFoundError
-from backend.util.feature_flag import Flag, is_feature_enabled
-
-from . import service as chat_service
-from . import stream_registry
-from .completion_handler import process_operation_failure, process_operation_success
-from .config import ChatConfig
-from .model import (
+from backend.copilot import service as chat_service
+from backend.copilot import stream_registry
+from backend.copilot.completion_handler import (
+    process_operation_failure,
+    process_operation_success,
+)
+from backend.copilot.config import ChatConfig
+from backend.copilot.executor.utils import enqueue_copilot_task
+from backend.copilot.model import (
     ChatMessage,
     ChatSession,
     append_and_save_message,
@@ -27,9 +28,8 @@ from .model import (
     get_chat_session,
     get_user_sessions,
 )
-from .response_model import StreamError, StreamFinish, StreamHeartbeat, StreamStart
-from .sdk import service as sdk_service
-from .tools.models import (
+from backend.copilot.response_model import StreamError, StreamFinish, StreamHeartbeat
+from backend.copilot.tools.models import (
     AgentDetailsResponse,
     AgentOutputResponse,
     AgentPreviewResponse,
@@ -50,9 +50,11 @@ from .tools.models import (
     OperationPendingResponse,
     OperationStartedResponse,
     SetupRequirementsResponse,
+    SuggestedGoalResponse,
     UnderstandingUpdatedResponse,
 )
-from .tracking import track_user_message
+from backend.copilot.tracking import track_user_message
+from backend.util.exceptions import NotFoundError
 
 config = ChatConfig()
 
@@ -354,7 +356,7 @@ async def stream_chat_post(
         f"user={user_id}, message_len={len(request.message)}",
         extra={"json_fields": log_meta},
     )
-    session = await _validate_and_get_session(session_id, user_id)
+    await _validate_and_get_session(session_id, user_id)
     logger.info(
         f"[TIMING] session validated in {(time.perf_counter() - stream_start_time) * 1000:.1f}ms",
         extra={
@@ -381,7 +383,7 @@ async def stream_chat_post(
                 message_length=len(request.message),
             )
         logger.info(f"[STREAM] Saving user message to session {session_id}")
-        session = await append_and_save_message(session_id, message)
+        await append_and_save_message(session_id, message)
         logger.info(f"[STREAM] User message saved for session {session_id}")
 
     # Create a task in the stream registry for reconnection support
@@ -408,125 +410,19 @@ async def stream_chat_post(
         },
     )
 
-    # Background task that runs the AI generation independently of SSE connection
-    async def run_ai_generation():
-        import time as time_module
+    await enqueue_copilot_task(
+        task_id=task_id,
+        session_id=session_id,
+        user_id=user_id,
+        operation_id=operation_id,
+        message=request.message,
+        is_user_message=request.is_user_message,
+        context=request.context,
+    )
 
-        gen_start_time = time_module.perf_counter()
-        logger.info(
-            f"[TIMING] run_ai_generation STARTED, task={task_id}, session={session_id}, user={user_id}",
-            extra={"json_fields": log_meta},
-        )
-        first_chunk_time, ttfc = None, None
-        chunk_count = 0
-        try:
-            # Emit a start event with task_id for reconnection
-            start_chunk = StreamStart(messageId=task_id, taskId=task_id)
-            await stream_registry.publish_chunk(task_id, start_chunk)
-            logger.info(
-                f"[TIMING] StreamStart published at {(time_module.perf_counter() - gen_start_time) * 1000:.1f}ms",
-                extra={
-                    "json_fields": {
-                        **log_meta,
-                        "elapsed_ms": (time_module.perf_counter() - gen_start_time)
-                        * 1000,
-                    }
-                },
-            )
-
-            # Choose service based on LaunchDarkly flag (falls back to config default)
-            use_sdk = await is_feature_enabled(
-                Flag.COPILOT_SDK,
-                user_id or "anonymous",
-                default=config.use_claude_agent_sdk,
-            )
-            stream_fn = (
-                sdk_service.stream_chat_completion_sdk
-                if use_sdk
-                else chat_service.stream_chat_completion
-            )
-            logger.info(
-                f"[TIMING] Calling {'sdk' if use_sdk else 'standard'} stream_chat_completion",
-                extra={"json_fields": log_meta},
-            )
-            # Pass message=None since we already added it to the session above
-            async for chunk in stream_fn(
-                session_id,
-                None,  # Message already in session
-                is_user_message=request.is_user_message,
-                user_id=user_id,
-                session=session,  # Pass session with message already added
-                context=request.context,
-            ):
-                # Skip duplicate StreamStart — we already published one above
-                if isinstance(chunk, StreamStart):
-                    continue
-                chunk_count += 1
-                if first_chunk_time is None:
-                    first_chunk_time = time_module.perf_counter()
-                    ttfc = first_chunk_time - gen_start_time
-                    logger.info(
-                        f"[TIMING] FIRST AI CHUNK at {ttfc:.2f}s, type={type(chunk).__name__}",
-                        extra={
-                            "json_fields": {
-                                **log_meta,
-                                "chunk_type": type(chunk).__name__,
-                                "time_to_first_chunk_ms": ttfc * 1000,
-                            }
-                        },
-                    )
-                # Write to Redis (subscribers will receive via XREAD)
-                await stream_registry.publish_chunk(task_id, chunk)
-
-            gen_end_time = time_module.perf_counter()
-            total_time = (gen_end_time - gen_start_time) * 1000
-            logger.info(
-                f"[TIMING] run_ai_generation FINISHED in {total_time / 1000:.1f}s; "
-                f"task={task_id}, session={session_id}, "
-                f"ttfc={ttfc or -1:.2f}s, n_chunks={chunk_count}",
-                extra={
-                    "json_fields": {
-                        **log_meta,
-                        "total_time_ms": total_time,
-                        "time_to_first_chunk_ms": (
-                            ttfc * 1000 if ttfc is not None else None
-                        ),
-                        "n_chunks": chunk_count,
-                    }
-                },
-            )
-            await stream_registry.mark_task_completed(task_id, "completed")
-        except Exception as e:
-            elapsed = time_module.perf_counter() - gen_start_time
-            logger.error(
-                f"[TIMING] run_ai_generation ERROR after {elapsed:.2f}s: {e}",
-                extra={
-                    "json_fields": {
-                        **log_meta,
-                        "elapsed_ms": elapsed * 1000,
-                        "error": str(e),
-                    }
-                },
-            )
-            # Publish a StreamError so the frontend can display an error message
-            try:
-                await stream_registry.publish_chunk(
-                    task_id,
-                    StreamError(
-                        errorText="An error occurred. Please try again.",
-                        code="stream_error",
-                    ),
-                )
-            except Exception:
-                pass  # Best-effort; mark_task_completed will publish StreamFinish
-            await stream_registry.mark_task_completed(task_id, "failed")
-
-    # Start the AI generation in a background task
-    bg_task = asyncio.create_task(run_ai_generation())
-    await stream_registry.set_task_asyncio_task(task_id, bg_task)
     setup_time = (time.perf_counter() - stream_start_time) * 1000
     logger.info(
-        f"[TIMING] Background task started, setup={setup_time:.1f}ms",
+        f"[TIMING] Task enqueued to RabbitMQ, setup={setup_time:.1f}ms",
         extra={"json_fields": {**log_meta, "setup_time_ms": setup_time}},
     )
 
@@ -1089,6 +985,7 @@ ToolResponseUnion = (
     | AgentPreviewResponse
     | AgentSavedResponse
     | ClarificationNeededResponse
+    | SuggestedGoalResponse
     | BlockListResponse
     | BlockDetailsResponse
     | BlockOutputResponse

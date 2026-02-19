@@ -41,11 +41,11 @@ import backend.data.user
 import backend.integrations.webhooks.utils
 import backend.util.service
 import backend.util.settings
-from backend.api.features.chat.completion_consumer import (
+from backend.blocks.llm import DEFAULT_LLM_MODEL
+from backend.copilot.completion_consumer import (
     start_completion_consumer,
     stop_completion_consumer,
 )
-from backend.blocks.llm import DEFAULT_LLM_MODEL
 from backend.data.model import Credentials
 from backend.integrations.providers import ProviderName
 from backend.monitoring.instrumentation import instrument_fastapi
