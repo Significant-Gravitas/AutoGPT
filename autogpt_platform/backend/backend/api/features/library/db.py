@@ -20,7 +20,11 @@ from backend.api.features.library.exceptions import (
 from backend.data.db import transaction
 from backend.data.execution import get_graph_execution
 from backend.data.graph import GraphSettings
-from backend.data.includes import AGENT_PRESET_INCLUDE, library_agent_include
+from backend.data.includes import (
+    AGENT_PRESET_INCLUDE,
+    LIBRARY_FOLDER_INCLUDE,
+    library_agent_include,
+)
 from backend.data.model import CredentialsMetaInput, GraphInput
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.webhooks.graph_lifecycle_hooks import (
@@ -919,14 +923,7 @@ async def _fetch_user_folders(
     return await prisma.models.LibraryFolder.prisma().find_many(
         where=where_clause,
         order={"createdAt": "asc"},
-        include=(
-            {
-                "LibraryAgents": {"where": {"isDeleted": False}},
-                "Children": {"where": {"isDeleted": False}},
-            }
-            if include_relations
-            else None
-        ),
+        include=LIBRARY_FOLDER_INCLUDE if include_relations else None,
     )
 
 
@@ -1030,10 +1027,7 @@ async def get_folder(
             "userId": user_id,
             "isDeleted": False,
         },
-        include={
-            "LibraryAgents": {"where": {"isDeleted": False}},
-            "Children": {"where": {"isDeleted": False}},
-        },
+        include=LIBRARY_FOLDER_INCLUDE,
     )
 
     if not folder:
@@ -1213,10 +1207,7 @@ async def update_folder(
         folder = await prisma.models.LibraryFolder.prisma().update(
             where={"id": folder_id},
             data=update_data,
-            include={
-                "LibraryAgents": {"where": {"isDeleted": False}},
-                "Children": {"where": {"isDeleted": False}},
-            },
+            include=LIBRARY_FOLDER_INCLUDE,
         )
     except prisma.errors.UniqueViolationError:
         raise FolderAlreadyExistsError(
@@ -1273,10 +1264,7 @@ async def move_folder(
             data={
                 "parentId": target_parent_id,
             },
-            include={
-                "LibraryAgents": {"where": {"isDeleted": False}},
-                "Children": {"where": {"isDeleted": False}},
-            },
+            include=LIBRARY_FOLDER_INCLUDE,
         )
     except prisma.errors.UniqueViolationError:
         raise FolderAlreadyExistsError(
