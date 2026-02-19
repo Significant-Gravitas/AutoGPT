@@ -199,6 +199,8 @@ def cleanup_cli_project_dir(sdk_cwd: str) -> None:
     if os.path.isdir(project_dir):
         shutil.rmtree(project_dir, ignore_errors=True)
         logger.debug(f"[Transcript] Cleaned up CLI project dir: {project_dir}")
+    else:
+        logger.debug(f"[Transcript] Project dir not found: {project_dir}")
 
 
 def write_transcript_to_tempfile(

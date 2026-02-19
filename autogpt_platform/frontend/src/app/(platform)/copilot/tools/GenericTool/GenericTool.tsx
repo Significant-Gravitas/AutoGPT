@@ -468,6 +468,10 @@ function getWebAccordionData(
       <ContentCodeBlock>{truncate(content, 2000)}</ContentCodeBlock>
     ) : message ? (
       <ContentMessage>{message}</ContentMessage>
+    ) : Object.keys(output).length > 0 ? (
+      <ContentCodeBlock>
+        {truncate(JSON.stringify(output, null, 2), 2000)}
+      </ContentCodeBlock>
     ) : null,
   };
 }

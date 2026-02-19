@@ -88,19 +88,29 @@ def get_execution_context() -> tuple[str | None, ChatSession | None]:
 
 
 def pop_pending_tool_output(tool_name: str) -> str | None:
-    """Pop and return the stashed full output for *tool_name*.
+    """Pop and return the oldest stashed output for *tool_name*.
 
     The SDK CLI may truncate large tool results (writing them to disk and
     replacing the content with a file reference). This stash keeps the
     original MCP output so the response adapter can forward it to the
     frontend for proper widget rendering.
 
+    Uses a FIFO queue per tool name so duplicate calls to the same tool
+    in one turn each get their own output.
+
     Returns ``None`` if nothing was stashed for *tool_name*.
     """
     pending = _pending_tool_outputs.get(None)
     if pending is None:
         return None
-    return pending.pop(tool_name, None)
+    queue = pending.get(tool_name)
+    if not queue:
+        pending.pop(tool_name, None)
+        return None
+    value = queue.pop(0)
+    if not queue:
+        del pending[tool_name]
+    return value
 
 
 def stash_pending_tool_output(tool_name: str, output: Any) -> None:
@@ -110,22 +120,20 @@ def stash_pending_tool_output(tool_name: str, output: Any) -> None:
     (WebSearch, Read, etc.) that aren't available through the MCP stash
     mechanism in ``_execute_tool_sync``.
 
-    Does NOT overwrite an existing stash entry — MCP tools stash in
-    ``_execute_tool_sync`` first with the guaranteed-full output.
+    Appends to a FIFO queue per tool name so multiple calls to the same
+    tool in one turn are all preserved.
     """
     pending = _pending_tool_outputs.get(None)
     if pending is None:
         return
-    # Don't overwrite MCP tool stash (which has the guaranteed-full output)
-    if tool_name in pending:
-        return
     if isinstance(output, str):
-        pending[tool_name] = output
+        text = output
     else:
         try:
-            pending[tool_name] = json.dumps(output)
+            text = json.dumps(output)
         except (TypeError, ValueError):
-            pending[tool_name] = str(output)
+            text = str(output)
+    pending.setdefault(tool_name, []).append(text)
 
 
 async def _execute_tool_sync(
@@ -150,7 +158,7 @@ async def _execute_tool_sync(
     # Stash the full output before the SDK potentially truncates it.
     pending = _pending_tool_outputs.get(None)
     if pending is not None:
-        pending[base_tool.name] = text
+        pending.setdefault(base_tool.name, []).append(text)
 
     content_blocks: list[dict[str, str]] = [{"type": "text", "text": text}]
 
