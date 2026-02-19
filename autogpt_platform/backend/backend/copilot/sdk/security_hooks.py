@@ -16,6 +16,7 @@ from .tool_adapter import (
     DANGEROUS_PATTERNS,
     MCP_TOOL_PREFIX,
     WORKSPACE_SCOPED_TOOLS,
+    stash_pending_tool_output,
 )
 
 logger = logging.getLogger(__name__)
@@ -224,10 +225,25 @@ def create_security_hooks(
             tool_use_id: str | None,
             context: HookContext,
         ) -> SyncHookJSONOutput:
-            """Log successful tool executions for observability."""
+            """Log successful tool executions and stash SDK built-in tool outputs.
+
+            MCP tools stash their output in ``_execute_tool_sync`` before the
+            SDK can truncate it.  SDK built-in tools (WebSearch, Read, etc.)
+            are executed by the CLI internally — this hook captures their
+            output so the response adapter can forward it to the frontend.
+            """
             _ = context
             tool_name = cast(str, input_data.get("tool_name", ""))
             logger.debug(f"[SDK] Tool success: {tool_name}, tool_use_id={tool_use_id}")
+
+            # Stash output for SDK built-in tools so the response adapter can
+            # emit StreamToolOutputAvailable even when the CLI doesn't surface
+            # a separate UserMessage with ToolResultBlock content.
+            if not tool_name.startswith(MCP_TOOL_PREFIX):
+                tool_response = input_data.get("tool_response")
+                if tool_response is not None:
+                    stash_pending_tool_output(tool_name, tool_response)
+
             return cast(SyncHookJSONOutput, {})
 
         async def post_tool_failure_hook(
