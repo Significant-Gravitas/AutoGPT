@@ -68,6 +68,7 @@ class CapturedTranscript:
 
     path: str = ""
     sdk_session_id: str = ""
+    raw_content: str = ""
 
     @property
     def available(self) -> bool:
@@ -561,10 +562,23 @@ async def stream_chat_completion_sdk(
             sdk_model = _resolve_sdk_model()
 
             # --- Transcript capture via Stop hook ---
+            # Read the file content immediately — the SDK may clean up
+            # the file before our finally block runs.
             def _on_stop(transcript_path: str, sdk_session_id: str) -> None:
                 captured_transcript.path = transcript_path
                 captured_transcript.sdk_session_id = sdk_session_id
-                logger.debug(f"[SDK] Stop hook: path={transcript_path!r}")
+                content = read_transcript_file(transcript_path)
+                if content:
+                    captured_transcript.raw_content = content
+                    logger.info(
+                        f"[SDK] Stop hook: captured {len(content)}B from "
+                        f"{transcript_path}"
+                    )
+                else:
+                    logger.warning(
+                        f"[SDK] Stop hook: transcript file empty/missing at "
+                        f"{transcript_path}"
+                    )
 
             security_hooks = create_security_hooks(
                 user_id,
@@ -793,16 +807,13 @@ async def stream_chat_completion_sdk(
         # is safely on disk and still useful for the next turn.
         if config.claude_agent_use_resume and user_id:
             try:
-                if captured_transcript.path:
-                    # Prefer the fresh transcript from the stop hook
-                    raw_transcript = read_transcript_file(captured_transcript.path)
-                elif use_resume and resume_file:
-                    # Fallback: stop hook didn't fire (e.g. error before
-                    # completion); upload the prior transcript so it isn't
-                    # lost entirely.
+                # Prefer content captured in the Stop hook (read before
+                # cleanup removes the file).  Fall back to the resume
+                # file when the stop hook didn't fire (e.g. error before
+                # completion) so we don't lose the prior transcript.
+                raw_transcript = captured_transcript.raw_content or None
+                if not raw_transcript and use_resume and resume_file:
                     raw_transcript = read_transcript_file(resume_file)
-                else:
-                    raw_transcript = None
 
                 if raw_transcript:
                     await asyncio.shield(
@@ -813,6 +824,8 @@ async def stream_chat_completion_sdk(
                             message_count=len(session.messages),
                         )
                     )
+                else:
+                    logger.warning(f"[SDK] No transcript to upload for {session_id}")
             except Exception as upload_err:
                 logger.error(
                     f"[SDK] Transcript upload failed in finally: {upload_err}",

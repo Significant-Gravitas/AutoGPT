@@ -153,11 +153,12 @@ def test_workspace_path_traversal_blocked():
     assert _is_denied(result)
 
 
-def test_workspace_absolute_path_blocked():
+def test_workspace_absolute_path_allowed():
+    """Workspace 'path' is a cloud storage key — leading '/' is normal."""
     result = _validate_user_isolation(
-        "workspace_read", {"path": "/etc/passwd"}, user_id="user-1"
+        "workspace_read", {"path": "/ASEAN/report.md"}, user_id="user-1"
     )
-    assert _is_denied(result)
+    assert result == {}
 
 
 def test_workspace_normal_path_allowed():
