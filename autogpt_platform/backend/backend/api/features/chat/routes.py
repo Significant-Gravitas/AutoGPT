@@ -367,9 +367,7 @@ async def cancel_session_task(
             )
             return CancelTaskResponse(cancelled=True, task_id=task_id)
 
-    logger.warning(
-        f"[CANCEL] Task ...{task_id[-8:]} not confirmed after {max_wait}s"
-    )
+    logger.warning(f"[CANCEL] Task ...{task_id[-8:]} not confirmed after {max_wait}s")
     return CancelTaskResponse(
         cancelled=True, task_id=task_id, reason="cancel_published_not_confirmed"
     )
