@@ -9,12 +9,31 @@ import { useBreakpoint } from "@/lib/hooks/useBreakpoint";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { useChat } from "@ai-sdk/react";
 import { useQueryClient } from "@tanstack/react-query";
+import type { UIMessage } from "ai";
 import { DefaultChatTransport } from "ai";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useChatSession } from "./useChatSession";
 import { useLongRunningToolPolling } from "./hooks/useLongRunningToolPolling";
 
 const STREAM_START_TIMEOUT_MS = 12_000;
+
+/** Mark any in-progress tool parts as completed/errored so spinners stop. */
+function resolveInProgressTools(
+  messages: UIMessage[],
+  outcome: "completed" | "cancelled",
+): UIMessage[] {
+  return messages.map((msg) => ({
+    ...msg,
+    parts: msg.parts.map((part) =>
+      "state" in part &&
+      (part.state === "input-streaming" || part.state === "input-available")
+        ? outcome === "cancelled"
+          ? { ...part, state: "output-error" as const, errorText: "Cancelled" }
+          : { ...part, state: "output-available" as const, output: "" }
+        : part,
+    ),
+  }));
+}
 
 export function useCopilotPage() {
   const { isUserLoading, isLoggedIn } = useSupabase();
@@ -114,23 +133,7 @@ export function useCopilotPage() {
   // the cancel API to actually stop the executor and wait for confirmation.
   async function stop() {
     sdkStop();
-
-    // Mark any in-progress tool parts as errored so spinners stop.
-    setMessages((prev) =>
-      prev.map((msg) => ({
-        ...msg,
-        parts: msg.parts.map((part) =>
-          "state" in part &&
-          (part.state === "input-streaming" || part.state === "input-available")
-            ? {
-                ...part,
-                state: "output-error" as const,
-                errorText: "Cancelled",
-              }
-            : part,
-        ),
-      })),
-    );
+    setMessages((prev) => resolveInProgressTools(prev, "cancelled"));
 
     if (!sessionId) return;
     try {
@@ -198,6 +201,18 @@ export function useCopilotPage() {
     hasResumedRef.current = sessionId;
     resumeStream();
   }, [hasActiveStream, sessionId, hydratedMessages, status, resumeStream]);
+
+  // When the stream finishes, resolve any tool parts still showing spinners.
+  // This can happen if the backend didn't emit StreamToolOutputAvailable for
+  // a tool call before sending StreamFinish (e.g. SDK built-in tools).
+  const prevStatusRef = useRef(status);
+  useEffect(() => {
+    const prev = prevStatusRef.current;
+    prevStatusRef.current = status;
+    if (prev === "streaming" && status === "ready") {
+      setMessages((msgs) => resolveInProgressTools(msgs, "completed"));
+    }
+  }, [status, setMessages]);
 
   // Poll session endpoint when a long-running tool (create_agent, edit_agent)
   // is in progress. When the backend completes, the session data will contain
