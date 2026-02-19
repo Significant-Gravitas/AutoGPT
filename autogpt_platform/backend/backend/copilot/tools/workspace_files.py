@@ -312,8 +312,18 @@ class ReadWorkspaceFileTool(BaseTool):
             is_small_file = file_info.size_bytes <= self.MAX_INLINE_SIZE_BYTES
             is_text_file = self._is_text_mime_type(file_info.mime_type)
 
-            # Return inline content for small text files (unless force_download_url)
-            if is_small_file and is_text_file and not force_download_url:
+            # Return inline content for small text/image files (unless force_download_url)
+            is_image_file = file_info.mime_type in {
+                "image/png",
+                "image/jpeg",
+                "image/gif",
+                "image/webp",
+            }
+            if (
+                is_small_file
+                and (is_text_file or is_image_file)
+                and not force_download_url
+            ):
                 content = await manager.read_file_by_id(target_file_id)
                 content_b64 = base64.b64encode(content).decode("utf-8")
 

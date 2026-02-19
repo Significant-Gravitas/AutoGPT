@@ -41,7 +41,7 @@ _current_session: ContextVar[ChatSession | None] = ContextVar(
 # Stash for MCP tool outputs before the SDK potentially truncates them.
 # Keyed by tool_name → full output string. Consumed (popped) by the
 # response adapter when it builds StreamToolOutputAvailable.
-_pending_tool_outputs: ContextVar[dict[str, str]] = ContextVar(
+_pending_tool_outputs: ContextVar[dict[str, list[str]]] = ContextVar(
     "pending_tool_outputs", default=None  # type: ignore[arg-type]
 )
 
@@ -88,19 +88,52 @@ def get_execution_context() -> tuple[str | None, ChatSession | None]:
 
 
 def pop_pending_tool_output(tool_name: str) -> str | None:
-    """Pop and return the stashed full output for *tool_name*.
+    """Pop and return the oldest stashed output for *tool_name*.
 
     The SDK CLI may truncate large tool results (writing them to disk and
     replacing the content with a file reference). This stash keeps the
     original MCP output so the response adapter can forward it to the
     frontend for proper widget rendering.
 
+    Uses a FIFO queue per tool name so duplicate calls to the same tool
+    in one turn each get their own output.
+
     Returns ``None`` if nothing was stashed for *tool_name*.
     """
     pending = _pending_tool_outputs.get(None)
     if pending is None:
         return None
-    return pending.pop(tool_name, None)
+    queue = pending.get(tool_name)
+    if not queue:
+        pending.pop(tool_name, None)
+        return None
+    value = queue.pop(0)
+    if not queue:
+        del pending[tool_name]
+    return value
+
+
+def stash_pending_tool_output(tool_name: str, output: Any) -> None:
+    """Stash tool output for later retrieval by the response adapter.
+
+    Used by the PostToolUse hook to capture SDK built-in tool outputs
+    (WebSearch, Read, etc.) that aren't available through the MCP stash
+    mechanism in ``_execute_tool_sync``.
+
+    Appends to a FIFO queue per tool name so multiple calls to the same
+    tool in one turn are all preserved.
+    """
+    pending = _pending_tool_outputs.get(None)
+    if pending is None:
+        return
+    if isinstance(output, str):
+        text = output
+    else:
+        try:
+            text = json.dumps(output)
+        except (TypeError, ValueError):
+            text = str(output)
+    pending.setdefault(tool_name, []).append(text)
 
 
 async def _execute_tool_sync(
@@ -125,12 +158,61 @@ async def _execute_tool_sync(
     # Stash the full output before the SDK potentially truncates it.
     pending = _pending_tool_outputs.get(None)
     if pending is not None:
-        pending[base_tool.name] = text
+        pending.setdefault(base_tool.name, []).append(text)
+
+    content_blocks: list[dict[str, str]] = [{"type": "text", "text": text}]
+
+    # If the tool result contains inline image data, add an MCP image block
+    # so Claude can "see" the image (e.g. read_workspace_file on a small PNG).
+    image_block = _extract_image_block(text)
+    if image_block:
+        content_blocks.append(image_block)
 
     return {
-        "content": [{"type": "text", "text": text}],
+        "content": content_blocks,
         "isError": not result.success,
     }
+
+
+# MIME types that Claude can process as image content blocks.
+_SUPPORTED_IMAGE_TYPES = frozenset(
+    {"image/png", "image/jpeg", "image/gif", "image/webp"}
+)
+
+
+def _extract_image_block(text: str) -> dict[str, str] | None:
+    """Extract an MCP image content block from a tool result JSON string.
+
+    Detects workspace file responses with ``content_base64`` and an image
+    MIME type, returning an MCP-format image block that allows Claude to
+    "see" the image.  Returns ``None`` if the result is not an inline image.
+    """
+    try:
+        data = json.loads(text)
+    except (json.JSONDecodeError, TypeError):
+        return None
+
+    if not isinstance(data, dict):
+        return None
+
+    mime_type = data.get("mime_type", "")
+    base64_content = data.get("content_base64", "")
+
+    # Only inline small images — large ones would exceed Claude's limits.
+    # 32 KB raw ≈ ~43 KB base64.
+    _MAX_IMAGE_BASE64_BYTES = 43_000
+    if (
+        mime_type in _SUPPORTED_IMAGE_TYPES
+        and base64_content
+        and len(base64_content) <= _MAX_IMAGE_BASE64_BYTES
+    ):
+        return {
+            "type": "image",
+            "data": base64_content,
+            "mimeType": mime_type,
+        }
+
+    return None
 
 
 def _mcp_error(message: str) -> dict[str, Any]:
@@ -311,14 +393,29 @@ def create_copilot_mcp_server():
 # which provides kernel-level network isolation via unshare --net.
 # Task allows spawning sub-agents (rate-limited by security hooks).
 # WebSearch uses Brave Search via Anthropic's API — safe, no SSRF risk.
-_SDK_BUILTIN_TOOLS = ["Read", "Write", "Edit", "Glob", "Grep", "Task", "WebSearch"]
+# TodoWrite manages the task checklist shown in the UI — no security concern.
+_SDK_BUILTIN_TOOLS = [
+    "Read",
+    "Write",
+    "Edit",
+    "Glob",
+    "Grep",
+    "Task",
+    "WebSearch",
+    "TodoWrite",
+]
 
 # SDK built-in tools that must be explicitly blocked.
 # Bash: dangerous — agent uses mcp__copilot__bash_exec with kernel-level
 #   network isolation (unshare --net) instead.
 # WebFetch: SSRF risk — can reach internal network (localhost, 10.x, etc.).
 #   Agent uses the SSRF-protected mcp__copilot__web_fetch tool instead.
-SDK_DISALLOWED_TOOLS = ["Bash", "WebFetch"]
+# AskUserQuestion: interactive CLI tool — no terminal in copilot context.
+SDK_DISALLOWED_TOOLS = [
+    "Bash",
+    "WebFetch",
+    "AskUserQuestion",
+]
 
 # Tools that are blocked entirely in security hooks (defence-in-depth).
 # Includes SDK_DISALLOWED_TOOLS plus common aliases/synonyms.

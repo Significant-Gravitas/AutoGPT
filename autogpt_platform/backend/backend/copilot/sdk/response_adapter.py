@@ -53,6 +53,7 @@ class SDKResponseAdapter:
         self.has_started_text = False
         self.has_ended_text = False
         self.current_tool_calls: dict[str, dict[str, str]] = {}
+        self.resolved_tool_calls: set[str] = set()
         self.task_id: str | None = None
         self.step_open = False
 
@@ -74,6 +75,10 @@ class SDKResponseAdapter:
                 self.step_open = True
 
         elif isinstance(sdk_message, AssistantMessage):
+            # Flush any SDK built-in tool calls that didn't get a UserMessage
+            # result (e.g. WebSearch, Read handled internally by the CLI).
+            self._flush_unresolved_tool_calls(responses)
+
             # After tool results, the SDK sends a new AssistantMessage for the
             # next LLM turn. Open a new step if the previous one was closed.
             if not self.step_open:
@@ -111,6 +116,8 @@ class SDKResponseAdapter:
             # UserMessage carries tool results back from tool execution.
             content = sdk_message.content
             blocks = content if isinstance(content, list) else []
+            resolved_in_blocks: set[str] = set()
+
             for block in blocks:
                 if isinstance(block, ToolResultBlock) and block.tool_use_id:
                     tool_info = self.current_tool_calls.get(block.tool_use_id, {})
@@ -132,6 +139,37 @@ class SDKResponseAdapter:
                             success=not (block.is_error or False),
                         )
                     )
+                    resolved_in_blocks.add(block.tool_use_id)
+
+            # Handle SDK built-in tool results carried via parent_tool_use_id
+            # instead of (or in addition to) ToolResultBlock content.
+            parent_id = sdk_message.parent_tool_use_id
+            if parent_id and parent_id not in resolved_in_blocks:
+                tool_info = self.current_tool_calls.get(parent_id, {})
+                tool_name = tool_info.get("name", "unknown")
+
+                # Try stashed output first (from PostToolUse hook),
+                # then tool_use_result dict, then string content.
+                output = pop_pending_tool_output(tool_name)
+                if not output:
+                    tur = sdk_message.tool_use_result
+                    if tur is not None:
+                        output = _extract_tool_use_result(tur)
+                if not output and isinstance(content, str) and content.strip():
+                    output = content.strip()
+
+                if output:
+                    responses.append(
+                        StreamToolOutputAvailable(
+                            toolCallId=parent_id,
+                            toolName=tool_name,
+                            output=output,
+                            success=True,
+                        )
+                    )
+                    resolved_in_blocks.add(parent_id)
+
+            self.resolved_tool_calls.update(resolved_in_blocks)
 
             # Close the current step after tool results — the next
             # AssistantMessage will open a new step for the continuation.
@@ -140,6 +178,7 @@ class SDKResponseAdapter:
                 self.step_open = False
 
         elif isinstance(sdk_message, ResultMessage):
+            self._flush_unresolved_tool_calls(responses)
             self._end_text_if_open(responses)
             # Close the step before finishing.
             if self.step_open:
@@ -149,7 +188,7 @@ class SDKResponseAdapter:
             if sdk_message.subtype == "success":
                 responses.append(StreamFinish())
             elif sdk_message.subtype in ("error", "error_during_execution"):
-                error_msg = getattr(sdk_message, "result", None) or "Unknown error"
+                error_msg = sdk_message.result or "Unknown error"
                 responses.append(
                     StreamError(errorText=str(error_msg), code="sdk_error")
                 )
@@ -180,6 +219,59 @@ class SDKResponseAdapter:
             responses.append(StreamTextEnd(id=self.text_block_id))
             self.has_ended_text = True
 
+    def _flush_unresolved_tool_calls(self, responses: list[StreamBaseResponse]) -> None:
+        """Emit outputs for tool calls that didn't receive a UserMessage result.
+
+        SDK built-in tools (WebSearch, Read, etc.) may be executed by the CLI
+        internally without surfacing a separate ``UserMessage`` with
+        ``ToolResultBlock`` content.  The ``PostToolUse`` hook stashes their
+        output, which we pop and emit here before the next ``AssistantMessage``
+        starts.
+        """
+        flushed = False
+        for tool_id, tool_info in self.current_tool_calls.items():
+            if tool_id in self.resolved_tool_calls:
+                continue
+            tool_name = tool_info.get("name", "unknown")
+            output = pop_pending_tool_output(tool_name)
+            if output is not None:
+                responses.append(
+                    StreamToolOutputAvailable(
+                        toolCallId=tool_id,
+                        toolName=tool_name,
+                        output=output,
+                        success=True,
+                    )
+                )
+                self.resolved_tool_calls.add(tool_id)
+                flushed = True
+                logger.debug(
+                    f"Flushed pending output for built-in tool {tool_name} "
+                    f"(call {tool_id})"
+                )
+            else:
+                # No output available — emit an empty output so the frontend
+                # transitions the tool from input-available to output-available
+                # (stops the spinner).
+                responses.append(
+                    StreamToolOutputAvailable(
+                        toolCallId=tool_id,
+                        toolName=tool_name,
+                        output="",
+                        success=True,
+                    )
+                )
+                self.resolved_tool_calls.add(tool_id)
+                flushed = True
+                logger.debug(
+                    f"Flushed empty output for unresolved tool {tool_name} "
+                    f"(call {tool_id})"
+                )
+
+        if flushed and self.step_open:
+            responses.append(StreamFinishStep())
+            self.step_open = False
+
 
 def _extract_tool_output(content: str | list[dict[str, str]] | None) -> str:
     """Extract a string output from a ToolResultBlock's content field."""
@@ -199,3 +291,30 @@ def _extract_tool_output(content: str | list[dict[str, str]] | None) -> str:
         return json.dumps(content)
     except (TypeError, ValueError):
         return str(content)
+
+
+def _extract_tool_use_result(result: object) -> str:
+    """Extract a string from a UserMessage's ``tool_use_result`` dict.
+
+    SDK built-in tools may store their result in ``tool_use_result``
+    instead of (or in addition to) ``ToolResultBlock`` content blocks.
+    """
+    if isinstance(result, str):
+        return result
+    if isinstance(result, dict):
+        # Try common result keys
+        for key in ("content", "text", "output", "stdout", "result"):
+            val = result.get(key)
+            if isinstance(val, str) and val:
+                return val
+        # Fall back to JSON serialization of the whole dict
+        try:
+            return json.dumps(result)
+        except (TypeError, ValueError):
+            return str(result)
+    if result is None:
+        return ""
+    try:
+        return json.dumps(result)
+    except (TypeError, ValueError):
+        return str(result)
