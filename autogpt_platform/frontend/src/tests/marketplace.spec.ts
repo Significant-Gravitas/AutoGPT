@@ -147,14 +147,19 @@ test.describe("Marketplace – Edge Cases", () => {
     await isVisible(searchTerm);
 
     // The search page should render either results or a "No results found" message
-    await page.waitForLoadState("networkidle").catch(() => {});
-    const hasResults =
-      (await page.locator('[data-testid="store-card"]').count()) > 0;
-    const hasNoResultsMsg = await page
-      .getByText("No results found")
-      .isVisible()
-      .catch(() => false);
-    expect(hasResults || hasNoResultsMsg).toBe(true);
+    await expect
+      .poll(
+        async () => {
+          const hasResults =
+            (await page.locator('[data-testid="store-card"]').count()) > 0;
+          const hasNoResultsMsg = await page
+            .getByText("No results found")
+            .isVisible();
+          return hasResults || hasNoResultsMsg;
+        },
+        { timeout: 15000 },
+      )
+      .toBe(true);
 
     console.log(
       "Search for non-existent item renders search page correctly test passed ✅",
