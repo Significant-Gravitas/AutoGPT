@@ -1109,18 +1109,7 @@ async def create_folder(
     """
     logger.debug(f"Creating folder '{name}' for user #{user_id}")
 
-    # Verify parent exists if provided
-    if parent_id:
-        parent = await prisma.models.LibraryFolder.prisma().find_first(
-            where={
-                "id": parent_id,
-                "userId": user_id,
-                "isDeleted": False,
-            }
-        )
-        if not parent:
-            raise NotFoundError(f"Parent folder #{parent_id} not found")
-
+    # No explicit parent check — prisma.create will FK-error if parent_id is invalid.
     # Build data dict conditionally - don't include Parent key if no parent_id
     create_data: dict = {
         "name": name,
@@ -1205,16 +1194,9 @@ async def update_folder(
     """
     logger.debug(f"Updating folder #{folder_id} for user #{user_id}")
 
-    # Verify folder exists and belongs to user
-    existing = await prisma.models.LibraryFolder.prisma().find_first(
-        where={
-            "id": folder_id,
-            "userId": user_id,
-            "isDeleted": False,
-        }
-    )
-    if not existing:
-        raise NotFoundError(f"Folder #{folder_id} not found")
+    # Authorization: update uses where={"id": ...} without userId,
+    # so we must verify ownership first.
+    await get_folder(folder_id, user_id)
 
     update_data: prisma.types.LibraryFolderUpdateInput = {}
     if name is not None:
@@ -1274,33 +1256,16 @@ async def move_folder(
     """
     logger.debug(f"Moving folder #{folder_id} to parent #{target_parent_id}")
 
-    # Validate no circular reference
+    # Authorization: update uses where={"id": ...} without userId,
+    # so we must verify ownership first.
+    await get_folder(folder_id, user_id)
+
+    # Validate no circular reference.
+    # No separate parent check — _is_descendant_of already fetches all user
+    # folders, so an invalid target_parent_id simply won't be found.
     if target_parent_id:
         if await _is_descendant_of(target_parent_id, folder_id, user_id):
             raise FolderValidationError("Cannot move folder into its own descendant")
-
-    # Verify folder exists
-    existing = await prisma.models.LibraryFolder.prisma().find_first(
-        where={
-            "id": folder_id,
-            "userId": user_id,
-            "isDeleted": False,
-        }
-    )
-    if not existing:
-        raise NotFoundError(f"Folder #{folder_id} not found")
-
-    # Verify target parent exists if provided
-    if target_parent_id:
-        parent = await prisma.models.LibraryFolder.prisma().find_first(
-            where={
-                "id": target_parent_id,
-                "userId": user_id,
-                "isDeleted": False,
-            }
-        )
-        if not parent:
-            raise NotFoundError(f"Target parent folder #{target_parent_id} not found")
 
     try:
         folder = await prisma.models.LibraryFolder.prisma().update(
@@ -1347,16 +1312,8 @@ async def delete_folder(
     """
     logger.debug(f"Deleting folder #{folder_id} for user #{user_id}")
 
-    # Verify folder exists
-    existing = await prisma.models.LibraryFolder.prisma().find_first(
-        where={
-            "id": folder_id,
-            "userId": user_id,
-            "isDeleted": False,
-        }
-    )
-    if not existing:
-        raise NotFoundError(f"Folder #{folder_id} not found")
+    # Authorization: verify folder exists and belongs to user.
+    await get_folder(folder_id, user_id)
 
     # Collect all folder IDs (target + descendants) before the transaction
     async with transaction() as tx:
@@ -1479,28 +1436,13 @@ async def move_agent_to_folder(
     """
     logger.debug(f"Moving agent #{library_agent_id} to folder #{folder_id}")
 
-    # Verify agent exists
-    agent = await prisma.models.LibraryAgent.prisma().find_first(
-        where={
-            "id": library_agent_id,
-            "userId": user_id,
-            "isDeleted": False,
-        }
-    )
-    if not agent:
-        raise NotFoundError(f"Library agent #{library_agent_id} not found")
+    # No explicit agent check — get_library_agent at the end will raise
+    # NotFoundError if the agent doesn't exist or doesn't belong to the user.
 
-    # Verify folder exists if provided
+    # Authorization: folderId is set directly, FK only checks existence
+    # not ownership, so verify the folder belongs to the user.
     if folder_id:
-        folder = await prisma.models.LibraryFolder.prisma().find_first(
-            where={
-                "id": folder_id,
-                "userId": user_id,
-                "isDeleted": False,
-            }
-        )
-        if not folder:
-            raise NotFoundError(f"Folder #{folder_id} not found")
+        await get_folder(folder_id, user_id)
 
     await prisma.models.LibraryAgent.prisma().update(
         where={"id": library_agent_id},
@@ -1532,17 +1474,10 @@ async def bulk_move_agents_to_folder(
     """
     logger.debug(f"Bulk moving {len(agent_ids)} agents to folder #{folder_id}")
 
-    # Verify folder exists if provided
+    # Authorization: folderId is set directly, FK only checks existence
+    # not ownership, so verify the folder belongs to the user.
     if folder_id:
-        folder = await prisma.models.LibraryFolder.prisma().find_first(
-            where={
-                "id": folder_id,
-                "userId": user_id,
-                "isDeleted": False,
-            }
-        )
-        if not folder:
-            raise NotFoundError(f"Folder #{folder_id} not found")
+        await get_folder(folder_id, user_id)
 
     # Update all agents
     await prisma.models.LibraryAgent.prisma().update_many(
