@@ -1,7 +1,5 @@
 """Base classes and shared utilities for chat tools."""
 
-import asyncio
-import contextvars
 import logging
 from typing import Any
 
@@ -13,18 +11,6 @@ from backend.copilot.response_model import StreamToolOutputAvailable
 from .models import ErrorResponse, NeedLoginResponse, ToolResponseBase
 
 logger = logging.getLogger(__name__)
-
-# Context variable for the per-request session lock used during parallel
-# tool execution.  Tools that mutate ``ChatSession`` state (e.g. run_agent
-# counters) should acquire this lock to prevent races.
-_current_session_lock: contextvars.ContextVar[asyncio.Lock | None] = (
-    contextvars.ContextVar("_current_session_lock", default=None)
-)
-
-
-def get_session_lock() -> asyncio.Lock | None:
-    """Return the session lock for the current parallel execution context."""
-    return _current_session_lock.get()
 
 
 class BaseTool:
@@ -104,14 +90,9 @@ class BaseTool:
             )
 
         try:
-            # Pop internal parallel-execution lock and expose via contextvar
-            # so tools that need it (e.g. run_agent) can access it.
-            lock = kwargs.pop("_session_lock", None)
-            token = _current_session_lock.set(lock)
-            try:
-                result = await self._execute(user_id, session, **kwargs)
-            finally:
-                _current_session_lock.reset(token)
+            # Strip internal parallel-execution metadata before passing to tool
+            kwargs.pop("_session_lock", None)
+            result = await self._execute(user_id, session, **kwargs)
             return StreamToolOutputAvailable(
                 toolCallId=tool_call_id,
                 toolName=self.name,
