@@ -143,7 +143,7 @@ def read_transcript_file(transcript_path: str) -> str | None:
         json.loads(lines[0])
         json.loads(lines[-1])
 
-        logger.debug(
+        logger.info(
             f"[Transcript] Read {len(lines)} lines, "
             f"{len(content)} bytes from {transcript_path}"
         )
@@ -234,7 +234,7 @@ def write_transcript_to_tempfile(
         with open(jsonl_path, "w") as f:
             f.write(transcript_content)
 
-        logger.debug(f"[Transcript] Wrote resume file: {jsonl_path}")
+        logger.info(f"[Transcript] Wrote resume file: {jsonl_path}")
         return jsonl_path
 
     except OSError as e:
@@ -357,7 +357,7 @@ async def upload_transcript(
     try:
         existing = await storage.retrieve(path)
         if len(existing) >= new_size:
-            logger.debug(
+            logger.info(
                 f"[Transcript] Skipping upload — existing ({len(existing)}B) "
                 f">= new ({new_size}B) for session {session_id}"
             )
@@ -439,7 +439,7 @@ async def download_transcript(
     except (FileNotFoundError, json.JSONDecodeError, Exception):
         pass  # No metadata — treat as unknown (msg_count=0 → always fill gap)
 
-    logger.debug(
+    logger.info(
         f"[Transcript] Downloaded {len(content)}B "
         f"(msg_count={message_count}) for session {session_id}"
     )

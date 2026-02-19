@@ -611,7 +611,7 @@ async def stream_chat_completion_sdk(
                             f"Now, the user says:\n{current_message}"
                         )
 
-                logger.debug(
+                logger.info(
                     f"[SDK] Sending query ({len(session.messages)} msgs, "
                     f"resume={use_resume})"
                 )
