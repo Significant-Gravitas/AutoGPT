@@ -89,6 +89,7 @@ export function ActivityDropdown({
                   className="!focus:border-1 w-full pr-10"
                   wrapperClassName="!mb-0"
                   autoComplete="off"
+                  autoFocus
                 />
                 <button
                   onClick={handleClearSearch}
