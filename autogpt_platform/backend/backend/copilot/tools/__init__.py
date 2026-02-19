@@ -22,6 +22,15 @@ from .get_doc_page import GetDocPageTool
 from .run_agent import RunAgentTool
 from .run_block import RunBlockTool
 from .search_docs import SearchDocsTool
+from .e2b_file_tools import (
+    E2BEditTool,
+    E2BGlobTool,
+    E2BGrepTool,
+    E2BReadTool,
+    E2BWriteTool,
+    LoadFromWorkspaceTool,
+    SaveToWorkspaceTool,
+)
 from .web_fetch import WebFetchTool
 from .workspace_files import (
     DeleteWorkspaceFileTool,
@@ -63,6 +72,14 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "read_workspace_file": ReadWorkspaceFileTool(),
     "write_workspace_file": WriteWorkspaceFileTool(),
     "delete_workspace_file": DeleteWorkspaceFileTool(),
+    # E2B sandbox file tools (active when COPILOT_E2B feature flag is enabled)
+    "read_file": E2BReadTool(),
+    "write_file": E2BWriteTool(),
+    "edit_file": E2BEditTool(),
+    "glob_files": E2BGlobTool(),
+    "grep_files": E2BGrepTool(),
+    "save_to_workspace": SaveToWorkspaceTool(),
+    "load_from_workspace": LoadFromWorkspaceTool(),
 }
 
 # Export individual tool instances for backwards compatibility

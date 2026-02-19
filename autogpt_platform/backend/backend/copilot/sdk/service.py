@@ -58,6 +58,9 @@ from .transcript import (
 logger = logging.getLogger(__name__)
 config = ChatConfig()
 
+# SDK built-in file tools to disable when e2b is active (replaced by MCP tools)
+_E2B_DISALLOWED_SDK_TOOLS = ["Read", "Write", "Edit", "Glob", "Grep"]
+
 # Set to hold background tasks to prevent garbage collection
 _background_tasks: set[asyncio.Task[Any]] = set()
 
@@ -93,6 +96,23 @@ _SDK_TOOL_SUPPLEMENT = """
   so they persist. Use `read_workspace_file` and `list_workspace_files` to
   access files saved in previous turns. If a "Files from previous turns"
   section is present above, those files are available via `read_workspace_file`.
+- Long-running tools (create_agent, edit_agent, etc.) are handled
+  asynchronously.  You will receive an immediate response; the actual result
+  is delivered to the user via a background stream.
+"""
+
+_SDK_TOOL_SUPPLEMENT_E2B = """
+
+## Tool notes
+
+- The SDK built-in Bash, Read, Write, Edit, Glob, and Grep tools are NOT available.
+  Use the MCP tools instead: `bash_exec`, `read_file`, `write_file`, `edit_file`,
+  `glob_files`, `grep_files`.
+- **All tools share a single sandbox**: The sandbox is a microVM with a shared
+  filesystem at /home/user/. Files created by any tool are accessible to all others.
+  Network access IS available (pip install, curl, etc.).
+- **Persistent storage**: Use `save_to_workspace` to persist sandbox files to cloud
+  storage, and `load_from_workspace` to bring workspace files into the sandbox.
 - Long-running tools (create_agent, edit_agent, etc.) are handled
   asynchronously.  You will receive an immediate response; the actual result
   is delivered to the user via a background stream.
@@ -453,12 +473,33 @@ async def stream_chat_completion_sdk(
                 _background_tasks.add(task)
                 task.add_done_callback(_background_tasks.discard)
 
+    # Check if e2b sandbox is enabled for this user
+    sandbox_mgr = None
+    use_e2b = False
+    try:
+        from backend.util.feature_flag import Flag
+        from backend.util.feature_flag import is_feature_enabled as _is_flag_enabled
+        from backend.util.settings import Config as AppConfig
+
+        app_config = AppConfig()
+        use_e2b = await _is_flag_enabled(
+            Flag.COPILOT_E2B,
+            user_id or "anonymous",
+            default=app_config.copilot_use_e2b,
+        )
+        if use_e2b:
+            from backend.copilot.tools.e2b_sandbox import CoPilotSandboxManager
+
+            sandbox_mgr = CoPilotSandboxManager()
+    except Exception as e:
+        logger.warning(f"[SDK] Failed to initialize e2b sandbox: {e}")
+
     # Build system prompt (reuses non-SDK path with Langfuse support)
     has_history = len(session.messages) > 1
     system_prompt, _ = await _build_system_prompt(
         user_id, has_conversation_history=has_history
     )
-    system_prompt += _SDK_TOOL_SUPPLEMENT
+    system_prompt += _SDK_TOOL_SUPPLEMENT_E2B if use_e2b else _SDK_TOOL_SUPPLEMENT
     message_id = str(uuid.uuid4())
     task_id = str(uuid.uuid4())
 
@@ -480,6 +521,7 @@ async def stream_chat_completion_sdk(
             user_id,
             session,
             long_running_callback=_build_long_running_callback(user_id),
+            sandbox_manager=sandbox_mgr,
         )
         try:
             from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
@@ -531,11 +573,21 @@ async def stream_chat_completion_sdk(
                             f"msg_count={transcript_msg_count})"
                         )
 
+            # When e2b is active, disable SDK built-in file tools
+            # (replaced by MCP e2b tools) and remove them from allowed list
+            effective_disallowed = list(SDK_DISALLOWED_TOOLS)
+            effective_allowed = list(COPILOT_TOOL_NAMES)
+            if use_e2b:
+                effective_disallowed.extend(_E2B_DISALLOWED_SDK_TOOLS)
+                effective_allowed = [
+                    t for t in effective_allowed if t not in _E2B_DISALLOWED_SDK_TOOLS
+                ]
+
             sdk_options_kwargs: dict[str, Any] = {
                 "system_prompt": system_prompt,
                 "mcp_servers": {"copilot": mcp_server},
-                "allowed_tools": COPILOT_TOOL_NAMES,
-                "disallowed_tools": SDK_DISALLOWED_TOOLS,
+                "allowed_tools": effective_allowed,
+                "disallowed_tools": effective_disallowed,
                 "hooks": security_hooks,
                 "cwd": sdk_cwd,
                 "max_buffer_size": config.claude_agent_max_buffer_size,
@@ -749,6 +801,11 @@ async def stream_chat_completion_sdk(
         )
         yield StreamFinish()
     finally:
+        if sandbox_mgr:
+            try:
+                await sandbox_mgr.dispose_all()
+            except Exception as e:
+                logger.warning(f"[SDK] Failed to dispose e2b sandboxes: {e}")
         if sdk_cwd:
             _cleanup_sdk_tool_results(sdk_cwd)
 

@@ -1,14 +1,15 @@
-"""Bash execution tool — run shell commands in a bubblewrap sandbox.
+"""Bash execution tool — run shell commands in a sandbox.
+
+Supports two backends:
+- **e2b** (preferred): VM-level isolation with network access, enabled via
+  the COPILOT_E2B feature flag.
+- **bubblewrap** (fallback): kernel-level isolation, no network, Linux-only.
 
 Full Bash scripting is allowed (loops, conditionals, pipes, functions, etc.).
-Safety comes from OS-level isolation (bubblewrap): only system dirs visible
-read-only, writable workspace only, clean env, no network.
-
-Requires bubblewrap (``bwrap``) — the tool is disabled when bwrap is not
-available (e.g. macOS development).
 """
 
 import logging
+import shlex
 from typing import Any
 
 from backend.copilot.model import ChatSession
@@ -18,6 +19,8 @@ from .models import BashExecResponse, ErrorResponse, ToolResponseBase
 from .sandbox import get_workspace_dir, has_full_sandbox, run_sandboxed
 
 logger = logging.getLogger(__name__)
+
+_SANDBOX_HOME = "/home/user"
 
 
 class BashExecTool(BaseTool):
@@ -29,6 +32,18 @@ class BashExecTool(BaseTool):
 
     @property
     def description(self) -> str:
+        if _is_e2b_available():
+            return (
+                "Execute a Bash command or script in an e2b sandbox (microVM). "
+                "Full Bash scripting is supported (loops, conditionals, pipes, "
+                "functions, etc.). "
+                "The sandbox shares the same filesystem as the read_file/write_file "
+                "tools — files created by any tool are accessible to all others. "
+                "Network access IS available (pip install, curl, etc.). "
+                "Working directory is /home/user/. "
+                "Execution is killed after the timeout (default 30s, max 120s). "
+                "Returns stdout and stderr."
+            )
         if not has_full_sandbox():
             return (
                 "Bash execution is DISABLED — bubblewrap sandbox is not "
@@ -85,13 +100,6 @@ class BashExecTool(BaseTool):
     ) -> ToolResponseBase:
         session_id = session.session_id if session else None
 
-        if not has_full_sandbox():
-            return ErrorResponse(
-                message="bash_exec requires bubblewrap sandbox (Linux only).",
-                error="sandbox_unavailable",
-                session_id=session_id,
-            )
-
         command: str = (kwargs.get("command") or "").strip()
         timeout: int = kwargs.get("timeout", 30)
 
@@ -99,6 +107,20 @@ class BashExecTool(BaseTool):
             return ErrorResponse(
                 message="No command provided.",
                 error="empty_command",
+                session_id=session_id,
+            )
+
+        # --- E2B path ---
+        if _is_e2b_available():
+            return await self._execute_e2b(
+                command, timeout, session, user_id, session_id
+            )
+
+        # --- Bubblewrap fallback ---
+        if not has_full_sandbox():
+            return ErrorResponse(
+                message="bash_exec requires bubblewrap sandbox (Linux only).",
+                error="sandbox_unavailable",
                 session_id=session_id,
             )
 
@@ -122,3 +144,72 @@ class BashExecTool(BaseTool):
             timed_out=timed_out,
             session_id=session_id,
         )
+
+    async def _execute_e2b(
+        self,
+        command: str,
+        timeout: int,
+        session: ChatSession,
+        user_id: str | None,
+        session_id: str | None,
+    ) -> ToolResponseBase:
+        """Execute command in e2b sandbox."""
+        try:
+            from backend.copilot.sdk.tool_adapter import get_sandbox_manager
+
+            manager = get_sandbox_manager()
+            if manager is None:
+                return ErrorResponse(
+                    message="E2B sandbox manager not available.",
+                    error="sandbox_unavailable",
+                    session_id=session_id,
+                )
+
+            sandbox = await manager.get_or_create(
+                session_id or "default", user_id or "anonymous"
+            )
+            result = await sandbox.commands.run(
+                f"bash -c {shlex.quote(command)}",
+                cwd=_SANDBOX_HOME,
+                timeout=timeout,
+            )
+
+            return BashExecResponse(
+                message=f"Command executed (exit {result.exit_code})",
+                stdout=result.stdout,
+                stderr=result.stderr,
+                exit_code=result.exit_code,
+                timed_out=False,
+                session_id=session_id,
+            )
+        except Exception as e:
+            error_str = str(e)
+            if "timeout" in error_str.lower():
+                return BashExecResponse(
+                    message="Execution timed out",
+                    stdout="",
+                    stderr=f"Execution timed out after {timeout}s",
+                    exit_code=-1,
+                    timed_out=True,
+                    session_id=session_id,
+                )
+            return ErrorResponse(
+                message=f"E2B execution failed: {e}",
+                error=error_str,
+                session_id=session_id,
+            )
+
+
+# ------------------------------------------------------------------
+# Module-level helpers (placed after classes that call them)
+# ------------------------------------------------------------------
+
+
+def _is_e2b_available() -> bool:
+    """Check if e2b sandbox is available via execution context."""
+    try:
+        from backend.copilot.sdk.tool_adapter import get_sandbox_manager
+
+        return get_sandbox_manager() is not None
+    except Exception:
+        return False

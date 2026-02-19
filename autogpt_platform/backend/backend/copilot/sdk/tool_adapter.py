@@ -42,7 +42,8 @@ _current_session: ContextVar[ChatSession | None] = ContextVar(
 # Keyed by tool_name → full output string. Consumed (popped) by the
 # response adapter when it builds StreamToolOutputAvailable.
 _pending_tool_outputs: ContextVar[dict[str, list[str]]] = ContextVar(
-    "pending_tool_outputs", default=None  # type: ignore[arg-type]
+    "pending_tool_outputs",
+    default=None,  # type: ignore[arg-type]
 )
 
 # Callback type for delegating long-running tools to the non-SDK infrastructure.
@@ -56,11 +57,15 @@ _long_running_callback: ContextVar[LongRunningCallback | None] = ContextVar(
     "long_running_callback", default=None
 )
 
+# ContextVar for the e2b sandbox manager (set when e2b is enabled).
+_sandbox_manager: ContextVar[Any | None] = ContextVar("sandbox_manager", default=None)
+
 
 def set_execution_context(
     user_id: str | None,
     session: ChatSession,
     long_running_callback: LongRunningCallback | None = None,
+    sandbox_manager: Any | None = None,
 ) -> None:
     """Set the execution context for tool calls.
 
@@ -72,11 +77,13 @@ def set_execution_context(
         session: Current chat session.
         long_running_callback: Optional callback to delegate long-running tools
             to the non-SDK background infrastructure (stream_registry + Redis).
+        sandbox_manager: Optional CoPilotSandboxManager for e2b sandbox access.
     """
     _current_user_id.set(user_id)
     _current_session.set(session)
     _pending_tool_outputs.set({})
     _long_running_callback.set(long_running_callback)
+    _sandbox_manager.set(sandbox_manager)
 
 
 def get_execution_context() -> tuple[str | None, ChatSession | None]:
@@ -85,6 +92,11 @@ def get_execution_context() -> tuple[str | None, ChatSession | None]:
         _current_user_id.get(),
         _current_session.get(),
     )
+
+
+def get_sandbox_manager() -> Any | None:
+    """Get the current e2b sandbox manager from execution context."""
+    return _sandbox_manager.get(None)
 
 
 def pop_pending_tool_output(tool_name: str) -> str | None:

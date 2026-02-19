@@ -16,6 +16,7 @@ from .tool_adapter import (
     DANGEROUS_PATTERNS,
     MCP_TOOL_PREFIX,
     WORKSPACE_SCOPED_TOOLS,
+    get_sandbox_manager,
     stash_pending_tool_output,
 )
 
@@ -97,8 +98,10 @@ def _validate_tool_access(
             "Use the CoPilot-specific MCP tools instead."
         )
 
-    # Workspace-scoped tools: allowed only within the SDK workspace directory
-    if tool_name in WORKSPACE_SCOPED_TOOLS:
+    # Workspace-scoped tools: allowed only within the SDK workspace directory.
+    # When e2b is enabled, these SDK built-in tools are disabled (replaced by
+    # MCP e2b file tools), so skip workspace path validation.
+    if tool_name in WORKSPACE_SCOPED_TOOLS and get_sandbox_manager() is None:
         return _validate_workspace_path(tool_name, tool_input, sdk_cwd)
 
     # Check for dangerous patterns in tool input

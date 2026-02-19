@@ -665,6 +665,18 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     fal_api_key: str = Field(default="", description="FAL API key")
     exa_api_key: str = Field(default="", description="Exa API key")
     e2b_api_key: str = Field(default="", description="E2B API key")
+    copilot_sandbox_timeout: int = Field(
+        default=900,
+        description="E2B sandbox idle timeout in seconds (default 15 min).",
+    )
+    copilot_sandbox_template: str = Field(
+        default="",
+        description="E2B sandbox template ID (empty = default template).",
+    )
+    copilot_use_e2b: bool = Field(
+        default=False,
+        description="Enable e2b sandbox for CoPilot (feature flag default).",
+    )
     nvidia_api_key: str = Field(default="", description="Nvidia API key")
     mem0_api_key: str = Field(default="", description="Mem0 API key")
     elevenlabs_api_key: str = Field(default="", description="ElevenLabs API key")
