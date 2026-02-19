@@ -108,9 +108,6 @@ importers:
       '@streamdown/cjk':
         specifier: 1.0.1
         version: 1.0.1(@types/mdast@4.0.4)(micromark-util-types@2.0.2)(micromark@4.0.2)(react@18.3.1)(unified@11.0.5)
-      '@streamdown/code':
-        specifier: 1.0.1
-        version: 1.0.1(react@18.3.1)
       '@streamdown/math':
         specifier: 1.0.1
         version: 1.0.1(react@18.3.1)
@@ -270,6 +267,9 @@ importers:
       shepherd.js:
         specifier: 14.5.1
         version: 14.5.1
+      shiki:
+        specifier: ^3.21.0
+        version: 3.21.0
       sonner:
         specifier: 2.0.7
         version: 2.0.7(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -3304,11 +3304,6 @@ packages:
 
   '@streamdown/cjk@1.0.1':
     resolution: {integrity: sha512-ElDoEfad2u8iFzmgmEEab15N4mt19r47xeUIPJtHaHVyEF5baojamGo+xw3MywMj2qUsAY3LnTnKbrUtL5tGkg==}
-    peerDependencies:
-      react: ^18.0.0 || ^19.0.0
-
-  '@streamdown/code@1.0.1':
-    resolution: {integrity: sha512-U9LITfQ28tZYAoY922jdtw1ryg4kgRBdURopqK9hph7G2fBUwPeHthjH7SvaV0fvFv7EqjqCzARJuWUljLe9Ag==}
     peerDependencies:
       react: ^18.0.0 || ^19.0.0
 
@@ -11906,11 +11901,6 @@ snapshots:
       - micromark
       - micromark-util-types
       - unified
-
-  '@streamdown/code@1.0.1(react@18.3.1)':
-    dependencies:
-      react: 18.3.1
-      shiki: 3.21.0
 
   '@streamdown/math@1.0.1(react@18.3.1)':
     dependencies:
