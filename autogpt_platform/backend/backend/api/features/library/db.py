@@ -1103,7 +1103,11 @@ async def create_folder(
     """
     logger.debug(f"Creating folder '{name}' for user #{user_id}")
 
-    # No explicit parent check — prisma.create will FK-error if parent_id is invalid.
+    # Authorization: FK only checks existence, not ownership.
+    # Verify the parent belongs to this user to prevent cross-user nesting.
+    if parent_id:
+        await get_folder(parent_id, user_id)
+
     # Build data dict conditionally - don't include Parent key if no parent_id
     create_data: dict = {
         "name": name,
@@ -1251,9 +1255,12 @@ async def move_folder(
     # so we must verify ownership first.
     await get_folder(folder_id, user_id)
 
-    # Validate no circular reference.
-    # No separate parent check — _is_descendant_of already fetches all user
-    # folders, so an invalid target_parent_id simply won't be found.
+    # Authorization: FK only checks existence, not ownership.
+    # Verify the target parent belongs to this user to prevent cross-user nesting.
+    if target_parent_id:
+        await get_folder(target_parent_id, user_id)
+
+    # Validate no circular reference
     if target_parent_id:
         if await _is_descendant_of(target_parent_id, folder_id, user_id):
             raise FolderValidationError("Cannot move folder into its own descendant")
