@@ -176,7 +176,7 @@ const FlowEditor: React.FC<{
   );
   const [immediateNodePositions, setImmediateNodePositions] = useState<
     Record<string, { x: number; y: number }>
-  >(Object.fromEntries(nodes.map((node) => [node.id, node.position])));
+  >(() => Object.fromEntries(nodes.map((node) => [node.id, node.position])));
 
   // Add realtime execution status tracking for FloatingReviewsPanel
   useFlowRealtime();
@@ -619,9 +619,13 @@ const FlowEditor: React.FC<{
     return () => cancelAnimationFrame(rafId);
   }, [fitView, hasAutoFramed, nodes.length]);
 
-  useEffect(() => {
+  // Reset auto-frame when flow changes (render-time sync instead of useEffect)
+  const prevFlowKeyRef = useRef(`${flowID}-${flowVersion}`);
+  const flowKey = `${flowID}-${flowVersion}`;
+  if (flowKey !== prevFlowKeyRef.current) {
+    prevFlowKeyRef.current = flowKey;
     setHasAutoFramed(false);
-  }, [flowID, flowVersion]);
+  }
 
   const navigateToNode = useCallback(
     (nodeId: string) => {
@@ -1186,7 +1190,9 @@ const FlowEditor: React.FC<{
 
 const WrappedFlowEditor: typeof FlowEditor = (props) => (
   <ReactFlowProvider>
-    <FlowEditor {...props} />
+    <Suspense fallback={null}>
+      <FlowEditor {...props} />
+    </Suspense>
   </ReactFlowProvider>
 );
 

@@ -52,7 +52,7 @@ export const HorizontalScroll: React.FC<HorizontalScrollAreaProps> = ({
       return;
     }
     const handleScroll = () => updateScrollState();
-    element.addEventListener("scroll", handleScroll);
+    element.addEventListener("scroll", handleScroll, { passive: true });
     window.addEventListener("resize", handleScroll);
     return () => {
       element.removeEventListener("scroll", handleScroll);

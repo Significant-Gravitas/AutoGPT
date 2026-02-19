@@ -12,6 +12,7 @@ import {
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { ToolUIPart, UIDataTypes, UIMessage, UITools } from "ai";
+import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { CreateAgentTool } from "../../tools/CreateAgent/CreateAgent";
 import { EditAgentTool } from "../../tools/EditAgent/EditAgent";
@@ -57,7 +58,7 @@ function resolveWorkspaceUrls(text: string): string {
  * Falls back to <video> when an <img> fails to load for workspace files.
  */
 function WorkspaceMediaImage(props: React.JSX.IntrinsicElements["img"]) {
-  const { src, alt, ...rest } = props;
+  const { src, alt } = props;
   const [imgFailed, setImgFailed] = useState(false);
   const isWorkspace = src?.includes("/workspace/files/") ?? false;
 
@@ -79,16 +80,17 @@ function WorkspaceMediaImage(props: React.JSX.IntrinsicElements["img"]) {
   }
 
   return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
+    <Image
       src={src}
       alt={alt || "Image"}
-      className="h-auto max-w-full rounded-md border border-zinc-200"
-      loading="lazy"
+      width={0}
+      height={0}
+      sizes="100vw"
+      className="h-auto w-full rounded-md border border-zinc-200"
+      unoptimized
       onError={() => {
         if (isWorkspace) setImgFailed(true);
       }}
-      {...rest}
     />
   );
 }
@@ -195,12 +197,12 @@ export const ChatMessagesContainer = ({
                   "group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-slate-900"
                 }
               >
-                {message.parts.map((part, i) => {
+                {message.parts.map((part) => {
                   switch (part.type) {
                     case "text":
                       return (
                         <MessageResponse
-                          key={`${message.id}-${i}`}
+                          key={`${message.id}-text`}
                           components={STREAMDOWN_COMPONENTS}
                         >
                           {resolveWorkspaceUrls(part.text)}
@@ -209,7 +211,7 @@ export const ChatMessagesContainer = ({
                     case "tool-find_block":
                       return (
                         <FindBlocksTool
-                          key={`${message.id}-${i}`}
+                          key={(part as ToolUIPart).toolCallId}
                           part={part as ToolUIPart}
                         />
                       );
@@ -217,7 +219,7 @@ export const ChatMessagesContainer = ({
                     case "tool-find_library_agent":
                       return (
                         <FindAgentsTool
-                          key={`${message.id}-${i}`}
+                          key={(part as ToolUIPart).toolCallId}
                           part={part as ToolUIPart}
                         />
                       );
@@ -225,14 +227,14 @@ export const ChatMessagesContainer = ({
                     case "tool-get_doc_page":
                       return (
                         <SearchDocsTool
-                          key={`${message.id}-${i}`}
+                          key={(part as ToolUIPart).toolCallId}
                           part={part as ToolUIPart}
                         />
                       );
                     case "tool-run_block":
                       return (
                         <RunBlockTool
-                          key={`${message.id}-${i}`}
+                          key={(part as ToolUIPart).toolCallId}
                           part={part as ToolUIPart}
                         />
                       );
@@ -240,42 +242,42 @@ export const ChatMessagesContainer = ({
                     case "tool-schedule_agent":
                       return (
                         <RunAgentTool
-                          key={`${message.id}-${i}`}
+                          key={(part as ToolUIPart).toolCallId}
                           part={part as ToolUIPart}
                         />
                       );
                     case "tool-create_agent":
                       return (
                         <CreateAgentTool
-                          key={`${message.id}-${i}`}
+                          key={(part as ToolUIPart).toolCallId}
                           part={part as ToolUIPart}
                         />
                       );
                     case "tool-edit_agent":
                       return (
                         <EditAgentTool
-                          key={`${message.id}-${i}`}
+                          key={(part as ToolUIPart).toolCallId}
                           part={part as ToolUIPart}
                         />
                       );
                     case "tool-view_agent_output":
                       return (
                         <ViewAgentOutputTool
-                          key={`${message.id}-${i}`}
+                          key={(part as ToolUIPart).toolCallId}
                           part={part as ToolUIPart}
                         />
                       );
                     case "tool-search_feature_requests":
                       return (
                         <SearchFeatureRequestsTool
-                          key={`${message.id}-${i}`}
+                          key={(part as ToolUIPart).toolCallId}
                           part={part as ToolUIPart}
                         />
                       );
                     case "tool-create_feature_request":
                       return (
                         <CreateFeatureRequestTool
-                          key={`${message.id}-${i}`}
+                          key={(part as ToolUIPart).toolCallId}
                           part={part as ToolUIPart}
                         />
                       );
@@ -285,7 +287,7 @@ export const ChatMessagesContainer = ({
                       if (part.type.startsWith("tool-")) {
                         return (
                           <GenericTool
-                            key={`${message.id}-${i}`}
+                            key={(part as ToolUIPart).toolCallId}
                             part={part as ToolUIPart}
                           />
                         );

@@ -103,6 +103,7 @@ function OutputKeySection({
       </div>
       <div className="mt-2">
         {visibleItems.map((item, i) => (
+          // eslint-disable-next-line react/no-array-index-key
           <RenderOutputValue key={i} value={item} />
         ))}
       </div>

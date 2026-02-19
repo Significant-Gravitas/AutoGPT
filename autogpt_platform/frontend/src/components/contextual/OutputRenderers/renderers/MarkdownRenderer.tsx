@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import Image from "next/image";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -359,20 +360,21 @@ function renderMarkdown(
             </del>
           ),
           // Image handling
-          img: ({ src, alt, ...props }) => {
+          img: ({ src, alt }) => {
             // Check if it's a video URL pattern
             if (src && isVideoUrl(src)) {
               return renderVideoEmbed(src);
             }
 
             return (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={src}
-                alt={alt}
-                className="my-4 h-auto max-w-full rounded-lg shadow-md"
-                loading="lazy"
-                {...props}
+              <Image
+                src={src || ""}
+                alt={alt || "Image"}
+                width={0}
+                height={0}
+                sizes="100vw"
+                className="my-4 h-auto w-full rounded-lg shadow-md"
+                unoptimized
               />
             );
           },

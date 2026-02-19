@@ -298,12 +298,21 @@ export function BlocksControl({
                     key={category}
                     data-testid="blocks-category"
                     role="button"
+                    tabIndex={0}
                     className={`cursor-pointer rounded-xl border px-2 py-2 text-xs font-medium dark:border-slate-700 dark:text-white ${colorClass}`}
                     onClick={() =>
                       setSelectedCategory(
                         selectedCategory === category ? null : category,
                       )
                     }
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        setSelectedCategory(
+                          selectedCategory === category ? null : category,
+                        );
+                      }
+                    }}
                   >
                     {beautifyString((category || "All").toLowerCase())}
                   </div>

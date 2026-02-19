@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useRef, useState } from "react";
 import { Input } from "@/components/__legacy__/ui/input";
 import { Button } from "@/components/__legacy__/ui/button";
 import { useToast } from "@/components/molecules/Toast/use-toast";
@@ -7,6 +7,7 @@ import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { getTimezoneDisplayName } from "@/lib/timezone-utils";
 import { useUserTimezone } from "@/lib/hooks/useUserTimezone";
 import { InfoIcon } from "lucide-react";
+import Link from "next/link";
 
 // Base type for cron expression only
 type CronOnlyCallback = (cronExpression: string) => void;
@@ -53,15 +54,15 @@ export function CronSchedulerDialog(props: CronSchedulerDialogProps) {
   const userTimezone = useUserTimezone();
   const timezoneDisplay = getTimezoneDisplayName(userTimezone || "UTC");
 
-  // Reset state when dialog opens
-  useEffect(() => {
-    if (open) {
-      const defaultName =
-        props.mode === "with-name" ? props.defaultScheduleName || "" : "";
-      setScheduleName(defaultName);
-      setCronExpression(defaultCronExpression);
-    }
-  }, [open, props, defaultCronExpression]);
+  // Reset state when dialog opens (render-time sync instead of useEffect)
+  const prevOpenRef = useRef(open);
+  if (open && !prevOpenRef.current) {
+    const defaultName =
+      props.mode === "with-name" ? props.defaultScheduleName || "" : "";
+    setScheduleName(defaultName);
+    setCronExpression(defaultCronExpression);
+  }
+  prevOpenRef.current = open;
 
   const handleDone = () => {
     if (props.mode === "with-name" && !scheduleName.trim()) {
@@ -100,8 +101,11 @@ export function CronSchedulerDialog(props: CronSchedulerDialogProps) {
         <div className="flex flex-col gap-4">
           {props.mode === "with-name" && (
             <div className="flex max-w-[448px] flex-col space-y-2">
-              <label className="text-sm font-medium">Schedule Name</label>
+              <label htmlFor="schedule-name" className="text-sm font-medium">
+                Schedule Name
+              </label>
               <Input
+                id="schedule-name"
                 value={scheduleName}
                 onChange={(e) => setScheduleName(e.target.value)}
                 placeholder="Enter a name for this schedule"
@@ -121,9 +125,9 @@ export function CronSchedulerDialog(props: CronSchedulerDialogProps) {
               <InfoIcon className="h-4 w-4 text-amber-600" />
               <p className="text-sm text-amber-800">
                 No timezone set. Schedule will run in UTC.
-                <a href="/profile/settings" className="ml-1 underline">
+                <Link href="/profile/settings" className="ml-1 underline">
                   Set your timezone
-                </a>
+                </Link>
               </p>
             </div>
           ) : (

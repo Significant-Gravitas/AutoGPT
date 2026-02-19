@@ -1,15 +1,12 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
-import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "AutoGPT Platform",
+  description: "AutoGPT Platform",
+};
 
 export default function Page() {
-  const router = useRouter();
-
-  useEffect(() => {
-    router.replace("/copilot");
-  }, [router]);
-
-  return <LoadingSpinner size="large" cover />;
+  redirect("/copilot");
 }

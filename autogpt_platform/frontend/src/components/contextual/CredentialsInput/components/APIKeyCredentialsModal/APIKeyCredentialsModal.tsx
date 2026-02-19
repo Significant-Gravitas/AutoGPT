@@ -93,7 +93,7 @@ export function APIKeyCredentialsModal({
                         <FormDescription>
                           Required scope(s) for this block:{" "}
                           {schema.credentials_scopes?.map((s, i, a) => (
-                            <span key={i}>
+                            <span key={s}>
                               <code className="text-xs font-bold">{s}</code>
                               {i < a.length - 1 && ", "}
                             </span>

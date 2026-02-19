@@ -1,13 +1,11 @@
-"use client";
-import { ReactFlowProvider } from "@xyflow/react";
-import { Flow } from "./components/FlowEditor/Flow/Flow";
+import type { Metadata } from "next";
+import { BuilderContent } from "./BuilderContent";
+
+export const metadata: Metadata = {
+  title: "Build",
+  description: "Build your agent",
+};
 
 export default function BuilderPage() {
-  return (
-    <div className="relative h-full w-full">
-      <ReactFlowProvider>
-        <Flow />
-      </ReactFlowProvider>
-    </div>
-  );
+  return <BuilderContent />;
 }

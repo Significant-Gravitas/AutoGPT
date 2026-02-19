@@ -452,7 +452,7 @@ export function CronScheduler({
               const monthNumber = i + 1;
               return (
                 <Button
-                  key={i}
+                  key={month.label}
                   variant={
                     selectedMonths.includes(monthNumber) ? "default" : "outline"
                   }

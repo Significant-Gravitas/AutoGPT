@@ -300,7 +300,6 @@ export function MCPToolDialog({
                 value={serverUrl}
                 onChange={(e) => setServerUrl(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleDiscoverTools()}
-                autoFocus
               />
             </div>
 
@@ -327,7 +326,6 @@ export function MCPToolDialog({
                   value={manualToken}
                   onChange={(e) => setManualToken(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleDiscoverTools()}
-                  autoFocus
                 />
               </div>
             )}

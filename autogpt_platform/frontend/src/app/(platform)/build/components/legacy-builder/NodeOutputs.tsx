@@ -110,6 +110,7 @@ export default function NodeOutputs({
                 if (enableEnhancedOutputHandling && renderer) {
                   const metadata: OutputMetadata = {};
                   return (
+                    // eslint-disable-next-line react/no-array-index-key
                     <React.Fragment key={index}>
                       <OutputItem
                         value={item}
@@ -121,6 +122,7 @@ export default function NodeOutputs({
                   );
                 }
                 return (
+                  // eslint-disable-next-line react/no-array-index-key
                   <React.Fragment key={index}>
                     <ContentRenderer
                       value={item}

@@ -161,7 +161,7 @@ export function ClarificationQuestionsCard({
 
                 return (
                   <div
-                    key={`${q.keyword}-${index}`}
+                    key={q.keyword}
                     className={cn(
                       "relative rounded-lg border p-3",
                       isAnswered

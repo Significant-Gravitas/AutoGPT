@@ -140,10 +140,7 @@ export function AgentRunDraftView({
       ),
     [agentInputSchema],
   );
-  const agentCredentialsInputFields = useMemo(
-    () => graph.credentials_input_schema.properties,
-    [graph],
-  );
+  const agentCredentialsInputFields = graph.credentials_input_schema.properties;
   const credentialFields = useMemo(
     function getCredentialFields() {
       return Object.entries(agentCredentialsInputFields);
