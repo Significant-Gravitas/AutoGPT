@@ -130,6 +130,29 @@ is delivered to the user via a background stream.
 """
 
 
+def _long_running_messages(tool_name: str, args: dict[str, Any]) -> tuple[str, str]:
+    """Return (pending_msg, started_msg) for a long-running tool."""
+    _TOOL_MSG = {
+        "create_agent": ("description", "Creating your agent", "Agent creation"),
+        "edit_agent": ("changes", "Editing agent", "Agent edit"),
+    }
+    if tool_name in _TOOL_MSG:
+        arg_key, verb, noun = _TOOL_MSG[tool_name]
+        detail = args.get(arg_key, "")
+        preview = (detail[:100] + "...") if len(detail) > 100 else detail
+        pending = (
+            f"{verb}: {preview}"
+            if preview
+            else f"{verb}... This may take a few minutes."
+        )
+        started = f"{noun} started. You can close this tab - check your library in a few minutes."
+        return pending, started
+    return (
+        f"Running {tool_name}... This may take a few minutes.",
+        f"{tool_name} started. You can close this tab - check back in a few minutes.",
+    )
+
+
 def _build_long_running_callback(user_id: str | None) -> LongRunningCallback:
     """Build a callback that delegates long-running tools to the non-SDK infrastructure.
 
@@ -152,36 +175,7 @@ def _build_long_running_callback(user_id: str | None) -> LongRunningCallback:
         session_id = session.session_id
 
         # --- Build user-friendly messages (matches non-SDK service) ---
-        if tool_name == "create_agent":
-            desc = args.get("description", "")
-            desc_preview = (desc[:100] + "...") if len(desc) > 100 else desc
-            pending_msg = (
-                f"Creating your agent: {desc_preview}"
-                if desc_preview
-                else "Creating agent... This may take a few minutes."
-            )
-            started_msg = (
-                "Agent creation started. You can close this tab - "
-                "check your library in a few minutes."
-            )
-        elif tool_name == "edit_agent":
-            changes = args.get("changes", "")
-            changes_preview = (changes[:100] + "...") if len(changes) > 100 else changes
-            pending_msg = (
-                f"Editing agent: {changes_preview}"
-                if changes_preview
-                else "Editing agent... This may take a few minutes."
-            )
-            started_msg = (
-                "Agent edit started. You can close this tab - "
-                "check your library in a few minutes."
-            )
-        else:
-            pending_msg = f"Running {tool_name}... This may take a few minutes."
-            started_msg = (
-                f"{tool_name} started. You can close this tab - "
-                "check back in a few minutes."
-            )
+        pending_msg, started_msg = _long_running_messages(tool_name, args)
 
         # --- Register task in Redis for SSE reconnection ---
         await stream_registry.create_task(
@@ -466,6 +460,44 @@ def _is_tool_error_or_denial(content: str | None) -> bool:
     )
 
 
+async def _build_query_message(
+    current_message: str,
+    session: ChatSession,
+    use_resume: bool,
+    transcript_msg_count: int,
+    session_id: str,
+) -> str:
+    """Build the query message with appropriate context.
+
+    With --resume the CLI already has full context, so only the new message
+    is needed.  Without resume, compress history into a context prefix.
+    Hybrid mode: if the transcript is stale, compress only the gap.
+    """
+    msg_count = len(session.messages)
+
+    if use_resume and transcript_msg_count > 0:
+        if transcript_msg_count < msg_count - 1:
+            gap = session.messages[transcript_msg_count:-1]
+            gap_context = _format_conversation_context(gap)
+            if gap_context:
+                logger.info(
+                    f"[SDK] Transcript stale: covers {transcript_msg_count} "
+                    f"of {msg_count} messages, compressing {len(gap)} missed"
+                )
+                return f"{gap_context}\n\nNow, the user says:\n{current_message}"
+    elif not use_resume and msg_count > 1:
+        logger.warning(
+            f"[SDK] Using compression fallback for session "
+            f"{session_id} ({msg_count} messages) — no transcript for --resume"
+        )
+        compressed = await _compress_conversation_history(session)
+        history_context = _format_conversation_context(compressed)
+        if history_context:
+            return f"{history_context}\n\nNow, the user says:\n{current_message}"
+
+    return current_message
+
+
 async def stream_chat_completion_sdk(
     session_id: str,
     message: str | None = None,
@@ -643,50 +675,13 @@ async def stream_chat_completion_sdk(
                     yield StreamFinish()
                     return
 
-                # Build query: with --resume the CLI already has full
-                # context, so we only send the new message.  Without
-                # resume, compress history into a context prefix.
-                #
-                # Hybrid mode: if the transcript is stale (upload missed
-                # some turns), compress only the gap and prepend it so
-                # the agent has transcript context + missed turns.
-                query_message = current_message
-                current_msg_count = len(session.messages)
-
-                if use_resume and transcript_msg_count > 0:
-                    # Transcript covers messages[0..M-1].  Current session
-                    # has N messages (last one is the new user msg).
-                    # Gap = messages[M .. N-2] (everything between upload
-                    # and the current turn).
-                    # When transcript_msg_count == 0 (no metadata), we trust
-                    # the transcript is up-to-date and skip gap detection to
-                    # avoid duplicating the full history.
-                    if transcript_msg_count < current_msg_count - 1:
-                        gap = session.messages[transcript_msg_count:-1]
-                        gap_context = _format_conversation_context(gap)
-                        if gap_context:
-                            logger.info(
-                                f"[SDK] Transcript stale: covers {transcript_msg_count} "
-                                f"of {current_msg_count} messages, compressing "
-                                f"{len(gap)} missed messages"
-                            )
-                            query_message = (
-                                f"{gap_context}\n\n"
-                                f"Now, the user says:\n{current_message}"
-                            )
-                elif not use_resume and current_msg_count > 1:
-                    logger.warning(
-                        f"[SDK] Using compression fallback for session "
-                        f"{session_id} ({current_msg_count} messages) — "
-                        f"no transcript available for --resume"
-                    )
-                    compressed = await _compress_conversation_history(session)
-                    history_context = _format_conversation_context(compressed)
-                    if history_context:
-                        query_message = (
-                            f"{history_context}\n\n"
-                            f"Now, the user says:\n{current_message}"
-                        )
+                query_message = await _build_query_message(
+                    current_message,
+                    session,
+                    use_resume,
+                    transcript_msg_count,
+                    session_id,
+                )
 
                 logger.info(
                     f"[SDK] Sending query ({len(session.messages)} msgs, "
@@ -852,21 +847,14 @@ async def stream_chat_completion_sdk(
             yield StreamFinish()
 
     except Exception as e:
-        is_timeout = isinstance(e, TimeoutError)
-        logger.error(
-            f"[SDK] {'Timeout' if is_timeout else 'Error'}: {e}", exc_info=True
-        )
+        logger.error(f"[SDK] Error: {e}", exc_info=True)
         try:
             await asyncio.shield(upsert_chat_session(session))
         except Exception as save_err:
             logger.error(f"[SDK] Failed to save session on error: {save_err}")
         yield StreamError(
-            errorText=(
-                "The agent stopped responding. Please try again."
-                if is_timeout
-                else "An error occurred. Please try again."
-            ),
-            code="sdk_timeout" if is_timeout else "sdk_error",
+            errorText="An error occurred. Please try again.",
+            code="sdk_error",
         )
         yield StreamFinish()
     finally:
