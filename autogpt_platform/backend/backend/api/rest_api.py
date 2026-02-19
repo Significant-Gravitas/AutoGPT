@@ -41,14 +41,14 @@ import backend.data.user
 import backend.integrations.webhooks.utils
 import backend.util.service
 import backend.util.settings
+from backend.api.features.library.exceptions import (
+    FolderAlreadyExistsError,
+    FolderValidationError,
+)
 from backend.blocks.llm import DEFAULT_LLM_MODEL
 from backend.copilot.completion_consumer import (
     start_completion_consumer,
     stop_completion_consumer,
-)
-from backend.api.features.library.exceptions import (
-    FolderAlreadyExistsError,
-    FolderValidationError,
 )
 from backend.data.model import Credentials
 from backend.integrations.providers import ProviderName
