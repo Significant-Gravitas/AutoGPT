@@ -8,7 +8,7 @@ import { toast } from "@/components/molecules/Toast/use-toast";
 import * as Sentry from "@sentry/nextjs";
 import { useQueryClient } from "@tanstack/react-query";
 import { parseAsString, useQueryState } from "nuqs";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { convertChatSessionMessagesToUiMessages } from "./helpers/convertChatSessionToUiMessages";
 
 export function useChatSession() {
@@ -106,13 +106,13 @@ export function useChatSession() {
     }
   }
 
-  const invalidateSession = useCallback(() => {
+  function invalidateSession() {
     if (sessionId) {
       queryClient.invalidateQueries({
         queryKey: getGetV2GetSessionQueryKey(sessionId),
       });
     }
-  }, [sessionId, queryClient]);
+  }
 
   return {
     sessionId,

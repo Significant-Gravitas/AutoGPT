@@ -1,5 +1,7 @@
 """Tests for _format_conversation_context and _build_query_message."""
 
+from datetime import UTC, datetime
+
 import pytest
 
 from backend.copilot.model import ChatMessage, ChatSession
@@ -94,8 +96,6 @@ def test_format_full_conversation():
 
 def _make_session(messages: list[ChatMessage]) -> ChatSession:
     """Build a minimal ChatSession with the given messages."""
-    from datetime import UTC, datetime
-
     now = datetime.now(UTC)
     return ChatSession(
         session_id="test-session",

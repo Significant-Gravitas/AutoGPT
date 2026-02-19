@@ -478,7 +478,7 @@ class ReadWorkspaceFileTool(BaseTool):
             msg += (
                 f" Saved to {save_to_path}."
                 if save_to_path
-                else " Use download_url to retrieve content."
+                else " Use read_workspace_file with this file_id to retrieve content."
             )
             return WorkspaceFileMetadataResponse(
                 file_id=file_info.id,
