@@ -31,6 +31,14 @@ def _resolve_write_content(
     Returns the raw bytes on success, or an ``ErrorResponse`` on validation
     failure (wrong number of sources, invalid path, file not found, etc.).
     """
+    # Normalise empty strings to None so counting and dispatch stay in sync.
+    if content_text is not None and content_text == "":
+        content_text = None
+    if content_b64 is not None and content_b64 == "":
+        content_b64 = None
+    if source_path is not None and source_path == "":
+        source_path = None
+
     sources_provided = sum(
         x is not None for x in [content_text, content_b64, source_path]
     )
@@ -89,7 +97,7 @@ def _validate_ephemeral_path(
     Returns the resolved real path on success, or an ``ErrorResponse`` when the
     path escapes the session directory.
     """
-    session_dir = os.path.normpath(make_session_path(session_id)) + os.sep
+    session_dir = os.path.realpath(make_session_path(session_id)) + os.sep
     real = os.path.realpath(path)
     if not real.startswith(session_dir):
         return ErrorResponse(

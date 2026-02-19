@@ -13,7 +13,7 @@ export function MorphingTextAnimation({ text, className }: Props) {
     <div className={cn(className)}>
       <AnimatePresence mode="popLayout" initial={false}>
         <motion.div key={text} className="whitespace-nowrap">
-          <motion.span className="inline-flex gap-0 overflow-hidden">
+          <motion.span className="inline-flex overflow-hidden">
             {letters.map((char, index) => (
               <motion.span
                 key={`${text}-${index}`}
