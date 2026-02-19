@@ -18,7 +18,7 @@ from backend.copilot.completion_handler import (
     process_operation_success,
 )
 from backend.copilot.config import ChatConfig
-from backend.copilot.executor.utils import enqueue_copilot_task
+from backend.copilot.executor.utils import enqueue_cancel_task, enqueue_copilot_task
 from backend.copilot.model import (
     ChatMessage,
     ChatSession,
@@ -312,6 +312,49 @@ async def get_session(
         messages=messages,
         active_stream=active_stream_info,
     )
+
+
+@router.post(
+    "/sessions/{session_id}/cancel",
+    status_code=200,
+)
+async def cancel_session_task(
+    session_id: str,
+    user_id: Annotated[str | None, Depends(auth.get_user_id)],
+):
+    """Cancel the active streaming task for a session.
+
+    Publishes a cancel event to the executor via RabbitMQ FANOUT, then
+    polls Redis until the task status flips from ``running`` or a timeout
+    (10 s) is reached.  Returns only after the cancellation is confirmed.
+    """
+    active_task, _ = await stream_registry.get_active_task_for_session(
+        session_id, user_id
+    )
+    if not active_task:
+        return {"cancelled": False, "reason": "no_active_task"}
+
+    task_id = active_task.task_id
+    await enqueue_cancel_task(task_id)
+    logger.info(f"[CANCEL] Published cancel for task {task_id} session {session_id}")
+
+    # Poll until the executor confirms the task is no longer running.
+    poll_interval = 0.5
+    max_wait = 10.0
+    waited = 0.0
+    while waited < max_wait:
+        await asyncio.sleep(poll_interval)
+        waited += poll_interval
+        task = await stream_registry.get_task(task_id)
+        if task is None or task.status != "running":
+            logger.info(
+                f"[CANCEL] Task {task_id} confirmed stopped "
+                f"(status={task.status if task else 'gone'}) after {waited:.1f}s"
+            )
+            return {"cancelled": True, "task_id": task_id}
+
+    logger.warning(f"[CANCEL] Task {task_id} still running after {max_wait}s")
+    return {"cancelled": False, "task_id": task_id, "reason": "timeout"}
 
 
 @router.post(

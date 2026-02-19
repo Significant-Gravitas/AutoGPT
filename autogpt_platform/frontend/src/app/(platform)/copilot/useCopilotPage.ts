@@ -95,7 +95,7 @@ export function useCopilotPage() {
   const {
     messages,
     sendMessage,
-    stop,
+    stop: sdkStop,
     status,
     error,
     setMessages,
@@ -107,6 +107,21 @@ export function useCopilotPage() {
     // the hydrated messages to overwrite the resumed stream.  Instead we
     // call resumeStream() manually after hydration + active_stream detection.
   });
+
+  // Wrap AI SDK's stop() to also cancel the backend executor task.
+  // sdkStop() aborts the SSE fetch instantly (UI feedback), then we fire
+  // the cancel API to actually stop the executor and wait for confirmation.
+  const stop = useCallback(async () => {
+    sdkStop();
+    if (!sessionId) return;
+    try {
+      await fetch(`/api/chat/sessions/${sessionId}/cancel`, {
+        method: "POST",
+      });
+    } catch {
+      // Best-effort — SSE already aborted for instant UI feedback
+    }
+  }, [sdkStop, sessionId]);
 
   // Abort the stream if the backend doesn't start sending data within 12s.
   const stopRef = useRef(stop);
