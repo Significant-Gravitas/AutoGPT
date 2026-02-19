@@ -7,9 +7,20 @@ tool access, and dangerous input patterns.
 
 import os
 
+import pytest
+
 from .security_hooks import _validate_tool_access, _validate_user_isolation
 
 SDK_CWD = "/tmp/copilot-abc123"
+
+
+def _sdk_available() -> bool:
+    try:
+        import claude_agent_sdk  # noqa: F401
+
+        return True
+    except ImportError:
+        return False
 
 
 def _is_denied(result: dict) -> bool:
@@ -188,3 +199,64 @@ def test_bash_builtin_blocked_message_clarity():
     reason = _reason(_validate_tool_access("Bash", {"command": "echo hello"}))
     assert "[SECURITY]" in reason
     assert "cannot be bypassed" in reason
+
+
+# -- Task sub-agent hooks (require SDK) --------------------------------------
+
+
+@pytest.fixture()
+def _hooks():
+    """Create security hooks and return the PreToolUse handler."""
+    from .security_hooks import create_security_hooks
+
+    hooks = create_security_hooks(user_id="u1", sdk_cwd=SDK_CWD, max_subtasks=2)
+    pre = hooks["PreToolUse"][0].hooks[0]
+    return pre
+
+
+@pytest.mark.skipif(not _sdk_available(), reason="claude_agent_sdk not installed")
+@pytest.mark.asyncio
+async def test_task_background_blocked(_hooks):
+    """Task with run_in_background=true must be denied."""
+    result = await _hooks(
+        {"tool_name": "Task", "tool_input": {"run_in_background": True, "prompt": "x"}},
+        tool_use_id=None,
+        context={},
+    )
+    assert _is_denied(result)
+    assert "foreground" in _reason(result).lower()
+
+
+@pytest.mark.skipif(not _sdk_available(), reason="claude_agent_sdk not installed")
+@pytest.mark.asyncio
+async def test_task_foreground_allowed(_hooks):
+    """Task without run_in_background should be allowed."""
+    result = await _hooks(
+        {"tool_name": "Task", "tool_input": {"prompt": "do stuff"}},
+        tool_use_id=None,
+        context={},
+    )
+    assert not _is_denied(result)
+
+
+@pytest.mark.skipif(not _sdk_available(), reason="claude_agent_sdk not installed")
+@pytest.mark.asyncio
+async def test_task_limit_enforced(_hooks):
+    """Task spawns beyond max_subtasks should be denied."""
+    # First two should pass
+    for _ in range(2):
+        result = await _hooks(
+            {"tool_name": "Task", "tool_input": {"prompt": "ok"}},
+            tool_use_id=None,
+            context={},
+        )
+        assert not _is_denied(result)
+
+    # Third should be denied (limit=2)
+    result = await _hooks(
+        {"tool_name": "Task", "tool_input": {"prompt": "over limit"}},
+        tool_use_id=None,
+        context={},
+    )
+    assert _is_denied(result)
+    assert "Maximum" in _reason(result)

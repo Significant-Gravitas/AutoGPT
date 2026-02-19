@@ -24,6 +24,7 @@ from ..response_model import (
     StreamBaseResponse,
     StreamError,
     StreamFinish,
+    StreamHeartbeat,
     StreamStart,
     StreamTextDelta,
     StreamToolInputAvailable,
@@ -393,12 +394,42 @@ def _format_conversation_context(messages: list[ChatMessage]) -> str | None:
             lines.append(f"User: {msg.content}")
         elif msg.role == "assistant":
             lines.append(f"You responded: {msg.content}")
-        # Skip tool messages — they're internal details
+        elif msg.role == "tool":
+            # Include tool error/denial outcomes so the agent doesn't
+            # hallucinate that blocked or failed operations succeeded.
+            content = msg.content
+            if _is_tool_error_or_denial(content):
+                lines.append(f"Tool result: {content}")
 
     if not lines:
         return None
 
     return "<conversation_history>\n" + "\n".join(lines) + "\n</conversation_history>"
+
+
+def _is_tool_error_or_denial(content: str) -> bool:
+    """Check if a tool message content indicates an error or denial.
+
+    We include these in conversation context so the agent doesn't
+    hallucinate success for operations that actually failed.
+    """
+    if not content:
+        return False
+    lower = content.lower()
+    return any(
+        marker in lower
+        for marker in (
+            "[security]",
+            "error",
+            "failed",
+            "denied",
+            "blocked",
+            "not found",
+            "not allowed",
+            "permission",
+            "cannot be bypassed",
+        )
+    )
 
 
 async def stream_chat_completion_sdk(
@@ -622,7 +653,23 @@ async def stream_chat_completion_sdk(
                 has_appended_assistant = False
                 has_tool_results = False
 
-                async for sdk_msg in client.receive_messages():
+                # Use an explicit async iterator with timeout to send
+                # heartbeats when the CLI is idle (e.g. executing tools).
+                # This prevents proxies/LBs from closing the SSE connection.
+                _HEARTBEAT_INTERVAL = 15.0  # seconds
+                msg_iter = client.receive_messages().__aiter__()
+                while not stream_completed:
+                    try:
+                        sdk_msg = await asyncio.wait_for(
+                            msg_iter.__anext__(),
+                            timeout=_HEARTBEAT_INTERVAL,
+                        )
+                    except asyncio.TimeoutError:
+                        yield StreamHeartbeat()
+                        continue
+                    except StopAsyncIteration:
+                        break
+
                     logger.debug(
                         f"[SDK] Received: {type(sdk_msg).__name__} "
                         f"{getattr(sdk_msg, 'subtype', '')}"
@@ -686,9 +733,6 @@ async def stream_chat_completion_sdk(
 
                         elif isinstance(response, StreamFinish):
                             stream_completed = True
-
-                    if stream_completed:
-                        break
 
                 if (
                     assistant_response.content or assistant_response.tool_calls

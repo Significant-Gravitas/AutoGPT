@@ -200,6 +200,19 @@ def create_security_hooks(
                             "Please continue in the main conversation."
                         ),
                     )
+                # Block background task execution — background agents stall
+                # the SSE stream (no messages flow while they run) and get
+                # killed when the main agent's turn ends.
+                if tool_input.get("run_in_background"):
+                    logger.info(f"[SDK] Blocked background Task, user={user_id}")
+                    return cast(
+                        SyncHookJSONOutput,
+                        _deny(
+                            "Background task execution is not supported. "
+                            "Run tasks in the foreground instead "
+                            "(remove the run_in_background parameter)."
+                        ),
+                    )
 
             # Strip MCP prefix for consistent validation
             is_copilot_tool = tool_name.startswith(MCP_TOOL_PREFIX)
