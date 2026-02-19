@@ -4,8 +4,8 @@ import pytest
 from prisma.enums import CreditTransactionType
 from prisma.models import CreditTransaction, UserBalance
 
+from backend.blocks import get_block
 from backend.blocks.llm import AITextGeneratorBlock
-from backend.data.block import get_block
 from backend.data.credit import BetaUserCredit, UsageTransactionMetadata
 from backend.data.execution import ExecutionContext, NodeExecutionEntry
 from backend.data.user import DEFAULT_USER_ID

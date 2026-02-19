@@ -2,9 +2,7 @@ import copy
 from datetime import date, time
 from typing import Any, Optional
 
-# Import for Google Drive file input block
-from backend.blocks.google._drive import AttachmentView, GoogleDriveFile
-from backend.data.block import (
+from backend.blocks._base import (
     Block,
     BlockCategory,
     BlockOutput,
@@ -12,6 +10,9 @@ from backend.data.block import (
     BlockSchemaInput,
     BlockType,
 )
+
+# Import for Google Drive file input block
+from backend.blocks.google._drive import AttachmentView, GoogleDriveFile
 from backend.data.execution import ExecutionContext
 from backend.data.model import SchemaField
 from backend.util.file import store_media_file

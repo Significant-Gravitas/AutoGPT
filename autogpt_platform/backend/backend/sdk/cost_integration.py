@@ -8,7 +8,7 @@ BLOCK_COSTS configuration used by the execution system.
 import logging
 from typing import List, Type
 
-from backend.data.block import Block, BlockCost
+from backend.blocks._base import Block, BlockCost
 from backend.data.block_cost_config import BLOCK_COSTS
 from backend.sdk.registry import AutoRegistry
 

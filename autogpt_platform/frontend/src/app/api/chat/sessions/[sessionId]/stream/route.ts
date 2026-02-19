@@ -1,11 +1,8 @@
 import { environment } from "@/services/environment";
 import { getServerAuthToken } from "@/lib/autogpt-server-api/helpers";
 import { NextRequest } from "next/server";
+import { normalizeSSEStream, SSE_HEADERS } from "../../../sse-helpers";
 
-/**
- * SSE Proxy for chat streaming.
- * Supports POST with context (page content + URL) in the request body.
- */
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ sessionId: string }> },
@@ -23,17 +20,14 @@ export async function POST(
       );
     }
 
-    // Get auth token from server-side session
     const token = await getServerAuthToken();
 
-    // Build backend URL
     const backendUrl = environment.getAGPTServerBaseUrl();
     const streamUrl = new URL(
       `/api/chat/sessions/${sessionId}/stream`,
       backendUrl,
     );
 
-    // Forward request to backend with auth header
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       Accept: "text/event-stream",
@@ -63,14 +57,15 @@ export async function POST(
       });
     }
 
-    // Return the SSE stream directly
-    return new Response(response.body, {
-      headers: {
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache, no-transform",
-        Connection: "keep-alive",
-        "X-Accel-Buffering": "no",
-      },
+    if (!response.body) {
+      return new Response(
+        JSON.stringify({ error: "Empty response from chat service" }),
+        { status: 502, headers: { "Content-Type": "application/json" } },
+      );
+    }
+
+    return new Response(normalizeSSEStream(response.body), {
+      headers: SSE_HEADERS,
     });
   } catch (error) {
     console.error("SSE proxy error:", error);
@@ -87,13 +82,6 @@ export async function POST(
   }
 }
 
-/**
- * Resume an active stream for a session.
- *
- * Called by the AI SDK's `useChat(resume: true)` on page load.
- * Proxies to the backend which checks for an active stream and either
- * replays it (200 + SSE) or returns 204 No Content.
- */
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ sessionId: string }> },
@@ -124,7 +112,6 @@ export async function GET(
       headers,
     });
 
-    // 204 = no active stream to resume
     if (response.status === 204) {
       return new Response(null, { status: 204 });
     }
@@ -137,12 +124,13 @@ export async function GET(
       });
     }
 
-    return new Response(response.body, {
+    if (!response.body) {
+      return new Response(null, { status: 204 });
+    }
+
+    return new Response(normalizeSSEStream(response.body), {
       headers: {
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache, no-transform",
-        Connection: "keep-alive",
-        "X-Accel-Buffering": "no",
+        ...SSE_HEADERS,
         "x-vercel-ai-ui-message-stream": "v1",
       },
     });

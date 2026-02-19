@@ -7,15 +7,6 @@ from replicate.client import Client as ReplicateClient
 from replicate.exceptions import ReplicateError
 from replicate.helpers import FileOutput
 
-from backend.blocks.ideogram import (
-    AspectRatio,
-    ColorPalettePreset,
-    IdeogramModelBlock,
-    IdeogramModelName,
-    MagicPromptOption,
-    StyleType,
-    UpscaleOption,
-)
 from backend.data.graph import GraphBaseMeta
 from backend.data.model import CredentialsMetaInput, ProviderName
 from backend.integrations.credentials_store import ideogram_credentials
@@ -49,6 +40,16 @@ async def generate_agent_image_v2(graph: GraphBaseMeta | AgentGraph) -> io.Bytes
     """
     if not ideogram_credentials.api_key:
         raise ValueError("Missing Ideogram API key")
+
+    from backend.blocks.ideogram import (
+        AspectRatio,
+        ColorPalettePreset,
+        IdeogramModelBlock,
+        IdeogramModelName,
+        MagicPromptOption,
+        StyleType,
+        UpscaleOption,
+    )
 
     name = graph.name
     description = f"{name} ({graph.description})" if graph.description else name

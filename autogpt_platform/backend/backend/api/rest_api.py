@@ -26,6 +26,7 @@ import backend.api.features.executions.review.routes
 import backend.api.features.library.db
 import backend.api.features.library.model
 import backend.api.features.library.routes
+import backend.api.features.mcp.routes as mcp_routes
 import backend.api.features.oauth
 import backend.api.features.otto.routes
 import backend.api.features.postmark.postmark
@@ -40,11 +41,11 @@ import backend.data.user
 import backend.integrations.webhooks.utils
 import backend.util.service
 import backend.util.settings
-from backend.api.features.chat.completion_consumer import (
+from backend.blocks.llm import DEFAULT_LLM_MODEL
+from backend.copilot.completion_consumer import (
     start_completion_consumer,
     stop_completion_consumer,
 )
-from backend.blocks.llm import DEFAULT_LLM_MODEL
 from backend.data.model import Credentials
 from backend.integrations.providers import ProviderName
 from backend.monitoring.instrumentation import instrument_fastapi
@@ -342,6 +343,11 @@ app.include_router(
     workspace_routes.router,
     tags=["workspace"],
     prefix="/api/workspace",
+)
+app.include_router(
+    mcp_routes.router,
+    tags=["v2", "mcp"],
+    prefix="/api/mcp",
 )
 app.include_router(
     backend.api.features.oauth.router,
