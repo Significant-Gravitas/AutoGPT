@@ -35,7 +35,9 @@ async def test_parallel_tool_calls_run_concurrently():
     class FakeSession:
         session_id = "test"
         user_id = "test"
-        messages = []
+
+        def __init__(self):
+            self.messages = []
 
     original_yield = None
 
@@ -88,7 +90,9 @@ async def test_single_tool_call_works():
     class FakeSession:
         session_id = "test"
         user_id = "test"
-        messages = []
+
+        def __init__(self):
+            self.messages = []
 
     async def fake_yield(tc_list, idx, sess, lock=None):
         yield StreamToolInputAvailable(toolCallId="call_0", toolName="t", input={})
@@ -120,7 +124,9 @@ async def test_retryable_error_propagates():
     class FakeSession:
         session_id = "test"
         user_id = "test"
-        messages = []
+
+        def __init__(self):
+            self.messages = []
 
     async def fake_yield(tc_list, idx, sess, lock=None):
         if idx == 1:
@@ -163,7 +169,9 @@ async def test_session_lock_shared():
     class FakeSession:
         session_id = "test"
         user_id = "test"
-        messages = []
+
+        def __init__(self):
+            self.messages = []
 
     observed_locks = []
 
@@ -201,7 +209,9 @@ async def test_cancellation_cleans_up():
     class FakeSession:
         session_id = "test"
         user_id = "test"
-        messages = []
+
+        def __init__(self):
+            self.messages = []
 
     started = asyncio.Event()
 
