@@ -5,6 +5,7 @@ import logging
 from datetime import UTC, datetime
 from typing import Any
 
+from prisma.errors import UniqueViolationError
 from prisma.models import ChatMessage as PrismaChatMessage
 from prisma.models import ChatSession as PrismaChatSession
 from prisma.types import (
@@ -153,8 +154,9 @@ async def add_chat_messages_batch(
     max_retries = 3
     for attempt in range(max_retries):
         try:
-            created_messages = []
             async with db.transaction() as tx:
+                # Build all message data
+                messages_data = []
                 for i, msg in enumerate(messages):
                     # Build ChatMessageCreateInput with only non-None values
                     # (Prisma TypedDict rejects optional fields set to None)
@@ -180,8 +182,10 @@ async def add_chat_messages_batch(
                     if msg.get("function_call") is not None:
                         data["functionCall"] = SafeJson(msg["function_call"])
 
-                    created = await PrismaChatMessage.prisma(tx).create(data=data)
-                    created_messages.append(created)
+                    messages_data.append(data)
+
+                # Create all messages in one operation
+                await PrismaChatMessage.prisma(tx).create_many(data=messages_data)
 
                 # Update session's updatedAt timestamp within the same transaction.
                 # Note: Token usage (total_prompt_tokens, total_completion_tokens) is updated
@@ -191,18 +195,12 @@ async def add_chat_messages_batch(
                     data={"updatedAt": datetime.now(UTC)},
                 )
 
-            # Return messages and final message count (for shared counter sync)
+            # Return empty list (messages not used by caller), final message count for counter sync
             final_count = start_sequence + len(messages)
-            return [ChatMessage.from_db(m) for m in created_messages], final_count
+            return [], final_count
 
-        except Exception as e:
-            # Check if it's a unique constraint violation
-            error_msg = str(e).lower()
-            is_unique_constraint = (
-                "unique constraint" in error_msg or "duplicate key" in error_msg
-            )
-
-            if is_unique_constraint and attempt < max_retries - 1:
+        except UniqueViolationError:
+            if attempt < max_retries - 1:
                 # Collision detected - query MAX(sequence)+1 and retry with correct offset
                 logger.info(
                     f"Collision detected for session {session_id} at sequence "
@@ -214,7 +212,7 @@ async def add_chat_messages_batch(
                 )
                 continue
             else:
-                # Not a collision or max retries exceeded - propagate error
+                # Max retries exceeded - propagate error
                 raise
 
     # Should never reach here due to raise in exception handler
