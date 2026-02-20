@@ -511,9 +511,7 @@ class RunAgentTool(BaseTool):
                     ),
                 )
             elif completed and completed.status == ExecutionStatus.FAILED:
-                error_detail = (
-                    completed.stats.error if completed.stats else None
-                )
+                error_detail = completed.stats.error if completed.stats else None
                 return ErrorResponse(
                     message=(
                         f"Agent '{library_agent.name}' execution failed. "
@@ -523,9 +521,7 @@ class RunAgentTool(BaseTool):
                     error=error_detail,
                 )
             elif completed and completed.status == ExecutionStatus.TERMINATED:
-                error_detail = (
-                    completed.stats.error if completed.stats else None
-                )
+                error_detail = completed.stats.error if completed.stats else None
                 return ErrorResponse(
                     message=(
                         f"Agent '{library_agent.name}' execution was terminated. "
