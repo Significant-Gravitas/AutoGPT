@@ -16,10 +16,16 @@ describe("isEmptyExecutionUpdate", () => {
 
   it("returns false when HTTP status is not 200", () => {
     expect(
-      isEmptyExecutionUpdate({ status: 404, data: { status: "RUNNING", node_executions: [] } }),
+      isEmptyExecutionUpdate({
+        status: 404,
+        data: { status: "RUNNING", node_executions: [] },
+      }),
     ).toBe(false);
     expect(
-      isEmptyExecutionUpdate({ status: 500, data: { status: "RUNNING", node_executions: [] } }),
+      isEmptyExecutionUpdate({
+        status: 500,
+        data: { status: "RUNNING", node_executions: [] },
+      }),
     ).toBe(false);
   });
 

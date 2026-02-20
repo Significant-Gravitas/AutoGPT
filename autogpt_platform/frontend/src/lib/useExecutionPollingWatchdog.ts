@@ -32,7 +32,9 @@ export function useExecutionPollingWatchdog({
 
   setStuckRef.current = setExecutionStuck;
 
-  function refetchInterval(query: Query) {
+  function refetchInterval<TData>(
+    query: Query<TData, Error, TData, readonly unknown[]>,
+  ): number | false {
     if (stuckRef.current) return false;
 
     const rawData = query.state.data;
