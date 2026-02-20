@@ -3,7 +3,7 @@
 import asyncio
 import logging
 from datetime import UTC, datetime
-from typing import Any, cast
+from typing import Any
 
 from prisma.models import ChatMessage as PrismaChatMessage
 from prisma.models import ChatSession as PrismaChatSession
@@ -92,10 +92,9 @@ async def add_chat_message(
     function_call: dict[str, Any] | None = None,
 ) -> ChatMessage:
     """Add a message to a chat session."""
-    # Build input dict dynamically rather than using ChatMessageCreateInput directly
-    # because Prisma's TypedDict validation rejects optional fields set to None.
-    # We only include fields that have values, then cast at the end.
-    data: dict[str, Any] = {
+    # Build ChatMessageCreateInput with only non-None values
+    # (Prisma TypedDict rejects optional fields set to None)
+    data: ChatMessageCreateInput = {
         "Session": {"connect": {"id": session_id}},
         "role": role,
         "sequence": sequence,
@@ -123,7 +122,7 @@ async def add_chat_message(
             where={"id": session_id},
             data={"updatedAt": datetime.now(UTC)},
         ),
-        PrismaChatMessage.prisma().create(data=cast(ChatMessageCreateInput, data)),
+        PrismaChatMessage.prisma().create(data=data),
     )
     return ChatMessage.from_db(message)
 
@@ -157,10 +156,9 @@ async def add_chat_messages_batch(
             created_messages = []
             async with db.transaction() as tx:
                 for i, msg in enumerate(messages):
-                    # Build input dict dynamically rather than using ChatMessageCreateInput
-                    # directly because Prisma's TypedDict validation rejects optional fields
-                    # set to None. We only include fields that have values, then cast.
-                    data: dict[str, Any] = {
+                    # Build ChatMessageCreateInput with only non-None values
+                    # (Prisma TypedDict rejects optional fields set to None)
+                    data: ChatMessageCreateInput = {
                         "Session": {"connect": {"id": session_id}},
                         "role": msg["role"],
                         "sequence": start_sequence + i,
@@ -182,9 +180,7 @@ async def add_chat_messages_batch(
                     if msg.get("function_call") is not None:
                         data["functionCall"] = SafeJson(msg["function_call"])
 
-                    created = await PrismaChatMessage.prisma(tx).create(
-                        data=cast(ChatMessageCreateInput, data)
-                    )
+                    created = await PrismaChatMessage.prisma(tx).create(data=data)
                     created_messages.append(created)
 
                 # Update session's updatedAt timestamp within the same transaction.
