@@ -461,7 +461,7 @@ async def upsert_chat_session(
     async with lock:
         # Get existing message count from DB for incremental saves
         if existing_message_count is None:
-            existing_message_count = await chat_db().get_chat_session_message_count(
+            existing_message_count = await chat_db().get_next_sequence(
                 session.session_id
             )
 
@@ -587,9 +587,7 @@ async def append_and_save_message(session_id: str, message: ChatMessage) -> Chat
             raise ValueError(f"Session {session_id} not found")
 
         session.messages.append(message)
-        existing_message_count = await chat_db().get_chat_session_message_count(
-            session_id
-        )
+        existing_message_count = await chat_db().get_next_sequence(session_id)
 
         try:
             await _save_session_to_db(session, existing_message_count)

@@ -198,13 +198,12 @@ async def add_chat_messages_batch(
             )
 
             if is_unique_constraint and attempt < max_retries - 1:
-                # Collision detected - query MAX(sequence) and retry with correct offset
+                # Collision detected - query MAX(sequence)+1 and retry with correct offset
                 logger.info(
                     f"Collision detected for session {session_id} at sequence "
                     f"{start_sequence}, querying DB for latest sequence"
                 )
-                max_seq = await get_max_sequence(session_id)
-                start_sequence = max_seq + 1
+                start_sequence = await get_next_sequence(session_id)
                 logger.info(
                     f"Retrying batch insert with start_sequence={start_sequence}"
                 )
@@ -268,29 +267,23 @@ async def delete_chat_session(session_id: str, user_id: str | None = None) -> bo
         return False
 
 
-async def get_chat_session_message_count(session_id: str) -> int:
-    """Get the number of messages in a chat session."""
-    count = await PrismaChatMessage.prisma().count(where={"sessionId": session_id})
-    return count
+async def get_next_sequence(session_id: str) -> int:
+    """Get the next sequence number for a new message in this session.
 
-
-async def get_max_sequence(session_id: str) -> int:
-    """Get the maximum sequence number for a session.
-
-    Returns the highest sequence number, or -1 if no messages exist.
-    This is used for collision detection when concurrent writers race.
+    Uses MAX(sequence) + 1 for robustness. Returns 0 if no messages exist.
+    More robust than COUNT(*) because it's immune to deleted messages.
     """
     result = await db.prisma.query_raw(
         """
-        SELECT COALESCE(MAX(sequence), -1) as max_seq
+        SELECT COALESCE(MAX(sequence) + 1, 0) as next_seq
         FROM "ChatMessage"
         WHERE "sessionId" = $1
         """,
         session_id,
     )
     if not result or len(result) == 0:
-        return -1
-    return int(result[0]["max_seq"])
+        return 0
+    return int(result[0]["next_seq"])
 
 
 async def update_tool_message_content(
