@@ -24,6 +24,7 @@ from ..response_model import (
     StreamBaseResponse,
     StreamError,
     StreamFinish,
+    StreamFinishStep,
     StreamHeartbeat,
     StreamStart,
     StreamTextDelta,
@@ -884,6 +885,23 @@ async def stream_chat_completion_sdk(
                                 getattr(response, "toolName", "N/A"),
                             )
                         yield response
+
+                # If the stream ended without a ResultMessage (no
+                # StreamFinish), the SDK CLI exited unexpectedly.  Close
+                # the open step and emit StreamFinish so the frontend
+                # transitions to the "ready" state.
+                if not stream_completed:
+                    logger.warning(
+                        "[SDK] [%s] Stream ended without ResultMessage "
+                        "(StopAsyncIteration) — emitting StreamFinish",
+                        session_id[:12],
+                    )
+                    if adapter.step_open:
+                        yield StreamFinishStep()
+                        adapter.step_open = False
+                    adapter._end_text_if_open([])
+                    yield StreamFinish()
+                    stream_completed = True
 
                 if (
                     assistant_response.content or assistant_response.tool_calls
