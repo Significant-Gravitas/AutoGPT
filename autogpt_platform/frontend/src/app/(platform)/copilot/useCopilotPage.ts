@@ -202,18 +202,6 @@ export function useCopilotPage() {
     resumeStream();
   }, [hasActiveStream, sessionId, hydratedMessages, status, resumeStream]);
 
-  // When the stream finishes, resolve any tool parts still showing spinners.
-  // This can happen if the backend didn't emit StreamToolOutputAvailable for
-  // a tool call before sending StreamFinish (e.g. SDK built-in tools).
-  const prevStatusRef = useRef(status);
-  useEffect(() => {
-    const prev = prevStatusRef.current;
-    prevStatusRef.current = status;
-    if (prev === "streaming" && status === "ready") {
-      setMessages((msgs) => resolveInProgressTools(msgs, "completed"));
-    }
-  }, [status, setMessages]);
-
   // Poll session endpoint when a long-running tool (create_agent, edit_agent)
   // is in progress. When the backend completes, the session data will contain
   // the final tool output — this hook detects the change and updates messages.
