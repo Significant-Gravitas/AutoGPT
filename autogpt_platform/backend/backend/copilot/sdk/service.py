@@ -431,7 +431,7 @@ def _is_tool_error_or_denial(content: str | None) -> bool:
             "maximum",  # subtask-limit denial
             "denied",
             "blocked",
-            "failed",  # internal tool execution failures
+            "failed to",  # internal tool execution failures
             '"iserror": true',  # MCP protocol error flag
         )
     )
@@ -724,7 +724,7 @@ async def stream_chat_completion_sdk(
                         ):
                             extra = ""
                             if isinstance(response, StreamToolOutputAvailable):
-                                out_len = len(response.output) if response.output else 0
+                                out_len = len(str(response.output))
                                 extra = f", output_len={out_len}"
                             logger.info(
                                 "[SDK] [%s] Tool event: %s, tool=%s%s",
