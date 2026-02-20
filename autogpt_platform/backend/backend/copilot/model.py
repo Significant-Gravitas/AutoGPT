@@ -450,8 +450,9 @@ async def upsert_chat_session(
             where the caller already knows how many messages are persisted.
 
     Returns:
-        Tuple of (session, final_message_count) where final_message_count is
-        the actual persisted message count after collision detection adjustments.
+        Tuple of (session, next_sequence) where next_sequence is the next
+        available sequence number after save (accounting for collision detection).
+        This equals the total message count if sequences start at 0.
 
     Raises:
         DatabaseError: If the database write fails. The cache is still updated
@@ -522,7 +523,9 @@ async def _save_session_to_db(
             for incremental saves during streaming.
 
     Returns:
-        Final message count after save (accounting for collision detection).
+        Next available sequence number after save (accounting for collision
+        detection). This is equal to the total number of messages if sequences
+        start at 0.
     """
     db = chat_db()
 

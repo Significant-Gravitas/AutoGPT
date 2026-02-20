@@ -137,15 +137,16 @@ async def add_chat_messages_batch(
 
     Uses collision detection with retry: tries to create messages starting
     at start_sequence. If a unique constraint violation occurs (e.g., the
-    streaming loop and long-running callback race), queries MAX(sequence)
-    and retries with the correct next sequence number. This avoids
-    unnecessary upserts and DB queries in the common case (no collision).
+    streaming loop and long-running callback race), queries the latest
+    sequence and retries with the correct offset. This avoids unnecessary
+    upserts and DB queries in the common case (no collision).
 
     Returns:
-        Tuple of (messages, final_message_count) where final_message_count
-        is the total number of messages in the session after insertion.
-        This allows callers to update their counters even when collision
-        detection adjusts start_sequence.
+        Tuple of (messages, next_sequence) where next_sequence is the
+        sequence number for the next message to be inserted. This equals
+        start_sequence + len(messages) and allows callers to update their
+        counters even when collision detection adjusts start_sequence.
+        Note: messages list is empty since callers don't use it.
     """
     if not messages:
         # No messages to add - return current count
