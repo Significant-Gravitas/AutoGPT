@@ -62,6 +62,22 @@ from .transcript import (
 logger = logging.getLogger(__name__)
 config = ChatConfig()
 
+
+@dataclass
+class MessageCounter:
+    """Mutable counter for tracking saved message count across async contexts.
+
+    Used to coordinate message count between streaming loop and background
+    callbacks, replacing the previous list-based mutable reference pattern.
+    """
+
+    count: int = 0
+
+    def update(self, new_count: int) -> None:
+        """Update the counter to a new value."""
+        self.count = new_count
+
+
 # Set to hold background tasks to prevent garbage collection
 _background_tasks: set[asyncio.Task[Any]] = set()
 
@@ -190,7 +206,7 @@ async def check_active_stream(session_id: str) -> str | None:
 
 def _build_long_running_callback(
     user_id: str | None,
-    saved_msg_count_ref: list[int] | None = None,
+    saved_msg_count: MessageCounter | None = None,
 ) -> LongRunningCallback:
     """Build a callback that delegates long-running tools to the non-SDK infrastructure.
 
@@ -202,8 +218,8 @@ def _build_long_running_callback(
 
     Args:
         user_id: User ID for the session
-        saved_msg_count_ref: Mutable reference [count] shared with streaming loop
-            for coordinating message saves. When provided, the callback will update
+        saved_msg_count: Mutable counter shared with streaming loop for
+            coordinating message saves. When provided, the callback will update
             it after appending messages to prevent counter drift.
 
     The returned callback matches the ``LongRunningCallback`` signature:
@@ -274,8 +290,8 @@ def _build_long_running_callback(
         # Collision detection happens in add_chat_messages_batch (db.py)
         _, final_count = await upsert_chat_session(session)
         # Update shared counter so streaming loop stays in sync
-        if saved_msg_count_ref is not None:
-            saved_msg_count_ref[0] = final_count
+        if saved_msg_count is not None:
+            saved_msg_count.update(final_count)
 
         # --- Spawn background task (reuses non-SDK infrastructure) ---
         bg_task = asyncio.create_task(
@@ -668,13 +684,13 @@ async def stream_chat_completion_sdk(
 
         # Initialize saved message counter as mutable list so long-running
         # callback and streaming loop can coordinate
-        saved_msg_count_ref: list[int] = [len(session.messages)]
+        saved_msg_count = MessageCounter(count=len(session.messages))
 
         set_execution_context(
             user_id,
             session,
             long_running_callback=_build_long_running_callback(
-                user_id, saved_msg_count_ref
+                user_id, saved_msg_count
             ),
         )
         try:
@@ -987,8 +1003,8 @@ async def stream_chat_completion_sdk(
                                 # in add_chat_messages_batch (db.py).
                                 try:
                                     _, final_count = await upsert_chat_session(session)
-                                    # Update shared ref so callback stays in sync
-                                    saved_msg_count_ref[0] = final_count
+                                    # Update shared counter so callback stays in sync
+                                    saved_msg_count.update(final_count)
                                 except Exception as save_err:
                                     logger.warning(
                                         "[SDK] [%s] Incremental save " "failed: %s",
@@ -1014,8 +1030,8 @@ async def stream_chat_completion_sdk(
                                 # Collision detection happens in add_chat_messages_batch (db.py).
                                 try:
                                     _, final_count = await upsert_chat_session(session)
-                                    # Update shared ref so callback stays in sync
-                                    saved_msg_count_ref[0] = final_count
+                                    # Update shared counter so callback stays in sync
+                                    saved_msg_count.update(final_count)
                                 except Exception as save_err:
                                     logger.warning(
                                         "[SDK] [%s] Incremental save " "failed: %s",
