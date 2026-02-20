@@ -7,8 +7,10 @@ import os
 import uuid
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
+from backend.data.redis_client import get_redis_async
+from backend.executor.cluster_lock import AsyncClusterLock
 from backend.util.exceptions import NotFoundError
 
 from .. import stream_registry
@@ -60,6 +62,7 @@ from .transcript import (
 
 logger = logging.getLogger(__name__)
 config = ChatConfig()
+
 
 # Set to hold background tasks to prevent garbage collection
 _background_tasks: set[asyncio.Task[Any]] = set()
@@ -132,8 +135,12 @@ is delivered to the user via a background stream.
   All tasks must run in the foreground.
 """
 
+STREAM_LOCK_PREFIX = "copilot:stream:lock:"
 
-def _build_long_running_callback(user_id: str | None) -> LongRunningCallback:
+
+def _build_long_running_callback(
+    user_id: str | None,
+) -> LongRunningCallback:
     """Build a callback that delegates long-running tools to the non-SDK infrastructure.
 
     Long-running tools (create_agent, edit_agent, etc.) are delegated to the
@@ -141,6 +148,9 @@ def _build_long_running_callback(user_id: str | None) -> LongRunningCallback:
     database persistence, and SSE reconnection.  This means results survive
     page refreshes / pod restarts, and the frontend shows the proper loading
     widget with progress updates.
+
+    Args:
+        user_id: User ID for the session
 
     The returned callback matches the ``LongRunningCallback`` signature:
     ``(tool_name, args, session) -> MCP response dict``.
@@ -207,7 +217,8 @@ def _build_long_running_callback(user_id: str | None) -> LongRunningCallback:
             tool_call_id=tool_call_id,
         )
         session.messages.append(pending_message)
-        await upsert_chat_session(session)
+        # Collision detection happens in add_chat_messages_batch (db.py)
+        session = await upsert_chat_session(session)
 
         # --- Spawn background task (reuses non-SDK infrastructure) ---
         bg_task = asyncio.create_task(
@@ -527,6 +538,9 @@ async def stream_chat_completion_sdk(
             f"Session {session_id} not found. Please create a new session first."
         )
 
+    # Type narrowing: session is guaranteed ChatSession after the check above
+    session = cast(ChatSession, session)
+
     # Append the new message to the session if it's not already there
     new_message_role = "user" if is_user_message else "assistant"
     if message and (
@@ -564,6 +578,29 @@ async def stream_chat_completion_sdk(
     system_prompt += _SDK_TOOL_SUPPLEMENT
     message_id = str(uuid.uuid4())
     task_id = str(uuid.uuid4())
+    stream_id = task_id  # Use task_id as unique stream identifier
+
+    # Acquire stream lock to prevent concurrent streams to the same session
+    lock = AsyncClusterLock(
+        redis=await get_redis_async(),
+        key=f"{STREAM_LOCK_PREFIX}{session_id}",
+        owner_id=stream_id,
+        timeout=config.stream_lock_ttl,
+    )
+
+    lock_owner = await lock.try_acquire()
+    if lock_owner != stream_id:
+        # Another stream is active
+        logger.warning(
+            f"[SDK] Session {session_id} already has an active stream: {lock_owner}"
+        )
+        yield StreamError(
+            errorText="Another stream is already active for this session. "
+            "Please wait or stop it.",
+            code="stream_already_active",
+        )
+        yield StreamFinish()
+        return
 
     yield StreamStart(messageId=message_id, taskId=task_id)
 
@@ -715,9 +752,6 @@ async def stream_chat_completion_sdk(
                 accumulated_tool_calls: list[dict[str, Any]] = []
                 has_appended_assistant = False
                 has_tool_results = False
-                # Track persisted message count to skip DB count queries
-                # on incremental saves.  Initial save happened at line 545.
-                saved_msg_count = len(session.messages)
 
                 # Use an explicit async iterator with non-cancelling heartbeats.
                 # CRITICAL: we must NOT cancel __anext__() mid-flight — doing so
@@ -744,6 +778,8 @@ async def stream_chat_completion_sdk(
 
                         if not done:
                             # Timeout — emit heartbeat but keep the task alive
+                            # Also refresh lock TTL to keep it alive
+                            await lock.refresh()
                             yield StreamHeartbeat()
                             continue
 
@@ -893,13 +929,10 @@ async def stream_chat_completion_sdk(
                                     has_appended_assistant = True
                                 # Save before tool execution starts so the
                                 # pending tool call is visible on refresh /
-                                # other devices.
+                                # other devices. Collision detection happens
+                                # in add_chat_messages_batch (db.py).
                                 try:
-                                    await upsert_chat_session(
-                                        session,
-                                        existing_message_count=saved_msg_count,
-                                    )
-                                    saved_msg_count = len(session.messages)
+                                    session = await upsert_chat_session(session)
                                 except Exception as save_err:
                                     logger.warning(
                                         "[SDK] [%s] Incremental save " "failed: %s",
@@ -922,12 +955,9 @@ async def stream_chat_completion_sdk(
                                 has_tool_results = True
                                 # Save after tool completes so the result is
                                 # visible on refresh / other devices.
+                                # Collision detection happens in add_chat_messages_batch (db.py).
                                 try:
-                                    await upsert_chat_session(
-                                        session,
-                                        existing_message_count=saved_msg_count,
-                                    )
-                                    saved_msg_count = len(session.messages)
+                                    session = await upsert_chat_session(session)
                                 except Exception as save_err:
                                     logger.warning(
                                         "[SDK] [%s] Incremental save " "failed: %s",
@@ -1059,7 +1089,7 @@ async def stream_chat_completion_sdk(
                 "to use the OpenAI-compatible fallback."
             )
 
-        await asyncio.shield(upsert_chat_session(session))
+        session = cast(ChatSession, await asyncio.shield(upsert_chat_session(session)))
         logger.info(
             "[SDK] [%s] Session saved with %d messages",
             session_id[:12],
@@ -1076,10 +1106,11 @@ async def stream_chat_completion_sdk(
         raise
     except Exception as e:
         logger.error(f"[SDK] Error: {e}", exc_info=True)
-        try:
-            await asyncio.shield(upsert_chat_session(session))
-        except Exception as save_err:
-            logger.error(f"[SDK] Failed to save session on error: {save_err}")
+        if session:
+            try:
+                await asyncio.shield(upsert_chat_session(session))
+            except Exception as save_err:
+                logger.error(f"[SDK] Failed to save session on error: {save_err}")
         yield StreamError(
             errorText="An error occurred. Please try again.",
             code="sdk_error",
@@ -1101,7 +1132,7 @@ async def stream_chat_completion_sdk(
                 if not raw_transcript and use_resume and resume_file:
                     raw_transcript = read_transcript_file(resume_file)
 
-                if raw_transcript:
+                if raw_transcript and session is not None:
                     await asyncio.shield(
                         _try_upload_transcript(
                             user_id,
@@ -1120,6 +1151,9 @@ async def stream_chat_completion_sdk(
 
         if sdk_cwd:
             _cleanup_sdk_tool_results(sdk_cwd)
+
+        # Release stream lock to allow new streams for this session
+        await lock.release()
 
 
 async def _try_upload_transcript(

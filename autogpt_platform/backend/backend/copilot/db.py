@@ -3,8 +3,9 @@
 import asyncio
 import logging
 from datetime import UTC, datetime
-from typing import Any, cast
+from typing import Any
 
+from prisma.errors import UniqueViolationError
 from prisma.models import ChatMessage as PrismaChatMessage
 from prisma.models import ChatSession as PrismaChatSession
 from prisma.types import (
@@ -92,10 +93,9 @@ async def add_chat_message(
     function_call: dict[str, Any] | None = None,
 ) -> ChatMessage:
     """Add a message to a chat session."""
-    # Build input dict dynamically rather than using ChatMessageCreateInput directly
-    # because Prisma's TypedDict validation rejects optional fields set to None.
-    # We only include fields that have values, then cast at the end.
-    data: dict[str, Any] = {
+    # Build ChatMessageCreateInput with only non-None values
+    # (Prisma TypedDict rejects optional fields set to None)
+    data: ChatMessageCreateInput = {
         "Session": {"connect": {"id": session_id}},
         "role": role,
         "sequence": sequence,
@@ -123,7 +123,7 @@ async def add_chat_message(
             where={"id": session_id},
             data={"updatedAt": datetime.now(UTC)},
         ),
-        PrismaChatMessage.prisma().create(data=cast(ChatMessageCreateInput, data)),
+        PrismaChatMessage.prisma().create(data=data),
     )
     return ChatMessage.from_db(message)
 
@@ -132,58 +132,93 @@ async def add_chat_messages_batch(
     session_id: str,
     messages: list[dict[str, Any]],
     start_sequence: int,
-) -> list[ChatMessage]:
+) -> int:
     """Add multiple messages to a chat session in a batch.
 
-    Uses a transaction for atomicity - if any message creation fails,
-    the entire batch is rolled back.
+    Uses collision detection with retry: tries to create messages starting
+    at start_sequence. If a unique constraint violation occurs (e.g., the
+    streaming loop and long-running callback race), queries the latest
+    sequence and retries with the correct offset. This avoids unnecessary
+    upserts and DB queries in the common case (no collision).
+
+    Returns:
+        Next sequence number for the next message to be inserted. This equals
+        start_sequence + len(messages) and allows callers to update their
+        counters even when collision detection adjusts start_sequence.
     """
     if not messages:
-        return []
+        # No messages to add - return current count
+        return start_sequence
 
-    created_messages = []
+    max_retries = 5
+    for attempt in range(max_retries):
+        try:
+            # Single timestamp for all messages and session update
+            now = datetime.now(UTC)
 
-    async with db.transaction() as tx:
-        for i, msg in enumerate(messages):
-            # Build input dict dynamically rather than using ChatMessageCreateInput
-            # directly because Prisma's TypedDict validation rejects optional fields
-            # set to None. We only include fields that have values, then cast.
-            data: dict[str, Any] = {
-                "Session": {"connect": {"id": session_id}},
-                "role": msg["role"],
-                "sequence": start_sequence + i,
-            }
+            async with db.transaction() as tx:
+                # Build all message data
+                messages_data = []
+                for i, msg in enumerate(messages):
+                    # Build ChatMessageCreateInput with only non-None values
+                    # (Prisma TypedDict rejects optional fields set to None)
+                    # Note: create_many doesn't support nested creates, use sessionId directly
+                    data: ChatMessageCreateInput = {
+                        "sessionId": session_id,
+                        "role": msg["role"],
+                        "sequence": start_sequence + i,
+                        "createdAt": now,
+                    }
 
-            # Add optional string fields
-            if msg.get("content") is not None:
-                data["content"] = msg["content"]
-            if msg.get("name") is not None:
-                data["name"] = msg["name"]
-            if msg.get("tool_call_id") is not None:
-                data["toolCallId"] = msg["tool_call_id"]
-            if msg.get("refusal") is not None:
-                data["refusal"] = msg["refusal"]
+                    # Add optional string fields
+                    if msg.get("content") is not None:
+                        data["content"] = msg["content"]
+                    if msg.get("name") is not None:
+                        data["name"] = msg["name"]
+                    if msg.get("tool_call_id") is not None:
+                        data["toolCallId"] = msg["tool_call_id"]
+                    if msg.get("refusal") is not None:
+                        data["refusal"] = msg["refusal"]
 
-            # Add optional JSON fields only when they have values
-            if msg.get("tool_calls") is not None:
-                data["toolCalls"] = SafeJson(msg["tool_calls"])
-            if msg.get("function_call") is not None:
-                data["functionCall"] = SafeJson(msg["function_call"])
+                    # Add optional JSON fields only when they have values
+                    if msg.get("tool_calls") is not None:
+                        data["toolCalls"] = SafeJson(msg["tool_calls"])
+                    if msg.get("function_call") is not None:
+                        data["functionCall"] = SafeJson(msg["function_call"])
 
-            created = await PrismaChatMessage.prisma(tx).create(
-                data=cast(ChatMessageCreateInput, data)
-            )
-            created_messages.append(created)
+                    messages_data.append(data)
 
-        # Update session's updatedAt timestamp within the same transaction.
-        # Note: Token usage (total_prompt_tokens, total_completion_tokens) is updated
-        # separately via update_chat_session() after streaming completes.
-        await PrismaChatSession.prisma(tx).update(
-            where={"id": session_id},
-            data={"updatedAt": datetime.now(UTC)},
-        )
+                # Run create_many and session update in parallel within transaction
+                # Both use the same timestamp for consistency
+                await asyncio.gather(
+                    PrismaChatMessage.prisma(tx).create_many(data=messages_data),
+                    PrismaChatSession.prisma(tx).update(
+                        where={"id": session_id},
+                        data={"updatedAt": now},
+                    ),
+                )
 
-    return [ChatMessage.from_db(m) for m in created_messages]
+            # Return next sequence number for counter sync
+            return start_sequence + len(messages)
+
+        except UniqueViolationError:
+            if attempt < max_retries - 1:
+                # Collision detected - query MAX(sequence)+1 and retry with correct offset
+                logger.info(
+                    f"Collision detected for session {session_id} at sequence "
+                    f"{start_sequence}, querying DB for latest sequence"
+                )
+                start_sequence = await get_next_sequence(session_id)
+                logger.info(
+                    f"Retrying batch insert with start_sequence={start_sequence}"
+                )
+                continue
+            else:
+                # Max retries exceeded - propagate error
+                raise
+
+    # Should never reach here due to raise in exception handler
+    raise RuntimeError(f"Failed to insert messages after {max_retries} attempts")
 
 
 async def get_user_chat_sessions(
@@ -237,10 +272,20 @@ async def delete_chat_session(session_id: str, user_id: str | None = None) -> bo
         return False
 
 
-async def get_chat_session_message_count(session_id: str) -> int:
-    """Get the number of messages in a chat session."""
-    count = await PrismaChatMessage.prisma().count(where={"sessionId": session_id})
-    return count
+async def get_next_sequence(session_id: str) -> int:
+    """Get the next sequence number for a new message in this session.
+
+    Uses MAX(sequence) + 1 for robustness. Returns 0 if no messages exist.
+    More robust than COUNT(*) because it's immune to deleted messages.
+
+    Optimized to select only the sequence column using raw SQL.
+    The unique index on (sessionId, sequence) makes this query fast.
+    """
+    results = await db.query_raw_with_schema(
+        'SELECT "sequence" FROM {schema_prefix}"ChatMessage" WHERE "sessionId" = $1 ORDER BY "sequence" DESC LIMIT 1',
+        session_id,
+    )
+    return 0 if not results else results[0]["sequence"] + 1
 
 
 async def update_tool_message_content(

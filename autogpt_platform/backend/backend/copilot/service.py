@@ -352,7 +352,8 @@ async def assign_user_to_session(
     if not session:
         raise NotFoundError(f"Session {session_id} not found")
     session.user_id = user_id
-    return await upsert_chat_session(session)
+    session = await upsert_chat_session(session)
+    return session
 
 
 async def stream_chat_completion(

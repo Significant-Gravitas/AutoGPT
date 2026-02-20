@@ -434,20 +434,12 @@ async def _get_session_from_db(session_id: str) -> ChatSession | None:
 
 async def upsert_chat_session(
     session: ChatSession,
-    *,
-    existing_message_count: int | None = None,
 ) -> ChatSession:
     """Update a chat session in both cache and database.
 
     Uses session-level locking to prevent race conditions when concurrent
     operations (e.g., background title update and main stream handler)
     attempt to upsert the same session simultaneously.
-
-    Args:
-        existing_message_count: If provided, skip the DB query to count
-            existing messages. The caller is responsible for tracking this
-            accurately. Useful for incremental saves in a streaming loop
-            where the caller already knows how many messages are persisted.
 
     Raises:
         DatabaseError: If the database write fails. The cache is still updated
@@ -459,11 +451,8 @@ async def upsert_chat_session(
     lock = await _get_session_lock(session.session_id)
 
     async with lock:
-        # Get existing message count from DB for incremental saves
-        if existing_message_count is None:
-            existing_message_count = await chat_db().get_chat_session_message_count(
-                session.session_id
-            )
+        # Always query DB for existing message count to ensure consistency
+        existing_message_count = await chat_db().get_next_sequence(session.session_id)
 
         db_error: Exception | None = None
 
@@ -587,9 +576,7 @@ async def append_and_save_message(session_id: str, message: ChatMessage) -> Chat
             raise ValueError(f"Session {session_id} not found")
 
         session.messages.append(message)
-        existing_message_count = await chat_db().get_chat_session_message_count(
-            session_id
-        )
+        existing_message_count = await chat_db().get_next_sequence(session_id)
 
         try:
             await _save_session_to_db(session, existing_message_count)
