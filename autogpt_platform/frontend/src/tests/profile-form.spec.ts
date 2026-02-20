@@ -2,7 +2,7 @@ import test, { expect } from "@playwright/test";
 import { getTestUserWithLibraryAgents } from "./credentials";
 import { LoginPage } from "./pages/login.page";
 import { ProfileFormPage } from "./pages/profile-form.page";
-import { hasUrl } from "./utils/assertion";
+import { hasPostAuthLandingUrl, hasUrl } from "./utils/assertion";
 
 test.describe("Profile Form", () => {
   let profileFormPage: ProfileFormPage;
@@ -14,7 +14,7 @@ test.describe("Profile Form", () => {
     await loginPage.goto();
     const richUser = getTestUserWithLibraryAgents();
     await loginPage.login(richUser.email, richUser.password);
-    await hasUrl(page, "/marketplace");
+    await hasPostAuthLandingUrl(page);
   });
 
   test("redirects to login when user is not authenticated", async ({

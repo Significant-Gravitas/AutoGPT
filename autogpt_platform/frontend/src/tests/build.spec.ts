@@ -10,7 +10,7 @@
 import test from "@playwright/test";
 import { BuildPage } from "./pages/build.page";
 import { LoginPage } from "./pages/login.page";
-import { hasUrl } from "./utils/assertion";
+import { hasPostAuthLandingUrl, hasUrl } from "./utils/assertion";
 import { getTestUser } from "./utils/auth";
 
 // Reason Ignore: admonishment is in the wrong place visually with correct prettier rules
@@ -30,7 +30,7 @@ test.describe.skip("Build", () => { //(1)!
     // Start each test with login using worker auth
     await page.goto("/login"); //(4)!
     await loginPage.login(testUser.email, testUser.password);
-    await hasUrl(page, "/marketplace"); //(5)!
+    await hasPostAuthLandingUrl(page); //(5)!
     await buildPage.navbar.clickBuildLink();
     await hasUrl(page, "/build");
     await buildPage.closeTutorial();

@@ -9,6 +9,7 @@ export class MarketplacePage extends BasePage {
 
   async goto(page: Page) {
     await page.goto("/marketplace");
+    await page.waitForURL(/\/marketplace/, { timeout: 10000 });
     await page
       .locator(
         '[data-testid="store-card"], [data-testid="featured-store-card"]',

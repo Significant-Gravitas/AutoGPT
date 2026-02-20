@@ -2,6 +2,7 @@ import test from "@playwright/test";
 import { getTestUserWithLibraryAgents } from "./credentials";
 import { LoginPage } from "./pages/login.page";
 import {
+  hasPostAuthLandingUrl,
   hasUrl,
   isDisabled,
   isEnabled,
@@ -19,7 +20,7 @@ test("user can publish an agent through the complete flow", async ({
   await page.goto("/login");
   const richUser = getTestUserWithLibraryAgents();
   await loginPage.login(richUser.email, richUser.password);
-  await hasUrl(page, "/marketplace");
+  await hasPostAuthLandingUrl(page);
 
   await page.goto("/marketplace");
   await getButton("Become a creator").click();
@@ -98,7 +99,7 @@ test("should validate all form fields in publish agent form", async ({
   await page.goto("/login");
   const richUser = getTestUserWithLibraryAgents();
   await loginPage.login(richUser.email, richUser.password);
-  await hasUrl(page, "/marketplace");
+  await hasPostAuthLandingUrl(page);
 
   await page.goto("/marketplace");
   await getButton("Become a creator").click();

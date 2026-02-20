@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { getTestUserWithLibraryAgents } from "./credentials";
 import { LoginPage } from "./pages/login.page";
-import { hasUrl } from "./utils/assertion";
+import { hasPostAuthLandingUrl, hasUrl } from "./utils/assertion";
 import { getSelectors } from "./utils/selectors";
 
 test.describe("API Keys Page", () => {
@@ -10,7 +10,7 @@ test.describe("API Keys Page", () => {
     await page.goto("/login");
     const richUser = getTestUserWithLibraryAgents();
     await loginPage.login(richUser.email, richUser.password);
-    await hasUrl(page, "/marketplace");
+    await hasPostAuthLandingUrl(page);
   });
 
   test("should redirect to login page when user is not authenticated", async ({

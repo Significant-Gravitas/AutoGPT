@@ -1,7 +1,7 @@
 import test, { expect } from "@playwright/test";
 import { getTestUserWithLibraryAgents } from "./credentials";
 import { LoginPage } from "./pages/login.page";
-import { hasUrl, isHidden } from "./utils/assertion";
+import { hasPostAuthLandingUrl, hasUrl, isHidden } from "./utils/assertion";
 import { getSelectors } from "./utils/selectors";
 
 test.beforeEach(async ({ page }) => {
@@ -9,7 +9,7 @@ test.beforeEach(async ({ page }) => {
   await page.goto("/login");
   const richUser = getTestUserWithLibraryAgents();
   await loginPage.login(richUser.email, richUser.password);
-  await hasUrl(page, "/marketplace");
+  await hasPostAuthLandingUrl(page);
 });
 
 test("dashboard page loads successfully", async ({ page }) => {

@@ -3,7 +3,7 @@ import path from "path";
 import { getTestUserWithLibraryAgents } from "./credentials";
 import { LibraryPage } from "./pages/library.page";
 import { LoginPage } from "./pages/login.page";
-import { hasUrl } from "./utils/assertion";
+import { hasPostAuthLandingUrl, hasUrl } from "./utils/assertion";
 import { getSelectors } from "./utils/selectors";
 
 test.describe("Library", () => {
@@ -16,7 +16,7 @@ test.describe("Library", () => {
     const loginPage = new LoginPage(page);
     const richUser = getTestUserWithLibraryAgents();
     await loginPage.login(richUser.email, richUser.password);
-    await hasUrl(page, "/marketplace");
+    await hasPostAuthLandingUrl(page);
   });
 
   test("library page loads successfully", async ({ page }) => {
