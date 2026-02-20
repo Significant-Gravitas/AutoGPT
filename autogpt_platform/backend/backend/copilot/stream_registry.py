@@ -644,6 +644,8 @@ async def _stream_listener(
 async def mark_task_completed(
     task_id: str,
     status: Literal["completed", "failed"] = "completed",
+    *,
+    error_message: str | None = None,
 ) -> bool:
     """Mark a task as completed and publish finish event.
 
@@ -654,6 +656,10 @@ async def mark_task_completed(
     Args:
         task_id: Task ID to mark as completed
         status: Final status ("completed" or "failed")
+        error_message: If provided and status="failed", publish a StreamError
+            before StreamFinish so connected clients see why the task ended.
+            If not provided, no StreamError is published (caller should publish
+            manually if needed to avoid duplicates).
 
     Returns:
         True if task was newly marked completed, False if already completed/failed
@@ -668,6 +674,17 @@ async def mark_task_completed(
     if result == 0:
         logger.debug(f"Task {task_id} already completed/failed, skipping")
         return False
+
+    # Publish error event before finish so connected clients know WHY the
+    # task ended. Only publish if caller provided an explicit error message
+    # to avoid duplicates with code paths that manually publish StreamError.
+    # This is best-effort — if it fails, the StreamFinish still ensures
+    # listeners clean up.
+    if status == "failed" and error_message:
+        try:
+            await publish_chunk(task_id, StreamError(errorText=error_message))
+        except Exception as e:
+            logger.warning(f"Failed to publish error event for task {task_id}: {e}")
 
     # THEN publish finish event (best-effort - listeners can detect via status polling)
     try:
@@ -820,27 +837,6 @@ async def get_active_task_for_session(
                 # Validate ownership - if task has an owner, requester must match
                 if task_user_id and user_id != task_user_id:
                     continue
-
-                # Auto-expire stale tasks that exceeded stream_timeout
-                created_at_str = meta.get("created_at", "")
-                if created_at_str:
-                    try:
-                        created_at = datetime.fromisoformat(created_at_str)
-                        age_seconds = (
-                            datetime.now(timezone.utc) - created_at
-                        ).total_seconds()
-                        if age_seconds > config.stream_timeout:
-                            logger.warning(
-                                f"[TASK_LOOKUP] Auto-expiring stale task {task_id[:8]}... "
-                                f"(age={age_seconds:.0f}s > timeout={config.stream_timeout}s)"
-                            )
-                            await mark_task_completed(task_id, "failed")
-                            continue
-                    except (ValueError, TypeError) as exc:
-                        logger.warning(
-                            f"[TASK_LOOKUP] Failed to parse created_at "
-                            f"for task {task_id[:8]}...: {exc}"
-                        )
 
                 logger.info(
                     f"[TASK_LOOKUP] Found running task {task_id[:8]}... for session {session_id[:8]}..."
