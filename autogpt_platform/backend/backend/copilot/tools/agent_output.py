@@ -269,6 +269,8 @@ class AgentOutputTool(BaseTool):
                     ExecutionStatus.QUEUED,
                     ExecutionStatus.INCOMPLETE,
                     ExecutionStatus.REVIEW,
+                    ExecutionStatus.FAILED,
+                    ExecutionStatus.TERMINATED,
                 ]
             )
 

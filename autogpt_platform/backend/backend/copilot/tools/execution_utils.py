@@ -33,6 +33,8 @@ PAUSED_STATUSES = frozenset(
 # Statuses that mean "stop waiting" (terminal or paused)
 STOP_WAITING_STATUSES = TERMINAL_STATUSES | PAUSED_STATUSES
 
+_POST_SUBSCRIBE_RECHECK_DELAY = 0.1  # seconds to wait for subscription to establish
+
 
 async def wait_for_execution(
     user_id: str,
@@ -80,11 +82,16 @@ async def wait_for_execution(
 
     event_bus = AsyncRedisExecutionEventBus()
     channel_key = f"{user_id}/{graph_id}/{execution_id}"
-    consume_task: asyncio.Task | None = None
+
+    # Mutable container so _subscribe_and_wait can surface the task even if
+    # asyncio.wait_for cancels the coroutine before it returns.
+    task_holder: list[asyncio.Task] = []
 
     try:
-        consume_task, result = await asyncio.wait_for(
-            _subscribe_and_wait(event_bus, channel_key, user_id, execution_id, exec_db),
+        result = await asyncio.wait_for(
+            _subscribe_and_wait(
+                event_bus, channel_key, user_id, execution_id, exec_db, task_holder
+            ),
             timeout=timeout_seconds,
         )
         return result
@@ -93,12 +100,13 @@ async def wait_for_execution(
     except Exception as e:
         logger.error(f"Error waiting for execution: {e}", exc_info=True)
     finally:
-        if consume_task and not consume_task.done():
-            consume_task.cancel()
-            try:
-                await consume_task
-            except asyncio.CancelledError:
-                pass
+        for task in task_holder:
+            if not task.done():
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
         await event_bus.close()
 
     # Return current state on timeout/error
@@ -115,11 +123,13 @@ async def _subscribe_and_wait(
     user_id: str,
     execution_id: str,
     exec_db: Any,
-) -> tuple[asyncio.Task, GraphExecution | None]:
+    task_holder: list[asyncio.Task],
+) -> GraphExecution | None:
     """
     Subscribe to execution events and wait for a terminal/paused status.
 
-    Returns (consume_task, result) so the caller can clean up the task.
+    Appends the consumer task to ``task_holder`` so the caller can clean it up
+    even if this coroutine is cancelled by ``asyncio.wait_for``.
 
     To avoid the race condition where the execution completes between the
     initial DB check and the Redis subscription, we:
@@ -129,11 +139,10 @@ async def _subscribe_and_wait(
     """
     listen_iter = event_bus.listen_events(channel_key).__aiter__()
 
-    # Start a background task to consume pubsub events
     done = asyncio.Event()
     result_execution: GraphExecution | None = None
 
-    async def _consume():
+    async def _consume() -> None:
         nonlocal result_execution
         async for event in listen_iter:
             if isinstance(event, GraphExecutionEvent):
@@ -148,9 +157,10 @@ async def _subscribe_and_wait(
                     return
 
     consume_task = asyncio.create_task(_consume())
+    task_holder.append(consume_task)
 
     # Give the subscription a moment to establish, then re-check DB
-    await asyncio.sleep(0.1)
+    await asyncio.sleep(_POST_SUBSCRIBE_RECHECK_DELAY)
 
     execution = await exec_db.get_graph_execution(
         user_id=user_id,
@@ -158,11 +168,11 @@ async def _subscribe_and_wait(
         include_node_executions=False,
     )
     if execution and execution.status in STOP_WAITING_STATUSES:
-        return consume_task, execution
+        return execution
 
     # Wait for the pubsub consumer to find a terminal event
     await done.wait()
-    return consume_task, result_execution
+    return result_execution
 
 
 def get_execution_outputs(execution: GraphExecution | None) -> dict[str, Any] | None:
