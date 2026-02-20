@@ -7946,6 +7946,7 @@
         "required": ["agent_ids"],
         "title": "BulkMoveAgentsRequest",
         "description": "Request model for moving multiple agents to a folder."
+      },
       "CancelTaskResponse": {
         "properties": {
           "cancelled": { "type": "boolean", "title": "Cancelled" },
