@@ -732,11 +732,16 @@ async def stream_chat_completion_sdk(
                     except StopAsyncIteration:
                         break
 
-                    logger.debug(
-                        "[SDK] [%s] Received: %s %s",
+                    logger.info(
+                        "[SDK] [%s] Received: %s %s "
+                        "(unresolved=%d, current=%d, resolved=%d)",
                         session_id[:12],
                         type(sdk_msg).__name__,
                         getattr(sdk_msg, "subtype", ""),
+                        len(adapter.current_tool_calls)
+                        - len(adapter.resolved_tool_calls),
+                        len(adapter.current_tool_calls),
+                        len(adapter.resolved_tool_calls),
                     )
 
                     # Race-condition fix: SDK hooks (PostToolUse) are executed
@@ -852,6 +857,33 @@ async def stream_chat_completion_sdk(
 
                         elif isinstance(response, StreamFinish):
                             stream_completed = True
+
+                # Safety net: if tools are still unresolved after the
+                # streaming loop (e.g. StopAsyncIteration before ResultMessage,
+                # or SDK not sending UserMessages for built-in tools), flush
+                # them now so the frontend stops showing spinners.
+                if adapter.has_unresolved_tool_calls:
+                    logger.warning(
+                        "[SDK] [%s] %d unresolved tool(s) after stream loop — "
+                        "flushing as safety net",
+                        session_id[:12],
+                        len(adapter.current_tool_calls)
+                        - len(adapter.resolved_tool_calls),
+                    )
+                    safety_responses: list[StreamBaseResponse] = []
+                    adapter._flush_unresolved_tool_calls(safety_responses)
+                    for response in safety_responses:
+                        if isinstance(
+                            response,
+                            (StreamToolInputAvailable, StreamToolOutputAvailable),
+                        ):
+                            logger.info(
+                                "[SDK] [%s] Safety flush: %s, tool=%s",
+                                session_id[:12],
+                                type(response).__name__,
+                                getattr(response, "toolName", "N/A"),
+                            )
+                        yield response
 
                 if (
                     assistant_response.content or assistant_response.tool_calls

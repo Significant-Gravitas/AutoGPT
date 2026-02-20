@@ -129,6 +129,17 @@ class SDKResponseAdapter:
             blocks = content if isinstance(content, list) else []
             resolved_in_blocks: set[str] = set()
 
+            sid = (self.session_id or "?")[:12]
+            parent_id_preview = getattr(sdk_message, "parent_tool_use_id", None)
+            logger.info(
+                "[SDK] [%s] UserMessage: %d blocks, content_type=%s, "
+                "parent_tool_use_id=%s",
+                sid,
+                len(blocks),
+                type(content).__name__,
+                parent_id_preview[:12] if parent_id_preview else "None",
+            )
+
             for block in blocks:
                 if isinstance(block, ToolResultBlock) and block.tool_use_id:
                     # Skip if already resolved (e.g. by flush) — the real
@@ -253,10 +264,14 @@ class SDKResponseAdapter:
             for tid, info in self.current_tool_calls.items()
             if tid not in self.resolved_tool_calls
         ]
-        if not unresolved:
-            return
-
         sid = (self.session_id or "?")[:12]
+        if not unresolved:
+            logger.info(
+                "[SDK] [%s] Flush called but all %d tool(s) already resolved",
+                sid,
+                len(self.current_tool_calls),
+            )
+            return
         logger.info(
             "[SDK] [%s] Flushing %d unresolved tool call(s): %s",
             sid,
