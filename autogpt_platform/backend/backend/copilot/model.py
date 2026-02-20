@@ -85,7 +85,6 @@ class ChatSessionInfo(BaseModel):
     updated_at: datetime
     successful_agent_runs: dict[str, int] = {}
     successful_agent_schedules: dict[str, int] = {}
-    saved_message_count: int = 0  # Number of messages persisted to DB
 
     @classmethod
     def from_db(cls, prisma_session: PrismaChatSession) -> Self:
@@ -435,25 +434,12 @@ async def _get_session_from_db(session_id: str) -> ChatSession | None:
 
 async def upsert_chat_session(
     session: ChatSession,
-    *,
-    existing_message_count: int | None = None,
 ) -> ChatSession:
     """Update a chat session in both cache and database.
 
     Uses session-level locking to prevent race conditions when concurrent
     operations (e.g., background title update and main stream handler)
     attempt to upsert the same session simultaneously.
-
-    Args:
-        existing_message_count: If provided, skip the DB query to count
-            existing messages. The caller is responsible for tracking this
-            accurately. Useful for incremental saves in a streaming loop
-            where the caller already knows how many messages are persisted.
-
-    Returns:
-        The session with updated saved_message_count field reflecting the
-        number of messages persisted to the database (accounting for
-        collision detection).
 
     Raises:
         DatabaseError: If the database write fails. The cache is still updated
@@ -465,18 +451,14 @@ async def upsert_chat_session(
     lock = await _get_session_lock(session.session_id)
 
     async with lock:
-        # Get existing message count from DB for incremental saves
-        if existing_message_count is None:
-            existing_message_count = await chat_db().get_next_sequence(
-                session.session_id
-            )
+        # Always query DB for existing message count to ensure consistency
+        existing_message_count = await chat_db().get_next_sequence(session.session_id)
 
         db_error: Exception | None = None
-        final_count = existing_message_count
 
         # Save to database (primary storage)
         try:
-            final_count = await _save_session_to_db(
+            await _save_session_to_db(
                 session,
                 existing_message_count,
                 skip_existence_check=existing_message_count > 0,
@@ -486,9 +468,6 @@ async def upsert_chat_session(
                 f"Failed to save session {session.session_id} to database: {e}"
             )
             db_error = e
-
-        # Update session metadata with persisted message count
-        session.saved_message_count = final_count
 
         # Save to cache (best-effort, even if DB failed)
         try:
@@ -518,18 +497,13 @@ async def _save_session_to_db(
     existing_message_count: int,
     *,
     skip_existence_check: bool = False,
-) -> int:
+) -> None:
     """Save or update a chat session in the database.
 
     Args:
         skip_existence_check: When True, skip the ``get_chat_session`` query
             and assume the session row already exists.  Saves one DB round trip
             for incremental saves during streaming.
-
-    Returns:
-        Next available sequence number after save (accounting for collision
-        detection). This is equal to the total number of messages if sequences
-        start at 0.
     """
     db = chat_db()
 
@@ -561,7 +535,6 @@ async def _save_session_to_db(
 
     # Add new messages (only those after existing count)
     new_messages = session.messages[existing_message_count:]
-    final_count = existing_message_count
     if new_messages:
         messages_data = []
         for msg in new_messages:
@@ -581,13 +554,11 @@ async def _save_session_to_db(
             f"roles={[m['role'] for m in messages_data]}, "
             f"start_sequence={existing_message_count}"
         )
-        final_count = await db.add_chat_messages_batch(
+        await db.add_chat_messages_batch(
             session_id=session.session_id,
             messages=messages_data,
             start_sequence=existing_message_count,
         )
-
-    return final_count
 
 
 async def append_and_save_message(session_id: str, message: ChatMessage) -> ChatSession:

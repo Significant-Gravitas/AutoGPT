@@ -64,21 +64,6 @@ logger = logging.getLogger(__name__)
 config = ChatConfig()
 
 
-@dataclass
-class MessageCounter:
-    """Mutable counter for tracking saved message count across async contexts.
-
-    Used to coordinate message count between streaming loop and background
-    callbacks, replacing the previous list-based mutable reference pattern.
-    """
-
-    count: int = 0
-
-    def update(self, new_count: int) -> None:
-        """Update the counter to a new value."""
-        self.count = new_count
-
-
 # Set to hold background tasks to prevent garbage collection
 _background_tasks: set[asyncio.Task[Any]] = set()
 
@@ -155,7 +140,6 @@ STREAM_LOCK_PREFIX = "copilot:stream:lock:"
 
 def _build_long_running_callback(
     user_id: str | None,
-    saved_msg_count: MessageCounter | None = None,
 ) -> LongRunningCallback:
     """Build a callback that delegates long-running tools to the non-SDK infrastructure.
 
@@ -167,9 +151,6 @@ def _build_long_running_callback(
 
     Args:
         user_id: User ID for the session
-        saved_msg_count: Mutable counter shared with streaming loop for
-            coordinating message saves. When provided, the callback will update
-            it after appending messages to prevent counter drift.
 
     The returned callback matches the ``LongRunningCallback`` signature:
     ``(tool_name, args, session) -> MCP response dict``.
@@ -237,14 +218,7 @@ def _build_long_running_callback(
         )
         session.messages.append(pending_message)
         # Collision detection happens in add_chat_messages_batch (db.py)
-        # Pass existing count to avoid DB query
-        session = await upsert_chat_session(
-            session,
-            existing_message_count=saved_msg_count.count if saved_msg_count else None,
-        )
-        # Update shared counter with actual persisted count so streaming loop stays in sync
-        if saved_msg_count is not None:
-            saved_msg_count.update(session.saved_message_count)
+        session = await upsert_chat_session(session)
 
         # --- Spawn background task (reuses non-SDK infrastructure) ---
         bg_task = asyncio.create_task(
@@ -644,16 +618,10 @@ async def stream_chat_completion_sdk(
         sdk_cwd = _make_sdk_cwd(session_id)
         os.makedirs(sdk_cwd, exist_ok=True)
 
-        # Initialize saved message counter as mutable list so long-running
-        # callback and streaming loop can coordinate
-        saved_msg_count = MessageCounter(count=len(session.messages))
-
         set_execution_context(
             user_id,
             session,
-            long_running_callback=_build_long_running_callback(
-                user_id, saved_msg_count
-            ),
+            long_running_callback=_build_long_running_callback(user_id),
         )
         try:
             from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
@@ -964,12 +932,7 @@ async def stream_chat_completion_sdk(
                                 # other devices. Collision detection happens
                                 # in add_chat_messages_batch (db.py).
                                 try:
-                                    session = await upsert_chat_session(
-                                        session,
-                                        existing_message_count=saved_msg_count.count,
-                                    )
-                                    # Update counter with actual persisted count (accounting for collision detection)
-                                    saved_msg_count.update(session.saved_message_count)
+                                    session = await upsert_chat_session(session)
                                 except Exception as save_err:
                                     logger.warning(
                                         "[SDK] [%s] Incremental save " "failed: %s",
@@ -994,12 +957,7 @@ async def stream_chat_completion_sdk(
                                 # visible on refresh / other devices.
                                 # Collision detection happens in add_chat_messages_batch (db.py).
                                 try:
-                                    session = await upsert_chat_session(
-                                        session,
-                                        existing_message_count=saved_msg_count.count,
-                                    )
-                                    # Update counter with actual persisted count (accounting for collision detection)
-                                    saved_msg_count.update(session.saved_message_count)
+                                    session = await upsert_chat_session(session)
                                 except Exception as save_err:
                                     logger.warning(
                                         "[SDK] [%s] Incremental save " "failed: %s",
@@ -1133,10 +1091,9 @@ async def stream_chat_completion_sdk(
 
         session = cast(ChatSession, await asyncio.shield(upsert_chat_session(session)))
         logger.info(
-            "[SDK] [%s] Session saved with %d messages (DB count: %d)",
+            "[SDK] [%s] Session saved with %d messages",
             session_id[:12],
             len(session.messages),
-            session.saved_message_count,
         )
         if not stream_completed:
             yield StreamFinish()
