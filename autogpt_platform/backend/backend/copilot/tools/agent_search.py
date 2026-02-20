@@ -4,6 +4,7 @@ import logging
 import re
 from typing import Literal
 
+from backend.api.features.library.model import LibraryAgent
 from backend.data.db_accessors import library_db, store_db
 from backend.util.exceptions import DatabaseError, NotFoundError
 
@@ -101,7 +102,7 @@ async def search_agents(
                 results = await library_db().list_library_agents(
                     user_id=user_id,  # type: ignore[arg-type]
                     search_term=search_term,
-                    page_size=10,
+                    page_size=50 if not query else 10,
                 )
                 for agent in results.agents:
                     agents.append(
@@ -189,7 +190,7 @@ def _is_uuid(text: str) -> bool:
     return bool(_UUID_PATTERN.match(text.strip()))
 
 
-def _library_agent_to_info(agent) -> AgentInfo:
+def _library_agent_to_info(agent: LibraryAgent) -> AgentInfo:
     """Convert a library agent model to an AgentInfo."""
     return AgentInfo(
         id=agent.id,
