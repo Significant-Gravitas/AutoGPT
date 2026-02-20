@@ -228,11 +228,22 @@ class SDKResponseAdapter:
         output, which we pop and emit here before the next ``AssistantMessage``
         starts.
         """
+        unresolved = [
+            (tid, info.get("name", "unknown"))
+            for tid, info in self.current_tool_calls.items()
+            if tid not in self.resolved_tool_calls
+        ]
+        if not unresolved:
+            return
+
+        logger.info(
+            "[SDK] Flushing %d unresolved tool call(s): %s",
+            len(unresolved),
+            ", ".join(f"{name}({tid[:12]})" for tid, name in unresolved),
+        )
+
         flushed = False
-        for tool_id, tool_info in self.current_tool_calls.items():
-            if tool_id in self.resolved_tool_calls:
-                continue
-            tool_name = tool_info.get("name", "unknown")
+        for tool_id, tool_name in unresolved:
             output = pop_pending_tool_output(tool_name)
             if output is not None:
                 responses.append(
@@ -245,9 +256,11 @@ class SDKResponseAdapter:
                 )
                 self.resolved_tool_calls.add(tool_id)
                 flushed = True
-                logger.debug(
-                    f"Flushed pending output for built-in tool {tool_name} "
-                    f"(call {tool_id})"
+                logger.info(
+                    "[SDK] Flushed stashed output for %s (call %s, %d chars)",
+                    tool_name,
+                    tool_id[:12],
+                    len(output),
                 )
             else:
                 # No output available — emit an empty output so the frontend
@@ -263,9 +276,11 @@ class SDKResponseAdapter:
                 )
                 self.resolved_tool_calls.add(tool_id)
                 flushed = True
-                logger.debug(
-                    f"Flushed empty output for unresolved tool {tool_name} "
-                    f"(call {tool_id})"
+                logger.warning(
+                    "[SDK] Flushed EMPTY output for unresolved tool %s "
+                    "(call %s) — stash was empty",
+                    tool_name,
+                    tool_id[:12],
                 )
 
         if flushed and self.step_open:

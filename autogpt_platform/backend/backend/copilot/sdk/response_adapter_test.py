@@ -364,3 +364,151 @@ def test_full_conversation_flow():
         "StreamFinishStep",  # step 2 closed
         "StreamFinish",
     ]
+
+
+# -- Flush unresolved tool calls --------------------------------------------
+
+
+def test_flush_unresolved_at_result_message():
+    """Built-in tools (WebSearch) without UserMessage results get flushed at ResultMessage."""
+    adapter = _adapter()
+    all_responses: list[StreamBaseResponse] = []
+
+    # 1. Init
+    all_responses.extend(
+        adapter.convert_message(SystemMessage(subtype="init", data={}))
+    )
+    # 2. Tool use (built-in tool — no MCP prefix)
+    all_responses.extend(
+        adapter.convert_message(
+            AssistantMessage(
+                content=[
+                    ToolUseBlock(id="ws-1", name="WebSearch", input={"query": "test"})
+                ],
+                model="test",
+            )
+        )
+    )
+    # 3. No UserMessage for this tool — go straight to ResultMessage
+    all_responses.extend(
+        adapter.convert_message(
+            ResultMessage(
+                subtype="success",
+                duration_ms=100,
+                duration_api_ms=50,
+                is_error=False,
+                num_turns=1,
+                session_id="s1",
+            )
+        )
+    )
+
+    types = [type(r).__name__ for r in all_responses]
+    assert types == [
+        "StreamStart",
+        "StreamStartStep",
+        "StreamToolInputStart",
+        "StreamToolInputAvailable",
+        "StreamToolOutputAvailable",  # flushed with empty output
+        "StreamFinishStep",  # step closed by flush
+        "StreamFinish",
+    ]
+    # The flushed output should be empty (no stash available)
+    output_event = [
+        r for r in all_responses if isinstance(r, StreamToolOutputAvailable)
+    ][0]
+    assert output_event.toolCallId == "ws-1"
+    assert output_event.toolName == "WebSearch"
+    assert output_event.output == ""
+
+
+def test_flush_unresolved_at_next_assistant_message():
+    """Built-in tools get flushed when the next AssistantMessage arrives."""
+    adapter = _adapter()
+    all_responses: list[StreamBaseResponse] = []
+
+    # 1. Init
+    all_responses.extend(
+        adapter.convert_message(SystemMessage(subtype="init", data={}))
+    )
+    # 2. Tool use (built-in — no UserMessage will come)
+    all_responses.extend(
+        adapter.convert_message(
+            AssistantMessage(
+                content=[
+                    ToolUseBlock(id="ws-1", name="WebSearch", input={"query": "test"})
+                ],
+                model="test",
+            )
+        )
+    )
+    # 3. Next AssistantMessage triggers flush before processing its blocks
+    all_responses.extend(
+        adapter.convert_message(
+            AssistantMessage(
+                content=[TextBlock(text="Here are the results")], model="test"
+            )
+        )
+    )
+
+    types = [type(r).__name__ for r in all_responses]
+    assert types == [
+        "StreamStart",
+        "StreamStartStep",
+        "StreamToolInputStart",
+        "StreamToolInputAvailable",
+        # Flush at next AssistantMessage:
+        "StreamToolOutputAvailable",
+        "StreamFinishStep",  # step closed by flush
+        # New step for continuation text:
+        "StreamStartStep",
+        "StreamTextStart",
+        "StreamTextDelta",
+    ]
+
+
+def test_flush_with_stashed_output():
+    """Stashed output from PostToolUse hook is used when flushing."""
+    from .tool_adapter import _pending_tool_outputs, stash_pending_tool_output
+
+    adapter = _adapter()
+
+    # Simulate PostToolUse hook stashing output
+    _pending_tool_outputs.set({})
+    stash_pending_tool_output("WebSearch", "Search result: 5 items found")
+
+    all_responses: list[StreamBaseResponse] = []
+
+    # Tool use
+    all_responses.extend(
+        adapter.convert_message(
+            AssistantMessage(
+                content=[
+                    ToolUseBlock(id="ws-1", name="WebSearch", input={"query": "test"})
+                ],
+                model="test",
+            )
+        )
+    )
+    # ResultMessage triggers flush
+    all_responses.extend(
+        adapter.convert_message(
+            ResultMessage(
+                subtype="success",
+                duration_ms=100,
+                duration_api_ms=50,
+                is_error=False,
+                num_turns=1,
+                session_id="s1",
+            )
+        )
+    )
+
+    output_events = [
+        r for r in all_responses if isinstance(r, StreamToolOutputAvailable)
+    ]
+    assert len(output_events) == 1
+    assert output_events[0].output == "Search result: 5 items found"
+
+    # Cleanup
+    _pending_tool_outputs.set({})  # type: ignore[arg-type]
