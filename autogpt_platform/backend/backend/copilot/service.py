@@ -1563,7 +1563,11 @@ async def _yield_tool_call(
             await _mark_operation_completed(tool_call_id)
             # Mark stream registry task as failed if it was created
             try:
-                await stream_registry.mark_task_completed(task_id, status="failed")
+                await stream_registry.mark_task_completed(
+                    task_id,
+                    status="failed",
+                    error_message=f"Failed to setup tool {tool_name}: {e}",
+                )
             except Exception as mark_err:
                 logger.warning(f"Failed to mark task {task_id} as failed: {mark_err}")
             logger.error(
@@ -1731,7 +1735,11 @@ async def _execute_long_running_tool_with_streaming(
         session = await get_chat_session(session_id, user_id)
         if not session:
             logger.error(f"Session {session_id} not found for background tool")
-            await stream_registry.mark_task_completed(task_id, status="failed")
+            await stream_registry.mark_task_completed(
+                task_id,
+                status="failed",
+                error_message=f"Session {session_id} not found",
+            )
             return
 
         # Pass operation_id and task_id to the tool for async processing
