@@ -1,5 +1,8 @@
 """Unit tests for the SDK response adapter."""
 
+import asyncio
+
+import pytest
 from claude_agent_sdk import (
     AssistantMessage,
     ResultMessage,
@@ -27,6 +30,10 @@ from backend.copilot.response_model import (
 
 from .response_adapter import SDKResponseAdapter
 from .tool_adapter import MCP_TOOL_PREFIX
+from .tool_adapter import _pending_tool_outputs as _pto
+from .tool_adapter import _stash_event
+from .tool_adapter import stash_pending_tool_output as _stash
+from .tool_adapter import wait_for_stash
 
 
 def _adapter() -> SDKResponseAdapter:
@@ -469,13 +476,11 @@ def test_flush_unresolved_at_next_assistant_message():
 
 def test_flush_with_stashed_output():
     """Stashed output from PostToolUse hook is used when flushing."""
-    from .tool_adapter import _pending_tool_outputs, stash_pending_tool_output
-
     adapter = _adapter()
 
     # Simulate PostToolUse hook stashing output
-    _pending_tool_outputs.set({})
-    stash_pending_tool_output("WebSearch", "Search result: 5 items found")
+    _pto.set({})
+    _stash("WebSearch", "Search result: 5 items found")
 
     all_responses: list[StreamBaseResponse] = []
 
@@ -511,4 +516,72 @@ def test_flush_with_stashed_output():
     assert output_events[0].output == "Search result: 5 items found"
 
     # Cleanup
-    _pending_tool_outputs.set({})  # type: ignore[arg-type]
+    _pto.set({})  # type: ignore[arg-type]
+
+
+# -- wait_for_stash synchronisation tests --
+
+
+@pytest.mark.asyncio
+async def test_wait_for_stash_signaled():
+    """wait_for_stash returns True when stash_pending_tool_output signals."""
+    _pto.set({})
+    event = asyncio.Event()
+    _stash_event.set(event)
+
+    # Simulate a PostToolUse hook that stashes output after a short delay
+    async def delayed_stash():
+        await asyncio.sleep(0.01)
+        _stash("WebSearch", "result data")
+
+    asyncio.create_task(delayed_stash())
+    result = await wait_for_stash(timeout=1.0)
+
+    assert result is True
+    assert _pto.get({}).get("WebSearch") == ["result data"]
+
+    # Cleanup
+    _pto.set({})  # type: ignore[arg-type]
+    _stash_event.set(None)
+
+
+@pytest.mark.asyncio
+async def test_wait_for_stash_timeout():
+    """wait_for_stash returns False on timeout when no stash occurs."""
+    _pto.set({})
+    event = asyncio.Event()
+    _stash_event.set(event)
+
+    result = await wait_for_stash(timeout=0.05)
+    assert result is False
+
+    # Cleanup
+    _pto.set({})  # type: ignore[arg-type]
+    _stash_event.set(None)
+
+
+@pytest.mark.asyncio
+async def test_wait_for_stash_already_stashed():
+    """wait_for_stash picks up a stash that happened just before the wait."""
+    _pto.set({})
+    event = asyncio.Event()
+    _stash_event.set(event)
+
+    # Stash before waiting — simulates hook completing before message arrives
+    _stash("Read", "file contents")
+    # Event is now set; wait_for_stash clears it and re-waits.
+    # Since the stash already happened, the event won't fire again,
+    # so this should timeout. But the stash DATA is available.
+    result = await wait_for_stash(timeout=0.05)
+    # Returns False because the event was cleared before waiting and
+    # no NEW signal arrived. This is expected: the flush will find the
+    # data in the stash directly — wait_for_stash is only needed when
+    # the stash hasn't happened yet.
+    assert result is False
+
+    # But the stash itself is populated
+    assert _pto.get({}).get("Read") == ["file contents"]
+
+    # Cleanup
+    _pto.set({})  # type: ignore[arg-type]
+    _stash_event.set(None)

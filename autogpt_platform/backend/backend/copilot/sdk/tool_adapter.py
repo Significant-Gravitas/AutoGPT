@@ -9,6 +9,7 @@ via a callback provided by the service layer.  This avoids wasteful SDK polling
 and makes results survive page refreshes.
 """
 
+import asyncio
 import itertools
 import json
 import logging
@@ -44,6 +45,14 @@ _current_session: ContextVar[ChatSession | None] = ContextVar(
 _pending_tool_outputs: ContextVar[dict[str, list[str]]] = ContextVar(
     "pending_tool_outputs", default=None  # type: ignore[arg-type]
 )
+# Event signaled whenever stash_pending_tool_output() adds a new entry.
+# Used by the streaming loop to wait for PostToolUse hooks to complete
+# instead of sleeping an arbitrary duration.  The SDK fires hooks via
+# start_soon (fire-and-forget) so the next message can arrive before
+# the hook stashes its output — this event bridges that gap.
+_stash_event: ContextVar[asyncio.Event | None] = ContextVar(
+    "_stash_event", default=None
+)
 
 # Callback type for delegating long-running tools to the non-SDK infrastructure.
 # Args: (tool_name, arguments, session) → MCP-formatted response dict.
@@ -76,6 +85,7 @@ def set_execution_context(
     _current_user_id.set(user_id)
     _current_session.set(session)
     _pending_tool_outputs.set({})
+    _stash_event.set(asyncio.Event())
     _long_running_callback.set(long_running_callback)
 
 
@@ -134,6 +144,39 @@ def stash_pending_tool_output(tool_name: str, output: Any) -> None:
         except (TypeError, ValueError):
             text = str(output)
     pending.setdefault(tool_name, []).append(text)
+    # Signal any waiters that new output is available.
+    event = _stash_event.get(None)
+    if event is not None:
+        event.set()
+
+
+async def wait_for_stash(timeout: float = 0.5) -> bool:
+    """Wait for a PostToolUse hook to stash tool output.
+
+    The SDK fires PostToolUse hooks asynchronously via ``start_soon()`` —
+    the next message (AssistantMessage/ResultMessage) can arrive before the
+    hook completes and stashes its output.  This function bridges that gap
+    by waiting on the ``_stash_event``, which is signaled by
+    :func:`stash_pending_tool_output`.
+
+    After the event fires, callers should ``await asyncio.sleep(0)`` to
+    give any remaining concurrent hooks a chance to complete.
+
+    Returns ``True`` if a stash signal was received, ``False`` on timeout.
+    The timeout is a safety net — normally the stash happens within
+    microseconds of yielding to the event loop.
+    """
+    event = _stash_event.get(None)
+    if event is None:
+        return False
+    # Clear before waiting so we detect new signals only.
+    event.clear()
+    try:
+        async with asyncio.timeout(timeout):
+            await event.wait()
+        return True
+    except TimeoutError:
+        return False
 
 
 async def _execute_tool_sync(

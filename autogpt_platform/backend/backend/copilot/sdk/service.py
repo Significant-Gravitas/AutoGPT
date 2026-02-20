@@ -47,6 +47,7 @@ from .tool_adapter import (
     LongRunningCallback,
     create_copilot_mcp_server,
     set_execution_context,
+    wait_for_stash,
 )
 from .transcript import (
     cleanup_cli_project_dir,
@@ -691,16 +692,25 @@ async def stream_chat_completion_sdk(
                 # because wait_for wraps in a separate Task whose cancellation
                 # can leave the async generator in a broken state.
                 #
-                # We iterate over the internal query's raw dicts instead
-                # of the parsed Messages so we can capture them for the
-                # transcript (the CLI does not write JSONL files in SDK
-                # mode).
+                # TECH DEBT: We use two private SDK internals here:
+                #   1. client._query.receive_messages() — raw dict iterator
+                #   2. _internal.message_parser.parse_message — dict→Message
+                # This is necessary because the public receive_messages()
+                # only yields parsed Messages, but we need the raw dicts
+                # for transcript capture (CLI doesn't write JSONL in SDK
+                # mode) and per-message timeout for heartbeats.
+                # Pin claude-agent-sdk tightly and audit on version bumps.
                 from claude_agent_sdk import AssistantMessage, ResultMessage
                 from claude_agent_sdk._internal.message_parser import (
                     parse_message as _parse_sdk_msg,
                 )
 
-                assert client._query is not None  # set by connect()
+                # NOTE: _query is a private SDK attribute; see tech-debt
+                # comment on the import above.
+                if client._query is None:
+                    raise RuntimeError(
+                        "SDK client query not initialized — connect() may have failed"
+                    )
                 msg_iter = client._query.receive_messages().__aiter__()
                 while not stream_completed:
                     try:
@@ -729,15 +739,25 @@ async def stream_chat_completion_sdk(
                         getattr(sdk_msg, "subtype", ""),
                     )
 
-                    # Race-condition mitigation: SDK hooks (PostToolUse) are
-                    # executed asynchronously via start_soon() in Query._read_messages.
-                    # Messages that trigger flush (AssistantMessage, ResultMessage)
-                    # can arrive before the hook stashes its output.  Yielding to
-                    # the event loop gives the hook task a chance to complete first.
+                    # Race-condition fix: SDK hooks (PostToolUse) are executed
+                    # asynchronously via start_soon() — the next message can
+                    # arrive before the hook stashes output.  wait_for_stash()
+                    # awaits an asyncio.Event signaled by stash_pending_tool_output(),
+                    # completing as soon as the hook finishes (typically <1ms).
+                    # The sleep(0) after lets any remaining concurrent hooks complete.
                     if adapter.has_unresolved_tool_calls and isinstance(
                         sdk_msg, (AssistantMessage, ResultMessage)
                     ):
-                        await asyncio.sleep(0.1)
+                        if await wait_for_stash(timeout=0.5):
+                            await asyncio.sleep(0)
+                        else:
+                            logger.warning(
+                                "[SDK] [%s] Timed out waiting for PostToolUse "
+                                "hook stash (%d unresolved tool calls)",
+                                session_id[:12],
+                                len(adapter.current_tool_calls)
+                                - len(adapter.resolved_tool_calls),
+                            )
 
                     for response in adapter.convert_message(sdk_msg):
                         if isinstance(response, StreamStart):
