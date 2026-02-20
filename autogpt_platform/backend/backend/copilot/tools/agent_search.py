@@ -160,7 +160,9 @@ async def search_agents(
         )
 
     if source == "marketplace":
-        title = f"Found {len(agents)} agent{'s' if len(agents) != 1 else ''} for '{query}'"
+        title = (
+            f"Found {len(agents)} agent{'s' if len(agents) != 1 else ''} for '{query}'"
+        )
     elif not query:
         title = f"Found {len(agents)} agent{'s' if len(agents) != 1 else ''} in your library"
     else:
