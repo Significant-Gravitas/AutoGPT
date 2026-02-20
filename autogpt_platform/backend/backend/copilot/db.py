@@ -132,7 +132,7 @@ async def add_chat_messages_batch(
     session_id: str,
     messages: list[dict[str, Any]],
     start_sequence: int,
-) -> list[ChatMessage]:
+) -> tuple[list[ChatMessage], int]:
     """Add multiple messages to a chat session in a batch.
 
     Uses collision detection with retry: tries to create messages starting
@@ -140,9 +140,16 @@ async def add_chat_messages_batch(
     streaming loop and long-running callback race), queries MAX(sequence)
     and retries with the correct next sequence number. This avoids
     unnecessary upserts and DB queries in the common case (no collision).
+
+    Returns:
+        Tuple of (messages, final_message_count) where final_message_count
+        is the total number of messages in the session after insertion.
+        This allows callers to update their counters even when collision
+        detection adjusts start_sequence.
     """
     if not messages:
-        return []
+        # No messages to add - return current count
+        return [], start_sequence
 
     max_retries = 3
     for attempt in range(max_retries):
@@ -188,7 +195,9 @@ async def add_chat_messages_batch(
                     data={"updatedAt": datetime.now(UTC)},
                 )
 
-            return [ChatMessage.from_db(m) for m in created_messages]
+            # Return messages and final message count (for shared counter sync)
+            final_count = start_sequence + len(messages)
+            return [ChatMessage.from_db(m) for m in created_messages], final_count
 
         except Exception as e:
             # Check if it's a unique constraint violation

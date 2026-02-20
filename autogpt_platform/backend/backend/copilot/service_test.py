@@ -58,7 +58,7 @@ async def test_stream_chat_completion_with_tool_calls(setup_test_user, test_user
         return pytest.skip("OPEN_ROUTER_API_KEY is not set, skipping test")
 
     session = await create_chat_session(test_user_id)
-    session = await upsert_chat_session(session)
+    session, _ = await upsert_chat_session(session)
 
     has_errors = False
     has_ended = False
@@ -104,7 +104,7 @@ async def test_sdk_resume_multi_turn(setup_test_user, test_user_id):
         return pytest.skip("CLAUDE_AGENT_USE_RESUME is not enabled, skipping test")
 
     session = await create_chat_session(test_user_id)
-    session = await upsert_chat_session(session)
+    session, _ = await upsert_chat_session(session)
 
     # --- Turn 1: send a message with a unique keyword ---
     keyword = "ZEPHYR42"

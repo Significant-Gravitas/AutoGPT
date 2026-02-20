@@ -272,10 +272,10 @@ def _build_long_running_callback(
         )
         session.messages.append(pending_message)
         # Collision detection happens in add_chat_messages_batch (db.py)
-        await upsert_chat_session(session)
+        _, final_count = await upsert_chat_session(session)
         # Update shared counter so streaming loop stays in sync
         if saved_msg_count_ref is not None:
-            saved_msg_count_ref[0] = len(session.messages)
+            saved_msg_count_ref[0] = final_count
 
         # --- Spawn background task (reuses non-SDK infrastructure) ---
         bg_task = asyncio.create_task(
@@ -610,7 +610,7 @@ async def stream_chat_completion_sdk(
                 user_id=user_id, session_id=session_id, message_length=len(message)
             )
 
-    session = await upsert_chat_session(session)
+    session, _ = await upsert_chat_session(session)
 
     # Generate title for new sessions (first user message)
     if is_user_message and not session.title:
@@ -986,9 +986,9 @@ async def stream_chat_completion_sdk(
                                 # other devices. Collision detection happens
                                 # in add_chat_messages_batch (db.py).
                                 try:
-                                    await upsert_chat_session(session)
+                                    _, final_count = await upsert_chat_session(session)
                                     # Update shared ref so callback stays in sync
-                                    saved_msg_count_ref[0] = len(session.messages)
+                                    saved_msg_count_ref[0] = final_count
                                 except Exception as save_err:
                                     logger.warning(
                                         "[SDK] [%s] Incremental save " "failed: %s",
@@ -1013,9 +1013,9 @@ async def stream_chat_completion_sdk(
                                 # visible on refresh / other devices.
                                 # Collision detection happens in add_chat_messages_batch (db.py).
                                 try:
-                                    await upsert_chat_session(session)
+                                    _, final_count = await upsert_chat_session(session)
                                     # Update shared ref so callback stays in sync
-                                    saved_msg_count_ref[0] = len(session.messages)
+                                    saved_msg_count_ref[0] = final_count
                                 except Exception as save_err:
                                     logger.warning(
                                         "[SDK] [%s] Incremental save " "failed: %s",
@@ -1147,11 +1147,12 @@ async def stream_chat_completion_sdk(
                 "to use the OpenAI-compatible fallback."
             )
 
-        await asyncio.shield(upsert_chat_session(session))
+        _, final_count = await asyncio.shield(upsert_chat_session(session))
         logger.info(
-            "[SDK] [%s] Session saved with %d messages",
+            "[SDK] [%s] Session saved with %d messages (DB count: %d)",
             session_id[:12],
             len(session.messages),
+            final_count,
         )
         if not stream_completed:
             yield StreamFinish()

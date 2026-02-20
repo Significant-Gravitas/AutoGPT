@@ -352,7 +352,8 @@ async def assign_user_to_session(
     if not session:
         raise NotFoundError(f"Session {session_id} not found")
     session.user_id = user_id
-    return await upsert_chat_session(session)
+    session, _ = await upsert_chat_session(session)
+    return session
 
 
 async def stream_chat_completion(
@@ -463,7 +464,7 @@ async def stream_chat_completion(
             )
 
     upsert_start = time.monotonic()
-    session = await upsert_chat_session(session)
+    session, _ = await upsert_chat_session(session)
     upsert_time = (time.monotonic() - upsert_start) * 1000
     logger.info(
         f"[TIMING] upsert_chat_session took {upsert_time:.1f}ms",
@@ -689,7 +690,7 @@ async def stream_chat_completion(
                                 f"tool_responses={len(tool_response_messages)}"
                             )
                         if messages_to_save_early or has_appended_streaming_message:
-                            await upsert_chat_session(session)
+                            _ = await upsert_chat_session(session)
                             has_saved_assistant_message = True
 
                     has_yielded_end = True
@@ -728,7 +729,7 @@ async def stream_chat_completion(
             if tool_response_messages:
                 session.messages.extend(tool_response_messages)
             try:
-                await upsert_chat_session(session)
+                _ = await upsert_chat_session(session)
             except Exception as e:
                 logger.warning(
                     f"Failed to save interrupted session {session.session_id}: {e}"
@@ -769,7 +770,7 @@ async def stream_chat_completion(
                 if messages_to_save:
                     session.messages.extend(messages_to_save)
                 if messages_to_save or has_appended_streaming_message:
-                    await upsert_chat_session(session)
+                    _ = await upsert_chat_session(session)
 
             if not has_yielded_error:
                 error_message = str(e)
@@ -853,7 +854,7 @@ async def stream_chat_completion(
             not has_long_running_tool_call
             and (messages_to_save or has_appended_streaming_message)
         ):
-            await upsert_chat_session(session)
+            _ = await upsert_chat_session(session)
     else:
         logger.info(
             "Assistant message already saved when StreamFinish was received, "
@@ -1525,7 +1526,7 @@ async def _yield_tool_call(
                     tool_call_id=tool_call_id,
                 )
                 session.messages.append(pending_message)
-                await upsert_chat_session(session)
+                _ = await upsert_chat_session(session)
 
             await _with_optional_lock(session_lock, _save_pending)
             logger.info(
@@ -2019,7 +2020,7 @@ async def _generate_llm_continuation(
             fresh_session.messages.append(assistant_message)
 
             # Save to database (not cache) to persist the response
-            await upsert_chat_session(fresh_session)
+            _ = await upsert_chat_session(fresh_session)
 
             # Invalidate cache so next poll/refresh gets fresh data
             await invalidate_session_cache(session_id)
@@ -2225,7 +2226,7 @@ async def _generate_llm_continuation_with_streaming(
             fresh_session.messages.append(assistant_message)
 
             # Save to database (not cache) to persist the response
-            await upsert_chat_session(fresh_session)
+            _ = await upsert_chat_session(fresh_session)
 
             # Invalidate cache so next poll/refresh gets fresh data
             await invalidate_session_cache(session_id)

@@ -60,7 +60,7 @@ async def test_chatsession_redis_storage(setup_test_user, test_user_id):
     s = ChatSession.new(user_id=test_user_id)
     s.messages = messages
 
-    s = await upsert_chat_session(s)
+    s, _ = await upsert_chat_session(s)
 
     s2 = await get_chat_session(
         session_id=s.session_id,
@@ -77,7 +77,7 @@ async def test_chatsession_redis_storage_user_id_mismatch(
 
     s = ChatSession.new(user_id=test_user_id)
     s.messages = messages
-    s = await upsert_chat_session(s)
+    s, _ = await upsert_chat_session(s)
 
     s2 = await get_chat_session(s.session_id, "different_user_id")
 
@@ -94,7 +94,7 @@ async def test_chatsession_db_storage(setup_test_user, test_user_id):
     s.messages = messages  # Contains user, assistant, and tool messages
     assert s.session_id is not None, "Session id is not set"
     # Upsert to save to both cache and DB
-    s = await upsert_chat_session(s)
+    s, _ = await upsert_chat_session(s)
 
     # Clear the Redis cache to force DB load
     redis_key = f"chat:session:{s.session_id}"

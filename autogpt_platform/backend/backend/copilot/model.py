@@ -436,7 +436,7 @@ async def upsert_chat_session(
     session: ChatSession,
     *,
     existing_message_count: int | None = None,
-) -> ChatSession:
+) -> tuple[ChatSession, int]:
     """Update a chat session in both cache and database.
 
     Uses session-level locking to prevent race conditions when concurrent
@@ -448,6 +448,10 @@ async def upsert_chat_session(
             existing messages. The caller is responsible for tracking this
             accurately. Useful for incremental saves in a streaming loop
             where the caller already knows how many messages are persisted.
+
+    Returns:
+        Tuple of (session, final_message_count) where final_message_count is
+        the actual persisted message count after collision detection adjustments.
 
     Raises:
         DatabaseError: If the database write fails. The cache is still updated
@@ -466,10 +470,11 @@ async def upsert_chat_session(
             )
 
         db_error: Exception | None = None
+        final_count = existing_message_count
 
         # Save to database (primary storage)
         try:
-            await _save_session_to_db(
+            final_count = await _save_session_to_db(
                 session,
                 existing_message_count,
                 skip_existence_check=existing_message_count > 0,
@@ -500,7 +505,7 @@ async def upsert_chat_session(
                 f"Failed to persist chat session {session.session_id} to database"
             ) from db_error
 
-        return session
+        return session, final_count
 
 
 async def _save_session_to_db(
@@ -508,13 +513,16 @@ async def _save_session_to_db(
     existing_message_count: int,
     *,
     skip_existence_check: bool = False,
-) -> None:
+) -> int:
     """Save or update a chat session in the database.
 
     Args:
         skip_existence_check: When True, skip the ``get_chat_session`` query
             and assume the session row already exists.  Saves one DB round trip
             for incremental saves during streaming.
+
+    Returns:
+        Final message count after save (accounting for collision detection).
     """
     db = chat_db()
 
@@ -546,6 +554,7 @@ async def _save_session_to_db(
 
     # Add new messages (only those after existing count)
     new_messages = session.messages[existing_message_count:]
+    final_count = existing_message_count
     if new_messages:
         messages_data = []
         for msg in new_messages:
@@ -565,11 +574,13 @@ async def _save_session_to_db(
             f"roles={[m['role'] for m in messages_data]}, "
             f"start_sequence={existing_message_count}"
         )
-        await db.add_chat_messages_batch(
+        _, final_count = await db.add_chat_messages_batch(
             session_id=session.session_id,
             messages=messages_data,
             start_sequence=existing_message_count,
         )
+
+    return final_count
 
 
 async def append_and_save_message(session_id: str, message: ChatMessage) -> ChatSession:
