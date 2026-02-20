@@ -109,9 +109,7 @@ async def search_agents(
                     page_size=50 if not query else 10,
                 )
                 for agent in results.agents:
-                    agents.append(
-                        _library_agent_to_info(agent)
-                    )
+                    agents.append(_library_agent_to_info(agent))
         logger.info(f"Found {len(agents)} agents in {source}")
     except NotFoundError:
         pass
