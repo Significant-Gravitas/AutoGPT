@@ -84,9 +84,7 @@ async def wait_for_execution(
 
     try:
         consume_task, result = await asyncio.wait_for(
-            _subscribe_and_wait(
-                event_bus, channel_key, user_id, execution_id, exec_db
-            ),
+            _subscribe_and_wait(event_bus, channel_key, user_id, execution_id, exec_db),
             timeout=timeout_seconds,
         )
         return result
