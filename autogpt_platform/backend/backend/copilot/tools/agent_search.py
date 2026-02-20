@@ -1,10 +1,14 @@
 """Shared agent search functionality for find_agent and find_library_agent tools."""
 
+from __future__ import annotations
+
 import logging
 import re
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
-from backend.api.features.library.model import LibraryAgent
+if TYPE_CHECKING:
+    from backend.api.features.library.model import LibraryAgent
+
 from backend.data.db_accessors import library_db, store_db
 from backend.util.exceptions import DatabaseError, NotFoundError
 
