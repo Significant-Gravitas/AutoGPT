@@ -9,6 +9,7 @@ from prisma.models import ChatMessage as PrismaChatMessage
 from prisma.models import ChatSession as PrismaChatSession
 from prisma.types import (
     ChatMessageCreateInput,
+    ChatMessageUpdateInput,
     ChatSessionCreateInput,
     ChatSessionUpdateInput,
     ChatSessionWhereInput,
@@ -135,8 +136,12 @@ async def add_chat_messages_batch(
 ) -> list[ChatMessage]:
     """Add multiple messages to a chat session in a batch.
 
-    Uses a transaction for atomicity - if any message creation fails,
-    the entire batch is rolled back.
+    Uses a transaction for atomicity. Each message is upserted by the
+    (sessionId, sequence) composite key so that concurrent writers
+    (e.g., the streaming loop racing with a long-running tool callback)
+    can overlap without triggering a unique-constraint violation;
+    the later write wins and overwrites the existing row. Non-duplicate
+    failures still roll back the entire batch.
     """
     if not messages:
         return []
@@ -173,7 +178,9 @@ async def add_chat_messages_batch(
             # Use upsert to handle concurrent writers (e.g. incremental
             # streaming saves racing with long-running tool callbacks) that
             # may produce duplicate (sessionId, sequence) pairs.
-            update_data = {k: v for k, v in data.items() if k != "Session"}
+            update_data = {
+                k: v for k, v in data.items() if k not in ("Session", "sequence")
+            }
             created = await PrismaChatMessage.prisma(tx).upsert(
                 where={
                     "sessionId_sequence": {
@@ -183,7 +190,7 @@ async def add_chat_messages_batch(
                 },
                 data={
                     "create": cast(ChatMessageCreateInput, data),
-                    "update": update_data,
+                    "update": cast(ChatMessageUpdateInput, update_data),
                 },
             )
             created_messages.append(created)
