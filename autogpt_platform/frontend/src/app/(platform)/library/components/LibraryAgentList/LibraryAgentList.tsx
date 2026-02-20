@@ -21,8 +21,6 @@ import { LibraryFolderEditDialog } from "../LibraryFolderEditDialog/LibraryFolde
 import { LibraryFolderDeleteDialog } from "../LibraryFolderDeleteDialog/LibraryFolderDeleteDialog";
 import { useLibraryAgentList } from "./useLibraryAgentList";
 
-// Spring-based enter/exit animations (Emil Kowalski principles)
-// Springs are naturally interruptible — switching tabs mid-animation
 // cancels the current spring and starts a new one from current state.
 const containerVariants = {
   hidden: {},
@@ -44,10 +42,6 @@ const reducedContainerVariants = {
   },
 };
 
-// Per-item animation values (explicit initial/animate, not variant-based).
-// This ensures items animate in on mount regardless of parent state — fixes
-// the bug where dynamically added children (e.g. folders reappearing after
-// search is cleared) stayed invisible with variant inheritance.
 const itemInitial = {
   opacity: 0,
   filter: "blur(4px)",
