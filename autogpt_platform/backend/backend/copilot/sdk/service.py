@@ -11,7 +11,6 @@ from typing import Any
 
 from backend.util.exceptions import NotFoundError
 
-from .. import db as chat_db
 from .. import stream_registry
 from ..config import ChatConfig
 from ..model import (
@@ -217,10 +216,9 @@ def _build_long_running_callback(
             tool_call_id=tool_call_id,
         )
         session.messages.append(pending_message)
-        # Layer 2: Query DB for latest count before save (defense against stale counter)
-        db_count = await chat_db.get_chat_session_message_count(session_id)
-        await upsert_chat_session(session, existing_message_count=db_count)
-        # Layer 3: Update shared counter so streaming loop stays in sync
+        # Collision detection happens in add_chat_messages_batch (db.py)
+        await upsert_chat_session(session)
+        # Update shared counter so streaming loop stays in sync
         if saved_msg_count_ref is not None:
             saved_msg_count_ref[0] = len(session.messages)
 
@@ -913,19 +911,11 @@ async def stream_chat_completion_sdk(
                                     has_appended_assistant = True
                                 # Save before tool execution starts so the
                                 # pending tool call is visible on refresh /
-                                # other devices.
+                                # other devices. Collision detection happens
+                                # in add_chat_messages_batch (db.py).
                                 try:
-                                    # Layer 2: Query DB for latest count (defense against stale counter)
-                                    db_count = (
-                                        await chat_db.get_chat_session_message_count(
-                                            session_id
-                                        )
-                                    )
-                                    await upsert_chat_session(
-                                        session,
-                                        existing_message_count=db_count,
-                                    )
-                                    # Layer 3: Update shared ref so callback stays in sync
+                                    await upsert_chat_session(session)
+                                    # Update shared ref so callback stays in sync
                                     saved_msg_count_ref[0] = len(session.messages)
                                 except Exception as save_err:
                                     logger.warning(
@@ -949,18 +939,10 @@ async def stream_chat_completion_sdk(
                                 has_tool_results = True
                                 # Save after tool completes so the result is
                                 # visible on refresh / other devices.
+                                # Collision detection happens in add_chat_messages_batch (db.py).
                                 try:
-                                    # Layer 2: Query DB for latest count (defense against stale counter)
-                                    db_count = (
-                                        await chat_db.get_chat_session_message_count(
-                                            session_id
-                                        )
-                                    )
-                                    await upsert_chat_session(
-                                        session,
-                                        existing_message_count=db_count,
-                                    )
-                                    # Layer 3: Update shared ref so callback stays in sync
+                                    await upsert_chat_session(session)
+                                    # Update shared ref so callback stays in sync
                                     saved_msg_count_ref[0] = len(session.messages)
                                 except Exception as save_err:
                                     logger.warning(
