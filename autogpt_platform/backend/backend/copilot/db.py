@@ -278,14 +278,14 @@ async def get_next_sequence(session_id: str) -> int:
     Uses MAX(sequence) + 1 for robustness. Returns 0 if no messages exist.
     More robust than COUNT(*) because it's immune to deleted messages.
 
-    Uses findFirst with ordering to get the max sequence efficiently.
+    Optimized to select only the sequence column using raw SQL.
     The unique index on (sessionId, sequence) makes this query fast.
     """
-    last_message = await PrismaChatMessage.prisma().find_first(
-        where={"sessionId": session_id},
-        order={"sequence": "desc"},
+    results = await db.query_raw_with_schema(
+        'SELECT "sequence" FROM {schema_prefix}"ChatMessage" WHERE "sessionId" = $1 ORDER BY "sequence" DESC LIMIT 1',
+        session_id,
     )
-    return 0 if last_message is None else last_message.sequence + 1
+    return 0 if not results else results[0]["sequence"] + 1
 
 
 async def update_tool_message_content(
