@@ -152,7 +152,7 @@ async def add_chat_messages_batch(
         # No messages to add - return current count
         return [], start_sequence
 
-    max_retries = 3
+    max_retries = 5
     for attempt in range(max_retries):
         try:
             async with db.transaction() as tx:
