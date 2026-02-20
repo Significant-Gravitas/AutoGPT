@@ -7,7 +7,7 @@ import os
 import uuid
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import AsyncClusterLock
@@ -559,6 +559,9 @@ async def stream_chat_completion_sdk(
         raise NotFoundError(
             f"Session {session_id} not found. Please create a new session first."
         )
+
+    # Type narrowing: session is guaranteed ChatSession after the check above
+    session = cast(ChatSession, session)
 
     # Append the new message to the session if it's not already there
     new_message_role = "user" if is_user_message else "assistant"
@@ -1118,12 +1121,12 @@ async def stream_chat_completion_sdk(
                 "to use the OpenAI-compatible fallback."
             )
 
-        session = await asyncio.shield(upsert_chat_session(session))
+        session = cast(ChatSession, await asyncio.shield(upsert_chat_session(session)))
         logger.info(
             "[SDK] [%s] Session saved with %d messages (DB count: %d)",
             session_id[:12],
-            len(session.messages),  # type: ignore[union-attr]
-            session.saved_message_count,  # type: ignore[union-attr]
+            len(session.messages),
+            session.saved_message_count,
         )
         if not stream_completed:
             yield StreamFinish()
@@ -1136,10 +1139,11 @@ async def stream_chat_completion_sdk(
         raise
     except Exception as e:
         logger.error(f"[SDK] Error: {e}", exc_info=True)
-        try:
-            await asyncio.shield(upsert_chat_session(session))  # type: ignore[arg-type]
-        except Exception as save_err:
-            logger.error(f"[SDK] Failed to save session on error: {save_err}")
+        if session:
+            try:
+                await asyncio.shield(upsert_chat_session(session))
+            except Exception as save_err:
+                logger.error(f"[SDK] Failed to save session on error: {save_err}")
         yield StreamError(
             errorText="An error occurred. Please try again.",
             code="sdk_error",
