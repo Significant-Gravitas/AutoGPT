@@ -83,7 +83,12 @@ class SDKResponseAdapter:
         elif isinstance(sdk_message, AssistantMessage):
             # Flush any SDK built-in tool calls that didn't get a UserMessage
             # result (e.g. WebSearch, Read handled internally by the CLI).
-            self._flush_unresolved_tool_calls(responses)
+            # BUT skip flush when this AssistantMessage is a parallel tool
+            # continuation (contains only ToolUseBlocks) — the prior tools
+            # are still executing concurrently and haven't finished yet.
+            is_tool_only = all(isinstance(b, ToolUseBlock) for b in sdk_message.content)
+            if not is_tool_only:
+                self._flush_unresolved_tool_calls(responses)
 
             # After tool results, the SDK sends a new AssistantMessage for the
             # next LLM turn. Open a new step if the previous one was closed.
@@ -126,6 +131,11 @@ class SDKResponseAdapter:
 
             for block in blocks:
                 if isinstance(block, ToolResultBlock) and block.tool_use_id:
+                    # Skip if already resolved (e.g. by flush) — the real
+                    # result supersedes the empty flush, but re-emitting
+                    # would confuse the frontend's state machine.
+                    if block.tool_use_id in self.resolved_tool_calls:
+                        continue
                     tool_info = self.current_tool_calls.get(block.tool_use_id, {})
                     tool_name = tool_info.get("name", "unknown")
 
@@ -150,7 +160,11 @@ class SDKResponseAdapter:
             # Handle SDK built-in tool results carried via parent_tool_use_id
             # instead of (or in addition to) ToolResultBlock content.
             parent_id = sdk_message.parent_tool_use_id
-            if parent_id and parent_id not in resolved_in_blocks:
+            if (
+                parent_id
+                and parent_id not in resolved_in_blocks
+                and parent_id not in self.resolved_tool_calls
+            ):
                 tool_info = self.current_tool_calls.get(parent_id, {})
                 tool_name = tool_info.get("name", "unknown")
 

@@ -745,10 +745,25 @@ async def stream_chat_completion_sdk(
                     # awaits an asyncio.Event signaled by stash_pending_tool_output(),
                     # completing as soon as the hook finishes (typically <1ms).
                     # The sleep(0) after lets any remaining concurrent hooks complete.
-                    from claude_agent_sdk import AssistantMessage, ResultMessage
+                    #
+                    # Skip for parallel tool continuations: when the SDK sends
+                    # parallel tool calls as separate AssistantMessages (each
+                    # containing only ToolUseBlocks), we must NOT wait/flush
+                    # — the prior tools are still executing concurrently.
+                    from claude_agent_sdk import (
+                        AssistantMessage,
+                        ResultMessage,
+                        ToolUseBlock,
+                    )
 
-                    if adapter.has_unresolved_tool_calls and isinstance(
-                        sdk_msg, (AssistantMessage, ResultMessage)
+                    is_parallel_continuation = isinstance(
+                        sdk_msg, AssistantMessage
+                    ) and all(isinstance(b, ToolUseBlock) for b in sdk_msg.content)
+
+                    if (
+                        adapter.has_unresolved_tool_calls
+                        and isinstance(sdk_msg, (AssistantMessage, ResultMessage))
+                        and not is_parallel_continuation
                     ):
                         if await wait_for_stash(timeout=0.5):
                             await asyncio.sleep(0)

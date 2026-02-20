@@ -580,3 +580,101 @@ async def test_wait_for_stash_already_stashed():
     # Cleanup
     _pto.set({})  # type: ignore[arg-type]
     _stash_event.set(None)
+
+
+# -- Parallel tool call tests --
+
+
+def test_parallel_tool_calls_not_flushed_prematurely():
+    """Parallel tool calls should NOT be flushed when the next AssistantMessage
+    only contains ToolUseBlocks (parallel continuation)."""
+    adapter = SDKResponseAdapter()
+
+    # Init
+    adapter.convert_message(SystemMessage(subtype="init", data={}))
+
+    # First AssistantMessage: tool call #1
+    msg1 = AssistantMessage(
+        content=[ToolUseBlock(id="t1", name="WebSearch", input={"q": "foo"})],
+        model="test",
+    )
+    r1 = adapter.convert_message(msg1)
+    assert any(isinstance(r, StreamToolInputAvailable) for r in r1)
+    assert adapter.has_unresolved_tool_calls
+
+    # Second AssistantMessage: tool call #2 (parallel continuation)
+    msg2 = AssistantMessage(
+        content=[ToolUseBlock(id="t2", name="WebSearch", input={"q": "bar"})],
+        model="test",
+    )
+    r2 = adapter.convert_message(msg2)
+
+    # No flush should have happened — t1 should NOT have StreamToolOutputAvailable
+    output_events = [r for r in r2 if isinstance(r, StreamToolOutputAvailable)]
+    assert len(output_events) == 0, (
+        f"Tool-only AssistantMessage should not flush prior tools, "
+        f"but got {len(output_events)} output events"
+    )
+
+    # Both t1 and t2 should still be unresolved
+    assert "t1" not in adapter.resolved_tool_calls
+    assert "t2" not in adapter.resolved_tool_calls
+
+
+def test_text_assistant_message_flushes_prior_tools():
+    """An AssistantMessage with text (new turn) should flush unresolved tools."""
+    adapter = SDKResponseAdapter()
+
+    # Init
+    adapter.convert_message(SystemMessage(subtype="init", data={}))
+
+    # Tool call
+    msg1 = AssistantMessage(
+        content=[ToolUseBlock(id="t1", name="WebSearch", input={"q": "foo"})],
+        model="test",
+    )
+    adapter.convert_message(msg1)
+    assert adapter.has_unresolved_tool_calls
+
+    # Text AssistantMessage (new turn after tools completed)
+    msg2 = AssistantMessage(
+        content=[TextBlock(text="Here are the results")],
+        model="test",
+    )
+    r2 = adapter.convert_message(msg2)
+
+    # Flush SHOULD have happened — t1 gets empty output
+    output_events = [r for r in r2 if isinstance(r, StreamToolOutputAvailable)]
+    assert len(output_events) == 1
+    assert output_events[0].toolCallId == "t1"
+    assert "t1" in adapter.resolved_tool_calls
+
+
+def test_already_resolved_tool_skipped_in_user_message():
+    """A tool result in UserMessage should be skipped if already resolved by flush."""
+    adapter = SDKResponseAdapter()
+
+    adapter.convert_message(SystemMessage(subtype="init", data={}))
+
+    # Tool call + flush via text message
+    adapter.convert_message(
+        AssistantMessage(
+            content=[ToolUseBlock(id="t1", name="WebSearch", input={})],
+            model="test",
+        )
+    )
+    adapter.convert_message(
+        AssistantMessage(
+            content=[TextBlock(text="Done")],
+            model="test",
+        )
+    )
+    assert "t1" in adapter.resolved_tool_calls
+
+    # Now UserMessage arrives with the real result — should be skipped
+    user_msg = UserMessage(content=[ToolResultBlock(tool_use_id="t1", content="real")])
+    r = adapter.convert_message(user_msg)
+    output_events = [r_ for r_ in r if isinstance(r_, StreamToolOutputAvailable)]
+    assert (
+        len(output_events) == 0
+    ), "Already-resolved tool should not emit duplicate output"
