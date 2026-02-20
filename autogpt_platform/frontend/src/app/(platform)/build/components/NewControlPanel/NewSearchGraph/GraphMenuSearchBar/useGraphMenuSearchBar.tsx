@@ -1,5 +1,5 @@
 import { useState, useMemo, useDeferredValue } from "react";
-import { CustomNode } from "@/app/(platform)/build/components/legacy-builder/CustomNode/CustomNode";
+import { CustomNode } from "../../../FlowEditor/nodes/CustomNode/CustomNode";
 import { beautifyString } from "@/lib/utils";
 import jaro from "jaro-winkler";
 
@@ -67,10 +67,10 @@ function calculateNodeScore(
   const nodeTitle = (node.data?.title || "").toLowerCase(); // This includes the ID
   const nodeId = (node.id || "").toLowerCase();
   const nodeDescription = (node.data?.description || "").toLowerCase();
-  const blockType = (node.data?.blockType || "").toLowerCase();
+  const blockType = (node.data?.title || "").toLowerCase();
   const beautifiedBlockType = beautifyString(blockType).toLowerCase();
-  const customizedName = (
-    node.data?.metadata?.customized_name || ""
+  const customizedName = String(
+    node.data?.metadata?.customized_name || "",
   ).toLowerCase();
 
   // Get input and output names with defensive checks
