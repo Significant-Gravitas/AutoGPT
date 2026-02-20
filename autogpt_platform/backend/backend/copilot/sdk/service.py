@@ -24,6 +24,7 @@ from ..response_model import (
     StreamBaseResponse,
     StreamError,
     StreamFinish,
+    StreamFinishStep,
     StreamHeartbeat,
     StreamStart,
     StreamTextDelta,
@@ -46,6 +47,7 @@ from .tool_adapter import (
     LongRunningCallback,
     create_copilot_mcp_server,
     set_execution_context,
+    wait_for_stash,
 )
 from .transcript import (
     cleanup_cli_project_dir,
@@ -344,15 +346,15 @@ async def _compress_conversation_history(
 
     Returns the compressed prior messages (everything except the current message).
     """
-    prior = session.messages[:-1]
-    if len(prior) < 2:
-        return prior
+    messages = session.messages[:-1]
+    if len(messages) < 2:
+        return messages
 
     from backend.util.prompt import compress_context
 
     # Convert ChatMessages to dicts for compress_context
     messages_dict = []
-    for msg in prior:
+    for msg in messages:
         msg_dict: dict[str, Any] = {"role": msg.role}
         if msg.content:
             msg_dict["content"] = msg.content
@@ -400,7 +402,7 @@ async def _compress_conversation_history(
             for m in result.messages
         ]
 
-    return prior
+    return messages
 
 
 def _format_conversation_context(messages: list[ChatMessage]) -> str | None:
@@ -442,8 +444,8 @@ def _format_conversation_context(messages: list[ChatMessage]) -> str | None:
 def _is_tool_error_or_denial(content: str | None) -> bool:
     """Check if a tool message content indicates an error or denial.
 
-    We include these in conversation context so the agent doesn't
-    hallucinate success for operations that actually failed.
+    Currently unused — ``_format_conversation_context`` includes all tool
+    results.  Kept as a utility for future selective filtering.
     """
     if not content:
         return False
@@ -458,7 +460,7 @@ def _is_tool_error_or_denial(content: str | None) -> bool:
             "maximum",  # subtask-limit denial
             "denied",
             "blocked",
-            "failed",  # internal tool execution failures
+            "failed to",  # internal tool execution failures
             '"iserror": true',  # MCP protocol error flag
         )
     )
@@ -674,7 +676,7 @@ async def stream_chat_completion_sdk(
 
             options = ClaudeAgentOptions(**sdk_options_kwargs)  # type: ignore[arg-type]
 
-            adapter = SDKResponseAdapter(message_id=message_id)
+            adapter = SDKResponseAdapter(message_id=message_id, session_id=session_id)
             adapter.set_task_id(task_id)
 
             async with ClaudeSDKClient(options=options) as client:
@@ -699,10 +701,13 @@ async def stream_chat_completion_sdk(
                     transcript_msg_count,
                     session_id,
                 )
-
                 logger.info(
-                    f"[SDK] Sending query ({len(session.messages)} msgs, "
-                    f"resume={use_resume})"
+                    "[SDK] [%s] Sending query — resume=%s, "
+                    "total_msgs=%d, query_len=%d",
+                    session_id[:12],
+                    use_resume,
+                    len(session.messages),
+                    len(query_message),
                 )
                 await client.query(query_message, session_id=session_id)
 
@@ -710,98 +715,296 @@ async def stream_chat_completion_sdk(
                 accumulated_tool_calls: list[dict[str, Any]] = []
                 has_appended_assistant = False
                 has_tool_results = False
+                # Track persisted message count to skip DB count queries
+                # on incremental saves.  Initial save happened at line 545.
+                saved_msg_count = len(session.messages)
 
-                # Use an explicit async iterator with timeout to send
-                # heartbeats when the CLI is idle (e.g. executing tools).
-                # This prevents proxies/LBs from closing the SSE connection.
-                # asyncio.timeout() is preferred over asyncio.wait_for()
-                # because wait_for wraps in a separate Task whose cancellation
-                # can leave the async generator in a broken state.
+                # Use an explicit async iterator with non-cancelling heartbeats.
+                # CRITICAL: we must NOT cancel __anext__() mid-flight — doing so
+                # (via asyncio.timeout or wait_for) corrupts the SDK's internal
+                # anyio memory stream, causing StopAsyncIteration on the next
+                # call and silently dropping all in-flight tool results.
+                # Instead, wrap __anext__() in a Task and use asyncio.wait()
+                # with a timeout.  On timeout we emit a heartbeat but keep the
+                # Task alive so it can deliver the next message.
                 msg_iter = client.receive_messages().__aiter__()
-                while not stream_completed:
-                    try:
-                        async with asyncio.timeout(_HEARTBEAT_INTERVAL):
-                            sdk_msg = await msg_iter.__anext__()
-                    except TimeoutError:
-                        yield StreamHeartbeat()
-                        continue
-                    except StopAsyncIteration:
-                        break
+                pending_task: asyncio.Task[Any] | None = None
+                try:
+                    while not stream_completed:
+                        if pending_task is None:
 
-                    logger.debug(
-                        f"[SDK] Received: {type(sdk_msg).__name__} "
-                        f"{getattr(sdk_msg, 'subtype', '')}"
-                    )
-                    for response in adapter.convert_message(sdk_msg):
-                        if isinstance(response, StreamStart):
+                            async def _next_msg() -> Any:
+                                return await msg_iter.__anext__()
+
+                            pending_task = asyncio.create_task(_next_msg())
+
+                        done, _ = await asyncio.wait(
+                            {pending_task}, timeout=_HEARTBEAT_INTERVAL
+                        )
+
+                        if not done:
+                            # Timeout — emit heartbeat but keep the task alive
+                            yield StreamHeartbeat()
                             continue
 
-                        # Log tool events for debugging visibility issues
+                        # Task completed — get result
+                        pending_task = None
+                        try:
+                            sdk_msg = done.pop().result()
+                        except StopAsyncIteration:
+                            logger.info(
+                                "[SDK] [%s] Stream ended normally "
+                                "(StopAsyncIteration)",
+                                session_id[:12],
+                            )
+                            break
+                        except Exception as stream_err:
+                            # SDK sends {"type": "error"} which raises
+                            # Exception in receive_messages() — capture it
+                            # so the session can still be saved and the
+                            # frontend gets a clean finish.
+                            logger.error(
+                                "[SDK] [%s] Stream error from SDK: %s",
+                                session_id[:12],
+                                stream_err,
+                                exc_info=True,
+                            )
+                            yield StreamError(
+                                errorText=f"SDK stream error: {stream_err}",
+                                code="sdk_stream_error",
+                            )
+                            break
+
+                        logger.info(
+                            "[SDK] [%s] Received: %s %s "
+                            "(unresolved=%d, current=%d, resolved=%d)",
+                            session_id[:12],
+                            type(sdk_msg).__name__,
+                            getattr(sdk_msg, "subtype", ""),
+                            len(adapter.current_tool_calls)
+                            - len(adapter.resolved_tool_calls),
+                            len(adapter.current_tool_calls),
+                            len(adapter.resolved_tool_calls),
+                        )
+
+                        # Race-condition fix: SDK hooks (PostToolUse) are
+                        # executed asynchronously via start_soon() — the next
+                        # message can arrive before the hook stashes output.
+                        # wait_for_stash() awaits an asyncio.Event signaled by
+                        # stash_pending_tool_output(), completing as soon as
+                        # the hook finishes (typically <1ms).  The sleep(0)
+                        # after lets any remaining concurrent hooks complete.
+                        #
+                        # Skip for parallel tool continuations: when the SDK
+                        # sends parallel tool calls as separate
+                        # AssistantMessages (each containing only
+                        # ToolUseBlocks), we must NOT wait/flush — the prior
+                        # tools are still executing concurrently.
+                        from claude_agent_sdk import (
+                            AssistantMessage,
+                            ResultMessage,
+                            ToolUseBlock,
+                        )
+
+                        is_parallel_continuation = isinstance(
+                            sdk_msg, AssistantMessage
+                        ) and all(isinstance(b, ToolUseBlock) for b in sdk_msg.content)
+
+                        if (
+                            adapter.has_unresolved_tool_calls
+                            and isinstance(sdk_msg, (AssistantMessage, ResultMessage))
+                            and not is_parallel_continuation
+                        ):
+                            if await wait_for_stash(timeout=0.5):
+                                await asyncio.sleep(0)
+                            else:
+                                logger.warning(
+                                    "[SDK] [%s] Timed out waiting for "
+                                    "PostToolUse hook stash "
+                                    "(%d unresolved tool calls)",
+                                    session_id[:12],
+                                    len(adapter.current_tool_calls)
+                                    - len(adapter.resolved_tool_calls),
+                                )
+
+                        for response in adapter.convert_message(sdk_msg):
+                            if isinstance(response, StreamStart):
+                                continue
+
+                            # Log tool events for debugging
+                            if isinstance(
+                                response,
+                                (
+                                    StreamToolInputAvailable,
+                                    StreamToolOutputAvailable,
+                                ),
+                            ):
+                                extra = ""
+                                if isinstance(response, StreamToolOutputAvailable):
+                                    out_len = len(str(response.output))
+                                    extra = f", output_len={out_len}"
+                                logger.info(
+                                    "[SDK] [%s] Tool event: %s, tool=%s%s",
+                                    session_id[:12],
+                                    type(response).__name__,
+                                    getattr(response, "toolName", "N/A"),
+                                    extra,
+                                )
+
+                            yield response
+
+                            if isinstance(response, StreamTextDelta):
+                                delta = response.delta or ""
+                                # After tool results, start a new assistant
+                                # message for the post-tool text.
+                                if has_tool_results and has_appended_assistant:
+                                    assistant_response = ChatMessage(
+                                        role="assistant", content=delta
+                                    )
+                                    accumulated_tool_calls = []
+                                    has_appended_assistant = False
+                                    has_tool_results = False
+                                    session.messages.append(assistant_response)
+                                    has_appended_assistant = True
+                                else:
+                                    assistant_response.content = (
+                                        assistant_response.content or ""
+                                    ) + delta
+                                    if not has_appended_assistant:
+                                        session.messages.append(assistant_response)
+                                        has_appended_assistant = True
+
+                            elif isinstance(response, StreamToolInputAvailable):
+                                accumulated_tool_calls.append(
+                                    {
+                                        "id": response.toolCallId,
+                                        "type": "function",
+                                        "function": {
+                                            "name": response.toolName,
+                                            "arguments": json.dumps(
+                                                response.input or {}
+                                            ),
+                                        },
+                                    }
+                                )
+                                assistant_response.tool_calls = accumulated_tool_calls
+                                if not has_appended_assistant:
+                                    session.messages.append(assistant_response)
+                                    has_appended_assistant = True
+                                # Save before tool execution starts so the
+                                # pending tool call is visible on refresh /
+                                # other devices.
+                                try:
+                                    await upsert_chat_session(
+                                        session,
+                                        existing_message_count=saved_msg_count,
+                                    )
+                                    saved_msg_count = len(session.messages)
+                                except Exception as save_err:
+                                    logger.warning(
+                                        "[SDK] [%s] Incremental save " "failed: %s",
+                                        session_id[:12],
+                                        save_err,
+                                    )
+
+                            elif isinstance(response, StreamToolOutputAvailable):
+                                session.messages.append(
+                                    ChatMessage(
+                                        role="tool",
+                                        content=(
+                                            response.output
+                                            if isinstance(response.output, str)
+                                            else str(response.output)
+                                        ),
+                                        tool_call_id=response.toolCallId,
+                                    )
+                                )
+                                has_tool_results = True
+                                # Save after tool completes so the result is
+                                # visible on refresh / other devices.
+                                try:
+                                    await upsert_chat_session(
+                                        session,
+                                        existing_message_count=saved_msg_count,
+                                    )
+                                    saved_msg_count = len(session.messages)
+                                except Exception as save_err:
+                                    logger.warning(
+                                        "[SDK] [%s] Incremental save " "failed: %s",
+                                        session_id[:12],
+                                        save_err,
+                                    )
+
+                            elif isinstance(response, StreamFinish):
+                                stream_completed = True
+
+                except asyncio.CancelledError:
+                    # Task/generator was cancelled (e.g. client disconnect,
+                    # server shutdown).  Log and let the safety-net / finally
+                    # blocks handle cleanup.
+                    logger.warning(
+                        "[SDK] [%s] Streaming loop cancelled "
+                        "(asyncio.CancelledError)",
+                        session_id[:12],
+                    )
+                    raise
+                finally:
+                    # Cancel the pending __anext__ task to avoid a leaked
+                    # coroutine.  This is safe even if the task already
+                    # completed.
+                    if pending_task is not None and not pending_task.done():
+                        pending_task.cancel()
+                        try:
+                            await pending_task
+                        except (asyncio.CancelledError, StopAsyncIteration):
+                            pass
+
+                # Safety net: if tools are still unresolved after the
+                # streaming loop (e.g. StopAsyncIteration before ResultMessage,
+                # or SDK not sending UserMessages for built-in tools), flush
+                # them now so the frontend stops showing spinners.
+                if adapter.has_unresolved_tool_calls:
+                    logger.warning(
+                        "[SDK] [%s] %d unresolved tool(s) after stream loop — "
+                        "flushing as safety net",
+                        session_id[:12],
+                        len(adapter.current_tool_calls)
+                        - len(adapter.resolved_tool_calls),
+                    )
+                    safety_responses: list[StreamBaseResponse] = []
+                    adapter._flush_unresolved_tool_calls(safety_responses)
+                    for response in safety_responses:
                         if isinstance(
                             response,
                             (StreamToolInputAvailable, StreamToolOutputAvailable),
                         ):
                             logger.info(
-                                "[SDK] Tool event: %s, tool=%s",
+                                "[SDK] [%s] Safety flush: %s, tool=%s",
+                                session_id[:12],
                                 type(response).__name__,
                                 getattr(response, "toolName", "N/A"),
                             )
-
                         yield response
 
-                        if isinstance(response, StreamTextDelta):
-                            delta = response.delta or ""
-                            # After tool results, start a new assistant
-                            # message for the post-tool text.
-                            if has_tool_results and has_appended_assistant:
-                                assistant_response = ChatMessage(
-                                    role="assistant", content=delta
-                                )
-                                accumulated_tool_calls = []
-                                has_appended_assistant = False
-                                has_tool_results = False
-                                session.messages.append(assistant_response)
-                                has_appended_assistant = True
-                            else:
-                                assistant_response.content = (
-                                    assistant_response.content or ""
-                                ) + delta
-                                if not has_appended_assistant:
-                                    session.messages.append(assistant_response)
-                                    has_appended_assistant = True
-
-                        elif isinstance(response, StreamToolInputAvailable):
-                            accumulated_tool_calls.append(
-                                {
-                                    "id": response.toolCallId,
-                                    "type": "function",
-                                    "function": {
-                                        "name": response.toolName,
-                                        "arguments": json.dumps(response.input or {}),
-                                    },
-                                }
-                            )
-                            assistant_response.tool_calls = accumulated_tool_calls
-                            if not has_appended_assistant:
-                                session.messages.append(assistant_response)
-                                has_appended_assistant = True
-
-                        elif isinstance(response, StreamToolOutputAvailable):
-                            session.messages.append(
-                                ChatMessage(
-                                    role="tool",
-                                    content=(
-                                        response.output
-                                        if isinstance(response.output, str)
-                                        else str(response.output)
-                                    ),
-                                    tool_call_id=response.toolCallId,
-                                )
-                            )
-                            has_tool_results = True
-
-                        elif isinstance(response, StreamFinish):
-                            stream_completed = True
+                # If the stream ended without a ResultMessage (no
+                # StreamFinish), the SDK CLI exited unexpectedly.  Close
+                # the open step and emit StreamFinish so the frontend
+                # transitions to the "ready" state.
+                if not stream_completed:
+                    logger.warning(
+                        "[SDK] [%s] Stream ended without ResultMessage "
+                        "(StopAsyncIteration) — emitting StreamFinish",
+                        session_id[:12],
+                    )
+                    if adapter.step_open:
+                        yield StreamFinishStep()
+                        adapter.step_open = False
+                    closing_responses: list[StreamBaseResponse] = []
+                    adapter._end_text_if_open(closing_responses)
+                    for r in closing_responses:
+                        yield r
+                    yield StreamFinish()
+                    stream_completed = True
 
                 if (
                     assistant_response.content or assistant_response.tool_calls
@@ -857,12 +1060,20 @@ async def stream_chat_completion_sdk(
             )
 
         await asyncio.shield(upsert_chat_session(session))
-        logger.debug(
-            f"[SDK] Session {session_id} saved with {len(session.messages)} messages"
+        logger.info(
+            "[SDK] [%s] Session saved with %d messages",
+            session_id[:12],
+            len(session.messages),
         )
         if not stream_completed:
             yield StreamFinish()
 
+    except asyncio.CancelledError:
+        # Client disconnect / server shutdown — log but re-raise so
+        # the framework can clean up.  The finally block still runs
+        # for transcript upload.
+        logger.warning("[SDK] [%s] Session cancelled (CancelledError)", session_id[:12])
+        raise
     except Exception as e:
         logger.error(f"[SDK] Error: {e}", exc_info=True)
         try:

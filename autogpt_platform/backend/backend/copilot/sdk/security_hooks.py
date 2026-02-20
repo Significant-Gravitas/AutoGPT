@@ -246,15 +246,33 @@ def create_security_hooks(
             """
             _ = context
             tool_name = cast(str, input_data.get("tool_name", ""))
-            logger.debug(f"[SDK] Tool success: {tool_name}, tool_use_id={tool_use_id}")
+            is_builtin = not tool_name.startswith(MCP_TOOL_PREFIX)
+            logger.info(
+                "[SDK] PostToolUse: %s (builtin=%s, tool_use_id=%s)",
+                tool_name,
+                is_builtin,
+                (tool_use_id or "")[:12],
+            )
 
             # Stash output for SDK built-in tools so the response adapter can
             # emit StreamToolOutputAvailable even when the CLI doesn't surface
             # a separate UserMessage with ToolResultBlock content.
-            if not tool_name.startswith(MCP_TOOL_PREFIX):
+            if is_builtin:
                 tool_response = input_data.get("tool_response")
                 if tool_response is not None:
+                    resp_preview = str(tool_response)[:100]
+                    logger.info(
+                        "[SDK] Stashing builtin output for %s (%d chars): %s...",
+                        tool_name,
+                        len(str(tool_response)),
+                        resp_preview,
+                    )
                     stash_pending_tool_output(tool_name, tool_response)
+                else:
+                    logger.warning(
+                        "[SDK] PostToolUse for builtin %s but tool_response is None",
+                        tool_name,
+                    )
 
             return cast(SyncHookJSONOutput, {})
 

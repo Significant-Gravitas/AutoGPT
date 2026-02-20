@@ -47,8 +47,9 @@ class SDKResponseAdapter:
     text blocks, tool calls, and message lifecycle.
     """
 
-    def __init__(self, message_id: str | None = None):
+    def __init__(self, message_id: str | None = None, session_id: str | None = None):
         self.message_id = message_id or str(uuid.uuid4())
+        self.session_id = session_id
         self.text_block_id = str(uuid.uuid4())
         self.has_started_text = False
         self.has_ended_text = False
@@ -60,6 +61,11 @@ class SDKResponseAdapter:
     def set_task_id(self, task_id: str) -> None:
         """Set the task ID for reconnection support."""
         self.task_id = task_id
+
+    @property
+    def has_unresolved_tool_calls(self) -> bool:
+        """True when there are tool calls that haven't received output yet."""
+        return bool(self.current_tool_calls.keys() - self.resolved_tool_calls)
 
     def convert_message(self, sdk_message: Message) -> list[StreamBaseResponse]:
         """Convert a single SDK message to Vercel AI SDK format."""
@@ -77,7 +83,12 @@ class SDKResponseAdapter:
         elif isinstance(sdk_message, AssistantMessage):
             # Flush any SDK built-in tool calls that didn't get a UserMessage
             # result (e.g. WebSearch, Read handled internally by the CLI).
-            self._flush_unresolved_tool_calls(responses)
+            # BUT skip flush when this AssistantMessage is a parallel tool
+            # continuation (contains only ToolUseBlocks) — the prior tools
+            # are still executing concurrently and haven't finished yet.
+            is_tool_only = all(isinstance(b, ToolUseBlock) for b in sdk_message.content)
+            if not is_tool_only:
+                self._flush_unresolved_tool_calls(responses)
 
             # After tool results, the SDK sends a new AssistantMessage for the
             # next LLM turn. Open a new step if the previous one was closed.
@@ -118,8 +129,24 @@ class SDKResponseAdapter:
             blocks = content if isinstance(content, list) else []
             resolved_in_blocks: set[str] = set()
 
+            sid = (self.session_id or "?")[:12]
+            parent_id_preview = getattr(sdk_message, "parent_tool_use_id", None)
+            logger.info(
+                "[SDK] [%s] UserMessage: %d blocks, content_type=%s, "
+                "parent_tool_use_id=%s",
+                sid,
+                len(blocks),
+                type(content).__name__,
+                parent_id_preview[:12] if parent_id_preview else "None",
+            )
+
             for block in blocks:
                 if isinstance(block, ToolResultBlock) and block.tool_use_id:
+                    # Skip if already resolved (e.g. by flush) — the real
+                    # result supersedes the empty flush, but re-emitting
+                    # would confuse the frontend's state machine.
+                    if block.tool_use_id in self.resolved_tool_calls:
+                        continue
                     tool_info = self.current_tool_calls.get(block.tool_use_id, {})
                     tool_name = tool_info.get("name", "unknown")
 
@@ -144,7 +171,11 @@ class SDKResponseAdapter:
             # Handle SDK built-in tool results carried via parent_tool_use_id
             # instead of (or in addition to) ToolResultBlock content.
             parent_id = sdk_message.parent_tool_use_id
-            if parent_id and parent_id not in resolved_in_blocks:
+            if (
+                parent_id
+                and parent_id not in resolved_in_blocks
+                and parent_id not in self.resolved_tool_calls
+            ):
                 tool_info = self.current_tool_calls.get(parent_id, {})
                 tool_name = tool_info.get("name", "unknown")
 
@@ -228,11 +259,28 @@ class SDKResponseAdapter:
         output, which we pop and emit here before the next ``AssistantMessage``
         starts.
         """
+        unresolved = [
+            (tid, info.get("name", "unknown"))
+            for tid, info in self.current_tool_calls.items()
+            if tid not in self.resolved_tool_calls
+        ]
+        sid = (self.session_id or "?")[:12]
+        if not unresolved:
+            logger.info(
+                "[SDK] [%s] Flush called but all %d tool(s) already resolved",
+                sid,
+                len(self.current_tool_calls),
+            )
+            return
+        logger.info(
+            "[SDK] [%s] Flushing %d unresolved tool call(s): %s",
+            sid,
+            len(unresolved),
+            ", ".join(f"{name}({tid[:12]})" for tid, name in unresolved),
+        )
+
         flushed = False
-        for tool_id, tool_info in self.current_tool_calls.items():
-            if tool_id in self.resolved_tool_calls:
-                continue
-            tool_name = tool_info.get("name", "unknown")
+        for tool_id, tool_name in unresolved:
             output = pop_pending_tool_output(tool_name)
             if output is not None:
                 responses.append(
@@ -245,9 +293,12 @@ class SDKResponseAdapter:
                 )
                 self.resolved_tool_calls.add(tool_id)
                 flushed = True
-                logger.debug(
-                    f"Flushed pending output for built-in tool {tool_name} "
-                    f"(call {tool_id})"
+                logger.info(
+                    "[SDK] [%s] Flushed stashed output for %s " "(call %s, %d chars)",
+                    sid,
+                    tool_name,
+                    tool_id[:12],
+                    len(output),
                 )
             else:
                 # No output available — emit an empty output so the frontend
@@ -263,9 +314,14 @@ class SDKResponseAdapter:
                 )
                 self.resolved_tool_calls.add(tool_id)
                 flushed = True
-                logger.debug(
-                    f"Flushed empty output for unresolved tool {tool_name} "
-                    f"(call {tool_id})"
+                logger.warning(
+                    "[SDK] [%s] Flushed EMPTY output for unresolved tool %s "
+                    "(call %s) — stash was empty (likely SDK hook race "
+                    "condition: PostToolUse hook hadn't completed before "
+                    "flush was triggered)",
+                    sid,
+                    tool_name,
+                    tool_id[:12],
                 )
 
         if flushed and self.step_open:
