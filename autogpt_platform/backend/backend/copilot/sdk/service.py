@@ -151,7 +151,6 @@ is delivered to the user via a background stream.
 
 # Session streaming lock configuration
 STREAM_LOCK_PREFIX = "copilot:stream:lock:"
-STREAM_LOCK_TTL = 3600  # 1 hour - matches stream_ttl
 
 
 async def _acquire_stream_lock(session_id: str, stream_id: str) -> bool:
@@ -167,9 +166,29 @@ async def _acquire_stream_lock(session_id: str, stream_id: str) -> bool:
     """
     redis = await get_redis_async()
     lock_key = f"{STREAM_LOCK_PREFIX}{session_id}"
-    # SET NX EX - atomic "set if not exists" with expiry
-    result = await redis.set(lock_key, stream_id, ex=STREAM_LOCK_TTL, nx=True)
+    # SET NX EX - atomic "set if not exists" with expiry (uses config.stream_ttl)
+    result = await redis.set(lock_key, stream_id, ex=config.stream_ttl, nx=True)
     return result is not None
+
+
+async def _refresh_stream_lock(session_id: str, stream_id: str) -> None:
+    """Refresh the stream lock TTL if we still own it.
+
+    Called on heartbeats to keep the lock alive during long-running streams.
+    Only refreshes if the stored stream_id matches ours.
+    """
+    redis = await get_redis_async()
+    lock_key = f"{STREAM_LOCK_PREFIX}{session_id}"
+
+    # Lua script for atomic compare-and-expire (only refresh if we own it)
+    script = """
+    if redis.call("GET", KEYS[1]) == ARGV[1] then
+        return redis.call("EXPIRE", KEYS[1], ARGV[2])
+    else
+        return 0
+    end
+    """
+    await redis.eval(script, 1, lock_key, stream_id, config.stream_ttl)  # type: ignore[misc]
 
 
 async def _release_stream_lock(session_id: str, stream_id: str) -> None:
@@ -850,6 +869,8 @@ async def stream_chat_completion_sdk(
 
                         if not done:
                             # Timeout — emit heartbeat but keep the task alive
+                            # Also refresh lock TTL to keep it alive
+                            await _refresh_stream_lock(session_id, stream_id)
                             yield StreamHeartbeat()
                             continue
 
