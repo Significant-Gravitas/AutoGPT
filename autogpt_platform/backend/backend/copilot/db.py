@@ -170,8 +170,21 @@ async def add_chat_messages_batch(
             if msg.get("function_call") is not None:
                 data["functionCall"] = SafeJson(msg["function_call"])
 
-            created = await PrismaChatMessage.prisma(tx).create(
-                data=cast(ChatMessageCreateInput, data)
+            # Use upsert to handle concurrent writers (e.g. incremental
+            # streaming saves racing with long-running tool callbacks) that
+            # may produce duplicate (sessionId, sequence) pairs.
+            update_data = {k: v for k, v in data.items() if k != "Session"}
+            created = await PrismaChatMessage.prisma(tx).upsert(
+                where={
+                    "sessionId_sequence": {
+                        "sessionId": session_id,
+                        "sequence": start_sequence + i,
+                    }
+                },
+                data={
+                    "create": cast(ChatMessageCreateInput, data),
+                    "update": update_data,
+                },
             )
             created_messages.append(created)
 
