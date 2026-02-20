@@ -1,7 +1,7 @@
 import test, { expect } from "@playwright/test";
 import { getTestUserWithLibraryAgents } from "./credentials";
 import { LoginPage } from "./pages/login.page";
-import { hasPostAuthLandingUrl, hasUrl, isHidden } from "./utils/assertion";
+import { hasPostAuthLandingUrl, isHidden } from "./utils/assertion";
 import { getSelectors } from "./utils/selectors";
 
 test.beforeEach(async ({ page }) => {

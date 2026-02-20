@@ -11,7 +11,7 @@ import { hasPostAuthLandingUrl, hasUrl, isVisible } from "./utils/assertion";
 test("user can signup successfully", async ({ page }) => {
   try {
     const testUser = await signupTestUser(page);
-    const { getText, getId } = getSelectors(page);
+    const { getId } = getSelectors(page);
 
     // Verify user was created
     expect(testUser.email).toBeTruthy();

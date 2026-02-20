@@ -5,7 +5,6 @@ import { LoginPage } from "./pages/login.page";
 import {
   hasPostAuthLandingUrl,
   hasTextContent,
-  hasUrl,
   isVisible,
 } from "./utils/assertion";
 import { getTestUser } from "./utils/auth";
