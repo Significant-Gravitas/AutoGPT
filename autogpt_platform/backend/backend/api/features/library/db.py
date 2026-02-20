@@ -1317,42 +1317,15 @@ async def delete_folder(
     descendant_ids = await _get_descendant_folder_ids(folder_id, user_id)
     all_folder_ids = [folder_id] + descendant_ids
 
-    if soft_delete:
-        # Clean up schedules/webhooks for each affected agent before
-        # soft-deleting, matching what delete_library_agent() does.
-        affected_agents = await prisma.models.LibraryAgent.prisma().find_many(
-            where={
-                "folderId": {"in": all_folder_ids},
-                "userId": user_id,
-                "isDeleted": False,
-            },
-        )
-
-        async def _cleanup_agent(agent: prisma.models.LibraryAgent) -> None:
-            try:
-                await _cleanup_schedules_for_graph(
-                    graph_id=agent.agentGraphId, user_id=user_id
-                )
-                await _cleanup_webhooks_for_graph(
-                    graph_id=agent.agentGraphId, user_id=user_id
-                )
-            except Exception as e:
-                logger.warning(
-                    f"Cleanup failed for agent {agent.id} "
-                    f"(graph {agent.agentGraphId}): {e}"
-                )
-
-        await asyncio.gather(*[_cleanup_agent(a) for a in affected_agents])
-
     async with transaction() as tx:
         if soft_delete:
-            # Soft-delete all agents in these folders
+            # Move agents to root so they aren't lost when the folder is deleted
             await prisma.models.LibraryAgent.prisma(tx).update_many(
                 where={
                     "folderId": {"in": all_folder_ids},
                     "userId": user_id,
                 },
-                data={"isDeleted": True},
+                data={"folderId": None},
             )
 
             # Soft-delete all folders
