@@ -153,6 +153,9 @@ async def add_chat_messages_batch(
     max_retries = 5
     for attempt in range(max_retries):
         try:
+            # Single timestamp for all messages and session update
+            now = datetime.now(UTC)
+
             async with db.transaction() as tx:
                 # Build all message data
                 messages_data = []
@@ -163,6 +166,7 @@ async def add_chat_messages_batch(
                         "Session": {"connect": {"id": session_id}},
                         "role": msg["role"],
                         "sequence": start_sequence + i,
+                        "createdAt": now,
                     }
 
                     # Add optional string fields
@@ -183,15 +187,14 @@ async def add_chat_messages_batch(
 
                     messages_data.append(data)
 
-                # Create all messages in one operation
-                await PrismaChatMessage.prisma(tx).create_many(data=messages_data)
-
-                # Update session's updatedAt timestamp within the same transaction.
-                # Note: Token usage (total_prompt_tokens, total_completion_tokens) is updated
-                # separately via update_chat_session() after streaming completes.
-                await PrismaChatSession.prisma(tx).update(
-                    where={"id": session_id},
-                    data={"updatedAt": datetime.now(UTC)},
+                # Run create_many and session update in parallel within transaction
+                # Both use the same timestamp for consistency
+                await asyncio.gather(
+                    PrismaChatMessage.prisma(tx).create_many(data=messages_data),
+                    PrismaChatSession.prisma(tx).update(
+                        where={"id": session_id},
+                        data={"updatedAt": now},
+                    ),
                 )
 
             # Return next sequence number for counter sync
