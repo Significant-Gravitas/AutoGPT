@@ -2,28 +2,7 @@ import { motion } from "framer-motion";
 import { Text } from "@/components/atoms/Text/Text";
 
 type FolderSize = "xs" | "sm" | "md" | "lg" | "xl";
-export type FolderColorName =
-  | "neutral"
-  | "slate"
-  | "zinc"
-  | "stone"
-  | "red"
-  | "orange"
-  | "amber"
-  | "yellow"
-  | "lime"
-  | "green"
-  | "emerald"
-  | "teal"
-  | "cyan"
-  | "sky"
-  | "blue"
-  | "indigo"
-  | "violet"
-  | "purple"
-  | "fuchsia"
-  | "pink"
-  | "rose";
+export type FolderColorName = "blue" | "purple" | "emerald" | "orange" | "pink";
 
 export type FolderColor = FolderColorName | (string & {});
 
@@ -73,124 +52,12 @@ const colorMap: Record<
     stroke: string;
   }
 > = {
-  neutral: {
-    bg: "bg-neutral-300",
-    border: "border-neutral-300",
-    borderLight: "border-neutral-200",
-    fill: "fill-neutral-300",
-    stroke: "stroke-neutral-400",
-  },
-  slate: {
-    bg: "bg-slate-300",
-    border: "border-slate-300",
-    borderLight: "border-slate-200",
-    fill: "fill-slate-300",
-    stroke: "stroke-slate-400",
-  },
-  zinc: {
-    bg: "bg-zinc-300",
-    border: "border-zinc-300",
-    borderLight: "border-zinc-200",
-    fill: "fill-zinc-300",
-    stroke: "stroke-zinc-400",
-  },
-  stone: {
-    bg: "bg-stone-300",
-    border: "border-stone-300",
-    borderLight: "border-stone-200",
-    fill: "fill-stone-300",
-    stroke: "stroke-stone-400",
-  },
-  red: {
-    bg: "bg-red-300",
-    border: "border-red-300",
-    borderLight: "border-red-200",
-    fill: "fill-red-300",
-    stroke: "stroke-red-400",
-  },
-  orange: {
-    bg: "bg-orange-200",
-    border: "border-orange-200",
-    borderLight: "border-orange-200",
-    fill: "fill-orange-200",
-    stroke: "stroke-orange-400",
-  },
-  amber: {
-    bg: "bg-amber-200",
-    border: "border-amber-200",
-    borderLight: "border-amber-200",
-    fill: "fill-amber-200",
-    stroke: "stroke-amber-400",
-  },
-  yellow: {
-    bg: "bg-yellow-200",
-    border: "border-yellow-200",
-    borderLight: "border-yellow-200",
-    fill: "fill-yellow-200",
-    stroke: "stroke-yellow-400",
-  },
-  lime: {
-    bg: "bg-lime-300",
-    border: "border-lime-300",
-    borderLight: "border-lime-200",
-    fill: "fill-lime-300",
-    stroke: "stroke-lime-400",
-  },
-  green: {
-    bg: "bg-green-200",
-    border: "border-green-200",
-    borderLight: "border-green-200",
-    fill: "fill-green-200",
-    stroke: "stroke-green-400",
-  },
-  emerald: {
-    bg: "bg-emerald-300",
-    border: "border-emerald-300",
-    borderLight: "border-emerald-200",
-    fill: "fill-emerald-300",
-    stroke: "stroke-emerald-400",
-  },
-  teal: {
-    bg: "bg-teal-300",
-    border: "border-teal-300",
-    borderLight: "border-teal-200",
-    fill: "fill-teal-300",
-    stroke: "stroke-teal-400",
-  },
-  cyan: {
-    bg: "bg-cyan-300",
-    border: "border-cyan-300",
-    borderLight: "border-cyan-200",
-    fill: "fill-cyan-300",
-    stroke: "stroke-cyan-400",
-  },
-  sky: {
-    bg: "bg-sky-300",
-    border: "border-sky-300",
-    borderLight: "border-sky-200",
-    fill: "fill-sky-300",
-    stroke: "stroke-sky-400",
-  },
   blue: {
     bg: "bg-blue-300",
     border: "border-blue-300",
     borderLight: "border-blue-200",
     fill: "fill-blue-300",
     stroke: "stroke-blue-400",
-  },
-  indigo: {
-    bg: "bg-indigo-300",
-    border: "border-indigo-300",
-    borderLight: "border-indigo-200",
-    fill: "fill-indigo-300",
-    stroke: "stroke-indigo-400",
-  },
-  violet: {
-    bg: "bg-violet-300",
-    border: "border-violet-300",
-    borderLight: "border-violet-200",
-    fill: "fill-violet-300",
-    stroke: "stroke-violet-400",
   },
   purple: {
     bg: "bg-purple-200",
@@ -199,12 +66,19 @@ const colorMap: Record<
     fill: "fill-purple-200",
     stroke: "stroke-purple-400",
   },
-  fuchsia: {
-    bg: "bg-fuchsia-300",
-    border: "border-fuchsia-300",
-    borderLight: "border-fuchsia-200",
-    fill: "fill-fuchsia-300",
-    stroke: "stroke-fuchsia-400",
+  emerald: {
+    bg: "bg-emerald-300",
+    border: "border-emerald-300",
+    borderLight: "border-emerald-200",
+    fill: "fill-emerald-300",
+    stroke: "stroke-emerald-400",
+  },
+  orange: {
+    bg: "bg-orange-200",
+    border: "border-orange-200",
+    borderLight: "border-orange-200",
+    fill: "fill-orange-200",
+    stroke: "stroke-orange-400",
   },
   pink: {
     bg: "bg-pink-300",
@@ -213,41 +87,42 @@ const colorMap: Record<
     fill: "fill-pink-300",
     stroke: "stroke-pink-400",
   },
-  rose: {
-    bg: "bg-rose-300",
-    border: "border-rose-300",
-    borderLight: "border-rose-200",
-    fill: "fill-rose-300",
-    stroke: "stroke-rose-400",
-  },
 };
 
-// Card-level bg (50) and border (200) classes per folder color
 export const folderCardStyles: Record<
   FolderColorName,
-  { bg: string; border: string }
+  { bg: string; border: string; buttonBase: string; buttonHover: string }
 > = {
-  neutral: { bg: "bg-neutral-50", border: "border-neutral-200" },
-  slate: { bg: "bg-slate-50", border: "border-slate-200" },
-  zinc: { bg: "bg-zinc-50", border: "border-zinc-200" },
-  stone: { bg: "bg-stone-50", border: "border-stone-200" },
-  red: { bg: "bg-red-50", border: "border-red-200" },
-  orange: { bg: "bg-orange-50", border: "border-orange-200" },
-  amber: { bg: "bg-amber-50", border: "border-amber-200" },
-  yellow: { bg: "bg-yellow-50", border: "border-yellow-200" },
-  lime: { bg: "bg-lime-50", border: "border-lime-200" },
-  green: { bg: "bg-green-50", border: "border-green-200" },
-  emerald: { bg: "bg-emerald-50", border: "border-emerald-200" },
-  teal: { bg: "bg-teal-50", border: "border-teal-200" },
-  cyan: { bg: "bg-cyan-50", border: "border-cyan-200" },
-  sky: { bg: "bg-sky-50", border: "border-sky-200" },
-  blue: { bg: "bg-blue-50", border: "border-blue-200" },
-  indigo: { bg: "bg-indigo-50", border: "border-indigo-200" },
-  violet: { bg: "bg-violet-50", border: "border-violet-200" },
-  purple: { bg: "bg-purple-50", border: "border-purple-200" },
-  fuchsia: { bg: "bg-fuchsia-50", border: "border-fuchsia-200" },
-  pink: { bg: "bg-pink-50", border: "border-pink-200" },
-  rose: { bg: "bg-rose-50", border: "border-rose-200" },
+  blue: {
+    bg: "bg-blue-50",
+    border: "border-blue-200",
+    buttonBase: "border-blue-300 text-blue-600",
+    buttonHover: "hover:bg-blue-100",
+  },
+  purple: {
+    bg: "bg-purple-50",
+    border: "border-purple-200",
+    buttonBase: "border-purple-300 text-purple-600",
+    buttonHover: "hover:bg-purple-100",
+  },
+  emerald: {
+    bg: "bg-emerald-50",
+    border: "border-emerald-200",
+    buttonBase: "border-emerald-300 text-emerald-600",
+    buttonHover: "hover:bg-emerald-100",
+  },
+  orange: {
+    bg: "bg-orange-50",
+    border: "border-orange-200",
+    buttonBase: "border-orange-300 text-orange-600",
+    buttonHover: "hover:bg-orange-100",
+  },
+  pink: {
+    bg: "bg-pink-50",
+    border: "border-pink-200",
+    buttonBase: "border-pink-300 text-pink-600",
+    buttonHover: "hover:bg-pink-100",
+  },
 };
 
 export function FolderIcon({

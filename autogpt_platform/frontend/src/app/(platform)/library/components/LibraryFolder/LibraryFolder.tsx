@@ -109,24 +109,24 @@ export function LibraryFolder({
         <Button
           variant="icon"
           size="icon"
-          aria-label="Edit agent"
+          aria-label="Edit folder"
           onClick={(e) => {
             e.stopPropagation();
             onEdit?.();
           }}
-          className="h-8 w-8 p-2"
+          className={`h-8 w-8 border p-2 ${cardStyle.buttonBase} ${cardStyle.buttonHover}`}
         >
           <PencilSimpleIcon className="h-4 w-4" />
         </Button>
         <Button
           variant="icon"
           size="icon"
-          aria-label="Delete agent"
+          aria-label="Delete folder"
           onClick={(e) => {
             e.stopPropagation();
             onDelete?.();
           }}
-          className="h-8 w-8 p-2 hover:border-red-300 hover:bg-red-50 hover:text-red-600"
+          className={`h-8 w-8 border p-2 ${cardStyle.buttonBase} ${cardStyle.buttonHover}`}
         >
           <TrashIcon className="h-4 w-4" />
         </Button>
