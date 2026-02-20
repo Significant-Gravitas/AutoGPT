@@ -28,6 +28,7 @@ from .models import (
     AgentOutputResponse,
     ErrorResponse,
     ExecutionOptions,
+    ExecutionOutputInfo,
     ExecutionStartedResponse,
     InputValidationErrorResponse,
     SetupInfo,
@@ -497,10 +498,17 @@ class RunAgentTool(BaseTool):
                         f"View at {library_agent_link}."
                     ),
                     session_id=session_id,
-                    execution_id=execution.id,
-                    graph_id=library_agent.graph_id,
-                    graph_name=library_agent.name,
-                    outputs=outputs or {},
+                    agent_name=library_agent.name,
+                    agent_id=library_agent.graph_id,
+                    library_agent_id=library_agent.id,
+                    library_agent_link=library_agent_link,
+                    execution=ExecutionOutputInfo(
+                        execution_id=execution.id,
+                        status=completed.status.value,
+                        started_at=completed.started_at,
+                        ended_at=completed.ended_at,
+                        outputs=outputs or {},
+                    ),
                 )
             elif completed and completed.status == ExecutionStatus.FAILED:
                 return ErrorResponse(

@@ -80,9 +80,10 @@ async def wait_for_execution(
 
     event_bus = AsyncRedisExecutionEventBus()
     channel_key = f"{user_id}/{graph_id}/{execution_id}"
+    consume_task: asyncio.Task | None = None
 
     try:
-        result = await asyncio.wait_for(
+        consume_task, result = await asyncio.wait_for(
             _subscribe_and_wait(
                 event_bus, channel_key, user_id, execution_id, exec_db
             ),
@@ -94,6 +95,12 @@ async def wait_for_execution(
     except Exception as e:
         logger.error(f"Error waiting for execution: {e}", exc_info=True)
     finally:
+        if consume_task and not consume_task.done():
+            consume_task.cancel()
+            try:
+                await consume_task
+            except asyncio.CancelledError:
+                pass
         await event_bus.close()
 
     # Return current state on timeout/error
@@ -110,9 +117,11 @@ async def _subscribe_and_wait(
     user_id: str,
     execution_id: str,
     exec_db: Any,
-) -> GraphExecution | None:
+) -> tuple[asyncio.Task, GraphExecution | None]:
     """
     Subscribe to execution events and wait for a terminal/paused status.
+
+    Returns (consume_task, result) so the caller can clean up the task.
 
     To avoid the race condition where the execution completes between the
     initial DB check and the Redis subscription, we:
@@ -123,16 +132,20 @@ async def _subscribe_and_wait(
     listen_iter = event_bus.listen_events(channel_key).__aiter__()
 
     # Start a background task to consume pubsub events
-    result_event: GraphExecutionEvent | None = None
     done = asyncio.Event()
+    result_execution: GraphExecution | None = None
 
     async def _consume():
-        nonlocal result_event
+        nonlocal result_execution
         async for event in listen_iter:
             if isinstance(event, GraphExecutionEvent):
                 logger.debug(f"Received execution update: {event.status}")
                 if event.status in STOP_WAITING_STATUSES:
-                    result_event = event
+                    result_execution = await exec_db.get_graph_execution(
+                        user_id=user_id,
+                        execution_id=execution_id,
+                        include_node_executions=False,
+                    )
                     done.set()
                     return
 
@@ -147,19 +160,11 @@ async def _subscribe_and_wait(
         include_node_executions=False,
     )
     if execution and execution.status in STOP_WAITING_STATUSES:
-        consume_task.cancel()
-        return execution
+        return consume_task, execution
 
     # Wait for the pubsub consumer to find a terminal event
     await done.wait()
-    consume_task.cancel()
-
-    # Fetch full execution
-    return await exec_db.get_graph_execution(
-        user_id=user_id,
-        execution_id=execution_id,
-        include_node_executions=False,
-    )
+    return consume_task, result_execution
 
 
 def get_execution_outputs(execution: GraphExecution | None) -> dict[str, Any] | None:
