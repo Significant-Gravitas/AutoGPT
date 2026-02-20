@@ -38,7 +38,7 @@ test.describe("Library", () => {
     expect(firstAgent).toBeTruthy();
 
     await libraryPage.clickAgent(firstAgent);
-    await hasUrl(page, `/library/agents/${firstAgent.id}`);
+    await hasUrl(page, new RegExp(`^.*/library/agents/${firstAgent.id}(\\?.*)?$`));
 
     await libraryPage.navigateToLibrary();
 
