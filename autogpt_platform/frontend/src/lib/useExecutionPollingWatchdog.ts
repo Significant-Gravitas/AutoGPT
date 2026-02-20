@@ -58,7 +58,7 @@ export function useExecutionPollingWatchdog({
         ? (rawData as { data?: { status?: string } }).data?.status
         : undefined;
 
-    if (!status) return false;
+    if (!status) return EXECUTION_POLLING_INTERVAL_MS;
     if (isPollingStatus(status)) return EXECUTION_POLLING_INTERVAL_MS;
     return false;
   }
