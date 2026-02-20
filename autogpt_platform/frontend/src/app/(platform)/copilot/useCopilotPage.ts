@@ -1,4 +1,5 @@
 import {
+  getGetV2GetSessionQueryKey,
   getGetV2ListSessionsQueryKey,
   postV2CancelSessionTask,
   useDeleteV2DeleteSession,
@@ -187,11 +188,35 @@ export function useCopilotPage() {
     });
   }, [hydratedMessages, setMessages, status]);
 
+  // Ref: tracks whether we've already resumed for a given session.
+  // Reset when the stream ends so re-resume is possible if the backend
+  // task is still running (SSE dropped but executor didn't finish).
+  const hasResumedRef = useRef<string | null>(null);
+
+  // When the stream ends (or drops), invalidate the session cache so the
+  // next hydration fetches fresh messages from the backend.  Without this,
+  // staleTime: Infinity means the cache keeps the pre-stream data forever,
+  // and any messages added during streaming are lost on remount/navigation.
+  const prevStatusRef = useRef(status);
+  useEffect(() => {
+    const prev = prevStatusRef.current;
+    prevStatusRef.current = status;
+
+    const wasActive = prev === "streaming" || prev === "submitted";
+    const isIdle = status === "ready" || status === "error";
+    if (wasActive && isIdle && sessionId) {
+      queryClient.invalidateQueries({
+        queryKey: getGetV2GetSessionQueryKey(sessionId),
+      });
+      // Allow re-resume if the backend task is still running.
+      hasResumedRef.current = null;
+    }
+  }, [status, sessionId, queryClient]);
+
   // Resume an active stream AFTER hydration completes.
   // The backend returns active_stream info when a task is still running.
   // We wait for hydration so the AI SDK has the conversation history
   // before the resumed stream appends the in-progress assistant message.
-  const hasResumedRef = useRef<string | null>(null);
   useEffect(() => {
     if (!hasActiveStream || !sessionId) return;
     if (!hydratedMessages || hydratedMessages.length === 0) return;
