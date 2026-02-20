@@ -47,8 +47,9 @@ class SDKResponseAdapter:
     text blocks, tool calls, and message lifecycle.
     """
 
-    def __init__(self, message_id: str | None = None):
+    def __init__(self, message_id: str | None = None, session_id: str | None = None):
         self.message_id = message_id or str(uuid.uuid4())
+        self.session_id = session_id
         self.text_block_id = str(uuid.uuid4())
         self.has_started_text = False
         self.has_ended_text = False
@@ -60,6 +61,11 @@ class SDKResponseAdapter:
     def set_task_id(self, task_id: str) -> None:
         """Set the task ID for reconnection support."""
         self.task_id = task_id
+
+    @property
+    def has_unresolved_tool_calls(self) -> bool:
+        """True when there are tool calls that haven't received output yet."""
+        return bool(self.current_tool_calls.keys() - self.resolved_tool_calls)
 
     def convert_message(self, sdk_message: Message) -> list[StreamBaseResponse]:
         """Convert a single SDK message to Vercel AI SDK format."""
@@ -236,8 +242,10 @@ class SDKResponseAdapter:
         if not unresolved:
             return
 
+        sid = (self.session_id or "?")[:12]
         logger.info(
-            "[SDK] Flushing %d unresolved tool call(s): %s",
+            "[SDK] [%s] Flushing %d unresolved tool call(s): %s",
+            sid,
             len(unresolved),
             ", ".join(f"{name}({tid[:12]})" for tid, name in unresolved),
         )
@@ -257,7 +265,8 @@ class SDKResponseAdapter:
                 self.resolved_tool_calls.add(tool_id)
                 flushed = True
                 logger.info(
-                    "[SDK] Flushed stashed output for %s (call %s, %d chars)",
+                    "[SDK] [%s] Flushed stashed output for %s " "(call %s, %d chars)",
+                    sid,
                     tool_name,
                     tool_id[:12],
                     len(output),
@@ -277,8 +286,11 @@ class SDKResponseAdapter:
                 self.resolved_tool_calls.add(tool_id)
                 flushed = True
                 logger.warning(
-                    "[SDK] Flushed EMPTY output for unresolved tool %s "
-                    "(call %s) — stash was empty",
+                    "[SDK] [%s] Flushed EMPTY output for unresolved tool %s "
+                    "(call %s) — stash was empty (likely SDK hook race "
+                    "condition: PostToolUse hook hadn't completed before "
+                    "flush was triggered)",
+                    sid,
                     tool_name,
                     tool_id[:12],
                 )

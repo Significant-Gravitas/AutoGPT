@@ -594,7 +594,7 @@ async def stream_chat_completion_sdk(
 
             options = ClaudeAgentOptions(**sdk_options_kwargs)  # type: ignore[arg-type]
 
-            adapter = SDKResponseAdapter(message_id=message_id)
+            adapter = SDKResponseAdapter(message_id=message_id, session_id=session_id)
             adapter.set_task_id(task_id)
 
             async with ClaudeSDKClient(options=options) as client:
@@ -657,9 +657,25 @@ async def stream_chat_completion_sdk(
                             f"Now, the user says:\n{current_message}"
                         )
 
+                # Log which context-management approach this turn uses.
+                if use_resume and transcript_msg_count > 0:
+                    approach = (
+                        f"resume (transcript covers {transcript_msg_count}"
+                        f"/{current_msg_count} msgs)"
+                    )
+                elif use_resume:
+                    approach = "resume (fresh transcript, no gap detection)"
+                elif current_msg_count > 1:
+                    approach = "compression (no transcript available)"
+                else:
+                    approach = "single-turn (first message)"
                 logger.info(
-                    f"[SDK] Sending query ({len(session.messages)} msgs, "
-                    f"resume={use_resume})"
+                    "[SDK] [%s] Sending query — approach=%s, "
+                    "total_msgs=%d, query_len=%d",
+                    session_id[:12],
+                    approach,
+                    current_msg_count,
+                    len(query_message),
                 )
                 await client.query(query_message, session_id=session_id)
 
@@ -679,6 +695,7 @@ async def stream_chat_completion_sdk(
                 # of the parsed Messages so we can capture them for the
                 # transcript (the CLI does not write JSONL files in SDK
                 # mode).
+                from claude_agent_sdk import AssistantMessage, ResultMessage
                 from claude_agent_sdk._internal.message_parser import (
                     parse_message as _parse_sdk_msg,
                 )
@@ -706,9 +723,22 @@ async def stream_chat_completion_sdk(
 
                     sdk_msg = _parse_sdk_msg(raw_data)
                     logger.debug(
-                        f"[SDK] Received: {type(sdk_msg).__name__} "
-                        f"{getattr(sdk_msg, 'subtype', '')}"
+                        "[SDK] [%s] Received: %s %s",
+                        session_id[:12],
+                        type(sdk_msg).__name__,
+                        getattr(sdk_msg, "subtype", ""),
                     )
+
+                    # Race-condition mitigation: SDK hooks (PostToolUse) are
+                    # executed asynchronously via start_soon() in Query._read_messages.
+                    # Messages that trigger flush (AssistantMessage, ResultMessage)
+                    # can arrive before the hook stashes its output.  Yielding to
+                    # the event loop gives the hook task a chance to complete first.
+                    if adapter.has_unresolved_tool_calls and isinstance(
+                        sdk_msg, (AssistantMessage, ResultMessage)
+                    ):
+                        await asyncio.sleep(0.1)
+
                     for response in adapter.convert_message(sdk_msg):
                         if isinstance(response, StreamStart):
                             continue
@@ -718,10 +748,16 @@ async def stream_chat_completion_sdk(
                             response,
                             (StreamToolInputAvailable, StreamToolOutputAvailable),
                         ):
+                            extra = ""
+                            if isinstance(response, StreamToolOutputAvailable):
+                                out_len = len(response.output) if response.output else 0
+                                extra = f", output_len={out_len}"
                             logger.info(
-                                "[SDK] Tool event: %s, tool=%s",
+                                "[SDK] [%s] Tool event: %s, tool=%s%s",
+                                session_id[:12],
                                 type(response).__name__,
                                 getattr(response, "toolName", "N/A"),
+                                extra,
                             )
 
                         yield response
@@ -799,7 +835,8 @@ async def stream_chat_completion_sdk(
 
                 if raw_transcript:
                     logger.info(
-                        "[SDK] Uploading transcript (%dB, %d new entries)",
+                        "[SDK] [%s] Uploading transcript (%dB, %d new entries)",
+                        session_id[:12],
                         len(raw_transcript),
                         len(captured_transcript.raw_entries),
                     )
@@ -830,8 +867,10 @@ async def stream_chat_completion_sdk(
             )
 
         await asyncio.shield(upsert_chat_session(session))
-        logger.debug(
-            f"[SDK] Session {session_id} saved with {len(session.messages)} messages"
+        logger.info(
+            "[SDK] [%s] Session saved with %d messages",
+            session_id[:12],
+            len(session.messages),
         )
         if not stream_completed:
             yield StreamFinish()
