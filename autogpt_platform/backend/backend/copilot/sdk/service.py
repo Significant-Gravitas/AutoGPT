@@ -576,7 +576,6 @@ async def stream_chat_completion_sdk(
             )
 
     session = await upsert_chat_session(session)
-    assert session is not None  # Narrow type for pyright after upsert
 
     # Generate title for new sessions (first user message)
     if is_user_message and not session.title:
@@ -601,9 +600,8 @@ async def stream_chat_completion_sdk(
     stream_id = task_id  # Use task_id as unique stream identifier
 
     # Acquire stream lock to prevent concurrent streams to the same session
-    redis = await get_redis_async()
     lock = AsyncClusterLock(
-        redis=redis,
+        redis=await get_redis_async(),
         key=f"{STREAM_LOCK_PREFIX}{session_id}",
         owner_id=stream_id,
         timeout=config.stream_ttl,
@@ -617,7 +615,7 @@ async def stream_chat_completion_sdk(
         )
         yield StreamError(
             errorText="Another stream is already active for this session. "
-            "Please wait for it to complete or refresh the page.",
+            "Please wait or stop it.",
             code="stream_already_active",
         )
         yield StreamFinish()
@@ -1121,12 +1119,11 @@ async def stream_chat_completion_sdk(
             )
 
         session = await asyncio.shield(upsert_chat_session(session))
-        assert session is not None  # Type narrowing for pyright
         logger.info(
             "[SDK] [%s] Session saved with %d messages (DB count: %d)",
             session_id[:12],
-            len(session.messages),
-            session.saved_message_count,
+            len(session.messages),  # type: ignore[union-attr]
+            session.saved_message_count,  # type: ignore[union-attr]
         )
         if not stream_completed:
             yield StreamFinish()
@@ -1140,8 +1137,7 @@ async def stream_chat_completion_sdk(
     except Exception as e:
         logger.error(f"[SDK] Error: {e}", exc_info=True)
         try:
-            assert session is not None  # Type narrowing for pyright
-            await asyncio.shield(upsert_chat_session(session))
+            await asyncio.shield(upsert_chat_session(session))  # type: ignore[arg-type]
         except Exception as save_err:
             logger.error(f"[SDK] Failed to save session on error: {save_err}")
         yield StreamError(
