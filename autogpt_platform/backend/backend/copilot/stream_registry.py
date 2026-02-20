@@ -656,8 +656,10 @@ async def mark_task_completed(
     Args:
         task_id: Task ID to mark as completed
         status: Final status ("completed" or "failed")
-        error_message: If provided, publish a StreamError before StreamFinish
-            so connected clients see why the task ended.
+        error_message: If provided and status="failed", publish a StreamError
+            before StreamFinish so connected clients see why the task ended.
+            If not provided, no StreamError is published (caller should publish
+            manually if needed to avoid duplicates).
 
     Returns:
         True if task was newly marked completed, False if already completed/failed
@@ -674,12 +676,13 @@ async def mark_task_completed(
         return False
 
     # Publish error event before finish so connected clients know WHY the
-    # task ended.  This is best-effort — if it fails, the StreamFinish
-    # still ensures listeners clean up.
-    if status == "failed":
-        reason = error_message or "Task failed"
+    # task ended. Only publish if caller provided an explicit error message
+    # to avoid duplicates with code paths that manually publish StreamError.
+    # This is best-effort — if it fails, the StreamFinish still ensures
+    # listeners clean up.
+    if status == "failed" and error_message:
         try:
-            await publish_chunk(task_id, StreamError(errorText=reason))
+            await publish_chunk(task_id, StreamError(errorText=error_message))
         except Exception as e:
             logger.warning(f"Failed to publish error event for task {task_id}: {e}")
 
