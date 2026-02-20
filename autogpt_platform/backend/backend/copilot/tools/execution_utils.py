@@ -144,17 +144,21 @@ async def _subscribe_and_wait(
 
     async def _consume() -> None:
         nonlocal result_execution
-        async for event in listen_iter:
-            if isinstance(event, GraphExecutionEvent):
-                logger.debug(f"Received execution update: {event.status}")
-                if event.status in STOP_WAITING_STATUSES:
-                    result_execution = await exec_db.get_graph_execution(
-                        user_id=user_id,
-                        execution_id=execution_id,
-                        include_node_executions=False,
-                    )
-                    done.set()
-                    return
+        try:
+            async for event in listen_iter:
+                if isinstance(event, GraphExecutionEvent):
+                    logger.debug(f"Received execution update: {event.status}")
+                    if event.status in STOP_WAITING_STATUSES:
+                        result_execution = await exec_db.get_graph_execution(
+                            user_id=user_id,
+                            execution_id=execution_id,
+                            include_node_executions=False,
+                        )
+                        done.set()
+                        return
+        except Exception as e:
+            logger.error(f"Error in execution consumer: {e}", exc_info=True)
+            done.set()
 
     consume_task = asyncio.create_task(_consume())
     task_holder.append(consume_task)

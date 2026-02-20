@@ -511,20 +511,28 @@ class RunAgentTool(BaseTool):
                     ),
                 )
             elif completed and completed.status == ExecutionStatus.FAILED:
+                error_detail = (
+                    completed.stats.error if completed.stats else None
+                )
                 return ErrorResponse(
                     message=(
                         f"Agent '{library_agent.name}' execution failed. "
                         f"View details at {library_agent_link}."
                     ),
                     session_id=session_id,
+                    error=error_detail,
                 )
             elif completed and completed.status == ExecutionStatus.TERMINATED:
+                error_detail = (
+                    completed.stats.error if completed.stats else None
+                )
                 return ErrorResponse(
                     message=(
                         f"Agent '{library_agent.name}' execution was terminated. "
                         f"View details at {library_agent_link}."
                     ),
                     session_id=session_id,
+                    error=error_detail,
                 )
             elif completed and completed.status == ExecutionStatus.REVIEW:
                 return ExecutionStartedResponse(
@@ -538,6 +546,7 @@ class RunAgentTool(BaseTool):
                     graph_name=library_agent.name,
                     library_agent_id=library_agent.id,
                     library_agent_link=library_agent_link,
+                    status=ExecutionStatus.REVIEW.value,
                 )
             else:
                 status = completed.status.value if completed else "unknown"
@@ -554,6 +563,7 @@ class RunAgentTool(BaseTool):
                     graph_name=library_agent.name,
                     library_agent_id=library_agent.id,
                     library_agent_link=library_agent_link,
+                    status=status,
                 )
 
         return ExecutionStartedResponse(
