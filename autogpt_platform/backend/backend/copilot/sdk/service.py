@@ -70,6 +70,7 @@ class CapturedTranscript:
 
     path: str = ""
     sdk_session_id: str = ""
+    raw_content: str = ""
 
     @property
     def available(self) -> bool:
@@ -88,19 +89,44 @@ _SDK_TOOL_SUPPLEMENT = """
 
 ## Tool notes
 
+### Shell commands
 - The SDK built-in Bash tool is NOT available.  Use the `bash_exec` MCP tool
   for shell commands — it runs in a network-isolated sandbox.
-- **Shared workspace**: The SDK Read/Write tools and `bash_exec` share the
-  same working directory. Files created by one are readable by the other.
-- **IMPORTANT — File persistence**: Your working directory is **ephemeral** —
-  files are lost between turns. When you create or modify important files
-  (code, configs, outputs), you MUST save them using `write_workspace_file`
-  so they persist. Use `read_workspace_file` and `list_workspace_files` to
-  access files saved in previous turns. If a "Files from previous turns"
-  section is present above, those files are available via `read_workspace_file`.
-- Long-running tools (create_agent, edit_agent, etc.) are handled
-  asynchronously.  You will receive an immediate response; the actual result
-  is delivered to the user via a background stream.
+
+### Two storage systems — CRITICAL to understand
+
+1. **Ephemeral working directory** (`/tmp/copilot-<session>/`):
+   - Shared by SDK Read/Write/Edit/Glob/Grep tools AND `bash_exec`
+   - Files here are **lost between turns** — do NOT rely on them persisting
+   - Use for temporary work: running scripts, processing data, etc.
+
+2. **Persistent workspace** (cloud storage):
+   - Files here **survive across turns and sessions**
+   - Use `write_workspace_file` to save important files (code, outputs, configs)
+   - Use `read_workspace_file` to retrieve previously saved files
+   - Use `list_workspace_files` to see what files you've saved before
+   - Call `list_workspace_files(include_all_sessions=True)` to see files from
+     all sessions
+
+### Moving files between ephemeral and persistent storage
+- **Ephemeral → Persistent**: Use `write_workspace_file` with either:
+  - `content` param (plain text) — for text files
+  - `source_path` param — to copy any file directly from the ephemeral dir
+- **Persistent → Ephemeral**: Use `read_workspace_file` with `save_to_path`
+  param to download a workspace file to the ephemeral dir for processing
+
+### File persistence workflow
+When you create or modify important files (code, configs, outputs), you MUST:
+1. Save them using `write_workspace_file` so they persist
+2. At the start of a new turn, call `list_workspace_files` to see what files
+   are available from previous turns
+
+### Long-running tools
+Long-running tools (create_agent, edit_agent, etc.) are handled
+asynchronously.  You will receive an immediate response; the actual result
+is delivered to the user via a background stream.
+
+### Sub-agent tasks
 - When using the Task tool, NEVER set `run_in_background` to true.
   All tasks must run in the foreground.
 """
@@ -307,18 +333,19 @@ def _cleanup_sdk_tool_results(cwd: str) -> None:
         pass
 
 
-async def _compress_messages(
-    messages: list[ChatMessage],
+async def _compress_conversation_history(
+    session: ChatSession,
 ) -> list[ChatMessage]:
-    """Compress a list of chat messages if they exceed the token threshold.
+    """Compress prior conversation messages if they exceed the token threshold.
 
     Uses the shared compress_context() from prompt.py which supports:
     - LLM summarization of old messages (keeps recent ones intact)
     - Progressive content truncation as fallback
     - Middle-out deletion as last resort
 
-    Returns the (potentially compressed) messages.
+    Returns the compressed prior messages (everything except the current message).
     """
+    messages = session.messages[:-1]
     if len(messages) < 2:
         return messages
 
@@ -380,11 +407,9 @@ async def _compress_messages(
 def _format_conversation_context(messages: list[ChatMessage]) -> str | None:
     """Format conversation messages into a context prefix for the user message.
 
-    Returns a string like:
-        <conversation_history>
-        User: hello
-        You responded: Hi! How can I help?
-        </conversation_history>
+    Includes user messages, assistant text, tool call summaries, and
+    tool result summaries so the agent retains full context about what
+    tools were invoked and their outcomes.
 
     Returns None if there are no messages to format.
     """
@@ -393,18 +418,21 @@ def _format_conversation_context(messages: list[ChatMessage]) -> str | None:
 
     lines: list[str] = []
     for msg in messages:
-        if not msg.content:
-            continue
         if msg.role == "user":
-            lines.append(f"User: {msg.content}")
+            if msg.content:
+                lines.append(f"User: {msg.content}")
         elif msg.role == "assistant":
-            lines.append(f"You responded: {msg.content}")
+            if msg.content:
+                lines.append(f"You responded: {msg.content}")
+            if msg.tool_calls:
+                for tc in msg.tool_calls:
+                    func = tc.get("function", {})
+                    tool_name = func.get("name", "unknown")
+                    tool_args = func.get("arguments", "")
+                    lines.append(f"You called tool: {tool_name}({tool_args})")
         elif msg.role == "tool":
-            # Include tool error/denial outcomes so the agent doesn't
-            # hallucinate that blocked or failed operations succeeded.
-            content = msg.content
-            if _is_tool_error_or_denial(content):
-                lines.append(f"Tool result: {content}")
+            content = msg.content or ""
+            lines.append(f"Tool result: {content}")
 
     if not lines:
         return None
@@ -415,8 +443,8 @@ def _format_conversation_context(messages: list[ChatMessage]) -> str | None:
 def _is_tool_error_or_denial(content: str | None) -> bool:
     """Check if a tool message content indicates an error or denial.
 
-    We include these in conversation context so the agent doesn't
-    hallucinate success for operations that actually failed.
+    Currently unused — ``_format_conversation_context`` includes all tool
+    results.  Kept as a utility for future selective filtering.
     """
     if not content:
         return False
@@ -431,10 +459,48 @@ def _is_tool_error_or_denial(content: str | None) -> bool:
             "maximum",  # subtask-limit denial
             "denied",
             "blocked",
-            "failed to",  # internal tool execution failures
+            "failed",  # internal tool execution failures
             '"iserror": true',  # MCP protocol error flag
         )
     )
+
+
+async def _build_query_message(
+    current_message: str,
+    session: ChatSession,
+    use_resume: bool,
+    transcript_msg_count: int,
+    session_id: str,
+) -> str:
+    """Build the query message with appropriate context.
+
+    With --resume the CLI already has full context, so only the new message
+    is needed.  Without resume, compress history into a context prefix.
+    Hybrid mode: if the transcript is stale, compress only the gap.
+    """
+    msg_count = len(session.messages)
+
+    if use_resume and transcript_msg_count > 0:
+        if transcript_msg_count < msg_count - 1:
+            gap = session.messages[transcript_msg_count:-1]
+            gap_context = _format_conversation_context(gap)
+            if gap_context:
+                logger.info(
+                    f"[SDK] Transcript stale: covers {transcript_msg_count} "
+                    f"of {msg_count} messages, compressing {len(gap)} missed"
+                )
+                return f"{gap_context}\n\nNow, the user says:\n{current_message}"
+    elif not use_resume and msg_count > 1:
+        logger.warning(
+            f"[SDK] Using compression fallback for session "
+            f"{session_id} ({msg_count} messages) — no transcript for --resume"
+        )
+        compressed = await _compress_conversation_history(session)
+        history_context = _format_conversation_context(compressed)
+        if history_context:
+            return f"{history_context}\n\nNow, the user says:\n{current_message}"
+
+    return current_message
 
 
 async def stream_chat_completion_sdk(
@@ -501,10 +567,12 @@ async def stream_chat_completion_sdk(
     yield StreamStart(messageId=message_id, taskId=task_id)
 
     stream_completed = False
-    # Initialise sdk_cwd before the try so the finally can reference it
-    # even if _make_sdk_cwd raises (in that case it stays as "").
+    # Initialise variables before the try so the finally block can
+    # always attempt transcript upload regardless of errors.
     sdk_cwd = ""
     use_resume = False
+    resume_file: str | None = None
+    captured_transcript = CapturedTranscript()
 
     try:
         # Use a session-specific temp dir to avoid cleanup race conditions
@@ -534,12 +602,23 @@ async def stream_chat_completion_sdk(
             sdk_model = _resolve_sdk_model()
 
             # --- Transcript capture via Stop hook ---
-            captured_transcript = CapturedTranscript()
-
+            # Read the file content immediately — the SDK may clean up
+            # the file before our finally block runs.
             def _on_stop(transcript_path: str, sdk_session_id: str) -> None:
                 captured_transcript.path = transcript_path
                 captured_transcript.sdk_session_id = sdk_session_id
-                logger.debug(f"[SDK] Stop hook: path={transcript_path!r}")
+                content = read_transcript_file(transcript_path)
+                if content:
+                    captured_transcript.raw_content = content
+                    logger.info(
+                        f"[SDK] Stop hook: captured {len(content)}B from "
+                        f"{transcript_path}"
+                    )
+                else:
+                    logger.warning(
+                        f"[SDK] Stop hook: transcript file empty/missing at "
+                        f"{transcript_path}"
+                    )
 
             security_hooks = create_security_hooks(
                 user_id,
@@ -549,13 +628,16 @@ async def stream_chat_completion_sdk(
             )
 
             # --- Resume strategy: download transcript from bucket ---
-            resume_file: str | None = None
-            use_resume = False
             transcript_msg_count = 0  # watermark: session.messages length at upload
 
             if config.claude_agent_use_resume and user_id and len(session.messages) > 1:
                 dl = await download_transcript(user_id, session_id)
-                if dl and validate_transcript(dl.content):
+                is_valid = bool(dl and validate_transcript(dl.content))
+                if dl and is_valid:
+                    logger.info(
+                        f"[SDK] Transcript available for session {session_id}: "
+                        f"{len(dl.content)}B, msg_count={dl.message_count}"
+                    )
                     resume_file = write_transcript_to_tempfile(
                         dl.content, session_id, sdk_cwd
                     )
@@ -566,6 +648,15 @@ async def stream_chat_completion_sdk(
                             f"[SDK] Using --resume ({len(dl.content)}B, "
                             f"msg_count={transcript_msg_count})"
                         )
+                elif dl:
+                    logger.warning(
+                        f"[SDK] Transcript downloaded but invalid for {session_id}"
+                    )
+                else:
+                    logger.warning(
+                        f"[SDK] No transcript available for {session_id} "
+                        f"({len(session.messages)} messages in session)"
+                    )
 
             sdk_options_kwargs: dict[str, Any] = {
                 "system_prompt": system_prompt,
@@ -602,62 +693,19 @@ async def stream_chat_completion_sdk(
                     yield StreamFinish()
                     return
 
-                # Build query: determine which prior messages (if any)
-                # need to be injected as context, compress them, and
-                # prepend to the user message.
-                #
-                # With --resume the CLI already has the transcript, so we
-                # only inject the "gap" (messages added since the last
-                # transcript upload).  Without --resume we inject the
-                # full prior history.  Both paths share the same
-                # compress → format → prepend logic.
-                query_message = current_message
-                current_msg_count = len(session.messages)
-
-                # Determine messages that need context injection.
-                if use_resume:
-                    # Transcript covers messages[0..M-1].  Gap = messages
-                    # between the upload watermark and the current turn.
-                    # When transcript_msg_count == 0 (no metadata) we trust
-                    # the transcript is up-to-date and skip gap detection.
-                    if (
-                        transcript_msg_count > 0
-                        and transcript_msg_count < current_msg_count - 1
-                    ):
-                        context_msgs = session.messages[transcript_msg_count:-1]
-                    else:
-                        context_msgs = []
-                elif current_msg_count > 1:
-                    context_msgs = session.messages[:-1]
-                else:
-                    context_msgs = []
-
-                if context_msgs:
-                    compressed = await _compress_messages(context_msgs)
-                    context_text = _format_conversation_context(compressed)
-                    if context_text:
-                        query_message = (
-                            f"{context_text}\n\n"
-                            f"Now, the user says:\n{current_message}"
-                        )
-
-                # Log which context-management approach this turn uses.
-                if context_msgs:
-                    approach = (
-                        f"resume+gap ({len(context_msgs)} missed)"
-                        if use_resume
-                        else f"compression ({len(context_msgs)} prior)"
-                    )
-                elif use_resume:
-                    approach = "resume (transcript current)"
-                else:
-                    approach = "single-turn"
+                query_message = await _build_query_message(
+                    current_message,
+                    session,
+                    use_resume,
+                    transcript_msg_count,
+                    session_id,
+                )
                 logger.info(
-                    "[SDK] [%s] Sending query — approach=%s, "
+                    "[SDK] [%s] Sending query — resume=%s, "
                     "total_msgs=%d, query_len=%d",
                     session_id[:12],
-                    approach,
-                    current_msg_count,
+                    use_resume,
+                    len(session.messages),
                     len(query_message),
                 )
                 await client.query(query_message, session_id=session_id)
@@ -864,6 +912,38 @@ async def stream_chat_completion_sdk(
         )
         yield StreamFinish()
     finally:
+        # --- Upload transcript for next-turn --resume ---
+        # This MUST run in finally so the transcript is uploaded even when
+        # the streaming loop raises an exception.  The CLI uses
+        # appendFileSync, so whatever was written before the error/SIGTERM
+        # is safely on disk and still useful for the next turn.
+        if config.claude_agent_use_resume and user_id:
+            try:
+                # Prefer content captured in the Stop hook (read before
+                # cleanup removes the file).  Fall back to the resume
+                # file when the stop hook didn't fire (e.g. error before
+                # completion) so we don't lose the prior transcript.
+                raw_transcript = captured_transcript.raw_content or None
+                if not raw_transcript and use_resume and resume_file:
+                    raw_transcript = read_transcript_file(resume_file)
+
+                if raw_transcript:
+                    await asyncio.shield(
+                        _try_upload_transcript(
+                            user_id,
+                            session_id,
+                            raw_transcript,
+                            message_count=len(session.messages),
+                        )
+                    )
+                else:
+                    logger.warning(f"[SDK] No transcript to upload for {session_id}")
+            except Exception as upload_err:
+                logger.error(
+                    f"[SDK] Transcript upload failed in finally: {upload_err}",
+                    exc_info=True,
+                )
+
         if sdk_cwd:
             _cleanup_sdk_tool_results(sdk_cwd)
 
