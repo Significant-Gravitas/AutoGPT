@@ -6,7 +6,12 @@ export default defineConfig({
   plugins: [tsconfigPaths(), react()],
   test: {
     environment: "happy-dom",
-    include: ["src/**/*.test.tsx"],
+    include: ["src/**/*.test.tsx", "src/**/*.test.ts"],
+    exclude: [
+      "**/*.spec.ts",
+      "**/node_modules/**",
+      "**/autogpt-server-api/helpers.test.ts",
+    ],
     setupFiles: ["./src/tests/integrations/vitest.setup.tsx"],
   },
 });

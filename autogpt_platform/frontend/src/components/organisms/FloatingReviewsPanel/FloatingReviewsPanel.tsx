@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState, useRef } from "react";
 import { PendingReviewsList } from "@/components/organisms/PendingReviewsList/PendingReviewsList";
 import { usePendingReviewsForExecution } from "@/hooks/usePendingReviews";
 import { Button } from "@/components/atoms/Button/Button";
@@ -10,6 +10,7 @@ import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecut
 import { okData } from "@/app/api/helpers";
 import { useGraphStore } from "@/app/(platform)/build/stores/graphStore";
 import { useShallow } from "zustand/react/shallow";
+import { useExecutionPollingWatchdog } from "@/lib/useExecutionPollingWatchdog";
 
 interface FloatingReviewsPanelProps {
   executionId?: string;
@@ -23,40 +24,27 @@ export function FloatingReviewsPanel({
   className,
 }: FloatingReviewsPanelProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const refetchRef = useRef<(() => void) | null>(null);
 
-  const { data: executionDetails } = useGetV1GetExecutionDetails(
+  const { refetchInterval } = useExecutionPollingWatchdog({
+    refetch: () => refetchRef.current?.(),
+    resetKey: `${graphId ?? ""}:${executionId ?? ""}`,
+  });
+
+  const executionQuery = useGetV1GetExecutionDetails(
     graphId || "",
     executionId || "",
     {
       query: {
         enabled: !!(graphId && executionId),
-        select: okData,
-        // Poll while execution is in progress to detect status changes
-        refetchInterval: (q) => {
-          // Note: refetchInterval callback receives raw data before select transform
-          const rawData = q.state.data as
-            | { status: number; data?: { status?: string } }
-            | undefined;
-          if (rawData?.status !== 200) return false;
-
-          const status = rawData?.data?.status;
-          if (!status) return false;
-
-          // Poll every 2 seconds while running or in review
-          if (
-            status === AgentExecutionStatus.RUNNING ||
-            status === AgentExecutionStatus.QUEUED ||
-            status === AgentExecutionStatus.INCOMPLETE ||
-            status === AgentExecutionStatus.REVIEW
-          ) {
-            return 2000;
-          }
-          return false;
-        },
+        refetchInterval,
         refetchIntervalInBackground: true,
       },
     },
   );
+
+  refetchRef.current = executionQuery.refetch;
+  const executionDetails = okData(executionQuery.data);
 
   // Get graph execution status from the store (updated via WebSocket)
   const graphExecutionStatus = useGraphStore(

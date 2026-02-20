@@ -4,6 +4,8 @@ import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecut
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Text } from "@/components/atoms/Text/Text";
+import { Alert, AlertDescription, AlertTitle } from "@/components/molecules/Alert/Alert";
+import { Button } from "@/components/atoms/Button/Button";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
 import {
@@ -42,8 +44,15 @@ export function SelectedRunView({
   onClearSelectedRun,
   banner,
 }: Props) {
-  const { run, preset, isLoading, responseError, httpError } =
-    useSelectedRunView(agent.graph_id, runId);
+  const {
+    run,
+    preset,
+    isLoading,
+    responseError,
+    httpError,
+    executionStuck,
+    clearStuckAndRetry,
+  } = useSelectedRunView(agent.graph_id, runId);
 
   const breakpoint = useBreakpoint();
   const isLgScreenUp = isLargeScreen(breakpoint);
@@ -82,6 +91,19 @@ export function SelectedRunView({
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <SelectedViewLayout agent={agent} banner={banner}>
           <div className="flex flex-col gap-4">
+            {executionStuck && (
+              <Alert variant="warning" className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <AlertTitle>No execution progress detected. Polling paused.</AlertTitle>
+                  <AlertDescription>
+                    You can resume polling or terminate the run from the run list.
+                  </AlertDescription>
+                </div>
+                <Button variant="secondary" size="small" onClick={clearStuckAndRetry}>
+                  Try again
+                </Button>
+              </Alert>
+            )}
             <RunDetailHeader agent={agent} run={run} />
 
             {!isLgScreenUp ? (
