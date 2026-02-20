@@ -4,7 +4,7 @@ from typing import Any
 
 import regex  # Has built-in timeout support
 
-from backend.data.block import (
+from backend.blocks._base import (
     Block,
     BlockCategory,
     BlockOutput,

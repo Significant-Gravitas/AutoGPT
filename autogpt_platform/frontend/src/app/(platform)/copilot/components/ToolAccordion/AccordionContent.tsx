@@ -30,7 +30,7 @@ export function ContentCard({
   return (
     <div
       className={cn(
-        "rounded-lg bg-gradient-to-r from-purple-500/30 to-blue-500/30 p-[1px]",
+        "min-w-0 rounded-lg bg-gradient-to-r from-purple-500/30 to-blue-500/30 p-[1px]",
         className,
       )}
     >

@@ -2,7 +2,8 @@ from typing import Any, Type
 
 import pytest
 
-from backend.data.block import Block, BlockSchemaInput, get_blocks
+from backend.blocks import get_blocks
+from backend.blocks._base import Block, BlockSchemaInput
 from backend.data.model import SchemaField
 from backend.util.test import execute_block_test
 

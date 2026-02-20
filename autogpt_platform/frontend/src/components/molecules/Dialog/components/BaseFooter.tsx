@@ -25,7 +25,7 @@ export function BaseFooter({
     </div>
   ) : (
     <div
-      className={`flex w-full items-end justify-between gap-4 pt-6 ${className}`}
+      className={`flex w-full items-end justify-end gap-4 pt-6 ${className}`}
       data-testid={testId}
     >
       {children}

@@ -18,6 +18,6 @@ export const config = {
      * Note: /auth/authorize and /auth/integrations/* ARE protected and need
      * middleware to run for authentication checks.
      */
-    "/((?!_next/static|_next/image|favicon.ico|auth/callback|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|auth/callback|auth/integrations/mcp_callback|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

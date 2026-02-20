@@ -10,15 +10,21 @@ import {
   MessageResponse,
 } from "@/components/ai-elements/message";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
+import { toast } from "@/components/molecules/Toast/use-toast";
 import { ToolUIPart, UIDataTypes, UIMessage, UITools } from "ai";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CreateAgentTool } from "../../tools/CreateAgent/CreateAgent";
 import { EditAgentTool } from "../../tools/EditAgent/EditAgent";
+import {
+  CreateFeatureRequestTool,
+  SearchFeatureRequestsTool,
+} from "../../tools/FeatureRequests/FeatureRequests";
 import { FindAgentsTool } from "../../tools/FindAgents/FindAgents";
 import { FindBlocksTool } from "../../tools/FindBlocks/FindBlocks";
 import { RunAgentTool } from "../../tools/RunAgent/RunAgent";
 import { RunBlockTool } from "../../tools/RunBlock/RunBlock";
 import { SearchDocsTool } from "../../tools/SearchDocs/SearchDocs";
+import { GenericTool } from "../../tools/GenericTool/GenericTool";
 import { ViewAgentOutputTool } from "../../tools/ViewAgentOutput/ViewAgentOutput";
 
 // ---------------------------------------------------------------------------
@@ -112,6 +118,7 @@ interface ChatMessagesContainerProps {
   status: string;
   error: Error | undefined;
   isLoading: boolean;
+  headerSlot?: React.ReactNode;
 }
 
 export const ChatMessagesContainer = ({
@@ -119,14 +126,30 @@ export const ChatMessagesContainer = ({
   status,
   error,
   isLoading,
+  headerSlot,
 }: ChatMessagesContainerProps) => {
   const [thinkingPhrase, setThinkingPhrase] = useState(getRandomPhrase);
+  const lastToastTimeRef = useRef(0);
 
   useEffect(() => {
     if (status === "submitted") {
       setThinkingPhrase(getRandomPhrase());
     }
   }, [status]);
+
+  // Show a toast when a new error occurs, debounced to avoid spam
+  useEffect(() => {
+    if (!error) return;
+    const now = Date.now();
+    if (now - lastToastTimeRef.current < 3_000) return;
+    lastToastTimeRef.current = now;
+    toast({
+      variant: "destructive",
+      title: "Something went wrong",
+      description:
+        "The assistant encountered an error. Please try sending your message again.",
+    });
+  }, [error]);
 
   const lastMessage = messages[messages.length - 1];
   const lastAssistantHasVisibleContent =
@@ -143,9 +166,13 @@ export const ChatMessagesContainer = ({
 
   return (
     <Conversation className="min-h-0 flex-1">
-      <ConversationContent className="flex min-h-screen flex-1 flex-col gap-6 px-3 py-6">
+      <ConversationContent className="flex flex-1 flex-col gap-6 px-3 py-6">
+        {headerSlot}
         {isLoading && messages.length === 0 && (
-          <div className="flex min-h-full flex-1 items-center justify-center">
+          <div
+            className="flex flex-1 items-center justify-center"
+            style={{ minHeight: "calc(100vh - 12rem)" }}
+          >
             <LoadingSpinner className="text-neutral-600" />
           </div>
         )}
@@ -238,7 +265,31 @@ export const ChatMessagesContainer = ({
                           part={part as ToolUIPart}
                         />
                       );
+                    case "tool-search_feature_requests":
+                      return (
+                        <SearchFeatureRequestsTool
+                          key={`${message.id}-${i}`}
+                          part={part as ToolUIPart}
+                        />
+                      );
+                    case "tool-create_feature_request":
+                      return (
+                        <CreateFeatureRequestTool
+                          key={`${message.id}-${i}`}
+                          part={part as ToolUIPart}
+                        />
+                      );
                     default:
+                      // Render a generic tool indicator for SDK built-in
+                      // tools (Read, Glob, Grep, etc.) or any unrecognized tool
+                      if (part.type.startsWith("tool-")) {
+                        return (
+                          <GenericTool
+                            key={`${message.id}-${i}`}
+                            part={part as ToolUIPart}
+                          />
+                        );
+                      }
                       return null;
                   }
                 })}
@@ -263,8 +314,12 @@ export const ChatMessagesContainer = ({
           </Message>
         )}
         {error && (
-          <div className="rounded-lg bg-red-50 p-3 text-red-600">
-            Error: {error.message}
+          <div className="rounded-lg bg-red-50 p-4 text-sm text-red-700">
+            <p className="font-medium">Something went wrong</p>
+            <p className="mt-1 text-red-600">
+              The assistant encountered an error. Please try sending your
+              message again.
+            </p>
           </div>
         )}
       </ConversationContent>
