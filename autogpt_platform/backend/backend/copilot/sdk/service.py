@@ -646,6 +646,7 @@ async def stream_chat_completion_sdk(
             )
 
     session = await upsert_chat_session(session)
+    assert session is not None  # Narrow type for pyright after upsert
 
     # Generate title for new sessions (first user message)
     if is_user_message and not session.title:
@@ -1181,12 +1182,13 @@ async def stream_chat_completion_sdk(
                 "to use the OpenAI-compatible fallback."
             )
 
-        _, final_count = await asyncio.shield(upsert_chat_session(session))
+        session = await asyncio.shield(upsert_chat_session(session))
+        assert session is not None  # Type narrowing for pyright
         logger.info(
             "[SDK] [%s] Session saved with %d messages (DB count: %d)",
             session_id[:12],
             len(session.messages),
-            final_count,
+            session.saved_message_count,
         )
         if not stream_completed:
             yield StreamFinish()
@@ -1200,6 +1202,7 @@ async def stream_chat_completion_sdk(
     except Exception as e:
         logger.error(f"[SDK] Error: {e}", exc_info=True)
         try:
+            assert session is not None  # Type narrowing for pyright
             await asyncio.shield(upsert_chat_session(session))
         except Exception as save_err:
             logger.error(f"[SDK] Failed to save session on error: {save_err}")
@@ -1224,7 +1227,7 @@ async def stream_chat_completion_sdk(
                 if not raw_transcript and use_resume and resume_file:
                     raw_transcript = read_transcript_file(resume_file)
 
-                if raw_transcript:
+                if raw_transcript and session is not None:
                     await asyncio.shield(
                         _try_upload_transcript(
                             user_id,

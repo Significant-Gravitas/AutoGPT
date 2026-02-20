@@ -162,8 +162,9 @@ async def add_chat_messages_batch(
                 for i, msg in enumerate(messages):
                     # Build ChatMessageCreateInput with only non-None values
                     # (Prisma TypedDict rejects optional fields set to None)
+                    # Note: create_many doesn't support nested creates, use sessionId directly
                     data: ChatMessageCreateInput = {
-                        "Session": {"connect": {"id": session_id}},
+                        "sessionId": session_id,
                         "role": msg["role"],
                         "sequence": start_sequence + i,
                         "createdAt": now,
