@@ -49,6 +49,11 @@ class ChatConfig(BaseSettings):
         default=3600,
         description="TTL in seconds for stream data in Redis (1 hour)",
     )
+    stream_lock_ttl: int = Field(
+        default=120,
+        description="TTL in seconds for stream lock (2 minutes). Short timeout allows "
+        "reconnection after refresh/crash without long waits.",
+    )
     stream_max_length: int = Field(
         default=10000,
         description="Maximum number of messages to store per stream",

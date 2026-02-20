@@ -607,7 +607,7 @@ async def stream_chat_completion_sdk(
         redis=await get_redis_async(),
         key=f"{STREAM_LOCK_PREFIX}{session_id}",
         owner_id=stream_id,
-        timeout=config.stream_ttl,
+        timeout=config.stream_lock_ttl,
     )
 
     lock_owner = await lock.try_acquire()
