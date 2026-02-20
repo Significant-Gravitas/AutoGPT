@@ -12,7 +12,6 @@ export const PROTECTED_PAGES = [
   "/onboarding",
   "/profile",
   "/library",
-  "/monitoring",
 ] as const;
 
 export const ADMIN_PAGES = ["/admin"] as const;

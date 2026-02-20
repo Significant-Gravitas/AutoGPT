@@ -1,5 +1,7 @@
 import {
+  getGetV2GetSessionQueryKey,
   getGetV2ListSessionsQueryKey,
+  postV2CancelSessionTask,
   useDeleteV2DeleteSession,
   useGetV2ListSessions,
 } from "@/app/api/__generated__/endpoints/chat/chat";
@@ -9,11 +11,30 @@ import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { useChat } from "@ai-sdk/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { DefaultChatTransport } from "ai";
+import type { UIMessage } from "ai";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useChatSession } from "./useChatSession";
 import { useLongRunningToolPolling } from "./hooks/useLongRunningToolPolling";
 
 const STREAM_START_TIMEOUT_MS = 12_000;
+
+/** Mark any in-progress tool parts as completed/errored so spinners stop. */
+function resolveInProgressTools(
+  messages: UIMessage[],
+  outcome: "completed" | "cancelled",
+): UIMessage[] {
+  return messages.map((msg) => ({
+    ...msg,
+    parts: msg.parts.map((part) =>
+      "state" in part &&
+      (part.state === "input-streaming" || part.state === "input-available")
+        ? outcome === "cancelled"
+          ? { ...part, state: "output-error" as const, errorText: "Cancelled" }
+          : { ...part, state: "output-available" as const, output: "" }
+        : part,
+    ),
+  }));
+}
 
 export function useCopilotPage() {
   const { isUserLoading, isLoggedIn } = useSupabase();
@@ -29,6 +50,7 @@ export function useCopilotPage() {
     sessionId,
     setSessionId,
     hydratedMessages,
+    hasActiveStream,
     isLoadingSession,
     createSession,
     isCreatingSession,
@@ -80,15 +102,62 @@ export function useCopilotPage() {
                 },
               };
             },
+            // Resume: GET goes to the same URL as POST (backend uses
+            // method to distinguish).  Override the default formula which
+            // would append /{chatId}/stream to the existing path.
+            prepareReconnectToStreamRequest: () => ({
+              api: `/api/chat/sessions/${sessionId}/stream`,
+            }),
           })
         : null,
     [sessionId],
   );
 
-  const { messages, sendMessage, stop, status, error, setMessages } = useChat({
+  const {
+    messages,
+    sendMessage,
+    stop: sdkStop,
+    status,
+    error,
+    setMessages,
+    resumeStream,
+  } = useChat({
     id: sessionId ?? undefined,
     transport: transport ?? undefined,
+    // Don't use resume: true — it fires before hydration completes, causing
+    // the hydrated messages to overwrite the resumed stream.  Instead we
+    // call resumeStream() manually after hydration + active_stream detection.
   });
+
+  // Wrap AI SDK's stop() to also cancel the backend executor task.
+  // sdkStop() aborts the SSE fetch instantly (UI feedback), then we fire
+  // the cancel API to actually stop the executor and wait for confirmation.
+  async function stop() {
+    sdkStop();
+    setMessages((prev) => resolveInProgressTools(prev, "cancelled"));
+
+    if (!sessionId) return;
+    try {
+      const res = await postV2CancelSessionTask(sessionId);
+      if (
+        res.status === 200 &&
+        "reason" in res.data &&
+        res.data.reason === "cancel_published_not_confirmed"
+      ) {
+        toast({
+          title: "Stop may take a moment",
+          description:
+            "The cancel was sent but not yet confirmed. The task should stop shortly.",
+        });
+      }
+    } catch {
+      toast({
+        title: "Could not stop the task",
+        description: "The task may still be running in the background.",
+        variant: "destructive",
+      });
+    }
+  }
 
   // Abort the stream if the backend doesn't start sending data within 12s.
   const stopRef = useRef(stop);
@@ -108,13 +177,55 @@ export function useCopilotPage() {
     return () => clearTimeout(timer);
   }, [status]);
 
+  // Hydrate messages from the REST session endpoint.
+  // Skip hydration while streaming to avoid overwriting the live stream.
   useEffect(() => {
     if (!hydratedMessages || hydratedMessages.length === 0) return;
+    if (status === "streaming" || status === "submitted") return;
     setMessages((prev) => {
       if (prev.length >= hydratedMessages.length) return prev;
       return hydratedMessages;
     });
-  }, [hydratedMessages, setMessages]);
+  }, [hydratedMessages, setMessages, status]);
+
+  // Ref: tracks whether we've already resumed for a given session.
+  // Reset when the stream ends so re-resume is possible if the backend
+  // task is still running (SSE dropped but executor didn't finish).
+  const hasResumedRef = useRef<string | null>(null);
+
+  // When the stream ends (or drops), invalidate the session cache so the
+  // next hydration fetches fresh messages from the backend.  Without this,
+  // staleTime: Infinity means the cache keeps the pre-stream data forever,
+  // and any messages added during streaming are lost on remount/navigation.
+  const prevStatusRef = useRef(status);
+  useEffect(() => {
+    const prev = prevStatusRef.current;
+    prevStatusRef.current = status;
+
+    const wasActive = prev === "streaming" || prev === "submitted";
+    const isIdle = status === "ready" || status === "error";
+    if (wasActive && isIdle && sessionId) {
+      queryClient.invalidateQueries({
+        queryKey: getGetV2GetSessionQueryKey(sessionId),
+      });
+      // Allow re-resume if the backend task is still running.
+      hasResumedRef.current = null;
+    }
+  }, [status, sessionId, queryClient]);
+
+  // Resume an active stream AFTER hydration completes.
+  // The backend returns active_stream info when a task is still running.
+  // We wait for hydration so the AI SDK has the conversation history
+  // before the resumed stream appends the in-progress assistant message.
+  useEffect(() => {
+    if (!hasActiveStream || !sessionId) return;
+    if (!hydratedMessages || hydratedMessages.length === 0) return;
+    if (status === "streaming" || status === "submitted") return;
+    // Only resume once per session to avoid re-triggering after stream ends
+    if (hasResumedRef.current === sessionId) return;
+    hasResumedRef.current = sessionId;
+    resumeStream();
+  }, [hasActiveStream, sessionId, hydratedMessages, status, resumeStream]);
 
   // Poll session endpoint when a long-running tool (create_agent, edit_agent)
   // is in progress. When the backend completes, the session data will contain
@@ -197,12 +308,18 @@ export function useCopilotPage() {
     }
   }, [isDeleting]);
 
+  // True while we know the backend has an active stream but haven't
+  // reconnected yet.  Used to disable the send button and show stop UI.
+  const isReconnecting =
+    hasActiveStream && status !== "streaming" && status !== "submitted";
+
   return {
     sessionId,
     messages,
     status,
     error,
     stop,
+    isReconnecting,
     isLoadingSession,
     isCreatingSession,
     isUserLoading,
