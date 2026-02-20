@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from backend.data.redis_client import get_redis_async
+from backend.executor.cluster_lock import AsyncClusterLock
 from backend.util.exceptions import NotFoundError
 
 from .. import stream_registry
@@ -149,78 +150,7 @@ is delivered to the user via a background stream.
   All tasks must run in the foreground.
 """
 
-# Session streaming lock configuration
 STREAM_LOCK_PREFIX = "copilot:stream:lock:"
-
-
-async def _acquire_stream_lock(session_id: str, stream_id: str) -> bool:
-    """Acquire an exclusive lock for streaming to this session.
-
-    Prevents multiple concurrent streams to the same session which can cause:
-    - Message duplication
-    - Race conditions in message saves
-    - Confusing UX with multiple AI responses
-
-    Returns:
-        True if lock was acquired, False if another stream is active.
-    """
-    redis = await get_redis_async()
-    lock_key = f"{STREAM_LOCK_PREFIX}{session_id}"
-    # SET NX EX - atomic "set if not exists" with expiry (uses config.stream_ttl)
-    result = await redis.set(lock_key, stream_id, ex=config.stream_ttl, nx=True)
-    return result is not None
-
-
-async def _refresh_stream_lock(session_id: str, stream_id: str) -> None:
-    """Refresh the stream lock TTL if we still own it.
-
-    Called on heartbeats to keep the lock alive during long-running streams.
-    Only refreshes if the stored stream_id matches ours.
-    """
-    redis = await get_redis_async()
-    lock_key = f"{STREAM_LOCK_PREFIX}{session_id}"
-
-    # Lua script for atomic compare-and-expire (only refresh if we own it)
-    script = """
-    if redis.call("GET", KEYS[1]) == ARGV[1] then
-        return redis.call("EXPIRE", KEYS[1], ARGV[2])
-    else
-        return 0
-    end
-    """
-    await redis.eval(script, 1, lock_key, stream_id, config.stream_ttl)  # type: ignore[misc]
-
-
-async def _release_stream_lock(session_id: str, stream_id: str) -> None:
-    """Release the stream lock if we still own it.
-
-    Only releases the lock if the stored stream_id matches ours (prevents
-    releasing another stream's lock if we somehow timed out).
-    """
-    redis = await get_redis_async()
-    lock_key = f"{STREAM_LOCK_PREFIX}{session_id}"
-
-    # Lua script for atomic compare-and-delete (only delete if value matches)
-    script = """
-    if redis.call("GET", KEYS[1]) == ARGV[1] then
-        return redis.call("DEL", KEYS[1])
-    else
-        return 0
-    end
-    """
-    await redis.eval(script, 1, lock_key, stream_id)  # type: ignore[misc]
-
-
-async def check_active_stream(session_id: str) -> str | None:
-    """Check if a stream is currently active for this session.
-
-    Returns:
-        The active stream_id if one exists, None otherwise.
-    """
-    redis = await get_redis_async()
-    lock_key = f"{STREAM_LOCK_PREFIX}{session_id}"
-    active_stream = await redis.get(lock_key)
-    return active_stream.decode() if isinstance(active_stream, bytes) else active_stream
 
 
 def _build_long_running_callback(
@@ -671,11 +601,19 @@ async def stream_chat_completion_sdk(
     stream_id = task_id  # Use task_id as unique stream identifier
 
     # Acquire stream lock to prevent concurrent streams to the same session
-    if not await _acquire_stream_lock(session_id, stream_id):
-        # Another stream is active - check if it's still alive
-        active_stream = await check_active_stream(session_id)
+    redis = await get_redis_async()
+    lock = AsyncClusterLock(
+        redis=redis,
+        key=f"{STREAM_LOCK_PREFIX}{session_id}",
+        owner_id=stream_id,
+        timeout=config.stream_ttl,
+    )
+
+    lock_owner = await lock.try_acquire()
+    if lock_owner != stream_id:
+        # Another stream is active
         logger.warning(
-            f"[SDK] Session {session_id} already has an active stream: {active_stream}"
+            f"[SDK] Session {session_id} already has an active stream: {lock_owner}"
         )
         yield StreamError(
             errorText="Another stream is already active for this session. "
@@ -868,7 +806,7 @@ async def stream_chat_completion_sdk(
                         if not done:
                             # Timeout — emit heartbeat but keep the task alive
                             # Also refresh lock TTL to keep it alive
-                            await _refresh_stream_lock(session_id, stream_id)
+                            await lock.refresh()
                             yield StreamHeartbeat()
                             continue
 
@@ -1248,7 +1186,7 @@ async def stream_chat_completion_sdk(
             _cleanup_sdk_tool_results(sdk_cwd)
 
         # Release stream lock to allow new streams for this session
-        await _release_stream_lock(session_id, stream_id)
+        await lock.release()
 
 
 async def _try_upload_transcript(
